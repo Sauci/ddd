@@ -286,6 +286,20 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   written the access path, `abcdefghjkmn[0].a` with no `.` before the index, so a migration
   script written from that sentence matched nothing and now has the spelling to key on.
 
+* **The command line, and what a plugin may reach from it.**  What a review of the whole tool
+  found at the boundary between the commands, the plugins they run, the paths they are given
+  and the streams they write to.
+
+  *A plugin prints on stderr.*  A hook, and the backend a `backend` hook returns, now runs
+  with standard output bound to standard error - the arrangement `ddd lsp` has always made
+  before a plugin could reach the protocol wire.  Standard output is a document on the command
+  line too: a `print` left in a check hook wrote its line in front of the `--format json`
+  report of `check`, `generate` and `list`, so a job's `json.loads` failed on it, and in front
+  of the dictionary of `ddd dump > baseline.json`, so what a build archived was not json; a
+  plugin's backend did the same to `generate --format json`, and both wrote onto the stdout
+  `dump -o` promises empty.  What a plugin prints is redirected rather than swallowed: it is
+  read on stderr, beside everything else DDD says about a run.
+
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`
   through the c templates, a `SYSTEM_CONSTANT` in the a2l - whether or not a shape names it,

@@ -187,6 +187,15 @@ no usage error to give, reports either of them as a ``plugin-invalid`` finding a
 serving the workspace; and a module body that exits while it is imported is ``plugin-invalid``
 exactly as one that raises there.
 
+A hook, and the backend a ``backend`` hook returns, runs with ``sys.stdout`` bound to
+``sys.stderr``. Standard output is a document wherever DDD writes one there - the
+``--format json`` report, the dictionary ``ddd dump`` prints, the json-rpc wire of the
+language server - and ``ddd dump -o`` promises it empty, so a ``print`` left in a hook would
+otherwise be read as part of one of them and a build's ``json.loads`` would fail on it. It is
+redirected rather than silenced: what a plugin prints is still its author's to read, on the
+stream every other word DDD says about a run goes to. A plugin that wants to write a file of
+its own writes one; a plugin that wants to be quiet prints nothing.
+
 The models are the one place where raising is part of the contract. A ``@field_validator`` on
 ``object_model`` or ``project_model`` runs on every block written against it, and the
 ``ValueError`` or ``AssertionError`` pydantic turns into a ``ValidationError`` is how a model

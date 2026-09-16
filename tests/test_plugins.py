@@ -2118,6 +2118,75 @@ class TestChecksCommand:
         assert listed[-1]["check"] == "tag/retagged"
 
 
+PRINTING_PLUGIN = TAG_PLUGIN.replace(
+    "def check(context: CheckContext) -> None:\n",
+    'def check(context: CheckContext) -> None:\n    print("NOISY-CHECK-STDOUT")\n',
+).replace(
+    "        lines = [\n",
+    '        print("NOISY-GENERATE-STDOUT")\n        lines = [\n',
+)
+"""A plugin with a debugging ``print`` left in its check hook and in its backend."""
+
+
+class TestAPluginThatPrints:
+    """Whatever a plugin prints goes to stderr, so no document on stdout carries it.
+
+    stdout is a document on four of these commands - the json report of ``check`` and
+    ``generate``, the dictionary of ``dump`` - and is promised empty on the fifth
+    (``dump -o``, ``SPEC.md:1870``). A ``print`` left in a hook is the plugin's own business
+    and still has to be readable, so it lands on stderr rather than being swallowed: the
+    arrangement ``ddd lsp`` already makes before a plugin can reach the wire.
+    """
+
+    @pytest.fixture
+    def noisy(self, tree: Path) -> str:
+        write_plugin(tree / "tools", source=PRINTING_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        return str(tree / "project.ddd.json")
+
+    def test_check_json_carries_the_document_alone(
+        self, noisy: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["check", noisy, "-W", "missing-id=ignore", "--format", "json"]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert json.loads(captured.out)["summary"] == {"error": 0, "warning": 0, "info": 0}
+        assert "NOISY-CHECK-STDOUT" in captured.err
+
+    def test_generate_json_carries_the_document_alone(
+        self, noisy: str, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        quiet = ["-W", "missing-id=ignore", "--format", "json"]
+        assert main(["generate", "tag", noisy, "-o", str(tree / "gen"), *quiet]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert [entry["status"] for entry in json.loads(captured.out)["generated"]] == ["created"]
+        assert "NOISY-CHECK-STDOUT" in captured.err
+        assert "NOISY-GENERATE-STDOUT" in captured.err
+
+    def test_dump_carries_the_dictionary_alone(
+        self, noisy: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["dump", noisy, "-W", "missing-id=ignore"]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert json.loads(captured.out)["format"] == DICTIONARY_FORMAT
+        assert "NOISY-CHECK-STDOUT" in captured.err
+
+    def test_dump_to_a_file_leaves_stdout_empty(
+        self, noisy: str, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        target = tree / "out.json"
+        assert main(["dump", noisy, "-o", str(target), "-W", "missing-id=ignore"]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "NOISY-CHECK-STDOUT" in captured.err
+        assert json.loads(target.read_text(encoding="utf-8"))["format"] == DICTIONARY_FORMAT
+
+
 class TestTheLanguageServerAndPlugins:
     def test_hover_resolution_survives_a_hook_that_raises(self, tree: Path) -> None:
         from ddd.lsp.hover import resolve

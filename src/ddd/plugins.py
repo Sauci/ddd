@@ -483,7 +483,16 @@ class _GuardedBackend:
 
 def _call[C, R](plugin: Plugin, hook: str, function: Callable[[C], R], context: C) -> R:
     try:
-        return function(context)
+        # A hook runs with stdout bound to stderr, which is the arrangement `ddd lsp` already
+        # makes before a plugin can reach the json-rpc wire (`serve`). stdout is a document on
+        # the command line too - the `--format json` report, the dictionary `dump` prints - and
+        # is promised empty by `dump -o`; a `print` left in a hook would otherwise land inside
+        # one of them and a build's `json.loads` would fail on it. Redirected rather than
+        # swallowed: what a plugin says is still its author's to read, on the stream every
+        # other word this tool writes about a run goes to. `sys.stderr` is read here, at each
+        # call, so a caller that replaced either stream is followed rather than bypassed.
+        with contextlib.redirect_stdout(sys.stderr):
+            return function(context)
     except (Exception, SystemExit) as error:
         # SystemExit is not an Exception: sys.exit() in a hook would otherwise escape _call
         # uncaught, taking ddd check's exit code and printing none of the run's findings, and

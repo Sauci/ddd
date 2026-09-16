@@ -1136,7 +1136,13 @@ is a usage error before anything is written. A hook reports through the bag exac
 built-in check does, and a hook that raises, or exits the interpreter rather than
 returning, is a usage error naming the plugin and the hook; the language server, which has
 no usage error to give and does not stop, reports the same failure as a `plugin-invalid`
-finding at the project file ([section 7.2](#72-editor-integration)). A plugin's own models
+finding at the project file ([section 7.2](#72-editor-integration)). Every hook and every
+backend a hook returns runs with standard output bound to standard error, because standard
+output is a document wherever DDD writes one there - a `--format json` report, the
+dictionary `ddd dump` prints, the protocol wire of the language server - and a plugin is
+under no discipline about what it prints; what a plugin writes there is therefore read on
+standard error rather than lost, and never inside a document
+([section 7](#7-tool-interface)). A plugin's own models
 are held to the same rule: a validator on one of them refusing a block is the `schema`
 finding above, but one that raises anything else, or exits the interpreter, is the plugin's
 failure and is reported exactly as a hook's is. Plugin checks are registered per run rather

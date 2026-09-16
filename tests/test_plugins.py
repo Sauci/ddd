@@ -7,9 +7,7 @@ the api it is written against, with a plugin small enough to live in this file.
 from __future__ import annotations
 
 import json
-import os
 import re
-import subprocess
 import sys
 import types
 from pathlib import Path
@@ -23,6 +21,7 @@ from conftest import (
     checks,
     component,
     declare,
+    directory_link,
     messages,
     project,
     run_analysis,
@@ -1958,30 +1957,22 @@ class TestGenerate:
         assert not (tree / "probe.h").exists()
         assert "out/probe.h (created)" in capsys.readouterr().err
 
-    def test_a_junctioned_output_directory_is_reported_as_typed(
+    def test_a_linked_output_directory_is_reported_as_typed(
         self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """A junction inside the tree is not resolved away in the report: the reader typed
-        ``-o link``, so that is what they should see, even though every file underneath is
-        measured - and physically lands - at the junction's real target. Spelled absolutely it
-        is the same promise, and the same reader.
+        """A second spelling of the output directory is not resolved away in the report: the
+        reader typed ``-o link``, so that is what they should see, even though every file
+        underneath is measured - and physically lands - at the real target. Spelled absolutely
+        it is the same promise, and the same reader.
 
-        Junctions are a windows feature and ``mklink`` is a ``cmd`` builtin, so there is no
-        such thing to make on the linux runner ci uses; asked for there, ``subprocess.run``
-        raises before it can return a code to look at."""
-        if os.name != "nt":
-            pytest.skip("directory junctions are a windows feature")
+        A junction on Windows and a symlink elsewhere: what the tool must not do is resolve
+        the path it was handed, and both spellings are paths whose ``resolve()`` is another
+        one. This used to make the junction itself and skip everywhere else, so the ubuntu
+        cells of the matrix reported success on a case they had not run."""
         target = tree / "real"
         target.mkdir()
         link = tree / "link"
-        try:
-            created = subprocess.run(
-                ["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True
-            )
-        except OSError as error:
-            pytest.skip(f"cannot run mklink on this machine: {error}")
-        if created.returncode != 0 or not link.is_dir():
-            pytest.skip("cannot create a directory junction on this machine without privilege")
+        directory_link(link, target)
         write_tree(
             tree,
             {

@@ -298,10 +298,26 @@ Running the checks
 sources, the tests and the documentation configuration with a line length of 100. The suite
 runs in a few seconds, so there is no reason to run anything less than all of it.
 
-Nothing in the suite skips. A test that skips when a tool is absent reports success without
-having run, and the one place that used to do it - validating the examples against the
-committed schemas, which needs ``jsonschema`` - was skipping everywhere except on the machine
-of whoever happened to have it installed. It is a development dependency instead.
+Nothing in the suite skips, and a test in ``tests/test_documentation.py`` holds it to that:
+no ``pytest.skip``, ``skipif``, ``importorskip`` or ``xfail`` anywhere under ``tests/``. A
+test that skips reports success without having run, so what it covers is covered on somebody
+else's machine and nowhere else. Two places used to do it. Validating the examples against
+the committed schemas needed ``jsonschema``, and skipped everywhere except on the machine of
+whoever happened to have it installed; it is a development dependency instead. A case about a
+second spelling of an output directory made a directory junction, which is a windows feature,
+and skipped on the ubuntu cells of the matrix - so the page said every cell ran everything
+while a third of them ran that one nowhere. A platform makes the *spelling* of such a path
+differ, not the behaviour under test, so ``tests/conftest.py`` offers ``directory_link``: a
+junction on Windows, a symbolic link elsewhere, and a path whose ``resolve()`` is another path
+on both.
+
+The same file carries the positive controls under the guards that read the pages with a
+regex. A guard looping over what a pattern found passes when it found nothing, which is how
+the count of the checks whose severity is fixed went stale: the sentence it counts was
+reworded, the pattern stopped matching, and the suite stayed green. So each such guard has a
+test beside it asserting that the pattern still recognises something - and the two transcript
+tests, which are parametrized over sets computed at import, have one too, because pytest
+answers a parametrize over nothing with a skip rather than a failure.
 
 The repository also ships a small linux image, which is what the generated c code is
 actually compiled with - a generator whose output no compiler has ever accepted is a

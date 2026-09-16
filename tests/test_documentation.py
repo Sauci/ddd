@@ -116,6 +116,35 @@ def project_wide_enumerations(text: str, tick: str) -> list[list[str]]:
     ]
 
 
+def counted_in_words(text: str, *patterns: str) -> list[str]:
+    """The number words of every claim of one document that one of the patterns recognises.
+
+    A claim counting in digits, or in a word this file has no number for, is not a claim these
+    guards can weigh, so it is left out rather than being answered wrongly - and what is left
+    is what a positive control has to find, or the guard is passing on an empty list.
+    """
+    found = [
+        word.lower()
+        for pattern in patterns
+        for word in re.findall(pattern, flattened(text), flags=re.I)
+    ]
+    return [word for word in found if word in NUMBER_WORDS]
+
+
+def fixed_severity_counts(text: str) -> list[str]:
+    """The number words of every "N checks whose severity ..." claim of one document."""
+    return counted_in_words(
+        text,
+        r"\b(\w+) (?:load time )?(?:checks )?whose severity\b",
+        r"\b(\w+) checks cannot be relaxed",
+    )
+
+
+def description_kind_counts(text: str) -> list[str]:
+    """The number words of every "N description kinds" claim of one document."""
+    return counted_in_words(text, r"\b(\w+) description kinds")
+
+
 def commands() -> list[str]:
     """The subcommands the parser actually offers.
 
@@ -227,16 +256,10 @@ class TestTheCheckReference:
         has to count what the registry marks as not overridable.
         """
         expected = sum(1 for info in CHECKS.values() if not info.overridable)
-        text = flattened(PAGES[page])
-        counted = re.findall(
-            r"\b(\w+) (?:load time )?(?:checks )?whose severity\b", text, flags=re.I
-        ) + re.findall(r"\b(\w+) checks cannot be relaxed", text, flags=re.I)
-        for word in counted:
-            if word.lower() in NUMBER_WORDS:
-                assert NUMBER_WORDS[word.lower()] == expected, (
-                    f"{page} counts {word} checks with a fixed severity; "
-                    f"the registry has {expected}"
-                )
+        for word in fixed_severity_counts(PAGES[page]):
+            assert NUMBER_WORDS[word] == expected, (
+                f"{page} counts {word} checks with a fixed severity; the registry has {expected}"
+            )
 
 
 class TestTheFileKinds:
@@ -244,11 +267,10 @@ class TestTheFileKinds:
 
     @pytest.mark.parametrize("page", sorted(PAGES))
     def test_the_description_kinds_are_counted_as_the_loader_counts_them(self, page: str) -> None:
-        for word in re.findall(r"\b(\w+) description kinds", flattened(PAGES[page]), flags=re.I):
-            if word.lower() in NUMBER_WORDS:
-                assert NUMBER_WORDS[word.lower()] == len(FILE_KINDS), (
-                    f"{page} counts {word} description kinds; the loader knows {len(FILE_KINDS)}"
-                )
+        for word in description_kind_counts(PAGES[page]):
+            assert NUMBER_WORDS[word] == len(FILE_KINDS), (
+                f"{page} counts {word} description kinds; the loader knows {len(FILE_KINDS)}"
+            )
 
     def test_the_file_kind_row_names_every_kind(self) -> None:
         """The row explaining the check enumerates what a top level key may be, in full."""
@@ -293,7 +315,20 @@ class TestCommands:
     def test_every_command_is_documented_in_the_readme(self, command: str) -> None:
         assert f"ddd {command}" in README or f"`{command}`" in README
 
-    def test_the_command_list_is_what_the_spec_promises(self) -> None:
+    @pytest.mark.parametrize("command", commands())
+    def test_every_command_is_named_in_the_spec(self, command: str) -> None:
+        """The developer page promises both documents, and only one was being read.
+
+        The test beside this one compares the parser with a list written out here, which
+        catches a command appearing or disappearing and says nothing whatever about the
+        specification - so the SPEC could have gone on describing thirteen commands, or
+        naming one that no longer exists, without a red test.
+        """
+        assert f"ddd {command}" in SPEC or f"`{command}`" in SPEC
+
+    def test_the_parser_offers_the_commands_this_suite_knows_about(self) -> None:
+        """A change detector on the parser: a new command has to be added here, and the two
+        tests above then hold it to being documented in both places."""
         assert set(commands()) == {
             "check",
             "compare",
@@ -775,6 +810,10 @@ class TestPackaging:
         read.update(images_the_docs_build_reads())
         # Hatchling writes the build definition into every sdist whatever the list says.
         read.discard("pyproject.toml")
+        # Positive control: the loop below passes over an empty set, and the set is built by
+        # a regex over the suite's own source - so a change of spelling in how a test names a
+        # path would switch this guard off rather than fail it.
+        assert read, "no path under the root is recognised in the suite's sources"
         for name in sorted(read):
             assert (ROOT / name).exists(), f"the suite reads {name}, which is not in the tree"
             # A directory travels either whole, under a pattern that covers it, or in the
@@ -1517,6 +1556,91 @@ class TestContinuousIntegration:
         tested = set(re.findall(r"\d+\.\d+", listed.group(1)))
         assert tested == advertised, (
             f"ci tests python {sorted(tested)} but the package advertises {sorted(advertised)}"
+        )
+
+
+SKIPPING = {"skip", "skipif", "importorskip", "xfail"}
+"""The four ways pytest is asked to report a test as something other than run or failed."""
+
+
+def pytest_attributes(source: str) -> set[str]:
+    """Every ``pytest.…`` name an expression in the module reaches for.
+
+    Read as syntax rather than as text, so that a test *about* skipping - this one - can name
+    the calls it forbids without matching itself.
+    """
+    found = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Attribute):
+            parts = []
+            root: ast.expr = node
+            while isinstance(root, ast.Attribute):
+                parts.append(root.attr)
+                root = root.value
+            if isinstance(root, ast.Name) and root.id == "pytest":
+                found.add(".".join(["pytest", *reversed(parts)]))
+    return found
+
+
+class TestTheSuiteRunsEverythingEverywhere:
+    """The convention the developer page states, and the controls under the guards.
+
+    Two failure modes that both look like a green run. A test that skips reports success
+    without having run, so the behaviour it covers is covered on somebody's machine and
+    nowhere else; and a guard whose regex or walker finds nothing passes over an empty list,
+    which is how the count of the checks with a fixed severity went stale - the sentence it
+    counts was reworded, the guard stopped recognising it, and nothing was red.
+    """
+
+    @pytest.mark.parametrize("module", sorted(path.name for path in (ROOT / "tests").glob("*.py")))
+    def test_nothing_in_the_suite_skips(self, module: str) -> None:
+        """``docs/developer_documentation.rst`` states this as a rule; here it is enforced.
+
+        The one that got past it was a directory junction, a windows feature, so the case was
+        exercised on the windows cells of the matrix and reported skipped on the ubuntu ones -
+        while the page told a reader that every cell runs everything. A platform makes the
+        *spelling* of a second path to a directory differ, not the behaviour under test, so
+        the way out is a helper that makes one either way rather than a skip.
+        """
+        source = (ROOT / "tests" / module).read_text(encoding="utf-8")
+        skipping = sorted(
+            name for name in pytest_attributes(source) if name.rsplit(".", 1)[1] in SKIPPING
+        )
+        assert not skipping, (
+            f"tests/{module} reaches for {skipping}. A test that does not run reports success: "
+            f"make the case run on every platform - tests/conftest.py's directory_link is how "
+            f"the last one was - or, if it truly cannot, amend the convention on the developer "
+            f"page first"
+        )
+
+    def test_the_pages_that_count_the_fixed_checks_are_recognised(self) -> None:
+        """Positive control: several pages count them, and the guard has to find them."""
+        counting = {page for page in PAGES if fixed_severity_counts(PAGES[page])}
+        assert counting, (
+            "no page is recognised as counting the checks whose severity is fixed, so the "
+            "guard over that count passes on every page without weighing anything"
+        )
+
+    def test_the_page_that_counts_the_description_kinds_is_recognised(self) -> None:
+        counting = {page for page in PAGES if description_kind_counts(PAGES[page])}
+        assert counting, (
+            "no page is recognised as counting the description kinds, so the guard over that "
+            "count passes on every page without weighing anything"
+        )
+
+    def test_the_spec_links_to_its_own_sections(self) -> None:
+        """Positive control under the two guards that walk the SPEC's internal links."""
+        assert spec_links(), (
+            "no internal link is found in the SPEC, so the dangling-anchor guard and the "
+            "numbered-link guard both pass over an empty list"
+        )
+
+    def test_the_published_schemas_carry_closed_sets(self) -> None:
+        """Positive control under the guard that every enumerated value says what it means."""
+        found = {kind: len(enumerations_in(published(kind))) for kind in published_kinds()}
+        assert any(found.values()), (
+            f"no enumeration is found in any published schema, so the per-value documentation "
+            f"guard passes over an empty list for every kind: {found}"
         )
 
 

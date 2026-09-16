@@ -837,6 +837,24 @@ class TestAnInitComparesAsBytes:
         assert code == EXIT_FINDINGS
         assert "cannot replace" in report
 
+    def test_a_resized_array_does_not_invent_an_initial_value_change(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The array got longer and what it is filled with did not: one finding, not two.
+
+        The shape is a changed interface and says so; a ``changed-storage`` beside it saying
+        ``init: 7 != 7`` would be true of the bytes and nonsense on the page.
+        """
+        one_component(tree, "old", declare("local", "V", "uint8", init=7, **self.ARRAY))
+        new = declare("local", "V", "uint8", init=7, kind="value_block", dimensions=[8])
+        one_component(tree, "new", new)
+        bag = verdict(resolve(tree, "old.ddd.json"), resolve(tree, "new.ddd.json"))
+        assert checks(bag) == ["changed-interface"]
+        assert "shape: [8] != [4]" in messages(bag)
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_FINDINGS
+        assert "cannot replace" in report
+
     def test_the_dictionary_still_carries_the_init_as_it_was_written(self, tree: Path) -> None:
         """Only the comparison normalises; the archive says what the description said."""
         old, new = self.deliveries(tree, 7, [7, 7, 7, 7])

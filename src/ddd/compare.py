@@ -33,7 +33,6 @@ from ddd.ir import Comparable, DataDictionary, ResolvedInstance, ResolvedLeaf
 from ddd.models import (
     Conversion,
     EnumConversion,
-    broadcast,
     conversion_identity,
     format_number,
     format_shape,
@@ -130,8 +129,18 @@ def _stored_init(entry: Comparable) -> object:
     ``--strict`` gate the comparison page recommends, a delivery that "cannot replace" its
     predecessor over generated code that is byte for byte the same file.
 
-    So both spellings are reduced to the elements the storage holds before they are
-    compared. A string's zeros are the ones c writes after the text: the analysis has
+    So both spellings are reduced to one before they are compared, by collapsing the
+    repetition rather than by expanding it - ``[7, 7, 7, 7]`` reads as ``7`` where ``7``
+    would have had to become ``(7, 7, 7, 7)``. Same equality, and the collapse needs no
+    shape, which is what keeps two things from going wrong. A delivery that resized the
+    array - already a ``changed-interface`` for its shape - would otherwise compare four
+    sevens against eight and report a second finding reading ``init: 7 != 7``, true of the
+    bytes and nonsense on the page. And expanding a scalar means building one element per
+    element of the array to compare it, ten million of them at the cap a shape may reach,
+    every time the object is compared.
+
+    A string is the one case that does need the shape: its bytes are its characters and
+    then the zeros c writes after them, up to the length of the array. The analysis has
     already refused a string that is not one dimensional and refused text that leaves no
     room for the terminator, so the padding here only fills what the array has left.
     """
@@ -141,8 +150,22 @@ def _stored_init(entry: Comparable) -> object:
     if isinstance(init, str):
         codes = tuple(ord(character) for character in init)
         width = entry.shape[0] if entry.shape else len(codes)
-        return codes + (0,) * (width - len(codes))
-    return broadcast(init, entry.shape)
+        return _uniform(codes + (0,) * (width - len(codes)))
+    return _uniform(init)
+
+
+def _uniform(value: object) -> object:
+    """A nested init reduced to the one value it repeats, or left as it is.
+
+    The whole init may be written as a single scalar, and that is the only abbreviation the
+    file format offers - a scalar inside a nested list is refused - so a list every element
+    of which is the same value is the long spelling of exactly that scalar, at every depth.
+    """
+    if not isinstance(value, tuple):
+        return value
+    collapsed = tuple(_uniform(element) for element in value)
+    repeated = set(collapsed)
+    return repeated.pop() if len(repeated) == 1 else collapsed
 
 
 # Change any of these and the consumers of the object are wrong, whether or not they still

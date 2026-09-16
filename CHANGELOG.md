@@ -485,6 +485,15 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   renamed after them, so a run that fails, or that changes nothing, changes nothing; a
   `--dry-run` says what it would remove and removes nothing.
 
+  *An include that names a file is that file.*  An entry of `includes` holding one of `*`,
+  `?` or `[` was a pattern, and the cmake module writes the includes of a collected project as
+  literal absolute paths - so a checkout under a directory somebody named `proj [v2]` turned
+  every one of them into a character class that matches nothing, and **every build failed**
+  with `include-empty` on a project whose files were all there, the message calling a pattern
+  what the module had written as a path.  A literal reading is now tried first: an entry
+  naming an existing file is that file, whatever is in its name, and an entry naming none is
+  expanded as before.
+
   **Migration:** a directory that a `ddd generate` run is pointed at now belongs to that run:
   its own files are untouched, but a file DDD wrote there and no longer writes is deleted at
   the next run, where it used to accumulate.  Two runs generating into one directory - which
@@ -493,7 +502,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   its output directory, or archives it as a delivery, sees one more file, and a run into a
   directory that has none removes nothing, so the first run after this upgrade cleans nothing
   up.  `ddd generate --format json` can report a fourth `status`, `removed`, beside `created`,
-  `updated` and `unchanged`.
+  `updated` and `unchanged`.  A project whose `includes` holds an entry spelled exactly like
+  a file beside it - `a[12].ddd.json`, with a file of that very name - now reads that file
+  instead of expanding the class; renaming either one is what keeps the class.
 
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`

@@ -80,6 +80,66 @@ def test_glob_does_not_include_the_project_itself(tree: Path) -> None:
     assert checks(bag) == []
 
 
+def test_an_entry_naming_an_existing_file_is_that_file(tree: Path) -> None:
+    """A checkout under a directory whose name carries a bracket - ``C:/work/proj [v2]``, a
+    copy Windows or a user names that way - made every include of the collected project file
+    match nothing and every build fail: the cmake module writes its includes as literal
+    absolute paths, and a path carrying one of ``*``, ``?`` or ``[`` was read as a pattern.
+    A name that is a file is that file, whatever characters are in it."""
+    write_tree(
+        tree,
+        {
+            "proj [v2]/a.ddd.json": component("A", declare("local", "X")),
+            "project.ddd.json": project("P", str(tree / "proj [v2]" / "a.ddd.json")),
+        },
+    )
+    bag = DiagnosticBag()
+    workspace = load_workspace(tree / "project.ddd.json", bag)
+    assert workspace is not None
+    assert checks(bag) == []
+    assert [loaded.name for loaded in workspace.components] == ["A"]
+
+
+def test_a_pattern_is_still_a_pattern_where_no_such_file_exists(tree: Path) -> None:
+    """The literal reading is tried first and falls through: nothing is named ``a[12].ddd.json``
+    here, so the class still matches ``a1.ddd.json`` and ``a2.ddd.json``."""
+    dictionary, bag = run_analysis(
+        tree,
+        {
+            "project.ddd.json": project("P", "a[12].ddd.json"),
+            "a1.ddd.json": component("A1", declare("local", "X")),
+            "a2.ddd.json": component("A2", declare("local", "Y")),
+        },
+    )
+    assert checks(bag) == []
+    assert dictionary is not None
+    assert [loaded.name for loaded in dictionary.components] == ["A1", "A2"]
+
+
+def test_a_pattern_naming_a_file_of_its_own_name_reads_that_file(tree: Path) -> None:
+    """Where both readings are possible the file wins, which is what makes a literal path
+    safe to write; a project wanting the class renames the file it collides with."""
+    dictionary, bag = run_analysis(
+        tree,
+        {
+            "project.ddd.json": project("P", "a[12].ddd.json"),
+            "a[12].ddd.json": component("Literal", declare("local", "X")),
+            "a1.ddd.json": component("A1", declare("local", "Y")),
+        },
+    )
+    assert checks(bag) == []
+    assert dictionary is not None
+    assert [loaded.name for loaded in dictionary.components] == ["Literal"]
+
+
+def test_a_pattern_that_matches_nothing_and_names_nothing_is_still_empty(tree: Path) -> None:
+    """The finding of an entry with a wildcard character stays ``include-empty``: a pattern
+    may legitimately match nothing, where a named file must not be missing."""
+    _, bag = run_analysis(tree, {"project.ddd.json": project("P", "a[12].ddd.json")})
+    assert checks(bag) == ["include-empty"]
+    assert "matches no file" in messages(bag)
+
+
 def test_missing_file(tree: Path) -> None:
     _, bag = run_analysis(tree, {"project.ddd.json": project("P", "nope.ddd.json")})
     assert checks(bag) == ["file-not-found"]

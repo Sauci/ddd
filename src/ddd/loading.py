@@ -1022,10 +1022,26 @@ class _Loader:
     def _expand(
         self, source: Path, pattern: str, origin: Location, excluded: set[Path]
     ) -> list[Path]:
-        """Resolve one include entry into a list of existing files."""
+        """Resolve one include entry into a list of existing files.
+
+        An entry that names a file is that file, tried before it is read as a pattern. The
+        two readings only ever collide over the three characters a pattern is made of, and a
+        directory carrying one of them is not a thing a project chooses: the cmake module
+        writes every include of a collected project as a literal absolute path, so a checkout
+        under ``C:/work/proj [v2]`` - a copy Windows or a user names that way - turned every
+        one of them into a character class that matched nothing, and the whole build failed
+        on a project whose files were all there. Where a file of that name exists, it is what
+        the entry meant; where none does, the entry is expanded as it always was, so
+        ``a[12].ddd.json`` still reaches ``a1`` and ``a2``. A project that wants the class
+        where a file of its own spelling exists renames one of the two.
+        """
         raw = Path(pattern)
-        if not any(character in pattern for character in _GLOB_CHARACTERS):
-            candidate = raw if raw.is_absolute() else source.parent / raw
+        candidate = raw if raw.is_absolute() else source.parent / raw
+        # `is_file()` rather than `exists()` for the second half: a directory of that name is
+        # no more includable than a missing one, and reading it as a pattern is the better of
+        # the two answers, a pattern being what it looks like. It answers False rather than
+        # raising for a name the platform refuses outright, as every other reading here does.
+        if not any(character in pattern for character in _GLOB_CHARACTERS) or candidate.is_file():
             return [resolve_path(candidate)]
 
         # The anchor decides where a pattern starts, not is_absolute(): on Windows both the

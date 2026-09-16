@@ -247,7 +247,13 @@ rasters files and/or other (sub-)projects, and names the plugins the project run
 - `"extensions"` (optional): the settings of those plugins, keyed by plugin name
   ([section 3.11](#311-plugins)).
 
-An entry of `includes` containing one of `*`, `?` or `[` is a wildcard pattern, expanded
+An entry of `includes` that names an existing file **shall** be read as that file, whatever
+characters it contains; only an entry naming no file is read as a pattern. The two readings
+overlap only over the three characters below, and a directory carrying one of them - a
+checkout under `C:/work/proj [v2]` - is not something a project chooses, while an absolute
+path written into `includes` by a build system ([section 7.1](#71-build-system-integration))
+is. An entry of `includes` containing one of `*`, `?` or `[` and naming no file is a wildcard
+pattern, expanded
 with the usual shell rules: `*` and `?` match within one path component, `[...]` is a
 character class, and `**` matches directories recursively. A dot prefixed file is matched
 like any other file, and whether matching honours case follows the platform, like the file

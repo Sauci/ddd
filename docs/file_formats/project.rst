@@ -135,6 +135,15 @@ missing one - or a path that turns out to name a directory - is ``file-not-found
 cannot be relaxed at all: a pattern may legitimately match nothing, a named file may not be
 absent.
 
+An entry that *names a file* is that file even when it holds one of the three characters, the
+literal reading being tried first. This is what lets a project live under a directory somebody
+named ``proj [v2]``: every include written as an absolute path would otherwise be read as a
+character class, match nothing, and take the whole build down - and the cmake module
+(:doc:`../build_integration`) writes exactly such paths. Where no file of that name exists the
+entry is expanded as a pattern as before, so ``a[12].ddd.json`` still reaches ``a1.ddd.json``
+and ``a2.ddd.json``; only where a file is spelled exactly like the pattern does the file win,
+and a project that wants the class there renames one of the two.
+
 The matches of one pattern are processed in sorted order of their resolved paths, so that
 which component loads first is a property of the names rather than of how a file system
 happens to enumerate a directory. That order is what "the first declaration in load order"

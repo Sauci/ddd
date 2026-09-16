@@ -494,6 +494,16 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   naming an existing file is that file, whatever is in its name, and an entry naming none is
   expanded as before.
 
+  *An address map may carry what the a2l never addresses.*  Every entry was held to the
+  `0 .. 0xFFFFFFFF` an `ECU_ADDRESS` holds, "whether or not DDD knows the symbol" - and the
+  recipe the build page documents extracts *every* defined symbol of the image, so on a 64 bit
+  host the hundred entries of the c runtime sitting above 4 GB stopped the generation with a
+  usage error.  **Every build after the first failed**, on the very host the page tells the
+  reader to try the two-run flow on, and the a2l kept `ECU_ADDRESS 0x00000000` for ever.  Only
+  the symbols the a2l states an address for are weighed now; the rest are counted among the
+  entries the a2l does not carry and named in the note under `address-missing`, where a stale
+  or renamed symbol is already read beside the object it belongs to.
+
   *A keyword given no value is refused, and named.*  `ddd_generate(fw.elf ... ADDRESS_MAP
   ${DDD_MAP})` with `DDD_MAP` unset or empty - the ordinary CMake mistake - reads to
   `cmake_parse_arguments()` exactly like a keyword nobody gave, and neither call looked at
@@ -517,6 +527,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   instead of expanding the class; renaming either one is what keeps the class.  A
   `ddd_generate()` or `ddd_add_component()` call whose keyword expanded to nothing now fails
   the configure step where it used to be ignored: give the keyword a value, or leave it out.
+  An address map entry outside `0 .. 0xFFFFFFFF` for a symbol the a2l never names is read
+  where it used to be refused; a build that relied on that refusal to catch a wrong map reads
+  the `address-missing` note instead, which names every entry the a2l does not carry.
 
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`

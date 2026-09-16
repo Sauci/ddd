@@ -964,6 +964,59 @@ class TestGenerate:
         captured = capsys.readouterr().err
         assert "the map also carries 'ValueEE', which the a2l does not" in captured
 
+    def test_an_address_no_a2l_field_could_hold_is_read_where_the_a2l_never_states_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The recipe the build page documents extracts every defined symbol of the image, so
+        on a 64 bit host the map carries a hundred entries of the c runtime above 4 GB - and
+        every build after the first failed on the first of them, which is what the page itself
+        calls "what a host build of an embedded project runs into first". None of them is
+        formatted into the a2l; they are counted among the entries the a2l does not carry."""
+        addresses = tmp_path / "addresses.json"
+        addresses.write_text(
+            json.dumps({"ValueE": "0x20001000", "___crt_xc_end__": "0x140009018"}),
+            encoding="utf-8",
+        )
+        code = main(
+            [
+                "generate",
+                "a2l",
+                str(DEMO),
+                "-o",
+                str(tmp_path / "gen"),
+                "--address-map",
+                str(addresses),
+            ]
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_OK, captured
+        assert "___crt_xc_end__" in captured.split("the map also carries", 1)[1]
+        assert "ECU_ADDRESS 0x20001000" in (tmp_path / "gen" / "DemoDevice.a2l").read_text(
+            encoding="utf-8"
+        )
+
+    def test_an_address_no_a2l_field_could_hold_is_refused_where_the_a2l_states_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The other half of the same rule: for a symbol the a2l addresses, a value no
+        ``ECU_ADDRESS`` can hold would render as a 33 bit literal and make the file
+        unreadable, so it is a usage error naming the symbol."""
+        addresses = tmp_path / "addresses.json"
+        addresses.write_text('{"ValueE": "0x140009018"}', encoding="utf-8")
+        code = main(
+            [
+                "generate",
+                "a2l",
+                str(DEMO),
+                "-o",
+                str(tmp_path / "gen"),
+                "--address-map",
+                str(addresses),
+            ]
+        )
+        assert code == EXIT_USAGE
+        assert "address of 'ValueE' is 5368746008, outside the range" in capsys.readouterr().err
+
     def test_a_project_that_cannot_be_read_generates_nothing(self, tmp_path: Path) -> None:
         write_tree(tmp_path, {"broken.ddd.json": "{ not json"})
         code = main(

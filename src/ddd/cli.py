@@ -783,7 +783,7 @@ def _command_compare(args: argparse.Namespace) -> int:
 
 
 def _check_address_coverage(
-    dictionary: DataDictionary, addresses: dict[str, int], path: Path, bag: DiagnosticBag
+    carried: tuple[str, ...], addresses: dict[str, int], path: Path, bag: DiagnosticBag
 ) -> None:
     """Report the objects a supplied address map does not cover, and the entries nobody wants.
 
@@ -797,7 +797,11 @@ def _check_address_coverage(
 
     The entries that match nothing are named in a note rather than as a finding of their own:
     they are usually the other half of the same mistake - the old spelling of the symbol that
-    has just gone missing - and reading them together is what identifies a rename.
+    has just gone missing - and reading them together is what identifies a rename. The
+    symbols the recipe of the build page sweeps up along the way are in that note too,
+    including any whose address no ``ECU_ADDRESS`` could hold: the map reader weighs an
+    address only for a symbol this list carries, because no other one is ever formatted into
+    anything, and this note is where the rest are accounted for.
     """
     if not addresses:
         # The run a build makes before it has linked: the cmake module seeds an empty map so
@@ -805,7 +809,6 @@ def _check_address_coverage(
         # on it could never reach the second run that fills the map. A map that names some
         # objects and not others is another thing, and is reported below.
         return
-    carried = addressed_symbols(dictionary)
     missing = [symbol for symbol in carried if symbol not in addresses]
     if not missing:
         return
@@ -962,11 +965,16 @@ def _command_generate(args: argparse.Namespace) -> int:
         # Guarded on the artefact, not just on the option: a run that does not write the a2l
         # has no use for the map and must not be killed by one it was never going to read.
         wants_addresses = args.render_a2l and getattr(args, "address_map", None) is not None
-        addresses = load_address_map(args.address_map) if wants_addresses else {}
+        addresses: dict[str, int] = {}
         if wants_addresses:
+            # The symbols the a2l of this run will state an address for, read once: they
+            # decide both which entries of the map are held to what an ECU_ADDRESS can hold
+            # and which objects the map leaves uncovered.
+            carried = addressed_symbols(dictionary)
+            addresses = load_address_map(args.address_map, carried=carried)
             # Before the gate below, so that a --strict build stops rather than writing a
             # file whose addresses it has just been told are incomplete.
-            _check_address_coverage(dictionary, addresses, args.address_map, bag)
+            _check_address_coverage(carried, addresses, args.address_map, bag)
         if bag.has_errors and not args.force:
             _report(bag, args.format)
             return EXIT_FINDINGS

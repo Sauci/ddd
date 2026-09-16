@@ -437,6 +437,17 @@ Recorded as each branch landed, so that nothing is lost between a task and the r
   decision rather than fixed by guesswork.
 - **`1.0` on a boolean is accepted** where `1.0` on `uint8` is refused (branch 4 task 7,
   `P9-M9`'s second half). Refusing it is a behaviour change no decision covers.
+- **An artefact a project stops providing keeps the files it wrote** (branch 6 task 1,
+  `P5-I3`). A run weighs only the artefacts it produced itself, because `ddd generate a2l`
+  into the directory a `generate all` filled has to regenerate the a2l "without touching the
+  sources the image was built from" (`SPEC.md` section 6), and the same holds for `--without`
+  and for `NO_A2L`. So a plugin a project stops naming leaves its header behind: the run
+  produces no artefact of that name and therefore weighs none of its entries. Weighing the
+  entries whose artefact the project can no longer produce *at all* would close it, but the
+  manifest keys on the name a plugin's backend object gives itself, which a run that does not
+  instantiate that backend cannot know - so the rule would delete the files of a plugin whose
+  backend happens to be named otherwise. Keying a plugin's artefact on the plugin's name is
+  the change that would make it safe, and no decision of this plan covers it.
 - **The `.rodata` / `.data` measurement of the artefacts page was not re-measured** (branch 3 task
   7): `docker compose` cannot run on the machine the fixes were written on and MinGW emits PE
   sections, so the page now says what was measured and when rather than quoting a number nobody

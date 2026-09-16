@@ -582,13 +582,15 @@ the addresses in it. The c sources of that second run are byte identical, so not
 recompiled, nothing is relinked, and the flow settles after one extra round rather than
 chasing its own tail.
 
-Two things such a script has to get right. A symbol the project does not declare is ignored,
-so listing the whole image does no harm - but an address outside ``0 .. 0xFFFFFFFF`` is
-refused whether or not DDD knows the symbol, which is what a host build of an embedded
-project runs into first. And a structured object's members are addressed under their access
-path, ``Inlet.latest`` rather than ``Inlet``, which a symbol lister does not print: a project
-with structured objects adds the member offsets itself, from the type description or from the
-debug information.
+Two things such a script has to get right. A structured object's members are addressed under
+their access path, ``Inlet.latest`` rather than ``Inlet``, which a symbol lister does not
+print: a project with structured objects adds the member offsets itself, from the type
+description or from the debug information. And the addresses of the objects DDD *does* know
+have to fit the ``0 .. 0xFFFFFFFF`` of an ``ECU_ADDRESS``, which a host build of an embedded
+project runs into first: a 64 bit image is based above 4 GB, and no a2l can describe it. An
+entry for a symbol DDD does not know is neither weighed that way nor written anywhere, so
+listing the whole image does no harm; those entries are named in the note under
+``address-missing``, where a stale or renamed symbol is read beside the object it belongs to.
 
 docker
 ------

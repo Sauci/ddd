@@ -1911,9 +1911,15 @@ as the A2L names it ([section 5.2](#52-a2l)). A symbol **shall** be stated once:
 naming one twice is a usage error rather than the last of the two addresses silently
 winning. The address is a JSON integer, or a string read as hexadecimal with a `0x` prefix
 and as decimal without one - those two spellings exactly, whatever whitespace surrounds
-them - and it **must** fit an unsigned 32 bit `ECU_ADDRESS`: a map that is not a JSON
+them. The address of a symbol the project carries **must** fit an unsigned 32 bit
+`ECU_ADDRESS`: a map that is not a JSON
 object, a value that is neither of those two spellings, or an address outside
-`0 .. 0xFFFFFFFF`, is a usage error and nothing is written. The file **may** begin with a
+`0 .. 0xFFFFFFFF` **for a symbol the A2L states an address for**, is a usage error and
+nothing is written. The address of any other symbol is never formatted into anything and is
+therefore not held to that range: extracting every defined symbol of an image - which is what
+[section 7.1](#71-build-system-integration) describes - legitimately yields entries a 32 bit
+field could not hold, and refusing them would make the two-run flow impossible to complete on
+a 64 bit host. The file **may** begin with a
 byte order mark, as a description file may ([section 3](#3-file-formats)): it is written by
 a build step, and on Windows that is exactly where one comes from. A key the project does
 not know is ignored, and an object the map does not

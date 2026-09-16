@@ -126,6 +126,50 @@ class TestTheShippedExample:
         build(tmp_path / "build", "sensor_hub.ddd")
 
 
+BUILD_PAGE = ROOT / "docs" / "build_integration.rst"
+"""The page whose recipes two of the classes below run rather than paraphrase."""
+
+
+def example_project(tmp_path: Path) -> Path:
+    """``examples/cmake`` beside the description and template directories it points at.
+
+    Copied rather than built in place, because these tests edit the ``CMakeLists.txt`` the
+    page shows; the relative paths it reaches its neighbours by are rewritten to the copies.
+    """
+    source = tmp_path / "example"
+    shutil.copytree(EXAMPLES / "cmake", source)
+    shutil.copytree(EXAMPLES / "demo", tmp_path / "demo")
+    shutil.copytree(TEMPLATES, tmp_path / "templates")
+    listing = source / "CMakeLists.txt"
+    text = listing.read_text(encoding="utf-8")
+    for spelling, replacement in (
+        ("${CMAKE_CURRENT_SOURCE_DIR}/../../cmake", (ROOT / "cmake").as_posix()),
+        ("${CMAKE_CURRENT_SOURCE_DIR}/../demo", (tmp_path / "demo").as_posix()),
+        ("${CMAKE_CURRENT_SOURCE_DIR}/../templates", (tmp_path / "templates").as_posix()),
+    ):
+        assert spelling in text, f"the example no longer names {spelling}"
+        text = text.replace(spelling, replacement)
+    listing.write_text(text, encoding="utf-8")
+    return source
+
+
+def documented_block(opening: str) -> str:
+    """The code block of the build page that begins with ``opening``, dedented.
+
+    Read out of the page rather than copied into this file: what these tests run then *is*
+    what the page tells a reader to write, and a page that drifts from it fails here.
+    """
+    lines = BUILD_PAGE.read_text(encoding="utf-8").splitlines()
+    start = next(index for index, line in enumerate(lines) if line.strip().startswith(opening))
+    indent = len(lines[start]) - len(lines[start].lstrip())
+    block: list[str] = []
+    for line in lines[start:]:
+        if line.strip() and len(line) - len(line.lstrip()) < indent:
+            break
+        block.append(line[indent:] if line.strip() else "")
+    return "\n".join(block).rstrip() + "\n"
+
+
 class TestAComponentThatLeavesTheImage:
     """The header of a component dropped from the link graph goes with it.
 
@@ -138,22 +182,7 @@ class TestAComponentThatLeavesTheImage:
     """
 
     def write(self, tmp_path: Path) -> Path:
-        """``examples/cmake`` beside the description and template directories it points at."""
-        source = tmp_path / "example"
-        shutil.copytree(EXAMPLES / "cmake", source)
-        shutil.copytree(EXAMPLES / "demo", tmp_path / "demo")
-        shutil.copytree(TEMPLATES, tmp_path / "templates")
-        listing = source / "CMakeLists.txt"
-        text = listing.read_text(encoding="utf-8")
-        for spelling, replacement in (
-            ("${CMAKE_CURRENT_SOURCE_DIR}/../../cmake", (ROOT / "cmake").as_posix()),
-            ("${CMAKE_CURRENT_SOURCE_DIR}/../demo", (tmp_path / "demo").as_posix()),
-            ("${CMAKE_CURRENT_SOURCE_DIR}/../templates", (tmp_path / "templates").as_posix()),
-        ):
-            assert spelling in text, f"the example no longer names {spelling}"
-            text = text.replace(spelling, replacement)
-        listing.write_text(text, encoding="utf-8")
-        return source
+        return example_project(tmp_path)
 
     def drop_the_event_logger(self, source: Path) -> None:
         """The trigger: the image stops linking one of its four components.
@@ -761,6 +790,80 @@ message(STATUS "DDD_DICTIONARY=${{dictionary}}")
         dictionary = tmp_path / "build" / "ddd" / "img" / "StoreDevice.dictionary.json"
         objects = json.loads(dictionary.read_text(encoding="utf-8"))["objects"]
         assert "Unproduced" in {entry["name"] for entry in objects}
+
+
+class TestTheDocumentedAddressMapRecipe:
+    """The two-run flow of the build page, run: three builds, and what the a2l ends up with.
+
+    Every build after the first used to fail. The recipe extracts every defined symbol of the
+    image, and an address outside ``0 .. 0xFFFFFFFF`` was refused whether or not DDD knew the
+    symbol - so on a 64 bit host the hundred entries of the c runtime above 4 GB stopped the
+    generation with a usage error, and the a2l kept ``ECU_ADDRESS 0x00000000`` for ever. Only
+    the symbols the a2l states an address for are weighed now.
+
+    Two adaptations, both of them the page's own subject. The image is linked at a base a 32
+    bit ``ECU_ADDRESS`` can hold, because this host would otherwise place *DDD's own*
+    variables above 4 GB, which is not a thing the tool can do anything about - "what a host
+    build of an embedded project runs into first". And ``address-missing`` is lowered to
+    ``info`` rather than left to ``STRICT``, because this project has the two objects a symbol
+    lister cannot answer for: a structure member, addressed under its access path, and one a
+    condition compiled out of the image - the page says a project adds the first itself, and
+    the specification calls the second a legitimate omission.
+    """
+
+    def write(self, tmp_path: Path) -> Path:
+        source = example_project(tmp_path)
+        recipe = documented_block("set(address_map")
+        assert 'ADDRESS_MAP "${address_map}"' in recipe, "the page no longer names the map so"
+        (source / "cmake").mkdir()
+        (source / "cmake" / "AddressMap.cmake").write_text(
+            documented_block("# cmake/AddressMap.cmake"), encoding="utf-8"
+        )
+        listing = source / "CMakeLists.txt"
+        text = listing.read_text(encoding="utf-8")
+        schemas = 'SCHEMA_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/schemas")'
+        assert schemas in text
+        text = text.replace(
+            "ddd_generate(firmware.elf",
+            recipe.split("ddd_generate(")[0] + "ddd_generate(firmware.elf",
+        ).replace(
+            schemas,
+            schemas[:-1] + '\n             ADDRESS_MAP "${address_map}"'
+            '\n             STRICT\n             SEVERITY "address-missing=info")',
+        )
+        text += "\n" + "add_custom_command(" + recipe.split("add_custom_command(", 1)[1]
+        # A 64 bit image is based above 4 GB - 0x140000000 on Windows - which no ECU_ADDRESS
+        # holds; an embedded image is not, and it is an embedded image the a2l describes. The
+        # GNU spelling only: the recipe reads the nm of binutils, as the page says, so this is
+        # a GNU toolchain test from end to end.
+        text += (
+            "\nif(NOT MSVC)\n"
+            '    target_link_options(firmware.elf PRIVATE "-Wl,--image-base,0x400000")\n'
+            "endif()\n"
+        )
+        listing.write_text(text, encoding="utf-8")
+        return source
+
+    def test_three_builds_settle_with_the_addresses_in_the_a2l(self, tmp_path: Path) -> None:
+        source = self.write(tmp_path)
+        configure(source, tmp_path / "build")
+        generated = tmp_path / "build" / "ddd" / "firmware.elf"
+
+        build(tmp_path / "build")
+        a2l = (generated / "DemoDevice.a2l").read_text(encoding="utf-8")
+        assert "ECU_ADDRESS 0x00000000" in a2l, "the first build runs before anything is linked"
+        extracted = json.loads((generated / "addresses.json").read_text(encoding="utf-8"))
+        assert "ValueA" in extracted, "the step extracts the symbols of the image"
+        assert any(name.startswith("_") for name in extracted), "the c runtime's among them"
+
+        output = build(tmp_path / "build")
+        assert "address-missing" in output, "the two objects a symbol lister cannot answer for"
+        a2l = (generated / "DemoDevice.a2l").read_text(encoding="utf-8")
+        assert f"ECU_ADDRESS 0x{int(extracted['ValueA'], 16):08X}" in a2l
+
+        # "nothing is recompiled, nothing is relinked, and the flow settles after one extra
+        # round rather than chasing its own tail" - the page's own sentence about this flow.
+        assert "no work to do" in build(tmp_path / "build")
 
 
 class TestAKeywordGivenNoValue:

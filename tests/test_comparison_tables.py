@@ -27,7 +27,7 @@ from __future__ import annotations
 import pytest
 
 from ddd import analysis, compare
-from ddd.ir import ResolvedObject
+from ddd.ir import ResolvedLeaf, ResolvedObject
 from ddd.models import Axis, Curve, DataObject, Map, Measurement, Parameter, ValueBlock
 
 OBJECT_KINDS = (Measurement, Parameter, ValueBlock, Axis, Curve, Map)
@@ -91,11 +91,10 @@ _NOT_COMPARED: dict[str, str] = {
 _NOT_COMPARED_RESOLVED: dict[str, str] = {
     "name": _NOT_COMPARED["name"],
     "id": "an identity is the key a comparison is joined on, never a thing compared once the "
-    "join is made - the same is true of ResolvedLeaf.instance_id, which this guard does not "
-    "reach because it walks ResolvedObject.model_fields alone. Putting either in a table "
-    "would make the single commit that stamps ids across a project report a changed-interface "
-    "or changed-storage finding on every object it touches, since the old side of that first "
-    "comparison never has one to agree or disagree with",
+    "join is made - the same is true of ResolvedLeaf.instance_id, excused below. Putting "
+    "either in a table would make the single commit that stamps ids across a project report a "
+    "changed-interface or changed-storage finding on every object it touches, since the old "
+    "side of that first comparison never has one to agree or disagree with",
     "description": _NOT_COMPARED["description"],
     "consumers": "derived: who reads the object is a fact about the project, not a property "
     "of the object that could disagree",
@@ -114,6 +113,20 @@ _NOT_COMPARED_RESOLVED: dict[str, str] = {
     "extensions": "a plugin's block is compared by that plugin's compare hook and by nothing "
     "built in: putting it in a table would turn the commit that stamps a project into a "
     "changed-interface on every object, and DDD does not know what a change inside one means",
+}
+
+# A leaf is a Comparable like a plain object, and the same two tables compare it - so every
+# field it adds to ResolvedObject needs an answer of its own. Only these three are its own;
+# everything else it carries is either in a table or excused above, and reusing that dict is
+# what says the two forms are compared by one set of rules rather than two.
+_NOT_COMPARED_LEAF: dict[str, str] = {
+    "path": "the path is what a leaf is called - ResolvedLeaf.name returns it - so it is the "
+    "key the comparison pairs on, exactly like the name of a plain object, and never a thing "
+    "compared once the pairing is made",
+    "instance": "the first segment of the path, which is therefore compared as part of it; a "
+    "leaf whose variable was renamed is the same leaf under a new path, which renamed-object "
+    "reports for the variable once instead of once per member",
+    "instance_id": _NOT_COMPARED_RESOLVED["id"],
 }
 
 
@@ -148,6 +161,31 @@ class TestEveryModelFieldIsAccountedFor:
                 f"to a table in ddd/compare.py, or to _NOT_COMPARED_RESOLVED here."
             )
 
+    def test_every_field_of_the_resolved_leaf(self) -> None:
+        """The same guard over the other half of ``Comparable``.
+
+        ``ddd.compare`` compares a member of a structured variable with the very tables it
+        compares a plain object with, and ``ResolvedLeaf`` carries four fields
+        ``ResolvedObject`` has not. Walking only the plain form left them unaccounted, which
+        is the fail-open this file exists to prevent: ``bits`` - the width of a bitfield, which
+        moves every member after it and changes the value read out of the word - was in no
+        table, in no excuse and compared by nothing at all.
+        """
+        compared = table_names(compare._INTERFACE_FIELDS, compare._STORAGE_FIELDS)
+        for name in ResolvedLeaf.model_fields:
+            accounted = (
+                name in compared
+                or DERIVED_AS.get(name) in compared
+                or name in _NOT_COMPARED_RESOLVED
+                or name in _NOT_COMPARED_LEAF
+            )
+            assert accounted, (
+                f"ResolvedLeaf.{name} is compared by nothing: a delivery could change it on "
+                f"a member of a structured variable and 'ddd compare' would report the "
+                f"candidate a valid replacement. Add it to a table in ddd/compare.py, or to "
+                f"_NOT_COMPARED_LEAF here."
+            )
+
     def test_the_derived_mapping_is_not_stale(self) -> None:
         """A name in DERIVED_AS has to still be a field, and its target still a table entry."""
         fields = {name for model in OBJECT_KINDS for name in model.model_fields}
@@ -168,6 +206,10 @@ class TestEveryModelFieldIsAccountedFor:
         for name in _NOT_COMPARED_RESOLVED:
             assert name in ResolvedObject.model_fields, (
                 f"_NOT_COMPARED_RESOLVED names '{name}', which ResolvedObject does not declare"
+            )
+        for name in _NOT_COMPARED_LEAF:
+            assert name in ResolvedLeaf.model_fields, (
+                f"_NOT_COMPARED_LEAF names '{name}', which ResolvedLeaf does not declare"
             )
 
 

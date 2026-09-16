@@ -391,6 +391,104 @@ class TestGradedChanges:
         assert checks(verdict(old, new, "changed-interface=ignore")) == []
 
 
+class TestTheLayoutOfAStructureIsInterface:
+    """A structure's layout is part of what its consumers compiled against.
+
+    Two edits move every address after them and left no trace at all in the report. A member
+    whose bit width changed carries the new width on its leaf, and ``bits`` was in neither
+    comparison table - narrowing one from four to two was reported as nothing worse than
+    tightened limits, widening it as nothing at all. And a reordering touches no leaf
+    whatsoever: same paths, same datatypes, same conversions, same limits, so the members
+    themselves compare clean however far they have moved. The ``Member`` docstring published
+    in ``ddd_types.schema.json`` and ``ddd_component.schema.json`` has always said a
+    comparison against a baseline reports the reordering.
+    """
+
+    def member(self, name: str, **extra: Any) -> dict[str, Any]:
+        return {
+            "name": name,
+            "member": "bits" if "bits" in extra else "value",
+            "datatype": "uint16",
+            "conversion": {"kind": "identity"},
+            **extra,
+        }
+
+    def delivery(self, tree: Path, name: str, *members: dict[str, Any]) -> DataDictionary:
+        write_tree(
+            tree,
+            {
+                f"{name}.ddd.json": project("P", f"{name}-t.ddd.json", f"{name}-a.ddd.json"),
+                f"{name}-t.ddd.json": {
+                    "types": [{"type": "struct", "name": "S_t", "members": list(members)}]
+                },
+                f"{name}-a.ddd.json": component("A", declare("local", "Inst", typename="S_t")),
+            },
+        )
+        return resolve(tree, f"{name}.ddd.json")
+
+    @pytest.mark.parametrize(
+        ("was", "now", "spelled"),
+        [
+            # Widening moves every member after it, and was silent: the derived limits of a
+            # wider field only grow, and growing limits are deliberately not reported.
+            (2, 4, "bits: 4 != 2"),
+            # Narrowing changes the value every reader gets out of the word, and was reported
+            # as tightened limits alone - the layout change itself unmentioned.
+            (4, 2, "bits: 2 != 4"),
+        ],
+    )
+    def test_a_bitfield_of_another_width_is_a_changed_interface(
+        self,
+        tree: Path,
+        capsys: pytest.CaptureFixture[str],
+        was: int,
+        now: int,
+        spelled: str,
+    ) -> None:
+        old = self.delivery(tree, "old", self.member("a"), self.member("f", bits=was))
+        new = self.delivery(tree, "new", self.member("a"), self.member("f", bits=now))
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"]
+        assert spelled in messages(bag)
+        assert "'Inst.f'" in messages(bag)
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_FINDINGS
+        assert "cannot replace" in report
+
+    def test_two_members_swapped_are_reported_once_at_the_structure(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Nothing about either leaf changed, and every offset of every variable moved."""
+        first, second = self.member("a", datatype="uint8"), self.member("b")
+        old = self.delivery(tree, "old", first, second)
+        new = self.delivery(tree, "new", second, first)
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"]
+        assert "'S_t' is not the same structure any more (members: b, a != a, b)" in messages(bag)
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_FINDINGS
+        assert "cannot replace" in report
+
+    def test_a_member_appended_is_an_addition_and_not_a_reordering(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The members that stayed are where they were, so there is one thing to say."""
+        old = self.delivery(tree, "old", self.member("a"))
+        new = self.delivery(tree, "new", self.member("a"), self.member("b"))
+        bag = verdict(old, new)
+        assert checks(bag) == ["added-object"]
+        assert "'Inst.b' is new" in messages(bag)
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_OK, report
+        assert "can replace" in report
+
+    def test_an_identical_structure_compares_clean(self, tree: Path) -> None:
+        members = (self.member("a", datatype="uint8"), self.member("f", bits=3))
+        old = self.delivery(tree, "old", *members)
+        new = self.delivery(tree, "new", *members)
+        assert checks(verdict(old, new)) == []
+
+
 class TestDerivedLimitsCarryTheAnalysisTolerance:
     """A limit nobody wrote is computed, and computing it goes through a float.
 

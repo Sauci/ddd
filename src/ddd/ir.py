@@ -240,6 +240,17 @@ class ResolvedObject(_Frozen):
         return self.kind.is_calibration
 
     @property
+    def bits(self) -> None:
+        """Never a bitfield: only a structure member may be one.
+
+        Here for the reason :attr:`ResolvedLeaf.init` is there: the two forms are one
+        ``Comparable`` to everything downstream, and a property that answers for the whole
+        union is what lets one comparison table serve both without a second spelling of
+        every rule.
+        """
+        return None
+
+    @property
     def spelled_shape(self) -> tuple[int | str, ...]:
         """The shape as the project spells it: ``dimensions`` where recorded, else the numbers."""
         return self.dimensions if self.dimensions else tuple(self.shape)

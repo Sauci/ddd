@@ -151,6 +151,13 @@ def _stored_init(entry: Comparable) -> object:
 _INTERFACE_FIELDS: tuple[ComparedField[Comparable], ...] = (
     ComparedField("kind", lambda o: o.kind.value, lambda o: o.kind.value),
     ComparedField("datatype", lambda o: o.datatype.value, lambda o: o.datatype.value),
+    # The width of a bitfield is part of the layout, which is why it is interface and not
+    # storage: narrowing one changes the value every reader gets out of the word, widening one
+    # moves every member after it, and the c the consumers compile against is a different
+    # structure either way. ``None`` on a plain object, which is never a bitfield.
+    ComparedField(
+        "bits", lambda o: o.bits, lambda o: str(o.bits) if o.bits is not None else "none"
+    ),
     ComparedField("unit", lambda o: o.unit, lambda o: f"'{o.unit}'"),
     # Compared through the same description free identity the in-project comparison reads,
     # because descriptions are not compared anywhere: a delivery that only documents an
@@ -368,6 +375,8 @@ def compare(
             location,
         )
 
+    _compare_layouts(baseline, candidate, bag, location)
+
     was = baseline.comparable
     now = candidate.comparable
     paired, removed, added = _pair(was, now)
@@ -416,6 +425,47 @@ def compare(
         )
 
     return paired
+
+
+def _compare_layouts(
+    baseline: DataDictionary,
+    candidate: DataDictionary,
+    bag: DiagnosticBag,
+    location: Location | None,
+) -> None:
+    """Report a structure whose members were reordered, which its leaves cannot say.
+
+    Reordering the members of a released structure moves every address after the first change
+    - which is what the ``Member`` docstring published in two schemas has always promised a
+    comparison reports - and yet every leaf of the reordered type is untouched: same path,
+    same datatype, same conversion, same limits. A comparison that walks only the leaves
+    therefore says nothing at all, and the delivery that silently moved every offset of every
+    variable of that type "can replace" its predecessor.
+
+    Reported at the structure rather than at a leaf or at a variable, because the order is a
+    property of the type: the edit was one edit, one line moved in one types file, while a
+    project with three variables of a six member structure would otherwise print the same
+    sentence three or eighteen times and leave the reader to work out that it is one thing.
+
+    Only the members both sides declare are lined up. A member that arrived or left is
+    already an addition or a removal of the leaf it contributes, in a finding that names the
+    path; what this adds is the part no such finding carries - that the members which stayed
+    are not where they were.
+    """
+    was = {entry.name: entry.members for entry in baseline.types}
+    now = {entry.name: entry.members for entry in candidate.types}
+    for name in sorted(was.keys() & now.keys()):
+        shared = {member.name for member in was[name]} & {member.name for member in now[name]}
+        before = [member.name for member in was[name] if member.name in shared]
+        after = [member.name for member in now[name] if member.name in shared]
+        if before != after:
+            bag.add(
+                "changed-interface",
+                f"'{name}' is not the same structure any more (members: {', '.join(after)} "
+                f"!= {', '.join(before)}); reordering moves every address after the first "
+                f"change, so every variable of it holds its members somewhere else",
+                location,
+            )
 
 
 def _by_discriminators(

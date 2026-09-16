@@ -622,6 +622,15 @@ running target. DDD writes **ASAP2 1.6.1** and says so on the second line of the
          ALIGNMENT_FLOAT64_IEEE 8
        /end MOD_COMMON
 
+Before that first line the file carries a UTF-8 byte order mark, which is the only encoding
+declaration ASAP2 1.6.1 has: section 1.5 of the standard tells a reader to detect the encoding
+from such a mark and to fall back to ISO-8859-1 where there is none, and the ``ENCODING``
+keyword that would state it in words arrives only with 1.7. Without it a unit as ordinary as
+``°C``, written as the utf-8 DDD writes everywhere, reaches a calibration tool as ``Â°C`` or
+stops its parser. The a2l is the one generated file that carries a mark; the c sources and the
+dumped dictionary stay utf-8 without one, because a compiler and a json reader already know
+what they are reading.
+
 The whole project becomes a single ``MODULE`` named after the project, which is the right
 granularity here: a module is what a calibration tool connects to, and the components of the
 image are one target, not several. ``BYTE_ORDER`` follows ``--byte-order``, which writes

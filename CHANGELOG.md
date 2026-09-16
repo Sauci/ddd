@@ -89,6 +89,20 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   now spaced apart: `/*` renders as `/ *`, beside the `*/` that already rendered as `* /`.
   **Migration:** none.  Prose carrying neither marker renders exactly as it did.
 
+* **The a2l says what it is encoded in.**  The file is utf-8, as every artefact is, and said
+  so nowhere: ASAP2 1.6.1 has no `ENCODING` keyword - that arrives with 1.7 - and section 1.5
+  of the standard tells a reader to detect the encoding from a byte order mark and to read the
+  file as ISO-8859-1 where there is none.  A unit as ordinary as `°C` therefore reached a
+  calibration tool as `Â°C`, or stopped its parser.  The a2l now opens with a utf-8 byte order
+  mark.  It is the one generated file that carries one: the c sources and the dumped
+  dictionary stay utf-8 with lf and no mark, because a compiler and a json reader already know
+  what they are reading.  **Migration:** a tool that reads the a2l as ASCII or as ISO-8859-1
+  without looking at the first three bytes sees them; every reader that follows the standard's
+  own rule, and every one that already read the file as utf-8, is unaffected.  Nothing that
+  reads a file *back* into DDD is: the a2l is the one artefact DDD never reads, and the files
+  it does - a description, a dumped dictionary, a build record - are read with a mark
+  tolerated and are still written without one.
+
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`
   through the c templates, a `SYSTEM_CONSTANT` in the a2l - whether or not a shape names it,

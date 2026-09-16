@@ -1610,7 +1610,9 @@ those that arise where `missing-producer` is relaxed - is grouped under `<unreso
 the definition file rather than under a component. Names sort by code point, an
 upper case name before every lower case one and `cell[10]` before `cell[2]`, which is a
 spelling rule rather than a locale's; only file paths order as the platform compares them.
-Files are written UTF-8, and a rendered file whose content has not changed is left
+Files are written UTF-8 with LF line endings and no byte order mark - the A2L of
+[section 5.2](#52-a2l) is the one artefact that carries one, because its own format has no
+other way of stating an encoding - and a rendered file whose content has not changed is left
 untouched, so that a regeneration does not cascade into a rebuild.
 
 Assignment of objects to freely chosen generated `.c`/`.h` files is *planned*.
@@ -1658,9 +1660,15 @@ ASAM MCD-2 MC output containing:
   `COMPU_VTAB`s and `COMPU_METHOD`s by their generated names; the `GROUP`s as said.
 
 The A2L is written as `<project name>.a2l` into the output directory (`-o`), beside the C
-sources; a component generated on its own names the file after the component. The file
-opens with `ASAP2_VERSION 1 61` and one `PROJECT` holding one `MODULE`, both named
-after the project ([section 3.1](#31-project-description)). The `PROJECT` carries a
+sources; a component generated on its own names the file after the component. The file is
+UTF-8 and opens with a UTF-8 byte order mark, then the generator comment and
+`ASAP2_VERSION 1 61`, and holds one `PROJECT` holding one `MODULE`, both named
+after the project ([section 3.1](#31-project-description)). The mark is the encoding
+declaration: ASAP2 1.6.1 section 1.5 says a reader detects the encoding from a byte order
+mark and otherwise reads the file as ISO-8859-1, and the `ENCODING` keyword that would say
+it in words arrives only with 1.7. Without the mark a unit such as `°C`, written UTF-8,
+reaches a tool as `Â°C` or stops its parser; no other artefact carries one
+([section 5.1](#51-c-code)). The `PROJECT` carries a
 `HEADER` stating the project description, the project name as `PROJECT_NO` and the
 generator with its version; the `MODULE` carries a `MOD_COMMON` stating the
 byte order and fixed alignments (1/2/4/8, floats 4/8) and, when the project declares

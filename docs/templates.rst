@@ -385,11 +385,14 @@ interface is found much later by somebody else.
 How the files reach the disk
 ----------------------------
 
-Every generated file is written as utf-8 with LF line endings, on every platform. Descriptions
-carry units and prose in any language, so utf-8 is the only sane choice, and fixed line
-endings mean that a file generated on Windows and the same file generated in a linux
-container are byte for byte identical - which matters as soon as generated code is compared
-across machines or checked in.
+Every generated file is written as utf-8 with LF line endings and no byte order mark, on every
+platform. Descriptions carry units and prose in any language, so utf-8 is the only sane
+choice, and fixed line endings mean that a file generated on Windows and the same file
+generated in a linux container are byte for byte identical - which matters as soon as
+generated code is compared across machines or checked in. The one exception is not a
+template's to make: the a2l, which no template renders, opens with a byte order mark, because
+its own format has no other way of stating an encoding
+(:doc:`generated_artefacts`).
 
 A file whose content has not changed is left untouched rather than rewritten, so its
 timestamp does not move and the compilation of everything that includes it is not triggered

@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from conftest import component, declare, project, render_files, run_analysis
-from ddd.backends import ByteOrder, load_address_map
+from ddd.backends import ByteOrder, load_address_map, write
 from ddd.backends.a2l.model import a2l_string
 
 
@@ -483,3 +483,44 @@ class TestStrings:
         assert content.count("8 bytes of text; ASAP2 1.6.1 has no string measurement") == 2
         assert "/begin CHARACTERISTIC" not in content
         assert content.count("/begin") == content.count("/end")
+
+
+class TestEncoding:
+    """The a2l says what it is encoded in, the only way ASAP2 1.6.1 has of saying it.
+
+    Section 1.5 of the standard gives a reader one rule: detect the encoding from a byte order
+    mark, and fall back to ISO-8859-1 without one. The tool writes utf-8, so a file without the
+    mark is read as ISO-8859-1 and every non-ASCII unit - ``°C`` above all - arrives as
+    mojibake or stops the parse. The mark belongs to the a2l rather than to the writer, so the
+    c and the dictionary keep the plain utf-8 they promise.
+    """
+
+    def written(self, tree: Path, *declarations: dict[str, Any]) -> dict[str, bytes]:
+        """Every artefact of a one-component project, as the bytes ``write`` puts on disk."""
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json"),
+            "a.ddd.json": component("A", *declarations, description="a component"),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen")
+        write(rendered)
+        return {file.path.name: file.path.read_bytes() for file in rendered}
+
+    def test_the_a2l_starts_with_the_utf_8_byte_order_mark(self, tree: Path) -> None:
+        written = self.written(tree, declare("local", "X"))
+        assert written["Device.a2l"].startswith(b"\xef\xbb\xbf")
+        assert written["Device.a2l"][3:].startswith(b"/* Device.a2l")
+
+    def test_the_c_artefacts_keep_the_plain_utf_8_they_promise(self, tree: Path) -> None:
+        written = self.written(tree, declare("local", "X"))
+        for name in ("ddd_globals.c", "ddd_globals.h", "ddd_types.h", "A.h"):
+            assert not written[name].startswith(b"\xef\xbb\xbf"), name
+
+    def test_a_non_ascii_unit_survives_the_round_trip(self, tree: Path) -> None:
+        """``°C`` is written as utf-8 and reads back as itself once the mark is honoured."""
+        written = self.written(tree, declare("local", "X", "uint16", unit="°C"))
+        text = written["Device.a2l"].decode("utf-8-sig")
+        assert 'IDENTICAL "%8.0" "°C"' in text
+        assert "CM_IDENT_DEGC" in text
+        assert "﻿" not in text

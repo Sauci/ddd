@@ -99,6 +99,42 @@ def _reject_constant(name: str) -> float:
     raise ValueError(msg)
 
 
+def _parse_json(text: str, path: Path, bag: DiagnosticBag) -> dict[str, Any] | None:
+    """One json object out of one file's text, or a finding saying why there is none.
+
+    Every document DDD reads goes through here - a description file and an archived
+    dictionary alike - so that the two hooks below apply to both: a dump is as much a file
+    somebody may have edited by hand as a description is, and there is no reading under which
+    the same duplicated key is a finding in one and the last spelling wins in the other.
+    """
+    try:
+        data = json.loads(
+            text,
+            parse_constant=_reject_constant,
+            object_pairs_hook=_reject_duplicate_keys,
+        )
+    except json.JSONDecodeError as error:
+        bag.add("json-syntax", error.msg, Location(path, line=error.lineno, column=error.colno))
+        return None
+    except RecursionError:
+        # A document nested thousands of levels deep. Python gives up on it, and it has
+        # to give up as a finding rather than as a traceback.
+        bag.add("json-syntax", "the json is nested too deeply to read", Location(path))
+        return None
+    except ValueError as error:
+        bag.add("json-syntax", str(error), Location(path))
+        return None
+
+    if not isinstance(data, dict):
+        bag.add(
+            "file-kind",
+            f"expected a json object at the top level, found {type(data).__name__}",
+            Location(path),
+        )
+        return None
+    return data
+
+
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     """Refuse an object that spells the same key twice, which json itself allows.
 
@@ -422,39 +458,39 @@ def load_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
     if text is None:
         return None
 
+    # Read through the same hooks a description file goes through, rather than handed to
+    # pydantic's own parser: that one has no ``object_pairs_hook``, so a dump spelling one key
+    # twice - ``"name": "P", "name": "Q"`` - kept the last spelling silently and came back as a
+    # delivery of a project the file says twice it is not. What a description may not do, an
+    # archived dictionary of the same project may not do either.
+    data = _parse_json(text, path, bag)
+    if data is None:
+        return None
+
     # The version is read before the document is validated, not after. A dictionary from a
     # later DDD is precisely one that carries fields this version does not know, and the
     # contract forbids unknown fields - so validating first would answer "extra inputs are
     # not permitted", which tells the reader nothing about what actually happened. Reading it
     # anyway is not an option either: the parts this version does understand would compare
     # clean and the rest would silently count as unchanged.
-    if not _dictionary_format_is_supported(text, path, bag):
+    if not _dictionary_format_is_supported(data, path, bag):
         return None
 
     try:
-        return DataDictionary.model_validate_json(text)
+        return DataDictionary.model_validate(data)
     except ValidationError as error:
         _report_validation_error(path, error, bag)
         return None
 
 
-def _dictionary_format_is_supported(text: str, path: Path, bag: DiagnosticBag) -> bool:
+def _dictionary_format_is_supported(data: dict[str, Any], path: Path, bag: DiagnosticBag) -> bool:
     """Whether the ``format`` of a dumped dictionary is one this version can read.
 
-    Tolerant about everything except the version itself: a document that is not json, or not
-    an object, or carries no ``format``, is left to the real validation to report properly -
-    except a document nested too deeply for python to parse at all, which pydantic cannot
-    validate either, so it is reported here instead.
+    Tolerant about everything except the version itself: a document carrying no ``format``, or
+    spelling it as something that is not a version at all, is left to the real validation to
+    report properly - the field is a strict whole number of at least 1, so a spelling this
+    cannot compare is refused there, with a pointer at the key.
     """
-    try:
-        data = json.loads(text, parse_constant=_reject_constant)
-    except RecursionError:
-        bag.add("json-syntax", "the json is nested too deeply to read", Location(path))
-        return False
-    except ValueError:
-        return True
-    if not isinstance(data, dict):
-        return True
     found = data.get("format", DICTIONARY_FORMAT)
     if not isinstance(found, int) or isinstance(found, bool) or found <= DICTIONARY_FORMAT:
         return True
@@ -570,37 +606,7 @@ class _Loader:
         text = _read_text(path, self._bag, origin)
         if text is None:
             return None
-
-        try:
-            data = json.loads(
-                text,
-                parse_constant=_reject_constant,
-                object_pairs_hook=_reject_duplicate_keys,
-            )
-        except json.JSONDecodeError as error:
-            self._bag.add(
-                "json-syntax",
-                error.msg,
-                Location(path, line=error.lineno, column=error.colno),
-            )
-            return None
-        except RecursionError:
-            # A document nested thousands of levels deep. Python gives up on it, and it has
-            # to give up as a finding rather than as a traceback.
-            self._bag.add("json-syntax", "the json is nested too deeply to read", Location(path))
-            return None
-        except ValueError as error:
-            self._bag.add("json-syntax", str(error), Location(path))
-            return None
-
-        if not isinstance(data, dict):
-            self._bag.add(
-                "file-kind",
-                f"expected a json object at the top level, found {type(data).__name__}",
-                Location(path),
-            )
-            return None
-        return data
+        return _parse_json(text, path, self._bag)
 
     def _check_extension(self, path: Path) -> None:
         if not path.name.lower().endswith(DDD_SUFFIX):

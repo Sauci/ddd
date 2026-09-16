@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -975,6 +976,60 @@ class TestTheArchivedDictionary:
         assert load_dictionary(tree / "future.json", bag) is None
         assert "use a newer DDD" in messages(bag)
         assert "Extra inputs are not permitted" not in messages(bag)
+
+    def dump(self, tree: Path) -> dict[str, Any]:
+        """A dumped dictionary of a one-object project, as json a test can doctor."""
+        dictionary, _ = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is not None
+        payload: dict[str, Any] = json.loads(dictionary.model_dump_json())
+        return payload
+
+    @pytest.mark.parametrize(
+        "spelled",
+        ["9", 9.0, 0, -3],
+        ids=["text", "fractional", "zero", "negative"],
+    )
+    def test_a_format_that_is_not_a_version_is_refused(self, tree: Path, spelled: object) -> None:
+        """The version gate compares a number, and the field coerced whatever it was given.
+
+        ``"9"`` and ``9.0`` went past the gate - neither is an ``int``, so there was nothing
+        to compare - and were then coerced to the 9 the gate exists to refuse, so a dictionary
+        from a DDD that does not exist yet compared clean and "can replace". ``0`` and ``-3``
+        are versions no DDD ever wrote.
+        """
+        payload = self.dump(tree)
+        payload["format"] = spelled
+        (tree / "baseline.json").write_text(json.dumps(payload), encoding="utf-8")
+        bag = DiagnosticBag()
+        assert load_dictionary(tree / "baseline.json", bag) is None
+        assert checks(bag) == ["schema"], messages(bag)
+        assert "format" in messages(bag)
+
+    def test_a_duplicate_key_in_a_dump_is_refused_as_it_is_in_a_description(
+        self, tree: Path
+    ) -> None:
+        """json lets an object spell one key twice and the last spelling wins silently.
+
+        The description loader refuses it; the dictionary reader handed the text straight to
+        pydantic, whose parser has no such hook, so a baseline carrying ``"name": "P",
+        "name": "Q"`` read back as a delivery of a project called 'Q' and the comparison
+        reported a project-mismatch against a file that says 'P' on the line above.
+        """
+        payload = self.dump(tree)
+        text = json.dumps(payload)
+        doctored = text.replace('"name": "P"', '"name": "P", "name": "Q"', 1)
+        assert doctored != text
+        (tree / "baseline.json").write_text(doctored, encoding="utf-8")
+        bag = DiagnosticBag()
+        assert load_dictionary(tree / "baseline.json", bag) is None
+        assert checks(bag) == ["json-syntax"], messages(bag)
+        assert "appears twice in one object" in messages(bag)
 
     def test_the_current_format_round_trips(self, tree: Path) -> None:
         dictionary, _ = run_analysis(

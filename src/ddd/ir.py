@@ -21,7 +21,7 @@ repeat that work, and two backends can never disagree about it.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import (
     BaseModel,
@@ -623,12 +623,16 @@ class DataDictionary(_Frozen):
 
     model_config = ConfigDict(title="DDD data dictionary")
 
-    format: int = DICTIONARY_FORMAT
+    format: Annotated[int, Field(ge=1, strict=True)] = DICTIONARY_FORMAT
     """Version of this document format, raised only when the shape of the document changes.
 
     Stamped so that a dictionary archived next to a delivery can be read back years later by
     a version of DDD that can say "this file is newer than I understand" rather than misread
     it. It does not follow the version of the tool.
+
+    A whole number of at least 1, and strictly that: ``"9"``, ``9.0`` and ``0`` are not
+    versions any DDD ever wrote, and the check that refuses a dictionary from a newer DDD has
+    no version to compare them with.
     """
 
     name: Identifier

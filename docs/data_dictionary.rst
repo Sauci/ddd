@@ -243,6 +243,7 @@ elided here for space):
      "properties": {
        "format": {
          "default": 8,
+         "minimum": 1,
          "title": "Format",
          "type": "integer"
        },

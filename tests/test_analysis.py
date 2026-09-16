@@ -262,6 +262,33 @@ class TestValueChecks:
         )
         assert checks(bag) == []
 
+    def test_a_limit_stated_as_the_unrounded_product_is_still_on_the_range(
+        self, tree: Path
+    ) -> None:
+        """Rounding the derived end would otherwise report every file written before it.
+
+        ``7.6499999999999995`` is what 255 counts of 0.03 computed to, so it is what an
+        earlier ddd wrote into an a2l and into a dumped dictionary, and what an author copied
+        from there into a ``limits``. The derived end is now ``7.65``, a hair below it, and
+        the tolerance both this check and the delivery comparison weigh a derived limit with
+        is what keeps that from becoming a finding on a file nobody changed.
+        """
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[
+                    declare(
+                        "local",
+                        "X",
+                        conversion={"factor": 0.03},
+                        limits={"min": 0, "max": 7.6499999999999995},
+                    )
+                ],
+                b=[declare("local", "Y")],
+            ),
+        )
+        assert checks(bag) == []
+
     def test_reserved_variable_name(self, tree: Path) -> None:
         _, bag = run_analysis(
             tree, two_components(a=[declare("local", "volatile")], b=[declare("local", "Y")])

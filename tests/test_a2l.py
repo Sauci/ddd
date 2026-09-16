@@ -101,8 +101,18 @@ class TestMeasurements:
         assert "ECU_ADDRESS 0x20000100" in content
 
     def test_limits_are_physical(self, tree: Path) -> None:
+        """And are the decimals the factor implies, not the binary product of the raw end.
+
+        A calibration tool enforces what it reads. ``0.03`` on a ``uint8`` computes as
+        ``7.6499999999999995``, so a tool writing the physical value of raw 255 - ``7.65``,
+        the number the description implies - was refusing it as out of range, and the
+        engineer reading the file saw a limit nobody wrote. The line is matched to its end,
+        because ``3276.7`` is a prefix of the number that was wrong.
+        """
         content = a2l(tree, declare("local", "X", "sint16", conversion={"factor": 0.1}))
-        assert "SWORD CM_LIN_NONE 0 0 -3276.8 3276.7" in content
+        assert "SWORD CM_LIN_NONE 0 0 -3276.8 3276.7\n" in content
+        narrow = a2l(tree, declare("local", "Y", "uint8", conversion={"factor": 0.03}))
+        assert "UBYTE CM_LIN_NONE 0 0 0 7.65\n" in narrow
 
 
 class TestCompuMethods:

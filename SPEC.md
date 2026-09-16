@@ -501,7 +501,13 @@ whoever states them, and only two *stated* sets of limits can disagree
 (`definition-mismatch`). The resolved limits come from the producer when it states them,
 otherwise from the first declaration in load order that states them, and otherwise they
 are derived; every other declaration that states limits is compared against that stated
-reference. An omitted `unit` is the empty unit and compares as such: a consumer stating none
+reference. A derived end is rounded to twelve significant digits, because a decimal factor
+has no exact binary float: a `uint8` under `{"factor": 0.03}` covers 0 .. `7.65`, the number
+its own largest raw count reads as, rather than the `7.6499999999999995` the multiplication
+produces, and the A2L and the dumped dictionary state the rounded end. The relative tolerance
+of `limits-out-of-range` ([section 4](#4-consistency-checks)) spans the difference, so limits
+copied out of a file an earlier version wrote are still on the range. An omitted `unit` is
+the empty unit and compares as such: a consumer stating none
 against a producer stating `rpm` is `definition-mismatch`. A `typename` compares as what
 it fixes - the `datatype`, `unit`, `conversion` and `limits` of the scalar type - so a
 declaration naming `Speed_t` and one spelling `uint16` with the same unit, conversion and

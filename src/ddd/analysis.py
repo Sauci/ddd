@@ -57,6 +57,8 @@ from ddd.models import (
     conversion_range,
     format_number,
     format_shape,
+    is_above,
+    is_below,
     is_reserved_identifier,
     physical_range,
     refuse_string_misuse,
@@ -2380,7 +2382,7 @@ class _Analysis:
         a2l carries a range the calibration tool offers and the storage cannot take. Shaped
         like :meth:`_check_enum_fits`, whose callers vary the bounds the same way.
         """
-        if _below(limits.min, low) or _above(limits.max, high):
+        if is_below(limits.min, low) or is_above(limits.max, high):
             self._bag.add(
                 "limits-out-of-range",
                 f"limits [{format_number(limits.min)}, {format_number(limits.max)}] exceed the "
@@ -3279,11 +3281,3 @@ def _derived_range_is_finite(conversion: Conversion, raw_min: float, raw_max: fl
 def _infinite_limits_message(datatype: Datatype) -> str:
     """One spelling for the three places a datatype and conversion pair can be written."""
     return f"the limits derived from '{datatype.value}' and this conversion are not finite"
-
-
-def _below(value: float, limit: float) -> bool:
-    return value < limit and not math.isclose(value, limit, rel_tol=1e-9, abs_tol=0.0)
-
-
-def _above(value: float, limit: float) -> bool:
-    return value > limit and not math.isclose(value, limit, rel_tol=1e-9, abs_tol=0.0)

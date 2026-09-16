@@ -103,6 +103,21 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   it does - a description, a dumped dictionary, a build record - are read with a mark
   tolerated and are still written without one.
 
+* **A derived limit is the number the description implies.**  Limits nobody states are
+  derived by running the raw ends of the datatype through the conversion, and the product was
+  written out as the binary arithmetic left it: a `uint8` under `{"factor": 0.03}` stated an
+  upper limit of `7.6499999999999995` - below `7.65`, the value its own largest raw count
+  stands for - and an `sint16` under `0.1` stated `3276.7000000000003`, one step past the raw
+  range.  A calibration tool that holds data to the limits it reads was refusing the value the
+  description implies, and the engineer reading the a2l saw a number nobody wrote.  Both ends
+  are now rounded to twelve significant digits, the width a reading has always been spelled
+  at, wherever they are derived: the a2l, the dumped dictionary, the hover in the editor and
+  the checks.  **Migration:** a2l and dictionary files regenerate with the shorter number, so
+  a diff against an archived artefact shows it.  No stated limit changes, and no check turns
+  into a finding: `limits-out-of-range` weighs a stated limit against the derived range with a
+  relative tolerance of 1e-9, which spans the rounding, so limits copied out of an a2l an
+  earlier version wrote are still on the range.
+
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`
   through the c templates, a `SYSTEM_CONSTANT` in the a2l - whether or not a shape names it,

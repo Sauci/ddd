@@ -43,6 +43,7 @@ PUBLISH_WORKFLOW = (ROOT / ".github" / "workflows" / "publish.yml").read_text(en
 DOCS_URL = "https://sauci.github.io/ddd/"
 CONSISTENCY_CHECKS = (ROOT / "docs" / "consistency_checks.rst").read_text(encoding="utf-8")
 COMPARING_DELIVERIES = (ROOT / "docs" / "comparing_deliveries.rst").read_text(encoding="utf-8")
+CHANGELOG = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 PAGES = {
     page.relative_to(ROOT).as_posix(): page.read_text(encoding="utf-8")
     for page in sorted((ROOT / "docs").rglob("*.rst"))
@@ -116,6 +117,17 @@ def project_wide_enumerations(text: str, tick: str) -> list[list[str]]:
         re.findall(f"{marker}([a-z][a-z0-9-]*){marker}", found)
         for found in claim.findall(flattened(text))
     ]
+
+
+def spelled_number(word: str) -> int | None:
+    """A number written in words the way the prose writes them, or ``None`` for a non-number."""
+    tens = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50}
+    head, _, unit = word.lower().partition("-")
+    if head in NUMBER_WORDS and not unit:
+        return NUMBER_WORDS[head]
+    if head in tens:
+        return tens[head] + NUMBER_WORDS.get(unit, 0)
+    return None
 
 
 def counted_in_words(text: str, *patterns: str) -> list[str]:
@@ -221,6 +233,38 @@ class TestChecks:
         assert len(enumerations) == 1, f"{name} enumerates them {len(enumerations)} times, not once"
         assert sorted(enumerations[0]) == sorted(expected), (
             f"{name} lists {sorted(enumerations[0])}; the registry says {sorted(expected)}"
+        )
+
+
+IDENTIFIER_LIFETIME = {
+    "SPEC.md": SPEC,
+    "CHANGELOG.md": CHANGELOG,
+    "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+    "docs/getting_started.rst": PAGES["docs/getting_started.rst"],
+}
+"""The documents that say how long a check identifier lives, which had better agree."""
+
+
+class TestHowLongACheckIdentifierLives:
+    """One rule, in the four places that state it.
+
+    A build script pins an identifier in a severity override, and what it is entitled to
+    assume was written three ways: the specification and the check reference say an identifier
+    does not change once published, the tutorial said it does not change *within a major
+    version*, and the changelog's preamble listed the identifiers among the interface a
+    release may change provided it says what the migration costs. A reader pinning one got
+    three different lifetimes for it; the specification's is the rule.
+    """
+
+    @pytest.mark.parametrize("document", sorted(IDENTIFIER_LIFETIME))
+    def test_it_is_until_the_end_in_every_document(self, document: str) -> None:
+        text = flattened(IDENTIFIER_LIFETIME[document])
+        assert re.search(r"not\W+change\b[^.]{0,40}\bonce\b", text), (
+            f"{document} no longer says that an identifier does not change once published"
+        )
+        assert "within a major version" not in text, (
+            f"{document} promises an identifier only until the next major version, which is a "
+            f"shorter life than the specification gives it"
         )
 
 
@@ -427,6 +471,26 @@ class TestTheDocumentationSite:
             if version == "latest" and path:
                 target = ROOT / "docs" / path.split("#", 1)[0].replace(".html", ".rst")
                 assert target.is_file(), f"{page} links {link}, and {target.name} does not exist"
+
+    def test_the_build_configuration_counts_the_models_the_pages_render(self) -> None:
+        """``docs/conf.py`` explains a setting by how many models the repetition would hit."""
+        conf = (ROOT / "docs" / "conf.py").read_text(encoding="utf-8")
+        rendered = sum(page.count("autopydantic_model::") for page in PAGES.values())
+        counted = re.search(r"repeated under all ([a-z-]+) models", conf)
+        assert counted is not None, "the comment no longer counts the models"
+        assert spelled_number(counted.group(1)) == rendered, (
+            f"docs/conf.py counts {counted.group(1)} models; the pages render {rendered}"
+        )
+
+    def test_the_acronyms_are_in_the_order_a_reader_looks_them_up_in(self) -> None:
+        """The first table is alphabetical, and a term inserted anywhere else is unfindable.
+
+        Seventeen terms the pages use were missing from it at once, which is how a page-sized
+        table grows: each is added where the writer happened to be reading.
+        """
+        acronyms = PAGES["docs/acronyms.rst"].split("a2l keywords", 1)[0]
+        terms = re.findall(r"^   \* - (.+)$", acronyms, flags=re.MULTILINE)[1:]
+        assert terms == sorted(terms, key=str.lower), f"the acronyms table is out of order: {terms}"
 
 
 def table_rows(page: str, heading: str) -> dict[str, str]:
@@ -1708,6 +1772,22 @@ class TestTheSuiteRunsEverythingEverywhere:
         assert counting, (
             "no page is recognised as counting the description kinds, so the guard over that "
             "count passes on every page without weighing anything"
+        )
+
+    @pytest.mark.parametrize("document", ["README.md", "docs/developer_documentation.rst"])
+    def test_the_guard_suites_are_counted_as_they_are_listed(self, document: str) -> None:
+        """Both documents introduce the same list with a number, and both had to be edited
+        when a fifth suite joined it. One of them was; the README went on saying four."""
+        paragraph = next(
+            block
+            for block in PAGES[document].split("\n\n")
+            if re.search(r"\w+ (?:more )?suites guard", block)
+        )
+        counted = re.search(r"(\w+) (?:more )?suites guard", paragraph)
+        assert counted is not None
+        named = set(re.findall(r"tests/test_\w+\.py", paragraph))
+        assert NUMBER_WORDS[counted.group(1).lower()] == len(named), (
+            f"{document} says {counted.group(1)} suites and names {sorted(named)}"
         )
 
     def test_the_spec_links_to_its_own_sections(self) -> None:

@@ -1,7 +1,7 @@
 # Plugins in the build
 
 - **Date:** 2026-09-05
-- **Status:** approved design, not yet implemented
+- **Status:** implemented and released in 0.9.0
 - **Touches:** the cli (`generate`, `sources`), the loader, the CMake module, the
   specification and the pages that describe them
 
@@ -34,8 +34,10 @@ Nothing changes for a project that names no plugin.
   that consumes one depends on the generation target. Declaring them, for instance by asking
   the tool with `--dry-run --format json` at configure time, is deferred until a project
   needs it.
-- Running CMake in continuous integration. The module is held to the specification by text
-  pins, as it is today; the compose `cmake` service remains the place it is exercised.
+- Running CMake in continuous integration. *(Overtaken: `tests/test_cmake.py` configures and
+  builds the module with the `cmake` and `ninja` wheels the development requirements install,
+  so every cell of the matrix exercises it. The compose `cmake` service remains the place it
+  is exercised inside the container.)*
 - Any change to what a plugin is or exposes. `ddd.plugins.Plugin`, its hooks and its contexts
   are untouched.
 - `ddd generate <name>` for a single plugin artefact, `ddd schema --plugin`, `ddd compare

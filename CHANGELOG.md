@@ -10,7 +10,9 @@ file and the `ddd-build.json` - the `ddd_generate()` and `ddd_add_component()` s
 the names a c template renders from are the tool's public interface, and a release that
 changes one of them says here what the migration costs.  Anything else - the layout of the
 generated c, the wording of a diagnostic - is not, and the templates a project provides are
-its own.
+its own.  A check identifier is the one entry of that list a release only ever adds to: a
+name a project has written into a severity override does not change once it has been
+published, as the specification requires ([section 4](SPEC.md#4-consistency-checks)).
 
 ## Unreleased
 
@@ -92,7 +94,8 @@ its own.
   description file - every value that was valid still is, and means the same.  A template
   that assumed a constant is a positive integer - formatting it with an unsigned suffix, say
   - should now expect any number.  The dumped dictionary stays format 8, whose other changes
-  are listed below: format 8 is unreleased, and a reader that only knows 7 already refuses it.
+  are listed below; a reader that only knows format 7 refuses a format 8 file as it refuses
+  any newer one.
 
 * **Strings.**  A fourth conversion kind, `{"kind": "string"}`, reads a one dimensional
   `uint8` or `sint8` array as text, on a measurement, a value block, a structure member or a
@@ -102,6 +105,9 @@ its own.
   stays the byte array it is, with an `ANNOTATION` saying so, because no version of the
   format has a string measurement.  A string states no unit, limits or display format, and
   the rules are `schema` where they are broken; a wrong string init is `init-invalid`.
+  Between deliveries a string `init` compares as the bytes it stores - its text padded with
+  zeros to the dimension - so `"Hi"` and `[72, 105, 0, 0]` on a `uint8[4]` are the same
+  initial value and neither spelling is reported as a change of the other.
   **Migration:** one spelling changes meaning, see the end of this entry; otherwise none for
   a description file - no existing file carries the kind, and `{}` is the identity it always
   was.  The dumped dictionary is format 8, for the new kind and the

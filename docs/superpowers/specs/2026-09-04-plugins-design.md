@@ -1,7 +1,7 @@
 # Plugins
 
 - **Date:** 2026-09-04
-- **Status:** approved design, not yet implemented
+- **Status:** implemented and released in 0.8.0; plugin backends under `all` followed in 0.9.0
 - **Touches:** the models, the loader, the analysis, the data dictionary, the diagnostics,
   the comparison, the generation, the cli, the language server, the published schemas
 
@@ -442,8 +442,6 @@ the tests provoke uses a template added for that test.
   stamp waits for a plugin that needs one.
 - **Entry point discovery.** Naming a plugin is deliberate ([section 2](#2-out-of-scope)); an
   installed plugin that acts on every project without being named is a different design.
-- **Plugin backends under `all`.** Asked for by name until a project wants them in the
-  default run.
 - **Language server features for a block.** Hover and completion come from the published
   schema already; a code action a plugin contributes is a second api and waits for a case.
 - **Positions in the dictionary.** A dump records a component's file name and not each

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,8 @@ import pytest
 from conftest import component, declare, project, render_files, run_analysis
 from ddd.backends import ByteOrder, load_address_map, write
 from ddd.backends.a2l.model import a2l_string
+from ddd.diagnostics import DiagnosticBag
+from ddd.loading import load_dictionary
 
 
 def a2l(tree: Path, *declarations: dict[str, Any], **options: Any) -> str:
@@ -348,6 +351,45 @@ class TestForcedOutput:
         rendered = render_files(dictionary, tree / "gen")
         content = next(file.content for file in rendered if file.path.name == "Device.a2l")
         assert "CHARACTERISTIC Cv" not in content
+
+    def test_an_input_quantity_the_dictionary_does_not_carry_is_written_as_none(
+        self, tree: Path
+    ) -> None:
+        """The backend answers for a dictionary it did not resolve itself.
+
+        ``ddd check`` refuses an axis whose ``input`` names no measurement, or one of the
+        wrong kind, so no project of this tree reaches here with a dangling name. A dumped
+        dictionary can: it is read back for a comparison long after its sources moved on,
+        another producer may write one, and a plugin's hook may edit one. A name with no
+        record behind it would make the file invalid, which is worse than an axis that says
+        it is indexed by nothing, so the backend writes ``NO_INPUT_QUANTITY`` for a name it
+        does not carry.
+        """
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json"),
+            "a.ddd.json": component(
+                "A",
+                declare("local", "Speed", "uint16"),
+                declare("local", "Cx", "uint16", kind="axis", size=2, input="Speed"),
+                declare("local", "Cv", "uint8", kind="curve", axis="Cx"),
+                description="a component",
+            ),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        payload = json.loads(dictionary.model_dump_json())
+        for entry in payload["objects"]:
+            if entry["name"] == "Cx":
+                entry["references"]["input"] = "Gone"
+        path = tree / "archived.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        archived = load_dictionary(path, DiagnosticBag())
+        assert archived is not None
+        rendered = render_files(archived, tree / "gen")
+        content = next(file.content for file in rendered if file.path.name == "Device.a2l")
+        assert "Gone" not in content
+        assert "0x00000000 NO_INPUT_QUANTITY RL_AXIS_UWORD" in content
+        assert "COM_AXIS NO_INPUT_QUANTITY" in content
 
 
 class TestStrings:

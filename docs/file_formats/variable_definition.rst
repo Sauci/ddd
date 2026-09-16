@@ -701,7 +701,10 @@ The scope of an axis follows the same rule as everything else. ``AxisA`` is an `
 ``Controller`` because ``UserInterface`` also puts a curve over it and therefore declares it as
 an ``input``; ``AxisB``, which only ``Controller`` uses, is ``local``. Omitting ``input``
 is allowed and produces ``NO_INPUT_QUANTITY`` in its place - honest, and less useful to whoever
-opens the file.
+opens the file. What ``input`` names has to be a **plain** measurement: an instance of a
+:doc:`declared structure <types>` is of kind ``measurement`` and is still refused
+(``reference-kind``), because it reaches the a2l as one record per value-holding member and
+none of its own, so an axis indexed by it would name a record the file does not carry.
 
 curve
 ~~~~~

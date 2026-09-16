@@ -995,7 +995,10 @@ record layout the points are deposited in, a maximum difference of ``0``, the co
 the maximum number of axis points, and the physical limits. The maximum is the ``size`` the
 description gave, because the array generated for the axis is exactly that long and there is
 no room for a calibration tool to add a point. An axis whose description gives no ``input``
-gets the keyword ``NO_INPUT_QUANTITY`` instead of a name.
+gets the keyword ``NO_INPUT_QUANTITY`` instead of a name, and so does one whose ``input``
+names something the dictionary being written does not carry - which the checks leave in no
+project DDD resolves itself, only in a dictionary read back from a dump or written by another
+producer, where a name no record answers to would make the whole module invalid.
 
 A curve or a map then refers to that axis instead of carrying its own copy of the break
 points. The reference is an ``AXIS_DESCR`` of attribute ``COM_AXIS`` - a *common* axis, one

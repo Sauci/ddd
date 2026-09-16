@@ -118,6 +118,26 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   relative tolerance of 1e-9, which spans the rounding, so limits copied out of an a2l an
   earlier version wrote are still on the range.
 
+* **Two names the generated files could not carry.**  An axis whose `input` named a
+  structured variable passed every check, because an instance of a structure is of kind
+  `measurement` and only its declared type says that it is not one quantity.  The a2l then
+  bound the axis - and the `COM_AXIS` of every curve over it - to `Inst`, while the only
+  records in the file were `Inst.a` and the other members: the dangling reference the export
+  closure exists to prevent, which an ASAP2 checker reports and a calibration tool answers by
+  dropping the reference or refusing the module.  It is now `reference-kind`, and the axis is
+  dropped as every wrong-kind reference is.  Beside it the backend now writes
+  `NO_INPUT_QUANTITY` for any input quantity the dictionary it is rendering does not carry, so
+  a dictionary read back from a dump, written by another producer or edited by a hook still
+  renders a module that loads.  Separately, `name-collision` weighed a declared constant
+  against data objects, enums, enumerators and types but not against the members of a
+  structure - and the example templates emit every constant as a `#define` above the
+  structures, so a constant `raw` beside a member `raw` wrote `#define raw 4` a few lines
+  above `uint16_t raw;` and no compiler accepted the header.  That pair is now compared too,
+  reported at the constant with a note at the member.  **Migration:** both are errors on
+  descriptions that used to check clean.  Rename the constant or the member; point the axis
+  at the plain measurement that indexes it, or leave the `input` out, which reads
+  `NO_INPUT_QUANTITY` as it always did.
+
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`
   through the c templates, a `SYSTEM_CONSTANT` in the a2l - whether or not a shape names it,

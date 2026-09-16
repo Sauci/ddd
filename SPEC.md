@@ -445,8 +445,12 @@ Kind specific attributes:
   declares it as its `input`. It is a use of the object all the same, so a reference into
   another component's `local` object is `local-conflict`
   ([section 4](#4-consistency-checks)).
-- `input` names the measurement that indexes an axis (A2L input quantity); when omitted,
-  the A2L uses `NO_INPUT_QUANTITY`.
+- `input` names the measurement that indexes an axis (A2L input quantity). It **must** name
+  a plain measurement: an instance of a structure is of kind `measurement` and is still
+  refused (`reference-kind`), because it has no A2L record of its own to be indexed by. When
+  omitted, the A2L uses `NO_INPUT_QUANTITY`, and so it does for a name the dictionary being
+  written does not carry - which no project DDD resolves itself can produce, only a
+  dictionary read back from elsewhere ([section 5.2](#52-a2l)).
 - Calibration objects (every kind except `measurement`) are always generated `const`,
   because the software never writes them, and additionally `volatile` when the declaration
   says so. An object a calibration tool changes in a running target needs both qualifiers.
@@ -1294,7 +1298,11 @@ Errors:
   or a string init is not printable ASCII, leaves no room for its terminator, or is written
   on an object that is not a string.
 - `unknown-reference`, `reference-kind`: a curve, map or axis refers to an object that does
-  not exist or has the wrong kind. The referring object is dropped as unresolvable whatever
+  not exist or has the wrong kind. A structured object ([section 3.3.2](#332-naming-a-declared-type))
+  is the wrong kind for the `input` of an axis as well, although an instance of a structure
+  is of kind `measurement`: it reaches the A2L as one record per value-holding member and
+  none of its own ([section 5.2](#52-a2l)), so an axis indexed by it would name a record the
+  file does not carry. The referring object is dropped as unresolvable whatever
   severity the finding is given, because a curve without its axis has no shape and an axis
   naming an absent measurement would leave a dangling name in the A2L; `incomplete-project`
   says so when the finding is silenced. A reference to an object that was declared but
@@ -1313,7 +1321,11 @@ Errors:
   C identifier or the same generated file. Exactly these pairs are compared: enumerators of
   different enums, an enumerator and a data object, a data object and the name of an enum
   or of a declared type, a declared constant and a data object, an enum, an enumerator or
-  a declared type, and two component names differing only in case. Two pairs that share
+  a declared type, a declared constant and the member of a structure, and two component
+  names differing only in case. The member is the one pair that is not a clash of
+  identifiers - a member has a namespace of its own in C - but of a macro with the text it
+  replaces: a constant is emitted as a preprocessor definition in the same types header, so
+  it rewrites the member where the structure declares it. Two pairs that share
   the same C namespace in the types header are not compared yet: an enum and a declared
   type of one name, and an enumerator and a declared type of one name *(planned)*.
 - `file-extension`: a description file is not named `*.ddd.json`.
@@ -1712,7 +1724,11 @@ are written in their shortest round trip form, an integral value without a decim
 Export is closed over references: an exported curve or map pulls the axes it refers to into
 the A2L, and an axis in the file, exported in its own right or pulled in, pulls the
 measurement indexing it, whatever their own `export` says, because an `AXIS_PTS_REF` to an
-absent axis would be an invalid file rather than a smaller one.
+absent axis would be an invalid file rather than a smaller one. An axis whose `input` names
+an object the dictionary does not carry states `NO_INPUT_QUANTITY` instead of the name: the
+checks leave no such reference in a project DDD resolves itself
+([section 4](#4-consistency-checks)), and a dictionary read back from a dump or written by
+another producer is not checked again, where a dangling name would make the module invalid.
 
 A record whose object is declared under a preprocessor condition is preceded by a comment
 naming that condition, because the format has no conditional construct of its own.

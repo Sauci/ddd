@@ -475,7 +475,10 @@ or an a2l file that does not do what the description says - or that does not com
        same file scope namespace as the variables), an enumerator claimed by two enums (all
        enumerators share one c namespace), a declared constant and a variable, an enum, an
        enumerator or a declared type (the constant reaches the generated code as an identifier
-       of its own, in that same namespace), or two component names differing only in case,
+       of its own, in that same namespace), a declared constant and the member of a structure
+       (a member has a namespace of its own, but the constant is a preprocessor definition in
+       the same types header and replaces the member's name where the structure declares it),
+       or two component names differing only in case,
        which ask for the same header on a case insensitive filesystem.
    * - ``duplicate-declaration``
      - error
@@ -555,8 +558,11 @@ or an a2l file that does not do what the description says - or that does not com
    * - ``reference-kind``
      - error
      - a reference points at an object of the wrong kind, for example the ``axis`` of a curve
-       naming a measurement instead of an axis. The referring object is dropped as
-       unresolvable too, exactly as ``unknown-reference`` drops one.
+       naming a measurement instead of an axis. A structured object is the wrong kind for the
+       ``input`` of an axis as well, although an instance of a structure *is* a measurement:
+       it reaches the a2l as one record per value-holding member and none of its own, so an
+       axis indexed by it would carry a name the file does not declare. The referring object
+       is dropped as unresolvable too, exactly as ``unknown-reference`` drops one.
    * - ``init-invalid``
      - error
      - an initial value does not fit its datatype - out of range, written as a fraction for an

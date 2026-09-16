@@ -1727,8 +1727,11 @@ class _Analysis:
         file scope namespace as the variables, the typedef names and the enumerators - and
         the example templates emit it as a preprocessor definition, which replaces the other
         occupant textually wherever it appears. Exactly the pairs of the specification are
-        compared: a constant against a data object, an enum, an enumerator and a declared
-        type.
+        compared: a constant against a data object, an enum, an enumerator, a declared type
+        and the member of a structure. A member has a namespace of its own in c, so it is the
+        one pair that is not a clash of identifiers but of the macro with the text it
+        replaces: ``#define raw 4`` a few lines above ``uint16_t raw;`` leaves ``uint16_t 4;``
+        in the same header, which no compiler accepts.
         """
         by_name = dict(ordered)
         for name in sorted(self._constants):
@@ -1770,6 +1773,35 @@ class _Analysis:
                     entry.location(),
                     notes=[("type declared here", declared_type.location())],
                 )
+            for holder, position in self._members_named(name):
+                self._bag.add(
+                    "name-collision",
+                    f"'{name}' is a declared constant and also a member of structure "
+                    f"'{holder.name}'; a constant is a preprocessor definition in the same "
+                    f"header, and it replaces the member's name where the structure declares "
+                    f"it",
+                    entry.location(),
+                    notes=[("member declared here", holder.location(f"members[{position}].name"))],
+                )
+
+    def _members_named(self, name: str) -> list[tuple[LoadedType, int]]:
+        """Every structure member of that name, with its position, in type name order.
+
+        All of them rather than the first: two structures may each have a ``raw``, and the
+        constant breaks the declaration of both, in one header, so naming one of them would
+        send the reader back for the next after the first edit.
+        """
+        found: list[tuple[LoadedType, int]] = []
+        for type_name in sorted(self._types):
+            structure = self._types[type_name].structure
+            if structure is None:
+                continue
+            found.extend(
+                (self._types[type_name], position)
+                for position, member in enumerate(structure.members)
+                if member.name == name
+            )
+        return found
 
     def _check_identity_collisions(
         self, ordered: Sequence[tuple[str, list[DeclarationRef]]]
@@ -2704,6 +2736,20 @@ class _Analysis:
             message = (
                 f"the {key} of {definition.kind.value} '{definition.name}' must be of kind "
                 f"'{_EXPECTED_KIND[key].value}', but '{target}' is of kind '{found.kind.value}'"
+            )
+        elif self._is_structured(target):
+            # The kind is right and the object is still the wrong one: an instance of a
+            # structure is of kind `measurement`, and only its declared type says that it is
+            # not one quantity. It has no record of its own in the a2l - one per
+            # value-holding member instead - so an axis indexed by it would carry a name
+            # nothing in the file declares, which is the dangling reference the closure over
+            # references exists to prevent. Refused as any other wrong kind is, and dropped
+            # with it.
+            check = "reference-kind"
+            message = (
+                f"the {key} of {definition.kind.value} '{definition.name}' must be a plain "
+                f"{_EXPECTED_KIND[key].value}, but '{target}' is a structured object, which "
+                f"reaches the a2l as one record per member and none of its own"
             )
         else:
             return None

@@ -406,10 +406,25 @@ class _A2lModelBuilder:
             number=entry.shape[0] if string else None,
         )
 
+    def _input_quantity(self, entry: ResolvedObject) -> str:
+        """The measurement an axis is indexed by, or the format's word for "none".
+
+        A name is written only if this file carries a record for it. Every project this tool
+        resolves itself already guarantees that - ``unknown-reference`` and ``reference-kind``
+        refuse an input quantity that names nothing, or a structured object, and the export
+        closure pulls in the measurement of an axis that reaches the file - but a dictionary
+        is also read back from a dump written by an earlier version, handed over by another
+        producer, or edited by a plugin's hook, and none of those is checked again here. A
+        name with no record behind it makes the whole module invalid, which is worse than an
+        axis stating that nothing indexes it.
+        """
+        name = entry.references.get("input")
+        return name if name in self._by_name else NO_INPUT_QUANTITY
+
     def _axis_descr(self, axis: ResolvedObject, name: str) -> AxisDescrView:
         return AxisDescrView(
             attribute="COM_AXIS",
-            input_quantity=axis.references.get("input") or NO_INPUT_QUANTITY,
+            input_quantity=self._input_quantity(axis),
             compu_method=self._methods.reference(axis),
             max_points=axis.shape[0] if axis.shape else 0,
             lower=format_number(axis.limits.min),
@@ -422,7 +437,7 @@ class _A2lModelBuilder:
             name=entry.name,
             description=entry.description or entry.name,
             address=self._options.address_of(entry.name),
-            input_quantity=entry.references.get("input") or NO_INPUT_QUANTITY,
+            input_quantity=self._input_quantity(entry),
             deposit=self._layouts.axis(entry.datatype),
             compu_method=self._methods.reference(entry),
             max_points=entry.shape[0] if entry.shape else 0,

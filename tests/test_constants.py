@@ -696,6 +696,28 @@ class TestNameChecks:
         assert checks(bag) == ["name-collision"]
         assert "'Temp_t' is a declared constant and also the name of a type" in messages(bag)
 
+    def test_a_constant_cannot_share_a_name_with_a_structure_member(self, tree: Path) -> None:
+        """Both are declared in the types header, and one of them is a macro.
+
+        The example templates emit every constant as a preprocessor definition above the
+        structures, so ``#define raw 4`` replaces the member's name a few lines below it and
+        the header stops being c: ``uint16_t 4;``. A member is the one identifier of that
+        header the pair list used to leave out.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "constants.ddd.json", "types.ddd.json"),
+                "constants.ddd.json": constants(constant("raw", 4, "cells")),
+                "types.ddd.json": struct_type("Sensor_t", value_member("raw")),
+            },
+        )
+        assert checks(bag) == ["name-collision"]
+        rendered = messages(bag)
+        assert "'raw' is a declared constant and also a member of structure 'Sensor_t'" in rendered
+        assert "member declared here" in rendered
+        assert "types.ddd.json#types[0].members[0].name" in rendered
+
 
 def _vocabulary_project(*declarations: dict[str, Any]) -> dict[str, Any]:
     return {

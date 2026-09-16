@@ -101,9 +101,10 @@ testpaths = ["tests"]
 # Coverage runs with every test run, and a gap fails the run: a line nobody executes is a
 # line nobody has ever seen behave. Use --no-cov for a quick partial run while developing.
 addopts = "-q --cov --cov-report=term-missing --cov-fail-under=100"
-# tools/ holds the release machinery the workflows run - not part of the package, but on the
-# path so that a test can import it and exercise it rather than read it as text.
-pythonpath = ["src", "tools"]
+# tools/ holds the release machinery the workflows run and docker/ the scripts the container
+# runs - neither is part of the package, and both are on the path so that a test can import
+# and exercise them rather than read them as text.
+pythonpath = ["src", "tools", "docker"]
 
 [tool.coverage.run]
 source = ["ddd"]

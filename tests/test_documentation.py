@@ -22,12 +22,14 @@ from typing import Any, Literal
 import jsonschema
 import pytest
 import site_versions
+import verify_symbols
 from pydantic import BaseModel, ValidationError
 
+from conftest import DEMO
 from ddd import __version__
 from ddd.analysis import _MAX_ELEMENTS, _MAX_LEAVES
 from ddd.backends.c.model import CodeModel, MemberView, ObjectView
-from ddd.cli import _SCHEMA_MODELS, _build_parser
+from ddd.cli import _SCHEMA_MODELS, EXIT_OK, _build_parser, main
 from ddd.diagnostics import CHECKS
 from ddd.loading import FILE_KINDS
 from ddd.models import Component, DataObject, Datatype, ObjectKind, ScalarType
@@ -650,6 +652,23 @@ class TestPackaging:
             (ROOT / "editors" / "vscode" / "package.json").read_text(encoding="utf-8")
         )
         assert manifest["version"] == __version__
+
+    def test_the_lock_file_carries_it_too(self) -> None:
+        """Nothing else compares the lock's own version with anything.
+
+        ``npm ci`` refuses a lock file out of step with its manifest's *dependencies*; the
+        root package's ``version`` is not part of that comparison, and the lock records it
+        twice - in its header and in the entry for the root package. So a release commit that
+        bumped ``package.json`` and left the lock behind packaged a ``.vsix`` whose lock file
+        said the version before, with a green extension job.
+        """
+        lock = json.loads(
+            (ROOT / "editors" / "vscode" / "package-lock.json").read_text(encoding="utf-8")
+        )
+        assert lock["version"] == __version__, "the lock file's header is a version behind"
+        assert lock["packages"][""]["version"] == __version__, (
+            "the lock file's entry for the root package is a version behind"
+        )
 
     def test_the_declared_license_file_exists(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
@@ -1533,6 +1552,69 @@ class TestPackagedResources:
         )
         assert "ddd/templates" in destinations, "ddd templates-dir would find nothing installed"
         assert "ddd/cmake/Ddd.cmake" in destinations, "ddd cmake-dir would find nothing installed"
+
+
+class TestTheCompileService:
+    """The container that compiles what the c backend generates, and the README's account of it.
+
+    Nothing in ci builds the image or runs the script, so the only thing holding the two
+    together is what can be read here: the numbers the README shows under ``== symbols``,
+    which went two objects stale when the demo gained its two strings, and the path the
+    verification reads, which has to be the file the generation writes.
+    """
+
+    def block(self) -> str:
+        """The ``== symbols`` transcript of the README, both variants."""
+        return README.split("== symbols   [base]", 1)[1].split("```", 1)[0]
+
+    def test_the_readme_counts_the_variables_the_demo_declares(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Counted by the script the container runs, over a fresh dump of the shipped demo.
+
+        It is not a ``$ ddd`` command, so the transcript harness never reaches it; the demo
+        gained ``SoftwareLabel`` and ``StateName`` with the strings and the block went on
+        saying twenty-one.
+        """
+        assert main(["dump", str(DEMO), "--format", "json"]) == EXIT_OK
+        declarations = verify_symbols.defines(json.loads(capsys.readouterr().out))
+        declared = {entry["name"] for entry in declarations}
+        conditional = {entry["name"] for entry in declarations if entry["condition"]}
+        shown = self.block()
+        assert f"{len(declared) - len(conditional)} of {len(declared)} declared" in shown, (
+            f"the [base] run defines every one of the {len(declared)} variables the demo "
+            f"declares but the {len(conditional)} behind a condition"
+        )
+        assert f"{len(declared)} of {len(declared)} declared" in shown, (
+            f"the [defines] run defines all {len(declared)} of them"
+        )
+        for name in sorted(conditional):
+            assert f"conditional, absent : {name}" in shown
+            assert f"conditional, present: {name}" in shown
+
+    def test_the_dictionary_verified_is_the_one_the_generation_wrote(self) -> None:
+        """One analysis, not two. The second was a ``ddd dump`` that had to be handed the
+        severity overrides of the first by hand, and exited 1 on the findings the first had
+        been told to tolerate."""
+        script = (ROOT / "docker" / "compile.sh").read_text(encoding="utf-8")
+        written = re.search(r'--dictionary "([^"]+)"', script)
+        read = re.search(r'verify_symbols\.py "([^"]+)"', script)
+        assert written is not None, "the generation does not write the dictionary it verifies"
+        assert read is not None, "nothing hands the dictionary to the symbol check"
+        assert written.group(1) == read.group(1)
+
+    def test_the_image_ships_the_diagram_program_the_docs_build_uses(self) -> None:
+        """``docs/conf.py`` names the launcher on the PATH, which is what the image installs.
+
+        It used to say the image ships a jar at ``/plantuml.jar``; it never did, so the
+        default path never existed and the fallback was always what ran.
+        """
+        dockerfile = (ROOT / "docker" / "Dockerfile").read_text(encoding="utf-8")
+        assert "plantuml" in dockerfile, "the image no longer installs plantuml at all"
+        assert ".jar" not in dockerfile, (
+            "the image ships a jar again, and docs/conf.py says the launcher on the PATH is "
+            "what the documentation build runs"
+        )
 
 
 class TestContinuousIntegration:

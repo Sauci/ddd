@@ -10,3 +10,18 @@ venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+# Build output and caches that .gitignore already keeps out of the repository. They are not
+# in the image either way - nothing copies them - but everything here is uploaded to the
+# daemon as the build context before the first instruction runs, and these are the large
+# ones: node_modules/ and editors/vscode/out/ from working on the extension, htmlcov/ and
+# .coverage from a coverage run, the packaged extension, the built documentation, and the
+# two ASAP2 specification pdfs under the design records.
+node_modules/
+editors/vscode/out/
+*.vsix
+htmlcov/
+.coverage
+coverage.xml
+coverage.json
+docs/_build/
+docs/superpowers/*.pdf

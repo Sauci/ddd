@@ -1174,7 +1174,7 @@ class TestNavigation:
         self.workspace(tmp_path)
         alone = tmp_path / "a.ddd.json"
         (found,) = workspaces([], alone)
-        assert alone in found.sources()
+        assert alone in found.workspace.sources()
 
     def test_a_document_that_is_in_no_project_at_all_yields_nothing(self, tmp_path: Path) -> None:
         from ddd.lsp.navigation import workspaces
@@ -1193,7 +1193,7 @@ class TestNavigation:
             BuildInfo(project=root.as_posix()),
         ]
         (found,) = workspaces(builds, tmp_path / "a.ddd.json")
-        assert found.name == "P"
+        assert found.workspace.name == "P"
 
 
 class TestHover:
@@ -3453,6 +3453,70 @@ class TestServer:
         (answer,) = sent(writer)
         assert "reserved" in answer["error"]["message"]
 
+    def half_read_workspace(self, tmp_path: Path) -> Path:
+        """A project one file of which does not load, which is an ordinary mid-edit state."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", "uint99", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+                "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        return tmp_path / "b.ddd.json"
+
+    def test_a_rename_is_refused_while_a_file_of_the_project_did_not_load(
+        self, tmp_path: Path
+    ) -> None:
+        """Indexed as if the dropped file had never declared anything, the rename rewrote the
+        rest of the project around it and left the producer holding the old name - the
+        half-renamed project the drift refusal already exists to prevent."""
+        consumer = self.half_read_workspace(tmp_path)
+        writer = io.BytesIO()
+        Server(
+            framed(
+                self.rename_request(consumer, "component.interface[0].definition.name", "Renamed")
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = sent(writer)
+        assert answer["error"]["code"] == REQUEST_FAILED
+        assert "a.ddd.json" in answer["error"]["message"]
+
+    def test_a_quick_fix_is_refused_while_a_file_of_the_project_did_not_load(
+        self, tmp_path: Path
+    ) -> None:
+        """The same hole seen through the lightbulb: it offered to remove the unit of 'Speed'
+        as one no other declaration has, while the unloaded producer declares exactly that."""
+        self.half_read_workspace(tmp_path)
+        elsewhere = tmp_path / "c.ddd.json"
+        span = Document(elsewhere.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition.unit"
+        )
+        writer = io.BytesIO()
+        Server(
+            framed(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 13,
+                    "method": "textDocument/codeAction",
+                    "params": {
+                        "textDocument": {"uri": elsewhere.as_uri()},
+                        "range": span,
+                        "context": {"diagnostics": []},
+                    },
+                }
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = sent(writer)
+        assert answer["error"]["code"] == REQUEST_FAILED
+        assert "a.ddd.json" in answer["error"]["message"]
+
     def test_preparing_a_rename_says_where_the_box_goes(self, tmp_path: Path) -> None:
         consumer = self.shared_workspace(tmp_path)
         position = Document(consumer.read_text(encoding="utf-8")).range_of(
@@ -4499,7 +4563,7 @@ class TestSymlinkedWorkspace:
         link.symlink_to(real, target_is_directory=True)
         info = BuildInfo(project=(real / "p.ddd.json").as_posix())
         found = navigation.workspaces([info], link / "a.ddd.json")
-        assert [len(workspace.components) for workspace in found] == [2]
+        assert [len(loaded.workspace.components) for loaded in found] == [2]
 
 
 class TestTheClientsSpelling:
@@ -4615,7 +4679,7 @@ class TestWorkspaceFolders:
         server = server_module.Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
         server._initialise({"workspaceFolders": [{"uri": other.as_uri()}, {"uri": home.as_uri()}]})
         found = server._projects_of(home / "components" / "a.ddd.json")
-        assert [workspace.name for workspace in found] == ["P"]
+        assert [loaded.workspace.name for loaded in found] == ["P"]
         # A document under no folder at all falls back to the first, as before.
         assert server._root_for(Path("/nowhere/x.ddd.json")) == other
 

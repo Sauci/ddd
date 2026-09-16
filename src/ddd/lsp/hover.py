@@ -26,7 +26,7 @@ from typing import Final
 from ddd.analysis import analyze
 from ddd.diagnostics import DiagnosticBag
 from ddd.ir import DataDictionary, ResolvedInstance, ResolvedLeaf, ResolvedObject
-from ddd.loading import Workspace
+from ddd.lsp.navigation import Loaded
 from ddd.models.common import format_number
 from ddd.models.conversion import EnumConversion, conversion_range, raw_reading
 from ddd.models.objects import ObjectKind, broadcast, flatten, format_shape
@@ -78,7 +78,7 @@ def rows(entry: ResolvedObject) -> list[list[float]]:
     return [values[start : start + width] for start in range(0, len(values), width)]
 
 
-def resolve(projects: Sequence[Workspace]) -> DataDictionary | None:
+def resolve(projects: Sequence[Loaded]) -> DataDictionary | None:
     """The first of these projects, resolved, or nothing when there are none.
 
     Takes the loaded projects rather than the build records that lead to them, because
@@ -90,9 +90,9 @@ def resolve(projects: Sequence[Workspace]) -> DataDictionary | None:
     The findings will already be saying what is wrong with it; refusing to answer what a
     variable is on top of that helps nobody.
     """
-    for workspace in projects:
+    for loaded in projects:
         try:
-            return analyze(workspace, DiagnosticBag())
+            return analyze(loaded.workspace, DiagnosticBag())
         except PluginError:
             # A plugin that raises, or settings that do not validate: the findings of the last
             # save already say so, and a hover that answers nothing beats a server that exits.
@@ -116,7 +116,7 @@ def describe_constant(dictionary: DataDictionary, name: str) -> str | None:
     return "\n".join(lines)
 
 
-def describe_external(projects: Sequence[Workspace], name: str) -> str | None:
+def describe_external(projects: Sequence[Loaded], name: str) -> str | None:
     """The markdown for one external type, or nothing when no project declares that name so.
 
     Answered from the loaded workspace rather than from the resolved dictionary, because an
@@ -125,8 +125,8 @@ def describe_external(projects: Sequence[Workspace], name: str) -> str | None:
     is exactly what the description states, and the header is the half that lives in another
     file from the member naming the type.
     """
-    for workspace in projects:
-        for entry in workspace.types:
+    for loaded in projects:
+        for entry in loaded.workspace.types:
             declared = entry.declared
             if isinstance(declared, ExternalType) and declared.name == name:
                 lines = [f"**{declared.name}** — external type, defined by `{declared.header}`"]

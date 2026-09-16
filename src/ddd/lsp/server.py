@@ -33,12 +33,12 @@ from urllib.request import url2pathname
 
 from ddd import __version__
 from ddd.build_info import BuildInfo
-from ddd.loading import Workspace
 from ddd.lsp.diagnostics import collect
 from ddd.lsp.discovery import discover
 from ddd.lsp.edits import QUICK_FIX, actions
 from ddd.lsp.hover import describe, describe_constant, describe_external, resolve
 from ddd.lsp.navigation import (
+    Loaded,
     Site,
     constant_at,
     definition,
@@ -163,7 +163,7 @@ class Server:
         walk behind a gesture that is supposed to feel like a tooltip.
         """
 
-        self._projects: dict[Path, list[Workspace]] = {}
+        self._projects: dict[Path, list[Loaded]] = {}
         """The projects containing each document, loaded once and kept until the next refresh.
 
         The same reasoning one level up: answering a hover used to read and validate every
@@ -383,13 +383,32 @@ class Server:
                 return root
         return self.roots[0]
 
-    def _projects_of(self, document: Path) -> list[Workspace]:
+    def _projects_of(self, document: Path) -> list[Loaded]:
         """The projects containing a document, loaded once per refresh."""
         found = self._projects.get(document)
         if found is None:
             found = workspaces(self._builds_now(), document, self._root_for(document))
             self._projects[document] = found
         return found
+
+    @staticmethod
+    def _unreadable(loaded: Loaded) -> str | None:
+        """Why this project may not be edited yet, or nothing when it may.
+
+        A project is indexed from what loaded, so a file a ``schema`` error dropped mid edit
+        declares nothing as far as the index knows: a rename then rewrites every other file
+        and leaves that one holding the old name, and a quick fix offers to remove a key "no
+        other declaration has" while the unloaded producer has exactly that key. Refused whole
+        rather than performed in part, which is the answer a drifted buffer already gets.
+        """
+        if not loaded.unreadable:
+            return None
+        names = ", ".join(sorted(path.name for path in loaded.unreadable))
+        verb = "has" if len(loaded.unreadable) == 1 else "have"
+        return (
+            f"{names} {verb} an error that stopped the project reading it, so the rest of the "
+            "project cannot be edited around it; fix it and try again"
+        )
 
     def _forget(self) -> None:
         """Drop what was read from disk, because it is about to be read again.
@@ -484,8 +503,8 @@ class Server:
         document = read(path, cache)
         pointer = document.pointer_at(self._at(message))
         found: list[Site] = []
-        for workspace in self._projects_of(path):
-            built = index(workspace)
+        for loaded in self._projects_of(path):
+            built = index(loaded.workspace)
             if method == _DEFINITION:
                 found.extend(definition(built, document, path, pointer))
             else:
@@ -598,8 +617,12 @@ class Server:
         seen: set[tuple[str, int, int]] = set()
         drifted: set[Path] = set()
         subject = renameable_at(document, pointer)
-        for workspace in self._projects_of(path):
-            built = index(workspace)
+        for loaded in self._projects_of(path):
+            unreadable = self._unreadable(loaded)
+            if unreadable is not None:
+                write_message(self.writer, error(request_id, REQUEST_FAILED, unreadable))
+                return
+            built = index(loaded.workspace)
             refused = rename_problem(built, wanted, subject[0] if subject else "variable")
             if refused is not None:
                 write_message(self.writer, error(request_id, REQUEST_FAILED, refused))
@@ -640,8 +663,13 @@ class Server:
         params = _field(message.get("params"), dict, "params")
         reported = params.get("context", {}).get("diagnostics", [])
         offered: list[dict[str, Any]] = []
-        for workspace in self._projects_of(path):
-            offered.extend(actions(index(workspace), path, document, pointer, cache, reported))
+        for loaded in self._projects_of(path):
+            unreadable = self._unreadable(loaded)
+            if unreadable is not None:
+                raise MessageError(REQUEST_FAILED, unreadable)
+            offered.extend(
+                actions(index(loaded.workspace), path, document, pointer, cache, reported)
+            )
         for action in offered:
             action["edit"] = self._workspace_edit(action["edit"]["changes"])
         return offered

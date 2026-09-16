@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from ddd.build_info import BuildInfo
-from ddd.diagnostics import DiagnosticBag
+from ddd.diagnostics import DiagnosticBag, Severity
 from ddd.loading import Workspace, load_workspace
 from ddd.lsp.ranges import Document, read
 from ddd.models import (
@@ -176,6 +176,22 @@ def index(workspace: Workspace) -> Index:
 
 
 @dataclass(frozen=True, slots=True)
+class Loaded:
+    """A project read for a question about it, and what reading it had to say.
+
+    The bag is kept rather than thrown away because an edit needs it. A project is indexed
+    from what loaded, so a file a ``schema`` error dropped is a file whose declarations are
+    simply absent from the index - and a rename computed over that index rewrites every other
+    file of the project and leaves that one holding the old name. An ordinary mid-edit state
+    has to refuse the rename, not half-perform it.
+    """
+
+    workspace: Workspace
+    unreadable: tuple[Path, ...]
+    """The files the read reported an error on, sorted; empty when it reported none."""
+
+
+@dataclass(frozen=True, slots=True)
 class Containing:
     """What the search for a document's project found, including what it could not read."""
 
@@ -195,7 +211,7 @@ class Containing:
 
 def workspaces(
     builds: Sequence[BuildInfo], document: Path, root: Path | None = None
-) -> list[Workspace]:
+) -> list[Loaded]:
     """The projects that contain a document, or the document read on its own.
 
     Loaded per request rather than kept: a jump is something a person asks for, so the cost
@@ -215,17 +231,17 @@ def workspaces(
     unreadable: dict[Path, str] = {}
     found = []
     for info in builds:
-        workspace = _loaded(Path(info.project), unreadable)
-        if workspace is not None and document.resolve() in workspace.sources():
-            found.append(workspace)
+        loaded = _loaded(Path(info.project), unreadable)
+        if loaded is not None and document.resolve() in loaded.workspace.sources():
+            found.append(loaded)
     if not found:
         found.extend(
-            workspace
-            for workspace in (
+            loaded
+            for loaded in (
                 _loaded(project, unreadable)
                 for project in containing_projects(document, root).projects
             )
-            if workspace is not None
+            if loaded is not None
         )
     if not found:
         alone = _loaded(document, unreadable)
@@ -234,7 +250,7 @@ def workspaces(
     return found
 
 
-def _loaded(path: Path, failed: dict[Path, str]) -> Workspace | None:
+def _loaded(path: Path, failed: dict[Path, str]) -> Loaded | None:
     """One project read for a question about it, or nothing when it cannot be read.
 
     Reading a project runs the models its plugins declare, over every ``extensions`` block in
@@ -243,12 +259,29 @@ def _loaded(path: Path, failed: dict[Path, str]) -> Workspace | None:
     for the caller to do with as its own answer allows: the diagnostics report it at the
     project file, and a jump discards it, because a jump that answers nothing beats a server
     that exits and the findings of the same save already name the plugin.
+
+    The bag the read reported through is kept, not discarded: which files did not load is what
+    an edit over this project has to know before it rewrites any of them.
     """
+    bag = DiagnosticBag()
     try:
-        return load_workspace(path, DiagnosticBag())
+        workspace = load_workspace(path, bag)
     except PluginError as error:
         failed[path] = str(error)
         return None
+    if workspace is None:
+        return None
+    return Loaded(workspace, _unreadable(bag))
+
+
+def _unreadable(bag: DiagnosticBag) -> tuple[Path, ...]:
+    """Every file the read reported an error on, sorted and each named once."""
+    found = {
+        finding.location.path
+        for finding in bag.sorted
+        if finding.severity is Severity.ERROR and finding.location is not None
+    }
+    return tuple(sorted(found))
 
 
 def containing_projects(document: Path, root: Path | None) -> Containing:
@@ -287,8 +320,8 @@ def containing_projects(document: Path, root: Path | None) -> Containing:
         for candidate in sorted(directory.glob("*.ddd.json")):
             if candidate == resolved:
                 continue
-            workspace = _loaded(candidate, failed)
-            if workspace is not None and resolved in workspace.sources():
+            loaded = _loaded(candidate, failed)
+            if loaded is not None and resolved in loaded.workspace.sources():
                 found.append(candidate)
         if found:
             # The nearest wins; one further up as well is a sub-project of it, and answering

@@ -263,8 +263,15 @@ def containing_projects(document: Path, root: Path | None) -> Containing:
     A candidate that could not be read answers neither way: the walk carries on past it, and
     it is named in ``failed`` so that the caller can say so.
 
+    The document is resolved once, above the walk, because that is what the candidates are:
+    they come from a resolved directory and every ``sources()`` is resolved too. Compared with
+    the client's own spelling - through a junction, a ``subst`` drive or a symlink - the
+    document never equalled itself, so it was taken as a project containing itself and
+    analysed a second time as a project of one, whose inputs nobody writes.
+
     Bounded by the editor's own root, so the walk cannot wander up into a home directory.
     """
+    resolved = document.resolve()
     stop = root.resolve() if root is not None else document.parent.resolve()
     directories = []
     current = document.parent.resolve()
@@ -278,10 +285,10 @@ def containing_projects(document: Path, root: Path | None) -> Containing:
     for directory in directories:
         found = []
         for candidate in sorted(directory.glob("*.ddd.json")):
-            if candidate == document:
+            if candidate == resolved:
                 continue
             workspace = _loaded(candidate, failed)
-            if workspace is not None and document.resolve() in workspace.sources():
+            if workspace is not None and resolved in workspace.sources():
                 found.append(candidate)
         if found:
             # The nearest wins; one further up as well is a sub-project of it, and answering

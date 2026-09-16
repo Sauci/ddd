@@ -58,12 +58,17 @@ def raw_frame(body: bytes) -> bytes:
 
 
 def published(stream: io.BytesIO) -> dict[str, list[dict[str, Any]]]:
-    """The diagnostics the server published, keyed by file name.
+    """The diagnostics the server published, keyed by the uri they went out under.
+
+    The uri string and not the file it names: a client matches a publication to an open
+    editor by comparing that string, so two spellings of one file are two resources to it and
+    a test that compares the files behind them cannot see a publication going to the wrong
+    one. Keying by ``.name`` hid exactly that for every test in this file.
 
     Filtered rather than taken wholesale: the server also logs, and a log line has no uri.
     """
     return {
-        uri_to_path(message["params"]["uri"]).name: message["params"]["diagnostics"]
+        message["params"]["uri"]: message["params"]["diagnostics"]
         for message in sent(stream)
         if message.get("method") == "textDocument/publishDiagnostics"
     }
@@ -76,6 +81,21 @@ def sent(stream: io.BytesIO) -> list[dict[str, Any]]:
     while (message := read_message(stream)) is not None:
         received.append(message)
     return received
+
+
+def directory_link(link: Path, target: Path) -> None:
+    """A second spelling of a directory, made the way the platform allows unprivileged.
+
+    ``symlink_to`` needs ``SeCreateSymbolicLinkPrivilege`` on Windows, which an ordinary
+    account does not hold. A junction is the same thing for these tests - a path whose
+    ``resolve()`` is a different path - and any account may make one.
+    """
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        link.symlink_to(target, target_is_directory=True)
 
 
 def build_record(base: Path, project_file: Path, **extra: Any) -> Path:
@@ -383,7 +403,8 @@ class TestDiscovery:
         ]
         # and the server carries on, answering for the file that was opened through the
         # project above it, which is what it does for any file no usable record claims
-        assert [entry["code"] for entry in published(writer)["a.ddd.json"]] == ["missing-producer"]
+        drawn = published(writer)[(tmp_path / "a.ddd.json").as_uri()]
+        assert [entry["code"] for entry in drawn] == ["missing-producer"]
 
 
 EXITING_CHECK_PLUGIN = """
@@ -2966,13 +2987,10 @@ class TestServer:
         )
         writer = io.BytesIO()
         assert Server(stream, writer, root=tmp_path).run() == 0
-        findings = published(writer)["a.ddd.json"]
-        assert [finding["code"] for finding in findings] == ["missing-producer"]
-        assert [
-            uri_to_path(m["params"]["uri"]).resolve()
-            for m in sent(writer)
-            if m.get("method") == "textDocument/publishDiagnostics"
-        ] == [path.resolve()]
+        # Compared as strings, which is how a client matches a publication to what it shows:
+        # resolving both sides first is what let the spelling defect sit green for a year.
+        assert [finding["code"] for finding in published(writer)[spelled]] == ["missing-producer"]
+        assert list(published(writer)) == [spelled]
 
     def handshake(self, tmp_path: Path) -> dict[str, Any]:
         return {
@@ -3012,8 +3030,12 @@ class TestServer:
         assert Server(stream, writer, root=tree).run() == 0
         # The last word on each file, which is what stays on screen.
         final = published(writer)
-        assert "missing-producer" in {entry["code"] for entry in final["component_c.ddd.json"]}
-        assert "unused-output" in {entry["code"] for entry in final["component_a.ddd.json"]}
+        drawn = {
+            name: {entry["code"] for entry in final[(tree / name).as_uri()]}
+            for name in ("component_a.ddd.json", "component_c.ddd.json")
+        }
+        assert "missing-producer" in drawn["component_c.ddd.json"]
+        assert "unused-output" in drawn["component_a.ddd.json"]
 
     def test_a_request_without_params_is_refused_rather_than_fatal(self, tmp_path: Path) -> None:
         """One badly shaped message is not the end of the conversation, framing or not.
@@ -3137,13 +3159,14 @@ class TestServer:
         writer = io.BytesIO()
         server = Server(io.BytesIO(), writer, root=tmp_path)
         server.refresh(tmp_path / "a.ddd.json")
-        assert published(writer)["a.ddd.json"][0]["code"] == "missing-producer"
+        a_uri = (tmp_path / "a.ddd.json").as_uri()
+        assert published(writer)[a_uri][0]["code"] == "missing-producer"
 
         write_tree(tmp_path, {"a.ddd.json": component("A", declare("local", "Shared"))})
         writer = io.BytesIO()
         server.writer = writer
         server.refresh(tmp_path / "a.ddd.json")
-        assert published(writer)["a.ddd.json"] == []
+        assert published(writer)[a_uri] == []
 
     def test_it_announces_what_it_can_do(self, tmp_path: Path) -> None:
         writer = io.BytesIO()
@@ -3158,9 +3181,10 @@ class TestServer:
         opened = INCONSISTENT.parent / "component_b.ddd.json"
         Server(framed(self.opened(opened)), writer, root=tmp_path).run()
         drawn = published(writer)
-        assert drawn["component_b.ddd.json"][0]["code"] == "multiple-producers"
+        beside = INCONSISTENT.parent / "component_c.ddd.json"
+        assert drawn[opened.as_uri()][0]["code"] == "multiple-producers"
         # The file that was not opened is published too, which is the point.
-        assert drawn["component_c.ddd.json"][0]["code"] == "definition-mismatch"
+        assert drawn[beside.as_uri()][0]["code"] == "definition-mismatch"
 
     def logged(self, stream: io.BytesIO) -> list[str]:
         return [
@@ -3229,14 +3253,19 @@ class TestServer:
         writer = io.BytesIO()
         server = Server(io.BytesIO(), writer, root=tmp_path)
         server.refresh(tmp_path / "a.ddd.json")
-        assert published(writer)["a.ddd.json"][0]["code"] == "missing-producer"
+        assert (
+            published(writer)[(tmp_path / "a.ddd.json").as_uri()][0]["code"] == "missing-producer"
+        )
 
         # Somebody produces it now, so the project is clean and the squiggle has to go.
         write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "Shared"))})
         writer = io.BytesIO()
         server.writer = writer
         server.refresh(tmp_path / "a.ddd.json")
-        assert published(writer) == {"a.ddd.json": [], "b.ddd.json": []}
+        assert published(writer) == {
+            (tmp_path / "a.ddd.json").as_uri(): [],
+            (tmp_path / "b.ddd.json").as_uri(): [],
+        }
 
     def test_saving_refreshes_as_opening_does(self, tmp_path: Path) -> None:
         build_record(tmp_path, INCONSISTENT)
@@ -3297,7 +3326,7 @@ class TestServer:
         ).run()
         (answer,) = sent(writer)
         (found,) = answer["result"]
-        assert uri_to_path(found["uri"]).name == "a.ddd.json"
+        assert found["uri"] == (tmp_path / "a.ddd.json").as_uri()
 
     def test_references_answer_with_every_declaration(self, tmp_path: Path) -> None:
         consumer = self.shared_workspace(tmp_path)
@@ -3311,9 +3340,8 @@ class TestServer:
             root=tmp_path,
         ).run()
         (answer,) = sent(writer)
-        assert {uri_to_path(found["uri"]).name for found in answer["result"]} == {
-            "a.ddd.json",
-            "b.ddd.json",
+        assert {found["uri"] for found in answer["result"]} == {
+            (tmp_path / name).as_uri() for name in ("a.ddd.json", "b.ddd.json")
         }
 
     def hovered(self, tmp_path: Path, path: Path, pointer: str) -> Any:
@@ -3408,8 +3436,9 @@ class TestServer:
             root=tmp_path,
         ).run()
         (answer,) = sent(writer)
-        changed = {uri_to_path(uri).name for uri in answer["result"]["changes"]}
-        assert changed == {"a.ddd.json", "b.ddd.json"}
+        assert set(answer["result"]["changes"]) == {
+            (tmp_path / name).as_uri() for name in ("a.ddd.json", "b.ddd.json")
+        }
 
     def test_rename_to_an_unusable_name_is_refused_with_a_reason(self, tmp_path: Path) -> None:
         """An error rather than an empty edit: an empty edit looks like a rename that did
@@ -3505,8 +3534,9 @@ class TestServer:
             root=base,
         ).run()
         (answer,) = sent(writer)
-        changed = {uri_to_path(uri).name for uri in answer["result"]["changes"]}
-        assert changed == {"types.ddd.json", "a.ddd.json"}
+        assert set(answer["result"]["changes"]) == {
+            (base / name).as_uri() for name in ("types.ddd.json", "a.ddd.json")
+        }
 
     @pytest.mark.parametrize(
         "pointer", ["component.interface[0].definition.datatype", "component.name"]
@@ -3600,8 +3630,7 @@ class TestServer:
         (answer,) = sent(writer)
         (action,) = answer["result"]
         assert "Apply this unit" in action["title"]
-        (uri,) = action["edit"]["changes"]
-        assert uri_to_path(uri).name == "b.ddd.json"
+        assert list(action["edit"]["changes"]) == [(tmp_path / "b.ddd.json").as_uri()]
 
     def test_a_body_that_is_not_json_does_not_end_the_conversation(self, tmp_path: Path) -> None:
         """One malformed frame used to kill the server; now it is one refusal on the wire,
@@ -4471,6 +4500,103 @@ class TestSymlinkedWorkspace:
         info = BuildInfo(project=(real / "p.ddd.json").as_posix())
         found = navigation.workspaces([info], link / "a.ddd.json")
         assert [len(workspace.components) for workspace in found] == [2]
+
+
+class TestTheClientsSpelling:
+    """A client's path need not be the one ``resolve()`` gives for the file it names.
+
+    A workspace opened through a junction, a ``subst`` drive, a mapped drive, a symlinked
+    directory or with a different case spells every path in it differently from the disk. The
+    loader resolves everything it reads, and a client keys what it draws on the uri *string* it
+    sent - so what the server says about a document it was handed has to come back in the
+    words it was handed in.
+    """
+
+    def linked(self, tmp_path: Path) -> tuple[Path, Path]:
+        """A small project, and a second spelling of the directory holding it."""
+        real = tmp_path / "real"
+        write_tree(
+            real,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                # 'Own' is read by nobody and carries no id, so a.ddd.json has two findings
+                # of its own; 'Shared' is produced by b, so it has none from the project.
+                "a.ddd.json": component("A", declare("input", "Shared"), declare("output", "Own")),
+                "b.ddd.json": component("B", declare("output", "Shared", id="k7m2q9xr4t8w")),
+            },
+        )
+        link = tmp_path / "link"
+        directory_link(link, real)
+        return real, link
+
+    def test_a_document_is_published_under_the_uri_it_arrived_as(self, tmp_path: Path) -> None:
+        """Published under the resolved path, the squiggles go to a resource the editor is
+        not showing: the document on screen keeps none of its findings."""
+        _, link = self.linked(tmp_path)
+        opened = link / "a.ddd.json"
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"workspaceFolders": [{"uri": link.as_uri()}]},
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {"textDocument": {"uri": opened.as_uri()}},
+            },
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=link).run() == 0
+        assert opened.as_uri() in published(writer)
+
+    def test_a_document_is_not_found_to_be_its_own_containing_project(self, tmp_path: Path) -> None:
+        """The candidate is resolved and the document was not, so every file matched itself -
+        and was then analysed a second time as a project of one, whose inputs nobody writes."""
+        _, link = self.linked(tmp_path)
+        found = navigation.containing_projects(link / "a.ddd.json", link)
+        assert [path.name for path in found.projects] == ["p.ddd.json"]
+
+    def test_the_findings_are_the_projects_and_are_not_doubled(self, tmp_path: Path) -> None:
+        """What the two defects add up to on screen: the file read as its own project
+        reported a missing producer for an input the project does produce."""
+        opened = self.linked(tmp_path)[1] / "a.ddd.json"
+        reports = service.collect([], [opened], opened.parent)
+        codes = [entry["code"] for findings in reports.values() for entry in findings]
+        assert sorted(codes) == ["missing-id", "unused-output"]
+
+    def test_an_edit_is_addressed_to_the_document_on_screen(self, tmp_path: Path) -> None:
+        """A rename keyed by the resolved path is applied to a second, unopened copy of the
+        file, and the one the reader is looking at keeps the old name."""
+        _, link = self.linked(tmp_path)
+        opened = link / "a.ddd.json"
+        position = Document(opened.read_text(encoding="utf-8")).range_of(
+            "component.interface[1].definition.name"
+        )["start"]
+        writer = io.BytesIO()
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {"textDocument": {"uri": opened.as_uri()}},
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "textDocument/rename",
+                "params": {
+                    "textDocument": {"uri": opened.as_uri()},
+                    "position": position,
+                    "newName": "Renamed",
+                },
+            },
+        )
+        Server(stream, writer, root=link).run()
+        answer = next(message for message in sent(writer) if message.get("id") == 3)
+        assert list(answer["result"]["changes"]) == [opened.as_uri()]
 
 
 class TestWorkspaceFolders:

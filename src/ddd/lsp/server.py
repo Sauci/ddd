@@ -187,6 +187,21 @@ class Server:
         self._versioned_edits = False
         """Whether the client takes ``documentChanges``, which carry the version an edit is for."""
 
+        self._spelled: dict[Path, str] = {}
+        """Resolved path -> the uri the client used for it, for every document it opened.
+
+        A client's uri need not be the one ``Path.as_uri()`` writes for the file it names: a
+        workspace opened through a junction, a ``subst`` or mapped drive, a symlinked
+        directory or with a different case spells every path in it differently from the disk,
+        and the loader resolves everything it reads. A client keys what it draws on the uri
+        *string*, so publishing the resolved spelling sends the squiggles to a resource it is
+        not showing and hands a rename to a document that is not on screen.
+
+        Only what the client opened is in here, because only for those has it said how it
+        spells them. Every other file keeps the resolved spelling, which is the only one
+        anybody knows.
+        """
+
     def run(self) -> int:
         """Serve until the client says to stop, or stops talking.
 
@@ -231,7 +246,7 @@ class Server:
             return False
         elif method == _DID_OPEN:
             self._remember(message)
-            self.refresh(self._document(message))
+            self.refresh(self._opened(message))
         elif method == _DID_CHANGE:
             self._remember(message)
         elif method == _DID_CLOSE:
@@ -257,11 +272,30 @@ class Server:
             )
         return True
 
-    def _document(self, message: dict[str, Any]) -> Path:
-        """The file a request is about."""
+    def _document_uri(self, message: dict[str, Any]) -> str:
+        """The document a request is about, exactly as the client spelled it."""
         params = _field(message.get("params"), dict, "params")
         target = _field(params.get("textDocument"), dict, "params.textDocument")
-        return uri_to_path(_field(target.get("uri"), str, "params.textDocument.uri"))
+        return _field(target.get("uri"), str, "params.textDocument.uri")
+
+    def _document(self, message: dict[str, Any]) -> Path:
+        """The file a request is about."""
+        return uri_to_path(self._document_uri(message))
+
+    def _opened(self, message: dict[str, Any]) -> Path:
+        """The document the client just opened, noted down under the words it used for it."""
+        spelling = self._document_uri(message)
+        path = uri_to_path(spelling)
+        self._spelled[path.resolve()] = spelling
+        return path
+
+    def _uri(self, path: Path) -> str:
+        """The uri to answer under for a file: the client's own, where it gave one."""
+        return self._spelled.get(path.resolve(), path.as_uri())
+
+    def _respell(self, uri: str) -> str:
+        """The same, for a uri already built from a resolved path somewhere below."""
+        return self._spelled.get(uri_to_path(uri).resolve(), uri)
 
     def _remember(self, message: dict[str, Any]) -> None:
         """Keep what the client says the document now contains.
@@ -456,7 +490,10 @@ class Server:
                 found.extend(definition(built, document, path, pointer))
             else:
                 found.extend(references(built, document, pointer))
-        return locations(found, cache)
+        answers = locations(found, cache)
+        for answer in answers:
+            answer["uri"] = self._respell(answer["uri"])
+        return answers
 
     def _hover(self, message: dict[str, Any]) -> dict[str, Any] | None:
         """What the variable under the cursor turned out to be, once the project is resolved.
@@ -520,7 +557,12 @@ class Server:
         applying it to a text it was not meant for. A document that is not open has no
         version, which the protocol spells ``null``. The plain ``changes`` form stays for a
         client that did not announce the other, because it is the only one it can apply.
+
+        The one funnel both a rename and a quick fix pass through, which is why the client's
+        spelling is put back here: an edit is applied to the document the uri names, and the
+        one on screen is the one the client opened.
         """
+        changes = {self._respell(uri): edits for uri, edits in changes.items()}
         if not self._versioned_edits:
             return {"changes": changes}
         return {
@@ -634,11 +676,16 @@ class Server:
         }
 
     def _publish(self, path: Path, findings: list[dict[str, Any]]) -> None:
+        for finding in findings:
+            for related in finding.get("relatedInformation", ()):
+                # The other side of a conflict is somewhere the reader clicks, so it needs the
+                # client's spelling as much as the finding itself does.
+                related["location"]["uri"] = self._respell(related["location"]["uri"])
         write_message(
             self.writer,
             notification(
                 "textDocument/publishDiagnostics",
-                {"uri": path.as_uri(), "diagnostics": findings},
+                {"uri": self._uri(path), "diagnostics": findings},
             ),
         )
 

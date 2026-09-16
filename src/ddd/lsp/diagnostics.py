@@ -133,6 +133,11 @@ def collect(
     to load. The two differ exactly when a run stopped early - a plugin defect ends the read
     after every file has been read and before the analysis - and counting only the load would
     then check an open file a second time on its own and publish everything about it twice.
+
+    Every key is a resolved path, the document included, because that is the one spelling the
+    loader hands back and two spellings of one file would be published as two files. Which
+    words each one goes out in is the server's to decide, one layer up, where what the client
+    called each document is known.
     """
     cache: dict[Path, Document] = {}
     grouped: dict[Path, list[Diagnostic]] = {}
@@ -141,9 +146,10 @@ def collect(
         bag, sources = analyse(info)
         covered |= sources | _group(bag, Path(info.project), grouped)
     for document in documents:
-        if document.resolve() in covered:
+        resolved = document.resolve()
+        if resolved in covered:
             continue
-        containing = containing_projects(document, root)
+        containing = containing_projects(resolved, root)
         # A candidate that could not be read is named at its own file. Without this the reader
         # gets the thin standalone analysis below and nothing at all saying why: the project
         # that would have given the full answer is broken, and only the plugin can fix it.
@@ -152,14 +158,14 @@ def collect(
         unreadable = DiagnosticBag()
         for path in sorted(set(containing.failed) - covered):
             unreadable.add("plugin-invalid", containing.failed[path], Location(path))
-        covered |= _group(unreadable, document, grouped)
+        covered |= _group(unreadable, resolved, grouped)
         if containing.projects:
             for project in containing.projects:
                 bag, sources = _run(project, DiagnosticBag())
                 covered |= sources | _group(bag, project, grouped)
             continue
-        bag, sources = _analyse_root(document, cache)
-        covered |= sources | _group(bag, document, grouped)
+        bag, sources = _analyse_root(resolved, cache)
+        covered |= sources | _group(bag, resolved, grouped)
 
     return {
         path: [_as_lsp(finding, cache) for finding in grouped.get(path, ())]

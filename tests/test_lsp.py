@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from conftest import INCONSISTENT, component, declare, project, write_tree
+from conftest import EXAMPLES, INCONSISTENT, component, declare, project, write_tree
 from ddd.build_info import BUILD_INFO_FILENAME
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
 from ddd.loading import load_workspace
@@ -1948,6 +1948,51 @@ class TestRename:
         assert produced[0]["definition"]["name"] == "EngineSpeed"
         assert produced[1]["definition"]["input"] == "EngineSpeed"
         assert "Speed" not in rewritten[tmp_path / "b.ddd.json"].replace("EngineSpeed", "")
+
+    @pytest.mark.parametrize(
+        "pointer",
+        [
+            "component.interface[2].definition.conversion.name",
+            "component.interface[2].definition.conversion.enumerators[0].name",
+        ],
+    )
+    def test_an_enum_name_and_an_enumerator_open_no_rename_box(
+        self, tmp_path: Path, pointer: str
+    ) -> None:
+        """The subject was the last segment of the pointer, so both of these passed as the
+        object's name: the box opened, and the rename answered an empty edit - or renamed a
+        variable of that name somewhere else instead."""
+        from ddd.lsp.navigation import renameable_at
+
+        self.workspace(tmp_path)
+        assert renameable_at(read(tmp_path / "a.ddd.json", {}), pointer) is None
+
+    @pytest.mark.parametrize("key", ["name", "size", "typename"])
+    def test_a_plugins_own_key_is_not_a_rename_subject(self, tmp_path: Path, key: str) -> None:
+        """An extensions block may spell any key, and three of them are names DDD renames."""
+        from ddd.lsp.navigation import renameable_at
+
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {key: "Whatever"}})
+                )
+            },
+        )
+        pointer = f"component.interface[0].definition.extensions.tag.{key}"
+        assert renameable_at(read(tmp_path / "a.ddd.json", {}), pointer) is None
+
+    def test_a_rename_onto_an_enum_a_types_file_declares_is_refused(self) -> None:
+        """``occupied`` was filled from the conversions of declarations only, so an enum on a
+        structure member registered nothing and the rename went through - to be reported as a
+        name collision by the next check, over every file it had just rewritten."""
+        from ddd.lsp.navigation import index, rename_problem
+
+        root = EXAMPLES / "structures" / "project.ddd.json"
+        built = index(load_workspace(root, DiagnosticBag()))
+        assert "enumerator of enum 'SensorMode_t'" in str(rename_problem(built, "MODE_IDLE"))
+        assert "name of enum 'SensorMode_t'" in str(rename_problem(built, "SensorMode_t"))
 
     def test_only_the_characters_between_the_quotes_are_replaced(self, tmp_path: Path) -> None:
         """Whatever else a project puts on the line is left exactly as it was."""

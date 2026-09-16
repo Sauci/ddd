@@ -37,21 +37,15 @@ from ddd.lsp.ranges import Document, read
 from ddd.models import (
     C_IDENTIFIER_PATTERN,
     IDENTIFIER_MAX_LENGTH,
+    Conversion,
     Datatype,
     EnumConversion,
+    ScalarType,
     is_reserved_identifier,
     spelled_dimensions,
 )
 from ddd.plugins import PluginError
 
-VARIABLE_KEYS: Final = frozenset({"name", "axis", "x_axis", "y_axis", "input"})
-"""Keys of a declaration whose value is the name of a data object.
-
-``name`` is in the list on purpose: from the name of an ``input``, the jump the author wants
-is to whoever writes it, which is exactly the jump a reference key makes.
-"""
-
-_DECLARATION: Final = "component.interface["
 _WITHIN_DECLARATION: Final = re.compile(r"^component\.interface\[\d+\]")
 """Anywhere inside one declaration, however deep - the prefix names the declaration."""
 _TYPE_ENTRIES: Final = re.compile(r"^(?:component\.)?types\[")
@@ -62,7 +56,31 @@ _CONSTANT_ENTRIES: Final = re.compile(r"^(?:component\.)?constants\[")
 """Inside a constant entry, in a constants file or in a component's own list."""
 _INCLUDES: Final = "project.includes["
 
-_DIMENSION_KEY: Final = re.compile(r"^(?:dimensions\[\d+\]|size)$")
+_DEFINITION_KEY: Final = re.compile(
+    r"^component\.interface\[\d+\]\.definition\.(?:name|axis|x_axis|y_axis|input)$"
+)
+"""One of the keys naming a data object, *directly* under a definition.
+
+``name`` is among them on purpose: from the name of an ``input``, the jump the author wants is
+to whoever writes it, which is exactly the jump a reference key makes.
+
+Anchored rather than matched on the last segment of the pointer, which is how F2 on an enum's
+name or on one of its enumerators - ``definition.conversion.name``,
+``definition.conversion.enumerators[0].name`` - used to pass as the object's own name. So did
+any key an ``extensions`` block happens to spell that way, and a plugin may spell anything.
+"""
+
+_MEMBER: Final = r"(?:component\.)?types\[\d+\]\.members\[\d+\]"
+_DIMENSION_KEY: Final = re.compile(
+    rf"^(?:component\.interface\[\d+\]\.definition\.(?:dimensions\[\d+\]|size)"
+    rf"|{_MEMBER}\.dimensions\[\d+\])$"
+)
+"""Where a shape is written, and therefore where a constant name may be spelled."""
+
+_TYPENAME_KEY: Final = re.compile(
+    rf"^(?:component\.interface\[\d+\]\.definition|{_MEMBER})\.typename$"
+)
+"""The two homes of a ``typename``: a declaration, and a structure member."""
 
 _TYPE_NAME: Final = re.compile(r"^(?:component\.)?types\[\d+\]\.name$")
 _CONSTANT_NAME: Final = re.compile(r"^(?:component\.)?constants\[\d+\]\.name$")
@@ -145,18 +163,18 @@ def index(workspace: Workspace) -> Index:
             if named is not None:
                 where = loaded.declaration_location(position, "definition.typename")
                 built.type_uses.setdefault(named, []).append(Site(where.path, where.pointer))
-            conversion = declaration.definition.conversion
-            if isinstance(conversion, EnumConversion):
-                built.occupied[conversion.name] = f"the name of enum '{conversion.name}'"
-                for enumerator in conversion.enumerators:
-                    built.occupied[enumerator.name] = f"an enumerator of enum '{conversion.name}'"
+            _occupy(built, declaration.definition.conversion)
     for entry in workspace.types:
         built.types[entry.name] = Site(entry.path, entry.location().pointer)
         built.occupied[entry.name] = f"the name of the type '{entry.name}'"
+        declared = entry.declared
+        if isinstance(declared, ScalarType):
+            _occupy(built, declared.conversion)
         structure = entry.structure
         if structure is None:
             continue
         for position, member in enumerate(structure.members):
+            _occupy(built, member.conversion)
             # A member naming a base datatype names no type; the two keys keep them apart.
             if member.typename is not None:
                 where = entry.location(f"members[{position}].typename")
@@ -173,6 +191,22 @@ def index(workspace: Workspace) -> Index:
         built.constants[constant.name] = Site(constant.path, constant.location().pointer)
         built.occupied[constant.name] = f"the name of the declared constant '{constant.name}'"
     return built
+
+
+def _occupy(built: Index, conversion: Conversion | None) -> None:
+    """Note what an enum spends of c's namespace, wherever the enum was written.
+
+    A declaration's own conversion, a scalar type's, and a structure member's: all three end
+    up as one ``enum`` in the shared types header, so all three take their name and every one
+    of their enumerators out of the namespace the variables share. Only the first was noted,
+    so a rename onto ``MODE_IDLE`` - an enumerator of a type file's ``SensorMode_t`` - was
+    accepted, every file rewritten, and the collision reported by the next check.
+    """
+    if not isinstance(conversion, EnumConversion):
+        return
+    built.occupied[conversion.name] = f"the name of enum '{conversion.name}'"
+    for enumerator in conversion.enumerators:
+        built.occupied[enumerator.name] = f"an enumerator of enum '{conversion.name}'"
 
 
 @dataclass(frozen=True, slots=True)
@@ -340,7 +374,7 @@ def variable_at(document: Document, pointer: str) -> str | None:
     value = document.value_at(pointer)
     if not isinstance(value, str):
         return None
-    if pointer.startswith(_DECLARATION) and _key(pointer) in VARIABLE_KEYS:
+    if _DEFINITION_KEY.match(pointer):
         return value
     return None
 
@@ -356,7 +390,7 @@ def constant_at(document: Document, pointer: str) -> str | None:
     value = document.value_at(pointer)
     if not isinstance(value, str):
         return None
-    if _DIMENSION_KEY.match(_key(pointer)) or _CONSTANT_ENTRIES.match(pointer):
+    if _DIMENSION_KEY.match(pointer) or _CONSTANT_ENTRIES.match(pointer):
         return value
     return None
 
@@ -371,7 +405,7 @@ def type_at(document: Document, pointer: str) -> str | None:
     nothing, the way an unknown constant does.
     """
     value = document.value_at(pointer)
-    if isinstance(value, str) and _key(pointer) == "typename":
+    if isinstance(value, str) and _TYPENAME_KEY.match(pointer):
         return value
     entry = _TYPE_ENTRY.match(pointer)
     if entry is None:
@@ -428,7 +462,7 @@ def definition(built: Index, document: Document, path: Path, pointer: str) -> li
         # the type is what is under the pointer. A base datatype names no file, so it falls
         # through to the declaration jump, which is what somebody resting there expects.
         found = built.types.get(value)
-        if found is not None and (_TYPE_ENTRIES.match(pointer) or _key(pointer) == "typename"):
+        if found is not None and (_TYPE_ENTRIES.match(pointer) or _TYPENAME_KEY.match(pointer)):
             return [found]
         if _TYPE_ENTRIES.match(pointer):
             return []
@@ -450,7 +484,7 @@ def references(built: Index, document: Document, pointer: str) -> list[Site]:
         found = built.constants.get(named)
         return [found, *built.constant_uses.get(named, ())] if found is not None else []
     value = document.value_at(pointer)
-    if isinstance(value, str) and (_TYPE_ENTRIES.match(pointer) or _key(pointer) == "typename"):
+    if isinstance(value, str) and (_TYPE_ENTRIES.match(pointer) or _TYPENAME_KEY.match(pointer)):
         declared = built.types.get(value)
         if declared is not None:
             return [declared, *built.type_uses.get(value, ())]
@@ -476,9 +510,9 @@ def renameable_at(document: Document, pointer: str) -> tuple[str, str] | None:
     variable = variable_at(document, pointer)
     if variable is not None:
         return ("variable", variable)
-    if _key(pointer) == "typename" or _TYPE_NAME.match(pointer):
+    if _TYPENAME_KEY.match(pointer) or _TYPE_NAME.match(pointer):
         return ("type", value)
-    if _DIMENSION_KEY.match(_key(pointer)) or _CONSTANT_NAME.match(pointer):
+    if _DIMENSION_KEY.match(pointer) or _CONSTANT_NAME.match(pointer):
         return ("constant", value)
     return None
 
@@ -603,8 +637,3 @@ def _files(base: Path, pattern: str) -> list[Site]:
         # file; the jump simply has nowhere to go.
         return []
     return [Site(found.resolve(), "") for found in matches if found.is_file()]
-
-
-def _key(pointer: str) -> str:
-    """The last named segment, which is the key whose value the cursor is on."""
-    return pointer.rsplit(".", 1)[-1]

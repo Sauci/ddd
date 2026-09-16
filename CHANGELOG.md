@@ -598,6 +598,14 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   is written as a number still reads as one wherever it stands: a whole number on a float
   object, a fraction, a json `true`.
 
+  *One mistake in a nested `init` is one finding.*  A value inside a list failed again at
+  every level above it, because a list is not a number either: `[[1, 2], [3, null]]` on a
+  `[2][2]` map was three `schema` errors, two of them saying that a list should have been a
+  valid integer, and an init nested a hundred deep was a hundred errors.  The count told the
+  reader to go looking for problems that were not there, and reading stops the run, so that
+  was the whole answer.  A place that holds what failed is now reported only where nothing
+  under it is, so the finding sits on the element that is wrong.
+
   **Migration:** a list `init` holding a quoted number or one of those words is now refused
   with a `schema` finding at the element that holds it, where it used to load, generate and
   dump.  Write the value without the quotes: `["1", "2"]` becomes `[1, 2]`.  A string object

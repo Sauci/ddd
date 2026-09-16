@@ -931,6 +931,53 @@ class TestOneMistakeIsOneFinding:
         )
         assert "at least 1 item" in messages(bag)
 
+    @staticmethod
+    def _bad_init(tree: Path, init: Any) -> DiagnosticBag:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", dimensions=[2, 2], init=init)),
+            },
+        )
+        return bag
+
+    @pytest.mark.parametrize(
+        ("written", "spelled"),
+        [
+            (None, "Input should be a valid integer (got: None)"),
+            ("x", "Input should be a valid integer (got: 'x')"),
+            ({}, "Input should be a valid integer (got: {})"),
+        ],
+    )
+    def test_a_mistake_inside_a_nested_init_is_one_finding_at_the_value(
+        self, tree: Path, written: Any, spelled: str
+    ) -> None:
+        """The enclosing lists are not three mistakes, and they are not lists that should
+        have been integers: each one holds the finding below it, which is the whole story."""
+        bag = self._bad_init(tree, [[1, 2], [3, written]])
+        assert len(bag) == 1, messages(bag)
+        assert f"definition.init[1][1]: error[schema]: {spelled}" in messages(bag), messages(bag)
+
+    def test_a_value_too_wide_for_64_bits_is_reported_where_it_is_written(self, tree: Path) -> None:
+        """The real finding used to arrive behind 'init: should be a valid integer'."""
+        bag = self._bad_init(tree, [[1, 2], [3, 2**64]])
+        assert len(bag) == 1, messages(bag)
+        assert "definition.init[1][1]: error[schema]:" in messages(bag), messages(bag)
+        assert "does not fit 64 bits" in messages(bag), messages(bag)
+
+    def test_two_mistakes_in_one_init_are_still_two_findings(self, tree: Path) -> None:
+        bag = self._bad_init(tree, [[None, 2], [3, None]])
+        assert len(bag) == 2, messages(bag)
+        assert "definition.init[0][0]: error[schema]:" in messages(bag), messages(bag)
+        assert "definition.init[1][1]: error[schema]:" in messages(bag), messages(bag)
+
+    def test_a_whole_init_that_is_the_mistake_still_reports_itself(self, tree: Path) -> None:
+        """Nothing is written under it, so there is no deeper finding to stand in for it."""
+        bag = self._bad_init(tree, {"a": 1})
+        assert len(bag) == 1, messages(bag)
+        assert "definition.init: error[schema]:" in messages(bag), messages(bag)
+
 
 class TestTheArchivedDictionary:
     def test_a_newer_format_is_refused_rather_than_misread(self, tree: Path) -> None:

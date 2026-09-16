@@ -1196,15 +1196,25 @@ def _report_validation_error(
     ``document`` is the data that was validated, so that the pointer can tell a key of it
     from the name of a union branch; without it the shape of each segment decides.
     """
-    for item in _one_per_place(_meaningful(error.errors(include_url=False))):
+    placed = [(_place(item["loc"], document), item) for item in error.errors(include_url=False)]
+    for place, item in _one_per_place(_meaningful(placed)):
         message = item["msg"]
         if item["type"] != "missing":
             message = f"{message} (got: {_short(item.get('input'))})"
-        pointer = ".".join(part for part in (prefix, _pointer(item["loc"], document)) if part)
+        pointer = ".".join(part for part in (prefix, _pointer(place)) if part)
         bag.add("schema", message, Location(path, pointer))
 
 
-def _one_per_place(items: list[Any]) -> list[Any]:
+type _Placed = tuple[tuple[int | str, ...], Any]
+"""One validation error beside the place of the document it is about.
+
+The place is computed once, where the document that was validated is still at hand, and
+both filters below then work in it: what counts as one place, and what counts as a deeper
+finding, are the same question asked twice.
+"""
+
+
+def _one_per_place(items: list[_Placed]) -> list[_Placed]:
     """One finding per place, however many ways the value failed to be what was wanted.
 
     A union that is not discriminated fails once per branch, so a mistyped ``datatype`` arrives
@@ -1215,35 +1225,43 @@ def _one_per_place(items: list[Any]) -> list[Any]:
     that order is chosen to put the likely reading first - for ``datatype``, "one of these
     eleven" says far more than a regular expression does.
     """
-    kept: dict[str, Any] = {}
-    for item in items:
-        kept.setdefault(_pointer(item["loc"]), item)
-    return list(kept.values())
+    kept: dict[tuple[int | str, ...], Any] = {}
+    for place, item in items:
+        kept.setdefault(place, item)
+    return list(kept.items())
 
 
-def _meaningful(items: list[Any]) -> list[Any]:
+def _meaningful(items: list[_Placed]) -> list[_Placed]:
     """Drop the findings that are only consequences of another finding in the same run.
 
-    A list whose single entry fails validation is dropped by pydantic and then reported as
-    too short as well, so one mistake arrives as two errors: the useful one about the entry,
-    and 'Tuple should have at least 1 item after validation, not 0' about the list holding
-    it. Reporting both invites the reader to go looking for a second problem that is not
-    there.
-    """
-    locations = {tuple(item["loc"]) for item in items}
+    Two shapes of that, and one rule. A list whose single entry fails validation is dropped
+    by pydantic and then reported as too short as well, so one mistake arrives as two
+    errors: the useful one about the entry, and 'Tuple should have at least 1 item after
+    validation, not 0' about the list holding it. And a value nested inside lists fails
+    again at every level above it, because a list is not a number either: ``[[1, 2], [3,
+    null]]`` on a map said three times that something should be a valid integer, twice
+    about a list nobody had asked to be one, and the count told the reader to go looking for
+    two more problems that are not there. Reporting either invites that.
 
-    def explained_by_a_deeper_finding(location: tuple[Any, ...]) -> bool:
+    So a place that holds something - a list or an object, or a list pydantic emptied - is
+    dropped as soon as a finding sits strictly under it: whatever is wrong down there is
+    what is wrong here. A ``missing`` key is kept whatever its input holds, because the key
+    that is not there is the mistake itself and nothing can be reported under it.
+    """
+    places = {place for place, _ in items}
+
+    def explained_by_a_deeper_finding(place: tuple[int | str, ...]) -> bool:
         # Strictly deeper: a list that is empty because it was written empty has no finding
         # under it, and has to keep reporting itself.
-        return any(
-            len(other) > len(location) and other[: len(location)] == location for other in locations
-        )
+        return any(len(other) > len(place) and other[: len(place)] == place for other in places)
 
-    return [
-        item
-        for item in items
-        if item["type"] != "too_short" or not explained_by_a_deeper_finding(tuple(item["loc"]))
-    ]
+    def is_only_a_consequence(place: tuple[int | str, ...], item: Any) -> bool:
+        if item["type"] == "missing":
+            return False
+        holds_something = item["type"] == "too_short" or isinstance(item.get("input"), list | dict)
+        return holds_something and explained_by_a_deeper_finding(place)
+
+    return [(place, item) for place, item in items if not is_only_a_consequence(place, item)]
 
 
 def resolve_path(path: Path) -> Path:
@@ -1261,24 +1279,33 @@ def resolve_path(path: Path) -> Path:
         return Path(path)
 
 
-def _pointer(loc: tuple[int | str, ...], document: Any = None) -> str:
-    """The dotted pointer of a validation error's location.
+def _place(loc: tuple[int | str, ...], document: Any = None) -> tuple[int | str, ...]:
+    """The segments of a validation error's location that name a place in the document.
 
     Walked against the document where one is given: a segment that is a key of the object
     reached so far, or an index into the list reached so far, is part of the path however it
     is spelled - ``my-plugin`` is a key, not a branch tag - and only a segment the document
     does not have is judged by its shape.
     """
-    parts: list[str] = []
+    parts: list[int | str] = []
     node = document
     for item in loc:
-        present, node = _child(node, item)
+        present, child = _child(node, item)
+        node = child
         if not present and (item in _UNION_TAGS or _is_branch_tag(item)):
             # pydantic reports the selected variant of a tagged union as a path segment,
             # and the tried branch of a plain one the same way;
             # 'definition.measurement.datatype' and 'datatype.str-enum[Datatype]' would
             # both only confuse the reader.
             continue
+        parts.append(item)
+    return tuple(parts)
+
+
+def _pointer(place: tuple[int | str, ...]) -> str:
+    """The dotted pointer of a place: ``interface[0].definition.name``."""
+    parts: list[str] = []
+    for item in place:
         if isinstance(item, int):
             parts.append(f"[{item}]")
         elif parts:

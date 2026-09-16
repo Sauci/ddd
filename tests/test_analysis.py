@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,29 @@ import pytest
 
 from conftest import checks, component, declare, messages, project, run_analysis
 from ddd.diagnostics import CHECKS, DiagnosticBag, Severity
+
+
+def identifiers_added_under(root: Path) -> dict[str, list[str]]:
+    """Every string literal handed to a ``.add(`` as its first argument, by where it is.
+
+    Read as syntax rather than as text so that a spelling split over two lines, or one inside
+    a comment, is counted the way python counts it. Nothing else in the package calls ``add``
+    with a string literal - a set of paths takes a ``Path`` - so no filter on the receiver is
+    needed, and an identifier built rather than written is simply invisible here, which is
+    the honest answer for a walk over the source.
+    """
+    found: dict[str, list[str]] = {}
+    for path in sorted(root.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            if not isinstance(node.func, ast.Attribute) or node.func.attr != "add":
+                continue
+            first = node.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                where = f"{path.relative_to(root.parents[1]).as_posix()}:{node.lineno}"
+                found.setdefault(first.value, []).append(where)
+    return found
 
 
 def two_components(*, a: list[dict], b: list[dict]) -> dict[str, object]:
@@ -904,14 +928,30 @@ class TestSeverityPolicy:
         )
         assert bag.has_errors
 
-    def test_every_check_is_registered(self, tree: Path) -> None:
-        # Guards against a typo in a check identifier used by the analysis.
-        assert set(CHECKS) >= {
-            "definition-mismatch",
-            "multiple-producers",
-            "missing-producer",
-            "local-conflict",
-        }
+    def test_every_check_the_code_files_is_registered(self) -> None:
+        """Every identifier handed to a bag, read out of the source rather than listed here.
+
+        An unregistered identifier is not refused: the bag reports it at `error`
+        (`diagnostics.py`), so a typo becomes a finding nobody can silence, under a name no
+        page documents and no `-W` accepts. Four literals were named here before, which
+        guarded those four and left the other sixty-odd sites to whichever test happened to
+        assert that exact spelling.
+
+        A plugin's checks carry a `/` and are registered by the plugin at load time, so they
+        are not in `CHECKS` and are left to `tests/test_plugins.py`.
+        """
+        added = identifiers_added_under(Path(__file__).resolve().parents[1] / "src" / "ddd")
+        assert len(added) > 40, "the walk found almost nothing, so it is weighing nothing"
+        unregistered = sorted(
+            f"{identifier} ({', '.join(sites)})"
+            for identifier, sites in added.items()
+            if "/" not in identifier and identifier not in CHECKS
+        )
+        assert not unregistered, (
+            f"these identifiers reach a bag but are in no CHECKS entry: {unregistered}. An "
+            f"unregistered check is reported at error under a name nothing documents and "
+            f"-W does not accept"
+        )
 
 
 class TestArraysTooLarge:

@@ -1475,3 +1475,18 @@ add_executable(img main.c)
 def test_the_tools_this_module_runs_exist(tool: str) -> None:
     """Said out loud, so that a missing tool is this failure and not a hundred cryptic ones."""
     assert Path(tool).is_file(), f"{tool} is not installed in this environment"
+
+
+def test_a_c_compiler_this_module_builds_with_exists() -> None:
+    """The fourth tool, which the three above left out.
+
+    Every test here configures and builds, so cmake needs a C compiler; without one the first
+    ``configure()`` fails inside its own assertion and prints cmake's whole output, which
+    says what is missing somewhere in forty lines. ``compiler()`` picks MinGW's gcc when MSVC
+    is not set up and otherwise leaves the choice to cmake, so either one being on the path
+    is what this module needs.
+    """
+    assert shutil.which("cl") or shutil.which("gcc"), (
+        "no C compiler on the path: cmake needs one to configure, and every test in this "
+        "module configures. Install MinGW's gcc or run from an MSVC developer shell"
+    )

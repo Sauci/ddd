@@ -29,7 +29,7 @@ from conftest import DEMO
 from ddd import __version__
 from ddd.analysis import _MAX_ELEMENTS, _MAX_LEAVES
 from ddd.backends.c.model import CodeModel, MemberView, ObjectView
-from ddd.cli import _SCHEMA_MODELS, EXIT_OK, _build_parser, main
+from ddd.cli import EXIT_OK, _build_parser, main, schema_models
 from ddd.diagnostics import CHECKS
 from ddd.loading import FILE_KINDS
 from ddd.models import Component, DataObject, Datatype, ObjectKind, ScalarType
@@ -426,12 +426,12 @@ class TestTheCommandPage:
             r"print the json schema of ((?:``[a-z]+``(?:, | or )?)+)", flattened(self.COMMAND_PAGE)
         )
         assert listed is not None
-        assert set(re.findall(r"``([a-z]+)``", listed.group(1))) == set(_SCHEMA_MODELS)
+        assert set(re.findall(r"``([a-z]+)``", listed.group(1))) == set(schema_models())
 
     def test_the_readme_lists_the_same_schema_kinds(self) -> None:
         listed = re.search(r"\| `ddd schema ([a-z|\\]+)`", README)
         assert listed is not None
-        assert set(listed.group(1).replace("\\", "").split("|")) == {*_SCHEMA_MODELS, "all"}
+        assert set(listed.group(1).replace("\\", "").split("|")) == {*schema_models(), "all"}
 
     def test_the_commands_said_to_take_format_json_are_the_ones_that_do(self) -> None:
         """Both pages enumerate them, and the command page counts them in words as well."""
@@ -1000,9 +1000,9 @@ class TestCommandLineHelp:
 
 def published_kinds() -> list[str]:
     """The file formats ``ddd schema`` publishes, which is what these tests are about."""
-    from ddd.cli import _SCHEMA_MODELS
+    from ddd.cli import schema_models
 
-    return sorted(_SCHEMA_MODELS)
+    return sorted(schema_models())
 
 
 def published(kind: str) -> dict[str, Any]:
@@ -1593,9 +1593,9 @@ class TestCommittedSchemas:
     """
 
     def test_every_committed_schema_is_current(self) -> None:
-        from ddd.cli import _SCHEMA_MODELS, SCHEMA_FILENAME, schema_text
+        from ddd.cli import SCHEMA_FILENAME, schema_models, schema_text
 
-        for kind in sorted(_SCHEMA_MODELS):
+        for kind in sorted(schema_models()):
             path = ROOT / "schemas" / SCHEMA_FILENAME.format(kind=kind)
             assert path.is_file(), f"{path.name} is missing; run: ddd schema all -o schemas"
             assert path.read_text(encoding="utf-8") == schema_text(kind), (

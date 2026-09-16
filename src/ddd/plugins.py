@@ -35,26 +35,16 @@ from pydantic import BaseModel, ValidationError
 
 from ddd.diagnostics import PLUGIN_CHECK_SEPARATOR, CheckInfo, DiagnosticBag, Location
 from ddd.ir import DataDictionary
-from ddd.models.common import PLUGIN_NAME_PATTERN as PLUGIN_NAME_SPELLING
+from ddd.names import BUILT_IN_ARTEFACTS, PLUGIN_NAME_PATTERN
 
 if TYPE_CHECKING:
     from ddd.backends.base import Backend, GeneratedFile
 
-PLUGIN_NAME_PATTERN: Final = re.compile(PLUGIN_NAME_SPELLING)
+_PLUGIN_NAME: Final = re.compile(PLUGIN_NAME_PATTERN)
 """A plugin name is the key of its block, so it is a lowercase identifier.
 
 Compiled from the spelling the block key itself is held to, so that a name a plugin may
 register and a key a description may write it under cannot drift apart."""
-
-BUILT_IN_GENERATED: Final = ("c", "a2l")
-"""The artefacts DDD writes itself, each naming one backend of its own.
-
-These are what ``all`` composes beside the plugins', and therefore what a run can be asked to
-leave out: subtracting one of them still leaves something to write."""
-
-BUILT_IN_ARTEFACTS: Final = (*BUILT_IN_GENERATED, "all")
-"""Everything ``ddd generate`` accepts on its own; a plugin's artefact is asked for by the
-plugin's name, so a plugin cannot be called any of these."""
 
 _CHECK_PATTERN: Final = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 """The grammar of the part after the separator: the grammar of a built-in identifier."""
@@ -120,7 +110,7 @@ class Plugin:
     backend: Callable[[GenerateContext], Backend] | None = None
 
     def __post_init__(self) -> None:
-        if not PLUGIN_NAME_PATTERN.match(self.name):
+        if not _PLUGIN_NAME.match(self.name):
             msg = f"plugin name '{self.name}' is not a lowercase identifier"
             raise ValueError(msg)
         if self.name in BUILT_IN_ARTEFACTS:

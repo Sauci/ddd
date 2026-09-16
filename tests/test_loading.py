@@ -17,7 +17,7 @@ from conftest import (
     write_tree,
 )
 from ddd.diagnostics import DiagnosticBag
-from ddd.loading import _pattern_anchor, load_workspace, resolve_path
+from ddd.loading import _pattern_anchor, load_dictionary, load_workspace, resolve_path
 
 
 def test_project_with_components(tree: Path) -> None:
@@ -660,3 +660,25 @@ class TestWhereAWildcardIncludeStartsWalking:
         assert _pattern_anchor(PureWindowsPath("C:/proj"), PureWindowsPath("D:/lib/*.json")) == (
             PureWindowsPath("D:/")
         )
+
+
+class TestWhatADumpedDictionaryIsToldAboutItself:
+    """A dump is read by the same reader a description is, and located the same way.
+
+    The document was not handed to the reporter, so every pointer below the first place was
+    judged by its spelling alone - which is how a punctuated key vanished from a finding
+    about a description, and the fix for that one did not reach this path.
+    """
+
+    @staticmethod
+    def _dumped(tree: Path, **extra: Any) -> DiagnosticBag:
+        write_tree(tree, {"d.json": {"format": 1, "name": "P", "objects": [], **extra}})
+        bag = DiagnosticBag()
+        assert load_dictionary(tree / "d.json", bag) is None
+        return bag
+
+    def test_two_malformed_blocks_are_two_findings_naming_their_keys(self, tree: Path) -> None:
+        bag = self._dumped(tree, extensions={"a-b": 1, "c-d": 2})
+        assert len(bag) == 2, messages(bag)
+        assert "d.json#extensions.a-b: error[schema]" in messages(bag), messages(bag)
+        assert "d.json#extensions.c-d: error[schema]" in messages(bag), messages(bag)

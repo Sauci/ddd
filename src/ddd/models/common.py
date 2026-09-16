@@ -22,6 +22,8 @@ from pydantic import (
     StringConstraints,
 )
 
+from ddd.names import PLUGIN_NAME_PATTERN
+
 
 class FileRoot(BaseModel):
     """Base of the seven hand-written file roots, one per top level key a description may have.
@@ -56,19 +58,16 @@ Identifier = Annotated[
 ]
 """A string that is usable as a c identifier and as an a2l identifier."""
 
-PLUGIN_NAME_PATTERN: Final = r"^[a-z][a-z0-9_]*$"
-"""What a plugin may be called, and therefore how an ``extensions`` block may be keyed.
-
-The same spelling :mod:`ddd.plugins` holds a plugin's own name to, compiled from here so the
-two cannot drift: a key no plugin could be called is a block no plugin will ever claim, and
-saying so where it is written beats an ``unknown-extension`` the reader goes looking for a
-declaration of. It also keeps the key out of the pointers a finding about the block is
-located at - ``definition.extensions.a.b`` reads as two keys and ``c[1]`` as an index, so a
-punctuated name left an editor underlining something else.
-"""
-
 PluginName = Annotated[str, StringConstraints(pattern=PLUGIN_NAME_PATTERN)]
-"""The key of an ``extensions`` block: the name of the plugin that owns it."""
+"""The key of an ``extensions`` block: the name of the plugin that owns it.
+
+The same spelling :mod:`ddd.plugins` holds a plugin's own name to: a key no plugin could be
+called is a block no plugin will ever claim, and saying so where it is written beats an
+``unknown-extension`` the reader goes looking for a declaration of. It also keeps the key out
+of the pointer a finding about the block is located at - ``definition.extensions.a.b`` reads
+as two keys and ``c[1]`` as an index, so a punctuated name left an editor underlining
+something else.
+"""
 
 OBJECT_ID_ALPHABET: Final = "abcdefghjkmnpqrstvwxyz0123456789"
 """The characters an object id is drawn from: lowercase base32 without ``i``, ``l``, ``o``

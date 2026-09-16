@@ -2468,9 +2468,9 @@ class TestTemplatesDir:
     def test_an_installation_without_the_examples(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        from ddd import cli
+        from ddd import backends
 
-        monkeypatch.setattr(cli, "example_template_directory", lambda: None)
+        monkeypatch.setattr(backends, "example_template_directory", lambda: None)
         assert main(["templates-dir"]) == EXIT_USAGE
         assert "not part of this installation" in capsys.readouterr().err
 
@@ -2481,12 +2481,12 @@ class TestSchemaAll:
     def test_it_writes_every_schema_into_a_directory(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        from ddd.cli import _SCHEMA_MODELS, SCHEMA_FILENAME, schema_text
+        from ddd.cli import SCHEMA_FILENAME, schema_models, schema_text
 
         output = tmp_path / "schemas"
         assert main(["schema", "all", "-o", str(output)]) == EXIT_OK
         assert "wrote" in capsys.readouterr().err
-        for kind in _SCHEMA_MODELS:
+        for kind in schema_models():
             path = output / SCHEMA_FILENAME.format(kind=kind)
             assert path.read_text(encoding="utf-8") == schema_text(kind)
 
@@ -3567,3 +3567,93 @@ class TestDisplayedPath:
         created fails on ``build``, which is above the output directory, not under it."""
         outside = tmp_path.resolve() / "build"
         assert _displayed_path(outside, outside / "gen") == outside.as_posix()
+
+
+class TestWhatOneRunReads:
+    """A dumped dictionary is a file a build reads whole; reading it twice is a second of it."""
+
+    def test_a_dumped_dictionary_is_read_and_parsed_once_per_side(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """It was read to find out what kind of file it is, then read again to be validated.
+
+        Measured on the 45 MB dump of a thousand-object project, each of those passes is
+        about a third of a second, and a comparison does it for both sides.
+        """
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        dump = tree / "baseline.json"
+        assert main(["dump", str(tree / "project.ddd.json"), "-o", str(dump)]) == EXIT_OK
+
+        reads: list[str] = []
+        parses: list[int] = []
+        reading = Path.read_text
+        loading = json.loads
+
+        def counted_read(self: Path, *args: Any, **kwargs: Any) -> str:
+            reads.append(self.name)
+            return str(reading(self, *args, **kwargs))
+
+        def counted_parse(text: Any, *args: Any, **kwargs: Any) -> Any:
+            parses.append(len(text))
+            return loading(text, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", counted_read)
+        monkeypatch.setattr(json, "loads", counted_parse)
+        assert main(["compare", str(dump), str(dump)]) == EXIT_OK
+        assert reads.count("baseline.json") == 2, reads  # one per side
+        assert len(parses) == 2, parses
+
+    def test_asking_for_the_version_leaves_the_project_machinery_unimported(self) -> None:
+        """``ddd --version`` answers before anything is read, and a cmake configure step and
+        a pre-commit hook pay for that answer once per file."""
+        import subprocess
+        import sys
+
+        code = (
+            "import sys\n"
+            "from ddd.cli import main\n"
+            "try:\n"
+            "    main(['--version'])\n"
+            "except SystemExit:\n"
+            "    pass\n"
+            "print(' '.join(sorted(sys.modules)))\n"
+        )
+        finished = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, text=True, check=True
+        )
+        loaded = set(finished.stdout.split())
+        unwanted = {
+            name
+            for name in loaded
+            if name.startswith(("ddd.backends", "ddd.models", "ddd.lsp", "jinja2"))
+            or name in {"ddd.analysis", "ddd.compare", "ddd.ir", "ddd.loading", "ddd.plugins"}
+        }
+        assert not unwanted, sorted(unwanted)
+
+
+class TestTheNamesTheParserIsBuiltFrom:
+    """:mod:`ddd.names` is what argparse may read before a project is; these hold it in place.
+
+    Each value there is the one definition of its name - the modules that own the behaviour
+    import their spelling from it - except these two, which are a list beside an enum and a
+    list beside a table, and drift is what a test is for.
+    """
+
+    def test_the_schema_kinds_are_the_kinds_that_have_a_model(self) -> None:
+        from ddd.cli import schema_models
+        from ddd.names import SCHEMA_KINDS
+
+        assert sorted(schema_models()) == sorted(SCHEMA_KINDS)
+
+    def test_the_byte_orders_are_what_the_a2l_backend_accepts(self) -> None:
+        from ddd.backends import ByteOrder
+        from ddd.names import BYTE_ORDERS
+
+        assert tuple(order.value for order in ByteOrder) == BYTE_ORDERS
+        assert ByteOrder(BYTE_ORDERS[0]) is ByteOrder.LITTLE  # the default the help names

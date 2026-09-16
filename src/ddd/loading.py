@@ -459,7 +459,26 @@ class Workspace:
         return self.locations.get(name)
 
 
-def load_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
+def read_json_document(path: Path) -> dict[str, Any] | None:
+    """The json object a file holds, or nothing, without saying a word about why not.
+
+    What a caller deciding *which reader* a file belongs to needs: whichever reader it then
+    reaches is the one with something to say about it, and a failure here is one that reader
+    meets again and reports properly. Read through the same hooks as everything else - a
+    duplicate key is refused here too - so that a document this accepts is one the reader
+    would accept, and may therefore be handed straight back to it rather than read a second
+    time. A 45 MB dump costs about a third of a second per pass.
+    """
+    quiet = DiagnosticBag()
+    text = _read_text(path, quiet, None)
+    if text is None:
+        return None
+    return _parse_json(text, path, quiet)
+
+
+def load_dictionary(
+    path: Path, bag: DiagnosticBag, document: dict[str, Any] | None = None
+) -> DataDictionary | None:
     """Read a data dictionary that ``ddd dump`` wrote earlier.
 
     The counterpart of :func:`load_workspace`: it takes the resolved form rather than the
@@ -470,20 +489,27 @@ def load_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
     this file - that it does not exist, that its json is malformed, that its format is one
     this version cannot read, that a field does not validate - is located at it, and the
     ``location`` of a finding is an absolute path whether the caller typed one or not.
+
+    ``document`` is what :func:`read_json_document` already read out of that same file, so a
+    caller that had to look inside it to decide whose file it is does not pay for the read
+    and the parse twice. Left out - or ``None``, which is what that function answers for a
+    file it could not read at all - the file is read here, and the failure is reported.
     """
     path = resolve_path(path)
-    text = _read_text(path, bag, None)
-    if text is None:
-        return None
-
-    # Read through the same hooks a description file goes through, rather than handed to
-    # pydantic's own parser: that one has no ``object_pairs_hook``, so a dump spelling one key
-    # twice - ``"name": "P", "name": "Q"`` - kept the last spelling silently and came back as a
-    # delivery of a project the file says twice it is not. What a description may not do, an
-    # archived dictionary of the same project may not do either.
-    data = _parse_json(text, path, bag)
+    data = document
     if data is None:
-        return None
+        text = _read_text(path, bag, None)
+        if text is None:
+            return None
+
+        # Read through the same hooks a description file goes through, rather than handed to
+        # pydantic's own parser: that one has no ``object_pairs_hook``, so a dump spelling one
+        # key twice - ``"name": "P", "name": "Q"`` - kept the last spelling silently and came
+        # back as a delivery of a project the file says twice it is not. What a description
+        # may not do, an archived dictionary of the same project may not do either.
+        data = _parse_json(text, path, bag)
+        if data is None:
+            return None
 
     # The version is read before the document is validated, not after. A dictionary from a
     # later DDD is precisely one that carries fields this version does not know, and the
@@ -497,7 +523,11 @@ def load_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
     try:
         return DataDictionary.model_validate(data)
     except ValidationError as error:
-        _report_validation_error(path, error, bag)
+        # The document goes with the error, as it does for a description: without it every
+        # segment below the first is judged by its spelling alone, so a punctuated key under
+        # ``extensions`` was dropped from the pointer and two malformed blocks counted as
+        # one finding about the whole block.
+        _report_validation_error(path, error, bag, document=data)
         return None
 
 
@@ -1337,11 +1367,13 @@ def _place(loc: tuple[int | str, ...], document: Any = None) -> tuple[int | str,
                 # this belongs to the shape the model built and none of it to the document.
                 parts.append(key)
                 return tuple(parts)
-            if item in _UNION_TAGS or _is_branch_tag(item):
+            if isinstance(item, str) and (item in _UNION_TAGS or _is_branch_tag(item)):
                 # pydantic reports the selected variant of a tagged union as a path segment,
                 # and the tried branch of a plain one the same way;
                 # 'definition.measurement.datatype' and 'datatype.str-enum[Datatype]' would
-                # both only confuse the reader.
+                # both only confuse the reader. An index is never one of those, and asking
+                # here rather than inside the test is what keeps that from being a branch
+                # nothing can reach.
                 continue
         parts.append(item)
     return tuple(parts)
@@ -1393,7 +1425,7 @@ def _child(node: Any, item: int | str) -> tuple[bool, Any]:
     return False, None
 
 
-def _is_branch_tag(item: int | str) -> bool:
+def _is_branch_tag(item: str) -> bool:
     """Whether a path segment names a union branch rather than a key of the document.
 
     pydantic spells most of those as ``str-enum[Datatype]`` or ``constrained-str``, neither of
@@ -1401,8 +1433,6 @@ def _is_branch_tag(item: int | str) -> bool:
     than by a list of names, so a new branch needs nothing added here - except a branch that
     is a bare python type, which is spelled as one word and listed above.
     """
-    if not isinstance(item, str):
-        return False
     return item in _BARE_TYPE_TAGS or not item.replace("_", "").replace("$", "").isalnum()
 
 

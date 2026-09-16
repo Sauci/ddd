@@ -681,6 +681,18 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   read can fail - missing, unreadable, not utf-8, a directory - is a located finding and the
   rest of the tree is still read.
 
+  *Read once, and answer without reading at all.*  A dumped dictionary handed to `compare` or
+  to `check -b` was read and parsed twice per side - once to find out what kind of file it is
+  and once to validate it - which on the 45 MB dump of a thousand-object project is about a
+  third of a second thrown away per pass.  It is now read once and handed on.  And `ddd
+  --version` and `ddd --help` used to build every contract in the package before answering,
+  0.40 s for a line of text that looks at none of them; the command line now reaches each
+  layer from the handler that needs it, and answers in 0.12 s.  A cmake configure step asks
+  for the version once per project and a pre-commit hook once per file.  Reading a dumped
+  dictionary also gained what a description already had: a finding inside it names the key it
+  is about, so two malformed `extensions` blocks in a dump are two findings rather than one
+  about the whole block.
+
   **Migration:** a list `init` holding a quoted number or one of those words is now refused
   with a `schema` finding at the element that holds it, where it used to load, generate and
   dump.  Write the value without the quotes: `["1", "2"]` becomes `[1, 2]`.  A string object

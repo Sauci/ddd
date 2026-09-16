@@ -45,7 +45,7 @@ ownership, not visibility: a size that belongs to one component's contract reads
 to the interface it dimensions, and a size no single component owns stays here.
 ``examples/vocabulary`` is a ready to run project showing both: its pump declares
 ``PRESSURE_CELLS`` inside its own description, the shared ``TREND_SAMPLES`` lives in a
-standalone file next to the :doc:`unit vocabulary <units>` and the
+constants file of its own next to the :doc:`unit vocabulary <units>` and the
 :doc:`memory sections <sections>`, and the project checks clean:
 
 .. code-block:: text

@@ -169,7 +169,8 @@ class A2lObjectOptions(_Frozen):
     variable: a component reading a value from a library it does not own has as good a claim
     to measuring it.
 
-    Stated by several, the answer is yes if any of them says so - see :func:`resolve_export`.
+    Stated by several, the answer is yes if any of them says so, and an object nobody
+    mentions is exported: see "Who asks for an export" on the definition page.
     """
 
     format: A2lFormat | None = None

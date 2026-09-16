@@ -5,10 +5,10 @@ A ``types`` file declares the types a project names. There are three of them: a 
 which lays several values out in one c object, a **scalar type**, which fixes what one
 number means and says nothing about where it is stored, and an **external type**, which names
 a c type that a hand written header defines and DDD does not. A declared type has two possible
-homes, and the entries are the same in both: the standalone file this page describes, and
+homes, and the entries are the same in both: the types file this page describes, and
 the ``types`` list a :doc:`component <component>` may carry for the types it publishes.
 The choice between them is ownership, not visibility - either home puts the name in the
-same project wide namespace. The standalone file is the home of shared types, because a
+same project wide namespace. A types file of its own is the home of shared types, because a
 type with no single owner has no component to live inside: the point of declaring
 ``Temperature_t`` once is that two components can agree on it without either of them owning it.
 

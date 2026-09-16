@@ -550,8 +550,31 @@ class TestConcepts:
 
     def test_the_readme_points_at_files_that_exist(self) -> None:
         """A dead link in the README is a lie about where the code lives."""
-        for target in re.findall(r"\]\((?!https?:)([^)#]+)", README):
-            assert (ROOT / target).exists(), f"README links to a missing path: {target}"
+        for kind, target in re.findall(
+            r"\]\(https://github\.com/Sauci/ddd/(blob|tree)/master/([^)#]+)", README
+        ):
+            path = ROOT / target
+            assert path.exists(), f"README links to a missing path: {target}"
+            assert path.is_dir() == (kind == "tree"), (
+                f"README links {target} as a {kind}; GitHub serves a directory under tree/ "
+                f"and a file under blob/"
+            )
+
+    def test_the_readme_links_no_path_a_reader_of_the_package_index_cannot_follow(self) -> None:
+        """The README is the package description (``pyproject.toml``: ``readme``).
+
+        PyPI renders it with the relative links exactly as written, and there is no repository
+        around them there: every one of the thirty-odd links to a file of this repository was
+        a 404 for anybody who arrived through the index rather than through GitHub. They are
+        written absolute, the way the logo already was, which also survives the README being
+        quoted anywhere else.
+        """
+        relative = re.findall(r"\]\((?!https?:|#)([^)]+)\)", README)
+        assert not relative, (
+            f"the README links these paths relatively: {relative}. The package index renders "
+            f"them as written, where nothing resolves them - write "
+            f"https://github.com/Sauci/ddd/blob/master/<path> instead."
+        )
 
     def test_the_spec_points_at_files_that_exist(self) -> None:
         for target in re.findall(r"\]\((?!https?:)([^)#]+)", SPEC):
@@ -1028,6 +1051,28 @@ def descriptions_in(node: object) -> list[str]:
     return []
 
 
+def python_names() -> set[str]:
+    """Every public function and module constant of the package, by name.
+
+    Not the classes: a model's name is often the name of the thing in the file format too -
+    ``Enumerator``, ``Limits`` - and saying it is saying something a reader of the json can
+    act on. A function or a constant never is.
+    """
+    found: set[str] = set()
+    for path in (ROOT / "src" / "ddd").rglob("*.py"):
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
+            if isinstance(node, ast.FunctionDef):
+                found.add(node.name)
+            elif isinstance(node, ast.AnnAssign | ast.Assign):
+                targets = [node.target] if isinstance(node, ast.AnnAssign) else node.targets
+                found.update(
+                    target.id
+                    for target in targets
+                    if isinstance(target, ast.Name) and target.id.isupper()
+                )
+    return {name for name in found if not name.startswith("_")}
+
+
 def enumerations_in(node: object) -> list[dict[str, Any]]:
     """Every closed set of values in a schema, wherever it sits."""
     if isinstance(node, dict):
@@ -1112,14 +1157,15 @@ class TestPublishedSchemas:
     def test_every_authored_field_carries_hover_documentation(self, kind: str) -> None:
         """A field without a description is a blank tooltip in every editor.
 
-        ``kind`` is exempt only where it is a fixed tag with nothing behind it: the ones that
-        select a data object are documented, and checked below.
+        Nothing is exempt. ``kind`` used to be, on the reading that a fixed tag has nothing
+        behind it, and the four conversion tags were the only blank hovers in all eight
+        published schemas - on the one key a reader typing ``"kind": "linear"`` is looking at.
         """
         undocumented = [
             f"{name}.{field}"
             for name, definition in objects_in(published(kind))
             for field, spec in definition.get("properties", {}).items()
-            if "description" not in spec and field != "kind"
+            if "description" not in spec
         ]
         assert not undocumented, (
             f"fields with a blank editor tooltip: {undocumented}. Add an attribute "
@@ -1180,6 +1226,26 @@ class TestPublishedSchemas:
         """Whoever reads these writes json; a dotted module path is an answer to nobody."""
         offenders = [text for text in descriptions_in(published(kind)) if "ddd.models" in text]
         assert not offenders, f"{kind} refers the reader to python: {offenders}"
+
+    @pytest.mark.parametrize("kind", published_kinds())
+    def test_no_description_names_a_python_object_of_this_package(self, kind: str) -> None:
+        """The same rule as above, asked of the names rather than of the module paths.
+
+        These strings are what an editor hovers and what ``ddd schema`` publishes, and a
+        reader of them has the json in front of them and nothing else: "see ``resolve_export``"
+        and "that is what ``DICTIONARY_FORMAT`` exists to make safe" point at code they do not
+        have, and ``None`` is a value the document spells ``null``.
+        """
+        quoted = {
+            name
+            for text in descriptions_in(published(kind))
+            for name in re.findall(r"``([A-Za-z_][A-Za-z_0-9]*)``", text)
+        }
+        offenders = sorted(quoted & (python_names() | {"None"}))
+        assert not offenders, (
+            f"{kind} hovers the names of python objects: {offenders}. Say the rule, or point "
+            f"at the page that states it; write ``null`` for the json value."
+        )
 
 
 class TestTheShorthandsThePagesRecommend:

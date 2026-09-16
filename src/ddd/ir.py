@@ -214,8 +214,9 @@ class ResolvedObject(_Frozen):
     Calibration data carries it as ``const volatile``, which is what a value the calibration
     tool changes in a running ecu needs - see the field of the same name on the authored
     definition. The default is kept although a definition may no longer omit it, so that a
-    dictionary dumped by an older DDD still reads back; that is what ``DICTIONARY_FORMAT``
-    exists to make safe.
+    dictionary dumped by an older DDD still reads back: an older document is read with the
+    defaults of the format it states, which is what the ``format`` key of this document is
+    for.
     """
 
     condition: str | None = None
@@ -225,7 +226,7 @@ class ResolvedObject(_Frozen):
     """Other objects this one refers to, keyed by field name (``axis``, ``x_axis``, ...)."""
 
     owner: str | None = None
-    """Component owning the object; ``None`` only when the project is inconsistent."""
+    """Component owning the object; ``null`` only when the project is inconsistent."""
 
     consumers: tuple[str, ...] = ()
     """Components declaring the object as an input, sorted; empty when nothing reads it."""
@@ -291,10 +292,10 @@ class ResolvedMember(_Frozen):
     """What the member is, for a comment beside its declaration."""
 
     datatype: Datatype | None = None
-    """Storage of the member when it is a base one; ``None`` when it names a declared type."""
+    """Storage of the member when it is a base one; ``null`` when it names a declared type."""
 
     type: str | None = None
-    """Name of the structure this member is, when it is one; ``None`` when it is a datatype.
+    """Name of the structure this member is, when it is one; ``null`` when it is a datatype.
 
     The name as the types file spells it, which in a dictionary carrying an ``unknown-type``
     error may be a name no ``types`` entry answers: the member says what it was declared as,
@@ -302,7 +303,7 @@ class ResolvedMember(_Frozen):
     """
 
     external: str | None = None
-    """Name of the external type this member is, when it is one; ``None`` otherwise.
+    """Name of the external type this member is, when it is one; ``null`` otherwise.
 
     An external type is one DDD does not declare - a hand written header defines it - so the
     member is opaque storage: it appears in the generated structure verbatim, spelled with
@@ -326,7 +327,7 @@ class ResolvedMember(_Frozen):
     """
 
     bits: int | None = None
-    """Width in bits when the member is a c bitfield; ``None`` when it is not."""
+    """Width in bits when the member is a c bitfield; ``null`` when it is not."""
 
     @model_validator(mode="after")
     def _a_member_states_one_storage(self) -> ResolvedMember:
@@ -442,7 +443,7 @@ class ResolvedInstance(_Frozen):
     """Preprocessor condition of the producing declaration, if any."""
 
     owner: str | None = None
-    """Component owning the object; ``None`` only when the project is inconsistent."""
+    """Component owning the object; ``null`` only when the project is inconsistent."""
 
     consumers: tuple[str, ...] = ()
     """Components declaring the object as an input, sorted."""

@@ -15,7 +15,7 @@
             }
           ],
           "default": null,
-          "description": "Whether the object belongs in the a2l file; omitted, it does.\n\nThe one a2l option any component may state, not only the producer. Which signals a\ncalibration engineer needs to see is not a property of whoever happens to write the\nvariable: a component reading a value from a library it does not own has as good a claim\nto measuring it.\n\nStated by several, the answer is yes if any of them says so - see ``resolve_export``.",
+          "description": "Whether the object belongs in the a2l file; omitted, it does.\n\nThe one a2l option any component may state, not only the producer. Which signals a\ncalibration engineer needs to see is not a property of whoever happens to write the\nvariable: a component reading a value from a library it does not own has as good a claim\nto measuring it.\n\nStated by several, the answer is yes if any of them says so, and an object nobody\nmentions is exported: see \"Who asks for an export\" on the definition page.",
           "title": "Export"
         },
         "format": {
@@ -372,7 +372,7 @@
             }
           ],
           "default": null,
-          "description": "Declared constants this component publishes, each entry exactly as a constants file\nwrites it.\n\nCo-located for the reason ``types`` may be, and no more scoped than they are: the names\njoin the same project wide namespace as the constants of the standalone files, and any\nshape of any component names one where it would state a number. ``units`` and\n``sections`` remain project wide vocabularies and have no place inside a component.",
+          "description": "Declared constants this component publishes, each entry exactly as a constants file\nwrites it.\n\nCo-located for the reason ``types`` may be, and no more scoped than they are: the names\njoin the same project wide namespace as the constants of a constants file, and any\nshape of any component names one where it would state a number. ``units``, ``sections``\nand ``rasters`` remain project wide vocabularies and have no place inside a component.",
           "title": "Constants"
         }
       },
@@ -729,6 +729,7 @@
         "kind": {
           "const": "enum",
           "default": "enum",
+          "description": "The tag of this kind, which may be left out: a block stating ``enumerators`` or a\n``name`` is an enum.",
           "title": "Kind",
           "type": "string"
         },
@@ -855,6 +856,7 @@
         "kind": {
           "const": "identity",
           "default": "identity",
+          "description": "The tag of this kind, which may be left out: an empty block is the identity.",
           "title": "Kind",
           "type": "string"
         }
@@ -953,6 +955,7 @@
         "kind": {
           "const": "linear",
           "default": "linear",
+          "description": "The tag of this kind, which may be left out: a block stating ``factor`` or ``offset``\nis linear.",
           "title": "Kind",
           "type": "string"
         },
@@ -1868,6 +1871,7 @@
       "properties": {
         "kind": {
           "const": "string",
+          "description": "The tag of this kind, which is required: a string has no key of its own to be\nrecognised by, so nothing else would tell it from the identity.",
           "title": "Kind",
           "type": "string"
         }

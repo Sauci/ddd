@@ -90,6 +90,7 @@ class IdentityConversion(_Frozen):
     """
 
     kind: Literal["identity"] = "identity"
+    """The tag of this kind, which may be left out: an empty block is the identity."""
 
     def to_physical(self, raw: float) -> float:
         return raw
@@ -105,6 +106,9 @@ class LinearConversion(_Frozen):
     """``physical = raw * factor + offset``, the scaling of a fixed point value."""
 
     kind: Literal["linear"] = "linear"
+    """The tag of this kind, which may be left out: a block stating ``factor`` or ``offset``
+    is linear."""
+
     factor: Real = 1.0
     """Scaling; must not be zero, or nothing could be converted back."""
 
@@ -174,6 +178,9 @@ class EnumConversion(_Frozen):
     """
 
     kind: Literal["enum"] = "enum"
+    """The tag of this kind, which may be left out: a block stating ``enumerators`` or a
+    ``name`` is an enum."""
+
     name: Identifier
     """C identifier of the generated ``typedef enum``; shared enums must agree everywhere."""
 
@@ -251,6 +258,8 @@ class StringConversion(_Frozen):
     """
 
     kind: Literal["string"]
+    """The tag of this kind, which is required: a string has no key of its own to be
+    recognised by, so nothing else would tell it from the identity."""
 
     def to_physical(self, raw: float) -> float:
         return raw

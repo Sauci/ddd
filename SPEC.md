@@ -308,8 +308,9 @@ file; it does not scope it. The declared names live in the same project wide nam
 those a types or constants file of its own declares, every check of
 [section 4](#4-consistency-checks) applies unchanged, and any component **may** name them.
 Types and constants shared between several components, with no single owner to live
-inside, stay in a file of their own. `units` and
-`sections` are project wide vocabularies and have no place inside a component.
+inside, stay in a file of their own. `units`, `sections` and `rasters` are project wide
+vocabularies and have no place inside a component ([sections 3.5](#35-memory-placement),
+[3.8](#38-unit-vocabulary) and [3.10](#310-measurement-rasters)).
 
 Each declaration contains:
 

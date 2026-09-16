@@ -221,8 +221,13 @@ The model
      - One entry per component, in project order, whether or not the component declares
        anything. These are the interfaces, described below.
    * - ``model.needs_stdint``, ``model.needs_stdbool``
-     - Whether any datatype of the project needs that standard header, so that the generated
-       type header includes it only when something uses it.
+     - Whether any datatype of the project needs that standard header, for a type header that
+       includes it only when something uses it. The shipped example renders
+       ``model.needs_stdbool`` and includes ``<stdint.h>`` unconditionally: every other
+       generated header includes the type header and nothing else, so a type header that is
+       empty - a project whose objects are all floating point, or one that declares no object
+       at all - leaves those headers empty too, and ``-Wpedantic`` refuses an empty
+       translation unit.
    * - ``model.external_includes``
      - The headers of the :doc:`external types <file_formats/types>` in use, deduplicated and
        sorted by spelling, each ready to paste after ``#include``: ``"my_driver.h"`` with its

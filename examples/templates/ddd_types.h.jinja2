@@ -3,9 +3,11 @@
 #ifndef {{ model.guard("ddd", "types") }}
 #define {{ model.guard("ddd", "types") }}
 
-{% if model.needs_stdint %}
+{# Unconditional, although model.needs_stdint says whether a datatype of the project asks
+   for it: every other generated header includes this one and nothing else, so a guard
+   around nothing here is an empty translation unit there - which -Wpedantic refuses - for
+   a project whose objects are all floating point or that declares none at all. #}
 #include <stdint.h>
-{% endif %}
 {% if model.needs_stdbool %}
 #include <stdbool.h>
 {% endif %}

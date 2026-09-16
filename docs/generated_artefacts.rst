@@ -94,7 +94,10 @@ Five templates live there, and four of them produce a file:
    * - ``ddd_globals.c.jinja2``
      - ``ddd_globals.c``, the single definition of every global variable of the project.
        Compile and link it exactly once; from that point on DDD owns the storage of every
-       declared object and a duplicate definition elsewhere fails at link time.
+       declared object and a duplicate definition elsewhere fails at link time. A project
+       that declares no object at all - an image whose components are not registered yet -
+       gets a file carrying one typedef and no storage, because ISO C forbids a translation
+       unit with nothing in it and the warning set below treats that as an error.
    * - ``{component}.h.jinja2``
      - One header per component - ``Controller.h``, ``SensorHub.h``, ``UserInterface.h`` and
        ``EventLogger.h`` for the demo - carrying the objects that component declared and

@@ -300,6 +300,15 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   `dump -o` promises empty.  What a plugin prints is redirected rather than swallowed: it is
   read on stderr, beside everything else DDD says about a run.
 
+  *An output file is never a source file.*  `ddd dump -o`, `ddd compare --renames` and
+  `ddd generate --dictionary` each name a file on the command line, and the obvious way to
+  get one wrong is to complete the name of a description sitting in the same directory:
+  `ddd dump components/sensor_hub.ddd.json -o components/sensor_hub.ddd.json` replaced the
+  hand-written component with the dictionary, said `wrote ... (updated)` and exited 0.  All
+  three now refuse a target that resolves to a file the run read - a description of the
+  project, one of its includes, a plugin module, or an archived dictionary being compared -
+  as a usage error naming it, before anything is written.
+
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`
   through the c templates, a `SYSTEM_CONSTANT` in the a2l - whether or not a shape names it,

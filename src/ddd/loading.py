@@ -531,7 +531,7 @@ class _Loader:
         self._project_blocks: dict[str, tuple[dict[str, Any], Location]] = {}
 
     def load(self, path: Path) -> Workspace | None:
-        root = _resolve(path)
+        root = resolve_path(path)
         data = self._read_json(root, origin=None)
         if data is None:
             return None
@@ -995,7 +995,7 @@ class _Loader:
         raw = Path(pattern)
         if not any(character in pattern for character in _GLOB_CHARACTERS):
             candidate = raw if raw.is_absolute() else source.parent / raw
-            return [_resolve(candidate)]
+            return [resolve_path(candidate)]
 
         # The anchor decides where a pattern starts, not is_absolute(): on Windows both the
         # rooted '/shared/*.ddd.json' and the drive relative 'C:*.ddd.json' carry an anchor
@@ -1012,7 +1012,7 @@ class _Loader:
         matches = sorted(
             resolved
             for match in found
-            if match.is_file() and (resolved := _resolve(match)) not in excluded
+            if match.is_file() and (resolved := resolve_path(match)) not in excluded
         )
         if not matches:
             self._bag.add("include-empty", f"pattern '{pattern}' matches no file", origin)
@@ -1199,7 +1199,7 @@ def _meaningful(items: list[Any]) -> list[Any]:
     ]
 
 
-def _resolve(path: Path) -> Path:
+def resolve_path(path: Path) -> Path:
     """Absolute, symlink free path; works for files that do not exist yet.
 
     A path the operating system refuses to even look at - one with a NUL byte in it, say -

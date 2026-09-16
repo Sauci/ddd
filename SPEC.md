@@ -1903,7 +1903,7 @@ the one it needs is asked for only if it stayed, and a run left with nothing to 
 refused rather than reporting success. Every artefact also takes `--dictionary FILE`, a path
 relative to the working directory, which writes the resolved dictionary - the text `ddd dump`
 prints - in the same write as the artefacts, all of them or none; it counts as something to
-write, and a path an artefact of the run is written to is refused;
+write, and a path an artefact of the run is written to is refused, as is one the run read;
 [section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
 table whose rows are sorted by variable name, stating the physical reading of a stated
 initial value beside the raw one, or, in JSON, as an object carrying `project`,
@@ -1979,7 +1979,9 @@ errors (2). A usage error raised by a step that follows the analysis - a plugin 
 that raises, an override naming a plugin check that no loaded plugin registers, which
 is held until the project is read ([section 3.11](#311-plugins)), an address map that
 cannot be read, a `--renames` file, a dumped dictionary or an artefact that cannot be
-written, a `--plugin`
+written, an output path naming a file the run itself read - `ddd dump -o`,
+`ddd compare --renames` and `ddd generate --dictionary` each refuse one, naming it, since
+nothing DDD writes is ever a file it read - a `--plugin`
 refused beside a description, or a run that would write nothing - is printed after the
 findings gathered so far - a comparison's own findings and a baseline's carried errors
 included - are reported in the requested format first, because a failed run is exactly

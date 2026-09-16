@@ -81,7 +81,10 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
        is printed. A usage error raised by a step that follows the analysis instead - a
        plugin hook that raises, an override naming a plugin check no loaded plugin
        registers, a ``--renames`` file, a dumped dictionary or an artefact that cannot be
-       written, an address map that cannot be read, ``--plugin`` refused beside a
+       written, an output path naming a file the run itself read (``dump -o``,
+       ``compare --renames`` and ``generate --dictionary`` each refuse one, naming it, since
+       nothing DDD writes is ever a file it read), an address map that cannot be read,
+       ``--plugin`` refused beside a
        description, or a run that would write nothing - reports the findings of the run
        first, in the requested format, before the error follows; the exit code is still
        ``2``.

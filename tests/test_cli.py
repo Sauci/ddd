@@ -2338,6 +2338,77 @@ class TestGenerateTheDictionary:
         assert not (tmp_path / "gen" / "dictionary.json").exists()
 
 
+class TestAnOutputThatIsASource:
+    """A file the run read is not a file the run writes over.
+
+    ``-o``, ``--renames`` and ``--dictionary`` name a file on the command line, and a
+    tab-completed path lands on a description of the very project being read: a
+    hand-written source was replaced by the dictionary, or by a list of renames, and the run
+    said `wrote ...` and exited 0. The refusal names the file, before anything is written.
+    """
+
+    FILES: ClassVar[dict[str, Any]] = {
+        "project.ddd.json": project("P", "a.ddd.json"),
+        "a.ddd.json": component("A", declare("local", "X")),
+    }
+
+    def test_dump_refuses_a_component_of_the_project_it_read(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.FILES)
+        target = tree / "a.ddd.json"
+        before = target.read_bytes()
+        assert main(["dump", str(tree / "project.ddd.json"), "-o", str(target)]) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert f"-o would write over '{target.as_posix()}'" in err
+        assert err.index("info[missing-id]") < err.index("would write over")
+        assert target.read_bytes() == before
+
+    def test_compare_refuses_a_renames_file_that_is_the_project_it_read(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.FILES)
+        root = str(tree / "project.ddd.json")
+        before = (tree / "project.ddd.json").read_bytes()
+        assert main(["compare", root, root, "--renames", root]) == EXIT_USAGE
+        assert f"--renames would write over '{Path(root).as_posix()}'" in capsys.readouterr().err
+        assert (tree / "project.ddd.json").read_bytes() == before
+
+    def test_compare_refuses_a_renames_file_that_is_the_baseline_dump(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The baseline is read too, whichever of the two shapes it has."""
+        write_tree(tree, self.FILES)
+        root = str(tree / "project.ddd.json")
+        archived = tree / "baseline.json"
+        assert main(["dump", root, "-o", str(archived)]) == EXIT_OK
+        before = archived.read_bytes()
+        assert main(["compare", str(archived), root, "--renames", str(archived)]) == EXIT_USAGE
+        assert f"--renames would write over '{archived.as_posix()}'" in capsys.readouterr().err
+        assert archived.read_bytes() == before
+
+    def test_generate_refuses_a_dictionary_that_is_a_source(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Beside the refusal of a path an artefact of the run already claims."""
+        write_tree(tree, self.FILES)
+        target = tree / "a.ddd.json"
+        before = target.read_bytes()
+        arguments = ["generate", "a2l", str(tree / "project.ddd.json"), "-o", str(tree / "gen")]
+        assert main([*arguments, "--dictionary", str(target)]) == EXIT_USAGE
+        assert f"--dictionary would write over '{target.as_posix()}'" in capsys.readouterr().err
+        assert target.read_bytes() == before
+        assert not (tree / "gen").exists()
+
+    def test_a_file_the_run_never_read_is_written(self, tree: Path) -> None:
+        """The control: a target beside the sources, which is what the option is for."""
+        write_tree(tree, self.FILES)
+        root = str(tree / "project.ddd.json")
+        target = tree / "elsewhere.ddd.json"
+        assert main(["dump", root, "-o", str(target)]) == EXIT_OK
+        assert json.loads(target.read_text(encoding="utf-8"))["format"] == DICTIONARY_FORMAT
+
+
 def test_assigning_ids_writes_one_per_producing_declaration(tree, capsys):
     write_tree(
         tree,

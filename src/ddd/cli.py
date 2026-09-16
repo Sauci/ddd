@@ -44,7 +44,7 @@ from ddd.diagnostics import (
 )
 from ddd.identity import UNREADABLE, assign
 from ddd.ir import Comparable, DataDictionary
-from ddd.loading import load_dictionary, load_workspace
+from ddd.loading import load_dictionary, load_workspace, resolve_path
 from ddd.models import (
     ComponentFile,
     ConstantsFile,
@@ -600,10 +600,15 @@ def _command_check(args: argparse.Namespace) -> int:
         with _reported_on_failure(bag, args.format):
             baseline = _read_baseline(args.baseline, bag)
             if baseline is not None:
-                compare(baseline, resolved.dictionary, bag, location=Location(args.project))
+                compare(
+                    baseline.dictionary,
+                    resolved.dictionary,
+                    bag,
+                    location=Location(args.project),
+                )
                 run_compare_hooks(
                     resolved.plugins,
-                    baseline,
+                    baseline.dictionary,
                     resolved.dictionary,
                     bag,
                     resolved.locate,
@@ -648,9 +653,12 @@ def _command_compare(args: argparse.Namespace) -> int:
         bag.policy.verify(bag.registered)
 
         location = Location(args.candidate)
-        paired = compare(baseline, candidate.dictionary, bag, location=location)
-        run_compare_hooks(plugins, baseline, candidate.dictionary, bag, candidate.locate, location)
+        paired = compare(baseline.dictionary, candidate.dictionary, bag, location=location)
+        run_compare_hooks(
+            plugins, baseline.dictionary, candidate.dictionary, bag, candidate.locate, location
+        )
         if args.renames is not None:
+            _refuse_a_source(args.renames, "--renames", *candidate.sources, *baseline.sources)
             # Written whether or not the comparison found errors: a delivery that cannot be
             # accepted still needs its renames listed, so that whoever fixes it knows what
             # moved.
@@ -898,6 +906,7 @@ def _command_generate(args: argparse.Namespace) -> int:
             backends.append(backend_of(plugin, dictionary, GENERATOR))
         files = render(dictionary, backends, args.output_dir)
         if args.dictionary is not None:
+            _refuse_a_source(args.dictionary, "--dictionary", *resolved.sources)
             files.append(_dictionary_file(dictionary, args.dictionary, files))
         try:
             results = write(files, dry_run=args.dry_run)
@@ -973,12 +982,12 @@ def _command_dump(args: argparse.Namespace) -> int:
         print(_dictionary_text(resolved.dictionary), end="")
         _report(bag, args.format, stream=sys.stderr)
     else:
-        _write_dictionary(resolved.dictionary, args.output, bag, args.format)
+        _write_dictionary(resolved, args.output, bag, args.format)
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
 
 
 def _write_dictionary(
-    dictionary: DataDictionary, path: Path, bag: DiagnosticBag, output_format: str
+    resolved: Resolved, path: Path, bag: DiagnosticBag, output_format: str
 ) -> None:
     """``dump -o``: the dictionary into ``path``, reported the way ``generate`` reports a file.
 
@@ -993,7 +1002,8 @@ def _write_dictionary(
     written is reported after the findings of the run, as ``generate`` reports one.
     """
     with _reported_on_failure(bag, output_format, sys.stderr):
-        text = _dictionary_text(dictionary)
+        _refuse_a_source(path, "-o", *resolved.sources)
+        text = _dictionary_text(resolved.dictionary)
         try:
             (result,) = write([GeneratedFile(path, text)])
         except OSError as error:
@@ -1350,6 +1360,10 @@ class Resolved:
     plugins: tuple[Plugin, ...]
     locate: Callable[[str], Location | None]
     from_description: bool
+    sources: tuple[Path, ...]
+    """Every file this side was read out of, resolved: a project and its whole include tree,
+    or the single file an archived dump was read from. What :func:`_refuse_a_source` holds an
+    output path against."""
 
 
 def _analyze(args: argparse.Namespace, stream: Any = None) -> tuple[Resolved | None, DiagnosticBag]:
@@ -1370,7 +1384,7 @@ def _analyze(args: argparse.Namespace, stream: Any = None) -> tuple[Resolved | N
         # A plugin hook that raises is a usage error naming the plugin (section 3.11); the
         # findings collected before the hook ran are the project's, and are printed first.
         dictionary = analyze(workspace, bag)
-    return Resolved(dictionary, workspace.plugins, workspace.locate, True), bag
+    return Resolved(dictionary, workspace.plugins, workspace.locate, True, workspace.sources()), bag
 
 
 def _read_dictionary(path: Path, bag: DiagnosticBag) -> Resolved | None:
@@ -1383,14 +1397,41 @@ def _read_dictionary(path: Path, bag: DiagnosticBag) -> Resolved | None:
         workspace = load_workspace(path, bag)
         if workspace is None or bag.has_errors:
             return None
-        return Resolved(analyze(workspace, bag), workspace.plugins, workspace.locate, True)
+        return Resolved(
+            analyze(workspace, bag),
+            workspace.plugins,
+            workspace.locate,
+            True,
+            workspace.sources(),
+        )
     dictionary = load_dictionary(path, bag)
     if dictionary is None:
         return None
-    return Resolved(dictionary, (), lambda _: Location(path), False)
+    return Resolved(dictionary, (), lambda _: Location(path), False, (resolve_path(path),))
 
 
-def _read_baseline(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
+def _refuse_a_source(path: Path, option: str, *sources: Path) -> None:
+    """Refuse an output path that names a file this run read; a usage error naming it.
+
+    ``-o``, ``--renames`` and ``--dictionary`` each name a file on the command line, and the
+    obvious way to get one wrong is to complete the name of a description sitting in the same
+    directory: the run then replaced a hand-written source with the dictionary or with a list
+    of renames, reported `wrote ...` and exited 0, and the next command over the project read
+    whatever had landed there. Nothing DDD writes is ever a file it read, so the pair is
+    always a mistake rather than a request, and it is refused before anything is written.
+
+    Compared on the resolved path, as the sources themselves are, so that an alias, a
+    relative spelling or a junction cannot slip past the comparison.
+    """
+    if resolve_path(path) in set(sources):
+        msg = (
+            f"{option} would write over '{path.as_posix()}', which this run reads; "
+            f"give it a file of its own"
+        )
+        raise ValueError(msg)
+
+
+def _read_baseline(path: Path, bag: DiagnosticBag) -> Resolved | None:
     """Resolve the baseline side of a comparison, in a bag of its own.
 
     A baseline given as a project description has to be analysed to become a dictionary, and
@@ -1414,7 +1455,7 @@ def _read_baseline(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
                 diagnostic.location,
                 diagnostic.notes,
             )
-    return resolved.dictionary if resolved is not None else None
+    return resolved
 
 
 def _holds_a_description(path: Path) -> bool:

@@ -818,8 +818,10 @@ ddd_generate(firmware.elf NAME DemoDevice TEMPLATE_DIRECTORY "${CMAKE_CURRENT_SO
 ```
 
 `sensor_hub.c` then simply writes `#include "SensorHub.h"` - the header DDD generated for
-that component, and nothing else is on its include path.  A complete, buildable example is
-in [examples/cmake/](examples/cmake/).
+that component, and the one it is meant to include.  What the build hands it is the output
+directory, which holds the headers of every component of *this image* and no others, so the
+isolation is a convention a reviewer can see broken rather than one the compiler enforces.
+A complete, buildable example is in [examples/cmake/](examples/cmake/).
 
 **Collection follows the link graph.**  The descriptions travel as a transitive usage
 requirement (`TRANSITIVE_LINK_PROPERTIES`, hence CMake **3.30**), so an image gets exactly

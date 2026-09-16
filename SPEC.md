@@ -2096,7 +2096,8 @@ keyword given no value, which the error names: a variable that expanded to nothi
 exactly like a keyword nobody gave, and each one silently changes what the call does; it defines an on-demand
 target `<target>.ddd` that runs `ddd check <file> --standalone` on each registered
 component file under the default severity policy, a vocabulary file getting none because it
-declares no interface of its own. `ddd_generate` generates into the build tree and defines
+declares no interface of its own; a registered file whose JSON does not parse at all is
+checked like a component, what is wrong with it being exactly what that check reports. `ddd_generate` generates into the build tree and defines
 two libraries, named after the image without its extension: an interface library
 `<stem>_ddd_headers`, carrying the output directory as an include directory and, in the
 collected mode, the compile usage described at the end of this section; and an object
@@ -2163,7 +2164,12 @@ a run failing its checks writes none of them; its path is published as the image
 itself is found by `find_program`
 into the cache variable `DDD_EXECUTABLE` and is a dependency of the generation, so an
 upgraded DDD regenerates; multi-config generators are refused at configure time, because
-the generated files have one path that every configuration would write to.
+the generated files have one path that every configuration would write to. The module and
+the tool **shall** be one release: including the module runs `ddd --version` and refuses,
+naming both, a tool spelling another version than the module does, because every option the
+module passes is checked when the build runs it and a mismatch is otherwise an unrecognised
+argument at build time, or a silent build under the option set of a release nobody is
+running.
 
 In the collected mode the interface library carries the compile usage of every registered
 target - include directories, compile definitions and compile options, never link edges - so

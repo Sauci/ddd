@@ -29,6 +29,7 @@ from pathlib import Path
 import pytest
 
 from conftest import EXAMPLES, declare
+from ddd import __version__
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = Path(sysconfig.get_path("scripts"))
@@ -207,7 +208,7 @@ class TestAComponentThatLeavesTheImage:
     def test_its_header_is_removed_and_stops_compiling(self, tmp_path: Path) -> None:
         """The whole build first, which is what proves the header was usable: ``event_logger.c``
         includes ``EventLogger.h`` and compiled against it. After the drop it cannot, which is
-        the include-isolation the build page promises, back where an incremental build lost it.
+        what keeps the include path to the components of the image the build page describes.
         """
         source = self.write(tmp_path)
         configure(source, tmp_path / "build")
@@ -943,6 +944,126 @@ target_link_libraries(img PRIVATE store)
         # A map in the source tree has to exist: there, a missing file is a mistake of its own.
         (tmp_path / "map.json").write_text("{}\n", encoding="utf-8")
         configure(source, tmp_path / "build", f"-DDDD_MAP={(tmp_path / 'map.json').as_posix()}")
+
+
+class TestAComponentThatCannotBeRead:
+    """A description that is not valid json at configure time still gets its check target.
+
+    ``_ddd_is_component_file`` answered FALSE for a file whose json does not parse at all,
+    which is the answer it owes a *vocabulary* file - so the component was skipped, its
+    ``<target>.ddd`` target was created with no command on it at all, and ``ninja store.ddd``
+    said ``no work to do`` about a file that does not parse.  Nothing said so, and the target
+    stayed empty until somebody configured again: the one command whose whole purpose is to
+    report what is wrong with a description reported nothing about the description that is
+    most obviously wrong.
+    """
+
+    BROKEN = "{ broken"
+    """What an editor leaves behind mid-edit, and what a merge conflict leaves for longer."""
+
+    def write(self, tmp_path: Path, content: str) -> Path:
+        (tmp_path / "store.ddd.json").write_text(content, encoding="utf-8")
+        (tmp_path / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        (tmp_path / "store.c").write_text("int store(void) { return 0; }\n", encoding="utf-8")
+        (tmp_path / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(Broken LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+add_library(store STATIC store.c)
+ddd_add_component(store JSON "{(tmp_path / "store.ddd.json").as_posix()}")
+add_executable(img main.c)
+target_link_libraries(img PRIVATE store)
+ddd_generate(img
+             NAME BrokenDevice
+             TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}")
+""",
+            encoding="utf-8",
+        )
+        return tmp_path / "store.ddd.json"
+
+    def test_the_check_target_reports_the_syntax_error_and_the_fix_clears_it(
+        self, tmp_path: Path
+    ) -> None:
+        """Configured over the broken file, so the target is the one that configure built.
+
+        The second half is what the target being empty hid: the file is repaired without
+        configuring again - which is what a developer does, the editor being where both
+        happen - and the same target has to run the check over the repaired file.
+        """
+        description = self.write(tmp_path, self.BROKEN)
+        configure(tmp_path, tmp_path / "build")
+        run = cmake("--build", str(tmp_path / "build"), "--target", "store.ddd", cwd=tmp_path)
+        assert run.returncode != 0, "a component that does not parse passed its own check target"
+        assert "json-syntax" in run.stdout + run.stderr
+
+        described = {
+            "component": {
+                "name": "Store",
+                "interface": [declare("local", "Level", id="ab3cd4ef5gh6")],
+            }
+        }
+        description.write_text(json.dumps(described, indent=2), encoding="utf-8")
+        assert "1 component" in build(tmp_path / "build", "store.ddd")
+
+
+class TestAToolOfAnotherRelease:
+    """The module and the ``ddd`` it drives have to be one release.
+
+    ``ddd cmake-dir`` and the header of the module invite a project to copy ``Ddd.cmake`` into
+    its own tree, where it then sits beside whichever ``ddd`` the environment has: 0.10.0's
+    module with 0.9.0's tool, say.  Nothing compared the two.  The configure step passed -
+    ``schema all``, ``build-info`` and ``sources`` are older than either release - and the
+    first *build* failed with argparse's ``unrecognized arguments: --dictionary``, which names
+    the option and not the mismatch behind it; the other way round, the build quietly ran with
+    the old module's option set.  Every other test in this file is the positive control: they
+    all configure against the ``ddd`` of this tree, whose version the module states.
+    """
+
+    def fake_tool(self, tmp_path: Path, version: str) -> Path:
+        """A ``ddd`` that answers ``--version`` and nothing else, as the handshake needs."""
+        if os.name == "nt":
+            tool = tmp_path / "ddd.bat"
+            tool.write_text(f"@echo ddd {version}\n", encoding="utf-8")
+        else:
+            tool = tmp_path / "ddd.sh"
+            tool.write_text(f'#!/bin/sh\necho "ddd {version}"\n', encoding="utf-8")
+            tool.chmod(0o755)
+        return tool
+
+    def write(self, tmp_path: Path) -> None:
+        (tmp_path / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        (tmp_path / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(Mismatch LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+add_executable(img main.c)
+""",
+            encoding="utf-8",
+        )
+
+    def test_the_include_refuses_it_naming_both_versions(self, tmp_path: Path) -> None:
+        """Refused where the module is included, before a single target is defined: the
+        mismatch is a property of the pair, not of anything a call says."""
+        self.write(tmp_path)
+        tool = self.fake_tool(tmp_path, "0.0.1")
+        run = cmake(
+            "-S",
+            str(tmp_path),
+            "-B",
+            str(tmp_path / "build"),
+            "-G",
+            "Ninja",
+            f"-DCMAKE_MAKE_PROGRAM={NINJA}",
+            f"-DDDD_EXECUTABLE={tool.as_posix()}",
+            *compiler(),
+            cwd=tmp_path,
+        )
+        assert run.returncode != 0, "a tool of another release configured without a word"
+        said = " ".join(run.stderr.split())
+        assert "0.0.1" in said and __version__ in said, said
+        assert tool.as_posix() in said.replace("\\", "/"), "the message does not name the tool"
 
 
 @pytest.mark.parametrize("tool", [CMAKE, NINJA, str(DDD)])

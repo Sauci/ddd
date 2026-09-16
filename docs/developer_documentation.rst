@@ -377,11 +377,20 @@ Continuous integration
 
 ``.github/workflows/ci.yml`` runs the commands above - the suite with its coverage gate,
 ``ruff`` twice and ``mypy`` - on every push to ``master`` and every pull request, in two jobs,
-and a third the commands above do not cover: ``extension`` installs node and the package,
+and two more the commands above do not cover. ``extension`` installs node and the package,
 runs ``npm ci``, ``npm test`` and ``npm run package`` in ``editors/vscode``, and uploads the
 ``.vsix`` it produced. Its tests start a real language server, which is why it installs the
 python package as well as compiling typescript, and packaging the extension there proves that
 the artefact a customer is handed can be produced at all.
+
+``container`` builds the image behind ``docker compose`` and runs the ``generate`` service in
+it. Nothing built the image for a long time, and it is the local equivalent of every other
+job here: a ``COPY`` of a directory removed three releases earlier failed the build on its
+first line, and every service with it, while ci stayed green - ci installs the package itself
+and never came near the image. The service run after it is the other half of what broke then:
+the image built, and the service exited with a usage error from an option set two releases
+old. The five other services are not run here; what they exercise is either covered by a job
+above or, for ``compile``, the run a contributor does locally.
 
 The suite runs across a matrix of ubuntu and windows on python 3.12 and 3.13, which is the
 four combinations the classifiers in ``pyproject.toml`` advertise. That is not thoroughness
@@ -431,8 +440,9 @@ dropping a figure: ``dot`` from graphviz draws the entity relationship diagram o
 on the :doc:`file format pages <file_formats/index>`, and ``plantuml`` draws the ``.. uml::``
 diagrams. Without a plantuml installation, ``docs/conf.py`` still names one, so the build
 reports a warning per diagram - which under ``-W`` is a failure. Both are apt packages, and
-both are in the image behind ``docker compose run --rm docs``, which is the way to build the
-documentation without installing either.
+both are in the image behind ``docker compose run --rm docs``, which carries the python
+requirements above as well and is the way to build the documentation without installing any
+of it.
 
 Publishing this documentation
 -----------------------------

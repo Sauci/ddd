@@ -514,6 +514,30 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   generated out of the link graph instead of out of the file the caller meant.  Both calls now
   stop the configure step, naming the keyword.
 
+  *The module and the tool are one release.*  Nothing compared them, and `ddd cmake-dir`
+  invites a project to copy `Ddd.cmake` into its own tree, where it sits beside whichever
+  `ddd` the environment has.  Every option the module passes is checked by the tool's
+  argument parser when the build runs it, so a module newer than its tool configured cleanly
+  and then failed with `generate: error: unrecognized arguments: --dictionary`, which names
+  the option and not the mismatch behind it, while a module older than its tool built quietly
+  under the option set of a release nobody was running.  Including the module now runs `ddd
+  --version` once and refuses the pair, naming both versions and the tool.
+
+  *A description that does not parse is still checked.*  A component whose file was not valid
+  json at configure time was read as a file of some other kind and dropped from its own
+  `<target>.ddd` target - so `ninja comp.ddd` answered `no work to do` about a file that does
+  not parse, and went on answering it, the target being built at configure time, until
+  somebody configured again.  Fixing the typo and asking again therefore reported success
+  without having checked anything.  Such a file is now checked like a component, which is the
+  command that has something to say about it.
+
+  *The build page does not promise an isolation the module does not build.*  It said the
+  header generated for a component "is the only one on its include path"; the module puts the
+  whole output directory on every component's include path, so `#include "Controller.h"` from
+  another component's source compiles.  The page and the README now say what is built - one
+  directory, holding the headers of that image and no others - and what the isolation rests
+  on.
+
   **Migration:** a directory that a `ddd generate` run is pointed at now belongs to that run:
   its own files are untouched, but a file DDD wrote there and no longer writes is deleted at
   the next run, where it used to accumulate.  Two runs generating into one directory - which
@@ -529,7 +553,12 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   the configure step where it used to be ignored: give the keyword a value, or leave it out.
   An address map entry outside `0 .. 0xFFFFFFFF` for a symbol the a2l never names is read
   where it used to be refused; a build that relied on that refusal to catch a wrong map reads
-  the `address-missing` note instead, which names every entry the a2l does not carry.
+  the `address-missing` note instead, which names every entry the a2l does not carry.  A
+  project whose `Ddd.cmake` is a copy of another release's now fails the configure step
+  instead of the build step or nothing at all: copy the module of the tool being used, which
+  is what `ddd cmake-dir` prints, or point `DDD_EXECUTABLE` at the matching tool.  A target
+  registering a description that does not parse now fails its `<target>.ddd` target, with the
+  syntax error, where it used to report nothing to do.
 
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`

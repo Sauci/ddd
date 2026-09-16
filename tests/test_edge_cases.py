@@ -303,6 +303,21 @@ class TestMismatchMessages:
         assert checks(bag) == ["init-invalid"]
         assert "is not a valid bool" in messages(bag)
 
+    def test_a_fractional_init_on_a_boolean_is_quoted_as_it_was_written(self, tree: Path) -> None:
+        """``2.0`` was reported as "init value 2", which reads as a complaint about a whole
+        number nobody wrote - the refusal beside it, for a fractional init on an integer
+        datatype, has spelled the value as written for exactly this reason.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", "boolean", init=2.0)),
+            },
+        )
+        assert checks(bag) == ["init-invalid"]
+        assert "init value 2.0 is not a valid bool" in messages(bag)
+
     def test_a_map_whose_axes_are_unknown_is_dropped(self, tree: Path) -> None:
         dictionary, bag = run_analysis(
             tree,

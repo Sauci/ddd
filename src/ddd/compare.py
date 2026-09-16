@@ -25,7 +25,7 @@ like the others, not a drift.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from ddd.diagnostics import DiagnosticBag, Location
@@ -61,6 +61,18 @@ class ComparedField[T]:
     between two deliveries there is no producer to defer to.
     """
 
+    detail: Callable[[T, T], str | None] | None = None
+    """What else the finding says about this field, when the two values do not say it alone.
+
+    ``spell_out`` renders a difference as ``name: after != before``, which is the whole story
+    for a datatype and not for an init: a hundred thousand element block with one element
+    changed spelled both sides whole - 600 kB in one warning, in the text report and in the
+    json - and the reader still had to find the element that moved. Spelling the head of each
+    instead would print two lists that look identical on a finding whose entire content is
+    that they differ, so the index they part at is the rest of the sentence. Handed both
+    sides, because where two values part is not a property of either one.
+    """
+
 
 def differing[T](
     fields: Sequence[ComparedField[T]], reference: T, other: T
@@ -78,9 +90,19 @@ def differing[T](
 
 def spell_out[T](fields: Sequence[ComparedField[T]], reference: T, other: T) -> str:
     """``datatype: uint16 != uint8, unit: 'V' != 'Hz'``, for a diagnostic message."""
-    return ", ".join(
-        f"{field.name}: {field.describe(other)} != {field.describe(reference)}" for field in fields
-    )
+    return ", ".join(_spell_field(field, reference, other) for field in fields)
+
+
+def _spell_field[T](field: ComparedField[T], reference: T, other: T) -> str:
+    """One field's half of that message, with whatever :attr:`ComparedField.detail` adds.
+
+    Parenthesised rather than appended behind a semicolon, so that the clause stays inside
+    the one field it belongs to when several fields differ at once and the message joins them
+    with commas.
+    """
+    spelled = f"{field.name}: {field.describe(other)} != {field.describe(reference)}"
+    detail = None if field.detail is None else field.detail(reference, other)
+    return spelled if detail is None else f"{spelled} ({detail})"
 
 
 def _describe_references(entry: Comparable) -> str:
@@ -102,19 +124,81 @@ def _describe_conversion(conversion: Conversion) -> str:
     return conversion.describe()
 
 
-def _describe_init(value: object) -> str:
-    """``none`` for no init, quoted text for a string init, ``repr`` for everything else.
+_MOST_INIT_ELEMENTS = 4
+"""How many elements of a list a finding spells before it says how many there are."""
 
-    ``repr`` single-quotes a string - ``'V1.3' != 'V1.2'`` - which reads as a python value
-    rather than as the text itself, where a description file, ``ddd list`` and the hover all
-    spell it ``"V1.2"``. Every other init is a number, a bool or a nested list of them, which
-    ``repr`` already spells the way this file wants.
+_MOST_INIT_CHARACTERS = 32
+"""How much of a text init a finding spells before it says how long the text is."""
+
+
+def _describe_init(value: object) -> str:
+    """The init as the file spells it, cut short where spelling it whole says nothing.
+
+    json throughout, because that is what a description file, ``ddd list`` and the hover all
+    write: ``repr`` gave a list python's tuple - ``(7, 7, 7, 8)`` where every other reading of
+    the same value is ``[7, 7, 7, 8]`` - a bool python's ``True``, and a string python's
+    single quotes.
+
+    Cut short because an init is as large as the array it fills, and a finding is a sentence:
+    a ``uint8[100000]`` block spelled both sides of one warning at 600 017 characters, and a
+    16 x 16 map about 1.6 kB per changed table. What a reader needs from a long one is enough
+    of the head to recognise it and the count; where two of them part is
+    :func:`_where_the_inits_part`'s half of the message.
     """
     if value is None:
         return "none"
     if isinstance(value, str):
-        return json.dumps(value)
-    return repr(value)
+        if len(value) <= _MOST_INIT_CHARACTERS:
+            return json.dumps(value)
+        return f"{json.dumps(value[:_MOST_INIT_CHARACTERS] + '...')} ({len(value)} characters)"
+    if isinstance(value, tuple):
+        head = ", ".join(_describe_init(element) for element in value[:_MOST_INIT_ELEMENTS])
+        if len(value) > _MOST_INIT_ELEMENTS:
+            return f"[{head}, ... {len(value)} values]"
+        return f"[{head}]"
+    return json.dumps(value)
+
+
+def _where_the_inits_part(old: Comparable, new: Comparable) -> str | None:
+    """``first differs at [3][7]: 8 != 7``, or nothing when the spellings already say it.
+
+    Asked of the *stored* inits, which is what the comparison decided on: a scalar stands for
+    every element of the array it fills, so ``7`` against ``[7, 7, 7, 8]`` parts at ``[3]``
+    and not at the top. Silent when neither side is a list - two scalars, or one side with no
+    init at all, are both spelled whole beside this - and silent when two lists agree as far
+    as the shorter one goes, where the difference is the length and the two counts state it.
+    """
+    found = _first_difference(_stored_init(old), _stored_init(new))
+    if found is None:
+        return None
+    path, spelled = found
+    return f"first differs at {path}: {spelled}"
+
+
+def _first_difference(before: object, after: object) -> tuple[str, str] | None:
+    """The access path of the first element two stored inits disagree on, and the two values.
+
+    A string never reaches here as text: :func:`_stored_init` has already turned it into the
+    character codes it stores, so every value below is a number, a bool or a list of them.
+    """
+    pairs: Iterable[tuple[object, object]]
+    if isinstance(before, tuple) and isinstance(after, tuple):
+        pairs = zip(before, after, strict=False)
+    elif isinstance(before, tuple):
+        pairs = ((element, after) for element in before)
+    elif isinstance(after, tuple):
+        pairs = ((before, element) for element in after)
+    else:
+        return None
+    for index, (mine, theirs) in enumerate(pairs):
+        if mine == theirs:
+            continue
+        deeper = _first_difference(mine, theirs)
+        if deeper is not None:
+            path, spelled = deeper
+            return f"[{index}]{path}", spelled
+        return f"[{index}]", f"{_describe_init(theirs)} != {_describe_init(mine)}"
+    return None
 
 
 def _stored_init(entry: Comparable) -> object:
@@ -230,7 +314,9 @@ _STORAGE_FIELDS: tuple[ComparedField[Comparable], ...] = (
     # Compared as the storage it produces and described as it was written: the value the two
     # deliveries have to agree on is the bytes, while a reader of the finding is looking for
     # the line to edit, which is the spelling in front of them.
-    ComparedField("init", _stored_init, lambda o: _describe_init(o.init)),
+    ComparedField(
+        "init", _stored_init, lambda o: _describe_init(o.init), detail=_where_the_inits_part
+    ),
     ComparedField("volatile", lambda o: o.volatile, lambda o: str(o.volatile).lower()),
     ComparedField(
         "section", lambda o: o.section, lambda o: o.section if o.section is not None else "none"

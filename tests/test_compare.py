@@ -863,6 +863,135 @@ class TestAnInitComparesAsBytes:
         assert new.by_name["V"].init == (7, 7, 7, 7)
 
 
+class TestAnInitIsSpelledForAReader:
+    """``changed-storage`` used to print the whole of both inits, in python's spelling.
+
+    A ``uint8[100000]`` block with one element changed was one warning of 600 017 characters,
+    in the text report and in the json, and the reader still had to find the element that
+    moved; a 16 x 16 map cost about 1.6 kB per changed table. And a list came out as a python
+    tuple - ``(7, 7, 7, 8)`` - where the description file, ``ddd list`` and the hover all
+    spell it ``[7, 7, 7, 8]``.
+    """
+
+    def block(self, init: tuple[object, ...]) -> DataDictionary:
+        return DataDictionary(
+            name="P",
+            objects=(
+                ResolvedObject(
+                    name="Table",
+                    kind=ObjectKind.VALUE_BLOCK,
+                    datatype=Datatype.UINT8,
+                    conversion=IdentityConversion(),
+                    limits=Limits(min=0, max=255),
+                    shape=(len(init),),
+                    init=init,
+                ),
+            ),
+        )
+
+    def test_a_long_init_is_abbreviated_and_the_difference_is_named(self) -> None:
+        """Abbreviating alone would be worse than saying nothing: two truncated heads that
+        read identical, on a finding whose whole content is that they differ. The index the
+        two part at is what makes the short spelling safe to print.
+        """
+        changed = [7] * 100000
+        changed[51234] = 8
+        bag = verdict(self.block((7,) * 100000), self.block(tuple(changed)))
+        assert checks(bag) == ["changed-storage"], messages(bag)
+        spelled = messages(bag)
+        assert len(spelled) < 200, f"{len(spelled)} characters"
+        assert "100000 values" in spelled
+        assert "first differs at [51234]: 8 != 7" in spelled
+
+    def test_a_list_init_is_spelled_as_the_file_spells_it(self, tree: Path) -> None:
+        old = one_component(
+            tree, "old", declare("local", "V", "uint8", kind="value_block", dimensions=[4], init=7)
+        )
+        new = one_component(
+            tree,
+            "new",
+            declare("local", "V", "uint8", kind="value_block", dimensions=[4], init=[7, 7, 7, 8]),
+        )
+        bag = verdict(old, new)
+        assert "'V': init: [7, 7, 7, 8] != 7" in messages(bag), messages(bag)
+
+    def test_a_nested_init_is_spelled_as_the_file_spells_it(self, tree: Path) -> None:
+        old = one_component(
+            tree,
+            "old",
+            declare(
+                "local", "M", "uint8", kind="value_block", dimensions=[2, 2], init=[[1, 2], [3, 4]]
+            ),
+        )
+        new = one_component(
+            tree,
+            "new",
+            declare(
+                "local", "M", "uint8", kind="value_block", dimensions=[2, 2], init=[[1, 2], [3, 5]]
+            ),
+        )
+        bag = verdict(old, new)
+        assert "'M': init: [[1, 2], [3, 5]] != [[1, 2], [3, 4]]" in messages(bag), messages(bag)
+
+    def test_a_text_init_longer_than_a_finding_carries_is_abbreviated(self, tree: Path) -> None:
+        """A string's init is its text, and its array is capped by the shape cap and nothing
+        else, so the same warning printed whatever a description happened to write there."""
+        text = {"kind": "value_block", "dimensions": [200], "conversion": {"kind": "string"}}
+        old = one_component(tree, "old", declare("local", "S", "uint8", init="a" * 150, **text))
+        new = one_component(tree, "new", declare("local", "S", "uint8", init="b" * 150, **text))
+        bag = verdict(old, new)
+        spelled = messages(bag)
+        assert checks(bag) == ["changed-storage"], spelled
+        assert len(spelled) < 200, f"{len(spelled)} characters"
+        assert "150 characters" in spelled
+
+    def test_the_index_is_read_off_the_bytes_whichever_side_was_abbreviated(
+        self, tree: Path
+    ) -> None:
+        """A scalar stands for every element of the array it fills, so the two part inside
+        the array and not at the top - from whichever side the scalar was written on."""
+        block: dict[str, Any] = {"kind": "value_block", "dimensions": [4]}
+        old = one_component(tree, "old", declare("local", "V", "uint8", init=[7, 7, 7, 8], **block))
+        new = one_component(tree, "new", declare("local", "V", "uint8", init=7, **block))
+        assert "first differs at [3]: 7 != 8" in messages(verdict(old, new))
+
+    def test_a_resized_array_is_not_given_an_index_it_has_no_element_at(self, tree: Path) -> None:
+        """Two lists that agree as far as the shorter one goes have no first differing
+        element: what differs is how many there are, and both counts are printed already."""
+        old = one_component(
+            tree,
+            "old",
+            declare("local", "V", "uint8", kind="value_block", dimensions=[3], init=[1, 2, 3]),
+        )
+        new = one_component(
+            tree,
+            "new",
+            declare("local", "V", "uint8", kind="value_block", dimensions=[2], init=[1, 2]),
+        )
+        bag = verdict(old, new)
+        assert "'V': init: [1, 2] != [1, 2, 3]" in messages(bag), messages(bag)
+        assert "first differs" not in messages(bag)
+
+    def test_a_short_init_is_still_printed_whole(self, tree: Path) -> None:
+        """The abbreviation must not reach the inits a reader can simply be shown."""
+        old = one_component(tree, "old", declare("local", "V", "uint8", init=1))
+        new = one_component(tree, "new", declare("local", "V", "uint8", init=2))
+        assert "'V': init: 2 != 1" in messages(verdict(old, new))
+
+    def test_gaining_an_init_still_reads_against_none(self, tree: Path) -> None:
+        old = one_component(tree, "old", declare("local", "V", "uint8"))
+        new = one_component(tree, "new", declare("local", "V", "uint8", init=3))
+        assert "'V': init: 3 != none" in messages(verdict(old, new))
+
+    def test_a_boolean_init_is_spelled_as_json_spells_it(self, tree: Path) -> None:
+        """``True`` is python's spelling of what every file, listing and hover writes
+        ``true``, and the storage table beside it already renders ``volatile`` that way."""
+        boolean: dict[str, Any] = {"datatype": "boolean", "conversion": {"kind": "identity"}}
+        old = one_component(tree, "old", declare("local", "V", init=False, **boolean))
+        new = one_component(tree, "new", declare("local", "V", init=True, **boolean))
+        assert "'V': init: true != false" in messages(verdict(old, new))
+
+
 class TestCommandLine:
     def dump_to(self, path: Path, source: Path, capsys: pytest.CaptureFixture[str]) -> None:
         assert main(["dump", str(source)]) == EXIT_OK

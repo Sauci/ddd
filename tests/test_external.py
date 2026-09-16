@@ -18,6 +18,8 @@ import pytest
 from pydantic import ValidationError
 
 from conftest import (
+    answered,
+    build_record,
     checks,
     component,
     declare,
@@ -25,6 +27,10 @@ from conftest import (
     project,
     render_files,
     run_analysis,
+    session,
+    struct_type,
+    types,
+    value_member,
     write_tree,
 )
 from ddd.diagnostics import DiagnosticBag
@@ -39,28 +45,17 @@ def external(name: str = "Drv_t", header: str = "drv.h", **extra: Any) -> dict[s
     return {"type": "external", "name": name, "header": header, **extra}
 
 
-def val(name: str, datatype: str = "uint16", **extra: Any) -> dict[str, Any]:
-    storage: dict[str, Any] = (
-        {} if "typename" in extra else {"datatype": datatype, "conversion": {"kind": "identity"}}
-    )
-    return {"name": name, "member": "value", **storage, **extra}
-
-
-def struct(name: str, *members: dict[str, Any]) -> dict[str, Any]:
-    return {"type": "struct", "name": name, "members": list(members)}
-
-
-def types(*entries: dict[str, Any]) -> dict[str, Any]:
-    return {"types": list(entries)}
-
-
 def opaque_project(**member_extra: Any) -> dict[str, Any]:
     """A project with one struct holding one external member and one plain one."""
     return {
         "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
         "t.ddd.json": types(
             external(),
-            struct("S_t", val("opaque", typename="Drv_t", **member_extra), val("plain")),
+            struct_type(
+                "S_t",
+                value_member("opaque", typename="Drv_t", **member_extra),
+                value_member("plain"),
+            ),
         ),
         "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
     }
@@ -115,7 +110,9 @@ class TestTheEntry:
 
     def test_two_entries_of_one_file_cannot_share_a_name(self) -> None:
         with pytest.raises(ValidationError, match="already declared in this file"):
-            TypesFile.model_validate(types(external("Twice_t"), struct("Twice_t", val("v"))))
+            TypesFile.model_validate(
+                types(external("Twice_t"), struct_type("Twice_t", value_member("v")))
+            )
 
 
 class TestOpaqueMembers:
@@ -227,7 +224,9 @@ class TestResolution:
     def test_a_structure_of_only_external_members_resolves_with_no_leaf(self, tree: Path) -> None:
         """Legal, and honestly empty: the variable exists, and nothing reaches list or a2l."""
         files = opaque_project()
-        files["t.ddd.json"] = types(external(), struct("S_t", val("opaque", typename="Drv_t")))
+        files["t.ddd.json"] = types(
+            external(), struct_type("S_t", value_member("opaque", typename="Drv_t"))
+        )
         dictionary, bag = run_analysis(tree, files)
         assert checks(bag) == []
         assert dictionary is not None
@@ -246,7 +245,10 @@ class TestResolution:
                 "a.ddd.json": component(
                     "A",
                     declare("local", "X", typename="S_t"),
-                    types=[external(), struct("S_t", val("opaque", typename="Drv_t"))],
+                    types=[
+                        external(),
+                        struct_type("S_t", value_member("opaque", typename="Drv_t")),
+                    ],
                 ),
             },
         )
@@ -313,7 +315,11 @@ class TestAlignmentEstimate:
                 "s.ddd.json": self.section(),
                 "t.ddd.json": types(
                     external(),
-                    struct("S_t", val("wide", "uint64"), val("opaque", typename="Drv_t")),
+                    struct_type(
+                        "S_t",
+                        value_member("wide", "uint64"),
+                        value_member("opaque", typename="Drv_t"),
+                    ),
                 ),
                 "a.ddd.json": component(
                     "A", declare("local", "X", typename="S_t", section=".fast")
@@ -328,7 +334,7 @@ class TestAlignmentEstimate:
             {
                 "project.ddd.json": project("P", "s.ddd.json", "t.ddd.json", "a.ddd.json"),
                 "s.ddd.json": self.section(),
-                "t.ddd.json": types(struct("S_t", val("wide", "uint64"))),
+                "t.ddd.json": types(struct_type("S_t", value_member("wide", "uint64"))),
                 "a.ddd.json": component(
                     "A", declare("local", "X", typename="S_t", section=".fast")
                 ),
@@ -345,8 +351,12 @@ class TestAlignmentEstimate:
                 "s.ddd.json": self.section(),
                 "t.ddd.json": types(
                     external(),
-                    struct("Inner_t", val("opaque", typename="Drv_t")),
-                    struct("Outer_t", val("wide", "uint64"), val("inner", typename="Inner_t")),
+                    struct_type("Inner_t", value_member("opaque", typename="Drv_t")),
+                    struct_type(
+                        "Outer_t",
+                        value_member("wide", "uint64"),
+                        value_member("inner", typename="Inner_t"),
+                    ),
                 ),
                 "a.ddd.json": component(
                     "A", declare("local", "X", typename="Outer_t", section=".fast")
@@ -380,8 +390,10 @@ class TestAlignmentEstimate:
                 "project.ddd.json": project("P", "s.ddd.json", "t.ddd.json", "a.ddd.json"),
                 "s.ddd.json": self.section(),
                 "t.ddd.json": types(
-                    struct("A_t", val("wide", "uint64"), val("b", typename="B_t")),
-                    struct("B_t", val("a", typename="A_t")),
+                    struct_type(
+                        "A_t", value_member("wide", "uint64"), value_member("b", typename="B_t")
+                    ),
+                    struct_type("B_t", value_member("a", typename="A_t")),
                 ),
                 "a.ddd.json": component(
                     "A", declare("local", "X", typename="A_t", section=".fast")
@@ -398,7 +410,11 @@ class TestAlignmentEstimate:
                 "project.ddd.json": project("P", "s.ddd.json", "t.ddd.json", "a.ddd.json"),
                 "s.ddd.json": self.section(),
                 "t.ddd.json": types(
-                    struct("S_t", val("wide", "uint64"), val("gone", typename="Ghost_t"))
+                    struct_type(
+                        "S_t",
+                        value_member("wide", "uint64"),
+                        value_member("gone", typename="Ghost_t"),
+                    )
                 ),
                 "a.ddd.json": component(
                     "A", declare("local", "X", typename="S_t", section=".fast")
@@ -423,13 +439,13 @@ class TestGeneratedC:
                 external("DriverStatus_t", "zeta/driver.h"),
                 external("OsHandle_t", "<os_types.h>"),
                 external("OsMutex_t", "<os_types.h>"),
-                struct(
+                struct_type(
                     "S_t",
-                    val("status", typename="DriverStatus_t"),
-                    val("log", typename="DriverStatus_t", dimensions=[4]),
-                    val("handle", typename="OsHandle_t"),
-                    val("lock", typename="OsMutex_t"),
-                    val("plain"),
+                    value_member("status", typename="DriverStatus_t"),
+                    value_member("log", typename="DriverStatus_t", dimensions=[4]),
+                    value_member("handle", typename="OsHandle_t"),
+                    value_member("lock", typename="OsMutex_t"),
+                    value_member("plain"),
                 ),
             ),
             "a.ddd.json": component("A", declare("local", "X", typename="S_t", section=".fast")),
@@ -510,7 +526,7 @@ class TestTheEditor:
             "p.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
             "t.ddd.json": types(
                 external("Drv_t", "drv.h", description="the vendor's status word"),
-                struct("S_t", val("opaque", typename="Drv_t"), val("plain")),
+                struct_type("S_t", value_member("opaque", typename="Drv_t"), value_member("plain")),
             ),
             "a.ddd.json": component("A", declare("output", "X", typename="S_t")),
         }
@@ -518,7 +534,6 @@ class TestTheEditor:
     def served(self, tree: Path, path: Path, pointer: str) -> Any:
         from ddd.lsp.ranges import Document
         from ddd.lsp.server import Server
-        from test_lsp import answered, build_record, session
 
         build_record(tree, tree / "p.ddd.json")
         position = Document(path.read_text(encoding="utf-8")).range_of(pointer)["start"]

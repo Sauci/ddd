@@ -20,35 +20,19 @@ from conftest import (
     project,
     render_files,
     run_analysis,
+    scalar_type,
+    struct_type,
+    types,
+    value_member,
     write_tree,
 )
 from ddd.diagnostics import DiagnosticBag
 from ddd.loading import LoadedType, load_workspace
 
 
-def val(name: str, datatype: str = "uint16", **extra: Any) -> dict[str, Any]:
-    storage: dict[str, Any] = (
-        {} if "typename" in extra else {"datatype": datatype, "conversion": {"kind": "identity"}}
-    )
-    return {"name": name, "member": "value", **storage, **extra}
-
-
 def nest(name: str, type_name: str) -> dict[str, Any]:
     """A member that nests another structure, which is a value member naming it."""
-    return val(name, typename=type_name)
-
-
-def struct(name: str, *members: dict[str, Any]) -> dict[str, Any]:
-    return {"type": "struct", "name": name, "members": list(members) or [val("value")]}
-
-
-def scalar(name: str, datatype: str = "uint16", **extra: Any) -> dict[str, Any]:
-    meaning: dict[str, Any] = {} if "conversion" in extra else {"conversion": {"kind": "identity"}}
-    return {"type": "scalar", "name": name, "datatype": datatype, **meaning, **extra}
-
-
-def types(*entries: dict[str, Any]) -> dict[str, Any]:
-    return {"types": list(entries)}
+    return value_member(name, typename=type_name)
 
 
 def ladder(depth: int) -> list[dict[str, Any]]:
@@ -61,10 +45,12 @@ def ladder(depth: int) -> list[dict[str, Any]]:
     """
     entries: list[dict[str, Any]] = []
     for index in range(depth):
-        entries.append(struct(f"L{index}_t", nest("a", f"A{index}_t"), nest("b", f"B{index}_t")))
-        tail = nest("down", f"L{index + 1}_t") if index + 1 < depth else val("value")
-        entries.append(struct(f"A{index}_t", tail))
-        entries.append(struct(f"B{index}_t", tail))
+        entries.append(
+            struct_type(f"L{index}_t", nest("a", f"A{index}_t"), nest("b", f"B{index}_t"))
+        )
+        tail = nest("down", f"L{index + 1}_t") if index + 1 < depth else value_member("value")
+        entries.append(struct_type(f"A{index}_t", tail))
+        entries.append(struct_type(f"B{index}_t", tail))
     return entries
 
 
@@ -85,7 +71,7 @@ class TestReadingTypes:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
-                "types.ddd.json": types(struct("B_t"), struct("A_t")),
+                "types.ddd.json": types(struct_type("B_t"), struct_type("A_t")),
             },
         )
         assert not checks(bag)
@@ -99,7 +85,7 @@ class TestReadingTypes:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
-                "types.ddd.json": types(struct("A_t")),
+                "types.ddd.json": types(struct_type("A_t")),
             },
         )
         assert workspace is not None
@@ -110,8 +96,8 @@ class TestReadingTypes:
             tree,
             {
                 "project.ddd.json": project("P", "one.ddd.json", "two.ddd.json"),
-                "one.ddd.json": types(struct("A_t")),
-                "two.ddd.json": types(struct("A_t")),
+                "one.ddd.json": types(struct_type("A_t")),
+                "two.ddd.json": types(struct_type("A_t")),
             },
         )
         assert checks(bag) == ["duplicate-type"]
@@ -140,14 +126,14 @@ class TestReadingTypes:
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
                 "types.ddd.json": types(
-                    scalar(
+                    scalar_type(
                         "Bad_t",
                         "float32",
                         conversion={"kind": "enum", "name": "E_t", "enumerators": {"A": 0}},
                     ),
-                    struct(
+                    struct_type(
                         "S_t",
-                        val(
+                        value_member(
                             "flag",
                             "boolean",
                             conversion={"kind": "enum", "name": "F_t", "enumerators": {"B": 0}},
@@ -166,7 +152,9 @@ class TestReadingTypes:
 
     def test_a_types_file_is_not_analysed_on_its_own(self, tree: Path) -> None:
         """It declares no variable, so there is nothing to resolve or generate from it."""
-        workspace, bag = load(tree, {"types.ddd.json": types(struct("A_t"))}, root="types.ddd.json")
+        workspace, bag = load(
+            tree, {"types.ddd.json": types(struct_type("A_t"))}, root="types.ddd.json"
+        )
         assert workspace is None
         assert checks(bag) == ["file-kind"]
         assert "list it in the 'includes'" in first(bag).render()
@@ -174,7 +162,7 @@ class TestReadingTypes:
     def test_a_file_cannot_be_two_kinds_at_once(self, tree: Path) -> None:
         _, bag = load(
             tree,
-            {"both.ddd.json": {"component": {"name": "X"}, "types": [struct("A_t")]}},
+            {"both.ddd.json": {"component": {"name": "X"}, "types": [struct_type("A_t")]}},
             root="both.ddd.json",
         )
         assert checks(bag) == ["file-kind"]
@@ -195,8 +183,10 @@ class TestTypeGraph:
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
                 "types.ddd.json": types(
-                    struct("Inner_t", val("value")),
-                    struct("Outer_t", nest("inner", "Inner_t"), val("count", "uint32")),
+                    struct_type("Inner_t", value_member("value")),
+                    struct_type(
+                        "Outer_t", nest("inner", "Inner_t"), value_member("count", "uint32")
+                    ),
                 ),
             },
         )
@@ -207,7 +197,7 @@ class TestTypeGraph:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
-                "types.ddd.json": types(struct("A_t", nest("gone", "Missing_t"))),
+                "types.ddd.json": types(struct_type("A_t", nest("gone", "Missing_t"))),
             },
         )
         assert checks(bag) == ["unknown-type"]
@@ -221,7 +211,7 @@ class TestTypeGraph:
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
                 "types.ddd.json": types(
-                    struct("A_t", nest("b", "B_t")), struct("B_t", nest("a", "A_t"))
+                    struct_type("A_t", nest("b", "B_t")), struct_type("B_t", nest("a", "A_t"))
                 ),
             },
         )
@@ -237,8 +227,8 @@ class TestTypeGraph:
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
                 "types.ddd.json": types(
-                    struct("Inner_t", val("v")),
-                    struct("S_t", nest("first", "Inner_t"), nest("second", "Inner_t")),
+                    struct_type("Inner_t", value_member("v")),
+                    struct_type("S_t", nest("first", "Inner_t"), nest("second", "Inner_t")),
                 ),
                 "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
             },
@@ -252,7 +242,7 @@ class TestTypeGraph:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
-                "types.ddd.json": types(struct("A_t", nest("self", "A_t"))),
+                "types.ddd.json": types(struct_type("A_t", nest("self", "A_t"))),
             },
         )
         assert checks(bag) == ["type-cycle"]
@@ -267,9 +257,9 @@ class TestTypeGraph:
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
                 "types.ddd.json": types(
-                    struct("Head_t", nest("down", "A_t")),
-                    struct("A_t", nest("b", "B_t")),
-                    struct("B_t", nest("a", "A_t")),
+                    struct_type("Head_t", nest("down", "A_t")),
+                    struct_type("A_t", nest("b", "B_t")),
+                    struct_type("B_t", nest("a", "A_t")),
                 ),
             },
         )
@@ -292,8 +282,8 @@ class TestTypeGraph:
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
                 "types.ddd.json": types(
-                    struct("Broken_t", nest("ghost", "Missing_t")),
-                    struct("Wrap_t", nest("broken", "Broken_t")),
+                    struct_type("Broken_t", nest("ghost", "Missing_t")),
+                    struct_type("Wrap_t", nest("broken", "Broken_t")),
                 ),
                 "a.ddd.json": component(
                     "A",
@@ -323,7 +313,7 @@ class TestTypeGraph:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
-                "types.ddd.json": types(struct("Broken_t", nest("ghost", "Missing_t"))),
+                "types.ddd.json": types(struct_type("Broken_t", nest("ghost", "Missing_t"))),
             },
         )
         assert checks(bag) == ["unknown-type"]
@@ -344,9 +334,9 @@ class TestTypeGraph:
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
                 "types.ddd.json": types(
-                    struct("A_t", nest("b", "B_t")),
-                    struct("B_t", nest("a", "A_t")),
-                    struct("Ok_t", val("value")),
+                    struct_type("A_t", nest("b", "B_t")),
+                    struct_type("B_t", nest("a", "A_t")),
+                    struct_type("Ok_t", value_member("value")),
                 ),
             },
         )
@@ -369,9 +359,9 @@ class TestNestingTooDeep:
     def chain(depth: int) -> list[dict[str, Any]]:
         """``T1_t`` holds a value and ``Tn_t`` nests ``T(n-1)_t``, so ``Tn_t`` is ``n`` deep."""
         return [
-            struct("T1_t", val("value")),
+            struct_type("T1_t", value_member("value")),
             *(
-                struct(f"T{index}_t", nest("down", f"T{index - 1}_t"))
+                struct_type(f"T{index}_t", nest("down", f"T{index - 1}_t"))
                 for index in range(2, depth + 1)
             ),
         ]
@@ -471,7 +461,7 @@ class TestNestingTooDeep:
         calls ``_nesting_cycle`` once instead of running a whole analysis over the ring.
         """
         entries = self.chain(300)
-        entries[0] = struct("T1_t", nest("up", "T300_t"))
+        entries[0] = struct_type("T1_t", nest("up", "T300_t"))
         _, bag = run_analysis(
             tree,
             {
@@ -499,7 +489,7 @@ class TestNestingTooDeep:
         from ddd.analysis import _nesting_cycle
 
         entries = self.chain(3000)
-        entries[0] = struct("T1_t", nest("up", "T3000_t"))
+        entries[0] = struct_type("T1_t", nest("up", "T3000_t"))
         workspace, bag = load(
             tree,
             {
@@ -533,7 +523,7 @@ class TestNestingTooDeep:
         there is no alignment estimate to give.
         """
         entries = self.chain(400)
-        entries[0] = struct("T1_t", nest("up", "T400_t"))
+        entries[0] = struct_type("T1_t", nest("up", "T400_t"))
         _, bag = run_analysis(
             tree,
             {
@@ -569,7 +559,7 @@ class TestNestingTooDeep:
                     "P", "types.ddd.json", "sections.ddd.json", "a.ddd.json"
                 ),
                 "types.ddd.json": types(
-                    struct("Self_t", nest("self", "Self_t"), nest("chain", "T500_t")),
+                    struct_type("Self_t", nest("self", "Self_t"), nest("chain", "T500_t")),
                     *self.chain(500),
                 ),
                 "sections.ddd.json": {
@@ -636,7 +626,7 @@ class TestDiamondShapedNesting:
         change for a cycle two starts both happened to reach.
         """
         entries = ladder(24)
-        entries[-3] = struct(
+        entries[-3] = struct_type(
             "L23_t", nest("a", "A23_t"), nest("b", "B23_t"), nest("closes", "L0_t")
         )
         _, bag = run_analysis(
@@ -661,7 +651,7 @@ class TestTooManyLeaves:
     where it is declared.
     """
 
-    CELL = struct("Cell_t", val("a"), val("b"))
+    CELL = struct_type("Cell_t", value_member("a"), value_member("b"))
 
     def files(self, *entries: dict[str, Any], **definition: Any) -> dict[str, Any]:
         """The types, and one variable declared over them."""
@@ -689,7 +679,7 @@ class TestTooManyLeaves:
 
     def test_an_array_of_structures_at_the_limit_is_flattened_whole(self, tree: Path) -> None:
         """Sixty four by sixty four of a twenty member structure: 81 920 leaves, all kept."""
-        wide = struct("Wide_t", *(val(f"m{index}") for index in range(20)))
+        wide = struct_type("Wide_t", *(value_member(f"m{index}") for index in range(20)))
         dictionary, bag = run_analysis(
             tree, self.files(wide, typename="Wide_t", dimensions=[64, 64])
         )
@@ -709,7 +699,7 @@ class TestTooManyLeaves:
             tree,
             self.files(
                 {"type": "external", "name": "Opaque_t", "header": "opaque.h"},
-                struct("Box_t", nest("held", "Opaque_t")),
+                struct_type("Box_t", nest("held", "Opaque_t")),
                 typename="Box_t",
                 dimensions=[20000000],
             ),
@@ -756,7 +746,7 @@ class TestTooManyLeaves:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
-                "types.ddd.json": types(*ladder(20), struct("Wrap_t", nest("held", "L0_t"))),
+                "types.ddd.json": types(*ladder(20), struct_type("Wrap_t", nest("held", "L0_t"))),
                 "a.ddd.json": component(
                     "A",
                     declare("local", "V", typename="L0_t"),
@@ -784,8 +774,8 @@ class TestInfiniteDerivedLimits:
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
                 "types.ddd.json": types(
-                    scalar("Huge_t", "float64", conversion={"factor": 1.8}),
-                    scalar("Fine_t", "uint8"),
+                    scalar_type("Huge_t", "float64", conversion={"factor": 1.8}),
+                    scalar_type("Fine_t", "uint8"),
                 ),
                 "a.ddd.json": component(
                     "A",
@@ -808,10 +798,10 @@ class TestInfiniteDerivedLimits:
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
                 "types.ddd.json": types(
-                    struct(
+                    struct_type(
                         "S_t",
-                        val("ok", "uint8"),
-                        val("big", "float64", conversion={"offset": -1.0, "factor": 1.8}),
+                        value_member("ok", "uint8"),
+                        value_member("big", "float64", conversion={"offset": -1.0, "factor": 1.8}),
                     ),
                 ),
                 "a.ddd.json": component("A", declare("output", "V", typename="S_t")),
@@ -859,7 +849,7 @@ class TestNamingAType:
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json", "b.ddd.json"),
                 "types.ddd.json": types(
-                    scalar(
+                    scalar_type(
                         "Speed_t",
                         "uint16",
                         unit="rpm",
@@ -881,7 +871,7 @@ class TestNamingAType:
 
     def test_a_scalar_type_may_leave_its_limits_to_be_derived(self, tree: Path) -> None:
         """A type states what it wants to state; the rest follows as it does for any object."""
-        bag = self.project_with(tree, scalar("Speed_t", "uint8", unit="rpm"))
+        bag = self.project_with(tree, scalar_type("Speed_t", "uint8", unit="rpm"))
         assert checks(bag) == []
 
     def test_a_name_no_file_declares_is_reported_where_it_is_written(self, tree: Path) -> None:
@@ -909,7 +899,7 @@ class TestNamingAType:
         Refused by the definition itself, so it surfaces under ``schema`` with a pointer, the
         same route the member shape rules take - no check identifier of its own.
         """
-        bag = self.project_with(tree, scalar("Speed_t", "uint16", unit="rpm"), unit="1/min")
+        bag = self.project_with(tree, scalar_type("Speed_t", "uint16", unit="rpm"), unit="1/min")
         assert checks(bag) == ["schema"]
         assert "already fixes what this value means" in first(bag).render()
 
@@ -920,7 +910,8 @@ class TestNamingAType:
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
                 "types.ddd.json": types(
-                    scalar("Speed_t", "uint16"), struct("S_t", val("v", typename="Speed_t"))
+                    scalar_type("Speed_t", "uint16"),
+                    struct_type("S_t", value_member("v", typename="Speed_t")),
                 ),
             },
         )
@@ -932,7 +923,9 @@ class TestNamingAType:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
-                "types.ddd.json": types(struct("Speed_t", val("raw", "uint16", unit="rpm"))),
+                "types.ddd.json": types(
+                    struct_type("Speed_t", value_member("raw", "uint16", unit="rpm"))
+                ),
                 "a.ddd.json": component("A", declare("local", "X", typename="Speed_t")),
             },
         )
@@ -1015,7 +1008,7 @@ class TestBaseAndDeclaredNamesAreKeptApart:
             tree,
             {
                 "project.ddd.json": project("P", "a.ddd.json", "types.ddd.json"),
-                "types.ddd.json": types(scalar("Int16_t", "sint16")),
+                "types.ddd.json": types(scalar_type("Int16_t", "sint16")),
                 "a.ddd.json": component("A", declare("local", "X", typename="Int16_t")),
             },
         )
@@ -1043,7 +1036,7 @@ class TestBaseAndDeclaredNamesAreKeptApart:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
-                "types.ddd.json": types(scalar("uint16", "uint16")),
+                "types.ddd.json": types(scalar_type("uint16", "uint16")),
             },
         )
         assert checks(bag) == ["schema"]
@@ -1070,7 +1063,7 @@ class TestBaseAndDeclaredNamesAreKeptApart:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
-                "types.ddd.json": types(scalar("Speed_t", "uint16", unit="rpm")),
+                "types.ddd.json": types(scalar_type("Speed_t", "uint16", unit="rpm")),
                 "a.ddd.json": component("A", declare("local", "X", typename="Sped_t")),
             },
         )
@@ -1112,7 +1105,9 @@ class TestDeclaringAStructure:
         ``limits`` into a branch, and they are read unconditionally in a dozen places on the
         strength of always being there.
         """
-        dictionary, bag = self.resolve(tree, struct("S_t", val("a"), val("b", "uint32")))
+        dictionary, bag = self.resolve(
+            tree, struct_type("S_t", value_member("a"), value_member("b", "uint32"))
+        )
         assert checks(bag) == []
         assert dictionary is not None and dictionary.objects == ()
         (instance,) = dictionary.instances
@@ -1121,7 +1116,9 @@ class TestDeclaringAStructure:
 
     def test_a_nested_structure_lengthens_the_path(self, tree: Path) -> None:
         dictionary, bag = self.resolve(
-            tree, struct("Inner_t", val("v")), struct("S_t", val("inner", typename="Inner_t"))
+            tree,
+            struct_type("Inner_t", value_member("v")),
+            struct_type("S_t", value_member("inner", typename="Inner_t")),
         )
         assert checks(bag) == []
         assert dictionary is not None
@@ -1136,11 +1133,11 @@ class TestDeclaringAStructure:
         """
         dictionary, bag = self.resolve(
             tree,
-            struct("Inner_t", val("v")),
-            struct(
+            struct_type("Inner_t", value_member("v")),
+            struct_type(
                 "S_t",
-                val("cell", typename="Inner_t", dimensions=[2]),
-                val("flat", "uint8", dimensions=[4]),
+                value_member("cell", typename="Inner_t", dimensions=[2]),
+                value_member("flat", "uint8", dimensions=[4]),
             ),
         )
         assert checks(bag) == []
@@ -1158,7 +1155,7 @@ class TestDeclaringAStructure:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
-                "types.ddd.json": types(struct("S_t", val("v"))),
+                "types.ddd.json": types(struct_type("S_t", value_member("v"))),
                 "a.ddd.json": component("A", declare("local", "X", typename="S_t", dimensions=[2])),
             },
         )
@@ -1177,7 +1174,7 @@ class TestDeclaringAStructure:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
-                "types.ddd.json": types(struct("S_t", val("v"))),
+                "types.ddd.json": types(struct_type("S_t", value_member("v"))),
                 "a.ddd.json": component(
                     "A", declare("local", "Inst", typename="S_t", dimensions=[12])
                 ),
@@ -1192,8 +1189,8 @@ class TestDeclaringAStructure:
     def test_a_member_takes_its_meaning_from_the_type_it_names(self, tree: Path) -> None:
         dictionary, bag = self.resolve(
             tree,
-            scalar("Speed_t", "uint16", unit="rpm", conversion={"factor": 0.25}),
-            struct("S_t", val("engine", typename="Speed_t")),
+            scalar_type("Speed_t", "uint16", unit="rpm", conversion={"factor": 0.25}),
+            struct_type("S_t", value_member("engine", typename="Speed_t")),
         )
         assert checks(bag) == []
         assert dictionary is not None
@@ -1205,8 +1202,8 @@ class TestDeclaringAStructure:
         """Stated on the type once, rather than on every member and variable that uses it."""
         dictionary, bag = self.resolve(
             tree,
-            scalar("Speed_t", "uint16", unit="rpm", limits={"min": 0, "max": 8000}),
-            struct("S_t", val("engine", typename="Speed_t")),
+            scalar_type("Speed_t", "uint16", unit="rpm", limits={"min": 0, "max": 8000}),
+            struct_type("S_t", value_member("engine", typename="Speed_t")),
         )
         assert checks(bag) == []
         assert dictionary is not None
@@ -1217,8 +1214,8 @@ class TestDeclaringAStructure:
         """A type states what it wants to; the rest follows as it does for any other object."""
         dictionary, bag = self.resolve(
             tree,
-            scalar("Speed_t", "uint8", unit="rpm"),
-            struct("S_t", val("engine", typename="Speed_t")),
+            scalar_type("Speed_t", "uint8", unit="rpm"),
+            struct_type("S_t", value_member("engine", typename="Speed_t")),
         )
         assert checks(bag) == []
         assert dictionary is not None
@@ -1234,7 +1231,7 @@ class TestDeclaringAStructure:
         against its predecessor while every one of its members left the file.
         """
         dictionary, bag = self.resolve(
-            tree, struct("S_t", val("a"), val("b")), a2l={"export": False}
+            tree, struct_type("S_t", value_member("a"), value_member("b")), a2l={"export": False}
         )
         assert checks(bag) == []
         assert dictionary is not None
@@ -1243,7 +1240,7 @@ class TestDeclaringAStructure:
     def test_a_member_may_be_kept_out_of_an_exported_structure(self, tree: Path) -> None:
         """The member's own no still counts; resolving the two is an and, not a replacement."""
         dictionary, bag = self.resolve(
-            tree, struct("S_t", val("a", a2l={"export": False}), val("b"))
+            tree, struct_type("S_t", value_member("a", a2l={"export": False}), value_member("b"))
         )
         assert checks(bag) == []
         assert dictionary is not None
@@ -1254,7 +1251,9 @@ class TestDeclaringAStructure:
 
     def test_a_leaf_knows_whether_it_is_calibration_data(self, tree: Path) -> None:
         """Taken from the variable: every member of one object has its storage class."""
-        dictionary, bag = self.resolve(tree, struct("S_t", val("v")), kind="parameter")
+        dictionary, bag = self.resolve(
+            tree, struct_type("S_t", value_member("v")), kind="parameter"
+        )
         assert checks(bag) == []
         assert dictionary is not None
         (leaf,) = dictionary.leaves
@@ -1264,7 +1263,10 @@ class TestDeclaringAStructure:
 
     def test_a_member_states_its_own_meaning_when_it_has_one(self, tree: Path) -> None:
         dictionary, bag = self.resolve(
-            tree, struct("S_t", val("t", "uint16", unit="ms", limits={"min": 0, "max": 1000}))
+            tree,
+            struct_type(
+                "S_t", value_member("t", "uint16", unit="ms", limits={"min": 0, "max": 1000})
+            ),
         )
         assert checks(bag) == []
         assert dictionary is not None
@@ -1279,9 +1281,9 @@ class TestDeclaringAStructure:
         """
         dictionary, bag = self.resolve(
             tree,
-            struct("Status_t", val("flag", "uint8")),
-            struct("Sensor_t", val("status", typename="Status_t")),
-            struct("S_t", val("sensor", typename="Sensor_t")),
+            struct_type("Status_t", value_member("flag", "uint8")),
+            struct_type("Sensor_t", value_member("status", typename="Status_t")),
+            struct_type("S_t", value_member("sensor", typename="Sensor_t")),
         )
         assert checks(bag) == []
         assert dictionary is not None
@@ -1289,7 +1291,10 @@ class TestDeclaringAStructure:
 
     def test_the_members_keep_the_order_they_were_written_in(self, tree: Path) -> None:
         """That order is the one the compiler lays out, so nothing may reorder it."""
-        dictionary, bag = self.resolve(tree, struct("S_t", val("zulu"), val("alpha"), val("mike")))
+        dictionary, bag = self.resolve(
+            tree,
+            struct_type("S_t", value_member("zulu"), value_member("alpha"), value_member("mike")),
+        )
         assert checks(bag) == []
         assert dictionary is not None
         (structure,) = dictionary.types
@@ -1306,7 +1311,7 @@ class TestDeclaringAStructure:
         self, tree: Path, definition: dict[str, Any], because: str
     ) -> None:
         """Each refused rather than ignored, and located where it is written."""
-        _, bag = self.resolve(tree, struct("S_t", val("v")), **definition)
+        _, bag = self.resolve(tree, struct_type("S_t", value_member("v")), **definition)
         assert "type-kind" in checks(bag)
         assert because in first(bag).render()
 
@@ -1316,7 +1321,9 @@ class TestDeclaringAStructure:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json", "b.ddd.json"),
-                "types.ddd.json": types(struct("A_t", val("v")), struct("B_t", val("v"))),
+                "types.ddd.json": types(
+                    struct_type("A_t", value_member("v")), struct_type("B_t", value_member("v"))
+                ),
                 "a.ddd.json": component("A", declare("output", "X", typename="A_t")),
                 "b.ddd.json": component("B", declare("input", "X", typename="B_t")),
             },
@@ -1339,7 +1346,9 @@ class TestAnUnownedStructure:
             tree,
             {
                 "project.ddd.json": project("Device", "types.ddd.json", "reader.ddd.json"),
-                "types.ddd.json": types(struct("S_t", val("raw", "uint16", dimensions=[4]))),
+                "types.ddd.json": types(
+                    struct_type("S_t", value_member("raw", "uint16", dimensions=[4]))
+                ),
                 "reader.ddd.json": component(
                     "Reader",
                     declare("input", "Inlet", typename="S_t"),
@@ -1390,11 +1399,11 @@ class TestTheDescriptionsOwnSpelling:
                 "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
                 "t.ddd.json": types(
                     {"type": "external", "name": "Drv_t", "header": "drv.h"},
-                    struct(
+                    struct_type(
                         "S_t",
-                        val("raw", "uint16"),
-                        val("on", "boolean"),
-                        val("drv", typename="Drv_t"),
+                        value_member("raw", "uint16"),
+                        value_member("on", "boolean"),
+                        value_member("drv", typename="Drv_t"),
                     ),
                 ),
                 "a.ddd.json": component(
@@ -1440,10 +1449,10 @@ class TestGeneratingAStructure:
     def test_the_types_header_declares_the_structure(self, tree: Path) -> None:
         files = self.render(
             tree,
-            struct(
+            struct_type(
                 "S_t",
-                val("plain", "uint16"),
-                val("table", "uint8", dimensions=[4]),
+                value_member("plain", "uint16"),
+                value_member("table", "uint8", dimensions=[4]),
                 {
                     "name": "flag",
                     "member": "bits",
@@ -1466,20 +1475,22 @@ class TestGeneratingAStructure:
         """c needs it complete first, and the name order would have put it second."""
         files = self.render(
             tree,
-            struct("Status_t", val("f", "uint8")),
-            struct("S_t", val("status", typename="Status_t")),
+            struct_type("Status_t", value_member("f", "uint8")),
+            struct_type("S_t", value_member("status", typename="Status_t")),
         )
         header = files["ddd_types.h"]
         assert header.index("} Status_t;") < header.index("Status_t status;")
 
     def test_the_variable_declares_like_any_other(self, tree: Path) -> None:
-        files = self.render(tree, struct("S_t", val("v")))
+        files = self.render(tree, struct_type("S_t", value_member("v")))
         assert "S_t X;" in files["ddd_globals.c"]
         assert "extern S_t X;" in files["ddd_globals.h"]
 
     def test_a_calibratable_structure_is_const_volatile(self, tree: Path) -> None:
         """The qualifier belongs to the whole object; a member cannot differ from it."""
-        files = self.render(tree, struct("S_t", val("v")), kind="parameter", volatile=True)
+        files = self.render(
+            tree, struct_type("S_t", value_member("v")), kind="parameter", volatile=True
+        )
         assert "const volatile S_t X;" in files["ddd_globals.c"]
 
     def test_every_member_becomes_an_a2l_object_at_its_own_path(self, tree: Path) -> None:
@@ -1490,8 +1501,12 @@ class TestGeneratingAStructure:
         """
         files = self.render(
             tree,
-            struct("Inner_t", val("v", "uint16", unit="degC")),
-            struct("S_t", val("inner", typename="Inner_t"), val("table", "uint8", dimensions=[4])),
+            struct_type("Inner_t", value_member("v", "uint16", unit="degC")),
+            struct_type(
+                "S_t",
+                value_member("inner", typename="Inner_t"),
+                value_member("table", "uint8", dimensions=[4]),
+            ),
         )
         content = files["Device.a2l"]
         assert "/begin MEASUREMENT X.inner.v" in content
@@ -1504,7 +1519,11 @@ class TestGeneratingAStructure:
     def test_a_calibratable_member_is_a_characteristic(self, tree: Path) -> None:
         files = self.render(
             tree,
-            struct("S_t", val("gain", "uint16"), val("table", "uint8", dimensions=[2])),
+            struct_type(
+                "S_t",
+                value_member("gain", "uint16"),
+                value_member("table", "uint8", dimensions=[2]),
+            ),
             kind="parameter",
         )
         content = files["Device.a2l"]
@@ -1522,9 +1541,9 @@ class TestGeneratingAStructure:
         """
         files = self.render(
             tree,
-            struct(
+            struct_type(
                 "S_t",
-                val("plain", "uint16"),
+                value_member("plain", "uint16"),
                 {
                     "name": "flag",
                     "member": "bits",
@@ -1541,14 +1560,18 @@ class TestGeneratingAStructure:
     def test_a_member_may_be_kept_out_of_the_a2l_on_its_own(self, tree: Path) -> None:
         files = self.render(
             tree,
-            struct("S_t", val("shown"), val("hidden", "uint16", a2l={"export": False})),
+            struct_type(
+                "S_t",
+                value_member("shown"),
+                value_member("hidden", "uint16", a2l={"export": False}),
+            ),
         )
         content = files["Device.a2l"]
         assert "X.shown" in content
         assert "X.hidden" not in content
 
     def test_keeping_the_whole_object_out_keeps_every_member_out(self, tree: Path) -> None:
-        files = self.render(tree, struct("S_t", val("v")), a2l={"export": False})
+        files = self.render(tree, struct_type("S_t", value_member("v")), a2l={"export": False})
         assert "X.v" not in files["Device.a2l"]
 
     def test_a_display_format_on_the_whole_structure_is_carried_and_written_nowhere(
@@ -1565,7 +1588,7 @@ class TestGeneratingAStructure:
             tree,
             {
                 "project.ddd.json": project("Device", "types.ddd.json", "a.ddd.json"),
-                "types.ddd.json": types(struct("S_t", val("v"))),
+                "types.ddd.json": types(struct_type("S_t", value_member("v"))),
                 "a.ddd.json": component(
                     "A", declare("local", "X", typename="S_t", a2l={"export": True, **stated})
                 ),
@@ -1589,7 +1612,7 @@ class TestGeneratingAStructure:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
-                "types.ddd.json": types(struct("S_t", val("v"))),
+                "types.ddd.json": types(struct_type("S_t", value_member("v"))),
                 "a.ddd.json": component("A", declare("output", "X", typename="S_t")),
             },
         )
@@ -1601,7 +1624,7 @@ class TestGeneratingAStructure:
         Counting only the plain objects left a header that spelled ``uint16_t`` and never
         included ``<stdint.h>`` - a generated file that does not compile.
         """
-        files = self.render(tree, struct("S_t", val("v", "uint16")))
+        files = self.render(tree, struct_type("S_t", value_member("v", "uint16")))
         assert "#include <stdint.h>" in files["ddd_types.h"]
 
 
@@ -1614,7 +1637,7 @@ class TestTypeNamesInTheCNamespace:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
-                "types.ddd.json": types(struct("register", val("v"))),
+                "types.ddd.json": types(struct_type("register", value_member("v"))),
             },
         )
         assert checks(bag) == ["reserved-identifier"]
@@ -1626,7 +1649,7 @@ class TestTypeNamesInTheCNamespace:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
-                "types.ddd.json": types(scalar("Speed", "uint16")),
+                "types.ddd.json": types(scalar_type("Speed", "uint16")),
                 "a.ddd.json": component("A", declare("local", "Speed", "uint16")),
             },
         )
@@ -1639,7 +1662,7 @@ class TestTypeNamesInTheCNamespace:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
-                "types.ddd.json": types(struct("S_t", val("int"))),
+                "types.ddd.json": types(struct_type("S_t", value_member("int"))),
             },
         )
         assert checks(bag) == ["reserved-identifier"]
@@ -1658,8 +1681,8 @@ class TestTypeNamesInTheCNamespace:
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
                 "types.ddd.json": types(
-                    struct("Outer_t", nest("inner", "Inner_t")),
-                    struct("Inner_t", val("__x")),
+                    struct_type("Outer_t", nest("inner", "Inner_t")),
+                    struct_type("Inner_t", value_member("__x")),
                 ),
             },
         )
@@ -1678,9 +1701,9 @@ class TestStructuresReachEverythingElse:
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
                 "types.ddd.json": types(
-                    struct(
+                    struct_type(
                         "S_t",
-                        val("plain", "uint16", unit="rpm"),
+                        value_member("plain", "uint16", unit="rpm"),
                         {
                             "name": "mode",
                             "member": "bits",
@@ -1716,7 +1739,7 @@ class TestStructuresReachEverythingElse:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
-                "types.ddd.json": types(struct("S_t", val("v"))),
+                "types.ddd.json": types(struct_type("S_t", value_member("v"))),
                 "a.ddd.json": component(
                     "A",
                     declare("local", "Sensor", typename="S_t"),
@@ -1732,7 +1755,7 @@ class TestStructuresReachEverythingElse:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
-                "types.ddd.json": types(struct("S_t", val("v"))),
+                "types.ddd.json": types(struct_type("S_t", value_member("v"))),
                 "a.ddd.json": component(
                     "A",
                     declare("local", "Inlet", typename="S_t"),
@@ -1780,7 +1803,9 @@ class TestStructuresReachEverythingElse:
                 where,
                 {
                     "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
-                    "types.ddd.json": types(struct("S_t", val("plain", "uint16", unit="rpm"))),
+                    "types.ddd.json": types(
+                        struct_type("S_t", value_member("plain", "uint16", unit="rpm"))
+                    ),
                     "a.ddd.json": component(
                         "A", declare("local", "X", **{"typename": "S_t", **definition})
                     ),
@@ -1832,7 +1857,7 @@ def test_a_leaf_carries_the_identity_of_its_instance(tree: Path) -> None:
         tree,
         {
             "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
-            "t.ddd.json": types(struct("S_t", val("value"), val("raw"))),
+            "t.ddd.json": types(struct_type("S_t", value_member("value"), value_member("raw"))),
             "a.ddd.json": component(
                 "A", declare("local", "Inlet", typename="S_t", id="k7m2q9xr4t8w")
             ),
@@ -1854,7 +1879,7 @@ def test_the_dump_carries_and_nulls_instance_and_leaf_identity(tree: Path) -> No
         tree,
         {
             "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
-            "t.ddd.json": types(struct("S_t", val("value"))),
+            "t.ddd.json": types(struct_type("S_t", value_member("value"))),
             "a.ddd.json": component(
                 "A",
                 declare("local", "Inlet", typename="S_t", id="k7m2q9xr4t8w"),
@@ -1900,7 +1925,7 @@ class TestMemberStorageChecks:
             tree,
             {
                 "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
-                "t.ddd.json": types(struct("S_t", self.enum_member())),
+                "t.ddd.json": types(struct_type("S_t", self.enum_member())),
                 "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
             },
         )
@@ -1913,7 +1938,7 @@ class TestMemberStorageChecks:
             tree,
             {
                 "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
-                "t.ddd.json": types(struct("S_t", self.wide_member())),
+                "t.ddd.json": types(struct_type("S_t", self.wide_member())),
                 "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
             },
         )
@@ -1935,7 +1960,7 @@ class TestMemberStorageChecks:
             tree,
             {
                 "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
-                "t.ddd.json": types(struct("S_t", member)),
+                "t.ddd.json": types(struct_type("S_t", member)),
                 "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
             },
         )
@@ -1994,7 +2019,7 @@ class TestScalarTypeChecks:
 
     def wide(self) -> dict[str, Any]:
         """``Pct_t`` offers 300 percent of a ``uint8`` that stops counting at 255."""
-        return scalar("Pct_t", "uint8", limits={"min": 0, "max": 300})
+        return scalar_type("Pct_t", "uint8", limits={"min": 0, "max": 300})
 
     def test_the_limits_are_reported_once_where_the_type_is_declared(self, tree: Path) -> None:
         """Two components naming the type are two copies of one mistake in a third file."""
@@ -2032,7 +2057,7 @@ class TestScalarTypeChecks:
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
                 "types.ddd.json": types(
-                    scalar(
+                    scalar_type(
                         "Mode_t",
                         "uint8",
                         conversion={
@@ -2055,7 +2080,7 @@ class TestScalarTypeChecks:
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
-                "types.ddd.json": types(scalar("Level_t", "uint8")),
+                "types.ddd.json": types(scalar_type("Level_t", "uint8")),
                 "a.ddd.json": component("A", declare("local", "X", typename="Level_t", init=300)),
             },
         )
@@ -2070,7 +2095,7 @@ class TestScalarTypeChecks:
         about what the name means; a scalar type's own enum is registered on the same terms,
         whether or not anything yet exists to name it.
         """
-        mode_t = scalar(
+        mode_t = scalar_type(
             "Mode_t",
             "uint8",
             conversion={
@@ -2100,7 +2125,9 @@ class TestScalarTypeChecks:
             tree / "member",
             {
                 "project.ddd.json": project("P", "types.ddd.json", "s.ddd.json"),
-                "types.ddd.json": types(mode_t, struct("Sensor_t", val("mode", typename="Mode_t"))),
+                "types.ddd.json": types(
+                    mode_t, struct_type("Sensor_t", value_member("mode", typename="Mode_t"))
+                ),
                 "s.ddd.json": component("S", declare("local", "X", typename="Sensor_t")),
             },
         )
@@ -2123,7 +2150,7 @@ class TestScalarTypeChecks:
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
                 "types.ddd.json": types(
-                    scalar(
+                    scalar_type(
                         "Mode_t",
                         "uint8",
                         conversion={

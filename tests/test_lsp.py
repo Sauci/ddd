@@ -20,10 +20,15 @@ import pytest
 from conftest import (
     EXAMPLES,
     INCONSISTENT,
+    answered,
+    build_record,
     component,
     declare,
     directory_link,
+    framed,
     project,
+    sent,
+    session,
     write_tree,
 )
 from ddd.build_info import BUILD_INFO_FILENAME
@@ -46,35 +51,9 @@ from ddd.lsp.protocol import (
     notification,
     read_message,
     response,
-    write_message,
 )
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.server import Server, uri_to_path
-
-
-def framed(*messages: dict[str, Any]) -> io.BytesIO:
-    """The messages as a client would put them on the wire."""
-    stream = io.BytesIO()
-    for message in messages:
-        write_message(stream, message)
-    stream.seek(0)
-    return stream
-
-
-def session(*messages: dict[str, Any]) -> io.BytesIO:
-    """A whole conversation: the handshake a client opens with, then these messages.
-
-    The server refuses anything that arrives before ``initialize`` - the protocol reserves a
-    code for exactly that - so a test that means to exercise a request says hello first, as
-    every client does. Empty ``params`` leaves the workspace folder the server was constructed
-    with in place, which is the one these tests set up.
-    """
-    return framed({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}}, *messages)
-
-
-def answered(stream: io.BytesIO) -> list[dict[str, Any]]:
-    """What the server said in answer to everything after the handshake."""
-    return sent(stream)[1:]
 
 
 def raw_frame(body: bytes) -> bytes:
@@ -97,24 +76,6 @@ def published(stream: io.BytesIO) -> dict[str, list[dict[str, Any]]]:
         for message in sent(stream)
         if message.get("method") == "textDocument/publishDiagnostics"
     }
-
-
-def sent(stream: io.BytesIO) -> list[dict[str, Any]]:
-    """Everything the server wrote, read back off the wire."""
-    stream.seek(0)
-    received = []
-    while (message := read_message(stream)) is not None:
-        received.append(message)
-    return received
-
-
-def build_record(base: Path, project_file: Path, image: str = "firmware.elf", **extra: Any) -> Path:
-    """A ``ddd-build.json`` where a build would have left one, one directory per image."""
-    path = base / "build" / "ddd" / image / BUILD_INFO_FILENAME
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"format": 1, "project": project_file.as_posix(), "image": image, **extra}
-    path.write_text(json.dumps(payload), encoding="utf-8")
-    return path
 
 
 class TestFraming:

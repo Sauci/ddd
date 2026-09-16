@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from ddd import __version__
 from ddd.analysis import analyze
 from ddd.backends import (
+    DICTIONARY_ARTEFACT,
     A2lBackend,
     A2lOptions,
     Backend,
@@ -25,6 +26,8 @@ from ddd.backends import (
     CBackend,
     COptions,
     GeneratedFile,
+    Manifest,
+    RemovalError,
     WriteStatus,
     addressed_symbols,
     describe_write_failure,
@@ -885,10 +888,13 @@ def _written(status: WriteStatus, shown: str, prefix: str = "wrote") -> str:
     """One line of the text report of a written file, as ``generate`` and ``dump -o`` print it.
 
     ``prefix`` is what the run did to a file it did not leave alone - ``would write`` on a dry
-    run - padded so that the paths line up under ``unchanged``.
+    run - padded so that the paths line up under ``unchanged``. A file the run took back
+    carries no status in parentheses: ``removed`` is the whole of what happened to it.
     """
     if status is WriteStatus.UNCHANGED:
         return f"unchanged   {shown}"
+    if status is WriteStatus.REMOVED:
+        return f"{'would remove' if prefix.startswith('would') else 'removed':<11} {shown}"
     return f"{prefix:<11} {shown} ({status.value})"
 
 
@@ -920,7 +926,7 @@ def _dictionary_file(
             "give --dictionary another file"
         )
         raise ValueError(msg)
-    return GeneratedFile(path, _dictionary_text(dictionary))
+    return GeneratedFile(path, _dictionary_text(dictionary), DICTIONARY_ARTEFACT)
 
 
 def _command_generate(args: argparse.Namespace) -> int:
@@ -1001,12 +1007,27 @@ def _command_generate(args: argparse.Namespace) -> int:
                 raise ValueError(msg)
             backends.append(backend_of(plugin, dictionary, GENERATOR))
         files = render(dictionary, backends, args.output_dir)
+        # What this run produced into the directory it writes to, which is what decides the
+        # files of earlier runs it may take back: the artefacts it did not produce - the a2l
+        # of a `--without a2l`, the c of a post-link `generate a2l`, a plugin the project
+        # stopped naming - keep theirs, because this run says nothing about them.
+        produced = {backend.name for backend in backends}
         if args.dictionary is not None:
             _refuse_a_directory(args.dictionary, "--dictionary")
             _refuse_a_source(args.dictionary, "--dictionary", *resolved.sources)
             files.append(_dictionary_file(dictionary, args.dictionary, files))
+            produced.add(DICTIONARY_ARTEFACT)
         try:
-            results = write(files, dry_run=args.dry_run)
+            results = write(
+                files, dry_run=args.dry_run, manifest=Manifest(args.output_dir, produced)
+            )
+        except RemovalError as error:
+            # Said as a removal rather than as a write: the file exists, this run was deleting
+            # it, and the advice a failed write carries - the path is too long for the
+            # platform - is advice about a path that does not exist yet.
+            shown = _displayed_path(Path(str(error.filename)), args.output_dir)
+            msg = f"cannot remove '{shown}': {error.strerror or error}"
+            raise OSError(msg) from None
         except OSError as error:
             # The target is the one thing a caller gets wrong regularly - a path that is a
             # directory, or one nothing may be written to. Naming the file beats the bare

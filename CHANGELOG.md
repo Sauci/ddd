@@ -463,6 +463,38 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   `name` now sees the members of every structured variable it used to drop; one that keyed on
   `path` is unaffected, since the key is still there.
 
+* **The build that runs the generator.**  What a review of the whole tool found between DDD
+  and the build system driving it: what a run leaves behind in the directory it writes to,
+  the project description the cmake module assembles, the keywords it is called with, and the
+  address map the linker hands back.
+
+  *`ddd generate` owns its output directory.*  A run wrote what it rendered and removed
+  nothing, and what it renders follows from the descriptions - so a component dropped from an
+  image's link graph stopped being rendered and **left its header where it was**, on the
+  include path of every other component, where a translation unit went on compiling against
+  the interface of a component the image no longer links.  The build system could not clean
+  it either: a per-component header is named from inside a description file, so it is not
+  among the outputs `ddd_generate()` declares, and `ninja -t clean` left it behind with the
+  rest.  A run now records the files it wrote, and the artefact each came from, in
+  `.ddd-manifest.json` beside them, and the next run removes the recorded files it no longer
+  writes, reporting each as `removed`.  Only files DDD itself wrote are ever removed - a file
+  the manifest does not name is left alone - and only the artefacts the run produced are
+  weighed, so `ddd generate a2l` into the directory a `generate all` filled still regenerates
+  the a2l without touching the c sources the image was built from, and so does a
+  `--without`.  The record is written in the same all-or-nothing step as the artefacts and
+  renamed after them, so a run that fails, or that changes nothing, changes nothing; a
+  `--dry-run` says what it would remove and removes nothing.
+
+  **Migration:** a directory that a `ddd generate` run is pointed at now belongs to that run:
+  its own files are untouched, but a file DDD wrote there and no longer writes is deleted at
+  the next run, where it used to accumulate.  Two runs generating into one directory - which
+  already overwrote each other's artefacts - now also take each other's files back, and want
+  a directory each.  A `.ddd-manifest.json` appears beside the artefacts; a build that lists
+  its output directory, or archives it as a delivery, sees one more file, and a run into a
+  directory that has none removes nothing, so the first run after this upgrade cleans nothing
+  up.  `ddd generate --format json` can report a fourth `status`, `removed`, beside `created`,
+  `updated` and `unchanged`.
+
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`
   through the c templates, a `SYSTEM_CONSTANT` in the a2l - whether or not a shape names it,

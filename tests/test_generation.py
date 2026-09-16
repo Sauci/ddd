@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import errno
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,18 @@ from typing import Any
 import pytest
 
 from conftest import component, declare, project, render_files, run_analysis
-from ddd.backends import GeneratedFile, WriteStatus, write
+from ddd.backends import (
+    MANIFEST_NAME,
+    A2lBackend,
+    A2lOptions,
+    GeneratedFile,
+    Manifest,
+    RemovalError,
+    WriteResult,
+    WriteStatus,
+    render,
+    write,
+)
 
 
 def generate(tree: Path, files: dict[str, Any], **options: Any) -> dict[str, str]:
@@ -412,6 +424,153 @@ class TestWriting:
         """A component named after a shared file is refused, and the message says who by."""
         with pytest.raises(ValueError, match=r"c backend would write 'ddd_types\.h' twice"):
             generate(tree, simple(declare("local", "A"), name="ddd_types"))
+
+
+def pair(tree: Path, *components: str) -> dict[str, Any]:
+    """A project including one component file per name, each declaring one local of its own."""
+    return {
+        "project.ddd.json": project("P", *(f"{name.lower()}.ddd.json" for name in components)),
+        **{
+            f"{name.lower()}.ddd.json": component(name, declare("local", f"{name}Value"))
+            for name in components
+        },
+    }
+
+
+class TestTheManifest:
+    """``generate`` owns its output directory: it records what it wrote and removes the rest.
+
+    The defect this closes: a component dropped from a project kept its generated header, on
+    every component's include path, so a translation unit went on compiling against the
+    interface of a component the image no longer contains.
+    """
+
+    def rendered(self, tree: Path, *components: str, **options: Any) -> list[GeneratedFile]:
+        dictionary, bag = run_analysis(tree, pair(tree, *components))
+        assert dictionary is not None, [entry.render() for entry in bag]
+        return render_files(dictionary, tree / "gen", **options)
+
+    def owning(self, tree: Path, *artefacts: str) -> Manifest:
+        return Manifest(tree / "gen", artefacts or ("c", "a2l"))
+
+    def entries(self, tree: Path) -> dict[str, str]:
+        text = (tree / "gen" / MANIFEST_NAME).read_text(encoding="utf-8")
+        return dict(json.loads(text)["files"])
+
+    def test_a_header_of_a_component_that_is_gone_is_removed(self, tree: Path) -> None:
+        """The review's trigger, under the writer: B leaves the project and B.h leaves with it."""
+        write(self.rendered(tree, "A", "B"), manifest=self.owning(tree))
+        assert (tree / "gen" / "B.h").is_file()
+        assert "B.h" in self.entries(tree)
+
+        results = write(self.rendered(tree, "A"), manifest=self.owning(tree))
+        assert not (tree / "gen" / "B.h").exists()
+        assert (tree / "gen" / "A.h").is_file()
+        assert "B.h" not in self.entries(tree)
+        assert WriteResult(tree / "gen" / "B.h", WriteStatus.REMOVED) in results
+
+    def test_a_file_the_manifest_does_not_name_is_never_removed(self, tree: Path) -> None:
+        """Only what this tool wrote: a file of the project's own beside the artefacts - a
+        checked-in header, a note, an object file of an earlier build - is not ours to delete."""
+        write(self.rendered(tree, "A", "B"), manifest=self.owning(tree))
+        foreign = tree / "gen" / "handwritten.h"
+        foreign.write_text("mine\n", encoding="utf-8")
+        write(self.rendered(tree, "A"), manifest=self.owning(tree))
+        assert foreign.read_text(encoding="utf-8") == "mine\n"
+        assert "handwritten.h" not in self.entries(tree)
+
+    def test_an_artefact_this_run_does_not_produce_keeps_its_files(self, tree: Path) -> None:
+        """``ddd generate a2l -o <the same directory>`` regenerates the a2l after the link
+        "without touching the sources the image was built from" (section 6), so a run removes
+        the stale files of the artefacts it produced and of no others."""
+        write(self.rendered(tree, "A", "B"), manifest=self.owning(tree))
+        dictionary, _ = run_analysis(tree, pair(tree, "A"))
+        assert dictionary is not None
+        only_a2l = render(dictionary, [A2lBackend(A2lOptions())], tree / "gen")
+        write(only_a2l, manifest=self.owning(tree, "a2l"))
+        assert (tree / "gen" / "B.h").is_file(), "the c artefact was not produced by that run"
+        assert self.entries(tree)["B.h"] == "c"
+
+    def test_a_dry_run_removes_nothing_and_records_nothing(self, tree: Path) -> None:
+        write(self.rendered(tree, "A", "B"), manifest=self.owning(tree))
+        before = (tree / "gen" / MANIFEST_NAME).read_bytes()
+        results = write(self.rendered(tree, "A"), manifest=self.owning(tree), dry_run=True)
+        assert (tree / "gen" / "B.h").is_file()
+        assert (tree / "gen" / MANIFEST_NAME).read_bytes() == before
+        assert WriteResult(tree / "gen" / "B.h", WriteStatus.REMOVED) in results
+
+    def test_a_run_that_changes_nothing_writes_nothing(self, tree: Path) -> None:
+        """The mtime promise reaches the record as well: a rerun that removes nothing and
+        rewrites no artefact leaves the manifest untouched too."""
+        write(self.rendered(tree, "A", "B"), manifest=self.owning(tree))
+        record = tree / "gen" / MANIFEST_NAME
+        stamp = record.stat().st_mtime_ns - 10**10
+        os.utime(record, ns=(stamp, stamp))
+        results = write(self.rendered(tree, "A", "B"), manifest=self.owning(tree))
+        assert {result.status for result in results} == {WriteStatus.UNCHANGED}
+        assert record.stat().st_mtime_ns == stamp
+
+    def test_a_write_that_fails_removes_nothing_and_keeps_the_record(self, tree: Path) -> None:
+        """The record is renamed last of all, so a run that could not write its artefacts
+        leaves the previous one describing what is still on disk."""
+        write(self.rendered(tree, "A", "B"), manifest=self.owning(tree))
+        before = (tree / "gen" / MANIFEST_NAME).read_bytes()
+        blocked = tree / "gen" / "ddd_globals.c"
+        blocked.unlink()
+        blocked.mkdir()
+        with pytest.raises(OSError):
+            write(self.rendered(tree, "A"), manifest=self.owning(tree))
+        assert (tree / "gen" / "B.h").is_file()
+        assert (tree / "gen" / MANIFEST_NAME).read_bytes() == before
+
+    def test_a_removal_that_fails_is_named_and_keeps_the_record(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A stale file that cannot be deleted - held open, or read only - fails the run and
+        stays in the record, so the next run tries again rather than losing track of it."""
+        write(self.rendered(tree, "A", "B"), manifest=self.owning(tree))
+        before = (tree / "gen" / MANIFEST_NAME).read_bytes()
+        real_unlink = Path.unlink
+
+        def refuse(path: Path, **keywords: Any) -> None:
+            if path.name == "B.h":
+                raise OSError(errno.EACCES, "Access is denied", str(path))
+            real_unlink(path, **keywords)
+
+        monkeypatch.setattr(Path, "unlink", refuse)
+        with pytest.raises(RemovalError) as excinfo:
+            write(self.rendered(tree, "A"), manifest=self.owning(tree))
+        assert excinfo.value.filename == str(tree / "gen" / "B.h")
+        assert (tree / "gen" / MANIFEST_NAME).read_bytes() == before
+        assert not any((tree / "gen").glob("*.ddd-staging"))
+
+    def test_a_record_this_version_cannot_read_removes_nothing(self, tree: Path) -> None:
+        """A manifest a newer DDD wrote, or a hand edit broke, is one this run declines rather
+        than misreads - and it is rewritten, so the next run owns the directory again."""
+        write(self.rendered(tree, "A", "B"), manifest=self.owning(tree))
+        (tree / "gen" / MANIFEST_NAME).write_text('{"format": 99}', encoding="utf-8")
+        write(self.rendered(tree, "A"), manifest=self.owning(tree))
+        assert (tree / "gen" / "B.h").is_file()
+        assert set(self.entries(tree)) >= {"A.h", "ddd_globals.c"}
+
+    def test_a_recorded_path_outside_the_directory_is_never_removed(self, tree: Path) -> None:
+        """The record names files under the directory the run owns; anything else in it - a
+        hand edit, an absolute path - names something this run has no claim on."""
+        write(self.rendered(tree, "A"), manifest=self.owning(tree))
+        outside = tree / "outside.h"
+        outside.write_text("mine\n", encoding="utf-8")
+        record = tree / "gen" / MANIFEST_NAME
+        written = json.loads(record.read_text(encoding="utf-8"))
+        written["files"]["../outside.h"] = "c"
+        record.write_text(json.dumps(written), encoding="utf-8")
+        write(self.rendered(tree, "A"), manifest=self.owning(tree))
+        assert outside.read_text(encoding="utf-8") == "mine\n"
+
+    def test_the_record_is_not_reported_as_a_generated_file(self, tree: Path) -> None:
+        """It is bookkeeping rather than an artefact: what a run reports is what it generated."""
+        results = write(self.rendered(tree, "A"), manifest=self.owning(tree))
+        assert (tree / "gen" / MANIFEST_NAME).is_file()
+        assert MANIFEST_NAME not in {result.path.name for result in results}
 
 
 class TestStringInitialisers:

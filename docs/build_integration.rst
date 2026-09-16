@@ -396,6 +396,14 @@ come from inside the description files and are therefore unknown at configure ti
 precisely why a consumer depends on ``<stem>_ddd_headers`` rather than on an individual header
 path.
 
+That leaves the build system unable to clean a header whose component has left the image, which
+is why ``ddd generate`` cleans it itself: it owns its output directory, records what it wrote
+there and removes, on the next run, the files it no longer writes (see
+:ref:`what-a-run-owns`). Dropping a component from ``target_link_libraries`` therefore takes
+its header out of the include path of every other component at the next build, and
+``ninja -t clean`` followed by a build leaves what a build from nothing leaves - the record
+survives the clean, being no more a declared output than the headers it names.
+
 The path of the generated a2l is published as the ``DDD_A2L`` property of the image, so that a
 post-build step can pick it up without rebuilding the path by hand:
 

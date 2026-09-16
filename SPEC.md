@@ -1600,6 +1600,24 @@ resolves to ([section 5.3](#53-data-dictionary)).
 
 ## 5 Generated artefacts
 
+`ddd generate` **shall** own the directory it writes into. It records the files it wrote
+there, and the artefact each of them came from, in a manifest named `.ddd-manifest.json`
+beside them, and on a later run it removes the recorded files it no longer writes: a
+component dropped from a project stops being rendered, and its header - which no build
+system can declare, its name coming out of a description file rather than out of the
+template directory ([section 7.1](#71-build-system-integration)) - must not stay on every
+component's include path. Two rules bound this. Only files the tool itself wrote are ever
+removed: a file the manifest does not name is left alone, whatever it looks like. And only
+the artefacts the run produced are weighed, so `ddd generate a2l` into the directory a
+`generate all` filled regenerates the A2L without touching the C sources
+([section 6](#6-address-information)), and so does a run that subtracts an artefact with
+`--without` or stops naming a plugin. The manifest is written in the same all-or-nothing
+step as the artefacts and renamed after them and after the removals, so a run that fails
+writes, removes and records nothing; a run whose output has not changed rewrites nothing,
+the manifest included; and `--dry-run` reports what it would remove without removing it. A
+manifest whose `format` this version does not know is one it declines rather than misreads
+([section 3.6](#36-build-record)): it removes nothing that run and records what it wrote.
+
 ### 5.1 C code
 
 The C sources **shall** be rendered from templates the *project* provides, and DDD
@@ -2002,8 +2020,9 @@ findings at one location keep the order they were reported in; and a
 components it found consistent, and `compare` with a verdict line saying whether the
 candidate file can replace the baseline file ([section 4.1](#41-comparing-two-deliveries)).
 `generate` adds the files it wrote under `generated`, one `{path, status}` per file with
-`status` one of `created`, `updated` and `unchanged` and `path` spelled as the run was asked
-for it,
+`status` one of `created`, `updated`, `unchanged` and `removed` - the last being a file an
+earlier run wrote that this one no longer writes ([section 5](#5-generated-artefacts)) - and
+`path` spelled as the run was asked for it,
 and `dump` keeps its stdout for the dictionary, reporting findings on stderr - with
 `--format json` the findings document goes there too, so stdout carries the dictionary
 alone in both formats; given `-o`, stdout stays empty and the report on stderr adds the file

@@ -121,6 +121,98 @@ class TestTheShippedExample:
         build(tmp_path / "build", "sensor_hub.ddd")
 
 
+class TestAComponentThatLeavesTheImage:
+    """The header of a component dropped from the link graph goes with it.
+
+    ``ddd generate`` wrote what it rendered and removed nothing, and the module can declare
+    only the files the template names give away - a per-component header's name comes out of
+    a description file, which is not read at configure time. So dropping a component from
+    ``target_link_libraries`` left its header in the output directory, on the include path of
+    every component, and a translation unit went on compiling against the interface of a
+    component the image no longer links. ``ninja -t clean`` did not take it either.
+    """
+
+    def write(self, tmp_path: Path) -> Path:
+        """``examples/cmake`` beside the description and template directories it points at."""
+        source = tmp_path / "example"
+        shutil.copytree(EXAMPLES / "cmake", source)
+        shutil.copytree(EXAMPLES / "demo", tmp_path / "demo")
+        shutil.copytree(TEMPLATES, tmp_path / "templates")
+        listing = source / "CMakeLists.txt"
+        text = listing.read_text(encoding="utf-8")
+        for spelling, replacement in (
+            ("${CMAKE_CURRENT_SOURCE_DIR}/../../cmake", (ROOT / "cmake").as_posix()),
+            ("${CMAKE_CURRENT_SOURCE_DIR}/../demo", (tmp_path / "demo").as_posix()),
+            ("${CMAKE_CURRENT_SOURCE_DIR}/../templates", (tmp_path / "templates").as_posix()),
+        ):
+            assert spelling in text, f"the example no longer names {spelling}"
+            text = text.replace(spelling, replacement)
+        listing.write_text(text, encoding="utf-8")
+        return source
+
+    def drop_the_event_logger(self, source: Path) -> None:
+        """The trigger: the image stops linking one of its four components.
+
+        ``missing-producer`` is relaxed with it, because ``UserInterface`` reads a value
+        ``EventLogger`` produced: an image that deliberately links a subset of a project is
+        exactly the run that relaxes it, and without that the generation would refuse to
+        write anything and the question of what it leaves behind would never arise.
+        """
+        listing = source / "CMakeLists.txt"
+        text = listing.read_text(encoding="utf-8")
+        linked = "target_link_libraries(firmware.elf PRIVATE user_interface event_logger)"
+        schemas = 'SCHEMA_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/schemas")'
+        assert linked in text, "the example no longer links event_logger into the image"
+        assert schemas in text, (
+            "the example's ddd_generate() call no longer ends on SCHEMA_DIRECTORY"
+        )
+        text = text.replace(linked, linked.replace(" event_logger", ""))
+        relaxed = schemas[:-1] + '\n             SEVERITY "missing-producer=ignore")'
+        listing.write_text(text.replace(schemas, relaxed), encoding="utf-8")
+
+    def test_its_header_is_removed_and_stops_compiling(self, tmp_path: Path) -> None:
+        """The whole build first, which is what proves the header was usable: ``event_logger.c``
+        includes ``EventLogger.h`` and compiled against it. After the drop it cannot, which is
+        the include-isolation the build page promises, back where an incremental build lost it.
+        """
+        source = self.write(tmp_path)
+        configure(source, tmp_path / "build")
+        build(tmp_path / "build")
+        generated = tmp_path / "build" / "ddd" / "firmware.elf"
+        assert (generated / "EventLogger.h").is_file()
+
+        self.drop_the_event_logger(source)
+        build(tmp_path / "build", "firmware_ddd_generation")
+        described = json.loads((generated / "DemoDevice.ddd.json").read_text(encoding="utf-8"))
+        assert not any("event_logger" in entry for entry in described["project"]["includes"])
+        assert not (generated / "EventLogger.h").exists(), "the header of a component that left"
+        assert (generated / "SensorHub.h").is_file(), "the components that stayed keep theirs"
+
+        run = cmake("--build", str(tmp_path / "build"), cwd=tmp_path / "build")
+        assert run.returncode != 0, "a component the image no longer links still compiled"
+        assert "EventLogger.h" in run.stdout + run.stderr
+
+    def test_a_clean_does_not_lose_what_the_next_build_has_to_take_back(
+        self, tmp_path: Path
+    ) -> None:
+        """``ninja -t clean`` removes the files the module declared and leaves the
+        per-component headers it never knew about, so the record of them has to survive it -
+        which it does, being no more a declared output than they are."""
+        source = self.write(tmp_path)
+        configure(source, tmp_path / "build")
+        build(tmp_path / "build", "firmware_ddd_generation")
+        generated = tmp_path / "build" / "ddd" / "firmware.elf"
+        assert (generated / "EventLogger.h").is_file()
+
+        self.drop_the_event_logger(source)
+        build(tmp_path / "build", "clean")
+        assert (generated / "EventLogger.h").is_file(), "a clean does not know that name"
+        assert not (generated / "ddd_globals.c").exists(), "it does know the declared outputs"
+        build(tmp_path / "build", "firmware_ddd_generation")
+        assert not (generated / "EventLogger.h").exists()
+        assert (generated / "ddd_globals.c").is_file()
+
+
 class TestACollectedProjectWithPlugins:
     def write(self, tmp_path: Path, options: str = "") -> tuple[Path, Path]:
         """A component carrying the layout plugin's blocks, collected into an image naming it."""

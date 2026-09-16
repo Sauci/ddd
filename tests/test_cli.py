@@ -22,6 +22,7 @@ from conftest import (
     project,
     write_tree,
 )
+from ddd.backends import MANIFEST_NAME
 from ddd.build_info import BUILD_INFO_FORMAT
 from ddd.cli import (
     EXIT_FINDINGS,
@@ -301,6 +302,94 @@ class TestGenerateAll:
         assert "would write nothing" in capsys.readouterr().err
 
 
+class TestGenerateOwnsItsOutputDirectory:
+    """What a run wrote once and no longer writes, the next run takes back.
+
+    A component that leaves a project - dropped from the link graph, renamed, compiled out -
+    stops being rendered, and its header used to stay behind on every component's include
+    path, where a translation unit went on compiling against the interface of a component the
+    image no longer contains. A build system cannot clean it either: the per-component names
+    are the ones it does not know at configure time.
+    """
+
+    def project(self, tree: Path, *components: str) -> list[str]:
+        """The arguments of a ``generate all`` over a project of one component per name."""
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P", *(f"{name.lower()}.ddd.json" for name in components)
+                ),
+                **{
+                    f"{name.lower()}.ddd.json": component(name, declare("local", f"{name}Value"))
+                    for name in components
+                },
+            },
+        )
+        return [
+            "generate",
+            "all",
+            str(tree / "project.ddd.json"),
+            "-o",
+            str(tree / "gen"),
+            "-t",
+            str(TEMPLATES),
+        ]
+
+    def test_a_header_of_a_component_that_is_gone_is_removed_and_said(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(self.project(tree, "A", "B")) == EXIT_OK
+        assert (tree / "gen" / "B.h").is_file()
+        capsys.readouterr()
+        assert main(self.project(tree, "A")) == EXIT_OK
+        assert not (tree / "gen" / "B.h").exists()
+        assert (tree / "gen" / "A.h").is_file()
+        shown = re.escape((tree / "gen" / "B.h").as_posix())
+        assert re.search(rf"^removed\s+{shown}$", capsys.readouterr().err, re.M)
+
+    def test_json_reports_the_removal_beside_the_files_written(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(self.project(tree, "A", "B")) == EXIT_OK
+        capsys.readouterr()
+        assert main([*self.project(tree, "A"), "--format", "json"]) == EXIT_OK
+        generated = json.loads(capsys.readouterr().out)["generated"]
+        removed = (tree / "gen" / "B.h").as_posix()
+        assert {"path": removed, "status": "removed"} in generated
+
+    def test_a_dry_run_says_what_it_would_remove_and_removes_nothing(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(self.project(tree, "A", "B")) == EXIT_OK
+        capsys.readouterr()
+        assert main([*self.project(tree, "A"), "--dry-run"]) == EXIT_OK
+        shown = re.escape((tree / "gen" / "B.h").as_posix())
+        assert re.search(rf"^would remove {shown}$", capsys.readouterr().err, re.M)
+        assert (tree / "gen" / "B.h").is_file()
+
+    def test_a_file_the_run_never_wrote_is_left_where_it_is(self, tree: Path) -> None:
+        """Only the files this tool wrote are ever removed: whatever else a project keeps
+        beside them - a checked-in header, a note, an object file - is not ours to delete."""
+        assert main(self.project(tree, "A", "B")) == EXIT_OK
+        foreign = tree / "gen" / "notes.txt"
+        foreign.write_text("mine\n", encoding="utf-8")
+        assert main(self.project(tree, "A")) == EXIT_OK
+        assert foreign.read_text(encoding="utf-8") == "mine\n"
+
+    def test_the_a2l_run_of_a_two_run_build_keeps_the_c_the_image_was_built_from(
+        self, tree: Path
+    ) -> None:
+        """``ddd generate a2l`` into the directory a ``generate all`` filled regenerates the
+        a2l "without touching the sources the image was built from": a run weighs the stale
+        files of the artefacts it produced and of no others."""
+        assert main(self.project(tree, "A", "B")) == EXIT_OK
+        arguments = ["generate", "a2l", str(tree / "project.ddd.json"), "-o", str(tree / "gen")]
+        assert main(arguments) == EXIT_OK
+        assert (tree / "gen" / "B.h").is_file()
+        assert (tree / "gen" / "ddd_globals.c").is_file()
+
+
 class TestGenerate:
     def test_writes_every_artefact(self, tmp_path: Path) -> None:
         output = tmp_path / "gen"
@@ -309,6 +398,9 @@ class TestGenerate:
         )
         names = sorted(path.name for path in output.iterdir())
         assert names == [
+            # The record of what the run wrote here, so that the next one can take back what
+            # it no longer writes; every other name is an artefact.
+            MANIFEST_NAME,
             "Controller.h",
             "DemoDevice.a2l",
             "EventLogger.h",
@@ -346,7 +438,9 @@ class TestGenerate:
         output = tmp_path / "gen"
         arguments = ["generate", "a2l", str(DEMO), "-o", str(output)]
         assert main([*arguments, "--address-map", str(addresses)]) == EXIT_OK
-        assert [path.name for path in output.iterdir()] == ["DemoDevice.a2l"]
+        assert [path.name for path in output.iterdir() if path.name != MANIFEST_NAME] == [
+            "DemoDevice.a2l"
+        ]
         assert "ECU_ADDRESS 0x20001000" in (output / "DemoDevice.a2l").read_text(encoding="utf-8")
         assert "unchanged" not in capsys.readouterr().err
 

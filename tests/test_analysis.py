@@ -64,6 +64,46 @@ class TestProducersAndConsumers:
         )
         assert checks(bag) == ["local-conflict"]
 
+    @pytest.mark.parametrize("order", [("a.ddd.json", "b.ddd.json"), ("b.ddd.json", "a.ddd.json")])
+    def test_a_silenced_clash_leaves_the_local_declaration_owning_the_object(
+        self, tree: Path, order: tuple[str, str]
+    ) -> None:
+        """With the finding relaxed, whose definition is generated is still a decision.
+
+        Two producing declarations of one name, one of them ``local``: the owner used to be
+        whichever of them the project included first, so the same two files generated a
+        different header depending on the order a third file lists them in.
+        """
+        dictionary, _ = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", *order),
+                "a.ddd.json": component("A", declare("local", "X", unit="rpm")),
+                "b.ddd.json": component("B", declare("output", "X", unit="Hz")),
+            },
+            severities=["local-conflict=ignore", "definition-mismatch=ignore"],
+        )
+        assert dictionary is not None
+        entry = dictionary.by_name["X"]
+        assert (entry.owner, entry.local, entry.unit) == ("A", True, "rpm")
+
+    @pytest.mark.parametrize("order", [("a.ddd.json", "b.ddd.json"), ("b.ddd.json", "a.ddd.json")])
+    def test_two_locals_of_one_name_are_owned_by_the_first_component_in_name_order(
+        self, tree: Path, order: tuple[str, str]
+    ) -> None:
+        """Two locals are the same clash, with nothing to prefer between them but a name."""
+        dictionary, _ = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", *order),
+                "a.ddd.json": component("A", declare("local", "X", unit="rpm")),
+                "b.ddd.json": component("B", declare("local", "X", unit="Hz")),
+            },
+            severities=["local-conflict=ignore", "definition-mismatch=ignore"],
+        )
+        assert dictionary is not None
+        assert dictionary.by_name["X"].owner == "A"
+
     def test_duplicate_declaration_in_one_component(self, tree: Path) -> None:
         _, bag = run_analysis(
             tree,

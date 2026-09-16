@@ -731,6 +731,23 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   which take an identifier in the shared types header like any others and used to take one
   unscreened.
 
+  *What the dictionary carries.*  Three claims about it that were not true of it, and one
+  answer that depended on the include order.  A structure member naming a type nobody
+  declares carried no storage at all - no `datatype`, no `type`, no `external` - which read
+  back out of a dump, compared clean against a member that holds a value, and reached a
+  `--force` types header as `None ghost;`.  The contract now asks every member to hold
+  something, and such a member records the name it was declared as, which is what the
+  `unknown-type` finding beside it is about and what the compiler then asks for.  The leaves
+  of an instance, and the rows the tool lists from them, are ordered with every `[n]` read as
+  the number it is, so an instance of twelve reads `[0], [1], [2]` where it read `[0], [10],
+  [11], [1]`.  Under a silenced `local-conflict` or `multiple-producers` the owning
+  declaration - whose unit, conversion and `init` reach every consumer's header - was
+  whichever one the project happened to include first; it is now the `local` declaration,
+  else the first producer by component name, so two files generate the same bytes whatever
+  order a third lists them in.  And the ordering walk over the declared structures no longer
+  claims that the structures of a `type-cycle` are left out of the dictionary: they are in it
+  like any others, and the error is what stops anything being generated from them.
+
   **Migration:** a list `init` holding a quoted number or one of those words is now refused
   with a `schema` finding at the element that holds it, where it used to load, generate and
   dump.  Write the value without the quotes: `["1", "2"]` becomes `[1, 2]`.  A string object
@@ -758,7 +775,12 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   info per declaration a relaxed check of the caller's own took out of the dictionary, where
   it used to report none; a run that relaxes none is untouched.  A project run reports one
   fewer wherever the object's own reference was refused and reported, and one more wherever a
-  text `init` sits on an object that is not a string and never resolved.
+  text `init` sits on an object that is not a string and never resolved.  An archived dump is
+  read back as it always was, with one exception: one carrying a structure member with no
+  `datatype`, no `type` and no `external` - which only a dump taken from a project with an
+  `unknown-type` error can hold - is now a `schema` error naming the member, where it used to
+  load and compare as though the member held something.  Re-dump it from the project it came
+  from, with the type declared.
 
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`

@@ -16,7 +16,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Final
 
 from ddd.compare import ComparedField, differing, spell_out
-from ddd.diagnostics import CHECKS, DiagnosticBag, Location
+from ddd.diagnostics import CHECKS, DiagnosticBag, Location, index_order
 from ddd.ir import (
     ComponentDeclaration,
     DataDictionary,
@@ -484,8 +484,12 @@ def _ordered_structures(declared: dict[str, LoadedType]) -> list[LoadedType]:
     Alphabetical order does not do it: ``Sensor_t`` sorts before ``Status_t`` and nests it.
 
     A depth first walk in name order, so the result is stable whichever way the includes
-    happened to expand. The graph is known to be acyclic by the time this runs; a cycle is
-    reported by :meth:`_Analysis._check_types` and the structures in it are left out.
+    happened to expand. A cycle is reported by :meth:`_Analysis._check_types` and the
+    structures on it are still listed here, as every declared structure is: the walk carries
+    the names it is still following and does not follow one of them a second time, so a cycle
+    costs it nothing, and ``type-cycle`` is an error, which is what stops a template from
+    looping over a dictionary nothing can be generated from. A ``--force`` run that writes the
+    header anyway writes a structure that names the one holding it, and the compiler says so.
 
     Walked with an explicit stack rather than by recursion, because this one runs over every
     declared type - the ones :data:`_MAX_TYPE_NESTING` refused included, since they still
@@ -864,7 +868,10 @@ class _Analysis:
             types=tuple(self._resolve_struct(entry) for entry in _ordered_structures(self._types)),
             instances=tuple(instance for instance, _ in instances),
             leaves=tuple(
-                sorted((leaf for _, leaves in instances for leaf in leaves), key=lambda x: x.path)
+                sorted(
+                    (leaf for _, leaves in instances for leaf in leaves),
+                    key=lambda leaf: index_order(leaf.path),
+                )
             ),
             plugins=tuple(sorted(self._plugins)),
             extensions=extensions,
@@ -1029,13 +1036,20 @@ class _Analysis:
         )
 
     def _resolve_member(self, member: Member) -> ResolvedMember:
-        """One member as the dictionary records it, its storage worked out from the registry."""
+        """One member as the dictionary records it, its storage worked out from the registry.
+
+        A member naming a type nobody declares is the one case the registry answers nothing
+        about, and the structure still reaches the dictionary - ``unknown-type`` is an error,
+        and ``--force`` writes the artefacts around it. So the name it names is what it
+        records, under ``type``: the contract asks every member to hold something, and a name
+        the project does not declare is what this file says it holds.
+        """
         external = self._member_external(member)
         return ResolvedMember(
             name=member.name,
             description=member.description,
             datatype=self._member_storage(member),
-            type=self._member_structure(member),
+            type=self._member_structure(member) or self._unresolved_type(member),
             external=member.typename if external is not None else None,
             header=external.header if external is not None else None,
             dimensions=member.dimensions,
@@ -1068,6 +1082,16 @@ class _Analysis:
         """The external type a member names, or nothing when DDD declares its storage itself."""
         entry = self._declared_of(member)
         return entry if isinstance(entry, ExternalType) else None
+
+    def _unresolved_type(self, member: Member) -> str | None:
+        """The name of a member's type when no file declares it; nothing when one does.
+
+        Read by :meth:`_resolve_member` alone, and only once the registry has answered
+        nothing about the name: a member states either a datatype or a typename, so a member
+        the registry cannot place is one naming a type this project has not got - which
+        ``_check_types`` has already reported as ``unknown-type`` on the structure holding it.
+        """
+        return member.typename if self._declared_of(member) is None else None
 
     def _check_units(self) -> None:
         """Every stated unit is in the vocabulary, where the project declares one.
@@ -2763,6 +2787,14 @@ class _Analysis:
         included, and ``multiple-producers`` and ``local-conflict`` still name the first
         declaration in load order: they are about what the project declares, and which of
         those declarations the tool can then build from is a separate question.
+
+        Among the producers that resolved, the ``local`` one owns the object and the rest go
+        by component name. Both findings above are errors, so this only decides anything once
+        one of them is relaxed - and then it decides what the generated files say: taking the
+        first in load order let the order a project lists its components in choose whose unit,
+        whose conversion and whose ``init`` every consumer's header carries. A ``local``
+        declaration is preferred because it is the one that claims the object exclusively, and
+        the name of a component is the same on every machine.
         """
         producers = [ref for ref in refs if ref.scope.is_producer]
         locals_ = [ref for ref in refs if ref.scope is Scope.LOCAL]
@@ -2799,7 +2831,12 @@ class _Analysis:
                 )
 
         owning = [ref for ref in producers if ref.key not in self._dropped] or producers
-        return owning[0] if owning else None
+        if not owning:
+            return None
+        return min(
+            [ref for ref in owning if ref.scope is Scope.LOCAL] or owning,
+            key=lambda ref: ref.component_name,
+        )
 
     def _absent(
         self,

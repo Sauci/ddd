@@ -309,6 +309,51 @@ class TestTypeGraph:
         assert not dictionary.leaves
         assert [entry.name for entry in dictionary.objects] == ["Fine"]
 
+    def test_a_member_of_an_unknown_type_records_the_name_it_names(self, tree: Path) -> None:
+        """The structure still reaches ``types``, so its members still have to say something.
+
+        All three of ``datatype``, ``type`` and ``external`` were left empty, which is a
+        member with no storage at all: it read back out of a dump, compared clean against a
+        member that holds a value, and reached a forced types header as ``None ghost;``. The
+        member records the name it was given - ``unknown-type`` has already said that nothing
+        declares it - so the dump says what the file says and the forced header names the
+        type the compiler will then ask for.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(struct("Broken_t", nest("ghost", "Missing_t"))),
+            },
+        )
+        assert checks(bag) == ["unknown-type"]
+        assert dictionary is not None
+        member = dictionary.types[0].members[0]
+        assert (member.datatype, member.external, member.header) == (None, None, None)
+        assert member.type == "Missing_t"
+
+    def test_a_cyclic_structure_reaches_the_dictionary_like_any_other(self, tree: Path) -> None:
+        """``type-cycle`` is an error and nothing generates over it, so nothing removes it.
+
+        Said here because the ordering walk used to claim the opposite: a reader of that
+        sentence would have expected ``types`` to be short of the two, and a template looping
+        over it to be safe from a cycle by construction, which it is not - the error is.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(
+                    struct("A_t", nest("b", "B_t")),
+                    struct("B_t", nest("a", "A_t")),
+                    struct("Ok_t", val("value")),
+                ),
+            },
+        )
+        assert checks(bag) == ["type-cycle"]
+        assert dictionary is not None
+        assert {entry.name for entry in dictionary.types} == {"A_t", "B_t", "Ok_t"}
+
 
 class TestNestingTooDeep:
     """A structure nesting deeper than DDD reads is refused at the type that crosses the limit.
@@ -1120,6 +1165,29 @@ class TestDeclaringAStructure:
         assert checks(bag) == []
         assert dictionary is not None
         assert [leaf.path for leaf in dictionary.leaves] == ["X[0].v", "X[1].v"]
+
+    def test_the_elements_of_an_array_are_ordered_by_their_index(self, tree: Path) -> None:
+        """Sorted as text, an instance of twelve read ``[0], [10], [11], [1], [2]``.
+
+        The dictionary's ``leaves`` and everything the tool lists from it - ``ddd list``, the
+        dump's summary, the a2l's records - are in that one order, and an index is a number
+        wherever a reader meets one.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(struct("S_t", val("v"))),
+                "a.ddd.json": component(
+                    "A", declare("local", "Inst", typename="S_t", dimensions=[12])
+                ),
+            },
+        )
+        assert checks(bag) == []
+        assert dictionary is not None
+        expected = [f"Inst[{index}].v" for index in range(12)]
+        assert [leaf.path for leaf in dictionary.leaves] == expected
+        assert [entry.name for entry in dictionary.listed] == expected
 
     def test_a_member_takes_its_meaning_from_the_type_it_names(self, tree: Path) -> None:
         dictionary, bag = self.resolve(

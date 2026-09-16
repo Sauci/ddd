@@ -282,19 +282,23 @@ is covered without anyone remembering this tuple exists.
 """
 
 
-def _pointer_order(pointer: str) -> tuple[tuple[bool, int | str], ...]:
-    """Sort key for a json pointer, with the indices ordered as numbers.
+def index_order(text: str) -> tuple[tuple[bool, int | str], ...]:
+    """Sort key for a spelling that carries ``[n]``, with the indices ordered as numbers.
 
-    Sorted as plain text, ``interface[10]`` comes before ``interface[2]`` and the
-    findings of one file are listed in an order that has nothing to do with the file.
-    Each part carries whether it is text, so that two pointers whose shapes differ at one
+    Sorted as plain text, ``interface[10]`` comes before ``interface[2]`` and the findings of
+    one file are listed in an order that has nothing to do with the file; the same is true of
+    ``Inst[10].value`` and the leaves of an instance, which is why this is here rather than
+    inside the one that met it first - a json pointer and the access path of a leaf spell an
+    index the same way, and a reader expects 2 before 10 in both.
+
+    Each part carries whether it is text, so that two spellings whose shapes differ at one
     position - an index against a key - still compare, where a bare number and a bare string
     would not and the sort would raise instead of listing anything. Whether a part is an
     index comes from its position in the split, not from what it looks like: a key can look
     like a number and still not be one - ``str.isdigit`` is true of superscripts and other
     Unicode digits that ``int`` refuses.
     """
-    parts = re.split(r"\[(\d+)\]", pointer)
+    parts = re.split(r"\[(\d+)\]", text)
     return tuple((False, int(p)) if i % 2 else (True, p) for i, p in enumerate(parts) if p)
 
 
@@ -358,7 +362,7 @@ class Diagnostic:
         return (
             self.severity.rank,
             location.path.as_posix() if location else "",
-            _pointer_order(location.pointer) if location else (),
+            index_order(location.pointer) if location else (),
             self.sequence,
         )
 

@@ -211,6 +211,11 @@ class TestResolution:
         with pytest.raises(ValidationError, match="opaque storage"):
             ResolvedMember(name="m", external="Drv_t", header="drv.h", type="S_t")
 
+    def test_the_dictionary_contract_refuses_a_member_that_holds_nothing(self) -> None:
+        """No datatype, no type and no external name is storage with no size and no meaning."""
+        with pytest.raises(ValidationError, match="it holds something"):
+            ResolvedMember(name="m")
+
     def test_an_array_of_structures_still_skips_the_member(self, tree: Path) -> None:
         files = opaque_project()
         files["a.ddd.json"] = component("A", declare("local", "X", typename="S_t", dimensions=[2]))

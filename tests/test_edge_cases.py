@@ -495,15 +495,22 @@ class TestCommandLineEdges:
         assert (captured.out, captured.err) == ("", "")
 
     def test_the_module_entry_point_runs_as_documented(self) -> None:
-        """`python -m ddd` is the documented way to run from a source checkout."""
+        """`python -m ddd` is the documented way to run from a source checkout.
+
+        The test above already runs the module in process and asserts what it prints and what
+        it exits with; what only a real process can show is the status reaching the shell,
+        which is what a build reads. Asserted rather than left to ``check=True``, whose
+        failure reads as an error of the harness rather than as a verdict of the tool.
+        """
         result = subprocess.run(
             [sys.executable, "-m", "ddd", "--version"],
             capture_output=True,
             text=True,
-            check=True,
+            check=False,
             cwd=Path(__file__).resolve().parents[1],
             env={**_source_env()},
         )
+        assert result.returncode == 0, result.stderr
         assert result.stdout.startswith("ddd ")
 
 

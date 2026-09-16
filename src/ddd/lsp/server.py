@@ -148,8 +148,11 @@ class Server:
         """The workspace folders, first one first; a multi-root workspace has several."""
         self.build_directories = list(build_directories)
         self._published: set[Path] = set()
-        self._announced: tuple[tuple[str, str], ...] | None = None
+        self._announced: tuple[str, ...] | None = None
         """What was last said about the configured projects, so it is not said every save."""
+
+        self._refused: dict[Path, str] = {}
+        """Record -> why this version cannot use it, found alongside the usable ones."""
 
         self._builds: list[BuildInfo] | None = None
         """The build records, found once and kept until the next refresh.
@@ -321,8 +324,11 @@ class Server:
     def _builds_now(self) -> list[BuildInfo]:
         """The build records, found once per refresh rather than once per keypress."""
         if self._builds is None:
+            self._refused = {}
             self._builds = [
-                info for root in self.roots for info in discover(root, self.build_directories)
+                info
+                for root in self.roots
+                for info in discover(root, self.build_directories, self._refused)
             ]
         return self._builds
 
@@ -395,25 +401,35 @@ class Server:
 
         A record naming a project that is not there gets said out loud, because it is the way
         this goes wrong in practice: a record written inside a container names a path that
-        exists only in the container, and is then found, read and quietly of no use.
+        exists only in the container, and is then found, read and quietly of no use. A record
+        this version cannot make sense of is the same thing one step earlier, and it is named
+        here rather than left to the silence for the same reason.
         """
-        current = tuple((info.image, info.project) for info in builds)
-        if current == self._announced:
-            return
-        self._announced = current
-        if not builds:
-            self._log(
+        lines = [
+            f"{path}: {reason}; this record is ignored, so the project it names is not analysed"
+            for path, reason in sorted(self._refused.items())
+        ]
+        lines.extend(
+            f"{info.image or 'build'}: {info.project}"
+            + (
+                ""
+                if Path(info.project).is_file()
+                else "  <- no such file, so this project cannot be analysed"
+            )
+            for info in builds
+        )
+        if not lines:
+            lines.append(
                 "no ddd-build.json found: every file is checked on its own, so findings that "
                 "need the whole project - a missing producer, two components disagreeing - "
                 "are not reported. Configure the build, or pass -b <build directory>."
             )
+        current = tuple(lines)
+        if current == self._announced:
             return
-        for info in builds:
-            known = Path(info.project).is_file()
-            self._log(
-                f"{info.image or 'build'}: {info.project}"
-                + ("" if known else "  <- no such file, so this project cannot be analysed")
-            )
+        self._announced = current
+        for line in lines:
+            self._log(line)
 
     def _log(self, message: str) -> None:
         """Put a line in the client's log, where somebody looks when nothing is happening."""

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Final
 
 from ddd.build_info import BUILD_INFO_FILENAME, BUILD_INFO_FORMAT, BuildInfo
+from ddd.diagnostics import SeverityPolicy, UnknownCheckError
 
 BUILD_DIRECTORY_PATTERNS: Final = ("build", "out", "cmake-build-*")
 """Where a build tree usually sits, relative to the directory the editor opened."""
@@ -41,14 +42,23 @@ def build_files(root: Path, configured: Sequence[Path] = ()) -> list[Path]:
     return sorted(found)
 
 
-def load_builds(paths: Iterable[Path]) -> list[BuildInfo]:
+def load_builds(paths: Iterable[Path], refused: dict[Path, str] | None = None) -> list[BuildInfo]:
     """Read the records, skipping any this version cannot make sense of.
 
     Skipped rather than reported: these files are written by a build, not by a person, so a
     malformed one is not a mistake somebody can fix in the editor that would be showing the
     complaint. A record from a newer DDD is the same story - it carries keys this version does
     not know, which is exactly what the format stamp is there to tell us.
+
+    A record whose severities name a check this version has not got is the third shape of the
+    same story, and the one that used to be fatal: the keys all validate, the stamp says
+    nothing, and building the policy raised out of the first refresh that reached it - so a
+    record written by a newer ``ddd`` in the build tree ended the editor's server on the first
+    document opened. The record is skipped like the others and why is written into ``refused``,
+    for a caller that has somewhere to say it: skipped in silence, a record that cannot be used
+    looks exactly like a workspace nobody ever configured a build in.
     """
+    reasons = {} if refused is None else refused
     builds = []
     for path in paths:
         try:
@@ -60,10 +70,17 @@ def load_builds(paths: Iterable[Path]) -> list[BuildInfo]:
         # meaning that has moved on, which only the stamp can say.
         if info.format > BUILD_INFO_FORMAT:
             continue
+        try:
+            SeverityPolicy.from_strings(list(info.severity), strict=info.strict)
+        except UnknownCheckError as fault:
+            reasons[path] = str(fault)
+            continue
         builds.append(info)
     return builds
 
 
-def discover(root: Path, configured: Sequence[Path] = ()) -> list[BuildInfo]:
+def discover(
+    root: Path, configured: Sequence[Path] = (), refused: dict[Path, str] | None = None
+) -> list[BuildInfo]:
     """Every project a build in this workspace is configured to generate."""
-    return load_builds(build_files(root, configured))
+    return load_builds(build_files(root, configured), refused)

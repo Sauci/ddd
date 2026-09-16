@@ -337,6 +337,54 @@ class TestDiscovery:
     def test_a_record_that_cannot_be_read_is_skipped(self, tmp_path: Path) -> None:
         assert load_builds([tmp_path / "absent.json"]) == []
 
+    @pytest.mark.parametrize(
+        ("override", "reason"),
+        [
+            (["no-such-check=ignore"], "unknown check 'no-such-check'"),
+            (["unused-output"], "expected 'check=severity', got 'unused-output'"),
+        ],
+    )
+    def test_a_record_naming_a_check_this_version_has_not_got_is_skipped(
+        self, tmp_path: Path, override: list[str], reason: str
+    ) -> None:
+        """The severity side of "written by a newer DDD".
+
+        The keys are all known, so the record validates; one of their values names a check
+        this version has not got. Building the policy from it raised out of the first refresh
+        that reached it and took the server with it - a record written by a newer ``ddd`` in
+        the build tree while the editor runs an older one.
+        """
+        path = build_record(tmp_path, tmp_path / "p.ddd.json", severity=override)
+        refused: dict[Path, str] = {}
+        assert load_builds([path], refused) == []
+        assert refused == {path: reason}
+
+    def test_a_record_skipped_for_its_severities_is_said_out_loud(self, tmp_path: Path) -> None:
+        """Skipped silently it looks exactly like a workspace nobody configured a build in."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "X")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json", severity=["no-such-check=ignore"])
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        server.refresh(tmp_path / "a.ddd.json")
+        said = [
+            message["params"]["message"]
+            for message in sent(writer)
+            if message.get("method") == "window/logMessage"
+        ]
+        assert said == [
+            f"{tmp_path / 'build' / 'ddd' / 'firmware.elf' / BUILD_INFO_FILENAME}: unknown check "
+            "'no-such-check'; this record is ignored, so the project it names is not analysed"
+        ]
+        # and the server carries on, answering for the file that was opened through the
+        # project above it, which is what it does for any file no usable record claims
+        assert [entry["code"] for entry in published(writer)["a.ddd.json"]] == ["missing-producer"]
+
 
 EXITING_CHECK_PLUGIN = """
 import sys
@@ -3055,9 +3103,9 @@ class TestServer:
         walks: list[Path] = []
         original = server_module.discover
 
-        def counted(root: Path, configured: Any = ()) -> Any:
+        def counted(root: Path, configured: Any = (), refused: Any = None) -> Any:
             walks.append(root)
-            return original(root, configured)
+            return original(root, configured, refused)
 
         monkeypatch.setattr(server_module, "discover", counted)
         asked = [

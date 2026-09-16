@@ -213,6 +213,12 @@ class TestRanges:
         literal = escaped.replace("%3A", ":")
         decoded = uri_to_path(f"file:///{escaped}/git/x/a.ddd.json")
         assert decoded == uri_to_path(f"file:///{literal}/git/x/a.ddd.json")
+        # Spelled through ``as_posix`` so that the decoding is pinned on both platforms: on
+        # posix the two spellings unquote alike whatever the function does with a drive, so
+        # the equality above holds there even when nothing has been decoded as a drive at
+        # all. ``C:/git/x/...`` on windows, ``/c:/git/x/...`` on posix, and a drive letter
+        # keeps whatever case it arrived in.
+        assert decoded.as_posix().lower().endswith("c:/git/x/a.ddd.json")
         if os.name == "nt":
             assert decoded.is_absolute()
             # ``as_uri`` keeps the drive letter's case, so compare case-blind.
@@ -224,14 +230,17 @@ class TestRanges:
         anything else. Substituting there asked ``url2pathname`` to parse a share name as a
         Windows drive, which is not what it is."""
         found = uri_to_path("file://server/c%3A/a.ddd.json")
-        assert found == Path(f"//server{server_module.url2pathname('/c%3A/a.ddd.json')}")
+        # Written out rather than computed from ``url2pathname``, which is the fallback this
+        # function takes here: an expectation built from it says only that the code ran the
+        # line it ran, and would follow the function anywhere.
+        assert found.as_posix() == "//server/c:/a.ddd.json"
 
     def test_a_drive_colon_with_nothing_after_it_is_left_to_url2pathname(self) -> None:
         """VS Code always sends more path after the drive - ``file:///c%3A/...`` - so a
         colon with nothing following it at all is not a shape any client is known to send,
         and guessing it is a bare drive root is a guess this function is not in a position
         to make."""
-        assert uri_to_path("file:///c%3A") == Path(server_module.url2pathname("/c%3A"))
+        assert uri_to_path("file:///c%3A").as_posix() == "/c:"
 
     def test_a_byte_order_mark_is_read_the_way_the_loader_reads_one(self, tmp_path: Path) -> None:
         """``ddd check`` accepts a BOM on purpose; the editor has to agree with it.
@@ -3473,11 +3482,21 @@ class TestServer:
         }
 
     def test_saving_refreshes_as_opening_does(self, tmp_path: Path) -> None:
+        """The same publication an open gives, so "refreshes" means what the name says.
+
+        Asserted on what was published rather than on something having been sent: the server
+        logs while it refreshes, and a log line satisfies "it answered" on a save that
+        publishes nothing at all.
+        """
         build_record(tmp_path, INCONSISTENT)
         writer = io.BytesIO()
-        saved = dict(self.opened(INCONSISTENT), method="textDocument/didSave")
+        saved_file = INCONSISTENT.parent / "component_b.ddd.json"
+        saved = dict(self.opened(saved_file), method="textDocument/didSave")
         Server(session(saved), writer, root=tmp_path).run()
-        assert answered(writer)
+        drawn = published(writer)
+        assert [finding["code"] for finding in drawn[saved_file.as_uri()]] == ["multiple-producers"]
+        beside = INCONSISTENT.parent / "component_c.ddd.json"
+        assert drawn[beside.as_uri()][0]["code"] == "definition-mismatch"
 
     def test_shutdown_is_answered_and_exit_ends_the_loop(self, tmp_path: Path) -> None:
         writer = io.BytesIO()

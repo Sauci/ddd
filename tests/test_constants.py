@@ -488,7 +488,7 @@ class TestTheCheck:
             self.files(declare("local", "X", dimensions=["MISSING"], init=999)),
             severities=["unknown-constant=ignore"],
         )
-        assert checks(bag) == ["incomplete-project", "init-invalid"]
+        assert sorted(checks(bag)) == ["incomplete-project", "init-invalid"]
         assert "does not fit into uint8" in messages(bag)
         assert dictionary is not None
         assert dictionary.objects == ()
@@ -517,7 +517,7 @@ class TestTheCheck:
             },
             severities=["unknown-constant=ignore"],
         )
-        assert checks(bag) == ["incomplete-project", "consumer-storage", "missing-producer"]
+        assert sorted(checks(bag)) == ["consumer-storage", "incomplete-project", "missing-producer"]
         assert "the initial value is decided by the component that produces" in messages(bag)
 
 

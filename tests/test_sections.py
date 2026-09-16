@@ -229,9 +229,7 @@ class TestTheChecks:
                 ),
             },
         )
-        assert checks(bag) == ["section-alignment", "unused-output"] or checks(bag) == [
-            "section-alignment"
-        ]
+        assert checks(bag) == ["section-alignment"]
         assert "needs an alignment of 8" in messages(bag)
 
     def test_a_malformed_sections_file_is_reported_against_its_keys(self, tree: Path) -> None:
@@ -468,7 +466,6 @@ class TestPlacementReachesTheOutputs:
 
         before, _ = run_analysis(tree, self.project_files())
         files = self.project_files()
-        files["a.ddd.json"]["component"]["interface"][1]["definition"]["section"] = None
         del files["a.ddd.json"]["component"]["interface"][1]["definition"]["section"]
         after, _ = run_analysis(tree, files, root="project.ddd.json")
         assert before is not None and after is not None
@@ -485,7 +482,8 @@ class TestSectionSpelling:
             SectionsFile.model_validate(sections(section('.calib")x')))
 
     def test_a_name_with_a_dollar_or_a_dot_is_a_section_name(self) -> None:
-        SectionsFile.model_validate(sections(section(".CRT$XCU")))
+        parsed = SectionsFile.model_validate(sections(section(".CRT$XCU")))
+        assert [entry.section for entry in parsed.sections] == [".CRT$XCU"]
 
     def test_a_definition_naming_a_section_is_held_to_the_same_spelling(self) -> None:
         from ddd.models import ComponentFile

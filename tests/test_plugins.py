@@ -2318,6 +2318,9 @@ class TestGenerate:
         root = str(tree / "project.ddd.json")
         arguments = ["generate", "tag", root, "-o", str(tree / "out")]
         assert main(arguments) == EXIT_FINDINGS
+        # The name of the test: the exit code alone leaves a run that wrote the header and
+        # then reported the errors indistinguishable from one that wrote nothing.
+        assert not (tree / "out").exists()
 
     @pytest.mark.parametrize("artefact", ["c", "a2l"])
     def test_a_single_built_in_artefact_runs_no_plugin_backend(

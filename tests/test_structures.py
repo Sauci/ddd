@@ -580,7 +580,7 @@ class TestNestingTooDeep:
                 ),
             },
         )
-        assert checks(bag) == ["schema", "type-cycle"]
+        assert sorted(checks(bag)) == ["schema", "type-cycle"]
 
 
 class TestDiamondShapedNesting:

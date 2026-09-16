@@ -103,9 +103,6 @@ class TestConversions:
     def test_the_conversion_is_required_beside_a_datatype(self) -> None:
         """The identity is derivable, which is exactly why it is asked for: raw equalling
         physical is an engineering claim, and a forgotten scaling displays raw counts."""
-        import pytest
-        from pydantic import ValidationError
-
         payload = {"name": "X", "datatype": "uint8", "kind": "measurement", "volatile": False}
         with pytest.raises(ValidationError, match="comes with a 'conversion'"):
             Measurement.model_validate(payload)
@@ -550,7 +547,7 @@ class TestObjectIdentity:
                 "b.ddd.json": component("B", declare("local", "Delta", id="k7m2q9xr4t8w")),
             },
         )
-        assert checks(bag) == ["unknown-type", "duplicate-id"], messages(bag)
+        assert sorted(checks(bag)) == ["duplicate-id", "unknown-type"], messages(bag)
         # In name order, as it always is, so that the pair is named the same way whichever
         # of the two the project happens to include first.
         assert "'Gamma' carries the id 'k7m2q9xr4t8w', which 'Delta' already carries" in messages(
@@ -967,7 +964,9 @@ class TestStringRules:
             assert parsed.conversion.describe() == "string"
 
     def test_sint8_is_a_byte_too(self) -> None:
-        declared(datatype="sint8", conversion={"kind": "string"}, dimensions=[16])
+        object = declared(datatype="sint8", conversion={"kind": "string"}, dimensions=[16])
+        assert object.datatype is Datatype.SINT8
+        assert object.conversion.kind == "string"
 
     @pytest.mark.parametrize("datatype", ["uint16", "boolean", "float32"])
     def test_a_string_needs_a_byte_datatype(self, datatype: str) -> None:

@@ -478,10 +478,21 @@ class TestCommandLineEdges:
         assert exit_info.value.code == 0
         assert "multiple-producers" in capsys.readouterr().out
 
-    def test_importing_the_entry_point_module_does_not_run_it(self) -> None:
-        """Only `python -m ddd` may call sys.exit; a plain import must stay silent."""
+    def test_importing_the_entry_point_module_does_not_run_it(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Only `python -m ddd` may call sys.exit; a plain import must stay silent.
+
+        Both halves of "silent" are observable and both are asserted: no ``SystemExit``
+        escaping the reload, and nothing written to either stream. ``sys.argv`` is pointed at
+        a command that prints, so that a module running its main on import would be loud
+        rather than accidentally quiet.
+        """
+        monkeypatch.setattr(sys, "argv", ["ddd", "checks"])
         module = importlib.import_module("ddd.__main__")
         importlib.reload(module)  # re-executes with __name__ != "__main__"
+        captured = capsys.readouterr()
+        assert (captured.out, captured.err) == ("", "")
 
     def test_the_module_entry_point_runs_as_documented(self) -> None:
         """`python -m ddd` is the documented way to run from a source checkout."""

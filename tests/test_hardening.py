@@ -549,7 +549,6 @@ class TestVerdictsThatWereWrong:
         assert "display_identifier: 'FiltGain' -> none" in messages(back)
 
     def test_findings_of_one_file_are_ordered_by_declaration(self) -> None:
-        location = Location(Path("a.ddd.json"), "component.interface[{}]")
         bag = DiagnosticBag()
         for index in (10, 2):
             bag.add("schema", "x", Location(Path("a.ddd.json"), f"component.interface[{index}]"))
@@ -557,14 +556,12 @@ class TestVerdictsThatWereWrong:
             "component.interface[2]",
             "component.interface[10]",
         ]
-        assert location.pointer  # the template itself is not a diagnostic
 
 
 class TestInputTheToolMustSurvive:
     """Every one of these used to end the run with a traceback or a silent pass."""
 
     def test_nan_is_refused(self, tree: Path) -> None:
-        write_tree(tree, {"a.ddd.json": '{"component": {"name": "A", "interface": []}}'})
         (tree / "a.ddd.json").write_text(
             '{"component": {"name": "A", "interface": [{"scope": "local", "definition": '
             '{"name": "X", "datatype": "uint16", "limits": {"min": NaN, "max": 10}}}]}}',

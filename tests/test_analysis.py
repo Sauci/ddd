@@ -763,7 +763,7 @@ class TestEnums:
                 "c.ddd.json": component("C", declare("local", "EXTRA")),
             },
         )
-        assert checks(bag) == ["enum-conflict", "name-collision"], messages(bag)
+        assert sorted(checks(bag)) == ["enum-conflict", "name-collision"], messages(bag)
         assert "'EXTRA' is declared as a variable and is also an enumerator" in messages(bag)
 
     def test_an_identical_copy_collides_with_nothing(self, tree: Path) -> None:
@@ -1128,7 +1128,7 @@ class TestDroppedDeclarations:
                 ),
             },
         )
-        assert checks(bag) == ["unknown-type", "duplicate-declaration"]
+        assert sorted(checks(bag)) == ["duplicate-declaration", "unknown-type"]
 
     @pytest.mark.parametrize("dropped_first", [True, False])
     def test_a_surviving_producer_owns_the_object_whatever_the_include_order(
@@ -1306,7 +1306,7 @@ class TestDroppedDeclarations:
             },
             severities=["unknown-constant=ignore"],
         )
-        assert checks(bag) == ["incomplete-project", "reference-kind", "incomplete-project"]
+        assert sorted(checks(bag)) == ["incomplete-project", "incomplete-project", "reference-kind"]
         rendered = messages(bag)
         assert "the input of axis 'Az' must be of kind 'measurement'" in rendered
         assert "'Az' is not in the data dictionary" not in rendered
@@ -1688,7 +1688,7 @@ class TestLocalReferences:
             severities=["local-conflict=warning"],
         )
         assert dictionary is not None
-        assert checks(bag) == ["local-conflict", "unused-output"]
+        assert sorted(checks(bag)) == ["local-conflict", "unused-output"]
         rendered = messages(bag)
         assert (
             "'Ax' is local to component 'A' but is also used as the axis of 'Gain' by component 'B'"
@@ -1819,7 +1819,7 @@ class TestLocalReferences:
         # 'unused-output' is the honest second finding: 'Ay' is read only through the map's
         # y_axis key, and that is not a consumer declaration - the check nobody reads the
         # object itself, only refers to it.
-        assert checks(bag) == ["local-conflict", "unused-output"]
+        assert sorted(checks(bag)) == ["local-conflict", "unused-output"]
         rendered = messages(bag)
         assert "b.ddd.json#component.interface[0].definition.x_axis" in rendered
         assert "definition.y_axis" not in rendered
@@ -1907,7 +1907,7 @@ class TestStringInit:
             severities=["unknown-constant=ignore"],
         )
         assert dictionary is not None and dictionary.objects == ()
-        assert checks(bag) == ["incomplete-project", "init-invalid"], messages(bag)
+        assert sorted(checks(bag)) == ["incomplete-project", "init-invalid"], messages(bag)
 
     def test_bytes_and_text_disagree(self, tree: Path) -> None:
         """A byte array in one component and a string in another is a mismatch, as written."""

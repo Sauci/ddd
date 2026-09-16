@@ -454,6 +454,16 @@ Recorded as each branch landed, so that nothing is lost between a task and the r
   7): `docker compose` cannot run on the machine the fixes were written on and MinGW emits PE
   sections, so the page now says what was measured and when rather than quoting a number nobody
   can reproduce.
+- **An editor still accepts `4.0` where the loader refuses it** (branch 7 task 7, `P2-M6`).
+  The five strict-integer keys - `dimensions`, `size`, an enumerator's `value`, `event`,
+  `alignment` - say in their published description that the number is written without a
+  decimal point, rather than gaining a `BeforeValidator` that reads `4.0` as `4`. Stated
+  rather than given a parser hook, which is what decision 11 does with the other rule the
+  spelling of a number carries; and the strictness is deliberate - it is what keeps `"8"`
+  and `8` apart on the same keys (`P2-I2`, deferred by decision 10), so relaxing one half of
+  it would be a behaviour change no decision covers. A json schema cannot express the rule
+  at all: its `integer` admits a zero fraction. A guard in `tests/test_documentation.py`
+  holds the sentence in each of the five descriptions.
 
 ## Self-review
 

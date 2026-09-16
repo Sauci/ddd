@@ -7,6 +7,12 @@
 # the ids land in the author's working tree to be read and staged, instead of arriving in a
 # commit nobody looked at. It is the same bargain the command itself is built on - the tool
 # proposes, the diff is reviewed, a checkout undoes it.
+#
+# `language: python` and no `language_version`: pre-commit builds the hook an environment out
+# of whichever interpreter it finds, and ddd needs 3.12 or newer, so a machine whose default
+# python3 is older fails in pip with "requires a different Python". Pinning one here would
+# pick a version for every consumer instead, so the floor is stated on the build integration
+# page, with the `language_version` a consumer adds to its own hook entry when it needs one.
 - id: ddd-id
   name: stamp ddd object identities
   description: give every producing declaration an id, so that a later rename can be seen as one

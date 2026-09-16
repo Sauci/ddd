@@ -425,12 +425,14 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
 
     sources = subparsers.add_parser(
         "sources",
-        help="list every description file a project is built out of",
+        help="list every file a project is built out of, its plugins' modules included",
         description=(
-            "Prints one absolute path per line: the project file and every file it includes "
-            "however deeply. A build system needs exactly this "
+            "Prints one absolute path per line: the project file, every file it includes "
+            "however deeply, and the module of every plugin those files name. A build system "
+            "needs exactly this "
             "to know when the generated files are out of date, because a project pulls its "
-            "components in through 'includes' and none of them is named on the command line."
+            "components in through 'includes' and names its plugins under 'plugins', and "
+            "none of them is named on the command line."
         ),
     )
     sources.add_argument("project", type=Path, help="project or component description file")

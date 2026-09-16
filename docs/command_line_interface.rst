@@ -170,8 +170,9 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
        written, an output path naming a file the run itself read (``dump -o``,
        ``compare --renames`` and ``generate --dictionary`` each refuse one, naming it, since
        nothing DDD writes is ever a file it read), an address map that cannot be read,
-       ``--plugin`` refused beside a
-       description, or a run that would write nothing - reports the findings of the run
+       ``ddd compare --plugin`` refused beside a project description on the *candidate*
+       side, which names its own plugins, or a run that would write nothing - reports the
+       findings of the run
        first, in the requested format, before the error follows; the exit code is still
        ``2``.
    * - ``130``
@@ -292,8 +293,13 @@ The commands
        ``generate`` falls back to them.
 
 ``FILE`` is a project description or a single component description in every command that
-takes one. A component checks, lists, dumps and generates on its own, which is what lets a
-supplier verify a component long before an integrator ever sees it.
+takes one. A component checks, lists and dumps on its own - with ``--standalone`` holding
+back the checks that need the rest of the project - which is what lets a supplier verify a
+component long before an integrator ever sees it. ``ddd generate`` takes no ``--standalone``:
+generating from a component is generating the c and the a2l of a project of one, and the
+inputs nobody produces there are errors that stop the run. A supplier who wants the files
+anyway asks for them with ``--force``, or silences the checks it has decided about with
+``-W``.
 
 The ``-t`` of the c-rendering artefacts has no default at all: an invocation that renders c
 without it is refused rather than falling back to templates of DDD's own.
@@ -398,7 +404,9 @@ be wrong in the ordinary case: editing a component would change nothing the buil
 the image would happily link yesterday's globals and ship yesterday's a2l.
 
 ``ddd sources`` closes that gap. It prints one absolute path per line: the project file
-itself and every description it includes however deeply:
+itself, every description it includes however deeply, and the module of every
+:doc:`plugin <plugins>` those files name, since a plugin decides what the generation writes
+as much as a description does. The demo names none, so its listing is descriptions alone:
 
 .. code-block:: text
 

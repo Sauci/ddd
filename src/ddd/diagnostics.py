@@ -185,7 +185,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("reference-kind", Severity.ERROR,
                "a reference points at an object of the wrong kind"),
         _check("init-invalid", Severity.ERROR,
-               "an initial value does not fit the datatype of the variable"),
+               "an initial value or an enumerator does not fit the datatype or the shape, or "
+               "a string init breaks the rules for one"),
         _check("storage-mismatch", Severity.WARNING,
                "components disagree on how the a2l presents the object; the producer wins"),
         _check("condition-mismatch", Severity.WARNING,

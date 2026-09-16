@@ -762,7 +762,7 @@ project rather than a description of one.
 | --- | --- |
 | `format` | version of this document format, raised only when its shape changes; today `1` |
 | `project` | absolute path of the project description the build runs DDD on; absolute because this file lives in the build tree while the project need not |
-| `image` | the build target the record was written for, by name, for example `firmware.elf`; a component linked into both a firmware and a test binary belongs to two projects, which need not agree about it. Optional on the command line (`--image`) and empty when no target is named; the build integration of [section 7.1](#71-build-system-integration) always names one |
+| `image` | the build target the record was written for, by name, for example `firmware.elf`; a component linked into both a firmware and a test binary belongs to two projects, which need not agree about it. Optional on the command line (`--image`) and written as the empty string `""`, never as `null`, when no target is named; the build integration of [section 7.1](#71-build-system-integration) always names one |
 | `strict` | whether the build reports warnings as errors |
 | `severity` | the severity overrides the build applies, as `check=severity` ([section 4](#4-consistency-checks)), in the order given |
 
@@ -1632,7 +1632,9 @@ per component, the component ([section 7](#7-tool-interface)), not silently empt
 so is any other exception a template's own body raises - a division by zero, a filter handed
 the wrong type - reported the same way rather than as a python traceback. A template
 directory containing no template, and two artefacts claiming the same output path, are usage
-errors rather than findings ([section 7](#7-tool-interface)).
+errors rather than findings ([section 7](#7-tool-interface)). A template is code: it is
+rendered in an unsandboxed template environment, so naming a template directory runs what is
+in it, exactly as naming a plugin runs its module ([section 3.11](#311-plugins)).
 
 Whatever the templates spell, the *data* they are given is fixed: measurements are writable
 variables and calibration objects are `const`, each of them additionally `volatile` when
@@ -1859,13 +1861,18 @@ records what its producing declaration states, resolved: `name`, `id`, `extensio
 declaration wrote it - a list nested one level per dimension, a scalar left a scalar even on
 an array, which is the broadcast the declaration states once and the reader repeats over
 `shape` - `section`, `raster` (the declaration's own, else its component's default), `volatile`,
-`condition` (the producer's), `references`, `owner`, `consumers`, `local` and `a2l` with
-`export` resolved to a boolean. An instance records `name`, `id`, `extensions`, `type`,
+`condition` (the producer's), `references` (the objects this one names, keyed by the role it
+names them in - `axis` for a curve, `x_axis` and `y_axis` for a map, `input` for an axis -
+and `{}` on an object that names none), `owner` (the component producing it, `null` only
+where no component does, which a consistent project has none of), `consumers`, `local` and
+`a2l` with `export` resolved to a boolean. An instance records `name`, `id`, `extensions`, `type`,
 `kind`, `description`, `shape`, `dimensions`, `volatile`, `section`, `raster`, `condition`,
 `owner`, `consumers`, `local` and `a2l`; a leaf records `path`, `instance`, `instance_id`,
 `kind`, `datatype`, `description`, `unit`, `conversion`, `limits`, `shape`, `dimensions`,
 `bits`, `volatile`, `section`, `raster`, `condition`, `owner`, `consumers`, `local` and
-`a2l`, the instance's and the member's `export` folded into one. `types` lists the
+`a2l`, whose `export` is the instance's and the member's folded into one - true only where
+both are, so keeping a structure out of the A2L keeps every member of it out - while its
+`format` and `display_identifier` are the member's own. `types` lists the
 structures in dependency order with their members; `enums` the enum conversions, one per
 name, the best documented variant; `constants` and `rasters` the declared entries. Nothing
 in the document depends on the machine that wrote it.
@@ -2017,8 +2024,9 @@ is held until the project is read ([section 3.11](#311-plugins)), an address map
 cannot be read, a `--renames` file, a dumped dictionary or an artefact that cannot be
 written, an output path naming a file the run itself read - `ddd dump -o`,
 `ddd compare --renames` and `ddd generate --dictionary` each refuse one, naming it, since
-nothing DDD writes is ever a file it read - a `--plugin`
-refused beside a description, or a run that would write nothing - is printed after the
+nothing DDD writes is ever a file it read - a `ddd compare --plugin` refused beside a
+*candidate* given as a project description, which names its own plugins
+([section 3.11](#311-plugins)), or a run that would write nothing - is printed after the
 findings gathered so far - a comparison's own findings and a baseline's carried errors
 included - are reported in the requested format first, because a failed run is exactly
 the run whose findings its reader needs; the exit code is still 2.
@@ -2067,8 +2075,9 @@ linked into the image, so that an object no compiled code references is not drop
 descriptions travel the link graph as a transitive target property, and the project
 description is assembled in the build directory from the closure the image actually links
 ([section 3.6](#36-build-record)); it needs a CMake new enough to carry properties across
-links, and the module itself refuses a CMake older than its stated floor with a message
-naming it. The assembled project is named by `NAME`, defaulting to the image's name sanitised
+links - CMake 3.30, the floor the module refuses a configure below with a message naming it;
+the module as a whole needs 3.20, which is what the hand written `PROJECT` mode asks for.
+The assembled project is named by `NAME`, defaulting to the image's name sanitised
 into an identifier - every character outside `[A-Za-z0-9_]` replaced by `_`, a leading digit
 prefixed with `N` - and that name becomes the A2L project, module and file name
 ([section 5.2](#52-a2l)) and names the dictionary written beside it; its includes keep the link graph's traversal order - the order

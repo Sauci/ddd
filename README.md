@@ -876,7 +876,9 @@ consumers depend on `firmware_ddd_headers` rather than on an individual header p
 
 Beside the module, this repository publishes a [pre-commit](https://pre-commit.com) hook,
 `ddd-id`, which runs `ddd id --assign` over the staged `*.ddd.json` files so that no object
-reaches a commit without an identity
+reaches a commit without an identity.  It is a `language: python` hook and ddd needs Python
+3.12 or newer, so a machine whose default `python3` is older needs a `language_version` in its
+own hook entry
 ([documentation](https://sauci.github.io/ddd/latest/build_integration.html)).
 
 ## Compiling the generated code (docker / WSL)

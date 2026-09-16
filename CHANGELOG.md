@@ -422,6 +422,23 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   this run's policy.  `--standalone` still reaches it: that says how the file was handed over,
   and the baseline was handed over the same way.
 
+  *What the pages had wrong about all of this.*  `ddd compare --plugin` is refused beside a
+  project *candidate*, which names its own plugins - not "beside a description", which is what
+  section 7 and the CLI page said while 3.11 and the code said the other thing.  The build
+  page now says that configuring imports the plugins a project names, so `cmake` runs that
+  python before it has built anything, and that the published pre-commit hook needs Python
+  3.12 - which a machine with an older `python3` used to learn from pip, in a message naming
+  nothing of the project's.  The CLI page no longer says a component "generates on its own":
+  `ddd generate` has no `--standalone`, and a component whose inputs nobody produces generates
+  under `--force` or under a `-W` it has decided about.  The templates page says that a
+  template directory is code, rendered in an unsandboxed environment, which had been stated
+  for plugins alone - a template reads as data and is not.  The plugins page's list of what a
+  plugin's artefact accepts was missing `--dictionary`.  And two of the tool's own texts had
+  fallen behind the pages that quote them as authoritative: `ddd checks` describes
+  `init-invalid` as it fires - an enumerator, a shape and a string init included, as the
+  specification, the checks page and the README already said - and `ddd sources --help` says
+  it lists the plugin modules as well as the descriptions.
+
   **Migration:** a script spelling an option by a prefix - `--stand`, `--dict` - now fails
   with "unrecognized arguments" and needs the option's full name; nothing else on any command
   line changes.  The text report of the findings is unchanged - every path is still rendered

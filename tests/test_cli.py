@@ -1409,6 +1409,22 @@ class TestSchemaAndChecks:
         assert "multiple-producers" in out
         assert "(fixed)" in out
 
+    def test_the_registry_describes_every_way_init_invalid_fires(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``ddd checks`` is "the authoritative list", and an editor may quote its wording.
+
+        The entry said "an initial value does not fit the datatype of the variable" while the
+        check also fires for an enumerator, for the shape and for a string init, as the
+        specification, the checks page and the README all say - so the authoritative list was
+        the narrowest of the four texts that describe one check.
+        """
+        assert main(["checks"]) == EXIT_OK
+        entry = next(
+            line for line in capsys.readouterr().out.splitlines() if line.startswith("init-invalid")
+        )
+        assert all(word in entry for word in ("enumerator", "shape", "string"))
+
     def test_checks_marks_the_project_wide_and_the_comparison_checks(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -1554,6 +1570,16 @@ class TestSources:
         listed = capsys.readouterr().out.splitlines()
         assert PLUGIN_FILE.as_posix() in listed
         assert listed == sorted(listed)
+
+    def test_the_help_says_the_plugin_modules_are_listed(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``--help`` said "the project file and every file it includes however deeply", which
+        is the one text a reader consults before a build depends on the answer - and it left
+        out the half that makes a plugin change re-run the generation."""
+        with pytest.raises(SystemExit):
+            main(["sources", "--help"])
+        assert "plugin" in capsys.readouterr().out
 
     def test_the_plugin_modules_are_in_the_json_list_too(
         self, capsys: pytest.CaptureFixture[str]

@@ -161,8 +161,10 @@ rather than what was never loaded, and why a ``-W`` naming one of its checks is 
 
 ``backend`` returns an object satisfying the ``Backend`` protocol - a ``name`` and a
 ``generate(dictionary, output_dir)`` returning ``GeneratedFile`` entries - and is selected as
-``ddd generate <name>``, with the common options ``-o``, ``--dry-run`` and ``--force``, and
-the severity and format options every analysis takes, ``-W``, ``--strict`` and ``--format``.
+``ddd generate <name>``, with the common options ``-o``, ``--dry-run``, ``--force`` and
+``--dictionary FILE``, which writes the resolved dictionary in the same write as the
+artefact, and the severity and format options every analysis takes, ``-W``, ``--strict`` and
+``--format``.
 A plugin's artefact takes no option of its own, and none of the built-in artefacts' either:
 ``-t`` names the templates the c sources are rendered from, and ``--address-map`` and
 ``--byte-order`` belong to the a2l, so each is refused here as an unrecognized argument. It
@@ -240,7 +242,16 @@ plugin's own decision, not one the api makes for it.
 Naming a plugin runs it. That is true of every ``ddd`` command on the project, and of the
 language server, which runs the plugins of every project it analyses when a file is opened
 or saved; the :doc:`editor page <editor_integration>` says what that means for a repository
-you did not write, and why the server will not run there until you trust the workspace.
+you did not write, and why the server will not run there until you trust the workspace. It
+is true of the cmake integration too: ``ddd_generate()`` runs ``ddd`` at configure time, so
+the plugins a project names are imported when CMake runs, not only when the generation does
+(see :doc:`build_integration`).
+
+The templates a run renders from are code in the same sense, and easier to overlook because
+a template looks like data: they are jinja2, rendered in an ordinary unsandboxed
+environment, so ``-t`` names a directory whose contents run with the privileges of the run.
+:doc:`templates` says so beside the rest of what a template directory decides. Review one
+the way you review a plugin.
 
 What the dictionary carries
 ---------------------------

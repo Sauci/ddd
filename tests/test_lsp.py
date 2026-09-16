@@ -98,11 +98,11 @@ def directory_link(link: Path, target: Path) -> None:
         link.symlink_to(target, target_is_directory=True)
 
 
-def build_record(base: Path, project_file: Path, **extra: Any) -> Path:
-    """A ``ddd-build.json`` where a build would have left one."""
-    path = base / "build" / "ddd" / "firmware.elf" / BUILD_INFO_FILENAME
+def build_record(base: Path, project_file: Path, image: str = "firmware.elf", **extra: Any) -> Path:
+    """A ``ddd-build.json`` where a build would have left one, one directory per image."""
+    path = base / "build" / "ddd" / image / BUILD_INFO_FILENAME
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"format": 1, "project": project_file.as_posix(), "image": "firmware.elf", **extra}
+    payload = {"format": 1, "project": project_file.as_posix(), "image": image, **extra}
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
 
@@ -574,6 +574,28 @@ class TestDiagnostics:
         # exactly as standalone mode would - unlike 'unknown-type', it is not one of the
         # checks that context was needed to answer.
         assert codes == {"unused-output", "missing-id"}
+
+    def test_a_component_two_images_share_is_not_underlined_twice(self, tmp_path: Path) -> None:
+        """Every build is run, and a component linked into two images is in both. The two runs
+        filed their findings against the same files, so every squiggle was drawn twice and the
+        Problems count doubled, with nothing to tell the two apart."""
+        build_record(tmp_path, INCONSISTENT)
+        alone = discover(tmp_path)
+        build_record(tmp_path, INCONSISTENT, image="test.elf")
+        assert len(discover(tmp_path)) == 2
+        assert service.collect(discover(tmp_path)) == service.collect(alone)
+
+    def test_two_images_that_disagree_both_have_their_say(self, tmp_path: Path) -> None:
+        """Only an identical finding is dropped. Where the policies differ the two really are
+        two findings, and which image reports the error is what the reader needs to see."""
+        build_record(tmp_path, INCONSISTENT)
+        build_record(tmp_path, INCONSISTENT, image="test.elf", severity=["unused-output=error"])
+        reports = service.collect(discover(tmp_path))
+        drawn = reports[INCONSISTENT.parent / "component_a.ddd.json"]
+        assert sorted(entry["severity"] for entry in drawn if entry["code"] == "unused-output") == [
+            1,
+            2,
+        ]
 
     def test_a_project_file_no_build_claims_is_checked_as_the_project_it_is(self) -> None:
         """The standalone policy is for "a component read alone"; a project file is not one.

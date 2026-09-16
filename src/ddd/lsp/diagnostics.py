@@ -182,14 +182,31 @@ def _group(bag: DiagnosticBag, fallback: Path, grouped: dict[Path, list[Diagnost
 
     The files are returned because they are the ones this run has now spoken for, which is
     what :func:`collect` needs in order not to speak for any of them twice.
+
+    A finding equal to one already filed for that file is dropped. Every configured build is
+    run, and a component linked into two images is in both of them, so one mistake in it was
+    published once per image: every squiggle drawn twice and the Problems count doubled, with
+    nothing in what the protocol carries to tell the two copies apart. Equal means the same
+    check, message, place and severity - where two images differ about how loudly to report
+    something, they really are saying two different things and both are kept.
     """
     filed: set[Path] = set()
+    already = {(path, _identity(entry)) for path, entries in grouped.items() for entry in entries}
     for finding in bag.sorted:
         for entry in (finding, *_mirrors(finding)):
             path = entry.location.path if entry.location else fallback
-            grouped.setdefault(path, []).append(entry)
             filed.add(path)
+            key = (path, _identity(entry))
+            if key in already:
+                continue
+            already.add(key)
+            grouped.setdefault(path, []).append(entry)
     return filed
+
+
+def _identity(finding: Diagnostic) -> tuple[str, Severity, Location | None, str]:
+    """What makes two findings the same one, for a reader looking at an underline."""
+    return (finding.check, finding.severity, finding.location, finding.message)
 
 
 def _mirrors(finding: Diagnostic) -> list[Diagnostic]:

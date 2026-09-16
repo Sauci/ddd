@@ -43,7 +43,7 @@ from ddd.diagnostics import (
     SeverityPolicy,
     UnknownCheckError,
 )
-from ddd.identity import UNREADABLE, assign
+from ddd.identity import UNREADABLE, UNWRITABLE, assign
 from ddd.ir import Comparable, DataDictionary
 from ddd.loading import load_dictionary, load_workspace, resolve_path
 from ddd.models import (
@@ -667,6 +667,7 @@ def _command_check(args: argparse.Namespace) -> int:
                     bag,
                     resolved.locate,
                     location,
+                    _where(args.baseline),
                 )
     _report(bag, args.format)
     if args.format == "json":
@@ -704,12 +705,27 @@ def _command_compare(args: argparse.Namespace) -> int:
                 )
                 raise ValueError(msg)
             plugins = _plugins_from_arguments(args.plugin, bag)
+        # The baseline's own plugins ran, on a bag of its own, so their checks are checks
+        # this run knows: an override naming one of them - `-W layout/removed-entry=ignore`,
+        # beside the `missing-plugin` this same run reports about that plugin - was refused
+        # as naming a check no loaded plugin registers, which is the opposite of what
+        # happened. Registered before the overrides are verified, and only where nothing has
+        # claimed the identifier yet: a check both sides declare keeps the candidate's own,
+        # because the candidate's plugins are the ones that report through this bag.
+        for plugin in baseline.plugins:
+            bag.register(info for info in plugin.checks if info.identifier not in bag.registered)
         bag.policy.verify(bag.registered)
 
         location = _where(args.candidate)
         paired = compare(baseline.dictionary, candidate.dictionary, bag, location=location)
         run_compare_hooks(
-            plugins, baseline.dictionary, candidate.dictionary, bag, candidate.locate, location
+            plugins,
+            baseline.dictionary,
+            candidate.dictionary,
+            bag,
+            candidate.locate,
+            location,
+            _where(args.baseline),
         )
         if args.renames is not None:
             _refuse_a_source(args.renames, "--renames", *candidate.sources, *baseline.sources)
@@ -729,11 +745,15 @@ def _command_compare(args: argparse.Namespace) -> int:
     _report(bag, args.format)
     if args.format != "json":
         # The file names, not the project names: two deliveries of one project share a name.
+        # And when the two file names coincide as well - which they do whenever the
+        # deliveries are kept in a directory each - the names say nothing at all
+        # ("pressure.ddd.json can replace pressure.ddd.json"), so the line falls back to the
+        # paths as they were typed, which is what tells them apart.
         verdict = "cannot" if bag.has_errors else "can"
-        print(
-            f"{args.candidate.name} {verdict} replace {args.baseline.name}",
-            file=sys.stderr,
-        )
+        candidate, baseline = args.candidate.name, args.baseline.name
+        if candidate == baseline:
+            candidate, baseline = args.candidate.as_posix(), args.baseline.as_posix()
+        print(f"{candidate} {verdict} replace {baseline}", file=sys.stderr)
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
 
 
@@ -1075,17 +1095,26 @@ def _write_dictionary(
 
 
 def _command_id(args: argparse.Namespace) -> int:
-    """Stamp identities into description files, reporting what was written."""
+    """Stamp identities into description files, reporting what was written.
+
+    Every file on the command line is attempted, and the ones that could not be used are
+    reported after the total rather than instead of it: a run over a directory of
+    descriptions must not stop at the first file it cannot read - or, just as ordinarily,
+    cannot write - leaving everything after it unstamped and saying nothing about what it
+    did before.
+    """
     written = 0
-    skipped: list[Path] = []
+    skipped: list[tuple[Path, str]] = []
     for path in args.files:
         count = assign(path)
         if count == UNREADABLE:
-            skipped.append(path)
+            skipped.append((path, "not readable as json, skipped"))
+        elif count == UNWRITABLE:
+            skipped.append((path, "cannot be written, skipped"))
         else:
             written += count
-    for path in skipped:
-        print(f"{path}: not readable as json, skipped", file=sys.stderr)
+    for path, reason in skipped:
+        print(f"{path}: {reason}", file=sys.stderr)
     print(f"wrote {written} id{'' if written == 1 else 's'}", file=sys.stderr)
     return EXIT_FINDINGS if skipped else EXIT_OK
 
@@ -1189,20 +1218,29 @@ def _command_build_info(args: argparse.Namespace) -> int:
         strict=args.strict,
         severity=tuple(args.severity),
     )
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    # newline="" for the same reason the schemas use it: a file committed or compared across
-    # platforms must not differ by its line endings alone.
-    args.output.write_text(build_info_text(info), encoding="utf-8", newline="")
+    try:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        # newline="" for the same reason the schemas use it: a file committed or compared
+        # across platforms must not differ by its line endings alone.
+        args.output.write_text(build_info_text(info), encoding="utf-8", newline="")
+    except OSError as error:
+        raise OSError(describe_write_failure(error, args.output.as_posix())) from None
     print(f"wrote {args.output.as_posix()}", file=sys.stderr)
     return EXIT_OK
 
 
 def _write_schema(path: Path, kind: str, plugins: Sequence[Plugin] = ()) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # newline="" keeps the line endings as written on every platform, the same discipline the
-    # generated sources follow: a schema committed from Windows must not differ from the same
-    # schema committed from linux.
-    path.write_text(schema_text(kind, plugins), encoding="utf-8", newline="")
+    # Guarded like every other file this tool writes: `ddd schema all -o afile.txt` answered
+    # `[WinError 183] Cannot create a file when that file already exists: 'afile.txt'`, which
+    # is the mkdir talking about a file the caller named as a directory, and says neither.
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # newline="" keeps the line endings as written on every platform, the same discipline
+        # the generated sources follow: a schema committed from Windows must not differ from
+        # the same schema committed from linux.
+        path.write_text(schema_text(kind, plugins), encoding="utf-8", newline="")
+    except OSError as error:
+        raise OSError(describe_write_failure(error, path.as_posix())) from None
     print(f"wrote {path.as_posix()}", file=sys.stderr)
 
 

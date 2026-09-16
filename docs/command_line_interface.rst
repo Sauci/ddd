@@ -71,8 +71,9 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
    * - ``1``
      - findings: at least one diagnostic of severity ``error`` survived the severity policy.
        ``ddd sources`` and ``ddd artefacts`` also exit ``1`` when the root file cannot be read
-       at all, and ``ddd id`` when one of the files it was given was not readable as json and
-       had to be skipped, which it reports without a diagnostic.
+       at all, and ``ddd id`` when one of the files it was given was not readable as json, or
+       could not be written back, and had to be skipped - the others are stamped either way,
+       and it reports each skipped file without a diagnostic.
    * - ``2``
      - the command line itself was wrong: a missing or malformed argument, an unknown
        severity, or an unknown check that names no plugin, in ``-W``, a fixed check

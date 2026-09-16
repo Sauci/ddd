@@ -1005,6 +1005,28 @@ class TestCommandLine:
         assert main(["compare", str(baseline), str(DEMO)]) == EXIT_OK
         assert "can replace baseline.json" in capsys.readouterr().err
 
+    def test_the_verdict_spells_the_paths_out_when_the_two_names_coincide(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The line names files rather than projects because two deliveries of one project
+        share a project name - and, kept in a directory each, they share the file name too,
+        so ``pressure.ddd.json can replace pressure.ddd.json`` answered nothing at all."""
+        for release in ("v1.3", "release"):
+            write_tree(
+                tmp_path / release,
+                {
+                    "p.ddd.json": project("P", "a.ddd.json"),
+                    "a.ddd.json": component("A", declare("local", "X", "uint16")),
+                },
+            )
+        old = tmp_path / "v1.3" / "p.ddd.json"
+        new = tmp_path / "release" / "p.ddd.json"
+        arguments = ["compare", str(old), str(new), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_OK
+        assert capsys.readouterr().err.splitlines()[-1] == (
+            f"{new.as_posix()} can replace {old.as_posix()}"
+        )
+
     def test_a_project_can_be_checked_against_a_baseline(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

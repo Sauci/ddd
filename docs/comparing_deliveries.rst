@@ -233,8 +233,8 @@ them together with everything else.
      - the two sides of a comparison describe differently named projects
    * - warning
      - ``missing-plugin``
-     - a compared dictionary records a plugin this run has not loaded, so that plugin's
-       comparison rules did not run
+     - a compared dictionary records a plugin that is not among the candidate's, so that
+       plugin's comparison rules did not run
    * - info
      - ``added-object``
      - the candidate declares an object the baseline did not
@@ -659,7 +659,11 @@ Used as the baseline of a comparison, that warning does not reappear:
 .. code-block:: text
 
    $ ddd compare examples/pressure/v1.3/pressure.ddd.json examples/pressure/release/pressure.ddd.json
-   pressure.ddd.json can replace pressure.ddd.json
+   examples/pressure/release/pressure.ddd.json can replace examples/pressure/v1.3/pressure.ddd.json
+
+The verdict line names the two files rather than the two projects, because two deliveries of
+one project carry one project name - and, as here, one file name too, so where the two file
+names are the same it spells the paths out as they were typed.
 
 Its errors are another matter. A baseline that could not be read, as in the missing-file
 example above, or whose own components disagree has no dictionary that can be trusted, so

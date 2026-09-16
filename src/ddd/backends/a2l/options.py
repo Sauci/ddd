@@ -52,6 +52,12 @@ def load_address_map(path: Path) -> dict[str, int]:
         # written by a linker script or a patch tool nobody is looking at.
         msg = f"the address map '{path}' is not valid json: {error}"
         raise ValueError(msg) from None
+    except OSError as error:
+        # The same reasoning one step earlier: `--address-map nosuch.json` answered
+        # `[Errno 2] No such file or directory: 'nosuch.json'`, which names neither the
+        # option that asked for the file nor what the run wanted it for.
+        msg = f"cannot read the address map '{path}': {error.strerror or error}"
+        raise OSError(msg) from None
     if not isinstance(data, dict):
         msg = f"{path}: expected a json object mapping symbol names to addresses"
         raise ValueError(msg)

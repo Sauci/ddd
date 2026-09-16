@@ -345,6 +345,25 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   whole of what the run had to say about a missing file name.  Both now say which option
   needs a file.
 
+  *Six messages that said too little.*  `ddd id --assign` stopped at the first file it could
+  not write, with `[Errno 13] Permission denied: 'ro.ddd.json'` and no total, the files after
+  it unstamped - where a file that cannot be *parsed* has always been reported while the
+  others are stamped; a file that cannot be written is now reported the same way and the run
+  goes on.  `--address-map`, `ddd schema -o` and `ddd build-info -o` handed back the bare
+  errno text, naming neither the option nor what the run was doing with the file; they say
+  `cannot read the address map '...'` and `cannot write '...'` now, as `compare` and
+  `generate` already did.  The verdict line printed two file names, which for two deliveries
+  of one project kept in a directory each read `pressure.ddd.json can replace
+  pressure.ddd.json`; where the names coincide it now prints the paths as they were typed.  A
+  dumped dictionary handed to `check`, `list` or `dump` was refused as a vocabulary file
+  stating three kinds at once - "file has 'types' and 'constants' and 'rasters' at the top
+  level" - and is now recognised and pointed at `ddd compare`.  And `missing-plugin` for the
+  baseline was located at the candidate, which does not record the plugin it is about, and
+  said the run "has not loaded" a plugin the run had loaded to analyse that very baseline: it
+  sits at the file that records the plugin now and says the plugin is not among the
+  candidate's, which is what did not run.  A `-W` naming a check of such a plugin is accepted
+  for the same reason, instead of being refused as naming a check nothing registers.
+
   **Migration:** a script spelling an option by a prefix - `--stand`, `--dict` - now fails
   with "unrecognized arguments" and needs the option's full name; nothing else on any command
   line changes.  The text report of the findings is unchanged - every path is still rendered
@@ -354,7 +373,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   finding about a baseline that cannot be read now spells the file out in full, as the same
   message about a description has always done.  A caller that reads exit codes sees one more:
   130, for a run stopped by hand.  A plugin that printed to standard output on purpose - to
-  produce a document of its own there - writes a file instead.
+  produce a document of its own there - writes a file instead.  A script that matched the
+  wording of `missing-plugin`, or the verdict line of two deliveries whose file names
+  coincide, matches new text; no check identifier, option or file format changes.
 
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`

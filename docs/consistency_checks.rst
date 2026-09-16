@@ -312,7 +312,9 @@ or an a2l file that does not do what the description says - or that does not com
      - error (fixed)
      - the top level of the document is not a json object, or names none of the description
        kinds (``project``, ``component``, ``types``, ``units``, ``sections``,
-       ``constants``, ``rasters``), or several of them at once.
+       ``constants``, ``rasters``), or several of them at once. A dumped data dictionary
+       handed to a command that reads descriptions is recognised as one and named as one,
+       rather than counted as a description stating three kinds at once.
    * - ``file-extension``
      - error
      - a description file is not named ``*.ddd.json``. Relaxable with
@@ -740,9 +742,10 @@ registry can be read in one place.
        probably not the predecessor of this candidate.
    * - ``missing-plugin``
      - warning
-     - a compared dictionary records a plugin this run has not loaded, so that plugin's
-       comparison rules did not run. Once per plugin and side, because a comparison that
-       silently skipped a rule would be a confident verdict with a hole in it.
+     - a compared dictionary records a plugin that is not among the candidate's, so that
+       plugin's comparison rules did not run. Once per plugin and side, reported at the file
+       that records it, because a comparison that silently skipped a rule would be a
+       confident verdict with a hole in it.
    * - ``added-object``
      - info
      - the candidate declares an object the baseline did not.

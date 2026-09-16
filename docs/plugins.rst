@@ -141,9 +141,12 @@ because a dump records a component's file name and not the position of each decl
 
 ``compare`` runs after the built-in comparison. The plugins in play are the candidate's: a
 project description names its own, and an archived dump has ``ddd compare --plugin``. A
-compared dictionary that records a plugin the run has not loaded is ``missing-plugin``, a
-warning saying that plugin's rules did not run, so that a comparison can never silently skip
-one.
+compared dictionary that records a plugin that is not among the candidate's is
+``missing-plugin``, a warning saying that plugin's rules did not run, so that a comparison
+can never silently skip one; it is reported at the file that records the plugin. A plugin
+only the baseline names is one the run did load - for the baseline's own analysis - and
+whose comparison rules still did not run, which is why the warning says what is not in play
+rather than what was never loaded, and why a ``-W`` naming one of its checks is accepted.
 
 ``backend`` returns an object satisfying the ``Backend`` protocol - a ``name`` and a
 ``generate(dictionary, output_dir)`` returning ``GeneratedFile`` entries - and is selected as

@@ -135,6 +135,18 @@ def _parse_json(text: str, path: Path, bag: DiagnosticBag) -> dict[str, Any] | N
     return data
 
 
+def _is_a_dumped_dictionary(data: dict[str, Any]) -> bool:
+    """Whether this document is what ``ddd dump`` writes rather than a description.
+
+    The pair that only a dump has: a ``format`` version, which no description file carries,
+    beside the ``objects`` list that is the dictionary's own shape. Enough to recognise a
+    dump this version wrote and one a later version will, which is the point - what a reader
+    needs to be told about a file it is holding does not depend on the format being one
+    this DDD could read.
+    """
+    return "format" in data and isinstance(data.get("objects"), list)
+
+
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     """Refuse an object that spells the same key twice, which json itself allows.
 
@@ -623,6 +635,19 @@ class _Loader:
             )
 
     def _detect_kind(self, path: Path, data: dict[str, Any]) -> str | None:
+        if _is_a_dumped_dictionary(data):
+            # Said before the count below, which would otherwise describe this file as a
+            # vocabulary stating three kinds at once - "file has 'types' and 'constants' and
+            # 'rasters' at the top level" - a file nobody wrote. A dump is the one json a
+            # user of DDD has at hand beside a description, and the two are easy to confuse
+            # at a prompt; what it needs is the command that does take it.
+            self._bag.add(
+                "file-kind",
+                "this is a dumped data dictionary, not a description; hand it to "
+                "'ddd compare' as a baseline or a candidate",
+                Location(path),
+            )
+            return None
         present = [key for key in FILE_KINDS if key in data]
         if len(present) > 1:
             listed = " and ".join(f"'{key}'" for key in present)

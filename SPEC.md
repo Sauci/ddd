@@ -1435,7 +1435,9 @@ comparison's alike - and the exit code follows the verdict
 error and the candidate is a description, no verdict is printed and the exit code is 1.
 
 In plain text the report closes with a verdict line naming the two files and saying whether
-the candidate can replace the baseline. `ddd compare --renames <file>` writes beside it the
+the candidate can replace the baseline; it names them by file name, and by the paths as
+they were typed where the two file names are the same, as they are for two deliveries of one
+project kept in a directory each. `ddd compare --renames <file>` writes beside it the
 old-to-new name pairs the comparison established, so that a calibration dataset, a
 recording or a test script keyed by the old spelling can be migrated without parsing the
 findings: a JSON list of objects `{"id", "from", "to"}`, one entry per paired object whose
@@ -1534,12 +1536,15 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
 - `project-mismatch`: the two dictionaries name different projects, so the baseline is
   probably not the predecessor of this candidate.
 - `missing-plugin`: the baseline or the candidate records a plugin
-  ([section 3.11](#311-plugins)) this run has not loaded, so that plugin's comparison rules
-  did not run. Once per plugin and side, because a comparison that silently skipped a rule
-  would be a confident verdict with a hole in it. Each side given as a description runs the
+  ([section 3.11](#311-plugins)) that is not among the candidate's, so that plugin's
+  comparison rules did not run. Once per plugin and side, reported at the file that records
+  it, because a comparison that silently skipped a rule would be a confident verdict with a
+  hole in it. Each side given as a description runs the
   plugins it names for its own analysis; the comparison hooks are the candidate's (or
   `--plugin`'s for a dumped candidate), and `missing-plugin` is reported for a plugin either
-  side records that the comparison did not run.
+  side records that the comparison did not run - including one this run did load, for the
+  baseline's own analysis, whose comparison rules are therefore not in play. A severity
+  override naming a check of such a plugin is accepted, since the run knows it.
 
 Information:
 
@@ -1924,8 +1929,9 @@ description files in place), so that a later `ddd compare`
 reports a rename as a rename rather than a removal and an unrelated addition - a
 declaration that already carries one is left untouched, so running it again changes
 nothing, an explicit `"id": null` is filled in place, a file that is not a component
-description is left alone, and a file that cannot be parsed, or that nests more deeply than
-a position in it can be located, is reported while the others are stamped, the run exiting 1;
+description is left alone, and a file that cannot be parsed, that nests more deeply than
+a position in it can be located, or that cannot be written back, is reported while the
+others are stamped, the run exiting 1;
 printing the JSON schema of the file
 formats and of the dictionary (`ddd schema`, one kind to stdout or every kind written into
 a directory with `ddd schema all -o`, each file named `ddd_<kind>.schema.json`; `--plugin`

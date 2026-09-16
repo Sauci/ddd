@@ -380,21 +380,46 @@ def run_compare_hooks(
     bag: DiagnosticBag,
     locate: Callable[[str], Location | None],
     location: Location | None,
+    baseline_location: Location | None = None,
 ) -> None:
     """Run every compare hook, after saying which recorded plugin is not among ``plugins``.
 
     A comparison that silently skipped a rule would be a confident "can replace" with a hole
-    in it; ``missing-plugin`` is what closes the hole, once per plugin and side.
+    in it; ``missing-plugin`` is what closes the hole, once per plugin and side. Each side's
+    finding is located at the file that records the plugin - ``baseline_location`` is the
+    baseline's, and defaults to the candidate's for a caller that has no separate place for
+    it - because a finding about the baseline pointing at the candidate sends the reader to a
+    file that does not name the plugin the message is about.
+
+    The comparison hooks are the candidate's, so a plugin the baseline names and the
+    candidate does not is one this run may perfectly well have loaded - it ran for the
+    baseline's own analysis - and whose comparison rules still did not run. That side's
+    message says what is not in play rather than claiming the run never loaded it; the
+    candidate's side, where the run really has not, says so.
     """
     loaded = {plugin.name for plugin in plugins}
-    for side, dictionary in (("baseline", baseline), ("candidate", candidate)):
+    sides = (
+        # The baseline's own plugins may perfectly well have been loaded - by its analysis,
+        # when it is given as a description - and their comparison rules still did not run,
+        # because the rules in play are the candidate's. Saying "this run has not loaded" of
+        # a plugin the run had just imported and run is what the wording avoids; on the
+        # candidate's side the run really has not loaded it, and says so.
+        (
+            "baseline",
+            baseline,
+            baseline_location or location,
+            "is not among the candidate's plugins",
+        ),
+        ("candidate", candidate, location, "this run has not loaded"),
+    )
+    for side, dictionary, where, why in sides:
         for name in dictionary.plugins:
             if name not in loaded:
                 bag.add(
                     "missing-plugin",
-                    f"the {side} was produced with plugin '{name}', which this run has not "
-                    f"loaded; its comparison rules did not run",
-                    location,
+                    f"the {side} was produced with plugin '{name}', which {why}; its "
+                    f"comparison rules did not run",
+                    where,
                 )
     for plugin in plugins:
         if plugin.compare is not None:

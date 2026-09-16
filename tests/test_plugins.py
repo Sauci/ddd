@@ -1533,6 +1533,70 @@ class TestTheCompareHook:
         assert "its comparison rules did not run" in captured
         assert "tag/retagged" not in captured
 
+    def test_each_side_s_missing_plugin_sits_on_the_file_that_records_it(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Both findings were located at the candidate, so the one about the baseline pointed
+        at a file that does not record the plugin it is about."""
+        old, new = two_deliveries(tree, "a", "b")
+        old_dump, new_dump = (
+            dumped(old, tree, "old.json", capsys),
+            dumped(new, tree, "new.json", capsys),
+        )
+        assert main(["compare", old_dump, new_dump]) == EXIT_OK
+        located = {
+            line.split(": warning[missing-plugin]: ")[0]: line
+            for line in capsys.readouterr().err.splitlines()
+            if "missing-plugin" in line
+        }
+        assert set(located) == {Path(old_dump).as_posix(), Path(new_dump).as_posix()}
+        assert "the baseline was produced" in located[Path(old_dump).as_posix()]
+        assert "the candidate was produced" in located[Path(new_dump).as_posix()]
+
+    def test_a_plugin_only_the_baseline_names_is_not_called_unloaded(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The run did load it - for the baseline's own analysis - and its rules still did
+        not run, because the comparison hooks are the candidate's."""
+        old, _ = two_deliveries(tree, "a", "b")
+        write_tree(
+            tree,
+            {
+                "plain.ddd.json": project("P", "plain-a.ddd.json"),
+                "plain-a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        arguments = ["compare", old, str(tree / "plain.ddd.json"), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_OK
+        captured = capsys.readouterr().err
+        assert "is not among the candidate's plugins" in captured
+        assert "this run has not loaded" not in captured
+
+    def test_an_override_naming_a_check_of_the_baselines_plugin_is_accepted(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The plugin ran for the baseline, so its checks are checks this run knows; refusing
+        the override said the opposite of what the same run reports beside it."""
+        old, _ = two_deliveries(tree, "a", "b")
+        write_tree(
+            tree,
+            {
+                "plain.ddd.json": project("P", "plain-a.ddd.json"),
+                "plain-a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        arguments = ["compare", old, str(tree / "plain.ddd.json"), "-W", "missing-id=ignore"]
+        assert main([*arguments, "-W", "tag/retagged=ignore"]) == EXIT_OK
+        assert "unknown check" not in capsys.readouterr().err
+
+    def test_an_override_naming_a_check_nobody_registers_is_still_refused(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = two_deliveries(tree, "a", "b")
+        arguments = ["compare", old, new, "-W", "tag/no-such=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        assert "unknown check 'tag/no-such'" in capsys.readouterr().err
+
     def test_the_option_loads_the_plugin_for_two_dumps(
         self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:

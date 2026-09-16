@@ -2346,6 +2346,102 @@ class TestGenerateTheDictionary:
         assert not (tmp_path / "gen" / "dictionary.json").exists()
 
 
+class TestWhatAFailedReadOrWriteSays:
+    """A file the run could not read or write is named, beside what it was doing with it.
+
+    ``compare`` and ``generate`` already say ``cannot write the --renames file '...'`` and
+    ``cannot write '...'``; three other paths handed the caller the bare errno text, which
+    names neither the option nor the purpose - ``ddd: [Errno 13] Permission denied: 'adir'``
+    is the whole of what a build read.
+    """
+
+    def test_an_address_map_that_cannot_be_read_names_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        arguments = ["generate", "a2l", str(DEMO), "-o", str(tmp_path / "gen")]
+        assert main([*arguments, "--address-map", str(tmp_path / "nosuch.json")]) == EXIT_USAGE
+        assert "cannot read the address map" in capsys.readouterr().err
+
+    def test_an_address_map_that_is_a_directory_names_it_too(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The other errno a map arrives with, and the one python words the least usefully."""
+        (tmp_path / "amap").mkdir()
+        arguments = ["generate", "a2l", str(DEMO), "-o", str(tmp_path / "gen")]
+        assert main([*arguments, "--address-map", str(tmp_path / "amap")]) == EXIT_USAGE
+        assert "cannot read the address map" in capsys.readouterr().err
+
+    def test_a_schema_that_cannot_be_written_names_the_file(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``all`` takes a directory; given a file, the mkdir failed on the first schema and
+        answered `[WinError 183] Cannot create a file when that file already exists`."""
+        from ddd.cli import SCHEMA_FILENAME
+
+        standing = tmp_path / "afile.txt"
+        standing.write_text("not a directory\n", encoding="utf-8")
+        assert main(["schema", "all", "-o", str(standing)]) == EXIT_USAGE
+        target = f"{standing.as_posix()}/{SCHEMA_FILENAME.format(kind='component')}"
+        assert f"cannot write '{target}'" in capsys.readouterr().err
+
+    def test_one_schema_into_a_directory_says_the_same(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        target = tmp_path / "adir"
+        target.mkdir()
+        assert main(["schema", "component", "-o", str(target)]) == EXIT_USAGE
+        assert f"cannot write '{target.as_posix()}'" in capsys.readouterr().err
+
+    def test_a_build_record_that_cannot_be_written_names_the_file(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        target = tmp_path / "adir"
+        target.mkdir()
+        assert main(["build-info", str(DEMO), "-o", str(target)]) == EXIT_USAGE
+        assert f"cannot write '{target.as_posix()}'" in capsys.readouterr().err
+
+
+class TestADumpHandedToTheWrongCommand:
+    """A dumped dictionary is the one json a user of DDD has at hand beside a description.
+
+    Handed to ``check``, the top-level keys it carries were read as a vocabulary file stating
+    too many kinds at once - "file has 'types' and 'constants' and 'rasters' at the top level;
+    it must have exactly one" - which describes a file nobody wrote.
+    """
+
+    FILES: ClassVar[dict[str, Any]] = {
+        "project.ddd.json": project("P", "a.ddd.json"),
+        "a.ddd.json": component("A", declare("local", "X")),
+    }
+
+    def archive(self, tree: Path, capsys: pytest.CaptureFixture[str]) -> str:
+        write_tree(tree, self.FILES)
+        target = tree / "v1.3.ddd.json"
+        arguments = ["dump", str(tree / "project.ddd.json"), "-o", str(target)]
+        assert main([*arguments, "-W", "missing-id=ignore"]) == EXIT_OK
+        capsys.readouterr()
+        return str(target)
+
+    @pytest.mark.parametrize("command", ["check", "list", "dump"])
+    def test_it_says_what_the_file_is_and_which_command_takes_it(
+        self, command: str, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        archived = self.archive(tree, capsys)
+        assert main([command, archived]) == EXIT_FINDINGS
+        err = capsys.readouterr().err
+        assert "is a dumped data dictionary" in err
+        assert "ddd compare" in err
+        assert "it must have exactly one" not in err
+
+    def test_the_vocabulary_message_is_still_there_for_a_vocabulary_file(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The control: a description stating two kinds at once is what that message is for."""
+        write_tree(tree, {"both.ddd.json": {"types": [], "constants": []}})
+        assert main(["check", str(tree / "both.ddd.json")]) == EXIT_FINDINGS
+        assert "it must have exactly one" in capsys.readouterr().err
+
+
 class TestTheOptionsAreSpelledOut:
     """No option is accepted by a prefix of its name.
 
@@ -2725,6 +2821,34 @@ def test_assigning_ids_skips_a_file_it_cannot_parse(tree, capsys):
     captured = capsys.readouterr().err
     assert "not readable as json, skipped" in captured
     assert "wrote 0 ids" in captured
+
+
+def test_assigning_ids_reports_a_file_it_cannot_write_and_stamps_the_rest(
+    tree, monkeypatch, capsys
+):
+    """A file that cannot be parsed "is reported while the others are stamped"; one that
+    cannot be written was not held to that - the run stopped on it with a bare errno, the
+    files after it untouched and no total at all."""
+    files = {
+        f"{name}.ddd.json": component(name.upper(), declare("local", f"X{name}"))
+        for name in ("first", "locked", "last")
+    }
+    write_tree(tree, files)
+    writing = Path.write_bytes
+
+    def refusing(self: Path, data: bytes) -> int:
+        if self.name == "locked.ddd.json":
+            raise PermissionError(errno.EACCES, "Permission denied", str(self))
+        return writing(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", refusing)
+    named = [str(tree / name) for name in files]
+    assert main(["id", "--assign", *named]) == EXIT_FINDINGS
+    captured = capsys.readouterr().err
+    assert f"{tree / 'locked.ddd.json'}: cannot be written, skipped" in captured
+    assert "wrote 2 ids" in captured
+    assert '"id"' in (tree / "last.ddd.json").read_text(encoding="utf-8")
+    assert '"id"' not in (tree / "locked.ddd.json").read_text(encoding="utf-8")
 
 
 def test_assigning_ids_keeps_a_byte_order_mark(tree):

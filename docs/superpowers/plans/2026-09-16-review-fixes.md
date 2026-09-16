@@ -390,8 +390,10 @@ Every sentence the review found wrong that an earlier branch did not already cor
 - [ ] **Task 4 (`P3-M8`, `P5-M15`, `P7-M11`, `SD-M3`, `M4`, `M5`, `M6`, `M8`):** the checks page's three
       drifts; the vocabulary table and the undefined terms on the site; the dictionary reference's
       five missing records; the conversion `kind` descriptions; `rasters` in the component
-      sentence; the hover texts naming python identifiers; and the README's relative links, which
-      ship as the PyPI description and resolve only on GitHub.
+      sentence; the hover texts naming python identifiers; the README's relative links, which
+      ship as the PyPI description and resolve only on GitHub; and `docs/concept.rst:145`, which
+      still makes the include-isolation claim branch 6 corrected on the build page and in the
+      README.
 - [ ] **Task 5:** the changelog entry for the whole review, naming every migration the eight
       branches introduce, and a `tests/test_documentation.py` guard that every `BaseModel`
       exported by `ddd.models` is rendered on the contracts page (`P2-M3`).

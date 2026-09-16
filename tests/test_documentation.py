@@ -1596,6 +1596,38 @@ class TestPublishedDocumentation:
             f"the extension is published without waiting for the tag check: {needs.strip()}"
         )
 
+    def test_the_index_upload_is_reachable_only_from_a_tag(self) -> None:
+        """``workflow_dispatch`` is the dry run, and a dry run may not reach pypi.org.
+
+        The dispatch offers a ``pypi`` target and runs on whichever ref it was started from.
+        Gated on that input alone, a run started on a feature branch built whatever
+        ``pyproject.toml`` said *there* and uploaded it - immutably, under no tag, with the
+        tag check skipped (it is a release only step), no ``.vsix`` and no documentation
+        directory, all of which are release only too. An index accepts a file name once and
+        for ever, so the only way back from that is the next version number.
+        """
+        job = PUBLISH_WORKFLOW.split("\n  publish-pypi:\n", 1)[1]
+        condition = next(line for line in job.splitlines() if line.strip().startswith("if:"))
+        assert "startsWith(github.ref, 'refs/tags/v')" in condition, (
+            f"a dispatch from any ref at all can upload to pypi.org: {condition.strip()}"
+        )
+
+    def test_the_tag_check_covers_every_run_that_can_upload(self) -> None:
+        """Whatever may publish has to have had its tag compared with what was built.
+
+        The check exists because the version lives in ``pyproject.toml`` and the tag is typed
+        by hand. Running it for the release event only left the other door - a dispatch from a
+        tag - opening onto an upload whose file name nobody had compared with anything.
+        """
+        step = PUBLISH_WORKFLOW.split("name: Check tag matches package version\n", 1)[1]
+        condition = next(line for line in step.splitlines() if line.strip().startswith("if:"))
+        assert "github.event_name == 'release'" in condition, (
+            f"a release no longer has its tag compared with the version: {condition.strip()}"
+        )
+        assert "startsWith(github.ref, 'refs/tags/v')" in condition, (
+            f"a dispatch from a tag uploads without the tag being checked: {condition.strip()}"
+        )
+
     def test_the_site_is_published_by_pushing_the_branch(self) -> None:
         """Pages serves ``gh-pages`` itself, and nothing hands it a second copy.
 

@@ -502,6 +502,12 @@ unless that tag is exactly ``v`` followed by the version in ``pyproject.toml``. 
 checked rather than stripped, because the documentation site publishes a release under a
 directory named after its tag and lists only the ones beginning with ``v``.
 
+A dispatch with ``target: pypi`` runs only from a ``v*`` tag, and is checked against
+``pyproject.toml`` there exactly as a release is. On any other ref the job is skipped: the
+same run started on a branch would have built whatever that branch's ``pyproject.toml`` said
+and uploaded it under no tag, with no ``.vsix`` and no documentation directory - and an index
+accepts a file name once and for ever, so the only way back is the next version number.
+
 **The version is spelled in nine files, and a test holds only three of them together.**
 ``src/ddd/__init__.py`` is where it lives: ``docs/conf.py`` imports ``__version__`` rather than
 restating it, and the banner of every generated file carries it from there. ``pyproject.toml``,

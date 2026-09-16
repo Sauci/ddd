@@ -1923,10 +1923,16 @@ write, and a path an artefact of the run is written to is refused, as is one the
 [section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
 table whose rows are sorted by variable name, stating the physical reading of a stated
 initial value beside the raw one, or, in JSON, as an object carrying `project`,
-`components` and `variables` beside the findings);
+`components` and `variables` beside the findings. A `components` entry is the component
+record of the dictionary and a `variables` entry the record of one data object or of one
+leaf of a structured one ([section 5.3](#53-data-dictionary)), so a row carries `path`,
+`instance` and `instance_id` where a plain one carries `id`; both shapes **shall** carry
+`name`, a leaf's being its access path, so that one key says what a row is about);
 reporting what a project can be asked to generate (`ddd artefacts`: `c`, `a2l`, then the
 plugins with a backend in the order the project names them, a plugin without a backend
-being named in a note instead, its block being part of what the `c` templates render;
+being named in a note instead - in JSON the listing is `artefacts`, one `{name, kind}` per
+entry with `kind` either `built-in` or `plugin`, and the note is
+`plugins_without_artefact` - its block being part of what the `c` templates render;
 given `--plugin` instead of a project it answers for those plugins beside the two built-in
 artefacts, and given neither it lists the built-in artefacts alone; what each artefact
 writes is not among them, since a plugin's file names follow from the resolved dictionary
@@ -1961,7 +1967,9 @@ project and the same severities; serving the checks to an editor over the Langua
 Protocol (`ddd lsp`, [section 7.2](#72-editor-integration)); listing the available checks
 (`ddd checks`, each with its default severity, the unrelaxable ones marked, the ones that
 need every component of a project marked `(project)` and the ones that grade a delivery
-comparison marked `(comparison)` - `needs_every_component` and `comparison` in JSON - the
+comparison marked `(comparison)`; in JSON a list rather than an object, one entry per check
+carrying `check`, `default_severity`, `description`, `overridable`,
+`needs_every_component` and `comparison`, the
 built-in ones in the order of the registry and then each `--plugin`'s checks in their
 declared order); reporting where its build system integration and its example templates
 live (`ddd cmake-dir`, `ddd templates-dir`; a piece not installed is a usage error); and
@@ -1986,11 +1994,16 @@ findings at one location keep the order they were reported in; and a
 `ddd check` with no finding at all closes with an `ok:` line counting the objects and
 components it found consistent, and `compare` with a verdict line saying whether the
 candidate file can replace the baseline file ([section 4.1](#41-comparing-two-deliveries)).
-`generate` adds the files it wrote with their status (`created`, `updated` or `unchanged`),
+`generate` adds the files it wrote under `generated`, one `{path, status}` per file with
+`status` one of `created`, `updated` and `unchanged` and `path` spelled as the run was asked
+for it,
 and `dump` keeps its stdout for the dictionary, reporting findings on stderr - with
 `--format json` the findings document goes there too, so stdout carries the dictionary
 alone in both formats; given `-o`, stdout stays empty and the report on stderr adds the file
-written with its status, as `generate`'s does. The exit code distinguishes clean runs (0),
+written under the same `generated` key, as `generate`'s does. What a command prints to
+stdout is flushed before its findings reach stderr, so that a run redirecting both into one
+file shows its listing, its dictionary or its source list ahead of the findings about it
+rather than behind them. The exit code distinguishes clean runs (0),
 findings (1), usage
 errors (2) and a run stopped by the user (130, the code a shell reports for a command killed
 by SIGINT: an interrupt ends the run with `ddd: interrupted` on stderr rather than with a

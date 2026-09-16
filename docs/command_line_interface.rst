@@ -56,7 +56,92 @@ The one exception is ``ddd dump``, whose standard output is itself the payload: 
 diagnostics go to standard error, so that both formats leave the dictionary alone. Given
 ``-o``, the dictionary goes into that file instead and standard output stays empty; the
 diagnostics stay where they were, and in json they name the file written, with its status,
-as ``generate`` names its own.
+under the same ``generated`` key ``generate`` uses:
+
+.. code-block:: text
+
+   $ ddd dump examples/demo/demo.ddd.json -o build/dump/demo.json --format json
+   {
+     "diagnostics": [],
+     "summary": {
+       "error": 0,
+       "warning": 0,
+       "info": 0
+     },
+     "generated": [
+       {
+         "path": "build/dump/demo.json",
+         "status": "created"
+       }
+     ]
+   }
+
+A ``path`` is spelled as the run was asked for it - relative when ``-o`` was relative - and a
+``status`` is ``created``, ``updated`` or ``unchanged``.
+
+``ddd list --format json`` answers with the project, its components and one row per variable
+beside the diagnostics. A row is the record the :doc:`data dictionary <data_dictionary>`
+carries for that object, so the rows come in two shapes: a member of a structured variable
+carries ``path``, ``instance`` and ``instance_id`` where a plain object carries ``id``. Every
+row of either shape opens with ``name`` - a member's being its access path - so one key
+answers what a row is about:
+
+.. code-block:: text
+
+   $ ddd list examples/demo/demo.ddd.json --format json
+   {
+     "project": "DemoDevice",
+     "components": [
+   ...
+     "variables": [
+       {
+         "name": "AxisA",
+   ...
+         "name": "Diagnosis.faults",
+         "path": "Diagnosis.faults",
+         "instance": "Diagnosis",
+   ...
+     "diagnostics": [],
+     "summary": {
+       "error": 0,
+       "warning": 0,
+       "info": 0
+     }
+   }
+
+``ddd artefacts --format json`` answers with ``artefacts``, one ``{"name", "kind"}`` per
+artefact with ``kind`` either ``built-in`` or ``plugin``, and ``plugins_without_artefact``,
+the names the text format puts in a note:
+
+.. code-block:: text
+
+   $ ddd artefacts examples/layout/project.ddd.json --format json
+   {
+     "artefacts": [
+       {
+         "name": "c",
+         "kind": "built-in"
+       },
+   ...
+       {
+         "name": "layout",
+         "kind": "plugin"
+       }
+     ],
+     "plugins_without_artefact": [],
+     "diagnostics": [],
+     "summary": {
+       "error": 0,
+       "warning": 0,
+       "info": 0
+     }
+   }
+
+``ddd checks --format json`` is a list rather than an object, one entry per check, each
+carrying ``check``, ``default_severity``, ``description``, ``overridable``,
+``needs_every_component`` and ``comparison`` - the last three being the facts the text format
+marks with ``(fixed)``, ``(project)`` and ``(comparison)``. ``ddd sources --format json``
+carries its listing as ``sources``, described with the command further down this page.
 
 The exit code is the same everywhere, which lets a build system treat DDD like a compiler:
 

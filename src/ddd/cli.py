@@ -7,6 +7,7 @@ import contextlib
 import json
 import os
 import sys
+import unicodedata
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -1046,7 +1047,16 @@ def _command_list(args: argparse.Namespace) -> int:
                     "components": [
                         component.model_dump(mode="json") for component in dictionary.components
                     ],
-                    "variables": [entry.model_dump(mode="json") for entry in dictionary.listed],
+                    # `name` in front of the record itself, because a leaf's is a property of
+                    # the model rather than a field of it: a leaf row carried `path` and no
+                    # `name` at all, so a script keying the rows on `name` - the key the other
+                    # shape of row has always had, and the one the table is sorted by - dropped
+                    # every member of every structured variable in silence. First, as it
+                    # already was on a plain object, where it repeats what the record states.
+                    "variables": [
+                        {"name": entry.name, **entry.model_dump(mode="json")}
+                        for entry in dictionary.listed
+                    ],
                     **_diagnostics_payload(bag),
                 },
                 indent=2,
@@ -1054,6 +1064,10 @@ def _command_list(args: argparse.Namespace) -> int:
         )
     else:
         _print_table(dictionary)
+        # Before the findings, as `sources` and `artefacts` already flush: redirected into
+        # one file, stdout is block buffered and stderr is not, so the table arrived after
+        # every finding of the run - which is not the order anybody reads a log in.
+        sys.stdout.flush()
         _report(bag, args.format)
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
 
@@ -1074,6 +1088,10 @@ def _command_dump(args: argparse.Namespace) -> int:
         return EXIT_FINDINGS
     if args.output is None:
         print(_dictionary_text(resolved.dictionary), end="")
+        # The findings go to stderr, the dictionary to stdout, and `ddd dump p.ddd.json > log
+        # 2>&1` sends both to one file where only stdout is buffered: flushed here, the
+        # document is where the reader expects it rather than under the findings about it.
+        sys.stdout.flush()
         _report(bag, args.format, stream=sys.stderr)
     else:
         _write_dictionary(resolved, args.output, bag, args.format)
@@ -1707,6 +1725,20 @@ def _init_cell(entry: Comparable) -> str:
     return f"{stated} (= {reading})" if reading is not None else stated
 
 
+def _display_width(text: str) -> int:
+    """Columns a terminal spends on ``text``, which is not always its number of code points.
+
+    The table padded with ``str.ljust``, which counts code points: a unit such as ``温度`` is
+    two of them and four columns wide, so its row got the padding of a two-column cell and
+    every cell after it started two columns right of its header. The East Asian width property
+    is what says which characters are drawn double width - ``W`` for the ones that always are,
+    ``F`` for the full width forms of characters that also have a half width one - and it is
+    the rule every terminal and every pager applies. ``°C``, ``µs`` and the accented letters a
+    description is otherwise likely to carry are narrow and unaffected.
+    """
+    return sum(2 if unicodedata.east_asian_width(character) in "WF" else 1 for character in text)
+
+
 def _print_table(dictionary: DataDictionary) -> None:
     rows = [("VARIABLE", "KIND", "DATATYPE", "UNIT", "SHAPE", "INIT", "PRODUCER", "CONSUMERS")]
     for entry in dictionary.listed:
@@ -1725,7 +1757,12 @@ def _print_table(dictionary: DataDictionary) -> None:
                 ", ".join(entry.consumers) or "-",
             )
         )
-    widths = [max(len(row[column]) for row in rows) for column in range(len(rows[0]))]
+    widths = [max(_display_width(row[column]) for row in rows) for column in range(len(rows[0]))]
     for row in rows:
-        cells = (value.ljust(width) for value, width in zip(row, widths, strict=True))
+        # Padded by hand rather than with `str.ljust`, which counts code points and would
+        # leave a wide cell pushing the rest of its row to the right.
+        cells = (
+            value + " " * (width - _display_width(value))
+            for value, width in zip(row, widths, strict=True)
+        )
         print("  ".join(cells).rstrip())

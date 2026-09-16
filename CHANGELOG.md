@@ -364,6 +364,23 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   candidate's, which is what did not run.  A `-W` naming a check of such a plugin is accepted
   for the same reason, instead of being refused as naming a check nothing registers.
 
+  *A redirected run reads in the order it happened.*  `ddd list p.ddd.json > log 2>&1` put the
+  two errors of the run at the top of the file and the table at the bottom: redirected, stdout
+  is block buffered and stderr is not, so the table arrived when the process ended.  `list`
+  and `dump` now flush before their findings, as `sources` and `artefacts` already did.  The
+  table also padded its columns to a count of code points, which is not a count of columns: a
+  unit such as `温度` is two code points and four columns wide, so every cell after it on that
+  row started two columns right of its header.  It is measured by display width now.
+
+  *Every row of `ddd list --format json` carries a `name`.*  A member of a structured variable
+  was published as a row carrying `path` and no `name` at all - `name` being a property of the
+  model rather than a field of it - while a plain object carried `name` and no `path`, so a
+  script keying the rows on `name` dropped every member of every structure in silence.  Both
+  shapes now open with `name`, a member's being its access path.  And the json payloads
+  themselves are documented for the first time: `list`, `artefacts`, `checks` and the
+  `generated` key of `generate` and `dump -o` are on the CLI page with an example each, and
+  their shapes are stated in the specification beside the commands.
+
   *The address map is read like every other file, and its grammar is the documented one.*
   The map `--address-map` names was read as plain utf-8 where the description files, the
   dumped dictionaries and the build records are all read `utf-8-sig`, so a map a Windows tool
@@ -425,7 +442,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   name, and went unnoticed because the project happened not to load, is now the usage error it
   always was.  An address map whose writer spelled an address `+5` or `0x1_0000`, or that
   states one symbol twice, is now refused instead of read: both come from a generator, and
-  the message names the symbol.
+  the message names the symbol.  A reader of `ddd list --format json` that keyed its rows on
+  `name` now sees the members of every structured variable it used to drop; one that keyed on
+  `path` is unaffected, since the key is still there.
 
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`

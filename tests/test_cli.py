@@ -27,6 +27,7 @@ from ddd.cli import (
     EXIT_FINDINGS,
     EXIT_OK,
     EXIT_USAGE,
+    _display_width,
     _displayed_path,
     _read_dictionary,
     main,
@@ -1176,13 +1177,142 @@ class TestList:
         # none at all: DDD does not know what is inside it.
         leaf = next(v for v in payload["variables"] if v.get("path") == "Diagnosis.faults")
         assert leaf["instance"] == "Diagnosis" and leaf["owner"] == "SensorHub"
-        assert "name" not in leaf
+        assert leaf["name"] == "Diagnosis.faults"
         assert not [
             v for v in payload["variables"] if v.get("path", "").startswith("Diagnosis.driver")
         ]
         # The json contract of every reporting command: diagnostics and their summary.
         assert payload["diagnostics"] == []
         assert payload["summary"] == {"error": 0, "warning": 0, "info": 0}
+
+    def test_every_variable_row_carries_a_name(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """One key answers "what is this row about" for both shapes of row.
+
+        A leaf's ``name`` is a property of the model and not a field of it, so a leaf row
+        carried ``path`` and no ``name`` at all, and a script keying the rows on ``name``
+        dropped every member of every structured variable in silence.
+        """
+        assert main(["list", str(DEMO), "--format", "json", "-W", "missing-id=ignore"]) == EXIT_OK
+        rows = json.loads(capsys.readouterr().out)["variables"]
+        assert all(isinstance(row.get("name"), str) for row in rows)
+        # And it is the first key of the row, as it already was on a plain object.
+        assert {next(iter(row)) for row in rows} == {"name"}
+        by_name = {row["name"]: row for row in rows}
+        assert by_name["Diagnosis.faults"]["path"] == "Diagnosis.faults"
+        assert "path" not in by_name["ValueE"]
+
+    def test_a_wide_unit_does_not_shift_the_rest_of_its_row(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The table padded to a count of code points, which is not a count of columns.
+
+        A unit such as ``温度`` is two code points and four columns wide, so ``ljust`` added
+        the padding of a two-column cell and every cell after it on that row started two
+        columns to the right of its header.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Wide", unit="温度"),
+                    declare("local", "Narrow", unit="degC"),
+                ),
+            },
+        )
+        arguments = ["list", str(tmp_path / "p.ddd.json"), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_OK
+        header, *rows = capsys.readouterr().out.splitlines()
+        # Every row's last cell is the one-character "-" of CONSUMERS, so the width of what
+        # precedes it is the column that cell starts in; the header says which column that is.
+        start = _display_width(header[: -len("CONSUMERS")])
+        assert {_display_width(row[:-1]) for row in rows} == {start}
+
+
+class TestARedirectedRun:
+    """``ddd list > log 2>&1`` shows its table before the findings, not after them.
+
+    Redirected, standard output is block buffered while standard error is not, so a table
+    printed and left unflushed reached the file when the process ended - after every finding
+    of the run. ``ddd sources`` and ``ddd artefacts`` flush for this reason; ``list`` and
+    ``dump`` did not, and a build log read their output in the wrong order.
+    """
+
+    class _Buffered:
+        """A standard output redirected into a file: what is written waits for a flush."""
+
+        def __init__(self, ledger: list[str]) -> None:
+            self._ledger = ledger
+            self._pending: list[str] = []
+
+        def write(self, text: str) -> int:
+            self._pending.append(text)
+            return len(text)
+
+        def flush(self) -> None:
+            text = "".join(self._pending)
+            self._pending.clear()
+            self._ledger.extend(text.splitlines())
+
+    class _Direct:
+        """A standard error, which is line buffered wherever it is pointed."""
+
+        def __init__(self, ledger: list[str]) -> None:
+            self._ledger = ledger
+            self._partial = ""
+
+        def write(self, text: str) -> int:
+            *whole, self._partial = (self._partial + text).split("\n")
+            self._ledger.extend(whole)
+            return len(text)
+
+        def flush(self) -> None:
+            pass
+
+    def logged(self, monkeypatch: pytest.MonkeyPatch, arguments: list[str]) -> list[str]:
+        """The one file both streams of the run land in, in the order they reach it."""
+        ledger: list[str] = []
+        out = self._Buffered(ledger)
+        monkeypatch.setattr("sys.stdout", out)
+        monkeypatch.setattr("sys.stderr", self._Direct(ledger))
+        assert main(arguments) == EXIT_OK
+        # What the interpreter does with what is left in the buffer when the process ends.
+        out.flush()
+        return ledger
+
+    @pytest.fixture
+    def noisy(self, tmp_path: Path) -> str:
+        """A project that resolves and has something to say: an output nobody reads."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "X")),
+            },
+        )
+        return str(tmp_path / "p.ddd.json")
+
+    def test_the_table_comes_before_the_findings(
+        self, noisy: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        lines = self.logged(monkeypatch, ["list", noisy, "-W", "missing-id=ignore"])
+        assert lines[0].startswith("VARIABLE")
+        assert any("unused-output" in line for line in lines)
+
+    def test_the_dictionary_comes_before_the_findings(
+        self, noisy: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        lines = self.logged(monkeypatch, ["dump", noisy, "-W", "missing-id=ignore"])
+        assert lines[0] == "{"
+        assert any("unused-output" in line for line in lines)
+
+    def test_the_listing_of_sources_still_comes_first(
+        self, noisy: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The control: the two commands that already flushed still do."""
+        lines = self.logged(monkeypatch, ["sources", noisy])
+        assert lines[0].endswith("a.ddd.json")
 
 
 class TestArtefacts:

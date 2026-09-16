@@ -805,7 +805,7 @@ class TestDiagnostics:
             },
         )
         document = tmp_path / "a.ddd.json"
-        found = navigation.containing_projects(document, tmp_path)
+        found = navigation.resolve_projects(document, tmp_path)
         assert found.projects == ()
         assert list(found.failed) == [tmp_path / "project.ddd.json"]
         reports = service.collect([], [document], tmp_path)
@@ -864,6 +864,95 @@ class TestDiagnostics:
         assert [entry["code"] for entry in reports[tmp_path / "project.ddd.json"]] == [
             "plugin-invalid"
         ]
+
+
+class TestTheProjectIsReadOnce:
+    """How often a refresh and a request read the project above the document.
+
+    The search for a containing project loads every candidate and asks it whether it includes
+    the document - and then threw the answer away, so the caller loaded the winner a second
+    time to do anything with it: twice per save in ``collect``, and twice more in the first
+    hover after one, through ``workspaces``. A flat directory of two hundred components cost
+    half a second per save and 2.2 seconds for that hover, against 0.7 for ``ddd check`` of
+    the whole project. Counted rather than timed, because what was wrong is the number of
+    reads and not how fast the machine that does them is.
+    """
+
+    def loads(self, monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+        """Every file the server reads a workspace out of, in order, wherever it does it."""
+        seen: list[Path] = []
+
+        def spy(path: Path, bag: DiagnosticBag) -> Any:
+            seen.append(path)
+            return load_workspace(path, bag)
+
+        monkeypatch.setattr(navigation, "load_workspace", spy)
+        monkeypatch.setattr(service, "load_workspace", spy)
+        return seen
+
+    def workspace(self, tmp_path: Path) -> Path:
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "X")),
+                "b.ddd.json": component("B", declare("input", "X")),
+            },
+        )
+        return tmp_path / "a.ddd.json"
+
+    def test_a_refresh_reads_it_once(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        document = self.workspace(tmp_path)
+        seen = self.loads(monkeypatch)
+        reports = service.collect([], [document], tmp_path)
+        assert document in reports, "the document was checked through the project above it"
+        assert seen.count(tmp_path / "project.ddd.json") == 1, seen
+
+    def test_a_request_after_it_reads_it_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        document = self.workspace(tmp_path)
+        seen = self.loads(monkeypatch)
+        found = navigation.workspaces([], document, tmp_path)
+        assert len(found) == 1, "the project above the document is what answers"
+        assert seen.count(tmp_path / "project.ddd.json") == 1, seen
+
+    def test_a_project_whose_read_reported_an_error_is_not_analysed(self, tmp_path: Path) -> None:
+        """The guard the second phase has always had, now that the read it guards is the one
+        the search did: there is no point resolving references between files that could not
+        all be read, and the reader's own finding is what says so."""
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "X")),
+                "b.ddd.json": component("B", declare("nonsense", "X")),
+            },
+        )
+        reports = service.collect([], [tmp_path / "a.ddd.json"], tmp_path)
+        assert [entry["code"] for entry in reports[tmp_path / "b.ddd.json"]] == ["schema"]
+        assert reports[tmp_path / "a.ddd.json"] == [], (
+            "the analysis ran over a project one of whose files did not read"
+        )
+
+    def test_a_hook_that_exits_under_the_containing_project_is_reported(
+        self, tmp_path: Path
+    ) -> None:
+        """The document is checked through the project above it, so a hook that ends the
+        process is met there as readily as under a build record - and has to end as a finding
+        on the project file rather than as an exception nobody catches."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_CHECK_PLUGIN,
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/exiting_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        reports = service.collect([], [tmp_path / "a.ddd.json"], tmp_path)
+        findings = reports[tmp_path / "project.ddd.json"]
+        assert [entry["code"] for entry in findings] == ["plugin-invalid"]
+        assert "check hook: SystemExit(0)" in findings[0]["message"]
 
 
 class TestNavigation:
@@ -4753,8 +4842,8 @@ class TestTheClientsSpelling:
         """The candidate is resolved and the document was not, so every file matched itself -
         and was then analysed a second time as a project of one, whose inputs nobody writes."""
         _, link = self.linked(tmp_path)
-        found = navigation.containing_projects(link / "a.ddd.json", link)
-        assert [path.name for path in found.projects] == ["p.ddd.json"]
+        found = navigation.resolve_projects(link / "a.ddd.json", link)
+        assert [loaded.path.name for loaded in found.projects] == ["p.ddd.json"]
 
     def test_the_findings_are_the_projects_and_are_not_doubled(self, tmp_path: Path) -> None:
         """What the two defects add up to on screen: the file read as its own project

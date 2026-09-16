@@ -6,11 +6,21 @@ import ast
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from conftest import DEMO, TEMPLATES, component, declare, project, run_analysis
-from ddd.backends import MANIFEST_NAME, A2lBackend, Backend, CBackend, GeneratedFile, render
+from ddd.backends import (
+    MANIFEST_NAME,
+    A2lBackend,
+    A2lOptions,
+    Backend,
+    CBackend,
+    COptions,
+    GeneratedFile,
+    render,
+)
 from ddd.backends.a2l.types import A2L_TYPE
 from ddd.backends.c.types import C_TYPE
 from ddd.ir import DataDictionary
@@ -501,3 +511,196 @@ class TestObjectViewComposition:
 
     def test_the_one_liner_without_an_initializer_stops_at_the_declarator(self) -> None:
         assert self.view(initializer=None).definition == "const uint16_t Gain[4]"
+
+
+class Walked(tuple):  # type: ignore[type-arg]
+    """A tuple that counts how often something walked it from the beginning.
+
+    The repetitions below were measured in seconds on a project of a thousand components, and
+    seconds are no way to hold them: a test that fails when the machine is busy is a test
+    somebody deletes. What is counted instead is how many times the model builders walk the
+    project, which is a property of the code and of nothing else. The dictionary is frozen,
+    so the counting tuples are put in with ``model_copy``, which replaces a field without
+    validating it.
+    """
+
+    walks: int
+
+    def __new__(cls, items: Any) -> Walked:
+        walked: Walked = super().__new__(cls, items)
+        walked.walks = 0
+        return walked
+
+    def __iter__(self) -> Any:
+        self.walks += 1
+        return super().__iter__()
+
+
+def counting(dictionary: DataDictionary, *fields: str) -> tuple[DataDictionary, list[Walked]]:
+    """The same dictionary, with each named field counting the walks over it."""
+    counters = [Walked(getattr(dictionary, field)) for field in fields]
+    return dictionary.model_copy(update=dict(zip(fields, counters, strict=True))), counters
+
+
+def walks(counters: list[Walked]) -> int:
+    return sum(counter.walks for counter in counters)
+
+
+class TestTheWorkGrowsWithTheProject:
+    """What the model builders do per component, counted rather than timed.
+
+    A model built out of a project of N components walked the whole project N times over: the
+    c model asked the dictionary for the objects of each component, which scans every object
+    there is, and the a2l walked every leaf once per component to find the ones that
+    component's structured variables contribute. At a thousand components of fifty objects
+    the first alone was 44 000 000 comparisons. Nothing about the answers changes here; the
+    project is bucketed once and read out of the bucket.
+    """
+
+    def project_of(self, tree: Path, components: int) -> DataDictionary:
+        """N components, each with a plain object, a structured variable and a reader."""
+        files: dict[str, Any] = {
+            "project.ddd.json": project("P", "*.ddd.json", "types/t.ddd.json"),
+            "types/t.ddd.json": {
+                "types": [
+                    {
+                        "type": "struct",
+                        "name": "Block_t",
+                        "description": "two members",
+                        "members": [
+                            {
+                                "name": "value",
+                                "member": "value",
+                                "description": "a member",
+                                "datatype": "uint16",
+                                "conversion": {},
+                            },
+                            {
+                                "name": "ready",
+                                "member": "value",
+                                "description": "another",
+                                "datatype": "uint8",
+                                "conversion": {},
+                            },
+                        ],
+                    }
+                ]
+            },
+        }
+        for index in range(components):
+            files[f"c{index}.ddd.json"] = component(
+                f"C{index}",
+                declare("output", f"Plain{index}", "uint16"),
+                declare("output", f"Block{index}", typename="Block_t"),
+                declare("input", f"Plain{(index + 1) % components}", "uint16"),
+                description=f"component {index}",
+            )
+        dictionary, bag = run_analysis(tree, files, severities=("unused-output=ignore",))
+        assert dictionary is not None, [finding.render() for finding in bag]
+        return dictionary
+
+    def test_the_c_model_walks_the_objects_a_fixed_number_of_times(self, tree: Path) -> None:
+        """``dictionary.owned_by(component.name)`` scans every object of the project, and was
+        asked once per component - the largest single phase of a generation."""
+        from ddd.backends.c.model import build_code_model
+
+        few, counted_few = counting(self.project_of(tree / "few", 2), "objects", "instances")
+        many, counted_many = counting(self.project_of(tree / "many", 20), "objects", "instances")
+        build_code_model(few, COptions(), "ddd")
+        build_code_model(many, COptions(), "ddd")
+        assert walks(counted_many) == walks(counted_few), (
+            f"the c model walks the project {walks(counted_many)} times at twenty components "
+            f"and {walks(counted_few)} at two, so the work is quadratic in the components"
+        )
+
+    def test_the_a2l_model_walks_the_leaves_a_fixed_number_of_times(self, tree: Path) -> None:
+        """The ``GROUP`` of a component names the members of the structured variables it
+        declares, which were looked for by walking every leaf of the project, per group."""
+        from ddd.backends.a2l.model import build_a2l_model
+
+        few, counted_few = counting(self.project_of(tree / "few", 2), "leaves")
+        many, counted_many = counting(self.project_of(tree / "many", 20), "leaves")
+        build_a2l_model(few, A2lOptions(), "ddd")
+        build_a2l_model(many, A2lOptions(), "ddd")
+        assert walks(counted_many) == walks(counted_few), (
+            f"the a2l model walks the leaves {walks(counted_many)} times at twenty components "
+            f"and {walks(counted_few)} at two"
+        )
+
+    def test_the_names_the_a2l_addresses_are_not_a_second_model(self, tree: Path) -> None:
+        """Which symbols a build's address map is weighed against comes off the same two
+        selections the file is rendered from. It used to come off a whole second model, built
+        and thrown away - the a2l built twice for every build that has a map."""
+        from ddd.backends.a2l.model import addressed_symbols
+
+        dictionary, counted = counting(self.project_of(tree, 4), "objects", "leaves")
+        names = addressed_symbols(dictionary)
+        assert "Plain0" in names and "Block0.value" in names, names
+        assert walks(counted) <= 4, (
+            f"reading the addressed names walks the project {walks(counted)} times, which is "
+            f"more than the two selections it is"
+        )
+
+
+class TestADiamondOfStructures:
+    """The alignment of a placed structure is a walk over the types, and it met each twice.
+
+    ``L0_t`` holding two ``L1_t``, down to a type whose members are external - which
+    contribute no leaf, so the cap on the leaves of a variable never weighs the tree - is a
+    walk that doubles per level: 23 seconds of c model at twenty-four levels against 1.7 at
+    twenty. Contrived, and cheap to settle: the types of a dictionary are acyclic by
+    construction, so an answer per type name is an answer for good.
+    """
+
+    def diamond(self, tree: Path, depth: int) -> DataDictionary:
+        types: list[dict[str, Any]] = [
+            {"type": "external", "name": "Ext_t", "description": "opaque", "header": "ext.h"}
+        ]
+        for level in reversed(range(depth)):
+            inner = "Ext_t" if level == depth - 1 else f"L{level + 1}_t"
+            types.append(
+                {
+                    "type": "struct",
+                    "name": f"L{level}_t",
+                    "description": f"level {level}",
+                    "members": [
+                        {"name": part, "member": "value", "description": "d", "typename": inner}
+                        for part in ("a", "b")
+                    ],
+                }
+            )
+        files: dict[str, Any] = {
+            "project.ddd.json": project("P", "types.ddd.json", "s.ddd.json", "c.ddd.json"),
+            "types.ddd.json": {"types": types},
+            "s.ddd.json": {
+                "sections": [{"section": ".fast", "access": "read-write", "alignment": 8}]
+            },
+            "c.ddd.json": component(
+                "C", declare("output", "Inst", typename="L0_t", section=".fast")
+            ),
+        }
+        dictionary, bag = run_analysis(tree, files, severities=("unused-output=ignore",))
+        assert dictionary is not None, [finding.render() for finding in bag]
+        assert dictionary.instances, "the placed structured variable is what walks the types"
+        return dictionary
+
+    def walked(self, tree: Path, depth: int) -> int:
+        """How often the c model walks the members of a type, at this depth."""
+        from ddd.backends.c.model import build_code_model
+
+        dictionary = self.diamond(tree, depth)
+        counters = [Walked(entry.members) for entry in dictionary.types]
+        types = tuple(
+            entry.model_copy(update={"members": counter})
+            for entry, counter in zip(dictionary.types, counters, strict=True)
+        )
+        build_code_model(dictionary.model_copy(update={"types": types}), COptions(), "ddd")
+        return walks(counters)
+
+    def test_each_type_is_weighed_once_however_deep_the_diamond(self, tree: Path) -> None:
+        shallow = self.walked(tree / "shallow", 8)
+        deep = self.walked(tree / "deep", 16)
+        assert deep <= 3 * shallow, (
+            f"twice the levels is {deep} walks against {shallow}, so each level still costs "
+            f"twice what the one above it does"
+        )

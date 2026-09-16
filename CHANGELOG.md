@@ -74,6 +74,13 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   which is what `ddd check` refuses the same `-W` for.  And the log no longer says that every
   file is checked on its own, which denied exactly the findings the next message published.
 
+  *What it costs per save.*  A document no build record claims is checked through the project
+  above it, and finding that project means loading every candidate and asking it - an answer
+  that was then thrown away, so the project was read a second time to be checked, and twice
+  more by the first hover or jump after the save.  The read is now handed on rather than
+  dropped: one read of the project per refresh, and one per request that has to look above
+  the document, where each of the two cost two.
+
   **Migration:** none for a description file, a build record or a command.  An editor
   extension other than the shipped one sees three protocol changes: `exit` without `shutdown`
   exits 1, requests outside the session are refused rather than served, and a non-`file:`
@@ -537,6 +544,20 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   another component's source compiles.  The page and the README now say what is built - one
   directory, holding the headers of that image and no others - and what the isolation rests
   on.
+
+  *A generation reads the project once rather than once per component.*  Three phases of a
+  run walked the whole project again for every component in it, which a large project pays
+  for quadratically: the c model asked the dictionary for the objects of each component, a
+  scan of every object there is; the a2l looked for the members of each component's
+  structured variables by walking every member of the project; and the alignment of a placed
+  structure was worked out once per route through the type graph, which doubles per level of
+  a structure holding two of the next one.  A build with an address map also built the whole
+  a2l model a second time, to read off it which symbols the file carries.  Measured on one
+  machine over a synthetic project of a thousand components and fifty-three thousand
+  variables: the c model 7.7 s to 0.9 s, rendering the c sources 7.4 s to 1.1 s, the a2l
+  model 3.1 s to 0.4 s, rendering the a2l 3.3 s to 0.7 s, and the symbols an address map is
+  weighed against 2.8 s to 0.1 s; twenty-two levels of a structure holding two of the next
+  went from 0.7 s to nothing.  Nothing about what is generated changes.
 
   **Migration:** a directory that a `ddd generate` run is pointed at now belongs to that run:
   its own files are untouched, but a file DDD wrote there and no longer writes is deleted at

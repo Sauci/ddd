@@ -751,13 +751,6 @@ class DataDictionary(_Frozen):
         """
         return tuple(sorted(self.comparable.values(), key=lambda entry: entry.name))
 
-    def instances_owned_by(self, component: str) -> tuple[ResolvedInstance, ...]:
-        """The structured variables one component owns, in the order they are published."""
-        return tuple(entry for entry in self.instances if entry.owner == component)
-
-    def owned_by(self, component: str) -> tuple[ResolvedObject, ...]:
-        return tuple(entry for entry in self.objects if entry.owner == component)
-
     def unowned(self) -> tuple[ResolvedObject | ResolvedInstance, ...]:
         """Every variable no component declares as output; only possible when
         ``missing-producer`` is relaxed or the generation forced.

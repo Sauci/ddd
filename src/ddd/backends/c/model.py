@@ -308,10 +308,18 @@ def _section_groups(
     dictionary: DataDictionary, views: dict[str, ObjectView]
 ) -> tuple[SectionGroup, ...]:
     structures = {entry.name: entry for entry in dictionary.types}
+    # One answer per type name, kept: the walk below meets a type once per route to it, and a
+    # structure holding two of the next one has two routes to every level under it - a project
+    # of twenty such levels cost a million visits, and each level after that twice the one
+    # before. The types are acyclic by construction, so an answer, once had, is the answer.
+    weighed: dict[str, int] = {}
 
     def alignment(name: str) -> int:
         # The dictionary's types are dependency ordered and acyclic by construction, and a
         # placed instance names a structure the analysis resolved: the lookup cannot miss.
+        known = weighed.get(name)
+        if known is not None:
+            return known
         entry = structures[name]
         strictest = 1
         for member in entry.members:
@@ -322,6 +330,7 @@ def _section_groups(
             # An external member's alignment is unknown, so it contributes nothing to this
             # ordering; the order stays deterministic, which is all the packing heuristic
             # promises - the compiler's word on the real layout is final either way.
+        weighed[name] = strictest
         return strictest
 
     def needed(entry: ResolvedObject | ResolvedInstance) -> int:
@@ -349,18 +358,40 @@ def _section_groups(
     )
 
 
+def _by_owner(dictionary: DataDictionary) -> dict[str, list[ResolvedObject | ResolvedInstance]]:
+    """Every owned variable of the project under the component that owns it.
+
+    One walk over the project rather than one per component. Asking the dictionary for the
+    objects of a component scans every object there is, and asking it once per component made
+    the largest phase of a generation quadratic: a thousand components of fifty objects was
+    forty-four million comparisons, four seconds where a hundred components took a twentieth
+    of one. The order inside each bucket is the dictionary's own, objects before instances,
+    which is what asking twice used to produce - and a group sorts by name anyway.
+    """
+    owned: dict[str, list[ResolvedObject | ResolvedInstance]] = {}
+    entries: tuple[ResolvedObject | ResolvedInstance, ...] = (
+        *dictionary.objects,
+        *dictionary.instances,
+    )
+    for entry in entries:
+        if entry.owner is not None:
+            owned.setdefault(entry.owner, []).append(entry)
+    return owned
+
+
 def build_code_model(dictionary: DataDictionary, options: COptions, generator: str) -> CodeModel:
     """Turn the dictionary into the flat structures used by the templates."""
     views: dict[str, ObjectView] = {entry.name: _object_view(entry) for entry in dictionary.objects}
     views.update({entry.name: _instance_view(entry) for entry in dictionary.instances})
 
+    owned = _by_owner(dictionary)
     groups = [
         group
         for group in (
             _group(
                 component.name,
                 component.description,
-                dictionary.owned_by(component.name) + dictionary.instances_owned_by(component.name),
+                tuple(owned.get(component.name, ())),
                 views,
             )
             for component in dictionary.components

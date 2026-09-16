@@ -35,7 +35,7 @@ from ddd.diagnostics import (
     UnknownCheckError,
 )
 from ddd.loading import load_workspace
-from ddd.lsp.navigation import containing_projects
+from ddd.lsp.navigation import Loaded, resolve_projects
 from ddd.lsp.ranges import Document, read
 from ddd.plugins import PluginError
 
@@ -99,6 +99,25 @@ def _declares_a_project(path: Path, cache: dict[Path, Document]) -> bool:
     """Whether the file is a project file, keyed on what the loader keys the kind on."""
     data = read(path, cache).data
     return isinstance(data, dict) and "project" in data
+
+
+def _analysed(loaded: Loaded) -> tuple[DiagnosticBag, frozenset[Path]]:
+    """The second phase of a run, over a project somebody has already read.
+
+    The search for a document's containing project loads every candidate to ask whether it
+    includes the document, so by the time one is found the read is done and its findings are
+    in the bag it reported into. Running :func:`_run` on it read the same project a second
+    time, every refresh - half a second per save on a flat project of two hundred components.
+    Only the analysis is left to do, and only when the read reported no error, which is the
+    same guard :func:`_run` applies for the same reason.
+    """
+    bag = loaded.bag
+    try:
+        if not bag.has_errors:
+            analyze(loaded.workspace, bag)
+    except PluginError as error:
+        bag.add("plugin-invalid", str(error), Location(loaded.path))
+    return bag, frozenset(loaded.workspace.sources())
 
 
 def _run(root: Path, bag: DiagnosticBag) -> tuple[DiagnosticBag, frozenset[Path]]:
@@ -166,7 +185,7 @@ def collect(
         resolved = document.resolve()
         if resolved in covered:
             continue
-        containing = containing_projects(resolved, root)
+        containing = resolve_projects(resolved, root)
         # A candidate that could not be read is named at its own file. Without this the reader
         # gets the thin standalone analysis below and nothing at all saying why: the project
         # that would have given the full answer is broken, and only the plugin can fix it.
@@ -177,9 +196,9 @@ def collect(
             unreadable.add("plugin-invalid", containing.failed[path], Location(path))
         covered |= _group(unreadable, resolved, grouped)
         if containing.projects:
-            for project in containing.projects:
-                bag, sources = _run(project, DiagnosticBag())
-                covered |= sources | _group(bag, project, grouped)
+            for loaded in containing.projects:
+                bag, sources = _analysed(loaded)
+                covered |= sources | _group(bag, loaded.path, grouped)
             continue
         bag, sources = _analyse_root(resolved, cache)
         covered |= sources | _group(bag, resolved, grouped)

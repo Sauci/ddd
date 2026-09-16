@@ -11,7 +11,7 @@ import dataclasses
 import difflib
 import math
 from collections import defaultdict
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Final
 
@@ -140,6 +140,13 @@ costs the outputs one entry per member per element.
 
 _INT_MIN, _INT_MAX = -(2**31), 2**31 - 1
 """Range of a c ``int`` on the 32 bit targets DDD generates for; bounds every enumerator."""
+
+_INIT_VALUES_NAMED: Final = 3
+"""How many further init values a folded ``init-invalid`` spells beside the first.
+
+Enough to show that a table holds more than one wrong number and what kind of numbers they
+are; the count beside them says how many there are in all. A table is initialised with
+thousands of values and the finding has to stay a line."""
 
 _EXPECTED_KIND: Final = {
     "axis": ObjectKind.AXIS,
@@ -2393,48 +2400,97 @@ class _Analysis:
             )
 
     def _check_init(self, definition: DataObject, location: Location) -> None:
+        """What an init holds that its storage cannot: one finding per way of being wrong.
+
+        The ways are counted, not the elements. A table typed one datatype too narrow is one
+        mistake - the datatype of the declaration - made once and true of every element, and
+        reported per element it buried the reader: a ``uint8[4096]`` initialised with 300 was
+        4096 identical lines at one pointer, half a megabyte of text, and 4096 diagnostics on
+        one range in the editor. No per-element pointer exists to lose, so the count and the
+        values that differ say everything the list of them said.
+        """
         datatype = definition.storage
-        for value in definition.scalar_values():
-            if datatype is Datatype.BOOLEAN:
-                if not isinstance(value, bool) and value not in (0, 1):
-                    # Spelled the way it was written, for the reason the integer case below
-                    # is: format_number renders 2.0 as "2", so the refusal read as a
-                    # complaint about a whole number nobody had written.
-                    self._bag.add(
-                        "init-invalid",
-                        f"init value {value!r} is not a valid bool",
-                        location,
-                    )
-                continue
-            if datatype.is_integer and isinstance(value, float):
-                # format_number renders 2.0 as "2", which would read as a contradiction, so
-                # the value is spelled the way it was written in the file.
-                self._bag.add(
-                    "init-invalid",
-                    f"init value {value!r} is written as a fractional number, "
-                    f"but '{definition.name}' has the integer datatype {datatype.value}",
-                    location,
-                )
-                continue
-            if not (datatype.raw_min <= value <= datatype.raw_max):
-                self._bag.add(
-                    "init-invalid",
-                    f"init value {format_number(value)} does not fit into {datatype.value} "
-                    f"({format_number(datatype.raw_min)} .. {format_number(datatype.raw_max)})",
-                    location,
-                )
-            elif datatype.rounds_to_zero(value):
-                # Inside the magnitude the datatype states and past the precision it has, so
-                # the range check above cannot see it: the value the storage would hold is
-                # zero, which is not the value the description states, and the generated c
-                # says so out loud - a float32 literal that rounds to zero is
-                # `-Werror=overflow`, the warning set the artefacts page verifies with.
-                self._bag.add(
-                    "init-invalid",
-                    f"init value {format_number(value)} rounds to zero in {datatype.value}, "
-                    f"which holds no magnitude that small",
-                    location,
-                )
+        values = definition.scalar_values()
+        if datatype is Datatype.BOOLEAN:
+            # Spelled the way it was written, for the reason the integer case below is:
+            # format_number renders 2.0 as "2", so the refusal read as a complaint about a
+            # whole number nobody had written.
+            self._report_init(
+                [value for value in values if not isinstance(value, bool) and value not in (0, 1)],
+                values,
+                repr,
+                "is not a valid bool",
+                location,
+            )
+            return
+        weighed: Sequence[float | int | bool] = values
+        if datatype.is_integer:
+            # format_number renders 2.0 as "2", which would read as a contradiction, so the
+            # value is spelled the way it was written in the file. A fractional value is not
+            # weighed against the range as well: it is wrong about the datatype, not about
+            # what that datatype can reach.
+            self._report_init(
+                [value for value in values if isinstance(value, float)],
+                values,
+                repr,
+                f"is written as a fractional number, "
+                f"but '{definition.name}' has the integer datatype {datatype.value}",
+                location,
+            )
+            weighed = [value for value in values if not isinstance(value, float)]
+        outside = [
+            value for value in weighed if not (datatype.raw_min <= value <= datatype.raw_max)
+        ]
+        self._report_init(
+            outside,
+            values,
+            format_number,
+            f"does not fit into {datatype.value} "
+            f"({format_number(datatype.raw_min)} .. {format_number(datatype.raw_max)})",
+            location,
+        )
+        # Inside the magnitude the datatype states and past the precision it has, so the
+        # range check above cannot see it: the value the storage would hold is zero, which is
+        # not the value the description states, and the generated c says so out loud - a
+        # float32 literal that rounds to zero is `-Werror=overflow`, the warning set the
+        # artefacts page verifies with.
+        self._report_init(
+            [
+                value
+                for value in weighed
+                if datatype.raw_min <= value <= datatype.raw_max and datatype.rounds_to_zero(value)
+            ],
+            values,
+            format_number,
+            f"rounds to zero in {datatype.value}, which holds no magnitude that small",
+            location,
+        )
+
+    def _report_init(
+        self,
+        offending: Sequence[float | int | bool],
+        values: Sequence[float | int | bool],
+        spell: Callable[[Any], str],
+        predicate: str,
+        location: Location,
+    ) -> None:
+        """One ``init-invalid`` for every init value wrong in the same way.
+
+        The first value is named as it always was, so that a declaration with one mistake
+        reads exactly as it did. Where there are more, the count says how much of the init
+        the mistake covers and the further spellings - at most three, and only the ones that
+        differ from the first - say what else is in there. Shaped like
+        :meth:`_check_enum_fits`, which already names an offending subset in one finding.
+        """
+        if not offending:
+            return
+        spelled = [spell(value) for value in offending]
+        tail = ""
+        if len(spelled) > 1:
+            others = [text for text in dict.fromkeys(spelled) if text != spelled[0]]
+            named = f", the others: {', '.join(others[:_INIT_VALUES_NAMED])}" if others else ""
+            tail = f"; {len(spelled)} of the {len(values)} init values are wrong this way{named}"
+        self._bag.add("init-invalid", f"init value {spelled[0]} {predicate}{tail}", location)
 
     def _check_limits(self, definition: DataObject, location: Location) -> None:
         if definition.limits is None:

@@ -1094,6 +1094,17 @@ class TestTheArchivedDictionary:
         assert checks(bag) == ["json-syntax"], messages(bag)
         assert "appears twice in one object" in messages(bag)
 
+    def test_a_finding_inside_a_dumped_entry_names_the_entry(self, tree: Path) -> None:
+        """A dump is validated without the document beside it, so every segment of a finding
+        in it is judged by its shape: an index into a list is an index and not a union tag,
+        and the entry that is wrong is named rather than the list holding it."""
+        payload = self.dump(tree)
+        payload["objects"][0]["name"] = 5
+        (tree / "baseline.json").write_text(json.dumps(payload), encoding="utf-8")
+        bag = DiagnosticBag()
+        assert load_dictionary(tree / "baseline.json", bag) is None
+        assert "baseline.json#objects[0].name: error[schema]" in messages(bag), messages(bag)
+
     def test_the_current_format_round_trips(self, tree: Path) -> None:
         dictionary, _ = run_analysis(
             tree,

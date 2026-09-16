@@ -615,10 +615,22 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   project, were even one finding: the reader fixed the first, ran again and met the second.
   Each now names its key and is counted apart.
 
+  *A table typed one datatype too narrow is one mistake.*  It was one `init-invalid` per
+  element: a `uint8[4096]` initialised with 300 printed 4096 identical lines at one pointer -
+  half a megabyte of text - carried 4096 diagnostics in `--format json`, and put 4096 of them
+  on one range in the editor, where they can only be read one on top of another.  The values
+  of one initialiser that are wrong in the same way are now one finding, which names how many
+  there are and, where they differ, the first few of them.  A declaration with one wrong
+  value reads exactly as it did.
+
   **Migration:** a list `init` holding a quoted number or one of those words is now refused
   with a `schema` finding at the element that holds it, where it used to load, generate and
   dump.  Write the value without the quotes: `["1", "2"]` becomes `[1, 2]`.  A string object
   is untouched - its init is its text, written as one string rather than as a list of them.
+  The other three change what a run says about a file it already refused, not what it
+  accepts: a file with one of these mistakes now reports fewer findings than before - one
+  where there was one per enclosing list, one per block and one per element - so a build that
+  counts findings rather than reading them counts differently.
 
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`

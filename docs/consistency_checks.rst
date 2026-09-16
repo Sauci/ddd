@@ -576,7 +576,10 @@ or an a2l file that does not do what the description says - or that does not com
        does not have (for a curve or a map, the shape given by its axes), or an enumerator does
        not fit the datatype of the variable, or does not fit into a c ``int``, which every
        enumerator has to (C11 6.7.2.2), or a string init that is not printable ASCII, leaves
-       no room for its terminator, or sits on an object that is not a string.
+       no room for its terminator, or sits on an object that is not a string. The values of
+       one initialiser that are wrong in the same way are one finding, which names how many
+       there are and what else is among them: a table typed one datatype too narrow is one
+       mistake, not one per element.
 
 Warnings
 ~~~~~~~~

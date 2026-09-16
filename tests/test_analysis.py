@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from conftest import checks, component, declare, messages, project, run_analysis
-from ddd.diagnostics import CHECKS, Severity
+from ddd.diagnostics import CHECKS, DiagnosticBag, Severity
 
 
 def two_components(*, a: list[dict], b: list[dict]) -> dict[str, object]:
@@ -215,6 +216,75 @@ class TestValueChecks:
             ),
         )
         assert checks(bag) == []
+
+    def _table(self, tree: Path, datatype: str, init: list[Any]) -> DiagnosticBag:
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[
+                    declare(
+                        "local",
+                        "T",
+                        datatype,
+                        kind="value_block",
+                        dimensions=[len(init)],
+                        init=init,
+                    )
+                ],
+                b=[declare("local", "Y")],
+            ),
+        )
+        return bag
+
+    def test_a_table_typed_one_datatype_too_narrow_is_one_finding(self, tree: Path) -> None:
+        """Every element is the same mistake, made once: the datatype of the declaration.
+        Reported per element, a ``uint8[4096]`` of 300s was 4096 identical lines at one
+        pointer, half a megabyte of text, and 4096 diagnostics on one range in the editor."""
+        bag = self._table(tree, "uint8", [300] * 8)
+        assert checks(bag) == ["init-invalid"]
+        assert (
+            "definition.init: error[init-invalid]: init value 300 does not fit into uint8 "
+            "(0 .. 255); 8 of the 8 init values are wrong this way" in messages(bag)
+        ), messages(bag)
+
+    def test_the_folded_finding_names_the_values_that_differ(self, tree: Path) -> None:
+        bag = self._table(tree, "uint8", [300, 4, 301, 302, 303, 5])
+        assert checks(bag) == ["init-invalid"]
+        assert (
+            "init value 300 does not fit into uint8 (0 .. 255); 4 of the 6 init values are "
+            "wrong this way, the others: 301, 302, 303" in messages(bag)
+        ), messages(bag)
+
+    def test_one_offending_value_still_reads_as_one(self, tree: Path) -> None:
+        bag = self._table(tree, "uint8", [1, 300, 3])
+        assert checks(bag) == ["init-invalid"]
+        assert "init value 300 does not fit into uint8 (0 .. 255)" in messages(bag)
+        assert "init values" not in messages(bag), messages(bag)
+
+    def test_two_ways_of_being_wrong_are_still_two_findings(self, tree: Path) -> None:
+        """The fold is per way of being wrong, not per declaration: a value the storage
+        cannot reach and a value it rounds away are two different answers."""
+        bag = self._table(tree, "float32", [1e39, 1e39, 1e-50])
+        assert checks(bag) == ["init-invalid", "init-invalid"]
+        assert "does not fit into float32" in messages(bag), messages(bag)
+        assert "2 of the 3 init values are wrong this way" in messages(bag), messages(bag)
+        assert "init value 1e-50 rounds to zero in float32" in messages(bag), messages(bag)
+
+    def test_a_fractional_table_on_an_integer_datatype_is_one_finding(self, tree: Path) -> None:
+        bag = self._table(tree, "uint8", [1.5] * 8)
+        assert checks(bag) == ["init-invalid"]
+        assert (
+            "init value 1.5 is written as a fractional number, but 'T' has the integer "
+            "datatype uint8; 8 of the 8 init values are wrong this way" in messages(bag)
+        ), messages(bag)
+
+    def test_a_table_of_values_that_are_no_truth_values_is_one_finding(self, tree: Path) -> None:
+        bag = self._table(tree, "boolean", [2.0, 3.0])
+        assert checks(bag) == ["init-invalid"]
+        assert (
+            "init value 2.0 is not a valid bool; 2 of the 2 init values are wrong this way, "
+            "the others: 3.0" in messages(bag)
+        ), messages(bag)
 
     def test_a_float32_init_of_zero_is_kept(self, tree: Path) -> None:
         """Zero rounds to zero and is meant to: only a value the author wrote as something

@@ -319,7 +319,10 @@ Running the checks
 configuration with a line length of 100. The whole suite takes a couple of minutes in a warm
 checkout - longer in a fresh environment, where ``tests/test_cmake.py`` configures and builds
 the module - so ``--no-cov`` and a ``-k`` are what a single test is worth running under, and
-the whole of it is what a commit is worth running under.
+the whole of it is what a commit is worth running under. Not ``-q``: the ``addopts`` in
+``pyproject.toml`` carry one already, pytest counts them, and a second drops the summary - the
+"N passed" line and the coverage total both - leaving the exit code as the only statement of
+what happened.
 
 Nothing in the suite skips, and a test in ``tests/test_documentation.py`` holds it to that:
 no ``pytest.skip``, ``skipif``, ``importorskip`` or ``xfail`` anywhere under ``tests/``. A

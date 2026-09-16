@@ -101,6 +101,10 @@ exclude = [
 testpaths = ["tests"]
 # Coverage runs with every test run, and a gap fails the run: a line nobody executes is a
 # line nobody has ever seen behave. Use --no-cov for a quick partial run while developing.
+#
+# The -q here is the only one a run wants: pytest counts them, and a second one on the command
+# line drops the summary, so `pytest -k something -q` prints the dots and neither the "N
+# passed" line nor the coverage total. Narrow a run with -k and --no-cov, not with -q.
 addopts = "-q --cov --cov-report=term-missing --cov-fail-under=100"
 # tools/ holds the release machinery the workflows run and docker/ the scripts the container
 # runs - neither is part of the package, and both are on the path so that a test can import

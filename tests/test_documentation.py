@@ -1840,6 +1840,47 @@ class TestTheSuiteRunsEverythingEverywhere:
             f"page first"
         )
 
+    def test_no_line_is_exempted_from_the_coverage_gate(self) -> None:
+        """The gate is 100 % of lines and branches, and an exemption is how that stops meaning
+        anything - one comment at a time, each of them reasonable on its own.
+
+        The one there was sat on ``if TYPE_CHECKING:``, which ``pyproject.toml`` already
+        excludes for the whole project, so it exempted nothing and read as though a rule
+        needed an escape hatch.
+        """
+        exempted = [
+            f"{path.relative_to(ROOT).as_posix()}:{number}"
+            for directory in ("src", "tests", "tools", "docker")
+            for path in sorted((ROOT / directory).rglob("*.py"))
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+            if re.search(r"pragma:\s*no\s+cover", line)
+        ]
+        assert not exempted, (
+            f"these lines are excused from the coverage gate one by one: {exempted}. A branch "
+            f"nothing reaches is a branch to delete; one that is reached needs the test that "
+            f"reaches it. The project-wide exclusions live in pyproject.toml"
+        )
+
+    def test_no_page_recommends_running_the_suite_without_its_summary(self) -> None:
+        """``addopts`` carries ``-q`` already, and a second one silences the count.
+
+        A run that passes both prints the dots, the failures and nothing else: no "N passed",
+        no coverage total, no statement of whether the gate was met. A page recommending that
+        spelling hands a reader a run whose result they have to infer from the exit code.
+        """
+        shown = [
+            (document, line.strip().removeprefix("$ ").strip())
+            for document, text in PAGES.items()
+            for line in text.splitlines()
+            if re.match(r"^\s*(?:\$ )?(?:python -m )?pytest\b", line)
+        ]
+        assert shown, "no page is recognised as showing a pytest command, so this weighs nothing"
+        for document, command in shown:
+            assert not re.search(r"(?<!-)-q\b|--quiet\b", command), (
+                f"{document} shows `{command}`, which silences the summary: the quiet flag is "
+                f"already in the addopts of pyproject.toml"
+            )
+
     def test_the_pages_that_count_the_fixed_checks_are_recognised(self) -> None:
         """Positive control: several pages count them, and the guard has to find them."""
         counting = {page for page in PAGES if fixed_severity_counts(PAGES[page])}

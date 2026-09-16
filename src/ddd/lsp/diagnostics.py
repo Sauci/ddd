@@ -32,6 +32,7 @@ from ddd.diagnostics import (
     Location,
     Severity,
     SeverityPolicy,
+    UnknownCheckError,
 )
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import containing_projects
@@ -49,9 +50,25 @@ _LSP_SEVERITY: Final[dict[Severity, int]] = {
 
 
 def analyse(info: BuildInfo) -> tuple[DiagnosticBag, frozenset[Path]]:
-    """Run the checks over one configured project, exactly as its build would."""
+    """Run the checks over one configured project, exactly as its build would.
+
+    Including the last step of "exactly", which used to be missing: an override naming a
+    plugin's check is provisional until the project has been read, because which plugins
+    there are is a property of the project, and holding it to what actually registered is
+    what ``ddd check`` does before it reports anything. The server cannot answer that with a
+    usage error - it has a session to keep - so it says so where the mistake is, on the
+    project file the record names. Silently accepted, a build silencing a check by a name
+    nothing registers looks exactly like a build silencing one that exists.
+    """
     policy = SeverityPolicy.from_strings(list(info.severity), strict=info.strict)
-    return _run(Path(info.project), DiagnosticBag(policy))
+    bag = DiagnosticBag(policy)
+    project = Path(info.project)
+    bag, covered = _run(project, bag)
+    try:
+        policy.verify(bag.registered)
+    except UnknownCheckError as fault:
+        bag.add("plugin-invalid", str(fault), Location(project))
+    return bag, covered
 
 
 def analyse_standalone(path: Path) -> tuple[DiagnosticBag, frozenset[Path]]:
@@ -168,7 +185,7 @@ def collect(
         covered |= sources | _group(bag, resolved, grouped)
 
     return {
-        path: [_as_lsp(finding, cache) for finding in grouped.get(path, ())]
+        path: [_as_lsp(finding, cache, path) for finding in grouped.get(path, ())]
         for path in sorted(covered | set(grouped))
     }
 
@@ -236,7 +253,8 @@ def _mirrors(finding: Diagnostic) -> list[Diagnostic]:
     return mirrors
 
 
-def _as_lsp(finding: Diagnostic, cache: dict[Path, Document]) -> dict[str, Any]:
+def _as_lsp(finding: Diagnostic, cache: dict[Path, Document], filed: Path) -> dict[str, Any]:
+    """One finding as the protocol carries it; ``filed`` is the file it is published for."""
     location = finding.location
     document = read(location.path, cache) if location else None
     pointer = location.pointer if location else ""
@@ -247,7 +265,7 @@ def _as_lsp(finding: Diagnostic, cache: dict[Path, Document]) -> dict[str, Any]:
         "source": SOURCE,
         "message": finding.message,
     }
-    related = [_related(text, note, cache) for text, note in finding.notes]
+    related = [_related(text, note, cache, filed) for text, note in finding.notes]
     if related:
         # Left out entirely rather than sent empty: this is where the "and here is the other
         # declaration" of a mismatch lands, and an empty list is a clickable nothing.
@@ -255,15 +273,17 @@ def _as_lsp(finding: Diagnostic, cache: dict[Path, Document]) -> dict[str, Any]:
     return published
 
 
-def _related(text: str, location: Any, cache: dict[Path, Document]) -> dict[str, Any]:
+def _related(text: str, location: Any, cache: dict[Path, Document], filed: Path) -> dict[str, Any]:
     """One note of a finding, as somewhere the reader can jump to.
 
     A note without a location of its own belongs where its finding is, which the protocol has
     no way to say: every piece of related information carries a location. It is therefore
-    given the first line of the file the finding is on.
+    given the first line of the file the finding is published for - which is what this
+    docstring has always claimed and what an empty uri was not: a client reads ``""`` as
+    ``file:///``, so the note was a thing to click that landed nowhere near the project.
     """
     if location is None:
-        return {"location": {"uri": "", "range": _WHOLE_FIRST_LINE}, "message": text}
+        return {"location": {"uri": filed.as_uri(), "range": _WHOLE_FIRST_LINE}, "message": text}
     document = read(location.path, cache)
     return {
         "location": {

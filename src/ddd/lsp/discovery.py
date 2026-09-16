@@ -38,7 +38,15 @@ def build_files(root: Path, configured: Sequence[Path] = ()) -> list[Path]:
     ]
     found: set[Path] = set()
     for directory in directories:
-        found.update(path for path in directory.rglob(BUILD_INFO_FILENAME) if path.is_file())
+        # Resolved before it is counted, or one record is several. ``rglob`` walks a junction
+        # as though it were a directory - python 3.13 keeps ``**`` out of a symlink, and a
+        # junction is not one - so a link pointing anywhere above itself yields a new spelling
+        # of every record under it per level. One `mklink /J build\\loop build` turned one
+        # record into twenty-two: twenty-two announcements, and every finding of the project
+        # published twenty-two times over.
+        found.update(
+            path.resolve() for path in directory.rglob(BUILD_INFO_FILENAME) if path.is_file()
+        )
     return sorted(found)
 
 

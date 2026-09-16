@@ -36,7 +36,7 @@ from ddd.build_info import BuildInfo
 from ddd.lsp.diagnostics import collect
 from ddd.lsp.discovery import discover
 from ddd.lsp.edits import QUICK_FIX, actions
-from ddd.lsp.hover import describe, describe_constant, describe_external, resolve
+from ddd.lsp.hover import describe, describe_constant, describe_external, describe_type, resolve
 from ddd.lsp.navigation import (
     Loaded,
     Site,
@@ -523,9 +523,10 @@ class Server:
         """Say which projects were found, once, and again whenever that changes.
 
         Silence is the failure mode this guards against. A file no build claims is still
-        checked, but only for what one file can settle - so a missing record looks exactly
-        like a project with nothing wrong with it, and the difference is invisible. Twice now
-        that has been read as the checks having stopped working.
+        checked - through a project file above it where there is one, and only for what one
+        file can settle where there is not - so a missing record looks much like a project
+        with nothing wrong with it, and the difference is invisible. Twice now that has been
+        read as the checks having stopped working.
 
         A record naming a project that is not there gets said out loud, because it is the way
         this goes wrong in practice: a record written inside a container names a path that
@@ -548,9 +549,12 @@ class Server:
         )
         if not lines:
             lines.append(
-                "no ddd-build.json found: every file is checked on its own, so findings that "
-                "need the whole project - a missing producer, two components disagreeing - "
-                "are not reported. Configure the build, or pass -b <build directory>."
+                "no ddd-build.json found: a file is checked through a project file above it "
+                "that includes it, and on its own when there is none - so findings that need "
+                "the whole project - a missing producer, two components disagreeing - are "
+                "reported only as far as such a project reaches, and under the default "
+                "severities rather than the build's. Configure the build, or pass "
+                "-b <build directory>."
             )
         current = tuple(lines)
         if current == self._announced:
@@ -619,6 +623,12 @@ class Server:
                     described = describe_constant(dictionary, constant)
                 if described is None and name is not None:
                     described = describe(dictionary, name)
+        if described is None and named_type is not None:
+            # Last, and after the object: from a component a ``typename`` is about the
+            # variable that names it. Inside a types file there is no variable to describe,
+            # and the type's own entry answered nothing at all - the one place a name is
+            # defined said less about it than anywhere else.
+            described = describe_type(projects, named_type)
         if described is None:
             return None
         return {

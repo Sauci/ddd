@@ -30,7 +30,7 @@ from ddd.lsp.navigation import Loaded
 from ddd.models.common import format_number
 from ddd.models.conversion import EnumConversion, conversion_range, raw_reading
 from ddd.models.objects import ObjectKind, broadcast, flatten, format_shape
-from ddd.models.types import ExternalType
+from ddd.models.types import ExternalType, Member, ScalarType, StructType
 from ddd.plugins import PluginError
 
 BARS: Final = "▁▂▃▄▅▆▇█"
@@ -40,6 +40,9 @@ MAX_ENUMERATORS: Final = 12
 """Past this many, a hover is a wall of text rather than a reminder."""
 
 _AXIS_KEYS: Final = ("axis", "x_axis", "y_axis", "input")
+
+type DeclaredType = ExternalType | ScalarType | StructType
+"""The three shapes a types file declares, which is what ``TypeEntry.declared`` holds."""
 
 
 def sparkline(values: list[float], low: float, high: float) -> str:
@@ -125,15 +128,89 @@ def describe_external(projects: Sequence[Loaded], name: str) -> str | None:
     is exactly what the description states, and the header is the half that lives in another
     file from the member naming the type.
     """
+    declared = _declared(projects, name)
+    return _rendered(declared) if isinstance(declared, ExternalType) else None
+
+
+def describe_type(projects: Sequence[Loaded], name: str) -> str | None:
+    """The markdown for one declared type of any kind, or nothing when nothing declares it.
+
+    The answer of last resort for a type name, offered where no data object answered first: in
+    a component a ``typename`` is about the variable that names it, and a reader pointing at
+    it wants what the project made of that variable. Inside a types file there is no variable
+    to describe, and a type's own entry used to answer nothing at all - the one place a name
+    is defined was the one place hovering it said less than anywhere else.
+
+    Answered from the loaded workspace for the reason :func:`describe_external` is: a type is
+    not a data object, so the resolved dictionary holds what *declarations* made of it and a
+    type nothing declares is in no dictionary at all.
+    """
+    declared = _declared(projects, name)
+    return None if declared is None else _rendered(declared)
+
+
+def _declared(projects: Sequence[Loaded], name: str) -> DeclaredType | None:
+    """The entry a project declares under this name, in the order the projects were found."""
     for loaded in projects:
         for entry in loaded.workspace.types:
-            declared = entry.declared
-            if isinstance(declared, ExternalType) and declared.name == name:
-                lines = [f"**{declared.name}** — external type, defined by `{declared.header}`"]
-                if declared.description:
-                    lines += ["", declared.description]
-                return "\n".join(lines)
+            if entry.declared.name == name:
+                return entry.declared
     return None
+
+
+def _rendered(declared: DeclaredType) -> str:
+    """One type entry as markdown, in the terms that kind of type is written in."""
+    if isinstance(declared, ExternalType):
+        heading = f"**{declared.name}** — external type, defined by `{declared.header}`"
+        return "\n".join([heading, *_described(declared.description)])
+    if isinstance(declared, ScalarType):
+        return "\n".join(
+            [
+                f"**{declared.name}** — scalar type, `{declared.datatype.value}`",
+                *_described(declared.description),
+                "",
+                "| | |",
+                "|---|---|",
+                *_table(
+                    [
+                        ("unit", f"`{declared.unit}`" if declared.unit else "*none*"),
+                        ("conversion", f"`{declared.conversion.describe()}`"),
+                    ]
+                ),
+            ]
+        )
+    members = declared.members
+    return "\n".join(
+        [
+            f"**{declared.name}** — structure type",
+            *_described(declared.description),
+            "",
+            f"**{len(members)} member{'s' if len(members) != 1 else ''}**",
+            "",
+            "| member | type |",
+            "|---|---|",
+            *_table([(f"`{member.name}`", _member_type(member)) for member in members]),
+        ]
+    )
+
+
+def _described(description: str) -> list[str]:
+    """The free text under a heading, where there is any."""
+    return ["", description] if description else []
+
+
+def _table(cells: Sequence[tuple[str, str]]) -> list[str]:
+    return [f"| {label} | {value} |" for label, value in cells]
+
+
+def _member_type(member: Member) -> str:
+    """What a member is made of, as the file spells it: a base datatype or a declared type."""
+    spelled = member.typename or (member.datatype.value if member.datatype else "")
+    if member.bits is not None:
+        return f"`{spelled}:{member.bits}`"
+    if member.dimensions:
+        return f"`{spelled}{format_shape(tuple(member.dimensions))}`"
+    return f"`{spelled}`"
 
 
 def describe(dictionary: DataDictionary, name: str) -> str | None:

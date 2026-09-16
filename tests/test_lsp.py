@@ -437,6 +437,22 @@ def check(context: CheckContext) -> None:
 PLUGIN = Plugin(name="exiting", check=check)
 """
 
+REGISTERING_PLUGIN = """
+from ddd.diagnostics import CheckInfo, Severity
+from ddd.plugins import CheckContext, Plugin
+
+
+def check(context: CheckContext) -> None:
+    return None
+
+
+PLUGIN = Plugin(
+    name="demo",
+    checks=(CheckInfo("demo/tagged", Severity.WARNING, "a demonstration check"),),
+    check=check,
+)
+"""
+
 EXITING_MODEL_PLUGIN = """
 import sys
 
@@ -729,19 +745,25 @@ class TestDiagnostics:
         service._group(bag, tmp_path / "root.ddd.json", grouped)
         assert list(grouped) == [tmp_path / "root.ddd.json"]
 
-    def test_a_note_with_nowhere_to_point_keeps_its_text(self) -> None:
-        """Every piece of related information carries a location, so one is invented."""
+    def test_a_note_with_nowhere_to_point_lands_on_the_file_of_its_finding(
+        self, tmp_path: Path
+    ) -> None:
+        """Every piece of related information carries a location, so one is given: the first
+        line of the file the finding itself is on, which is what the docstring always claimed.
+
+        It was sending ``""`` instead, which a client reads as ``file:///`` - a note the
+        reader can click, landing nowhere near the project.
+        """
         finding = Diagnostic("schema", Severity.ERROR, "bad name", None, (("try harder", None),))
-        published = service._as_lsp(finding, {})
+        published = service._as_lsp(finding, {}, tmp_path / "a.ddd.json")
         (related,) = published["relatedInformation"]
         assert related["message"] == "try harder"
-        assert related["location"]["uri"] == ""
+        assert related["location"]["uri"] == (tmp_path / "a.ddd.json").as_uri()
 
     def test_a_file_that_cannot_be_read_still_gets_a_range(self, tmp_path: Path) -> None:
-        finding = Diagnostic(
-            "schema", Severity.ERROR, "unreadable", Location(tmp_path / "gone.json", "a.b")
-        )
-        assert service._as_lsp(finding, {})["range"]["start"] == {"line": 0, "character": 0}
+        gone = tmp_path / "gone.json"
+        finding = Diagnostic("schema", Severity.ERROR, "unreadable", Location(gone, "a.b"))
+        assert service._as_lsp(finding, {}, gone)["range"]["start"] == {"line": 0, "character": 0}
 
     def test_a_hook_that_exits_is_reported_and_the_server_keeps_running(
         self, tmp_path: Path
@@ -5131,3 +5153,279 @@ class TestTheLifecycle:
         """A client that gave up before saying hello still gets a server that goes away; the
         protocol names this case so that such a server is not left running."""
         assert Server(framed({"jsonrpc": "2.0", "method": "exit"}), io.BytesIO()).run() == 1
+
+
+class TestWhatTheServerSaysAboutARecord:
+    """The three answers to "which project is this file checked through"."""
+
+    def test_a_junction_under_the_build_tree_yields_one_record(self, tmp_path: Path) -> None:
+        """``rglob`` walks a junction as if it were a directory - python 3.13 keeps ``**`` out
+        of a symlink and a junction is not one - so a loop under ``build/`` produced a
+        different spelling of the same record per level: twenty-two records, twenty-two log
+        lines and every finding of the project published twenty-two times.
+
+        Windows is where this bites: on posix ``**`` declines to follow the link at all, and
+        the one record is found by the short way round.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        directory_link(tmp_path / "build" / "loop", tmp_path / "build")
+        assert build_files(tmp_path) == [
+            tmp_path / "build" / "ddd" / "firmware.elf" / BUILD_INFO_FILENAME
+        ]
+
+    def test_the_log_says_a_file_under_a_project_is_checked_through_it(
+        self, tmp_path: Path
+    ) -> None:
+        """The line used to say every file is checked on its own, which denies exactly the
+        findings the next message publishes: a component under a project file is checked
+        through that project, record or no record."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "X")),
+            },
+        )
+        writer = io.BytesIO()
+        Server(io.BytesIO(), writer, root=tmp_path).refresh(tmp_path / "a.ddd.json")
+        (said,) = [
+            message["params"]["message"]
+            for message in sent(writer)
+            if message.get("method") == "window/logMessage"
+        ]
+        assert "no ddd-build.json found" in said
+        assert "a project" in said
+        # The very finding the old wording said would not be reported.
+        assert [
+            entry["code"] for entry in published(writer)[(tmp_path / "a.ddd.json").as_uri()]
+        ] == ["missing-producer"]
+
+    def test_a_record_naming_a_plugin_check_nobody_registers_is_reported(
+        self, tmp_path: Path
+    ) -> None:
+        """``ddd check -W layout/no-such=ignore`` refuses the run with a usage error; the
+        server took the same record, kept the override provisional and never held it to the
+        plugins that loaded, so a build silencing a check by a name nothing registers looked
+        exactly like a build silencing one that exists."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json", severity=["layout/no-such=ignore"])
+        reports = service.collect(discover(tmp_path))
+        published_for = reports[tmp_path / "p.ddd.json"]
+        assert [entry["code"] for entry in published_for] == ["plugin-invalid"]
+        assert "layout/no-such" in published_for[0]["message"]
+
+    def test_a_record_naming_a_plugin_check_that_is_registered_is_honoured(
+        self, tmp_path: Path
+    ) -> None:
+        """The control: the same shape of override, for a check a loaded plugin does register,
+        goes on working and reports nothing about itself."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/registering_plugin.py": REGISTERING_PLUGIN,
+                "p.ddd.json": project("P", "a.ddd.json", plugins=["tools/registering_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json", severity=["demo/tagged=ignore"])
+        reports = service.collect(discover(tmp_path))
+        assert "plugin-invalid" not in {
+            entry["code"] for findings in reports.values() for entry in findings
+        }
+
+
+class TestHoveringOnADeclaredType:
+    """The type's own entry, which until now answered only for an external type.
+
+    A reader in a types file gets the same nothing for every name they point at, while the
+    identical name pointed at from a component describes the variable that names it. Both
+    positions are about the type; one of them has no variable to describe instead.
+    """
+
+    def workspace(self, tmp_path: Path) -> list[Any]:
+        from ddd.build_info import BuildInfo
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": {
+                    "types": [
+                        {
+                            "type": "scalar",
+                            "name": "Temperature_t",
+                            "description": "a temperature as this ecu stores one",
+                            "datatype": "uint16",
+                            "unit": "degC",
+                            "conversion": {"factor": 0.1, "offset": -40},
+                        },
+                        {
+                            "type": "struct",
+                            "name": "Sample_t",
+                            "description": "one reading and how good it is",
+                            "members": [
+                                {
+                                    "name": "value",
+                                    "member": "value",
+                                    "typename": "Temperature_t",
+                                },
+                                {
+                                    "name": "quality",
+                                    "member": "value",
+                                    "datatype": "uint8",
+                                    "conversion": {},
+                                },
+                                {
+                                    "name": "history",
+                                    "member": "value",
+                                    "datatype": "uint8",
+                                    "conversion": {},
+                                    "dimensions": [4],
+                                },
+                                {
+                                    "name": "ready",
+                                    "member": "bits",
+                                    "datatype": "uint8",
+                                    "conversion": {},
+                                    "bits": 1,
+                                },
+                            ],
+                        },
+                    ]
+                },
+                "a.ddd.json": component(
+                    "A", declare("output", "Inlet", typename="Sample_t", description="the inlet")
+                ),
+            },
+        )
+        info = BuildInfo(project=(tmp_path / "p.ddd.json").as_posix())
+        return list(navigation.workspaces([info], tmp_path / "t.ddd.json"))
+
+    def hovered(self, tmp_path: Path, name: str, pointer: str) -> Any:
+        projects = self.workspace(tmp_path)
+        path = tmp_path / name
+        document = Document(path.read_text(encoding="utf-8"))
+        position = document.range_of(pointer)["start"]
+        writer = io.BytesIO()
+        Server(
+            session(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 7,
+                    "method": "textDocument/hover",
+                    "params": {
+                        "textDocument": {"uri": path.as_uri()},
+                        "position": position,
+                    },
+                }
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        assert projects
+        (answer,) = answered(writer)
+        return answer["result"]
+
+    def test_a_structures_own_entry_describes_it(self, tmp_path: Path) -> None:
+        result = self.hovered(tmp_path, "t.ddd.json", "types[1].name")
+        assert result is not None
+        rendered = result["contents"]["value"]
+        assert "**Sample_t**" in rendered
+        assert "one reading and how good it is" in rendered
+        assert "**4 members**" in rendered
+        assert "`Temperature_t`" in rendered
+        assert "`uint8`" in rendered
+        # Spelled as the file spells it: an array carries its dimensions and a bitfield its
+        # width, which is what tells a reader what the member costs.
+        assert "`uint8[4]`" in rendered
+        assert "`uint8:1`" in rendered
+
+    def test_a_scalar_types_own_entry_describes_it(self, tmp_path: Path) -> None:
+        rendered = self.hovered(tmp_path, "t.ddd.json", "types[0].name")["contents"]["value"]
+        assert "**Temperature_t**" in rendered
+        assert "`uint16`" in rendered
+        assert "degC" in rendered
+
+    def test_a_typename_inside_a_types_file_describes_the_type_it_names(
+        self, tmp_path: Path
+    ) -> None:
+        """The member says ``"typename": "Temperature_t"`` and the type is declared six lines
+        above it; there is no variable here for the old answer to describe instead."""
+        rendered = self.hovered(tmp_path, "t.ddd.json", "types[1].members[0].typename")["contents"][
+            "value"
+        ]
+        assert "**Temperature_t**" in rendered
+
+    def test_a_typename_on_a_declaration_still_describes_the_variable(self, tmp_path: Path) -> None:
+        """The control, and the reason the type answer is a fallback rather than a winner:
+        from a component, what a reader is asking about is the variable."""
+        rendered = self.hovered(
+            tmp_path, "a.ddd.json", "component.interface[0].definition.typename"
+        )["contents"]["value"]
+        assert "**Inlet**" in rendered
+
+    def test_a_name_no_project_declares_as_a_type_says_nothing(self, tmp_path: Path) -> None:
+        from ddd.lsp.hover import describe_type
+
+        assert describe_type(self.workspace(tmp_path), "Nothing_t") is None
+
+
+class TestInsertingAKey:
+    """Where a quick fix puts a key a definition does not have, and how far in."""
+
+    def document(self, separator: str) -> Any:
+        """One declaration whose last member is written over several lines.
+
+        ``separator`` goes inside a description above it: a line break to ``str.splitlines()``
+        and an ordinary character to everything that counts positions.
+        """
+        return Document(
+            "{\n"
+            '  "component": {\n'
+            '    "name": "A",\n'
+            f'    "description": "before{separator}after",\n'
+            '    "interface": [\n'
+            "      {\n"
+            '        "scope": "output",\n'
+            '        "definition": {\n'
+            '          "name": "Speed",\n'
+            '          "kind": "measurement",\n'
+            '          "datatype": "uint8",\n'
+            '          "conversion": {\n'
+            '            "kind": "identity"\n'
+            "          }\n"
+            "        }\n"
+            "      }\n"
+            "    ]\n"
+            "  }\n"
+            "}"
+        )
+
+    @pytest.mark.parametrize("separator", ["", "\u2028", "\x85"])
+    def test_the_indentation_is_the_one_of_the_line_positions_count(self, separator: str) -> None:
+        """``str.splitlines()`` breaks on a dozen characters a newline is not - a form feed, a
+        NEL, U+2028 - while every position this server hands out counts ``\n`` alone. One of
+        them in a description above the declaration put the two out of step, and the key was
+        inserted with the indentation of the line before: the last member here is written over
+        several lines, so that is twelve spaces where the closing brace stands at ten.
+        """
+        from ddd.lsp.edits import _insert
+
+        edit = _insert(
+            self.document(separator), "component.interface[0].definition", "unit", '"rpm"'
+        )
+        assert edit is not None
+        assert edit["newText"] == ',\n          "unit": "rpm"'

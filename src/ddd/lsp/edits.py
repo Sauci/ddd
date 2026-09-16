@@ -560,6 +560,6 @@ def _insert(document: Document, definition: str, key: str, raw: str) -> dict[str
         # Written on one line, and a fix is no reason for it to stop being.
         separator = ", "
     else:
-        line = document.text.splitlines()[end["line"]]
+        line = document.line_at(end["line"])
         separator = ",\n" + line[: len(line) - len(line.lstrip())]
     return {"range": {"start": end, "end": end}, "newText": f'{separator}"{key}": {raw}'}

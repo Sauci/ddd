@@ -109,6 +109,16 @@ class Document:
             return None
         return value
 
+    def line_at(self, line: int) -> str:
+        """The text of one line, counted the way every position in here counts them.
+
+        ``str.splitlines()`` is the obvious way to ask and the wrong one: it breaks on a dozen
+        characters a newline is not - a form feed, a NEL, U+2028 - and one of those inside a
+        description puts its index out of step with every line number this module hands out.
+        A quick fix then copied its indentation from a neighbouring line.
+        """
+        return self.text[self._line_starts[line] :].partition("\n")[0]
+
     def _offset(self, position: dict[str, int]) -> int:
         """Where a protocol position lands in the text, counting as the protocol counts."""
         line = min(position["line"], len(self._line_starts) - 1)

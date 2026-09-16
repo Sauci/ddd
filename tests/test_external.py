@@ -542,10 +542,15 @@ class TestTheEditor:
         assert "**Drv_t**" in result["contents"]["value"]
         assert "external type, defined by `drv.h`" in result["contents"]["value"]
 
-    def test_hover_on_a_struct_entry_still_says_nothing(self, tree: Path) -> None:
-        """A struct is not an external type, and the entry declares no variable to describe."""
+    def test_hover_on_a_struct_entry_describes_the_structure(self, tree: Path) -> None:
+        """A struct is not an external type and declares no variable, so nothing answered for
+        it at all; what is left to say is what the entry itself states - its members, and for
+        the one naming an external type, that name."""
         write_tree(tree, self.workspace_files())
-        assert self.served(tree, tree / "t.ddd.json", "types[1].name") is None
+        result = self.served(tree, tree / "t.ddd.json", "types[1].name")
+        rendered = result["contents"]["value"]
+        assert "**S_t** — structure type" in rendered
+        assert "`Drv_t`" in rendered
 
     def test_hover_on_a_declaration_typename_still_describes_the_variable(self, tree: Path) -> None:
         """The structured hover of a declaration survives the external answer being tried."""

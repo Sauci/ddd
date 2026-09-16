@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from conftest import DEMO, TEMPLATES, component, declare, project, run_analysis
-from ddd.backends import A2lBackend, Backend, CBackend, GeneratedFile, render
+from ddd.backends import MANIFEST_NAME, A2lBackend, Backend, CBackend, GeneratedFile, render
 from ddd.backends.a2l.types import A2L_TYPE
 from ddd.backends.c.types import C_TYPE
 from ddd.ir import DataDictionary
@@ -251,6 +251,30 @@ class TestDriver:
         assert dictionary is not None
         with pytest.raises(ValueError, match="would both write"):
             render(dictionary, [CBackend(TEMPLATES), Greedy()], tree / "gen")
+
+    def test_a_backend_writing_the_manifest_is_refused(self, tree: Path) -> None:
+        """The record of what a run wrote cannot also be one of the files it wrote: overwritten
+        by a backend, it would name whatever that backend rendered, and the next run would
+        delete the directory's real contents for want of them."""
+
+        class Bookkeeper:
+            name = "bookkeeper"
+
+            def generate(self, dictionary: DataDictionary, output_dir: Path) -> list[GeneratedFile]:
+                return [GeneratedFile(output_dir / MANIFEST_NAME, "{}")]
+
+        dictionary, _ = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is not None
+        with pytest.raises(
+            ValueError, match=re.escape(f"backend 'bookkeeper' would write '{MANIFEST_NAME}'")
+        ):
+            render(dictionary, [CBackend(TEMPLATES), Bookkeeper()], tree / "gen")
 
     def test_a_dotdot_alias_of_a_claimed_path_is_the_same_clash(self, tree: Path) -> None:
         class Sneaky:

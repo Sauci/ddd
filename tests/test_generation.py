@@ -544,11 +544,24 @@ class TestTheManifest:
         assert (tree / "gen" / MANIFEST_NAME).read_bytes() == before
         assert not any((tree / "gen").glob("*.ddd-staging"))
 
-    def test_a_record_this_version_cannot_read_removes_nothing(self, tree: Path) -> None:
+    @pytest.mark.parametrize(
+        "broken",
+        [
+            pytest.param("[]", id="not an object"),
+            pytest.param('{"format": 99, "files": {}}', id="a format this version has not got"),
+            pytest.param('{"format": 1}', id="no files at all"),
+            pytest.param('{"format": 1, "files": {"B.h": 7}}', id="a file recorded under no name"),
+            pytest.param("{ not json", id="not json"),
+        ],
+    )
+    def test_a_record_this_version_cannot_read_removes_nothing(
+        self, tree: Path, broken: str
+    ) -> None:
         """A manifest a newer DDD wrote, or a hand edit broke, is one this run declines rather
-        than misreads - and it is rewritten, so the next run owns the directory again."""
+        than misreads - and it is rewritten, so the next run owns the directory again. It is
+        read to decide what to *delete*, which is the argument for reading it strictly."""
         write(self.rendered(tree, "A", "B"), manifest=self.owning(tree))
-        (tree / "gen" / MANIFEST_NAME).write_text('{"format": 99}', encoding="utf-8")
+        (tree / "gen" / MANIFEST_NAME).write_text(broken, encoding="utf-8")
         write(self.rendered(tree, "A"), manifest=self.owning(tree))
         assert (tree / "gen" / "B.h").is_file()
         assert set(self.entries(tree)) >= {"A.h", "ddd_globals.c"}

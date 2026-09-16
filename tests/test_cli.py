@@ -377,6 +377,24 @@ class TestGenerateOwnsItsOutputDirectory:
         assert main(self.project(tree, "A")) == EXIT_OK
         assert foreign.read_text(encoding="utf-8") == "mine\n"
 
+    def test_a_file_that_cannot_be_removed_is_named_as_a_removal(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Held open, or read only: the run fails naming the file it was deleting.  "cannot
+        write" about a file being deleted would read as the opposite of what happened."""
+        assert main(self.project(tree, "A", "B")) == EXIT_OK
+        real_unlink = Path.unlink
+
+        def refuse(path: Path, **keywords: Any) -> None:
+            if path.name == "B.h":
+                raise OSError(errno.EACCES, "Access is denied", str(path))
+            real_unlink(path, **keywords)
+
+        monkeypatch.setattr(Path, "unlink", refuse)
+        assert main(self.project(tree, "A")) == EXIT_USAGE
+        shown = (tree / "gen" / "B.h").as_posix()
+        assert f"cannot remove '{shown}': Access is denied" in capsys.readouterr().err
+
     def test_the_a2l_run_of_a_two_run_build_keeps_the_c_the_image_was_built_from(
         self, tree: Path
     ) -> None:

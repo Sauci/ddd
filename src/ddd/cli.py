@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import os
 import sys
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
@@ -75,6 +76,12 @@ from ddd.plugins import (
 EXIT_OK = 0
 EXIT_FINDINGS = 1
 EXIT_USAGE = 2
+EXIT_INTERRUPTED = 130
+"""What a shell reports for a command killed by SIGINT, and what Ctrl-C ends a run with.
+
+Distinct from the findings and usage codes on purpose: a script that stops a long run by hand
+must not read the result as a project with errors.
+"""
 
 GENERATOR = f"ddd {__version__}"
 
@@ -117,6 +124,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         handler: Any = args.handler
         return int(handler(args))
+    except KeyboardInterrupt:
+        # Ctrl-C during a long run, or during a plugin's hook, which re-raises it rather than
+        # blaming the plugin for it. One line instead of the thirty a traceback costs, and a
+        # code of its own so that a caller does not read a stopped run as a failed check.
+        print("ddd: interrupted", file=sys.stderr)
+        return EXIT_INTERRUPTED
+    except BrokenPipeError:
+        # `ddd schema component | head -1`: the reader stopped reading, which is what a pager
+        # and `head` do, and nothing about it is this run's error - reported as a usage error
+        # it failed a paging script on the tool's side under `set -o pipefail`. stdout is
+        # pointed at the null device first, the recipe python's own documentation gives, so
+        # that the interpreter's final flush does not print `Exception ignored` after us.
+        with contextlib.suppress(OSError, ValueError):
+            target = sys.stdout.fileno()
+            os.dup2(os.open(os.devnull, os.O_WRONLY), target)
+        return EXIT_OK
     except UnknownCheckError as error:
         # UnknownCheckError is a ValueError, listed first only to keep its own wording apart
         # from the clause below; being one, `_reported_on_failure` already covers it too.
@@ -143,8 +166,27 @@ def _plugin_artefact(arguments: Sequence[str]) -> str | None:
     return None
 
 
+class _Parser(argparse.ArgumentParser):
+    """A parser that spells its options out, for this command and every subcommand of it.
+
+    argparse accepts any unambiguous prefix of a long option by default, so ``--stand`` and
+    ``--dict`` were as good as ``--standalone`` and ``--dictionary`` - until a second option
+    starting with those letters is added, and every script that took the offer breaks with
+    argparse's "ambiguous option" as its only clue. What a command accepts is part of the
+    tool's interface ([the changelog's preamble]); what it happens not to be ambiguous about
+    today is not, and an abbreviation nobody published is not worth that trap.
+
+    A subcommand is a parser of its own, built by ``add_parser`` from the class of the parser
+    that owns the subparsers rather than from its settings, so ``allow_abbrev`` has to be
+    carried by the class to reach ``ddd check --standalone`` and the options of an artefact.
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(allow_abbrev=False, **kwargs)
+
+
 def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _Parser(
         prog="ddd",
         description=(
             "Data dictionary for the global variables of a component based "
@@ -918,6 +960,7 @@ def _command_generate(args: argparse.Namespace) -> int:
             backends.append(backend_of(plugin, dictionary, GENERATOR))
         files = render(dictionary, backends, args.output_dir)
         if args.dictionary is not None:
+            _refuse_a_directory(args.dictionary, "--dictionary")
             _refuse_a_source(args.dictionary, "--dictionary", *resolved.sources)
             files.append(_dictionary_file(dictionary, args.dictionary, files))
         try:
@@ -1014,6 +1057,7 @@ def _write_dictionary(
     written is reported after the findings of the run, as ``generate`` reports one.
     """
     with _reported_on_failure(bag, output_format, sys.stderr):
+        _refuse_a_directory(path, "-o")
         _refuse_a_source(path, "-o", *resolved.sources)
         text = _dictionary_text(resolved.dictionary)
         try:
@@ -1421,6 +1465,19 @@ def _read_dictionary(path: Path, bag: DiagnosticBag) -> Resolved | None:
         return None
     archived = _where(path)
     return Resolved(dictionary, (), lambda _: archived, False, (archived.path,))
+
+
+def _refuse_a_directory(path: Path, option: str) -> None:
+    """Refuse an output path with no file name of its own, in the tool's own words.
+
+    ``-o .``, ``-o ..`` and ``-o C:/`` name a place rather than a file. The writer stages
+    every file beside its target, and a path with no final component has nothing to stage
+    beside: what came out was python's ``WindowsPath('.') has an empty name``, printed as the
+    whole of what the run had to say about a mistake as ordinary as a missing file name.
+    """
+    if not path.name:
+        msg = f"{option} names a directory, '{path.as_posix()}'; give it a file to write"
+        raise ValueError(msg)
 
 
 def _refuse_a_source(path: Path, option: str, *sources: Path) -> None:

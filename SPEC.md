@@ -1974,8 +1974,14 @@ and `dump` keeps its stdout for the dictionary, reporting findings on stderr - w
 `--format json` the findings document goes there too, so stdout carries the dictionary
 alone in both formats; given `-o`, stdout stays empty and the report on stderr adds the file
 written with its status, as `generate`'s does. The exit code distinguishes clean runs (0),
-findings (1) and usage
-errors (2). A usage error raised by a step that follows the analysis - a plugin hook
+findings (1), usage
+errors (2) and a run stopped by the user (130, the code a shell reports for a command killed
+by SIGINT: an interrupt ends the run with `ddd: interrupted` on stderr rather than with a
+traceback, and is not a finding). A reader of the tool's standard output that stops reading -
+`ddd schema component | head -1` - ends the run at 0 and in silence, since a closed pipe is
+not this run's error. Every long option **must** be spelled in full; no abbreviation of one
+is accepted, so that adding an option cannot change what an existing command line means. A
+usage error raised by a step that follows the analysis - a plugin hook
 that raises, an override naming a plugin check that no loaded plugin registers, which
 is held until the project is read ([section 3.11](#311-plugins)), an address map that
 cannot be read, a `--renames` file, a dumped dictionary or an artefact that cannot be

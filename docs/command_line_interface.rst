@@ -88,6 +88,21 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
        description, or a run that would write nothing - reports the findings of the run
        first, in the requested format, before the error follows; the exit code is still
        ``2``.
+   * - ``130``
+     - the run was interrupted: Ctrl-C, or anything else that raises ``KeyboardInterrupt``,
+       inside DDD or inside a plugin's hook. It is the code a shell reports for a command
+       killed by ``SIGINT``, and it is distinct from ``1`` and ``2`` so that a script does
+       not read a run somebody stopped as a project with errors. The run prints one line,
+       ``ddd: interrupted``, and no traceback.
+
+A reader of standard output that stops reading is not an error either: ``ddd schema component
+| head -1`` ends at ``0`` and in silence, where the broken pipe used to be reported as a usage
+error and failed a paging script under ``set -o pipefail``.
+
+Every long option is spelled in full. ``argparse`` offers any unambiguous prefix by default,
+and DDD turns that off: ``--stand`` for ``--standalone`` would work until the day a second
+option begins with those letters, and the script that took the offer would then fail with
+"ambiguous option" and nothing else to go on.
 
 The commands
 ------------

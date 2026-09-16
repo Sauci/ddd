@@ -2346,6 +2346,123 @@ class TestGenerateTheDictionary:
         assert not (tmp_path / "gen" / "dictionary.json").exists()
 
 
+class TestTheOptionsAreSpelledOut:
+    """No option is accepted by a prefix of its name.
+
+    argparse offers every unambiguous abbreviation by default, so ``--stand`` and ``--dict``
+    were accepted - and a script spelling one of them breaks the day a second option starts
+    with the same letters, with argparse's "ambiguous option" as the only clue. What a
+    command accepts is part of the tool's interface; what it happens not to be ambiguous
+    about today is not.
+    """
+
+    def test_an_abbreviated_option_of_a_command_is_refused(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with pytest.raises(SystemExit) as exit_code:
+            main(["check", str(DEMO), "--stand"])
+        assert exit_code.value.code == EXIT_USAGE
+        assert "unrecognized arguments: --stand" in capsys.readouterr().err
+
+    def test_an_abbreviated_option_of_an_artefact_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        arguments = ["generate", "a2l", str(DEMO), "-o", str(tmp_path / "gen")]
+        with pytest.raises(SystemExit) as exit_code:
+            main([*arguments, "--dict", str(tmp_path / "d.json"), "--dry-run"])
+        assert exit_code.value.code == EXIT_USAGE
+        assert "unrecognized arguments: --dict" in capsys.readouterr().err
+
+    def test_the_option_itself_still_works(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """The control: only the abbreviation is gone, and the short flags still group."""
+        assert main(["check", str(EXAMPLES / "layout" / "storage.ddd.json"), "--standalone"]) == 0
+        assert "ok:" in capsys.readouterr().err
+
+
+class TestAClosedPipe:
+    """``ddd schema component | head -1`` is a reader that stopped reading, not an error.
+
+    The broken pipe arrived as an ``OSError`` and was reported as a usage error: one line of
+    errno text and exit 2, which under ``set -o pipefail`` fails a paging script on the tool's
+    side.
+    """
+
+    class _Closed:
+        """A stdout whose reader is gone; ``fileno`` is what a captured stream refuses."""
+
+        def write(self, text: str) -> int:
+            raise BrokenPipeError(errno.EPIPE, "Broken pipe")
+
+        def flush(self) -> None:
+            raise BrokenPipeError(errno.EPIPE, "Broken pipe")
+
+        def fileno(self) -> int:
+            raise OSError(errno.EBADF, "Bad file descriptor")
+
+    class _ClosedOnFd(_Closed):
+        """The same, on a real file descriptor, so the redirection below can be watched."""
+
+        def __init__(self, descriptor: int) -> None:
+            self._descriptor = descriptor
+
+        def fileno(self) -> int:
+            return self._descriptor
+
+    def test_the_run_ends_quietly_and_successfully(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setattr("sys.stdout", self._Closed())
+        assert main(["schema", "component"]) == EXIT_OK
+        assert capsys.readouterr().err == ""
+
+    def test_what_is_left_of_stdout_goes_to_the_null_device(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Python flushes what it buffered when the interpreter ends; a stdout still pointing
+        at the closed pipe prints ``Exception ignored ... BrokenPipeError`` after the run."""
+        spare = os.open(tmp_path / "spare", os.O_WRONLY | os.O_CREAT)
+        try:
+            monkeypatch.setattr("sys.stdout", self._ClosedOnFd(spare))
+            assert main(["schema", "component"]) == EXIT_OK
+            os.write(spare, b"whatever is still buffered")
+        finally:
+            os.close(spare)
+        assert (tmp_path / "spare").read_bytes() == b""
+        assert capsys.readouterr().err == ""
+
+
+class TestATargetWithNoName:
+    """``-o .`` names a directory, and the refusal says so in the tool's own words.
+
+    The writer stages beside the target, so a path with no final component raised python's
+    ``WindowsPath('.') has an empty name`` - a message about pathlib, printed as the whole of
+    what the run had to say.
+    """
+
+    FILES: ClassVar[dict[str, Any]] = {
+        "project.ddd.json": project("P", "a.ddd.json"),
+        "a.ddd.json": component("A", declare("local", "X")),
+    }
+
+    def test_dump_says_which_option_needs_a_file(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.FILES)
+        monkeypatch.chdir(tree)
+        assert main(["dump", "project.ddd.json", "-o", "."]) == EXIT_USAGE
+        assert "-o names a directory" in capsys.readouterr().err
+
+    def test_the_dictionary_of_a_generate_says_the_same(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.FILES)
+        monkeypatch.chdir(tree)
+        arguments = ["generate", "a2l", "project.ddd.json", "-o", "gen", "--dictionary", "."]
+        assert main(arguments) == EXIT_USAGE
+        assert "--dictionary names a directory" in capsys.readouterr().err
+        assert not (tree / "gen").exists()
+
+
 class TestWhereTheRunsOwnFindingsAre:
     """A finding DDD locates at a file named on the command line says where that file is.
 

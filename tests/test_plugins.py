@@ -1332,6 +1332,70 @@ class TestTheHookBoundary:
             run_check_hooks((plugin,), dictionary, bag, lambda _: None)
 
 
+class TestAnInterruptedRun:
+    """Ctrl-C is the user's, and anything else a plugin raises is the plugin's.
+
+    ``_call`` caught ``Exception`` and ``SystemExit``, which is not everything: a
+    ``BaseException`` of another kind - ``asyncio.CancelledError``, or one a plugin declared
+    itself - escaped as a traceback carrying the findings exit code, and a ``KeyboardInterrupt``
+    inside a hook printed thirty lines of python.
+    """
+
+    def tagged_project(self, tree: Path, body: str) -> str:
+        source = TAG_PLUGIN.replace(
+            "def check(context: CheckContext) -> None:\n",
+            f"def check(context: CheckContext) -> None:\n    {body}\n",
+        )
+        write_plugin(tree / "tools", source=source)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        return str(tree / "project.ddd.json")
+
+    def test_a_base_exception_from_a_hook_is_the_plugins_failure(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        body = 'raise type("Boom", (BaseException,), {})("boom")'
+        assert main(["check", self.tagged_project(tree, body)]) == EXIT_USAGE
+        captured = capsys.readouterr().err
+        assert "plugin 'tag' failed in its check hook: boom" in captured
+        assert "Traceback" not in captured
+
+    def test_a_base_exception_from_a_plugins_model_is_too(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A validator on a plugin's own model is plugin code on the same footing."""
+        source = MODEL_PLUGIN.replace("BODY", 'raise type("Boom", (BaseException,), {})("boom")')
+        write_plugin(tree / "tools", "model_plugin.py", source)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/model_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"broken": {"tag": "t"}})
+                ),
+            },
+        )
+        assert main(["check", str(tree / "project.ddd.json")]) == EXIT_USAGE
+        captured = capsys.readouterr().err
+        assert "plugin 'broken' failed validating an 'extensions' block: boom" in captured
+        assert "Traceback" not in captured
+
+    def test_an_interrupt_is_one_line_and_the_shell_s_own_code(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """130 is what a shell reports for a command killed by SIGINT, and what a caller
+        that distinguishes an interrupt from a finding looks for."""
+        assert main(["check", self.tagged_project(tree, "raise KeyboardInterrupt")]) == 130
+        captured = capsys.readouterr().err
+        assert "ddd: interrupted" in captured
+        assert "Traceback" not in captured
+
+
 class TestThePluginModelBoundary:
     """A plugin's pydantic model is plugin code too, and is guarded like a hook.
 

@@ -321,12 +321,40 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   the file it is about, which is not what the comparison page says.  All of them are built
   from the resolved path now.
 
-  **Migration:** the text output is unchanged - every path is still rendered against the
-  directory the command ran in.  A reader of `--format json` that resolved `location.path`
-  against the working directory gets the same file; one that compared it with a path as
-  typed no longer matches, and should compare resolved paths.  The message of a finding
-  about a baseline that cannot be read now spells the file out in full, as the same message
-  about a description has always done.
+  *An option is spelled in full.*  `argparse` accepts any unambiguous prefix of a long option
+  unless it is told not to, so `ddd check p.ddd.json --stand` and `ddd generate all ... --dict
+  d.json` worked - and would break the day a second option starts with those letters, with
+  "ambiguous option" as the whole of the explanation.  Every command and every artefact now
+  takes its options spelled out.
+
+  *Ctrl-C, and what a plugin cannot be blamed for.*  A hook that raised a `BaseException`
+  which is neither `Exception` nor `SystemExit` - `asyncio.CancelledError`, or one a plugin
+  declared itself - escaped as a traceback under the findings exit code; it is the plugin's
+  failure like any other, named as one.  A `KeyboardInterrupt` inside a hook is not: it still
+  stops the run, and the run now ends with `ddd: interrupted` and **exit code 130**, the code
+  a shell reports for a command killed by `SIGINT`, instead of thirty lines of python.  A
+  plugin's own model is held to the same rule as its hooks, as it already was for the other
+  two.
+
+  *A closed pipe is not an error.*  `ddd schema component | head -1` ended with
+  `ddd: [Errno 32] Broken pipe` and exit 2, which fails a paging script on the tool's side
+  under `set -o pipefail`; the run now ends at 0 and in silence.
+
+  *`-o .` names a directory.*  `ddd dump p.ddd.json -o .` and `generate --dictionary .` ended
+  with `WindowsPath('.') has an empty name` - python's words about pathlib, printed as the
+  whole of what the run had to say about a missing file name.  Both now say which option
+  needs a file.
+
+  **Migration:** a script spelling an option by a prefix - `--stand`, `--dict` - now fails
+  with "unrecognized arguments" and needs the option's full name; nothing else on any command
+  line changes.  The text report of the findings is unchanged - every path is still rendered
+  against the directory the command ran in.  A reader of `--format json` that resolved
+  `location.path` against the working directory gets the same file; one that compared it with
+  a path as typed no longer matches, and should compare resolved paths.  The message of a
+  finding about a baseline that cannot be read now spells the file out in full, as the same
+  message about a description has always done.  A caller that reads exit codes sees one more:
+  130, for a run stopped by hand.  A plugin that printed to standard output on purpose - to
+  produce a document of its own there - writes a file instead.
 
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`

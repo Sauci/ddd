@@ -328,15 +328,16 @@ def guarding_plugin_model(name: str, what: str) -> Iterator[None]:
     model raises is the plugin author's mistake and reached the caller raw: a ``RuntimeError``
     ended ``ddd check`` in a traceback, and a ``sys.exit`` in a validator ended it with the
     plugin's own exit code, printing none of the findings, and took the language server down
-    with it. Both are wrapped here the way :func:`_call` wraps a hook, so that the cli reports
-    one line and exit 2 and the server reports ``plugin-invalid`` and keeps running.
-    ``KeyboardInterrupt`` is deliberately not listed, exactly as in :func:`_call`.
+    with it. Both are wrapped here the way :func:`_call` wraps a hook - and so is a
+    ``BaseException`` of any other kind, for the same reason - so that the cli reports one
+    line and exit 2 and the server reports ``plugin-invalid`` and keeps running.
+    ``KeyboardInterrupt`` is deliberately re-raised, exactly as in :func:`_call`.
     """
     try:
         yield
-    except ValidationError:
+    except (ValidationError, KeyboardInterrupt):
         raise
-    except (Exception, SystemExit) as error:
+    except BaseException as error:
         detail = _exit_text(error) if isinstance(error, SystemExit) else str(error)
         msg = f"plugin '{name}' failed {what}: {detail}"
         raise PluginError(msg) from error
@@ -493,12 +494,18 @@ def _call[C, R](plugin: Plugin, hook: str, function: Callable[[C], R], context: 
         # call, so a caller that replaced either stream is followed rather than bypassed.
         with contextlib.redirect_stdout(sys.stderr):
             return function(context)
-    except (Exception, SystemExit) as error:
-        # SystemExit is not an Exception: sys.exit() in a hook would otherwise escape _call
-        # uncaught, taking ddd check's exit code and printing none of the run's findings, and
-        # killing the language server outright. It is a defect of the plugin like any other
-        # here. KeyboardInterrupt is not listed and still propagates - it is the user's
-        # interrupt to own, never the plugin's error to be blamed for.
+    except KeyboardInterrupt:
+        # The user's own Ctrl-C, and never the plugin's error to be blamed for: it has to
+        # keep stopping the run. `main` turns it into one line and exit 130.
+        raise
+    except BaseException as error:
+        # Everything else a hook can raise, which is more than `Exception`: `SystemExit` from
+        # a hook calling sys.exit() - deliberately, or by copying a script's own __main__
+        # guard - would otherwise take ddd check's exit code and print none of the run's
+        # findings, and kill the language server outright; and a BaseException of a third
+        # kind, `asyncio.CancelledError` or one the plugin declared itself, escaped as a
+        # traceback under the findings exit code. Both are a defect of the plugin like any
+        # other here, and are reported as one.
         detail = _exit_text(error) if isinstance(error, SystemExit) else str(error)
         msg = f"plugin '{plugin.name}' failed in its {hook} hook: {detail}"
         raise PluginError(msg) from error

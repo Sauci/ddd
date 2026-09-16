@@ -531,6 +531,32 @@ class TestObjectIdentity:
         assert note_location is not None
         assert note_location.path.name == "a.ddd.json"
 
+    def test_an_id_shared_with_a_declaration_that_was_dropped_is_still_shared(
+        self, tree: Path
+    ) -> None:
+        """The census is what ownership is decided over, and identity is decided with it.
+
+        Read over the surviving declarations only, a copied declaration whose type nobody
+        declares hid the copied id as well: the reader fixed the type, ran again and met the
+        second mistake they had made in the same edit.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "Gamma", typename="Nope_t", id="k7m2q9xr4t8w")
+                ),
+                "b.ddd.json": component("B", declare("local", "Delta", id="k7m2q9xr4t8w")),
+            },
+        )
+        assert checks(bag) == ["unknown-type", "duplicate-id"], messages(bag)
+        # In name order, as it always is, so that the pair is named the same way whichever
+        # of the two the project happens to include first.
+        assert "'Gamma' carries the id 'k7m2q9xr4t8w', which 'Delta' already carries" in messages(
+            bag
+        )
+
 
 class TestQuotedNumbers:
     """The published schema says integer; a quoted number is refused where it is written."""

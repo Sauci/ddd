@@ -141,6 +141,40 @@ costs the outputs one entry per member per element.
 _INT_MIN, _INT_MAX = -(2**31), 2**31 - 1
 """Range of a c ``int`` on the 32 bit targets DDD generates for; bounds every enumerator."""
 
+
+@dataclass(frozen=True, slots=True)
+class _Storage:
+    """The raw values a value's storage holds, and how a finding names that storage.
+
+    A bitfield is why this is not simply a :class:`~ddd.models.Datatype`: two bits of a
+    ``uint8`` hold 0 to 3, and a finding phrased as the datatype told the reader that 5 does
+    not fit into a byte - a claim they know to be false, about a member whose real bound is
+    written two keys away. The c ``int`` every enumerator has to be representable in is the
+    third of these, and is a bound with no datatype at all.
+    """
+
+    phrase: str
+    raw_min: float
+    raw_max: float
+
+    @classmethod
+    def of(cls, datatype: Datatype) -> _Storage:
+        """What a whole datatype holds, named by the datatype."""
+        return cls(datatype.value, datatype.raw_min, datatype.raw_max)
+
+    @classmethod
+    def of_member(cls, member: Member) -> _Storage:
+        """What a member holds: its bitfield's range, or its datatype's."""
+        assert member.datatype is not None
+        if member.bits is None:
+            return cls.of(member.datatype)
+        raw_min, raw_max = bitfield_range(member.datatype, member.bits)
+        return cls(f"the {member.bits}-bit field of {member.datatype.value}", raw_min, raw_max)
+
+
+_C_INT: Final = _Storage("a c 'int', which every enumerator has to", _INT_MIN, _INT_MAX)
+"""The bound C11 6.7.2.2 puts on every enumerator, phrased for the finding that reports it."""
+
 _INIT_VALUES_NAMED: Final = 3
 """How many further init values a folded ``init-invalid`` spells beside the first.
 
@@ -742,7 +776,9 @@ class _Analysis:
         self._check_enumerator_collisions(ordered)
         self._check_type_name_collisions(ordered)
         self._check_constant_collisions(ordered)
-        self._check_identity_collisions(ordered)
+        # Over the census, dropped declarations included: an id is claimed by the declaration
+        # that writes it down, whether or not the object it names could be resolved.
+        self._check_identity_collisions(sorted(self._census.items()))
 
         # Ownership is decided over every declaration, dropped ones included, because the
         # producer owns the definition and a dropped producer is still the one that claimed
@@ -852,13 +888,10 @@ class _Analysis:
             return
         for index, member in enumerate(structure.members):
             if isinstance(member.conversion, EnumConversion):
-                assert member.datatype is not None
                 location = entry.location(f"members[{index}].conversion")
-                self._register_enum(member.conversion, location, member.datatype)
-                raw_min, raw_max = _member_raw_range(member)
-                self._check_enum_fits(
-                    member.conversion, raw_min, raw_max, member.datatype.value, location
-                )
+                storage = _Storage.of_member(member)
+                self._register_enum(member.conversion, location, storage)
+                self._check_enum_fits(member.conversion, storage, location)
 
     def _check_member_limits(self, entry: LoadedType) -> None:
         """A member's stated limits are held to its storage, as a declaration's are.
@@ -874,12 +907,13 @@ class _Analysis:
             if member.limits is None or member.datatype is None:
                 continue
             assert member.conversion is not None
-            low, high = physical_range(member.conversion, *_member_raw_range(member))
+            storage = _Storage.of_member(member)
+            low, high = physical_range(member.conversion, storage.raw_min, storage.raw_max)
             self._check_limits_fit(
                 member.limits,
                 low,
                 high,
-                member.datatype,
+                storage.phrase,
                 entry.location(f"members[{index}].limits"),
             )
 
@@ -900,13 +934,14 @@ class _Analysis:
         conversion = declared.conversion
         if isinstance(conversion, EnumConversion):
             location = entry.location("conversion")
-            self._register_enum(conversion, location, datatype)
-            self._check_enum_fits(
-                conversion, datatype.raw_min, datatype.raw_max, datatype.value, location
-            )
+            storage = _Storage.of(datatype)
+            self._register_enum(conversion, location, storage)
+            self._check_enum_fits(conversion, storage, location)
         if declared.limits is not None:
             low, high = conversion_range(conversion, datatype)
-            self._check_limits_fit(declared.limits, low, high, datatype, entry.location("limits"))
+            self._check_limits_fit(
+                declared.limits, low, high, datatype.value, entry.location("limits")
+            )
 
     def _check_string_members(self, entry: LoadedType) -> None:
         """A member naming a string type is a ``value`` member of one dimension.
@@ -1544,12 +1579,8 @@ class _Analysis:
             if member.datatype is None:
                 continue
             assert member.conversion is not None
-            raw_min, raw_max = (
-                bitfield_range(member.datatype, member.bits)
-                if member.bits is not None
-                else (member.datatype.raw_min, member.datatype.raw_max)
-            )
-            if not _derived_range_is_finite(member.conversion, raw_min, raw_max):
+            storage = _Storage.of_member(member)
+            if not _derived_range_is_finite(member.conversion, storage.raw_min, storage.raw_max):
                 location = entry.location(f"members[{index}].conversion")
                 reported = (
                     self._bag.add("schema", _infinite_limits_message(member.datatype), location)
@@ -1831,6 +1862,12 @@ class _Analysis:
         place to edit; the first is named in the message. The one that keeps the id is the
         one the comparison of a later delivery would pair, and choosing that by file order
         would make the report depend on the order of the includes.
+
+        Walked over the census, as ownership is: a declaration that was dropped still wrote
+        the id down. Read over the surviving declarations only, a copied declaration whose
+        type nobody declares hid the copied id along with itself, and the reader met it as a
+        second wave once the first cause was fixed - two mistakes made in one edit, reported
+        one release apart.
         """
         seen: dict[str, DeclarationRef] = {}
         for name, refs in ordered:
@@ -2369,7 +2406,6 @@ class _Analysis:
 
     def _check_declaration(self, ref: DeclarationRef) -> None:
         definition = ref.definition
-        location = ref.location("definition")
 
         self._check_declared_name(ref)
 
@@ -2393,11 +2429,13 @@ class _Analysis:
 
         conversion = definition.conversion
         if isinstance(conversion, EnumConversion):
-            datatype = definition.storage
-            self._register_enum(conversion, ref.location("definition.conversion"), datatype)
-            self._check_enum_fits(
-                conversion, datatype.raw_min, datatype.raw_max, datatype.value, location
-            )
+            # At the conversion, where the enum is written, as it is on a declared type: the
+            # whole definition is what an editor underlines for a finding located there, and
+            # the name, the datatype and the limits have nothing to do with this one.
+            written = ref.location("definition.conversion")
+            storage = _Storage.of(definition.storage)
+            self._register_enum(conversion, written, storage)
+            self._check_enum_fits(conversion, storage, written)
 
     def _check_init(self, definition: DataObject, location: Location) -> None:
         """What an init holds that its storage cannot: one finding per way of being wrong.
@@ -2500,26 +2538,27 @@ class _Analysis:
         self._check_limits_fit(definition.limits, low, high, definition.storage, location)
 
     def _check_limits_fit(
-        self, limits: Limits, low: float, high: float, datatype: Datatype, location: Location
+        self, limits: Limits, low: float, high: float, phrase: str, location: Location
     ) -> None:
         """Report limits the storage cannot hold, in one spelling wherever they are written.
 
         Three places write a datatype, a conversion and limits side by side - a declaration, a
         structure member and a scalar type - and the mistake is the same one in all three: the
         a2l carries a range the calibration tool offers and the storage cannot take. Shaped
-        like :meth:`_check_enum_fits`, whose callers vary the bounds the same way.
+        like :meth:`_check_enum_fits`, whose callers vary the bounds the same way, and phrased
+        the way they phrase theirs: a member's two bits are not the ``uint8`` they sit in.
         """
         if is_below(limits.min, low) or is_above(limits.max, high):
             self._bag.add(
                 "limits-out-of-range",
                 f"limits [{format_number(limits.min)}, {format_number(limits.max)}] exceed the "
                 f"range [{format_number(low)}, {format_number(high)}] that "
-                f"{datatype.value} can represent with this conversion",
+                f"{phrase} can represent with this conversion",
                 location,
             )
 
     def _register_enum(
-        self, conversion: EnumConversion, location: Location, storage: Datatype | None = None
+        self, conversion: EnumConversion, location: Location, storage: _Storage | None = None
     ) -> None:
         known = self._enums.by_name.get(conversion.name)
         if known is None:
@@ -2542,7 +2581,9 @@ class _Analysis:
             # Same enumerators, but this declaration documents more of them. Picking the
             # better documented variant rather than the first one keeps the generated types
             # header independent of the order the project happens to include its components in.
-            self._enums.by_name[conversion.name] = (conversion, location)
+            # The place stays the first one: "first defined as" is what the note says, and a
+            # reader sent to a file that agrees with the one in front of them learns nothing.
+            self._enums.by_name[conversion.name] = (conversion, previous_location)
 
     def _check_enum_names(self, conversion: EnumConversion, location: Location) -> None:
         """The enum type name and its enumerators become c identifiers in the types header."""
@@ -2575,7 +2616,7 @@ class _Analysis:
             self._enums.enumerators[enumerator.name] = (conversion.name, location)
 
     def _check_enum_values(
-        self, conversion: EnumConversion, location: Location, storage: Datatype | None
+        self, conversion: EnumConversion, location: Location, storage: _Storage | None
     ) -> None:
         by_value: dict[int, list[str]] = defaultdict(list)
         for enumerator in conversion.enumerators:
@@ -2593,40 +2634,36 @@ class _Analysis:
         # extension, so it is caught here rather than in the customer's build. A value that
         # does not even fit the declared storage already earns its finding against that
         # storage, so it is skipped here: one bad value, one finding.
-        self._check_enum_fits(
-            conversion,
-            _INT_MIN,
-            _INT_MAX,
-            "a c 'int', which every enumerator has to",
-            location,
-            except_outside=(storage.raw_min, storage.raw_max) if storage is not None else None,
-        )
+        self._check_enum_fits(conversion, _C_INT, location, except_outside=storage)
 
     def _check_enum_fits(
         self,
         conversion: EnumConversion,
-        lo: float,
-        hi: float,
-        phrase: str,
+        storage: _Storage,
         location: Location,
         *,
-        except_outside: tuple[float, float] | None = None,
+        except_outside: _Storage | None = None,
     ) -> None:
-        """Report the enumerators outside ``lo .. hi``, phrased for what they do not fit into.
+        """Report the enumerators that storage cannot hold, phrased the way it names itself.
 
-        One shape for two bounds: the c ``int`` every enumerator has to be representable in,
-        and the declared storage of the one object naming the enum. A value outside
-        ``except_outside`` is reported against that bound instead and skipped here.
+        One shape for three bounds: the c ``int`` every enumerator has to be representable
+        in, the declared storage of the one object naming the enum, and the bitfield a member
+        narrows that storage to. A value outside ``except_outside`` is reported against that
+        bound instead and skipped here.
         """
-        outside = [e for e in conversion.enumerators if not (lo <= e.value <= hi)]
+        outside = [
+            e for e in conversion.enumerators if not (storage.raw_min <= e.value <= storage.raw_max)
+        ]
         if except_outside is not None:
-            first, last = except_outside
-            outside = [e for e in outside if first <= e.value <= last]
+            outside = [
+                e for e in outside if except_outside.raw_min <= e.value <= except_outside.raw_max
+            ]
         if outside:
             spelled = conversion.spell_enumerators(outside)
             self._bag.add(
                 "init-invalid",
-                f"enumerator(s) {spelled} of enum '{conversion.name}' do not fit into {phrase}",
+                f"enumerator(s) {spelled} of enum '{conversion.name}' do not fit into "
+                f"{storage.phrase}",
                 location,
             )
 
@@ -3378,14 +3415,6 @@ _PRODUCER_KEYS: Final = (
 earns and how the finding names the key. One rule, five keys: what an object starts as,
 where it lives, which event updates it, which earlier delivery it continues, and what a
 plugin knows about it are all decided by the component that produces it."""
-
-
-def _member_raw_range(member: Member) -> tuple[float, float]:
-    """The raw values a member's storage holds: its bitfield's, or its datatype's."""
-    assert member.datatype is not None
-    if member.bits is not None:
-        return bitfield_range(member.datatype, member.bits)
-    return (member.datatype.raw_min, member.datatype.raw_max)
 
 
 def _did_you_mean(name: str, candidates: Sequence[str], *, cutoff: float) -> str:

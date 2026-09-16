@@ -617,6 +617,47 @@ class TestEnums:
         assert checks(bag) == ["init-invalid"]
         assert "do not fit into uint8" in messages(bag)
 
+    def test_an_enumerator_out_of_range_sits_at_the_enum_that_states_it(self, tree: Path) -> None:
+        """Where the enum is written, as it is on a type - not on the whole declaration.
+
+        An editor underlines what a finding points at, and pointing at ``definition``
+        underlined the name, the datatype and the limits as well as the enumerator nobody
+        can hold.
+        """
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("local", "X", conversion=self.enum(("A", 300)))],
+                b=[declare("local", "Y")],
+            ),
+        )
+        finding = next(iter(bag))
+        assert finding.location is not None
+        assert finding.location.pointer == "component.interface[0].definition.conversion"
+
+    def test_the_conflict_note_points_at_the_first_definition(self, tree: Path) -> None:
+        """The note's "first defined as" is the first one, whoever documents the enum best.
+
+        A better documented copy replaces the registered conversion, because that is the
+        spelling the types header takes; the place it was first written stays, or the note
+        sends the reader to a file that agrees with the one in front of them.
+        """
+        documented = self.enum(("A", 0))
+        documented["enumerators"] = [{"name": "A", "value": 0, "description": "idle"}]
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", conversion=self.enum(("A", 0)))),
+                "b.ddd.json": component("B", declare("local", "Y", conversion=documented)),
+                "c.ddd.json": component("C", declare("local", "Z", conversion=self.enum(("A", 1)))),
+            },
+        )
+        assert checks(bag) == ["enum-conflict"]
+        _, where = next(iter(bag)).notes[1]
+        assert where is not None
+        assert where.path.name == "a.ddd.json"
+
     def test_a_value_outside_the_datatype_and_the_c_int_is_reported_once(self, tree: Path) -> None:
         """The c int bound only covers values the datatype holds; one bad value, one finding."""
         _, bag = run_analysis(

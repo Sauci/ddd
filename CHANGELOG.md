@@ -693,6 +693,22 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   is about, so two malformed `extensions` blocks in a dump are two findings rather than one
   about the whole block.
 
+  *A finding sits where the mistake is written, and names the bound it is about.*  An
+  enumerator no storage can hold was reported at the `conversion` of a declared type and at
+  the whole `definition` of a declaration, so an editor underlined the name, the datatype and
+  the limits of a declaration to say something about one enumerator; both now point at the
+  conversion.  A bitfield names itself there: two bits of a `uint8` hold 0 to 3, and the
+  finding said that 5 does "not fit into uint8" - a claim about a byte the reader knows to be
+  false, about a bound written two keys away - where it now says "the 2-bit field of uint8",
+  as the member's limits do; a value past both the field and the c `int` every enumerator has
+  to be representable in is one finding rather than two.  The note of an `enum-conflict` said
+  "first defined as" and pointed at the best documented copy rather than the first one,
+  because the better documented spelling replaces the registered one; the spelling is what
+  the types header takes, and the place now stays where the enum was first written.  And
+  `duplicate-id` is read over every declaration rather than the surviving ones: a copied
+  declaration whose type nobody declares hid the copied id along with itself, so the second
+  half of one edit's mistake surfaced only once the first half was fixed.
+
   **Migration:** a list `init` holding a quoted number or one of those words is now refused
   with a `schema` finding at the element that holds it, where it used to load, generate and
   dump.  Write the value without the quotes: `["1", "2"]` becomes `[1, 2]`.  A string object

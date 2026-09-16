@@ -1820,6 +1820,68 @@ class TestMemberStorageChecks:
         assert "limits-out-of-range" in checks(bag)
         assert "[0, 1000] exceed the range [0, 255]" in messages(bag)
 
+    def bitfield(self, datatype: str = "uint8", bits: int = 2, **extra: Any) -> dict[str, Any]:
+        return {
+            "name": "mode",
+            "member": "bits",
+            "datatype": datatype,
+            "bits": bits,
+            "conversion": {"kind": "identity"},
+            **extra,
+        }
+
+    def one_member(self, tree: Path, member: dict[str, Any]) -> Any:
+        return run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": types(struct("S_t", member)),
+                "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+            },
+        )
+
+    def test_a_bound_a_bitfield_sets_is_named_as_the_field(self, tree: Path) -> None:
+        """Two bits of a ``uint8`` hold 0 to 3, and the finding says which bound it is.
+
+        Phrased as the datatype, the message said that 5 does not fit into a ``uint8`` -
+        a claim the reader knows to be false, about a member whose real bound is written
+        two keys away.
+        """
+        _, bag = self.one_member(
+            tree,
+            self.bitfield(
+                conversion={
+                    "kind": "enum",
+                    "name": "Mode_t",
+                    "enumerators": [{"name": "FAR", "value": 5}],
+                }
+            ),
+        )
+        assert checks(bag) == ["init-invalid"]
+        assert "do not fit into the 2-bit field of uint8" in messages(bag)
+
+    def test_limits_are_held_to_the_bitfield_and_named_as_one(self, tree: Path) -> None:
+        _, bag = self.one_member(tree, self.bitfield(limits={"min": 0, "max": 9}))
+        assert checks(bag) == ["limits-out-of-range"]
+        assert "[0, 9] exceed the range [0, 3] that the 2-bit field of uint8" in messages(bag)
+
+    def test_a_value_past_the_field_and_the_c_int_is_one_finding(self, tree: Path) -> None:
+        """One bad value, one finding: the c ``int`` bound excepts what the field cannot hold."""
+        _, bag = self.one_member(
+            tree,
+            self.bitfield(
+                "uint64",
+                conversion={
+                    "kind": "enum",
+                    "name": "Mode_t",
+                    "enumerators": [{"name": "FAR", "value": 2**40}],
+                },
+            ),
+        )
+        assert checks(bag) == ["init-invalid"]
+        assert "do not fit into the 2-bit field of uint64" in messages(bag)
+        assert "c 'int'" not in messages(bag)
+
 
 class TestScalarTypeChecks:
     """What a scalar type fixes is answered at the type, the way a member's keys are.

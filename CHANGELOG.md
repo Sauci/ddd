@@ -653,6 +653,34 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   ending of a kind the rest of it does not use, the search for the file's own having looked
   for a line feed only.
 
+  *A reference is spelled the way the thing it names is.*  A `raster` on a definition or a
+  component was free text where the declaration it points at is eight printable characters
+  without a space, so `"raster": ""` was answered with `unknown-raster: 'V' is measured in
+  ''`, sending the reader after a declaration no rasters file could have carried; it is now
+  refused where it is written, as a `section` reference always has been, and the
+  specification says so about both.  An `extensions` block is keyed by a plugin's name and
+  is now spelled like one: a key such as `a.b` or `c[1]` also made a pointer no consumer can
+  split - an editor underlined two keys, or an array element - for a block that could never
+  have named a plugin.
+
+  *What the file says, where the file says it.*  The mapping form of `enumerators` is
+  rewritten into the list the model holds before it is validated, so a mistake inside it was
+  reported at `enumerators[0].value`, a key and an index the file has not got; it is now
+  reported at the key that holds it.  The same shorthand published neither the bound on a
+  value nor the pattern a name is held to, where the list form publishes both, so an editor
+  bound to the schema accepted `{"1bad": 0}` and a value past 64 bits and `ddd check` then
+  refused them.  Five keys the loader reads as whole numbers - `dimensions`, `size`, an
+  enumerator's `value`, `event` and `alignment` - now say in their published description
+  that the number is written without a decimal point, which is a rule json schema cannot
+  carry: its `integer` admits `4.0`, and the loader does not.
+
+  *Two answers a run should not have.*  A `cycle` written with five thousand digits was
+  answered with python's advice about `sys.set_int_max_str_digits`; a count that long is no
+  period, and the tool now says so in its own words.  And a description file larger than the
+  memory left to the run ended it with a `MemoryError` traceback, where every other way the
+  read can fail - missing, unreadable, not utf-8, a directory - is a located finding and the
+  rest of the tree is still read.
+
   **Migration:** a list `init` holding a quoted number or one of those words is now refused
   with a `schema` finding at the element that holds it, where it used to load, generate and
   dump.  Write the value without the quotes: `["1", "2"]` becomes `[1, 2]`.  A string object
@@ -667,7 +695,13 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   compiler, the calibration tool, the a2l event field - so the description that carried one
   had to change anyway; the finding now names it.  And a path beginning with `~` is read as
   the name it is: a project that relied on the tool expanding it passes the expansion from
-  its shell instead.
+  its shell instead.  Three more spellings join them: a `raster` reference outside what a
+  rasters file may declare, an `extensions` key outside `[a-z][a-z0-9_]*`, and - on Windows
+  only - a wildcard `includes` entry spelled with a bare drive, `C:*.ddd.json`, which used
+  to expand in the directory the process happened to be in and now expands in the project's,
+  the way the same spelling without the wildcard always did.  Each of the first two was
+  already reported at the end of the run, as `unknown-raster` or `unknown-extension`; the
+  finding moves to where it is written and becomes a `schema` error.
 
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`

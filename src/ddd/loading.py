@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any, Protocol
 
 from pydantic import BaseModel, ValidationError
@@ -1049,7 +1049,7 @@ class _Loader:
         # while reporting is_absolute() as false, and handing either to Path.glob unchanged
         # makes pathlib refuse a non-relative pattern.
         anchor = raw.anchor
-        base = Path(anchor) if anchor else source.parent
+        base = _pattern_anchor(source.parent, raw)
         relative = raw.relative_to(anchor) if anchor else raw
         try:
             found = list(base.glob(relative.as_posix()))
@@ -1181,6 +1181,17 @@ def _read_text(path: Path, bag: DiagnosticBag, origin: Location | None) -> str |
     except ValueError as error:
         # A path the operating system cannot even represent, e.g. one with a NUL byte in it.
         bag.add("file-not-found", f"cannot read '{path.as_posix()}': {error}", where)
+    except MemoryError:
+        # A file larger than the memory left to this run - a log a careless include pattern
+        # matched, most likely. The one way the read could fail that used to reach the caller
+        # as a traceback, where every other is a located finding and the rest of the tree is
+        # still read. Nothing of the file was kept, so the memory is back by the time this
+        # line runs.
+        bag.add(
+            "file-not-found",
+            f"'{path.as_posix()}' is too large to read into memory",
+            where,
+        )
     return None
 
 
@@ -1264,6 +1275,21 @@ def _meaningful(items: list[_Placed]) -> list[_Placed]:
     return [(place, item) for place, item in items if not is_only_a_consequence(place, item)]
 
 
+def _pattern_anchor[Directory: PurePath](directory: Directory, pattern: PurePath) -> Directory:
+    """Where a wildcard include starts walking: its own anchor, joined onto the project's.
+
+    The same join the literal reading of the entry makes, so that the two agree. An anchor
+    is not the whole story on Windows, where a spelling can carry one and still not be
+    absolute: ``/shared/*.ddd.json`` is rooted on whichever drive the process happens to be
+    on, and ``C:*.ddd.json`` means "on drive C, in whatever directory I am". Taken as the
+    base, either expanded wherever ``ddd`` was run from, while the same spelling without a
+    wildcard - ``C:inproject.ddd.json`` - was joined onto the project's own directory.
+    Nobody writes the second spelling on purpose; the two answering differently is what
+    there was to fix.
+    """
+    return directory / pattern.anchor if pattern.anchor else directory
+
+
 def resolve_path(path: Path) -> Path:
     """Absolute, symlink free path; works for files that do not exist yet.
 
@@ -1304,14 +1330,35 @@ def _place(loc: tuple[int | str, ...], document: Any = None) -> tuple[int | str,
         present, child = _child(node, item)
         if present:
             node = child
-        if not present and (item in _UNION_TAGS or _is_branch_tag(item)):
-            # pydantic reports the selected variant of a tagged union as a path segment,
-            # and the tried branch of a plain one the same way;
-            # 'definition.measurement.datatype' and 'datatype.str-enum[Datatype]' would
-            # both only confuse the reader.
-            continue
+        else:
+            key = _mapping_key(node, item)
+            if key is not None:
+                # The file holds a mapping where the model holds a list, so everything below
+                # this belongs to the shape the model built and none of it to the document.
+                parts.append(key)
+                return tuple(parts)
+            if item in _UNION_TAGS or _is_branch_tag(item):
+                # pydantic reports the selected variant of a tagged union as a path segment,
+                # and the tried branch of a plain one the same way;
+                # 'definition.measurement.datatype' and 'datatype.str-enum[Datatype]' would
+                # both only confuse the reader.
+                continue
         parts.append(item)
     return tuple(parts)
+
+
+def _mapping_key(node: Any, item: int | str) -> str | None:
+    """The key an index names, where the document holds a mapping and the model read a list.
+
+    ``enumerators`` accepts ``{"MODE_OFF": 0}`` and rewrites it into the list of objects the
+    model holds before pydantic ever sees it, so a mistake inside it arrives located in that
+    list - ``enumerators, 0, value`` - and the file has neither an ``[0]`` nor a ``value``.
+    A mapping keeps the order it was written in, so the i-th key is the entry the index means
+    and the file does have that.
+    """
+    if isinstance(node, dict) and isinstance(item, int) and item < len(node):
+        return str(list(node)[item])
+    return None
 
 
 def _pointer(place: tuple[int | str, ...]) -> str:

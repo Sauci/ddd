@@ -35,12 +35,16 @@ from pydantic import BaseModel, ValidationError
 
 from ddd.diagnostics import PLUGIN_CHECK_SEPARATOR, CheckInfo, DiagnosticBag, Location
 from ddd.ir import DataDictionary
+from ddd.models.common import PLUGIN_NAME_PATTERN as PLUGIN_NAME_SPELLING
 
 if TYPE_CHECKING:
     from ddd.backends.base import Backend, GeneratedFile
 
-PLUGIN_NAME_PATTERN: Final = re.compile(r"^[a-z][a-z0-9_]*$")
-"""A plugin name is the key of its block, so it is a lowercase identifier."""
+PLUGIN_NAME_PATTERN: Final = re.compile(PLUGIN_NAME_SPELLING)
+"""A plugin name is the key of its block, so it is a lowercase identifier.
+
+Compiled from the spelling the block key itself is held to, so that a name a plugin may
+register and a key a description may write it under cannot drift apart."""
 
 BUILT_IN_GENERATED: Final = ("c", "a2l")
 """The artefacts DDD writes itself, each naming one backend of its own.

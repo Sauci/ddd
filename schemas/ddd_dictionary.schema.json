@@ -189,10 +189,17 @@
             },
             {
               "additionalProperties": {
+                "maximum": 18446744073709551615,
+                "minimum": -9223372036854775808,
                 "type": "integer"
               },
               "description": "The enumerators as a ``{\"NAME\": value}`` mapping.",
               "minProperties": 1,
+              "propertyNames": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
               "type": "object"
             }
           ],
@@ -220,7 +227,7 @@
           "type": "string"
         },
         "value": {
-          "description": "The raw value; two enumerators of one enum sharing one is reported as a warning.\n\n``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and\noccasionally meant as an alias - but the a2l table then offers a calibration tool two\nnames for one reading.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it.",
+          "description": "The raw value; two enumerators of one enum sharing one is reported as a warning.\n\n``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and\noccasionally meant as an alias - but the a2l table then offers a calibration tool two\nnames for one reading.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it.\n\nA whole number written without a decimal point: ``4``, not ``4.0``, which the published\nschema accepts and the loader refuses.",
           "maximum": 18446744073709551615,
           "minimum": -9223372036854775808,
           "title": "Value",

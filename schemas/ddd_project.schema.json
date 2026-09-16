@@ -39,11 +39,13 @@
           "type": "array"
         },
         "extensions": {
-          "additionalProperties": {
-            "additionalProperties": true,
-            "type": "object"
-          },
           "description": "The settings of each plugin, keyed by plugin name: ``{\"layout\": {\"max_key\": 4095}}``.\n\nValidated against the plugin's project model, defaults filled in, and carried into the\ndictionary so that a comparison over an archived dump still knows them. A plugin's\nsettings are stated by one project file; a second file stating them is a ``schema``\nfinding, the way a second file declaring a section is refused.",
+          "patternProperties": {
+            "^[a-z][a-z0-9_]*$": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
           "title": "Extensions",
           "type": "object"
         }

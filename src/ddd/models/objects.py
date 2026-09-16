@@ -22,6 +22,8 @@ from ddd.models.common import (
     Identifier,
     Number,
     ObjectId,
+    PluginName,
+    RasterName,
     Real,
     TypeName,
     format_number,
@@ -396,7 +398,7 @@ class DataObject(_Frozen):
     component at a time; ``missing-id`` says where it has not.
     """
 
-    extensions: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    extensions: dict[PluginName, dict[str, Any]] = Field(default_factory=dict)
     """Blocks owned by the project's plugins, keyed by plugin name.
 
     ``{"layout": {"key": 12, "version": 3}}``: what a plugin the project names needs to know
@@ -444,7 +446,7 @@ class DataObject(_Frozen):
     Left out, the object goes wherever the toolchain's defaults put it.
     """
 
-    raster: str | None = None
+    raster: RasterName | None = None
     """Measurement raster the object is updated in, named in the project's rasters file.
 
     A producer key like ``section``: the producing component's task is what updates the
@@ -456,6 +458,12 @@ class DataObject(_Frozen):
     At the top level rather than inside ``a2l``, although only that backend reads it today:
     which task updates a value is an engineering claim about the data, the way ``section``
     is, and not a presentation choice.
+
+    Spelled the way a declaration spells it - printable ASCII, no space, at most eight
+    characters - so a name no rasters file could ever declare is refused where it is
+    written rather than reported as ``unknown-raster``, which sends the reader looking for
+    a declaration that could not exist. The same rule a ``section`` reference has always
+    been held to.
     """
 
     init: InitValue | None = None
@@ -646,6 +654,9 @@ class Measurement(DataObject):
     Each an integer of at least 1, or the name of a constant the project declares, in a
     constants file or in a component - ``[3, 4]`` and ``["PRESSURE_CELLS", 4]`` are both
     shapes.
+
+    A whole number written without a decimal point: ``4``, not ``4.0``, which the published
+    schema accepts and the loader refuses.
     """
 
     @property
@@ -668,6 +679,9 @@ class ValueBlock(DataObject):
 
     Each an integer of at least 1, or the name of a constant the project declares, mixed
     freely.
+
+    A whole number written without a decimal point: ``4``, not ``4.0``, which the published
+    schema accepts and the loader refuses.
     """
 
     @property
@@ -680,8 +694,11 @@ class Axis(DataObject):
 
     kind: Literal[ObjectKind.AXIS]
     size: Dimension
-    """Number of axis points: an integer of at least 1, or the name of a declared
-    constant."""
+    """Number of axis points: an integer of at least 1, or the name of a declared constant.
+
+    A whole number written without a decimal point: ``4``, not ``4.0``, which the published
+    schema accepts and the loader refuses.
+    """
 
     input: Identifier | None = None
     """Measurement that indexes the axis; the a2l input quantity.

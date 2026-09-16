@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 import pytest
@@ -17,7 +17,7 @@ from conftest import (
     write_tree,
 )
 from ddd.diagnostics import DiagnosticBag
-from ddd.loading import load_workspace, resolve_path
+from ddd.loading import _pattern_anchor, load_workspace, resolve_path
 
 
 def test_project_with_components(tree: Path) -> None:
@@ -578,3 +578,85 @@ class TestPathsAsWritten:
     ) -> None:
         monkeypatch.chdir(tree)
         assert resolve_path(Path("~x.ddd.json")) == resolve_path(tree) / "~x.ddd.json"
+
+
+class TestTheMappingFormOfEnumerators:
+    """The shorthand is rewritten into the list the model holds, and the file is not."""
+
+    @staticmethod
+    def _with(tree: Path, enumerators: Any) -> DiagnosticBag:
+        write_tree(
+            tree,
+            {
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "local",
+                        "X",
+                        conversion={"kind": "enum", "name": "E", "enumerators": enumerators},
+                    ),
+                )
+            },
+        )
+        bag = DiagnosticBag()
+        assert load_workspace(tree / "a.ddd.json", bag) is None
+        return bag
+
+    def test_a_bad_value_is_located_at_the_key_that_holds_it(self, tree: Path) -> None:
+        """``enumerators[0].value`` named neither a key nor an index the file has."""
+        bag = self._with(tree, {"A": "x"})
+        assert "definition.conversion.enumerators.A: error[schema]" in messages(bag), messages(bag)
+
+    def test_a_bad_name_is_located_at_the_entry_that_spells_it(self, tree: Path) -> None:
+        bag = self._with(tree, {"1bad": 0})
+        assert "definition.conversion.enumerators.1bad: error[schema]" in messages(bag), messages(
+            bag
+        )
+
+    def test_the_second_entry_is_located_at_the_second_key(self, tree: Path) -> None:
+        """The i-th key, not the first: a mapping keeps the order it was written in."""
+        bag = self._with(tree, {"A": 0, "B": "x"})
+        assert "definition.conversion.enumerators.B: error[schema]" in messages(bag), messages(bag)
+
+    def test_the_list_form_is_still_indexed(self, tree: Path) -> None:
+        """The control: written as a list, the file does have an ``[1]`` to point at."""
+        bag = self._with(tree, [{"name": "A", "value": 0}, {"name": "B", "value": "x"}])
+        assert "definition.conversion.enumerators[1].value: error[schema]" in messages(bag), (
+            messages(bag)
+        )
+
+
+class TestWhereAWildcardIncludeStartsWalking:
+    """A pattern starts where the literal reading of the same entry would join it.
+
+    On Windows a spelling can carry an anchor and still not be absolute: ``/shared/*.json``
+    is rooted on whatever drive the process is on, and ``C:*.json`` means "on drive C, in
+    whatever directory I am". Taken as the whole base, either made the expansion depend on
+    where ``ddd`` was run from, while the same spelling written without a wildcard was
+    joined onto the project's own directory - two answers to one question.
+    """
+
+    def test_a_relative_pattern_starts_at_the_file_that_names_it(self) -> None:
+        assert _pattern_anchor(PurePosixPath("/proj"), PurePosixPath("sub/*.json")) == (
+            PurePosixPath("/proj")
+        )
+
+    def test_a_posix_rooted_pattern_starts_at_the_root(self) -> None:
+        assert _pattern_anchor(PurePosixPath("/proj"), PurePosixPath("/shared/*.json")) == (
+            PurePosixPath("/")
+        )
+
+    def test_a_windows_rooted_pattern_starts_on_the_project_s_own_drive(self) -> None:
+        assert _pattern_anchor(PureWindowsPath("D:/proj"), PureWindowsPath("/shared/*.json")) == (
+            PureWindowsPath("D:/")
+        )
+
+    def test_a_drive_relative_pattern_starts_where_the_literal_would(self) -> None:
+        assert _pattern_anchor(PureWindowsPath("C:/proj"), PureWindowsPath("C:*.json")) == (
+            PureWindowsPath("C:/proj")
+        )
+
+    def test_a_pattern_on_another_drive_starts_there(self) -> None:
+        assert _pattern_anchor(PureWindowsPath("C:/proj"), PureWindowsPath("D:/lib/*.json")) == (
+            PureWindowsPath("D:/")
+        )

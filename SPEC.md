@@ -244,7 +244,8 @@ rasters files and/or other (sub-)projects, and names the plugins the project run
   sub-project.
 - `"plugins"` (optional): python modules that extend DDD for this project
   ([section 3.11](#311-plugins)).
-- `"extensions"` (optional): the settings of those plugins, keyed by plugin name
+- `"extensions"` (optional): the settings of those plugins, keyed by plugin name - so
+  each key matches `[a-z][a-z0-9_]*`, and one that does not is `schema`
   ([section 3.11](#311-plugins)).
 
 An entry of `includes` that names an existing file **shall** be read as that file, whatever
@@ -336,7 +337,7 @@ Attributes common to every kind:
 | `section` | none | linker section the object is placed in ([section 3.5](#35-memory-placement)); a storage key the producer states |
 | `raster` | none | measurement raster the object is updated in ([section 3.10](#310-measurement-rasters)), else the producing component's default; a key the producer states, on a measurement only |
 | `a2l` | `{}`; exported unless every stated `export` is `false` ([section 3.3.1.3](#3313-presentation)) | `export`, `format`, `display_identifier`; a `string` takes no `format` (`schema`) |
-| `extensions` | `{}` | one block per plugin the project names, keyed by plugin name ([section 3.11](#311-plugins)); a key the producer states |
+| `extensions` | `{}` | one block per plugin the project names, keyed by plugin name, spelled the way a plugin's `name` is ([section 3.11](#311-plugins)); a key the producer states |
 | `volatile` | required | whether the generated C carries `volatile`, that is whether the value can change without the reading code having written it |
 
 `volatile` has no default because there is nothing to derive one from. Unlike `limits`,
@@ -717,8 +718,10 @@ A definition **may** then state its `section`, a storage key like `init`
 ([section 3.3.1.2](#3312-storage)): the producer states it, a consumer stating one claims
 storage it does not own (`consumer-storage`), and a structured object is placed whole, its
 members having no placement of their own for the same reason they carry no `volatile`. A
-`section` names a declared section the way a `typename` names a declared type: naming one
-that no file declares is `unknown-section`, with the nearest name suggested, and there is
+`section` names a declared section the way a `typename` names a declared type: it is
+spelled the way a declaration spells it, so a reference no sections file could ever declare
+is `schema` where it is written, and naming one
+that no file declares is `unknown-section`, with the nearest name suggested; there is
 no free text fallback, because a section without declared properties would be a name the
 checks can say nothing about. An object without a `section` is placed by the toolchain's
 defaults, which is what makes the vocabulary adoptable gradually.
@@ -1048,7 +1051,9 @@ period XCP carries (`schema`) - a count of 1 to 255 times a decade from 1 ns to 
 Declaring a raster twice, in one file or across files, is `duplicate-raster`.
 
 Like a memory section ([section 3.5](#35-memory-placement)) and unlike a unit, a raster is a
-reference rather than a spelling: naming one no file declares is `unknown-raster` whether or
+reference rather than a spelling, and it obeys the declaration's own rule - eight printable
+ASCII characters at most, no space - so a name no rasters file could declare is `schema`
+where it is written: naming one no file declares is `unknown-raster` whether or
 not a rasters file exists, because an event nothing describes is a name the a2l could only
 write as a number nobody chose. The vocabulary is project wide and has no place inside a
 component, an event channel number being a property of the target's XCP configuration rather
@@ -1108,7 +1113,9 @@ one on the project, and contributing checks, comparison rules and an artefact of
   grammar or reserved, a check identifier outside its grammar, or a check registered twice.
   Both checks have a fixed severity, because a project cannot be interpreted without the
   plugins it names.
-- `"extensions"` (optional): the settings of each plugin, keyed by plugin name, validated
+- `"extensions"` (optional): the settings of each plugin, keyed by plugin name - a key
+  outside the `[a-z][a-z0-9_]*` a plugin's `name` matches is one no plugin could claim, and
+  is `schema` - validated
   against the plugin's project model with defaults filled in. A plugin with a project model
   and no stated settings is validated as if the project stated `{}`, so a setting the plugin
   requires and the project omits is `schema`, located where the block would be written; a

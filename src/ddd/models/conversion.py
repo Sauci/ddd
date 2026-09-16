@@ -14,7 +14,14 @@ from typing import Annotated, Any, Final, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
-from ddd.models.common import Datatype, Identifier, Real, format_number
+from ddd.models.common import (
+    C_IDENTIFIER_PATTERN,
+    IDENTIFIER_MAX_LENGTH,
+    Datatype,
+    Identifier,
+    Real,
+    format_number,
+)
 
 
 class _Frozen(BaseModel):
@@ -38,13 +45,23 @@ class ConversionRule(Protocol):
         ...
 
 
+ENUMERATOR_VALUE_MIN: Final = -(2**63)
+ENUMERATOR_VALUE_MAX: Final = 2**64 - 1
+"""What an enumerator's value is bounded to: what 64 bits hold, signed or unsigned.
+
+Named rather than written twice because the mapping shorthand publishes its own value
+schema (:func:`_publish_mapping_form`), and a bound the two forms disagreed about would be
+exactly the drift that finding was about.
+"""
+
+
 class Enumerator(_Frozen):
     """One named value of an enum conversion, and what that value means."""
 
     name: Identifier
     """C identifier of the enumerator; enumerators of all enums share one c namespace."""
 
-    value: Annotated[int, Field(strict=True, ge=-(2**63), le=2**64 - 1)]
+    value: Annotated[int, Field(strict=True, ge=ENUMERATOR_VALUE_MIN, le=ENUMERATOR_VALUE_MAX)]
     """The raw value; two enumerators of one enum sharing one is reported as a warning.
 
     ``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and
@@ -55,6 +72,9 @@ class Enumerator(_Frozen):
     storage could ever represent is refused here rather than overflowing a comparison once
     it is checked against the c ``int`` every enumerator has to fit, or against the
     datatype carrying it.
+
+    A whole number written without a decimal point: ``4``, not ``4.0``, which the published
+    schema accepts and the loader refuses.
     """
 
     description: str = ""
@@ -113,13 +133,27 @@ def _publish_mapping_form(schema: dict[str, Any]) -> None:
 
     The list is what the model holds, so it is what pydantic publishes; the shorthand is what
     the loader accepts, so an editor validating a file has to accept it as well.
+
+    With the rules each half of an entry is held to, which the list form publishes through
+    :class:`Enumerator` and this one used to leave out: a key is a c identifier and a value
+    is a number 64 bits hold, so ``{"1bad": 0}`` and a value past the bound were accepted by
+    an editor bound to the schema and refused by ``ddd check``.
     """
     listed = {key: schema.pop(key) for key in ("type", "items", "minItems") if key in schema}
     schema["anyOf"] = [
         listed,
         {
             "type": "object",
-            "additionalProperties": {"type": "integer"},
+            "propertyNames": {
+                "pattern": C_IDENTIFIER_PATTERN,
+                "minLength": 1,
+                "maxLength": IDENTIFIER_MAX_LENGTH,
+            },
+            "additionalProperties": {
+                "type": "integer",
+                "minimum": ENUMERATOR_VALUE_MIN,
+                "maximum": ENUMERATOR_VALUE_MAX,
+            },
             "minProperties": 1,
             "description": 'The enumerators as a ``{"NAME": value}`` mapping.',
         },

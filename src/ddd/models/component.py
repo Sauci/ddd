@@ -7,7 +7,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from ddd.models.common import FileRoot, Identifier
+from ddd.models.common import FileRoot, Identifier, RasterName
 from ddd.models.constants import ConstantDeclaration
 from ddd.models.objects import AnyDataObject
 from ddd.models.types import AnyType, check_distinct_type_names
@@ -99,7 +99,7 @@ class Component(BaseModel):
     description: str = ""
     """Free text describing the component, offered to the c templates."""
 
-    raster: str | None = None
+    raster: RasterName | None = None
     """Default measurement raster for every variable this component produces.
 
     The common case stated once: a component updates nearly all of its measurements in one

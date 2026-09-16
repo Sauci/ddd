@@ -56,6 +56,20 @@ Identifier = Annotated[
 ]
 """A string that is usable as a c identifier and as an a2l identifier."""
 
+PLUGIN_NAME_PATTERN: Final = r"^[a-z][a-z0-9_]*$"
+"""What a plugin may be called, and therefore how an ``extensions`` block may be keyed.
+
+The same spelling :mod:`ddd.plugins` holds a plugin's own name to, compiled from here so the
+two cannot drift: a key no plugin could be called is a block no plugin will ever claim, and
+saying so where it is written beats an ``unknown-extension`` the reader goes looking for a
+declaration of. It also keeps the key out of the pointers a finding about the block is
+located at - ``definition.extensions.a.b`` reads as two keys and ``c[1]`` as an index, so a
+punctuated name left an editor underlining something else.
+"""
+
+PluginName = Annotated[str, StringConstraints(pattern=PLUGIN_NAME_PATTERN)]
+"""The key of an ``extensions`` block: the name of the plugin that owns it."""
+
 OBJECT_ID_ALPHABET: Final = "abcdefghjkmnpqrstvwxyz0123456789"
 """The characters an object id is drawn from: lowercase base32 without ``i``, ``l``, ``o``
 or ``u``.
@@ -98,6 +112,43 @@ SECTION_NAME_PATTERN: Final = r"^[A-Za-z0-9_.$]+$"
 Tighter than what a linker accepts, because the name is spliced verbatim into the generated
 c - ``__attribute__((section(".calib")))`` - where a quote would end the string literal and
 whatever follows would become live code in somebody else's build.
+"""
+
+RASTER_NAME_LENGTH: Final = 8
+"""Longest raster name: the width of the short name an a2l ``EVENT`` carries.
+
+Not a protocol limit. The protocol layer length-prefixes an event channel name with a byte and
+forbids a terminator, so it carries far more than eight. The eight is from the a2l, whose
+``EVENT`` block declares ``EVENT_CHANNEL_SHORT_NAME`` as ``char[9]`` - eight characters and a
+terminator - beside the ``char[101]`` long name that ``description`` supplies. That is where a
+raster name goes once the module level ``DAQ`` block is written. Nothing writes one yet, and
+the limit is enforced anyway, so that a rasters file which loads today still loads then - the
+reason the cycle rule of :mod:`ddd.models.rasters` is enforced ahead of its use as well.
+
+Counted in characters, which is the same as counting the bytes because
+:data:`RASTER_NAME_PATTERN` admits only the printable ASCII ones.
+"""
+
+RASTER_NAME_PATTERN: Final = r"^[\x21-\x7e]+$"
+"""What a raster name is spelled with: printable ASCII, and no space.
+
+That ``char[9]`` is nine bytes rather than nine characters, so eight letters outside ASCII -
+two utf-8 bytes each for a Cyrillic or a Greek name, three for a CJK one - would not fit the
+field the length above is there to protect. The rule is on the spelling rather than on the
+encoded length so that what the file may say does not depend on how the a2l is encoded.
+"""
+
+RasterName = Annotated[
+    str,
+    StringConstraints(min_length=1, max_length=RASTER_NAME_LENGTH, pattern=RASTER_NAME_PATTERN),
+]
+"""A measurement raster name, where it is declared and where a definition refers to it.
+
+Here rather than in :mod:`ddd.models.rasters` for the reason :data:`SECTION_NAME_PATTERN` is
+here: a reference is held to the spelling of the declaration, and the two saying it in one
+place is what keeps them from drifting. Unpatterned, the reference accepted ``""``, which
+``unknown-raster`` then answered for - sending the reader to look for a declaration a rasters
+file could not have carried.
 """
 
 A2L_FORMAT_PATTERN: Final = r"^%[0-9]*\.[0-9]+$"

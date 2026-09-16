@@ -15,33 +15,9 @@ from __future__ import annotations
 import re
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ddd.models.common import FileRoot
-
-EVENT_NAME_LENGTH = 8
-"""Longest raster name: the width of the short name an a2l ``EVENT`` carries.
-
-Not a protocol limit. The protocol layer length-prefixes an event channel name with a byte and
-forbids a terminator, so it carries far more than eight. The eight is from the a2l, whose
-``EVENT`` block declares ``EVENT_CHANNEL_SHORT_NAME`` as ``char[9]`` - eight characters and a
-terminator - beside the ``char[101]`` long name that ``description`` supplies. That is where a
-raster name goes once the module level ``DAQ`` block is written. Nothing writes one yet, and
-the limit is enforced anyway, so that a rasters file which loads today still loads then - the
-reason the cycle rule below is enforced ahead of its use as well.
-
-Counted in characters, which is the same as counting the bytes because
-:data:`EVENT_NAME_PATTERN` admits only the printable ASCII ones.
-"""
-
-EVENT_NAME_PATTERN = r"^[\x21-\x7e]+$"
-"""What a raster name is spelled with: printable ASCII, and no space.
-
-That ``char[9]`` is nine bytes rather than nine characters, so eight letters outside ASCII -
-two utf-8 bytes each for a Cyrillic or a Greek name, three for a CJK one - would not fit the
-field the length above is there to protect. The rule is on the spelling rather than on the
-encoded length so that what the file may say does not depend on how the a2l is encoded.
-"""
+from ddd.models.common import FileRoot, RasterName
 
 EVENT_MAX = 0xFFFF
 """Widest event channel number XCP addresses."""
@@ -52,7 +28,18 @@ CYCLE_COUNT_MAX = 255
 CYCLE_DECADES = 10
 """Time units an event offers: the decades from 1 ns to 1 s."""
 
-_CYCLE = re.compile(r"^([0-9]+)(ns|us|ms|s)$")
+CYCLE_DIGITS = 18
+"""How long a run of digits a period may be written with, before it is no period at all.
+
+Eighteen is far more than any period this accepts needs - the widest is ``255s``, and even
+in nanoseconds that is twelve digits - and it is a bound rather than the exact rule because
+:func:`_is_an_event_period` is what decides, and says so in a sentence the author can act
+on. Unbounded, the count went to ``int()``, which refuses a run of more than 4300 digits
+with a message about ``sys.set_int_max_str_digits``: python's advice to a programmer, handed
+to somebody who mistyped a description.
+"""
+
+_CYCLE = re.compile(rf"^([0-9]{{1,{CYCLE_DIGITS}}})(ns|us|ms|s)$")
 
 _NANOSECONDS = {"ns": 1, "us": 1_000, "ms": 1_000_000, "s": 1_000_000_000}
 
@@ -85,16 +72,14 @@ class RasterDeclaration(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
 
-    raster: Annotated[
-        str,
-        StringConstraints(min_length=1, max_length=EVENT_NAME_LENGTH, pattern=EVENT_NAME_PATTERN),
-    ]
+    raster: RasterName
     """The name a definition refers to, which is also the short name of the XCP event.
 
     The a2l writes that short name into a field eight bytes wide, so a longer name is
     refused rather than shortened: two names shortened to the same eight would collide in a
     calibration tool rather than here, where the author could still do something about it.
-    Printable ASCII and no space, so that eight characters are eight bytes.
+    Printable ASCII and no space, so that eight characters are eight bytes. A definition
+    referring to one is held to the same spelling.
     """
 
     event: int = Field(strict=True, ge=0, le=EVENT_MAX)
@@ -102,6 +87,9 @@ class RasterDeclaration(BaseModel):
 
     The one field of a declaration the generated a2l carries today; the rest wait for the
     module level ``DAQ`` block that defines the events themselves.
+
+    A whole number written without a decimal point: ``4``, not ``4.0``, which the published
+    schema accepts and the loader refuses.
     """
 
     cycle: str | None = None

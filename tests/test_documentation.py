@@ -1273,6 +1273,42 @@ class TestWhatTheLoaderRefusesTheSchemaRefusesAsWell:
             {"types": [{"type": "scalar", "name": name, "datatype": "uint16", "conversion": {}}]},
         )
 
+    @pytest.mark.parametrize(
+        "enumerators", [{"A": 18446744073709551616}, {"1bad": 0}, {"A": 0, "no-dash": 1}]
+    )
+    def test_the_mapping_form_of_enumerators_publishes_its_own_rules(
+        self, enumerators: dict[str, int]
+    ) -> None:
+        """The list form publishes the value bound and the name pattern; the shorthand did
+        not, so an editor bound to the schema accepted what ``ddd check`` then refused."""
+        from ddd.models import ComponentFile
+
+        self.refused(
+            "component",
+            ComponentFile,
+            {
+                "component": {
+                    "name": "Sensor",
+                    "interface": [
+                        {
+                            "scope": "output",
+                            "definition": {
+                                "name": "Mode",
+                                "kind": "measurement",
+                                "datatype": "uint8",
+                                "conversion": {
+                                    "kind": "enum",
+                                    "name": "Mode_t",
+                                    "enumerators": enumerators,
+                                },
+                                "volatile": False,
+                            },
+                        }
+                    ],
+                }
+            },
+        )
+
     @pytest.mark.parametrize("name", ["uint16", "UINT16", "Uint16"])
     def test_a_typename_may_not_spell_a_base_datatype_in_any_case(self, name: str) -> None:
         from ddd.models import ComponentFile
@@ -2309,3 +2345,30 @@ class TestPreCommitHook:
         path, which is the one thing pinning the hook to a ``rev`` is meant to avoid.
         """
         assert self.hook()["language"] == "python"
+
+
+WHOLE_NUMBER_KEYS = [
+    ("component", "Measurement", "dimensions"),
+    ("component", "ValueBlock", "dimensions"),
+    ("component", "Member", "dimensions"),
+    ("component", "Axis", "size"),
+    ("component", "Enumerator", "value"),
+    ("rasters", "RasterDeclaration", "event"),
+    ("sections", "SectionDeclaration", "alignment"),
+]
+"""Every key the loader reads as a strict integer, which no json schema can say.
+
+``integer`` in json schema admits a zero fraction, so an editor bound to the schema accepts
+``4.0`` where ``ddd check`` says "Input should be a valid integer". The file formats index
+says a rule a constraint cannot carry is written into the description of the key it hangs
+off instead; these are the keys it hangs off.
+"""
+
+
+class TestTheRuleAJsonSchemaCannotCarry:
+    @pytest.mark.parametrize(("kind", "model", "key"), WHOLE_NUMBER_KEYS)
+    def test_a_strict_integer_key_says_it_is_written_without_a_point(
+        self, kind: str, model: str, key: str
+    ) -> None:
+        described = published(kind)["$defs"][model]["properties"][key]["description"]
+        assert "without a decimal point" in described, described

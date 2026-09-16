@@ -598,6 +598,29 @@ class TestInputTheToolMustSurvive:
         bag = DiagnosticBag()
         assert load_workspace(tree / "a.ddd.json", bag) is not None
 
+    def test_a_file_too_large_to_hold_in_memory_is_a_finding(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A log a careless include pattern matched, larger than the memory left.
+
+        ``MemoryError`` was the one failure of the read that reached the caller as a
+        traceback, where everything else it can do - missing, unreadable, not utf-8, a
+        directory - is a located finding and the run goes on to the rest of the tree.
+        """
+        write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
+        reading = Path.read_text
+
+        def refusing(self: Path, *args: Any, **kwargs: Any) -> str:
+            if self.name == "a.ddd.json":
+                raise MemoryError
+            return str(reading(self, *args, **kwargs))
+
+        monkeypatch.setattr(Path, "read_text", refusing)
+        bag = DiagnosticBag()
+        assert load_workspace(tree / "a.ddd.json", bag) is None
+        assert checks(bag) == ["file-not-found"]
+        assert "is too large to read" in messages(bag)
+
     def test_json_nested_beyond_what_python_can_read(self, tree: Path) -> None:
         (tree / "a.ddd.json").write_text("[" * 20_000 + "]" * 20_000, encoding="utf-8")
         bag = DiagnosticBag()

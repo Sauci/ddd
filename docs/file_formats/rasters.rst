@@ -88,6 +88,12 @@ either: no DAQ list carries a ``CHARACTERISTIC``, so a ``raster`` written on one
 ``raster-kind``, while a default that happens to cover one simply does not apply. A structured
 variable carries one raster for the whole object, and every member inherits it.
 
+A reference is spelled the way a declaration is - printable ASCII, no space, eight characters
+at most - so ``"raster": ""`` or a name too long for the a2l field is refused where it is
+written rather than reported as ``unknown-raster``, which would send the reader looking for a
+declaration no rasters file could have carried. A ``section`` reference has always been held
+to its declaration's spelling the same way.
+
 A measurement that names no raster, whose component names none either, reaches the a2l exactly
 as it did before there were rasters at all: described, but with no preselected event. Adoption
 is gradual, one component at a time.

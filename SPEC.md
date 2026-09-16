@@ -1450,18 +1450,24 @@ compile:
   changed. Locality is whether the object is local to its component
   ([section 2.1](#21-scope)); a local object becoming shared, or the reverse, changes who
   **may** use it.
-- `reused-name`: a name of the baseline now names a different object. Two ids stated under one
-  name that differ proves it outright; so does the baseline's object under that name having
-  already been paired, by `id`, to a *different* name elsewhere in the candidate - which proves
-  that whatever still answers to the name in the candidate is not it, whether or not that entry
-  states an `id` of its own. It is reported above the removal it accompanies - findings at
-  one location keep the order they were reported in - because it is the failure that compiles,
-  links, runs and reads the wrong storage: a calibration dataset or a recorded measurement
-  keyed by that spelling binds to the new object exactly as readily as it did to the old one,
-  and nothing about the delivery looks broken. When the baseline's object survives elsewhere
-  in the candidate under a new name, the finding carries a note saying so - the spelling was
-  freed by a rename and claimed in the same delivery, which is the worst version of it. A
-  project that reuses names deliberately relaxes the check with `-W reused-name=warning`.
+- `reused-name`: a name of the baseline now names a different object. Three things prove it,
+  and a rename proves it from either end. Two ids stated under one name that differ prove it
+  outright. So does the baseline's object under that name having already been paired, by `id`,
+  to a *different* name elsewhere in the candidate - which proves that whatever still answers
+  to the name in the candidate is not it. And so does the candidate's entry under that name
+  having been paired, by `id`, to a *different* name in the baseline - which proves the same
+  thing from the other side: what the candidate publishes under the name is something the
+  baseline called something else, so the name was freed by a removal and taken by a rename in
+  the same delivery. In the second and the third, the entry that states no `id` of its own is
+  the one nobody has to read: the pairing has already settled it. It is reported above the
+  removal it accompanies - findings at one location keep the order they were reported in -
+  because it is the failure that compiles, links, runs and reads the wrong storage: a
+  calibration dataset or a recorded measurement keyed by that spelling binds to the new object
+  exactly as readily as it did to the old one, and nothing about the delivery looks broken.
+  When the baseline's object survives elsewhere in the candidate under a new name, the finding
+  carries a note saying so, and when the object now under the name arrived there by a rename,
+  a note names what the baseline called it; a swap carries both. A project that reuses names
+  deliberately relaxes the check with `-W reused-name=warning`.
 
 Warnings, because behaviour or tooling changes while no consumer becomes wrong:
 

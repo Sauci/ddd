@@ -1061,6 +1061,63 @@ def test_a_reused_name_is_caught_even_when_the_claimant_has_no_id_yet(tree):
     assert note_text == "'FiltGain' is now called 'FilterGain'"
 
 
+def test_a_name_freed_by_a_removal_and_taken_by_a_rename_is_an_error(tree, capsys):
+    """The mirror of the two above, and it used to be two warnings and "can replace".
+
+    The baseline's 'A' never adopted an id, so nothing about *it* can be proved from one; but
+    'B' carries one and the candidate's 'A' carries the same one, which proves the candidate's
+    'A' is the baseline's 'B' and not the 'A' that went. A calibration dataset or a recording
+    keyed by 'A' binds to what the baseline called 'B' - the hazard reused-name is an error
+    for - and the report said only that something was renamed and something else removed.
+    """
+    one_component(tree, "old", declare("local", "A"), declare("local", "B", id="k7m2q9xr4t8w"))
+    one_component(tree, "new", declare("local", "A", id="k7m2q9xr4t8w"))
+    bag = verdict(resolve(tree, "old.ddd.json"), resolve(tree, "new.ddd.json"))
+    assert checks(bag) == ["renamed-object", "reused-name", "removed-unused-object"], messages(bag)
+    reused = next(diagnostic for diagnostic in bag if diagnostic.check == "reused-name")
+    assert list(reused.notes) == [("the object now under it is the baseline's 'B'", None)]
+    code, report = ruling(tree, capsys)
+    assert code == EXIT_FINDINGS
+    assert "cannot replace" in report
+
+
+def test_a_swap_notes_both_halves_of_each_reuse(tree, capsys):
+    """Each name is the old side of one rename and the new side of the other, so each
+    finding says where the object that had the name went *and* what answers to it now."""
+    one_component(
+        tree,
+        "old",
+        declare("local", "A", id="k7m2q9xr4t8w"),
+        declare("local", "B", id="p3rt5vwx9z2q"),
+    )
+    one_component(
+        tree,
+        "new",
+        declare("local", "B", id="k7m2q9xr4t8w"),
+        declare("local", "A", id="p3rt5vwx9z2q"),
+    )
+    bag = verdict(resolve(tree, "old.ddd.json"), resolve(tree, "new.ddd.json"))
+    reused = [diagnostic for diagnostic in bag if diagnostic.check == "reused-name"]
+    assert [note for note, _ in reused[0].notes] == [
+        "'A' is now called 'B'",
+        "the object now under it is the baseline's 'B'",
+    ]
+    code, report = ruling(tree, capsys)
+    assert code == EXIT_FINDINGS
+    assert "cannot replace" in report
+
+
+def test_a_rename_whose_old_name_nobody_claims_is_no_reuse(tree, capsys):
+    """The new side of a rename only proves a reuse when the baseline used that name too."""
+    one_component(tree, "old", declare("local", "A", id="k7m2q9xr4t8w"))
+    one_component(tree, "new", declare("local", "B", id="k7m2q9xr4t8w"))
+    bag = verdict(resolve(tree, "old.ddd.json"), resolve(tree, "new.ddd.json"))
+    assert checks(bag) == ["renamed-object"], messages(bag)
+    code, report = ruling(tree, capsys)
+    assert code == EXIT_OK, report
+    assert "can replace" in report
+
+
 def test_a_name_reused_after_a_deletion_is_an_error(tree):
     before = one_component(tree, "before", declare("local", "X", id="k7m2q9xr4t8w"))
     after = one_component(tree, "after", declare("local", "X", id="p3rt5vwx9z2q"))

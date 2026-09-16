@@ -477,17 +477,28 @@ def compare(
         _compare_object(old, new, bag, location, was, now)
 
     renamed = {old.name: new.name for old, new in paired if old.name != new.name}
+    claimed = {new: old for old, new in renamed.items()}
     for name in sorted(was.keys() & now.keys()):
-        # Proof does not need both sides to have adopted an id: pairing (above) may already
-        # have matched the baseline's object under this name to a *different* name, by id -
-        # which proves whatever still answers to this name in the candidate is not it, whether
-        # or not that entry states an id of its own (design section 5.3).
+        # Proof does not need both sides to have adopted an id, and a rename proves it from
+        # either end. Pairing (above) may have matched the baseline's object under this name
+        # to a *different* name in the candidate, which proves whatever still answers to the
+        # name there is not it; or it may have matched a *different* baseline object onto this
+        # name, which proves the same thing from the other side - the entry the candidate
+        # publishes here is one the baseline called something else. Either way the entry that
+        # is silent about its identity is the one whose id nobody has to read (design 5.3).
         moved = renamed.get(name)
-        if moved is None and not _states_different_identities(was[name], now[name]):
+        taken = claimed.get(name)
+        if (
+            moved is None
+            and taken is None
+            and not _states_different_identities(was[name], now[name])
+        ):
             continue
         # The failure that compiles, links, runs and reads the wrong storage: a dataset or a
         # recording keyed by this spelling binds to the new object as readily as to the old.
         notes = [(f"'{name}' is now called '{moved}'", None)] if moved else []
+        if taken is not None:
+            notes.append((f"the object now under it is the baseline's '{taken}'", None))
         bag.add(
             "reused-name",
             f"'{name}' now names a different object; a calibration dataset or a recording "

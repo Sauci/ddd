@@ -4621,9 +4621,23 @@ class TestOfferingAnIdentity:
 
 class TestFrameLengths:
     def test_a_negative_length_cannot_be_followed(self) -> None:
-        """``read(-1)`` reads to the end of the stream, which on a live pipe is never."""
+        """A minus sign is not a count of bytes, and ``read(-1)`` would read to the end of the
+        stream, which on a live pipe is never."""
         stream = io.BytesIO(b"Content-Length: -1\r\n\r\n{}")
         with pytest.raises(ProtocolError, match="-1"):
+            read_message(stream)
+
+    @pytest.mark.parametrize("spelling", [b"1_2", b"+7", b"0x10"])
+    def test_a_length_python_would_read_and_a_client_never_writes(self, spelling: bytes) -> None:
+        """``int()`` takes python's own spellings of a number, and ``1_2`` is twelve to it.
+
+        Twelve bytes is not what the client counted, so the frame ends in the middle of the
+        body and every header after it is read out of the tail of a message: observed as one
+        parse error and then a silent exit with the next request never answered. The header is
+        a count of bytes in decimal digits and nothing else.
+        """
+        stream = io.BytesIO(b"Content-Length: " + spelling + b"\r\n\r\n{}")
+        with pytest.raises(ProtocolError, match=re.escape(spelling.decode())):
             read_message(stream)
 
 
@@ -4840,3 +4854,116 @@ class TestWhatAReconcileActionSettles:
         assert answer["result"], "the unit disagreement is still offered a fix"
         for action in answer["result"]:
             assert [entry["code"] for entry in action["diagnostics"]] == ["definition-mismatch"]
+
+
+class TestMessagesTheClientGetsWrong:
+    """Somebody else's bytes, in the shapes a client actually sends them wrong.
+
+    None of these is a defect in the checks, and every one of them used to end the
+    conversation - which costs the reader every DDD finding on screen until the client gives
+    up restarting the server.
+    """
+
+    def shutdown(self) -> tuple[dict[str, Any], dict[str, Any]]:
+        return (
+            {"jsonrpc": "2.0", "id": 99, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+
+    def test_a_code_action_whose_context_is_null_is_refused_rather_than_fatal(
+        self, tmp_path: Path
+    ) -> None:
+        """``params.get("context", {})`` defends against the key being absent and not against
+        it being there and null, which is what a client sending no diagnostics may write."""
+        writer = io.BytesIO()
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 11,
+                "method": "textDocument/codeAction",
+                "params": {
+                    "textDocument": {"uri": (tmp_path / "a.ddd.json").as_uri()},
+                    "range": {
+                        "start": {"line": 0, "character": 0},
+                        "end": {"line": 0, "character": 0},
+                    },
+                    "context": None,
+                },
+            },
+            *self.shutdown(),
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answers = {message["id"]: message for message in sent(writer) if "id" in message}
+        assert answers[11]["error"]["code"] == INVALID_PARAMS
+        assert answers[99]["result"] is None
+
+    def test_a_workspace_folder_without_a_uri_is_refused_rather_than_fatal(
+        self, tmp_path: Path
+    ) -> None:
+        """``initialize`` is the first message of every session: ending on it means the client
+        never gets a capabilities answer and the server dies before it has served anything."""
+        writer = io.BytesIO()
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"workspaceFolders": [{"name": "x"}]},
+            },
+            *self.shutdown(),
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answers = {message["id"]: message for message in sent(writer) if "id" in message}
+        assert answers[1]["error"]["code"] == INVALID_PARAMS
+        assert answers[99]["result"] is None
+
+    def test_a_notification_the_server_cannot_read_is_answered_with_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """A notification never gets a reply, which is what the loop's own comment says.
+
+        It was sending one anyway, carrying ``"id": null``, and vscode-jsonrpc draws that in
+        the output channel as an error the reader has no message to act on.
+        """
+        writer = io.BytesIO()
+        stream = framed({"jsonrpc": "2.0", "method": "textDocument/didOpen"}, *self.shutdown())
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert [message for message in sent(writer) if "error" in message] == []
+
+    def test_a_document_under_another_scheme_is_refused_rather_than_made_relative(
+        self, tmp_path: Path
+    ) -> None:
+        """``untitled:Untitled-1`` has no path on disk, and reading one out of it names a
+        phantom file under the server's working directory that a finding is then published
+        for. Nothing on disk is nothing this server can say anything about."""
+        writer = io.BytesIO()
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": "untitled:Untitled-1",
+                        "languageId": "json",
+                        "version": 1,
+                        "text": "{}",
+                    }
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 12,
+                "method": "textDocument/hover",
+                "params": {
+                    "textDocument": {"uri": "untitled:Untitled-1"},
+                    "position": {"line": 0, "character": 0},
+                },
+            },
+            *self.shutdown(),
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert published(writer) == {}
+        answers = {message["id"]: message for message in sent(writer) if "id" in message}
+        assert answers[12]["error"]["code"] == INVALID_PARAMS
+        assert "untitled:Untitled-1" in answers[12]["error"]["message"]
+        assert answers[99]["result"] is None

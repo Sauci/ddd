@@ -104,8 +104,21 @@ def uri_to_path(uri: str) -> Path:
     no drive at all and came back as the relative path ``/c:/...``, which names no file and
     cannot be turned back into a uri. The server died on the first document a Windows client
     opened. Only that colon is restored here; everything else stays escaped for the call.
+
+    Any other scheme is refused rather than read for whatever path-like text it holds. An
+    ``untitled:Untitled-1`` came back as the bare relative name, which then resolved against
+    the server's working directory and published ``file-not-found`` for a phantom file in the
+    workspace. There is nothing on disk to check, and saying so is the honest answer. The
+    extension sends only ``file:`` (``extension.ts`` registers that scheme alone); another
+    client need not.
     """
     parsed = urlparse(uri)
+    if parsed.scheme != "file":
+        msg = (
+            f"'{uri}' is not a file: uri; this server checks descriptions on disk and has "
+            f"nothing to say about a document that is not on it"
+        )
+        raise MessageError(INVALID_PARAMS, msg)
     path = parsed.path
     if not parsed.netloc or parsed.netloc == "localhost":
         path = _ESCAPED_DRIVE.sub(r"/\1:", path)
@@ -226,9 +239,13 @@ class Server:
             except MessageError as fault:
                 # The frame was read and the method understood; what the client sent with it
                 # was not the shape the method takes. A request gets that as its answer and a
-                # notification gets nothing, which is what a notification always gets - and
-                # either way the next message is still read.
-                write_message(self.writer, error(message.get("id"), fault.code, str(fault)))
+                # notification gets nothing, which is what a notification always gets - a
+                # message with no ``id`` is a notification, and answering one with an error
+                # under ``"id": null`` is a line in the client's output channel that names no
+                # request the reader can go and look at. Either way the next message is still
+                # read.
+                if "id" in message:
+                    write_message(self.writer, error(message["id"], fault.code, str(fault)))
                 continue
             if not keep_going:
                 return 0
@@ -661,7 +678,8 @@ class Server:
         document = read(path, cache)
         pointer = document.pointer_at(self._at(message, "range"))
         params = _field(message.get("params"), dict, "params")
-        reported = params.get("context", {}).get("diagnostics", [])
+        context = _field(params.get("context"), dict, "params.context")
+        reported = context.get("diagnostics", [])
         offered: list[dict[str, Any]] = []
         for loaded in self._projects_of(path):
             unreadable = self._unreadable(loaded)
@@ -678,7 +696,16 @@ class Server:
         """Take the workspace folders from whichever of the two ways the client offers them."""
         folders = params.get("workspaceFolders") or []
         if folders:
-            self.roots = [uri_to_path(folder["uri"]) for folder in folders]
+            self.roots = [
+                uri_to_path(
+                    _field(
+                        _field(folder, dict, "params.workspaceFolders[]").get("uri"),
+                        str,
+                        "params.workspaceFolders[].uri",
+                    )
+                )
+                for folder in folders
+            ]
         elif params.get("rootUri"):
             self.roots = [uri_to_path(params["rootUri"])]
         capabilities = params.get("capabilities")

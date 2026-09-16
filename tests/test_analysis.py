@@ -228,6 +228,25 @@ class TestDefinitionAgreement:
         )
         assert checks(bag) == ["condition-mismatch"]
 
+    def test_a_condition_nobody_wrote_is_spelled_as_the_comparison_spells_one(
+        self, tree: Path
+    ) -> None:
+        """One rule, one spelling: ``none``, as every absent value in a finding is spelled.
+
+        The two reports that mention a condition - this one and ``changed-condition``, which
+        says that one became another - each had a helper of their own, and one of them wrote
+        "no condition" into a sentence that already says the word: "uses condition no
+        condition while 'A' uses 'defined(A)'".
+        """
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("output", "X", condition="defined(A)")], b=[declare("input", "X")]
+            ),
+        )
+        assert checks(bag) == ["condition-mismatch"]
+        assert "component 'B' uses condition none while 'A' uses 'defined(A)'" in messages(bag)
+
 
 class TestValueChecks:
     def test_init_out_of_range(self, tree: Path) -> None:

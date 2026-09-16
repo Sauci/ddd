@@ -15,7 +15,13 @@ from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Final
 
-from ddd.compare import ComparedField, differing, spell_out
+from ddd.compare import (
+    ComparedField,
+    describe_condition,
+    describe_references,
+    differing,
+    spell_out,
+)
 from ddd.diagnostics import CHECKS, DiagnosticBag, Location, index_order
 from ddd.ir import (
     ComponentDeclaration,
@@ -207,13 +213,6 @@ def _describe_limits(definition: DataObject) -> str:
     return f"[{format_number(low)}, {format_number(high)}]"
 
 
-def _describe_references(definition: DataObject) -> str:
-    references = definition.references
-    if not references:
-        return "none"
-    return ", ".join(f"{key}={value}" for key, value in sorted(references.items()))
-
-
 def _conversion_value(definition: DataObject) -> object:
     """What two declarations of one object have to agree on in their conversion.
 
@@ -254,7 +253,9 @@ _INTERFACE_FIELDS: tuple[ComparedField[DataObject], ...] = (
     # ``limits`` are not in the table: a declaration may omit them, so the resolved answer is
     # not always the reference declaration's - see :meth:`_Analysis._limits_reference`, which
     # settles whose stated limits count and compares every other stated set against those.
-    ComparedField("references", lambda d: d.references, _describe_references),
+    ComparedField(
+        "references", lambda d: d.references, lambda d: describe_references(d.references)
+    ),
     # Not optional, unlike limits, and it cannot be: the key is required on every definition,
     # so there is no silence to interpret. Every component that reads the object gets the
     # qualifier in its own header, which means every description of it has to agree.
@@ -360,6 +361,18 @@ class DeclarationRef:
         return self.owner.declaration_location(self.index, suffix)
 
 
+def _is_local(producer: DeclarationRef | None) -> bool:
+    """Whether the object is one component's alone: its producing declaration says so.
+
+    One question, one answer, for the two shapes a variable comes in: a plain one resolves
+    through :class:`Variable` and a structured one is built without it, and the two spelled
+    it out apart - so a rule stated once about what ``local`` means was a rule to keep in
+    step twice. It is what the generated header hides from every other component, and what
+    ``local-conflict`` is about.
+    """
+    return producer is not None and producer.scope is Scope.LOCAL
+
+
 def _resolved_raster(producer: DeclarationRef | None, definition: DataObject) -> str | None:
     """The raster of a variable: the producing declaration's own key, else its component's.
 
@@ -409,7 +422,7 @@ class Variable:
 
     @property
     def is_local(self) -> bool:
-        return self.producer is not None and self.producer.scope is Scope.LOCAL
+        return _is_local(self.producer)
 
     @property
     def consumers(self) -> tuple[str, ...]:
@@ -3200,7 +3213,7 @@ class _Analysis:
             condition=reference.condition,
             owner=producer.component_name if producer else None,
             consumers=tuple(sorted(ref.component_name for ref in consumers)),
-            local=producer is not None and producer.scope is Scope.LOCAL,
+            local=_is_local(producer),
             a2l=definition.a2l.model_copy(
                 update={"export": resolve_export(ref.definition.a2l.export for ref in refs)}
             ),
@@ -3491,8 +3504,8 @@ class _Analysis:
             self._bag.add(
                 "condition-mismatch",
                 f"'{other.name}': component '{other.component_name}' uses condition "
-                f"{_condition(other.condition)} while '{reference.component_name}' uses "
-                f"{_condition(reference.condition)}",
+                f"{describe_condition(other.condition)} while "
+                f"'{reference.component_name}' uses {describe_condition(reference.condition)}",
                 other.location("condition") if other.condition else other.location(),
                 notes=[("reference declaration", reference.location())],
             )
@@ -3548,10 +3561,6 @@ def _did_you_mean(name: str, candidates: Sequence[str], *, cutoff: float) -> str
 def _or_list(values: tuple[str, ...]) -> str:
     """``'Nm' or 'rpm'``: how a did-you-mean suggestion spells its candidates."""
     return " or ".join(f"'{value}'" for value in values)
-
-
-def _condition(condition: str | None) -> str:
-    return f"'{condition}'" if condition else "no condition"
 
 
 def _documentation_rank(conversion: EnumConversion) -> tuple[int, tuple[str, ...]]:

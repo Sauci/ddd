@@ -748,6 +748,14 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   claims that the structures of a `type-cycle` are left out of the dictionary: they are in it
   like any others, and the error is what stops anything being generated from them.
 
+  *One rule, one place.*  Four rules were written out twice between the analysis and the
+  comparison - the raw range a bitfield member holds, how a finding spells what an object
+  refers to, what an absent condition is called, and what makes a variable local - and one
+  pair had already drifted: an absent condition read "no condition" in a project report and
+  "none" in a delivery comparison, which put "uses condition no condition" into one sentence.
+  Each is written once now, and `condition-mismatch` says `none`, the way every other
+  unstated value in a finding does.
+
   **Migration:** a list `init` holding a quoted number or one of those words is now refused
   with a `schema` finding at the element that holds it, where it used to load, generate and
   dump.  Write the value without the quotes: `["1", "2"]` becomes `[1, 2]`.  A string object

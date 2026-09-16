@@ -105,10 +105,28 @@ def _spell_field[T](field: ComparedField[T], reference: T, other: T) -> str:
     return spelled if detail is None else f"{spelled} ({detail})"
 
 
-def _describe_references(entry: Comparable) -> str:
-    if not entry.references:
+def describe_references(references: Mapping[str, str]) -> str:
+    """``axis=Speed, input=Raw``, or ``none``: what an object refers to, for a finding.
+
+    Here rather than in each of the two tables that compare the field, because it is one
+    rule about one field of one model: :mod:`ddd.analysis` asks whether two components
+    describing an object agree about its references and this module whether a delivery kept
+    them, and a reader meeting both answers in one report reads one spelling.
+    """
+    if not references:
         return "none"
-    return ", ".join(f"{key}={value}" for key, value in sorted(entry.references.items()))
+    return ", ".join(f"{key}={value}" for key, value in sorted(references.items()))
+
+
+def describe_condition(condition: str | None) -> str:
+    """``'defined(FEATURE_X)'``, or ``none``: the condition a declaration is written under.
+
+    Shared for the reason :func:`describe_references` is: two findings mention a condition -
+    that two components disagree about one, and that a delivery changed one - and an absent
+    condition is the same absence in both. ``none``, as every unstated value a finding of
+    this module spells is ``none``.
+    """
+    return f"'{condition}'" if condition else "none"
 
 
 def _describe_conversion(conversion: Conversion) -> str:
@@ -891,7 +909,10 @@ def _describe_reference_change(
     bound to the wrong one, in the one check this whole feature exists to get right.
     """
     if old.references.keys() != new.references.keys():
-        return f"references: {_describe_references(new)} != {_describe_references(old)}"
+        return (
+            f"references: {describe_references(new.references)} != "
+            f"{describe_references(old.references)}"
+        )
     news: list[str] = []
     olds: list[str] = []
     for field in sorted(old.references):
@@ -990,8 +1011,8 @@ def _compare_declaration(
     if old.condition != new.condition:
         bag.add(
             "changed-condition",
-            f"'{old.name}': condition {_condition(old.condition)} became "
-            f"{_condition(new.condition)}, so {_condition_consequence(old, new)}",
+            f"'{old.name}': condition {describe_condition(old.condition)} became "
+            f"{describe_condition(new.condition)}, so {_condition_consequence(old, new)}",
             location,
         )
 
@@ -1048,10 +1069,6 @@ def _compare_instances(
             )
 
         _compare_declaration(old, new, bag, location)
-
-
-def _condition(condition: str | None) -> str:
-    return f"'{condition}'" if condition else "none"
 
 
 def _condition_consequence(old: _Joined, new: _Joined) -> str:

@@ -464,6 +464,23 @@ Recorded as each branch landed, so that nothing is lost between a task and the r
   it would be a behaviour change no decision covers. A json schema cannot express the rule
   at all: its `integer` admits a zero fraction. A guard in `tests/test_documentation.py`
   holds the sentence in each of the five descriptions.
+- **`ddd sources` still lists in the order the platform compares two paths** (branch 8 task 1,
+  `P1-I4`). Decision 2 is about the matches of a wildcard include, which decide the order of
+  the components and therefore the bytes of every generated file; that sort is now over
+  `as_posix()`. `Workspace.sources()` sorts `Path` objects the same way it always did, so on
+  Windows the listing is case insensitive and on Linux it is by code point, and
+  `SPEC.md` 7 promises only "one sorted absolute POSIX path per line". Nothing generated
+  depends on it - the listing feeds a build's dependency set, where order is nothing - but it
+  is the last place in the tool where a platform decides an order, and one line
+  (`loading.py:444`) would settle it.
+- **The README's five in-page anchors still resolve on GitHub alone** (branch 8 task 4,
+  `P7-M11`). The thirty-two links to files of the repository are absolute now, so the package
+  index resolves them; `](#cmake-integration)` and its four neighbours are links into the
+  rendered README itself, and whether PyPI keeps the heading ids that make them work was not
+  established here (pypi.org answers this machine with a bot challenge). Making them absolute
+  too would point a reader of the index at GitHub for a section they are already reading;
+  leaving them is a link that may do nothing rather than one that 404s. A `curl -sI` from a
+  machine the index answers, on `pypi.org/project/ddd-tool/`, is what would settle it.
 
 ## Self-review
 

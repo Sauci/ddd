@@ -16,13 +16,33 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 
 ## Unreleased
 
+This release is two things at once.  It finishes what 0.9.0 started - constants that hold any
+number, string data, the dumped dictionary written as a file rather than redirected, a
+component listed and dumped on its own - and it carries the answer to a review of the whole
+tool, which read every page, ran every command and weighed every file DDD writes: the seven
+entries that follow are what that review found, area by area.
+
+An entry that costs a project anything ends with **Migration:** what, and read together
+those come to five things.  A description is refused in a handful of spellings it used to be
+accepted in, each of which broke something further along - the compiler, a calibration tool,
+an a2l field - and each named where it is written.  Three edits a delivery comparison used to
+pass now say "cannot replace", and each is a change of what a consumer compiles against.  A
+`ddd generate` run owns the directory it writes into and takes back what it no longer writes.
+The a2l, the dumped dictionary and - for a project whose wildcard includes match names
+differing in case - the generated c come out once with a diff nobody wrote: shorter derived
+limits, a byte order mark, another component order, and identical bytes ever after.  And a
+script reading what DDD prints sees one new exit code, absolute paths where a comparison used
+to print the path as typed, and a plugin's own output on stderr.  Nothing else that was valid
+stops being valid.
+
 * **The editor answers about the project, and about the document you have open.**  Fifteen
   defects of the language server, found by a review of the whole tool, most of them on the
   most ordinary setup there is - a checkout nobody has built yet.
 
   *What is checked.*  A project description opened in a tree with no build record was read as
-  "a component on its own", so the ten checks that need the whole project were silenced for
-  the whole project - and because opening a file republishes everything it covers, opening
+  "a component on its own", so the nine checks that need every component of a project were
+  silenced for the whole project - and because opening a file republishes everything it
+  covers, opening
   `project.ddd.json` **withdrew** the missing producers and unused outputs from the components
   that were already showing them.  A project file is now checked as the project it is; the
   thinner policy stays for a component read alone.  The containing-project stage applies the
@@ -147,12 +167,12 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   reported it, and the generated c carried `1e-50F`, which gcc refuses outright - `floating
   constant truncated to zero`, an error under the same warning set - because the value the
   storage would hold is not the value the description states.  A non-zero initial value a
-  floating point datatype rounds to zero is now `init-invalid`.  And a shape now states at
-  most 64 dimensions: six hundred of one element each were under every cap there was - they
-  multiply out to one - and ended `ddd generate c` in a `RecursionError` where a finding was
-  owed, the walks that expand a shape descending once per dimension.  It is `schema` at the
-  `dimensions` that state it, and the declaration is dropped, as for every other shape past a
-  limit.
+  floating point datatype rounds to zero is now `init-invalid`.  And a declaration's own
+  shape states at most 64 dimensions: six hundred of one element each were under every cap
+  there was - they multiply out to one - and ended `ddd generate c` in a `RecursionError`
+  where a finding was owed, the walks that expand a shape descending once per dimension.  It
+  is `schema` at the `dimensions` that state it, and the declaration is dropped, as for
+  every other shape past a limit.
 
   *A template renders a constant as a literal.*  A `ConstantView` offers `.literal` beside
   `.value`: the value as a c literal of the narrowest type that holds it.  The two differ only
@@ -776,22 +796,23 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   to expand in the directory the process happened to be in and now expands in the project's,
   the way the same spelling without the wildcard always did.  Each of the first two was
   already reported at the end of the run, as `unknown-raster` or `unknown-extension`; the
-  finding moves to where it is written and becomes a `schema` error.  Nothing else accepted
-  before is refused now, and no exit code changes: what does change is the number of findings
-  a run prints.  A component read on its own - `ddd check --standalone`, a build's
-  per-component target, a file no build claims in an editor - reports one `incomplete-project`
-  info per declaration a relaxed check of the caller's own took out of the dictionary, where
-  it used to report none; a run that relaxes none is untouched.  A project run reports one
-  fewer wherever the object's own reference was refused and reported, and one more wherever a
-  text `init` sits on an object that is not a string and never resolved.  An archived dump is
-  read back as it always was, with one exception: one carrying a structure member with no
-  `datatype`, no `type` and no `external` - which only a dump taken from a project with an
-  `unknown-type` error can hold - is now a `schema` error naming the member, where it used to
-  load and compare as though the member held something.  Re-dump it from the project it came
-  from, with the type declared.
+  finding moves to where it is written and becomes a `schema` error.  The reader refuses
+  nothing else it used to accept, and nothing in this entry changes an exit code: what does
+  change is the number of findings a run prints.  A component read on its own - `ddd check
+  --standalone`, a build's per-component target, a file no build claims in an editor -
+  reports one `incomplete-project` info per declaration a relaxed check of the caller's own
+  took out of the dictionary, where it used to report none; a run that relaxes none is
+  untouched.  A project run reports one fewer wherever the object's own reference was refused
+  and reported, and one more wherever a text `init` sits on an object that is not a string and
+  never resolved.  An archived dump is read back as it always was, with one exception: one
+  carrying a structure member with no `datatype`, no `type` and no `external` - which only a
+  dump taken from a project with an `unknown-type` error can hold - is now a `schema` error
+  naming the member, where it used to load and compare as though the member held something.
+  Re-dump it from the project it came from, with the type declared.
 
 * **The same project generates the same bytes on any machine.**  The one promise of the
-  generated output that the tool did not keep: the matches of a wildcard `includes` entry
+  generated output that the tool did not keep, and the last thing a review of the whole tool
+  found: the matches of a wildcard `includes` entry
   were sorted as the platform compares two paths, which is case insensitively on Windows and
   by code point on Linux.  A project whose `components/*.ddd.json` matched `Zeta.ddd.json`
   and `alpha.ddd.json` therefore loaded them in one order here and the other order there, and
@@ -860,17 +881,22 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   re-encodes them as UTF-16, which `ddd compare` refuses to read back - and empties the
   target before the tool has even started.  `-o` writes the text stdout would have carried
   the way `generate` writes an artefact: utf-8 with lf on every platform, staged, and left
-  untouched when its content would not change, while a project that does not resolve leaves
-  the file as it was.  The exit code and the findings on stderr stay what they were, and the
-  json report there names the file written, as `generate`'s does.
+  untouched when its content would not change.  Unlike `generate`, a finding does not hold it
+  back - the dictionary is what the project resolved to, errors and all, which is what makes
+  it the thing to archive beside a delivery that failed - so only a root that cannot be read
+  leaves the file as it was, there being no dictionary then.  A build gates on the exit code,
+  which stays what it was, as do the findings on stderr; the json report there names the file
+  written, as `generate`'s does.  A target that resolves to a file the run read is refused,
+  as it is for `--renames` and `--dictionary`.
   **Migration:** none.
 
 * **`ddd generate --dictionary FILE` writes the dictionary beside the artefacts, and the
   cmake build does.**  Every artefact takes it: the resolved dictionary, the text `ddd dump`
   prints, goes into the same write as the artefacts - all of them or none, a file whose
   content would not change left untouched - and a path an artefact of the run is written to
-  is refused.  `ddd_generate()` passes it, so a build now writes `<NAME>.dictionary.json`
-  into its output directory, which is what a template author reads and what a delivery
+  is refused.  `ddd_generate()` passes it, so a build now writes `<project name>.dictionary.json`
+  into its output directory - the name the a2l takes, which beside `PROJECT` is the one
+  written inside that file - which is what a template author reads and what a delivery
   archives for a later `ddd compare`; its path is the image's `DDD_DICTIONARY` property.
   **Migration:** a cmake build gains one file in its output directory; `NO_DICTIONARY` leaves
   it out.

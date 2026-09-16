@@ -581,6 +581,28 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   registering a description that does not parse now fails its `<target>.ddd` target, with the
   syntax error, where it used to report nothing to do.
 
+* **What a file says, and what it is told it says.**  What a review of the whole tool found
+  in the reader of a description: a spelling that meant something its author did not write,
+  and three ways a finding about it named the wrong place or was printed more times than
+  there were mistakes.
+
+  *A number in a list `init` is written as a number.*  A quoted value nested inside a list
+  was read as whatever it looked like: `["1", "2"]` on a `uint8[2]` was accepted and dumped
+  as `[1, 2]`, and `["on", "off"]` - words a lax boolean reading turns into truth values -
+  reached the generated c as `{ 1U, 0U }`.  The specification, the type's own contract and
+  the published schema agree that a quoted number is text and that text does not belong
+  inside a list; only the reader disagreed, because the arm that claims a quoted value at the
+  top level - a string object's init is its text - has no counterpart one level down, and the
+  lax pass below it parsed `"1"`, `" 1 "`, `"1_0"`, `"1e2"`, `"on"`, `"off"`, `"yes"` and
+  `"true"` into numbers.  Every arm of a nested init value is now held to the spelling.  What
+  is written as a number still reads as one wherever it stands: a whole number on a float
+  object, a fraction, a json `true`.
+
+  **Migration:** a list `init` holding a quoted number or one of those words is now refused
+  with a `schema` finding at the element that holds it, where it used to load, generate and
+  dump.  Write the value without the quotes: `["1", "2"]` becomes `[1, 2]`.  A string object
+  is untouched - its init is its text, written as one string rather than as a list of them.
+
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`
   through the c templates, a `SYSTEM_CONSTANT` in the a2l - whether or not a shape names it,

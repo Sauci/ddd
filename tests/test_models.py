@@ -234,6 +234,107 @@ class TestArraysAndInit:
             definition(dimensions=[0])
 
 
+class TestInitIsWrittenAsItIsMeant:
+    """A number in a list init is a number, and nothing that merely looks like one.
+
+    The whole init has a text arm - a string object's init is its text - so pydantic picks
+    that arm for a quoted value at the top level and the question never arises there. One
+    level down there is no text arm, and every arm of ``InitScalar`` is strict so that the
+    union does not fall back to reading words: ``"1"`` is not the number, ``"on"`` is not
+    ``true``, and both are refused where the specification, the docstring and the published
+    schema all say text does not belong.
+    """
+
+    @pytest.mark.parametrize(
+        ("written", "spelled"),
+        [
+            ("1", "Input should be a valid integer"),
+            (" 1 ", "Input should be a valid integer"),
+            ("1_0", "Input should be a valid integer"),
+            ("on", "Input should be a valid integer"),
+            ("true", "Input should be a valid integer"),
+            ("1.5", "Input should be a valid integer"),
+            ("1e2", "Input should be a valid integer"),
+        ],
+    )
+    def test_a_quoted_value_in_a_list_is_refused(
+        self, tree: Path, written: str, spelled: str
+    ) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", dimensions=[2], init=[written, written])
+                ),
+            },
+        )
+        assert dictionary is None
+        assert set(checks(bag)) == {"schema"}
+        expected = f"definition.init[0]: error[schema]: {spelled} (got: {written!r})"
+        assert expected in messages(bag), messages(bag)
+
+    def test_a_word_in_a_list_is_not_read_as_a_truth_value(self, tree: Path) -> None:
+        """``["on", "off"]`` on a ``uint8[2]`` used to render as ``{ 1U, 0U }``."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", dimensions=[2], init=["on", "off"])
+                ),
+            },
+        )
+        assert dictionary is None
+        assert "definition.init[1]: error[schema]:" in messages(bag), messages(bag)
+        assert "'off'" in messages(bag), messages(bag)
+
+    def test_a_quoted_number_is_still_text_at_the_top_level(self) -> None:
+        assert definition(init="12").init == "12"
+
+    @pytest.mark.parametrize(
+        ("datatype", "written"),
+        [
+            ("float64", [1, 2]),
+            ("float64", [1.5, 2.5]),
+            ("float32", [1.5, 2]),
+            ("uint8", [1, 2]),
+            ("boolean", [True, False]),
+        ],
+    )
+    def test_a_number_written_as_a_number_still_loads(
+        self, tree: Path, datatype: str, written: list[Any]
+    ) -> None:
+        """Strictness is about the spelling, not about the arm: a whole number on a float
+        type matches the integer arm and is as good an init as ever."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", datatype, dimensions=[2], init=written)
+                ),
+            },
+        )
+        assert dictionary is not None, messages(bag)
+        assert checks(bag) == []
+
+    def test_a_json_boolean_on_an_integer_datatype_is_still_read_as_written(
+        self, tree: Path
+    ) -> None:
+        """The deferred JSON-boolean init: ``true`` is a truth value in every mode, so it
+        reaches the analysis as it always did."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", "uint8", init=True)),
+            },
+        )
+        assert dictionary is not None, messages(bag)
+        assert checks(bag) == []
+
+
 class TestContractStrictness:
     def test_unknown_keys_are_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):

@@ -95,7 +95,12 @@ class ResolvedComponent(_Frozen):
     """Free text from the component description, offered to the templates."""
 
     source: str = ""
-    """Path of the description file, for reference in generated comments."""
+    """File name of the description file, for reference in generated comments.
+
+    The name alone, without the directories above it: a dictionary dumped from two checkouts
+    of one project is otherwise two different documents, and the banner of a generated file
+    would carry the path of whoever's machine generated it.
+    """
 
     declarations: tuple[ComponentDeclaration, ...] = ()
     """The interface of the component, in the order it declared it."""
@@ -184,8 +189,15 @@ class ResolvedObject(_Frozen):
     """
 
     init: InitValue | None = None
-    """Raw initial value, nested to match ``shape``, or the text of a string object; ``null``
-    means zero initialised."""
+    """Raw initial value as the description wrote it, or the text of a string object;
+    ``null`` means zero initialised.
+
+    A list is nested to match ``shape``, one level per dimension. A scalar written for an
+    array is carried as the scalar: it initialises every element, and expanding it here
+    would write one literal per element into the dumped dictionary for a value the
+    description states once. A consumer that needs the elements broadcasts the scalar over
+    ``shape``, which is what the c backend does to render the initialiser.
+    """
 
     section: str | None = None
     """Linker section the producing declaration placed the object in; ``null`` for the

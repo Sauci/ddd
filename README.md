@@ -418,8 +418,10 @@ an object's address prints it back out of memory and then goes on computing with
 What that buys is paid for out of the read only memory.  gcc treats a volatile access as a
 side effect and takes the object out of the read only category, so `.rodata` becomes a plain
 `.data`: measured with gcc 12.2.0 on DDD's own generated demo with this repository's own flag
-set, `.rodata 84 / .data 2` becomes `.data 86`, and an explicitly attributed section moves the
-same way.  The categorisation is target independent, but it is worth confirming once on the
+set, `.rodata 84 / .data 2` became `.data 86` - every byte of it crossing over - and an
+explicitly attributed section moves the same way.  The two counts are of the demo as it stood
+when the measurement was taken and move with whatever it declares; what does not move is that
+all of it goes across.  The categorisation is target independent, but it is worth confirming once on the
 toolchain you actually ship with.  On a flash target with an ordinary linker script that means a RAM address with a load
 region in flash and a startup copy, so the tool programs a page the code never reads and the
 next reset overwrites what it wrote.  A project that calibrates online handles that placement

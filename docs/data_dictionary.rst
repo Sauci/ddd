@@ -224,6 +224,13 @@ test suite (``tests/test_backends.py``), because they are the whole point of pub
 contract - a third party generating from a dumped dictionary has to get what DDD would have
 got.
 
+One field asks something of its reader: ``init`` is carried as the declaration wrote it, so a
+list is nested one level per dimension and a scalar written for an array is still a scalar -
+``"init": 0`` beside ``"shape": [4]`` means four zeros. It is not expanded here because
+expanding it would write one literal per element for a value the description states once, and
+an array of ten thousand elements would carry ten thousand of them. A generator broadcasts the
+scalar over ``shape``, which is what the c backend does before rendering the initialiser.
+
 ``ddd schema dictionary`` prints the whole thing, definitions included; its top level, which
 is where a consumer starts, is this (the per field documentation the schema also carries is
 elided here for space):

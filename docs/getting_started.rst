@@ -381,8 +381,11 @@ the a2l is named by DDD itself, after the project:
      - the declaration of every variable of the project. It exists so that ``ddd_globals.c``
        can be compiled with full prototype checking; components are not meant to include it.
    * - ``ddd_types.h``
-     - ``<stdint.h>``, ``<stdbool.h>`` and one ``typedef enum`` per enum conversion, included
-       by all of the above.
+     - the types the declarations are written in, included by all of the above:
+       ``<stdint.h>``, then ``<stdbool.h>`` when the project declares a ``boolean``, the
+       headers of any external types in use, one ``#define`` per declared constant, one
+       ``typedef enum`` per enum conversion and one ``typedef struct`` per declared
+       structure. The thermostat declares none of those, so its copy is the one include.
    * - ``<Project>.a2l``
      - the ASAP2 description of the same data for the measurement and calibration tool.
 

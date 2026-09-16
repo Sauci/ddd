@@ -1663,7 +1663,10 @@ ASAM MCD-2 MC output containing:
   format - an integer and a float object under one conversion therefore share a method
   unless that conversion is an identity with a unit or a linear one whose `factor` and
   `offset` are whole numbers, where the integer defaults to `%8.0` and the float to `%8.3`
-  and each gets its own method - and `COMPU_VTAB` per enum; a string gets no method.
+  and each gets its own method - and one `COMPU_VTAB` per enum a record in the file refers
+  to; a string gets no method. An enum some declaration names and no exported record uses -
+  the conversion of a bitfield member, say - is in the dictionary and not in the A2L, and
+  gets no table.
 - `IF_DATA XCP` on every `MEASUREMENT` whose object resolves to a measurement raster
   ([section 3.10](#310-measurement-rasters)), naming the raster's event channel in the
   `DEFAULT_EVENT_LIST` of a `DAQ_EVENT VARIABLE` block, so that a tool preselects the event
@@ -1710,12 +1713,12 @@ and a tool reading multi byte values under the wrong one misreads every value.
 Generated identifiers are deterministic: record layouts `RL_VALUES_<TYPE>` and
 `RL_AXIS_<TYPE>` per datatype and storage category, computation methods `CM_<enum>`,
 `CM_LIN_<unit>` and `CM_IDENT_<unit>`, the unit slugged into identifier characters with
-`_2`, `_3` appended on a collision, and one `COMPU_VTAB` named `VTAB_<enum>` per enum. The
-suffix is added when the generated name collides - two linear conversions in one unit, or
-one identity with a unit, or one linear conversion with whole `factor` and `offset`, used
-by an integer and by a float object - and the unsuffixed name goes to the method of the
-object that reaches the file first, the plain objects in name order before the member
-paths. An enum is a `TAB_VERB` referring to its `COMPU_VTAB`.
+`_2`, `_3` appended on a collision, and one `COMPU_VTAB` named `VTAB_<enum>` per enum a
+record refers to. The suffix is added when the generated name collides - two linear
+conversions in one unit, or one identity with a unit, or one linear conversion with whole
+`factor` and `offset`, used by an integer and by a float object - and the unsuffixed name
+goes to the method of the object that reaches the file first, the plain objects in name
+order before the member paths. An enum is a `TAB_VERB` referring to its `COMPU_VTAB`.
 A linear conversion is a `RAT_FUNC` whose `COEFFS` state raw as a function of physical, so
 the stated slope is the inverse of `factor`. An identity with a unit is `IDENTICAL`, and
 one without a unit gets no method at all: the record says `NO_COMPU_METHOD`. What the
@@ -1781,8 +1784,10 @@ a `scope` and a `condition`; only declarations whose object resolved are listed.
 records what its producing declaration states, resolved: `name`, `id`, `extensions`,
 `kind`, `datatype`, `description`, `unit`, `conversion` with its `kind` spelled out,
 `limits` (`min`, `max`, the stated ones or the ones the datatype and conversion imply),
-`shape` (the numbers) and `dimensions` (the spelling, constant names kept), `init`,
-`section`, `raster` (the declaration's own, else its component's default), `volatile`,
+`shape` (the numbers) and `dimensions` (the spelling, constant names kept), `init` as the
+declaration wrote it - a list nested one level per dimension, a scalar left a scalar even on
+an array, which is the broadcast the declaration states once and the reader repeats over
+`shape` - `section`, `raster` (the declaration's own, else its component's default), `volatile`,
 `condition` (the producer's), `references`, `owner`, `consumers`, `local` and `a2l` with
 `export` resolved to a boolean. An instance records `name`, `id`, `extensions`, `type`,
 `kind`, `description`, `shape`, `dimensions`, `volatile`, `section`, `raster`, `condition`,

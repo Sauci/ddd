@@ -198,6 +198,8 @@ description change points at the component that changed:
    /* measurements */
    /** Measurement with a verbal conversion table */
    uint8_t StateA = 0U;
+   /** Name of the current state, as text */
+   uint8_t StateName[16] = "OFF";
    /** Measurement used as the input quantity of AxisA [Hz] */
    volatile uint16_t ValueE = 0U;
    /** Signed measurement with a fixed point conversion [degC] */
@@ -282,6 +284,8 @@ this:
    extern float ValueC;  /* produced by SensorHub */
    /** Measurement with a verbal conversion table */
    extern uint8_t StateA;  /* produced by Controller */
+   /** Name of the current state, as text */
+   extern uint8_t StateName[16];  /* produced by Controller */
    /** Array measurement with four elements [V] */
    extern volatile uint16_t ValueB[4];  /* produced by SensorHub */
    #if defined(FEATURE_X)
@@ -399,10 +403,10 @@ where another does not define it.
    against ``ddd dump --format json``, once without defines and once with ``-DFEATURE_X``::
 
       == symbols   [base]
-      20 of 21 declared variables are defined
+      22 of 23 declared variables are defined
         conditional, absent : ValueG
       == symbols   [defines]
-      21 of 21 declared variables are defined
+      23 of 23 declared variables are defined
         conditional, present: ValueG
 
 Calibration data is const, and volatile when a tool tunes it
@@ -464,8 +468,11 @@ value, reads it back correctly, and the ecu behaves as it did before.
 treats a volatile access as a side effect and takes the object out of the read only category
 altogether: ``.section .rodata`` becomes a plain ``.data``, the section flags ``readelf``
 reports go from ``A`` to ``WA``, and the class ``nm`` prints goes from ``R`` to ``D``.
-Measured on DDD's own generated demo with the flag set quoted above, ``size -A
-ddd_globals.o`` moves from ``.rodata 84`` and ``.data 2`` to ``.data 86``. Naming a section
+Measured with gcc 12.2.0 on DDD's own generated demo with the flag set quoted above, ``size
+-A ddd_globals.o`` moved from ``.rodata 84`` and ``.data 2`` to ``.data 86`` - every byte of
+the calibration data changing category. Those two counts are of the demo as it stood when the
+measurement was taken, and they move with whatever the demo declares; what does not move is
+that all of it goes across. Naming a section
 explicitly does not change this - a ``.calib`` section is emitted ``A`` when its contents are
 ``const`` and ``WA`` when they are ``const volatile``. On a flash target with an ordinary
 linker script that means a ram address with a load region in flash and a copy at startup, so
@@ -692,7 +699,7 @@ the format cannot describe storage whose layout DDD does not know; neither appea
    * - ``COMPU_METHOD``
      - one per distinct combination of conversion, unit **and** display format
    * - ``COMPU_VTAB``
-     - one per enum conversion
+     - one per enum conversion a record in the file refers to
    * - ``GROUP``
      - one per component that exports at least one object
 

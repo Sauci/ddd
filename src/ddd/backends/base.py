@@ -12,6 +12,7 @@ documentation lists the steps. Neither existing backend is touched by any of the
 from __future__ import annotations
 
 import contextlib
+import errno
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -218,6 +219,36 @@ def write(files: Iterable[GeneratedFile], *, dry_run: bool = False) -> list[Writ
         del error.filename2
         raise
     return results
+
+
+def describe_write_failure(error: OSError, shown: str) -> str:
+    """One line for a write that failed: the file, and what was really refused.
+
+    ``strerror`` is the whole of what an errno carries, and for one ordinary mistake it says
+    the opposite of what happened. A path longer than the platform accepts comes back from
+    Windows as ``ENOENT`` - "No such file or directory" - about a file that was never
+    supposed to exist yet, and the reader goes looking for a directory that is sitting right
+    there. :func:`write` creates that directory itself, immediately before writing into it,
+    so a missing element of the path is not a thing that happens here: the directory being
+    there is the evidence that the path itself is what was refused, and its length is the
+    thing to look at. Said beside the errno rather than instead of it, because the errno is
+    what the platform answered and the sentence after it is a reading of it.
+
+    ``shown`` is the path the way the caller typed it, which is not always ``error.filename``
+    - a generated file is reported relative to the ``-o`` that was given - so both are used:
+    the spelling to print, and the real path to weigh.
+    """
+    detail = error.strerror or str(error)
+    if error.errno == errno.ENOENT and error.filename is not None:
+        written = Path(error.filename)
+        if written.parent.is_dir():
+            detail += (
+                f" - the directory it goes in exists, so it is the path itself that was "
+                f"refused: {len(str(written))} characters, and "
+                f"{len(str(written)) + len(STAGING_SUFFIX)} while it is staged beside its "
+                f"target"
+            )
+    return f"cannot write '{shown}': {detail}"
 
 
 def make_environment(template_dir: Path) -> Environment:

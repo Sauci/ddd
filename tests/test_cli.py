@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import codecs
+import errno
 import json
 import os
 import re
@@ -1652,6 +1653,47 @@ class TestOutputDirectory:
         # new one names the actual path that failed - here, that is the directory itself.
         assert "cannot write '" in captured
         assert (tmp_path / "blocked").as_posix() in captured
+
+    def describe(self, error: OSError, shown: str) -> str:
+        from ddd.backends import describe_write_failure
+
+        return describe_write_failure(error, shown)
+
+    def refusal(self, tmp_path: Path, target: Path) -> OSError:
+        """What Windows raises for a path longer than it accepts: a plain ``ENOENT``."""
+        error = OSError(errno.ENOENT, "No such file or directory")
+        error.filename = str(target)
+        return error
+
+    def test_a_path_too_long_for_the_platform_says_so(self, tmp_path: Path) -> None:
+        """A path past the platform's limit comes back as "No such file or directory",
+        which sends the reader looking for a directory that is sitting right there. The
+        directory is what the writer has just created, so it existing is the evidence that
+        the path, and not a missing element of it, is what was refused."""
+        target = tmp_path / ("C" + "y" * 120 + ".h")
+        described = self.describe(self.refusal(tmp_path, target), target.as_posix())
+        assert described.startswith(f"cannot write '{target.as_posix()}': ")
+        assert "No such file or directory" in described
+        assert "the directory it goes in exists" in described
+        assert f"{len(str(target))} characters" in described
+
+    def test_a_missing_directory_is_still_reported_as_one(self, tmp_path: Path) -> None:
+        """The same errno with no directory behind it says what the errno says."""
+        target = tmp_path / "gone" / "x.h"
+        described = self.describe(self.refusal(tmp_path, target), target.as_posix())
+        assert described == f"cannot write '{target.as_posix()}': No such file or directory"
+
+    def test_another_failure_keeps_its_own_words(self, tmp_path: Path) -> None:
+        error = OSError(errno.EACCES, "Permission denied")
+        error.filename = str(tmp_path / "x.h")
+        assert self.describe(error, "x.h") == "cannot write 'x.h': Permission denied"
+
+    def test_a_failure_that_names_no_file_keeps_its_own_words(self) -> None:
+        """``write`` names the target on every failure it raises; a caller handing over an
+        error from somewhere else still gets a line rather than an exception of its own."""
+        assert self.describe(OSError(errno.ENOENT, "No such file or directory"), "gen") == (
+            "cannot write 'gen': No such file or directory"
+        )
 
 
 RAISING_COMPARE_PLUGIN = '''

@@ -16,6 +16,7 @@ from ddd.backends.base import (
     GeneratedFile,
     WriteResult,
     WriteStatus,
+    describe_write_failure,
     render,
     write,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "WriteResult",
     "WriteStatus",
     "addressed_symbols",
+    "describe_write_failure",
     "example_template_directory",
     "load_address_map",
     "render",

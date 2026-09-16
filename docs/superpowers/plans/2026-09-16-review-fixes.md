@@ -408,7 +408,9 @@ Every sentence the review found wrong that an earlier branch did not already cor
       uri tests; the stale docstring; the spy replaced by bytes; the unasserted exit codes.
 - [ ] **Task 3 (`P11A-M4`, `M11`, `P11B-M13`):** an `ast` walk asserting every identifier passed
       to `bag.add` is registered; the `DERIVED_AS` claims executed; a compiler among the tools
-      `tests/test_cmake.py` says exist.
+      `tests/test_cmake.py` says exist; and the second `# pragma: no branch`, at
+      `src/ddd/cli.py:112`, which branch 5's implementer found to be over a branch the suite does
+      reach - branch 2 removed only the one the review named.
 - [ ] **Task 4 (`P11A-M6`, `M7`, `P11B-M12`):** `build_record`, `framed` and `sent` move to
       `conftest.py`; one family of types-file builders replaces the five spellings.
 - [ ] **Task 5:** the highest-value gaps of the two consolidated lists that the earlier branches

@@ -3104,6 +3104,23 @@ class TestServer:
         assert "missing-producer" in drawn["component_c.ddd.json"]
         assert "unused-output" in drawn["component_a.ddd.json"]
 
+    def test_opening_a_document_deeper_than_the_scanner_walks_does_not_end_the_server(
+        self, tmp_path: Path
+    ) -> None:
+        """A document python can read and the span scanner cannot used to end the server on
+        the first didOpen, before any publication and before the shutdown answer."""
+        deep = tmp_path / "deep.ddd.json"
+        deep.write_text("[" * 600 + "]" * 600, encoding="utf-8")
+        stream = framed(
+            self.handshake(tmp_path),
+            self.opened(deep),
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert [entry["code"] for entry in published(writer)[deep.as_uri()]] == ["file-kind"]
+
     def test_a_request_without_params_is_refused_rather_than_fatal(self, tmp_path: Path) -> None:
         """One badly shaped message is not the end of the conversation, framing or not.
 

@@ -598,6 +598,32 @@ class TestInputTheToolMustSurvive:
         assert "Traceback" not in captured.err
         assert "Traceback" not in captured.out
 
+    def test_a_document_python_can_read_but_the_scanner_cannot_has_no_spans(self) -> None:
+        """The scan sat outside the guard, which covered ``json.loads`` alone - and the
+        scanner recurses two frames per level where the parser recurses less, so between
+        about five hundred and three thousand levels python read the document and the scanner
+        died on it. A document nobody can point into answers every question with nothing,
+        which is what the callers already read an unparsable one as."""
+        from ddd.lsp.ranges import Document
+
+        text = "[" * 600 + "]" * 600
+        assert json.loads(text) is not None
+        document = Document(text)
+        assert document.data is None
+        assert document.range_of("")["start"] == {"line": 0, "character": 0}
+
+    def test_assigning_ids_to_a_document_deeper_than_the_scanner_walks(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Reported as a file it cannot read, which is a sentence somebody can act on, rather
+        than as the ``RecursionError`` traceback that used to end the run."""
+        (tree / "a.ddd.json").write_text("[" * 600 + "]" * 600, encoding="utf-8")
+        code = main(["id", "--assign", str(tree / "a.ddd.json")])
+        captured = capsys.readouterr()
+        assert code == EXIT_FINDINGS
+        assert "not readable as json, skipped" in captured.err
+        assert "Traceback" not in captured.err + captured.out
+
     def test_a_non_utf8_compare_candidate_is_a_finding_not_a_usage_error(
         self, tree: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

@@ -74,6 +74,14 @@ _DID_CLOSE: Final = "textDocument/didClose"
 _DID_SAVE: Final = "textDocument/didSave"
 """A save is the moment the text on disk is known to be the text on screen."""
 
+_DID_CHANGE_WATCHED: Final = "workspace/didChangeWatchedFiles"
+"""A description changed on disk without passing through the editor.
+
+The other half of "the findings are the disk's": a build writes description files, a branch
+switch rewrites all of them, and neither is a document event. The extension registers the
+watcher and says exactly this in its own comment; the notification simply had nowhere to land.
+"""
+
 _DEFINITION: Final = "textDocument/definition"
 _NAVIGATING: Final = frozenset({_DEFINITION, "textDocument/references"})
 _HOVER: Final = "textDocument/hover"
@@ -328,6 +336,8 @@ class Server:
             self._open.pop(self._document(message).resolve(), None)
         elif method == _DID_SAVE:
             self.refresh(self._document(message))
+        elif method == _DID_CHANGE_WATCHED:
+            self._watched(message)
         elif method in _NAVIGATING:
             write_message(self.writer, response(request_id, self._navigate(method, message)))
         elif method == _HOVER:
@@ -400,6 +410,30 @@ class Server:
             text = changes[-1].get("text")
         if isinstance(text, str):
             self._open[path] = (text, version if isinstance(version, int) else None)
+
+    def _watched(self, message: dict[str, Any]) -> None:
+        """Check again, because what was read from disk is no longer what is on it.
+
+        Every open document, rather than the files that changed: a document is published
+        through the project above it, so a change in a file nobody has open is precisely the
+        case that moves a finding onto one somebody does. With nothing open there is still a
+        Problems list on screen describing the project as it was, and the changed files are
+        the only roots there are to check it from.
+        """
+        params = _field(message.get("params"), dict, "params")
+        changes = _field(params.get("changes"), list, "params.changes")
+        touched = [
+            uri_to_path(
+                _field(
+                    _field(change, dict, "params.changes[]").get("uri"),
+                    str,
+                    "params.changes[].uri",
+                )
+            )
+            for change in changes
+        ]
+        for document in sorted(self._open) or touched:
+            self.refresh(document)
 
     def _cache(self, path: Path | None = None) -> dict[Path, Document]:
         """A document cache seeded with every open buffer, under both spellings of its path.

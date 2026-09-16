@@ -5429,3 +5429,143 @@ class TestInsertingAKey:
         )
         assert edit is not None
         assert edit["newText"] == ',\n          "unit": "rpm"'
+
+
+class TestHoverMarkdownThatHoldsMarkdown:
+    """A unit and a condition are free text, and two of its characters are markdown.
+
+    A backtick ends the code span the value sits in and a pipe ends the table cell, whatever
+    it sits in - so a unit an editor accepts without complaint (``ddd check --standalone``
+    passes it) drew a table with the row split in two and the rest of the value loose in it.
+    """
+
+    def described(self, tmp_path: Path, **definition: Any) -> str:
+        from ddd.build_info import BuildInfo
+        from ddd.lsp.hover import describe, resolve
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "Speed", **definition)),
+            },
+        )
+        info = BuildInfo(project=(tmp_path / "p.ddd.json").as_posix())
+        dictionary = resolve(navigation.workspaces([info], tmp_path / "a.ddd.json"))
+        assert dictionary is not None
+        rendered = describe(dictionary, "Speed")
+        assert rendered is not None
+        return rendered
+
+    def rows_of(self, rendered: str) -> dict[str, str]:
+        """Each table row as the editor's markdown parser divides it, by its label.
+
+        Split on the unescaped pipes alone, which is exactly what a renderer does: a row that
+        carries one too many is a row with a cell the author did not write.
+        """
+        rows = {}
+        for line in rendered.splitlines():
+            cells = re.split(r"(?<!\\)\|", line)
+            if len(cells) == 4 and cells[1].strip() not in {"", "---"}:
+                rows[cells[1].strip()] = cells[2].strip()
+        return rows
+
+    def test_a_unit_holding_a_backtick_and_a_pipe_stays_in_its_cell(self, tmp_path: Path) -> None:
+        rendered = self.described(tmp_path, unit="a`b|c")
+        assert self.rows_of(rendered)["unit"] == "``a`b\\|c``"
+
+    def test_a_condition_holding_a_pipe_stays_in_its_cell(self, tmp_path: Path) -> None:
+        """``#if defined(A) || defined(B)`` is an ordinary condition to write."""
+        rendered = self.described(tmp_path, condition="defined(A) || defined(B)")
+        assert self.rows_of(rendered)["condition"] == "`defined(A) \\|\\| defined(B)`"
+
+    def test_a_unit_that_is_only_a_backtick_is_still_a_span(self, tmp_path: Path) -> None:
+        """A span whose text begins or ends with a backtick needs a space inside the fence,
+        or the fence swallows it."""
+        assert self.rows_of(self.described(tmp_path, unit="`"))["unit"] == "`` ` ``"
+
+    def test_an_ordinary_unit_is_left_alone(self, tmp_path: Path) -> None:
+        assert self.rows_of(self.described(tmp_path, unit="rpm"))["unit"] == "`rpm`"
+
+
+class TestAWatchedFileChanging:
+    """A file changed on disk by something other than the editor.
+
+    The extension watches `**/*.ddd.json` and says why in as many words: a save is not the
+    only way a description changes - a build writes them, and a branch switch rewrites them
+    all - and neither of those is a document event. The notification it sends for them had no
+    branch in the server at all, so the findings and the jumps went on describing the files as
+    they were until somebody happened to save one.
+    """
+
+    def workspace(self, tmp_path: Path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Shared")),
+                "b.ddd.json": component("B", declare("input", "Shared")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+
+    def changed(self, *paths: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "method": "workspace/didChangeWatchedFiles",
+            "params": {"changes": [{"uri": path.as_uri(), "type": 2} for path in paths]},
+        }
+
+    def opened(self, path: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": path.as_uri(),
+                    "languageId": "json",
+                    "version": 1,
+                    "text": path.read_text(encoding="utf-8"),
+                }
+            },
+        }
+
+    def test_the_open_document_is_checked_again(self, tmp_path: Path) -> None:
+        self.workspace(tmp_path)
+        consumer = tmp_path / "b.ddd.json"
+        producer = tmp_path / "a.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        assert server._handle(self.opened(consumer))
+        # Nothing is wrong yet, and a file with nothing wrong is published only to withdraw
+        # what it said last time.
+        assert consumer.as_uri() not in published(writer)
+
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "Other"))})
+        writer = io.BytesIO()
+        server.writer = writer
+        assert server._handle(self.changed(producer))
+        assert [entry["code"] for entry in published(writer)[consumer.as_uri()]] == [
+            "missing-producer"
+        ]
+
+    def test_a_change_with_nothing_open_still_republishes_the_project(self, tmp_path: Path) -> None:
+        """A branch switch while no description is open: the Problems list is still on screen
+        and still describes the files as they were."""
+        self.workspace(tmp_path)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "Other"))})
+        assert server._handle(self.changed(tmp_path / "a.ddd.json"))
+        drawn = published(writer)[(tmp_path / "b.ddd.json").as_uri()]
+        assert [entry["code"] for entry in drawn] == ["missing-producer"]
+
+    def test_a_notification_carrying_no_change_changes_nothing(self, tmp_path: Path) -> None:
+        self.workspace(tmp_path)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        assert server._handle(self.changed())
+        assert published(writer) == {}

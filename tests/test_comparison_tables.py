@@ -27,7 +27,7 @@ from __future__ import annotations
 import pytest
 
 from ddd import analysis, compare
-from ddd.ir import ResolvedLeaf, ResolvedObject
+from ddd.ir import ResolvedInstance, ResolvedLeaf, ResolvedObject
 from ddd.models import Axis, Curve, DataObject, Map, Measurement, Parameter, ValueBlock
 
 OBJECT_KINDS = (Measurement, Parameter, ValueBlock, Axis, Curve, Map)
@@ -115,10 +115,16 @@ _NOT_COMPARED_RESOLVED: dict[str, str] = {
     "changed-interface on every object, and DDD does not know what a change inside one means",
 }
 
-# A leaf is a Comparable like a plain object, and the same two tables compare it - so every
-# field it adds to ResolvedObject needs an answer of its own. Only these three are its own;
-# everything else it carries is either in a table or excused above, and reusing that dict is
-# what says the two forms are compared by one set of rules rather than two.
+# A leaf is a Comparable like a plain object and is compared with the same tables, minus the
+# fields it only carries because its variable does - so every field it adds to ResolvedObject,
+# and every field taken off it, needs an answer of its own. Everything else it carries is in a
+# table or excused above, and reusing that dict is what says the two forms are compared by one
+# set of rules rather than two.
+_BELONGS_TO_THE_VARIABLE = (
+    "a property of the whole variable, which the analysis copies onto every member: comparing "
+    "it per leaf turned one edit into one finding per member, so it is compared once at the "
+    "instance instead"
+)
 _NOT_COMPARED_LEAF: dict[str, str] = {
     "path": "the path is what a leaf is called - ResolvedLeaf.name returns it - so it is the "
     "key the comparison pairs on, exactly like the name of a plain object, and never a thing "
@@ -127,6 +133,23 @@ _NOT_COMPARED_LEAF: dict[str, str] = {
     "leaf whose variable was renamed is the same leaf under a new path, which renamed-object "
     "reports for the variable once instead of once per member",
     "instance_id": _NOT_COMPARED_RESOLVED["id"],
+    "local": _BELONGS_TO_THE_VARIABLE,
+    "volatile": _BELONGS_TO_THE_VARIABLE,
+    "section": _BELONGS_TO_THE_VARIABLE,
+    "raster": _BELONGS_TO_THE_VARIABLE,
+}
+
+# A structured variable is compared as a variable, with a table of its own: what it is a
+# variable *of* is on nothing else, and what its members carry only because it does is
+# compared here once instead of once per member.
+_NOT_COMPARED_INSTANCE: dict[str, str] = {
+    "kind": "compared on every leaf: the storage class decides whether a member reaches the "
+    "a2l as a MEASUREMENT or a CHARACTERISTIC, so it is a property of each record the file "
+    "carries rather than of the declaration alone",
+    "a2l": "compared on every leaf, which carries the resolved answer: the analysis folds the "
+    "variable's export into each member's, and the variable's own format and display "
+    "identifier reach no record at all - the a2l backend reads a structured object only "
+    "through its leaves",
 }
 
 
@@ -164,14 +187,14 @@ class TestEveryModelFieldIsAccountedFor:
     def test_every_field_of_the_resolved_leaf(self) -> None:
         """The same guard over the other half of ``Comparable``.
 
-        ``ddd.compare`` compares a member of a structured variable with the very tables it
-        compares a plain object with, and ``ResolvedLeaf`` carries four fields
-        ``ResolvedObject`` has not. Walking only the plain form left them unaccounted, which
-        is the fail-open this file exists to prevent: ``bits`` - the width of a bitfield, which
-        moves every member after it and changes the value read out of the word - was in no
-        table, in no excuse and compared by nothing at all.
+        ``ddd.compare`` compares a member of a structured variable with the tables it compares
+        a plain object with, less what belongs to the variable, and ``ResolvedLeaf`` carries
+        four fields ``ResolvedObject`` has not. Walking only the plain form left them
+        unaccounted, which is the fail-open this file exists to prevent: ``bits`` - the width
+        of a bitfield, which moves every member after it and changes the value read out of the
+        word - was in no table, in no excuse and compared by nothing at all.
         """
-        compared = table_names(compare._INTERFACE_FIELDS, compare._STORAGE_FIELDS)
+        compared = table_names(compare._LEAF_INTERFACE_FIELDS, compare._LEAF_STORAGE_FIELDS)
         for name in ResolvedLeaf.model_fields:
             accounted = (
                 name in compared
@@ -184,6 +207,30 @@ class TestEveryModelFieldIsAccountedFor:
                 f"a member of a structured variable and 'ddd compare' would report the "
                 f"candidate a valid replacement. Add it to a table in ddd/compare.py, or to "
                 f"_NOT_COMPARED_LEAF here."
+            )
+
+    def test_every_field_of_the_resolved_instance(self) -> None:
+        """A structured variable is compared as a variable, and has a table of its own.
+
+        ``DataDictionary.comparable`` offers the objects and the leaves, so an instance is
+        reached through neither guard above - and the field that is on nothing but an
+        instance, ``type``, was compared by nothing at all: a delivery that renamed the
+        structure with its members untouched changed every consumer's header and reported
+        nothing.
+        """
+        compared = table_names(compare._INSTANCE_INTERFACE_FIELDS, compare._INSTANCE_STORAGE_FIELDS)
+        for name in ResolvedInstance.model_fields:
+            accounted = (
+                name in compared
+                or DERIVED_AS.get(name) in compared
+                or name in _NOT_COMPARED_RESOLVED
+                or name in _NOT_COMPARED_INSTANCE
+            )
+            assert accounted, (
+                f"ResolvedInstance.{name} is compared by nothing: a delivery could change it "
+                f"on a structured variable and 'ddd compare' would report the candidate a "
+                f"valid replacement. Add it to an instance table in ddd/compare.py, or to "
+                f"_NOT_COMPARED_INSTANCE here."
             )
 
     def test_the_derived_mapping_is_not_stale(self) -> None:
@@ -210,6 +257,10 @@ class TestEveryModelFieldIsAccountedFor:
         for name in _NOT_COMPARED_LEAF:
             assert name in ResolvedLeaf.model_fields, (
                 f"_NOT_COMPARED_LEAF names '{name}', which ResolvedLeaf does not declare"
+            )
+        for name in _NOT_COMPARED_INSTANCE:
+            assert name in ResolvedInstance.model_fields, (
+                f"_NOT_COMPARED_INSTANCE names '{name}', which ResolvedInstance does not declare"
             )
 
 
@@ -326,15 +377,50 @@ class TestComparisonTables:
         )
         assert declared.value(curve) is None  # not known yet, it comes from the axis
 
-    def test_the_deferred_table_differs_only_in_the_shape_entry(self) -> None:
+    @pytest.mark.parametrize(
+        ("spelled_table", "deferred_table"),
+        [
+            ("_INTERFACE_FIELDS", "_DEFERRED_INTERFACE_FIELDS"),
+            ("_INSTANCE_INTERFACE_FIELDS", "_DEFERRED_INSTANCE_INTERFACE_FIELDS"),
+        ],
+    )
+    def test_the_deferred_table_differs_only_in_the_shape_entry(
+        self, spelled_table: str, deferred_table: str
+    ) -> None:
         """A baseline from before dictionary format 4 recorded no dimension spellings, so
         against one the shape entry compares values alone. The deferred table is the same
-        table with that one entry swapped, so the two cannot drift apart anywhere else."""
-        paired = zip(compare._INTERFACE_FIELDS, compare._DEFERRED_INTERFACE_FIELDS, strict=True)
+        table with that one entry swapped, so the two cannot drift apart anywhere else - and
+        the array dimensions of a structured variable defer exactly as an object's do."""
+        paired = zip(getattr(compare, spelled_table), getattr(compare, deferred_table), strict=True)
         for spelled, deferred in paired:
             assert spelled.name == deferred.name
             if spelled.name != "shape":
                 assert spelled is deferred
+
+    def test_what_a_leaf_stops_answering_for_is_answered_by_its_variable(self) -> None:
+        """The leaf tables are the object tables less the fields the variable owns.
+
+        Derived rather than spelled out, so a field added to an object table reaches a leaf
+        too; what this pins is the other half of the deal - that every field taken off a leaf
+        is compared at the instance, and not simply dropped. A member carries ``volatile``,
+        ``section``, ``raster`` and ``local`` only because the analysis copies them there from
+        the variable, so comparing them per member turned one edit into one finding per
+        member.
+        """
+        whole = table_names(compare._INTERFACE_FIELDS, compare._STORAGE_FIELDS)
+        leaf = table_names(compare._LEAF_INTERFACE_FIELDS, compare._LEAF_STORAGE_FIELDS)
+        assert whole - leaf == set(compare._OF_THE_VARIABLE)
+        instance = table_names(compare._INSTANCE_INTERFACE_FIELDS, compare._INSTANCE_STORAGE_FIELDS)
+        assert instance >= compare._OF_THE_VARIABLE
+
+    def test_the_type_of_a_structured_variable_is_on_no_other_table(self) -> None:
+        """What a variable is a variable *of* reaches no leaf, so nothing else can compare it.
+
+        A structure renamed with its members untouched changes the type every consumer's
+        header declares and leaves every leaf identical to the byte.
+        """
+        assert "type" in table_names(compare._INSTANCE_INTERFACE_FIELDS)
+        assert "type" not in table_names(compare._INTERFACE_FIELDS, compare._STORAGE_FIELDS)
 
     def test_the_identity_is_in_neither_table(self) -> None:
         """The id is what the pairing is *done on*, so it is never a thing compared.

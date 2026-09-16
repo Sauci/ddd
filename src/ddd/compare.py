@@ -29,7 +29,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 from ddd.diagnostics import DiagnosticBag, Location
-from ddd.ir import Comparable, DataDictionary, ResolvedLeaf
+from ddd.ir import Comparable, DataDictionary, ResolvedInstance, ResolvedLeaf
 from ddd.models import (
     Conversion,
     EnumConversion,
@@ -202,18 +202,6 @@ _DEFERRED_INTERFACE_FIELDS: tuple[ComparedField[Comparable], ...] = tuple(
 )
 
 
-def _spells_dimensions(entry: Comparable) -> bool:
-    """Whether the entry records how its dimensions are spelled; a format 3 one does not."""
-    return bool(entry.dimensions) or not entry.shape
-
-
-def _interface_fields(old: Comparable, new: Comparable) -> tuple[ComparedField[Comparable], ...]:
-    """The interface table for this pair: spelling aware only when both sides spell."""
-    if _spells_dimensions(old) and _spells_dimensions(new):
-        return _INTERFACE_FIELDS
-    return _DEFERRED_INTERFACE_FIELDS
-
-
 # Changing these alters behaviour or the generated files, but no consumer becomes wrong.
 _STORAGE_FIELDS: tuple[ComparedField[Comparable], ...] = (
     # Compared as the storage it produces and described as it was written: the value the two
@@ -229,8 +217,103 @@ _STORAGE_FIELDS: tuple[ComparedField[Comparable], ...] = (
     ),
 )
 
+_OF_THE_VARIABLE = frozenset({"local", "volatile", "section", "raster"})
+"""The fields a leaf only carries because its variable does, compared at the variable instead.
 
-def _identity(entry: Comparable) -> tuple[str, str] | None:
+``ddd.analysis`` copies these onto every leaf of a structured variable from the instance, so
+a project that flips one of them flips it on every member at once: comparing them per leaf
+turned one edit into one finding per member - three for a three member structure, and one for
+every element of an array of them - each saying the same thing about the same declaration.
+:func:`_compare_instances` compares them once, where they are written. What is left on a leaf
+is what the *member* states: its storage, its meaning, its shape, its width in bits and the
+a2l entry it asks for.
+"""
+
+_LEAF_INTERFACE_FIELDS: tuple[ComparedField[Comparable], ...] = tuple(
+    field for field in _INTERFACE_FIELDS if field.name not in _OF_THE_VARIABLE
+)
+_DEFERRED_LEAF_INTERFACE_FIELDS: tuple[ComparedField[Comparable], ...] = tuple(
+    field for field in _DEFERRED_INTERFACE_FIELDS if field.name not in _OF_THE_VARIABLE
+)
+_LEAF_STORAGE_FIELDS: tuple[ComparedField[Comparable], ...] = tuple(
+    field for field in _STORAGE_FIELDS if field.name not in _OF_THE_VARIABLE
+)
+
+
+def _spells_dimensions(entry: Comparable | ResolvedInstance) -> bool:
+    """Whether the entry records how its dimensions are spelled; a format 3 one does not."""
+    return bool(entry.dimensions) or not entry.shape
+
+
+def _interface_fields(old: Comparable, new: Comparable) -> tuple[ComparedField[Comparable], ...]:
+    """The interface table for this pair: spelling aware only when both sides spell.
+
+    A leaf is compared with the same table minus what belongs to its variable, which
+    :func:`_compare_instances` answers for once instead of once per member.
+    """
+    spelled = _spells_dimensions(old) and _spells_dimensions(new)
+    if isinstance(old, ResolvedLeaf):
+        return _LEAF_INTERFACE_FIELDS if spelled else _DEFERRED_LEAF_INTERFACE_FIELDS
+    return _INTERFACE_FIELDS if spelled else _DEFERRED_INTERFACE_FIELDS
+
+
+def _storage_fields(old: Comparable) -> tuple[ComparedField[Comparable], ...]:
+    """The storage table for this entry, for the reason :func:`_interface_fields` has two."""
+    return _LEAF_STORAGE_FIELDS if isinstance(old, ResolvedLeaf) else _STORAGE_FIELDS
+
+
+# What a structured variable is, as against what each of its members is. ``type`` is the whole
+# of it: a variable of a renamed structure declares a different c type in every consumer's
+# header - the in-project table calls two declarations disagreeing about it
+# ``definition-mismatch`` - while the members underneath it can be identical to the byte, so
+# no leaf of it has anything to report.
+_INSTANCE_INTERFACE_FIELDS: tuple[ComparedField[ResolvedInstance], ...] = (
+    ComparedField("type", lambda o: o.type, lambda o: f"'{o.type}'"),
+    ComparedField(
+        "shape", lambda o: o.written_shape, lambda o: format_shape(o.spelled_shape) or "scalar"
+    ),
+    ComparedField("local", lambda o: o.local, lambda o: str(o.local).lower()),
+)
+
+_VALUE_SHAPE_INSTANCE_FIELD: ComparedField[ResolvedInstance] = ComparedField(
+    "shape", lambda o: tuple(o.shape), lambda o: format_shape(o.spelled_shape) or "scalar"
+)
+"""What :data:`_VALUE_SHAPE_FIELD` is, for the array dimensions of a structured variable."""
+
+_DEFERRED_INSTANCE_INTERFACE_FIELDS: tuple[ComparedField[ResolvedInstance], ...] = tuple(
+    _VALUE_SHAPE_INSTANCE_FIELD if field.name == "shape" else field
+    for field in _INSTANCE_INTERFACE_FIELDS
+)
+
+_INSTANCE_STORAGE_FIELDS: tuple[ComparedField[ResolvedInstance], ...] = (
+    ComparedField("volatile", lambda o: o.volatile, lambda o: str(o.volatile).lower()),
+    ComparedField(
+        "section", lambda o: o.section, lambda o: o.section if o.section is not None else "none"
+    ),
+    ComparedField(
+        "raster", lambda o: o.raster, lambda o: o.raster if o.raster is not None else "none"
+    ),
+)
+
+
+def _instance_interface_fields(
+    old: ResolvedInstance, new: ResolvedInstance
+) -> tuple[ComparedField[ResolvedInstance], ...]:
+    """The instance interface table for this pair, deferring as the object one does."""
+    if _spells_dimensions(old) and _spells_dimensions(new):
+        return _INSTANCE_INTERFACE_FIELDS
+    return _DEFERRED_INSTANCE_INTERFACE_FIELDS
+
+
+type _Joined = Comparable | ResolvedInstance
+"""What the pairing works on: a plain object, a member of a structured one, or the variable.
+
+The three are joined by exactly one rule - an id where there is one, a name otherwise - so
+the pairing is written once and asked three times rather than copied.
+"""
+
+
+def _identity(entry: _Joined) -> tuple[str, str] | None:
     """What two deliveries join this object on, or nothing when it carries no id.
 
     A plain object is its id. A leaf is its instance's id together with the part of its path
@@ -245,7 +328,7 @@ def _identity(entry: Comparable) -> tuple[str, str] | None:
     return None if entry.id is None else (entry.id, "")
 
 
-def _joinable(side: Mapping[str, Comparable]) -> dict[tuple[str, str], Comparable]:
+def _joinable[T: _Joined](side: Mapping[str, T]) -> dict[tuple[str, str], T]:
     """One side's entries, keyed by identity - excluding any identity claimed more than once.
 
     ``duplicate-id`` refuses two objects sharing an identity, but a *baseline* is read back
@@ -259,7 +342,7 @@ def _joinable(side: Mapping[str, Comparable]) -> dict[tuple[str, str], Comparabl
     before ids existed. Degrading to the older behaviour is the safe direction; silently
     dropping one of them is not.
     """
-    seen: dict[tuple[str, str], Comparable] = {}
+    seen: dict[tuple[str, str], T] = {}
     collided: set[tuple[str, str]] = set()
     for entry in side.values():
         key = _identity(entry)
@@ -271,7 +354,7 @@ def _joinable(side: Mapping[str, Comparable]) -> dict[tuple[str, str], Comparabl
     return {key: entry for key, entry in seen.items() if key not in collided}
 
 
-def _states_different_identities(old: Comparable, new: Comparable) -> bool:
+def _states_different_identities(old: _Joined, new: _Joined) -> bool:
     """Whether two entries' identities both exist and disagree.
 
     One rule with two readers, which is why it is a function rather than a condition written
@@ -285,9 +368,9 @@ def _states_different_identities(old: Comparable, new: Comparable) -> bool:
     return before is not None and after is not None and before != after
 
 
-def _pair(
-    was: Mapping[str, Comparable], now: Mapping[str, Comparable]
-) -> tuple[list[tuple[Comparable, Comparable]], list[Comparable], list[Comparable]]:
+def _pair[T: _Joined](
+    was: Mapping[str, T], now: Mapping[str, T]
+) -> tuple[list[tuple[T, T]], list[T], list[T]]:
     """Pair on identity first, then on name, and say what is left on each side.
 
     Two passes rather than one so that both regimes coexist while a project migrates. The
@@ -304,7 +387,7 @@ def _pair(
     was_by_id = _joinable(was)
     now_by_id = _joinable(now)
 
-    paired: list[tuple[Comparable, Comparable]] = []
+    paired: list[tuple[T, T]] = []
     old_done: set[str] = set()
     new_done: set[str] = set()
     for key in sorted(was_by_id.keys() & now_by_id.keys()):
@@ -376,6 +459,7 @@ def compare(
         )
 
     _compare_layouts(baseline, candidate, bag, location)
+    _compare_instances(baseline, candidate, bag, location)
 
     was = baseline.comparable
     now = candidate.comparable
@@ -524,7 +608,7 @@ def _lost_identity_note(
         for new in candidates
         if new.name != old.name
         and not differing(_interface_fields(old, new), old, new)
-        and not differing(_STORAGE_FIELDS, old, new)
+        and not differing(_storage_fields(old), old, new)
         and _compare_references(old, new, was, now) is None
     ]
     if len(same) != 1:
@@ -658,7 +742,7 @@ def _compare_object(
             location,
         )
 
-    storage = differing(_STORAGE_FIELDS, old, new)
+    storage = differing(_storage_fields(old), old, new)
     if storage:
         bag.add(
             "changed-storage",
@@ -688,6 +772,31 @@ def _compare_object(
             location,
         )
 
+    if not isinstance(old, ResolvedLeaf):
+        # A member has no producer and no condition of its own: both are the variable's, and
+        # are compared there once rather than repeated under every member's path.
+        _compare_declaration(old, new, bag, location)
+
+    # Compared as it will actually be rather than as it was written: a baseline that
+    # simply omits the block is not asking for the object to be dropped from the a2l.
+    if old.a2l.effective != new.a2l.effective:
+        bag.add(
+            "changed-a2l",
+            f"'{old.name}': the a2l entry changed ({_a2l_difference(old, new)})",
+            location,
+        )
+
+
+def _compare_declaration(
+    old: _Joined, new: _Joined, bag: DiagnosticBag, location: Location | None
+) -> None:
+    """Who produces the thing, and under which condition: two findings of their own.
+
+    Graded apart from the interface and the storage - ``changed-owner`` and
+    ``changed-condition`` - and phrased by hand, which is why neither is a table entry. Shared
+    between a plain object and a structured variable because a structure's members carry the
+    producer and the condition of the variable and have nothing to add to either.
+    """
     if old.owner != new.owner:
         bag.add(
             "changed-owner",
@@ -704,21 +813,66 @@ def _compare_object(
             location,
         )
 
-    # Compared as it will actually be rather than as it was written: a baseline that
-    # simply omits the block is not asking for the object to be dropped from the a2l.
-    if old.a2l.effective != new.a2l.effective:
-        bag.add(
-            "changed-a2l",
-            f"'{old.name}': the a2l entry changed ({_a2l_difference(old, new)})",
-            location,
-        )
+
+def _compare_instances(
+    baseline: DataDictionary,
+    candidate: DataDictionary,
+    bag: DiagnosticBag,
+    location: Location | None,
+) -> None:
+    """Compare the structured variables themselves, which their members cannot answer for.
+
+    ``DataDictionary.comparable`` offers the plain objects and the leaves and never the
+    instances, so a structured variable used to be compared only through its members - and
+    two things fell between the two.
+
+    What no member carries at all: the ``type``. Renaming ``Sensor_t`` to ``Sensor2_t`` with
+    the members untouched changes what every consumer's header declares - ``extern Sensor2_t
+    Inlet`` - which the in-project table already calls ``definition-mismatch``, while every
+    leaf compares clean to the byte and the comparison said nothing whatsoever.
+
+    What every member carries because the variable does: ``volatile``, ``section``,
+    ``raster``, the producer and the condition. One flip of the variable's ``volatile`` was
+    one ``changed-storage`` per member, three lines for a three member structure and one per
+    element of an array of them, each naming a member for an edit that is on the variable.
+    They are compared here once and left out of the leaf tables.
+
+    Pairing is the pairing every other entry gets - an id where there is one, a name
+    otherwise - and nothing is reported about what the pairing leaves over: an instance that
+    went is every one of its leaves removed, an instance that arrived is every one of them
+    added, and an instance renamed is every one of them renamed, each already said under the
+    path that a dataset or a recording is actually keyed by.
+    """
+    was = {entry.name: entry for entry in baseline.instances}
+    now = {entry.name: entry for entry in candidate.instances}
+    paired, _removed, _added = _pair(was, now)
+    for old, new in paired:
+        interface = differing(_instance_interface_fields(old, new), old, new)
+        if interface:
+            readers = f", read by {', '.join(old.consumers)}" if old.consumers else ""
+            bag.add(
+                "changed-interface",
+                f"'{old.name}' is not the same object any more "
+                f"({spell_out(interface, old, new)}){readers}",
+                location,
+            )
+
+        storage = differing(_INSTANCE_STORAGE_FIELDS, old, new)
+        if storage:
+            bag.add(
+                "changed-storage",
+                f"'{old.name}': {spell_out(storage, old, new)}",
+                location,
+            )
+
+        _compare_declaration(old, new, bag, location)
 
 
 def _condition(condition: str | None) -> str:
     return f"'{condition}'" if condition else "none"
 
 
-def _condition_consequence(old: Comparable, new: Comparable) -> str:
+def _condition_consequence(old: _Joined, new: _Joined) -> str:
     """What the change of a condition costs, which depends on its direction.
 
     Wrapping an object that was always there is the damaging direction and has to say so:

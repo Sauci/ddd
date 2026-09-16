@@ -391,6 +391,185 @@ class TestGradedChanges:
         assert checks(verdict(old, new, "changed-interface=ignore")) == []
 
 
+class TestAStructuredVariableIsComparedAsAVariable:
+    """A structured variable used to be compared only through its members.
+
+    ``DataDictionary.comparable`` offers the plain objects and the leaves and never the
+    instances, and two things fell between the two. What no member carries at all - the
+    ``type``: renaming ``Sensor_t`` to ``Sensor2_t`` with the members untouched changes what
+    every consumer's header declares and left every leaf identical to the byte, so the
+    comparison said nothing whatsoever. And what every member carries only because the
+    variable does - ``volatile``, ``section``, ``raster``, the producer, the condition: one
+    flip of the variable's ``volatile`` was one ``changed-storage`` per member.
+    """
+
+    MEMBERS: ClassVar[tuple[str, ...]] = ("count", "flags", "value")
+
+    def delivery(
+        self,
+        tree: Path,
+        name: str,
+        *,
+        type_name: str = "Sensor_t",
+        owner: str = "A",
+        constants: str | None = None,
+        **declaration: Any,
+    ) -> DataDictionary:
+        members = [
+            {
+                "name": member,
+                "member": "value",
+                "datatype": "uint8",
+                "conversion": {"kind": "identity"},
+            }
+            for member in self.MEMBERS
+        ]
+        write_tree(
+            tree,
+            {
+                f"{name}.ddd.json": project(
+                    "P",
+                    *([constants] if constants else []),
+                    f"{name}-t.ddd.json",
+                    f"{name}-s.ddd.json",
+                    f"{name}-r.ddd.json",
+                    f"{name}-a.ddd.json",
+                ),
+                f"{name}-t.ddd.json": {
+                    "types": [{"type": "struct", "name": type_name, "members": members}]
+                },
+                f"{name}-s.ddd.json": {
+                    "sections": [{"section": ".fast", "access": "read-write", "alignment": 4}]
+                },
+                f"{name}-r.ddd.json": {
+                    "rasters": [{"raster": "10ms", "event": 0, "cycle": "10ms"}]
+                },
+                f"{name}-a.ddd.json": component(
+                    owner, declare("local", "Inlet", typename=type_name, **declaration)
+                ),
+            },
+        )
+        return resolve(tree, f"{name}.ddd.json")
+
+    def test_a_type_renamed_with_identical_members_is_a_changed_interface(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old = self.delivery(tree, "old", type_name="Sensor_t")
+        new = self.delivery(tree, "new", type_name="Sensor2_t")
+        assert [leaf.path for leaf in old.leaves] == ["Inlet.count", "Inlet.flags", "Inlet.value"]
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"]
+        assert "'Inlet' is not the same object any more (type: 'Sensor2_t' != 'Sensor_t')" in (
+            messages(bag)
+        )
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_FINDINGS
+        assert "cannot replace" in report
+
+    @pytest.mark.parametrize(
+        ("changed", "check", "spelled"),
+        [
+            ({"volatile": True}, "changed-storage", "'Inlet': volatile: true != false"),
+            ({"section": ".fast"}, "changed-storage", "'Inlet': section: .fast != none"),
+            ({"raster": "10ms"}, "changed-storage", "'Inlet': raster: 10ms != none"),
+            (
+                {"condition": "defined(FAST)"},
+                "changed-condition",
+                "'Inlet': condition none became 'defined(FAST)'",
+            ),
+            ({"dimensions": [2]}, "changed-interface", "'Inlet' is not the same object any more"),
+        ],
+    )
+    def test_a_change_to_the_variable_is_reported_once_and_not_once_per_member(
+        self,
+        tree: Path,
+        capsys: pytest.CaptureFixture[str],
+        changed: dict[str, Any],
+        check: str,
+        spelled: str,
+    ) -> None:
+        """Three members, and one edit on the declaration above them: one finding."""
+        old = self.delivery(tree, "old")
+        new = self.delivery(tree, "new", **changed)
+        bag = verdict(old, new)
+        assert len(self.MEMBERS) == 3
+        assert [entry for entry in checks(bag) if entry == check] == [check]
+        assert spelled in messages(bag)
+        for member in self.MEMBERS:
+            assert f"'Inlet.{member}': {check.removeprefix('changed-')}" not in messages(bag)
+        # Graded as the same change on a plain object is: only a changed interface refuses.
+        breaking = check == "changed-interface"
+        code, report = ruling(tree, capsys)
+        assert code == (EXIT_FINDINGS if breaking else EXIT_OK), report
+        assert ("cannot replace" if breaking else "can replace") in report
+
+    def test_a_variable_produced_by_another_component_is_reported_once(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old = self.delivery(tree, "old", owner="A")
+        new = self.delivery(tree, "new", owner="B")
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-owner"]
+        assert "'Inlet' is now produced by B instead of A" in messages(bag)
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_OK, report
+        assert "can replace" in report
+
+    def test_a_member_of_its_own_is_still_reported_at_the_member(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """What the variable now answers for is taken off the leaves and nothing else is."""
+        old = self.delivery(tree, "old")
+        new = self.delivery(tree, "new")
+        wider = new.leaves[0].model_copy(update={"datatype": old.leaves[0].datatype.SINT16})
+        bag = verdict(old, new.model_copy(update={"leaves": (wider, *new.leaves[1:])}))
+        assert checks(bag) == ["changed-interface"]
+        assert "'Inlet.count' is not the same object any more (datatype: sint16 != uint8)" in (
+            messages(bag)
+        )
+
+    def archived(self, dictionary: DataDictionary) -> DataDictionary:
+        """The dictionary as a format 3 dump carried it: no dimension spellings anywhere."""
+        stripped = json.loads(dictionary.model_dump_json())
+        stripped["format"] = 3
+        for group in ("objects", "instances", "leaves"):
+            for entry in stripped[group]:
+                del entry["dimensions"]
+        return DataDictionary.model_validate(stripped)
+
+    def test_an_older_baseline_compares_the_array_dimension_by_value(self, tree: Path) -> None:
+        """An array of structures defers exactly as an array of plain objects does.
+
+        A format 3 dump recorded no spellings at all, so against one only the values can
+        disagree: adopting a declared constant for an array of two structures whose size
+        stands is a clean migration, not a changed interface.
+        """
+        old = self.delivery(tree, "old", dimensions=[2])
+        write_tree(tree, {"new-c.ddd.json": {"constants": [{"name": "N", "value": 2}]}})
+        new = self.delivery(tree, "new", dimensions=["N"], constants="new-c.ddd.json")
+        assert new.instances[0].spelled_shape == ("N",)
+        assert checks(verdict(self.archived(old), new)) == []
+
+    def test_a_resized_array_against_an_older_baseline_still_reports(self, tree: Path) -> None:
+        """The deference is about the spelling only; another size is a changed interface."""
+        old = self.delivery(tree, "old", dimensions=[2])
+        write_tree(tree, {"new-c.ddd.json": {"constants": [{"name": "N", "value": 3}]}})
+        new = self.delivery(tree, "new", dimensions=["N"], constants="new-c.ddd.json")
+        bag = verdict(self.archived(old), new)
+        assert "changed-interface" in checks(bag)
+        assert "'Inlet' is not the same object any more (shape: [N] != [2])" in messages(bag)
+
+    def test_two_identical_deliveries_of_a_structured_variable_compare_clean(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old = self.delivery(tree, "old", volatile=True, section=".fast", raster="10ms")
+        new = self.delivery(tree, "new", volatile=True, section=".fast", raster="10ms")
+        assert checks(verdict(old, new)) == []
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_OK, report
+        assert "can replace" in report
+
+
 class TestTheLayoutOfAStructureIsInterface:
     """A structure's layout is part of what its consumers compiled against.
 

@@ -443,6 +443,16 @@ class ResolvedInstance(_Frozen):
         """The shape as the project spells it: ``dimensions`` where recorded, else the numbers."""
         return self.dimensions if self.dimensions else tuple(self.shape)
 
+    @property
+    def written_shape(self) -> tuple[tuple[int | str, int], ...]:
+        """Each dimension as its (spelling, value) pair, exactly as on a plain object.
+
+        What two deliveries compare, for the same reason: the spelling is what the generated
+        array declaration carries, so a dimension that changes either half is a changed
+        interface.
+        """
+        return tuple(zip(self.spelled_shape, self.shape, strict=True))
+
     @model_validator(mode="after")
     def _dimensions_spell_the_shape(self) -> ResolvedInstance:
         _check_dimensions_match(self.shape, self.dimensions)

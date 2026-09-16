@@ -21,6 +21,7 @@ from typing import Any, Literal
 
 import jsonschema
 import pytest
+import site_versions
 from pydantic import BaseModel, ValidationError
 
 from ddd import __version__
@@ -1652,6 +1653,114 @@ class TestPublishedDocumentation:
         assert "git -C site push origin gh-pages" in DOCS_WORKFLOW, (
             "the workflow no longer publishes by pushing the branch Pages serves"
         )
+
+
+class TestTheVersionIndexOfTheSite:
+    """What a reader arriving at the root of the documentation site lands on.
+
+    The menu on every page reads ``versions.json``, including the pages of versions published
+    long before the one being deployed, and the root of the site redirects to whichever
+    version that file calls stable. Both are written by ``tools/site_versions.py``, which the
+    deploy job runs; it used to be a heredoc inside the workflow, where nothing could reach it
+    and the rule it carried - the newest tag is stable - would have crowned the first release
+    candidate published and labelled it "(stable)" beside the release it leads to.
+    """
+
+    def site(self, tmp_path: Path, *names: str) -> Path:
+        site = tmp_path / f"site{len(list(tmp_path.iterdir()))}"
+        site.mkdir()
+        for name in names:
+            (site / name).mkdir()
+        return site
+
+    def index(self, site: Path) -> dict[str, Any]:
+        site_versions.write_index(site)
+        loaded: dict[str, Any] = json.loads((site / "versions.json").read_text(encoding="utf-8"))
+        return loaded
+
+    def test_the_only_release_is_the_stable_one(self, tmp_path: Path) -> None:
+        site = self.site(tmp_path, "latest", "v0.9.0")
+        assert self.index(site) == {"stable": "v0.9.0", "versions": ["latest", "v0.9.0"]}
+
+    def test_a_release_candidate_is_listed_and_is_not_stable(self, tmp_path: Path) -> None:
+        """The case that made this a script: publishing ``v0.10.0rc1`` beside ``v0.9.0``.
+
+        Its directory sorts above every ``v0.9.x`` - it *is* the newer version - so the rule
+        "stable is the newest tag" pointed the root of the site at a release candidate while
+        the version anybody could install was the one below it.
+        """
+        site = self.site(tmp_path, "latest", "v0.9.0", "v0.10.0rc1")
+        assert self.index(site) == {
+            "stable": "v0.9.0",
+            "versions": ["latest", "v0.10.0rc1", "v0.9.0"],
+        }
+
+    def test_the_release_the_candidate_led_to_takes_over(self, tmp_path: Path) -> None:
+        site = self.site(tmp_path, "latest", "v0.9.0", "v0.10.0rc1", "v0.10.0")
+        assert self.index(site) == {
+            "stable": "v0.10.0",
+            "versions": ["latest", "v0.10.0", "v0.10.0rc1", "v0.9.0"],
+        }
+
+    def test_a_hotfix_on_the_old_line_does_not_take_the_site_back(self, tmp_path: Path) -> None:
+        """``v0.9.1`` published after ``v0.10.0`` is older, whatever its publication date.
+
+        The index is rewritten from what is on disk, which carries no dates - only the
+        versions - so this holds by the ordering rather than by remembering anything.
+        """
+        site = self.site(tmp_path, "latest", "v0.9.0", "v0.10.0rc1", "v0.10.0", "v0.9.1")
+        assert self.index(site) == {
+            "stable": "v0.10.0",
+            "versions": ["latest", "v0.10.0", "v0.10.0rc1", "v0.9.1", "v0.9.0"],
+        }
+
+    def test_before_the_first_release_the_root_lands_on_latest(self, tmp_path: Path) -> None:
+        """With no release published there is nothing else to land on - a candidate included."""
+        assert self.index(self.site(tmp_path, "latest"))["stable"] == "latest"
+        assert self.index(self.site(tmp_path, "v0.10.0rc1")) == {
+            "stable": "latest",
+            "versions": ["v0.10.0rc1"],
+        }
+
+    def test_only_version_directories_are_listed(self, tmp_path: Path) -> None:
+        """The branch is the site: ``.nojekyll``, the index itself and anything else pushed."""
+        site = self.site(tmp_path, "latest", "v0.9.0", "assets")
+        (site / "CNAME").write_text("example.com\n", encoding="utf-8")
+        assert self.index(site) == {"stable": "v0.9.0", "versions": ["latest", "v0.9.0"]}
+
+    def test_numbers_are_compared_as_numbers(self, tmp_path: Path) -> None:
+        """``v0.10.0`` is newer than ``v0.9.0``; sorted as text it is not."""
+        site = self.site(tmp_path, "v0.9.0", "v0.10.0", "v0.2.0")
+        assert self.index(site)["versions"] == ["v0.10.0", "v0.9.0", "v0.2.0"]
+
+    def test_the_root_redirects_to_the_stable_version(self, tmp_path: Path) -> None:
+        site = self.site(tmp_path, "latest", "v0.9.0", "v0.10.0rc1")
+        site_versions.write_index(site)
+        page = (site / "index.html").read_text(encoding="utf-8")
+        assert 'content="0; url=./v0.9.0/"' in page
+        assert 'href="./v0.9.0/"' in page
+        assert "v0.10.0rc1" not in page
+
+    def test_the_run_says_what_it_published(self, tmp_path: Path) -> None:
+        """The deploy job's log line, which is all a reader of a run sees of this."""
+        site = self.site(tmp_path, "latest", "v0.9.0", "v0.10.0rc1")
+        assert site_versions.write_index(site) == (
+            "stable is v0.9.0, versions are latest, v0.10.0rc1, v0.9.0"
+        )
+
+    def test_the_script_is_what_the_workflow_runs(self) -> None:
+        """Pinning the orderings above is worth nothing if the workflow inlines them again."""
+        assert "tools/site_versions.py" in DOCS_WORKFLOW, (
+            "the deploy job no longer runs the script these orderings are pinned on"
+        )
+        assert "def order(" not in DOCS_WORKFLOW, (
+            "the version index is computed inside the workflow again, where no test reaches it"
+        )
+
+    def test_the_sdist_carries_it(self) -> None:
+        """The suite runs from the sdist, so what the suite imports has to be in the sdist."""
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        assert "/tools" in metadata["tool"]["hatch"]["build"]["targets"]["sdist"]["include"]
 
 
 class TestPreCommitHook:

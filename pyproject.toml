@@ -77,6 +77,7 @@ include = [
     "/examples",
     "/schemas",
     "/tests",
+    "/tools",
     "/.github/workflows",
     "/.pre-commit-hooks.yaml",
     "/CHANGELOG.md",
@@ -100,7 +101,9 @@ testpaths = ["tests"]
 # Coverage runs with every test run, and a gap fails the run: a line nobody executes is a
 # line nobody has ever seen behave. Use --no-cov for a quick partial run while developing.
 addopts = "-q --cov --cov-report=term-missing --cov-fail-under=100"
-pythonpath = ["src"]
+# tools/ holds the release machinery the workflows run - not part of the package, but on the
+# path so that a test can import it and exercise it rather than read it as text.
+pythonpath = ["src", "tools"]
 
 [tool.coverage.run]
 source = ["ddd"]
@@ -136,5 +139,5 @@ ignore = ["ANN401"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src/ddd"]
+files = ["src/ddd", "tools"]
 plugins = ["pydantic.mypy"]

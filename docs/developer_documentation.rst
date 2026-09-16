@@ -423,7 +423,16 @@ there is nothing to switch to.
 
 The root of the site redirects to the newest release rather than to ``latest``. Somebody
 arriving without a version in the url wants the documentation of what they can install, not
-``master``'s account of features that are not released yet.
+``master``'s account of features that are not released yet - and not a release candidate
+either: the newest *release* is the newest tag whose version carries nothing after the
+numbers, so ``v0.10.0rc1`` is published, listed in the menu under its own version, and left
+out of that choice until ``v0.10.0`` follows it. Before the first release there is nothing
+else to land on, so the root points at ``latest``.
+
+That rule is ``tools/site_versions.py``, which the deploy job runs, rather than a heredoc
+inside the workflow: ``tests/test_documentation.py`` pins the orderings it produces - the
+candidate, the release it leads to, and a hotfix on the older line published after it - which
+is what nothing could do while it was a workflow step.
 
 The workflow installs graphviz and plantuml from apt, so publishing needs nothing but a stock
 runner: there is no prepared image to keep in step with the sources. Only html is built. A pdf

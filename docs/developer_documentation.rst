@@ -286,9 +286,13 @@ being scattered through the suite that describes behaviour.
 
 Five suites guard things a type checker cannot. ``tests/test_backends.py`` walks the import
 graph, as described above. ``tests/test_cmake.py`` configures and builds the cmake module -
-over the shipped example, over a collected project naming a plugin and over a hand written
-one - with the ``cmake`` the development requirements install, so that the module is held to
-what it does rather than to what it says. ``tests/test_hardening.py`` holds one test per defect that once
+over the shipped example, over a collected project naming a plugin, over a hand written one
+and over a project written to exercise the keywords of one call - with the ``cmake`` the
+development requirements install, so that the module is held to
+what it does rather than to what it says. A configure and a build cost seconds each, which
+makes that file a third of the suite's runtime, so the classes whose tests ask several
+questions of one tree configure and build it once, in a class-scoped fixture, and each test
+reads one answer out of what it left behind. ``tests/test_hardening.py`` holds one test per defect that once
 reached a customer-facing artefact or verdict - a transposed a2l array, a header that does
 not compile, a legal name rejected, a description file that ended the run with a python
 traceback - grouped by what was at stake rather than by module. ``tests/test_documentation.py``

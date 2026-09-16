@@ -260,9 +260,10 @@ character class, and `**` matches directories recursively. A dot prefixed file i
 like any other file, and whether matching honours case follows the platform, like the file
 identity above. Only regular files are matched, the file stating the pattern is never
 among the matches, and the matches are processed in sorted
-order of their resolved paths, ordered again as the platform compares them, so that which
-component loads first does not depend on how a file system happens to enumerate a
-directory. A pattern that matches nothing is `include-empty`, and a pattern the platform
+order of their resolved paths, compared by code point of their POSIX spelling as names are
+([section 5.1](#51-c-code)), so that which component loads first depends neither on how a
+file system happens to enumerate a directory nor on which platform reads it: `Zeta.ddd.json`
+loads before `alpha.ddd.json` everywhere. A pattern that matches nothing is `include-empty`, and a pattern the platform
 cannot expand counts as matching nothing. An entry without a wildcard
 character is a literal path naming exactly one file, and if that file does not exist, or
 names a directory, the
@@ -1745,7 +1746,11 @@ the author's declaration order within each scope, and an object no component own
 those that arise where `missing-producer` is relaxed - is grouped under `<unresolved>` in
 the definition file rather than under a component. Names sort by code point, an
 upper case name before every lower case one and `cell[10]` before `cell[2]`, which is a
-spelling rule rather than a locale's; only file paths order as the platform compares them.
+spelling rule rather than a locale's, and the paths a wildcard include matched sort the same
+way, by the code point of their POSIX spelling: nothing in a generated file is ordered by
+what the platform running the tool thinks of a name. Whether two paths are the *same* file
+still follows the platform ([section 3.1](#31-project-description)), because that is a
+property of the file system rather than of the output.
 Files are written UTF-8 with LF line endings and no byte order mark - the A2L of
 [section 5.2](#52-a2l) is the one artefact that carries one, because its own format has no
 other way of stating an encoding - and a rendered file whose content has not changed is left
@@ -1992,9 +1997,13 @@ artefacts, and given neither it lists the built-in artefacts alone; what each ar
 writes is not among them, since a plugin's file names follow from the resolved dictionary
 and a dry run of `ddd generate all` reports them);
 writing out the data dictionary itself (`ddd dump`, to stdout or, with `-o`, into a file
-written the way `generate` writes an artefact: the same bytes on every platform, left
-untouched when its content would not change, and left as it was when the project does not
-resolve); writing an identity into every
+written the way `generate` writes an artefact - the same bytes on every platform, left
+untouched when its content would not change - and left as it was only where there is no
+dictionary to write, that is where the root itself could not be read. Findings do not hold
+the dictionary back: `dump` prints one and `dump -o` writes one whatever was reported,
+errors included, which is where it parts from `generate` ([section 5](#5-generated-artefacts)),
+and a build archiving a delivery therefore gates on the exit code rather than on the file
+appearing); writing an identity into every
 producing declaration that has none (`ddd id --assign FILE...`, editing the named
 description files textually - the new key is staged in a sibling file and renamed onto the
 description, so a run that dies leaves it as it was), so that a later `ddd compare`

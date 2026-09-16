@@ -1086,10 +1086,18 @@ class _Loader:
         except (OSError, ValueError, NotImplementedError) as error:
             self._bag.add("include-empty", f"cannot expand pattern '{pattern}': {error}", origin)
             return []
+        # Sorted by the POSIX spelling rather than by the Path, which compares as the platform
+        # compares a path: case insensitively on Windows and by code point on Linux, so one
+        # project loaded 'alpha' before 'Zeta' here and the other way round there, and the
+        # definition file and the a2l of that project differed between two builds of the same
+        # sources. Names are already ordered by code point, and so are these.
         matches = sorted(
-            resolved
-            for match in found
-            if match.is_file() and (resolved := resolve_path(match)) not in excluded
+            (
+                resolved
+                for match in found
+                if match.is_file() and (resolved := resolve_path(match)) not in excluded
+            ),
+            key=Path.as_posix,
         )
         if not matches:
             self._bag.add("include-empty", f"pattern '{pattern}' matches no file", origin)

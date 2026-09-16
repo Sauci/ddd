@@ -790,6 +790,24 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   load and compare as though the member held something.  Re-dump it from the project it came
   from, with the type declared.
 
+* **The same project generates the same bytes on any machine.**  The one promise of the
+  generated output that the tool did not keep: the matches of a wildcard `includes` entry
+  were sorted as the platform compares two paths, which is case insensitively on Windows and
+  by code point on Linux.  A project whose `components/*.ddd.json` matched `Zeta.ddd.json`
+  and `alpha.ddd.json` therefore loaded them in one order here and the other order there, and
+  since the components keep their include order, the definition file, every component header
+  and the a2l `GROUP`s came out differently on the two machines - a diff nobody wrote, in
+  files a build compares to decide whether to recompile.  The matches now sort by the code
+  point of their POSIX spelling, which is what every name in a generated file already sorts
+  by; whether two paths are the *same* file still follows the platform, that being a property
+  of the file system rather than of the output.
+
+  **Migration:** a project whose wildcard includes match file names differing in case class -
+  an upper case initial beside a lower case one - regenerates its c and its a2l once, with
+  the components in a different order; the content of each is unchanged, and nothing about
+  what the project *means* depends on the order.  A project whose matched names sort alike in
+  both readings, which is every project whose files follow one convention, is untouched.
+
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`
   through the c templates, a `SYSTEM_CONSTANT` in the a2l - whether or not a shape names it,

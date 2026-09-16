@@ -142,6 +142,29 @@ def test_a_pattern_that_matches_nothing_and_names_nothing_is_still_empty(tree: P
     assert "matches no file" in messages(bag)
 
 
+def test_the_matches_of_a_pattern_are_ordered_by_code_point(tree: Path) -> None:
+    """The order of the matches is the order of the components, and it reaches the artefacts.
+
+    Sorting the resolved paths as the platform compares them put ``alpha`` before ``Zeta`` on
+    Windows and ``Zeta`` before ``alpha`` on Linux, so one project generated two different
+    definition files and two different a2l files depending on the machine that built it -
+    against the promise that the same project generates the same bytes on any machine. The
+    key is the POSIX spelling, which is what names are already ordered by.
+    """
+    dictionary, bag = run_analysis(
+        tree,
+        {
+            "project.ddd.json": project("P", "components/*.ddd.json"),
+            "components/Zeta.ddd.json": component("Zeta", declare("local", "X")),
+            "components/alpha.ddd.json": component("alpha", declare("local", "Y")),
+            "components/_under.ddd.json": component("Under", declare("local", "Z")),
+        },
+    )
+    assert checks(bag) == []
+    assert dictionary is not None
+    assert [loaded.name for loaded in dictionary.components] == ["Zeta", "Under", "alpha"]
+
+
 def test_missing_file(tree: Path) -> None:
     _, bag = run_analysis(tree, {"project.ddd.json": project("P", "nope.ddd.json")})
     assert checks(bag) == ["file-not-found"]

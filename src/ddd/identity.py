@@ -21,6 +21,7 @@ touches the filesystem; everything above it works on a document it is handed.
 from __future__ import annotations
 
 import codecs
+import contextlib
 import secrets
 from dataclasses import dataclass
 from pathlib import Path
@@ -61,6 +62,16 @@ collapses the several reasons a file cannot be read: what the caller does about 
 look at that one file.
 """
 
+STAGING_SUFFIX = ".ddd-staging"
+"""What :func:`assign` appends to a description's name to stage its new bytes beside it.
+
+The same spelling the artefact writer stages under, and for the same reason it gives: a name
+no project gives a file of its own, so a leftover of a run that died is ours by construction
+and overwriting it is right. Spelled here rather than imported from
+:mod:`ddd.backends.base`, which would put jinja2 and every backend behind ``ddd id``; a test
+pins the two together.
+"""
+
 
 def new_id() -> str:
     """A fresh identity: twelve characters of the unambiguous lowercase base32 alphabet."""
@@ -99,9 +110,19 @@ def _unstamped(document: Document) -> list[tuple[str, bool]]:
 
 
 def _newline_at(text: str, offset: int) -> str:
-    """How the line ``offset`` sits on ends, so a line added after it ends the same way."""
-    end = text.find("\n", offset)
-    return "\r\n" if end > 0 and text[end - 1] == "\r" else "\n"
+    """How the line ``offset`` sits on ends, so a line added after it ends the same way.
+
+    All three spellings, found by whichever of ``\\r`` and ``\\n`` comes first. Looking for
+    ``\\n`` alone answered "line feed" for a file written with bare carriage returns, which
+    has none at all: the stamped file then held one line ending of a kind the rest of it
+    does not use. A file with no line break anywhere is given ``\\n``, there being nothing
+    to copy.
+    """
+    carriage = text.find("\r", offset)
+    feed = text.find("\n", offset)
+    if carriage >= 0 and (feed < 0 or carriage < feed):
+        return "\r\n" if carriage + 1 == feed else "\r"
+    return "\n"
 
 
 def _indent_of_line_at(text: str, offset: int) -> str:
@@ -148,9 +169,14 @@ def insertions(document: Document) -> list[Insertion]:
     found = []
     for definition, stated_null in _unstamped(document):
         target = f"{definition}.id" if stated_null else f"{definition}.name"
+        # The walk above reads the parsed document and the spans come from a scan of the same
+        # text, under pointers built from the same decoded keys - and every segment of this
+        # one is a fixed identifier, so no spelling can split differently. A document that
+        # parsed therefore has a span here. Asserted rather than guarded, the way the quick
+        # fix that reads this list asserts the same span: a declaration skipped in silence is
+        # what this used to do, and it did it whenever a key carried a json escape.
         span = document.value_span_of(target)
-        if span is None:
-            continue
+        assert span is not None
         if stated_null:
             found.append(Insertion(target, span[0], f'"{new_id()}"', span[1] - span[0]))
         else:
@@ -190,11 +216,19 @@ def assign(path: Path) -> int:
     for entry in reversed(wanted):
         text = f"{text[: entry.offset]}{entry.text}{text[entry.offset + entry.length :]}"
     mark = codecs.BOM_UTF8 if raw.startswith(codecs.BOM_UTF8) else b""
+    # Staged beside the file and renamed onto it, the way every artefact DDD writes is. What
+    # this command edits is hand-authored and under review rather than regenerated, so a
+    # write that dies partway through - a full disk, a kill between the truncation and the
+    # write - has nothing to put back: the one copy of those bytes was the file itself.
+    staging = path.with_name(path.name + STAGING_SUFFIX)
     try:
-        path.write_bytes(mark + text.encode("utf-8"))
+        staging.write_bytes(mark + text.encode("utf-8"))
+        staging.replace(path)
     except OSError:
         # The command is handed a list of files and stamps what it can: a file it may not
         # write - read-only in the checkout, held open by an editor - is one file to report,
         # not a reason to leave the rest of the list untouched and print no total.
+        with contextlib.suppress(OSError):
+            staging.unlink()
         return UNWRITABLE
     return len(wanted)

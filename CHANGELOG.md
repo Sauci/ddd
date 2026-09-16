@@ -642,6 +642,17 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   ~x.ddd.json` reported `C:/Users/x.ddd.json: file-not-found`, a path nobody wrote.
   Expanding a tilde is the shell's business, and the tool no longer does it a second time.
 
+  *`ddd id --assign` writes into the file it was given, or into none of it.*  The new key
+  used to be written straight onto the description, so a kill or a full disk between the
+  truncation and the write left a hand-authored file truncated or empty, with nothing left
+  to put back; the text is now staged in a sibling and renamed onto the file, the way every
+  artefact DDD writes already is.  Two more things it did to a file it was pointed at: a
+  declaration whose `name` key carried a json escape - `"name"`, which is `name` - was
+  skipped without a word, `wrote 0 ids` and exit 0, while `ddd check` went on reporting
+  `missing-id` for it; and a file written with bare carriage returns was given one line
+  ending of a kind the rest of it does not use, the search for the file's own having looked
+  for a line feed only.
+
   **Migration:** a list `init` holding a quoted number or one of those words is now refused
   with a `schema` finding at the element that holds it, where it used to load, generate and
   dump.  Write the value without the quotes: `["1", "2"]` becomes `[1, 2]`.  A string object

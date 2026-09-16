@@ -1983,7 +1983,8 @@ written the way `generate` writes an artefact: the same bytes on every platform,
 untouched when its content would not change, and left as it was when the project does not
 resolve); writing an identity into every
 producing declaration that has none (`ddd id --assign FILE...`, editing the named
-description files in place), so that a later `ddd compare`
+description files textually - the new key is staged in a sibling file and renamed onto the
+description, so a run that dies leaves it as it was), so that a later `ddd compare`
 reports a rename as a rename rather than a removal and an unrelated addition - a
 declaration that already carries one is left untouched, so running it again changes
 nothing, an explicit `"id": null` is filled in place, a file that is not a component

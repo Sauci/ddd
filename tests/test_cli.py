@@ -22,7 +22,9 @@ from conftest import (
     project,
     write_tree,
 )
+from ddd import identity
 from ddd.backends import MANIFEST_NAME
+from ddd.backends.base import STAGING_SUFFIX
 from ddd.build_info import BUILD_INFO_FORMAT
 from ddd.cli import (
     EXIT_FINDINGS,
@@ -3247,7 +3249,7 @@ def test_assigning_ids_reports_a_file_it_cannot_write_and_stamps_the_rest(
     writing = Path.write_bytes
 
     def refusing(self: Path, data: bytes) -> int:
-        if self.name == "locked.ddd.json":
+        if self.name.startswith("locked.ddd.json"):  # the file, or the sibling staged for it
             raise PermissionError(errno.EACCES, "Permission denied", str(self))
         return writing(self, data)
 
@@ -3335,36 +3337,6 @@ def test_assigning_ids_ignores_a_component_with_no_interface(tree):
     assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_OK
 
 
-def test_assigning_ids_skips_a_declaration_whose_key_the_scanner_cannot_relocate(tree, capsys):
-    r"""A defensive branch a hand authored file can still reach, if never on purpose.
-
-    The scanner in ``ranges.py`` records a value's span under the *raw* text of the key in
-    front of it, unescaped, while ``json.loads`` decodes it - documented on
-    :meth:`~ddd.lsp.ranges._Scanner._string`. The two agree for every key anybody actually
-    types, but a ``"name"`` spelled with a json unicode escape - legal json, if not
-    something a person writes by hand - decodes to the plain string while scanning to the
-    escaped one. ``value_span_of`` then finds nothing for the pointer this module builds
-    off the decoded document, and the declaration is left unstamped rather than the run
-    crashing on a ``None`` span.
-
-    Also the regression check for ``assign`` once counting ``len(pointers)`` - declarations
-    *found* - rather than insertions actually made: this file has exactly one pointer and
-    zero of them resolve, so a miscount would print ``wrote 1 id`` for a file the assertion
-    above has just shown was never touched.
-    """
-    original = (
-        '{\n  "component": {\n    "name": "A",\n    "interface": [\n      {\n'
-        '        "scope": "local",\n        "definition": {\n'
-        '          "\\u006eame": "X",\n          "datatype": "uint8",\n'
-        '          "conversion": {"kind": "identity"},\n          "kind": "measurement",\n'
-        '          "volatile": false\n        }\n      }\n    ]\n  }\n}\n'
-    )
-    write_tree(tree, {"a.ddd.json": original})
-    assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_OK
-    assert (tree / "a.ddd.json").read_text(encoding="utf-8") == original
-    assert "wrote 0 ids" in capsys.readouterr().err
-
-
 class TestBaselineUnderStrict:
     def test_a_warning_in_the_baseline_does_not_abort_a_strict_comparison(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -3424,6 +3396,83 @@ def test_assigning_ids_fills_an_explicit_null(tree, capsys):
     assert "wrote 1 id" in capsys.readouterr().err
     stamped = json.loads(path.read_text(encoding="utf-8"))
     assert re.fullmatch(OBJECT_ID_PATTERN, stamped["component"]["interface"][0]["definition"]["id"])
+
+
+def test_assigning_ids_stamps_a_declaration_whose_name_key_is_escaped(tree, capsys):
+    """``"na\\u006de"`` is ``name``: a json escape is a spelling, not a different key.
+
+    The scan recorded the key as it was written, so the pointer the insertion was computed
+    for named a key the parsed document has not got; the declaration was skipped without a
+    word - ``wrote 0 ids``, exit 0 - while ``ddd check`` went on reporting ``missing-id``
+    for it.
+    """
+    path = tree / "a.ddd.json"
+    path.write_text(
+        r"""{
+  "component": {
+    "name": "A",
+    "interface": [
+      {
+        "scope": "local",
+        "definition": {
+          "kind": "measurement",
+          "na\u006de": "V",
+          "datatype": "uint8",
+          "conversion": {},
+          "volatile": false
+        }
+      }
+    ]
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    assert main(["id", "--assign", str(path)]) == EXIT_OK
+    assert "wrote 1 id" in capsys.readouterr().err
+    stamped = json.loads(path.read_text(encoding="utf-8"))
+    assert re.fullmatch(OBJECT_ID_PATTERN, stamped["component"]["interface"][0]["definition"]["id"])
+
+
+def test_assigning_ids_keeps_a_file_written_with_bare_carriage_returns(tree):
+    """A file written with classic-Mac endings has no ``\\n`` at all, so the search for one
+    found nothing and the line the stamp adds was given the ending the file does not use."""
+    text = json.dumps(component("A", declare("output", "X")), indent=2)
+    path = tree / "a.ddd.json"
+    path.write_bytes(text.replace("\n", "\r").encode("utf-8"))
+    assert main(["id", "--assign", str(path)]) == EXIT_OK
+    after = path.read_bytes()
+    assert b"\n" not in after
+    assert after.count(b"\r") == text.count("\n") + 1  # the line the stamp added
+
+
+def test_assigning_ids_leaves_the_file_alone_when_the_write_fails(tree, monkeypatch, capsys):
+    """The new text goes to a sibling temporary and is renamed onto the description.
+
+    Written straight onto the file, a write that died partway through - a full disk, a kill
+    between the truncation and the write - left a hand-authored description truncated or
+    empty, with nothing left to put back.
+    """
+    path = tree / "a.ddd.json"
+    write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
+    before = path.read_bytes()
+    writing = Path.write_bytes
+
+    def dying(self: Path, data: bytes) -> int:
+        writing(self, data[: len(data) // 2])
+        raise OSError(errno.ENOSPC, "No space left on device", str(self))
+
+    monkeypatch.setattr(Path, "write_bytes", dying)
+    assert main(["id", "--assign", str(path)]) == EXIT_FINDINGS
+    assert f"{path}: cannot be written, skipped" in capsys.readouterr().err
+    assert path.read_bytes() == before
+    assert list(tree.glob("*" + STAGING_SUFFIX)) == []
+
+
+def test_the_id_command_stages_under_the_name_every_writer_stages_under():
+    """One spelling for the sibling nobody else may be keeping; :data:`STAGING_SUFFIX`
+    says why it is that one, and there is no use in the command picking a second."""
+    assert identity.STAGING_SUFFIX == STAGING_SUFFIX
 
 
 def test_assigning_ids_keeps_mixed_line_endings(tree):

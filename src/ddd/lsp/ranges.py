@@ -242,6 +242,22 @@ def read(path: Path, cache: dict[Path, Document]) -> Document:
     return found
 
 
+def _decoded(key: str) -> str:
+    """A member's key as json means it, from the source text that spells it.
+
+    ``"na\\u006de"`` is ``name``, and every pointer this module is asked about was built from
+    the parsed document, where it already is. Taken as written, the key named nothing: a
+    finding about it fell back to the enclosing object's range, and ``ddd id --assign``
+    skipped such a declaration in silence, having computed an insertion for a pointer the
+    document has not got.
+
+    The parse is skipped where there is no escape to decode, which is every key of every
+    description anybody writes: json's own parser has already accepted this text, so what
+    comes back here is the same string it put in the document.
+    """
+    return str(json.loads(f'"{key}"')) if "\\" in key else key
+
+
 class _Scanner:
     """A recursive descent walk over known-good json, recording where each value sits."""
 
@@ -280,7 +296,7 @@ class _Scanner:
         while True:
             self._skip_whitespace()
             key_start = self.pos
-            key = self._string()
+            key = _decoded(self._string())
             self._skip_whitespace()
             self.pos += 1  # the ':'
             self._skip_whitespace()
@@ -316,8 +332,9 @@ class _Scanner:
         start = self.pos
         while self.text[self.pos] != '"':
             # A backslash consumes whatever follows it, so an escaped quote does not end the
-            # string. Escapes are not decoded: a key DDD reports is a plain identifier, and
-            # the offsets have to stay offsets into the raw text.
+            # string. What comes back is the raw source text, because the offsets have to
+            # stay offsets into it; a key is decoded by the caller, which builds a pointer
+            # out of it rather than a span.
             self.pos += 2 if self.text[self.pos] == "\\" else 1
         text = self.text[start : self.pos]
         self.pos += 1  # the closing quote

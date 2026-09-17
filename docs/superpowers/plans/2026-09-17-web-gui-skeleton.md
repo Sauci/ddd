@@ -6086,23 +6086,138 @@ Tell the maintainer: the gate's result, the CI result, the measured factors and 
 
 ## Progress log
 
+Started is local time on 17 September 2026. Duration runs from dispatching the task to dispatching the next, reviews and fix rounds included. Tokens are those the task's agents reported: implementer, reviews and fixes; the controlling session is not counted. The request came at 09:20; the design, spec and plan took until 10:49; the hand-over was at 19:41.
+
 | Task | Started | Duration | Tokens | Notes |
 | --- | --- | --- | --- | --- |
-| 1 | | | | |
-| 2 | | | | |
-| 3 | | | | |
-| 4 | | | | |
-| 5 | | | | |
-| 6 | | | | |
-| 7 | | | | |
-| 8 | | | | |
-| 9 | | | | |
-| 10 | | | | |
-| 11 | | | | |
-| 12 | | | | |
-| 13 | | | | |
-| 14 | | | | |
+| 1 | 10:49 | 20 min | 243,255 | Raw values and their layout. Review clean. |
+| 2 | 11:09 | 38 min | 490,051 | Operations and verification. Fix round 1 moved the pointer grammar into `src/ddd/pointers.py`, shared by the engine and the language server. |
+| 3 | 11:47 | 31 min | 337,475 | One implementation of the layout rules. `Document.line_at` deleted, left without callers. |
+| 4 | 12:18 | 18 min | 268,642 | All-or-nothing writes. Review clean. |
+| 5 | 12:36 | 20 min | 283,054 | Analysis runs. `_group` had four call sites, all renamed `group_findings`. |
+| 6 | 12:56 | 44 min | 361,446 | The session. Exceptions named `NoProjectError` and `NotInProjectError` (ruff N818). A session restart falls inside this row. |
+| 7 | 13:40 | 30 min | 385,469 | The JSON API. Fix round 1 added the `unverified` and no-project refusal tests. Node.js installed by the maintainer at 13:54; no task waited for it. |
+| 8 | 14:10 | 23 min | 248,618 | The HTTP server, reviewed on opus as the security boundary. Review clean. |
+| 9 | 14:33 | 43 min | 482,049 | The command and its documentation. Fix round 1 named both readers of the build record in the command page and SPEC.md. |
+| 10 | 15:16 | 31 min | 321,381 | The frontend project and its logic modules. Review clean. |
+| 11 | 15:47 | 41 min | 467,355 | The screens. Fix round 1 keyed findings by content and repeat (`gui/src/lib/findings.ts`), since two findings can share check and pointer. |
+| 12 | 16:28 | 41 min | 440,660 | The journeys. Fix round 1 asserted the per-component counts and put each journey's copy of the demo under `test-results/` instead of a swallowed clean-up. |
+| 13 | 17:09 | 32 min | 336,280 | Packaging, CI and the developer page; the release path (sdist, then wheel) checked locally. Review clean. |
+| 14 | 17:41 | 120 min | 1,241,509 | Whole-branch review (opus): four Important defects from the plan, a lost save during an analysis, two servers signing each other out, other apps' cookies locking users out, and a newer build record listed without its reason, plus seven Minor. One fix wave (opus, 12 commits) and its re-review (opus). The cookie is now named `ddd-gui-<port>`. Then the gate and the recalibration. |
+
+**Recalibration (17 September).** Milestone 1 was measured from the request at 09:20 to the hand-over at 19:41, 621 minutes:
+- the thirteen tasks took 412 of them: the edit engine 107, the local server 160, the frontend and its screens 145;
+- everything else took 209: the design, spec and plan; the whole-branch review, its fix wave and its re-review; and the gate. That time is shared out over the tasks in proportion.
+
+The measurement counts only the part of each package the milestone delivered, in likely conventional days:
+- the whole local server, 9;
+- the edit engine without new files and undo, 6;
+- three quarters of the frontend foundation (no theme yet), 9, plus 3 for the screens.
+
+The measured speed-ups:
+
+| Kind of work | Measured | 16 September estimate |
+| --- | --- | --- |
+| Local server | 18× | 5–8× |
+| Edit engine | 18× | 4–6× |
+| Screens and forms | 26× | 3–5× |
+
+The estimate page takes these as the fast end of each range. The slow ends, 9×, 9× and 13×, count the maintainer's review and merge of the pull request, which is not measured yet, as taking as long again. The other kinds of work keep their 16 September factors.
+
+With Claude, the GUI now comes to 28 maintainer days, range 19.5–51.5, about 6.6 weeks elapsed with the pilot. On 16 September it was 49.5 days, range 29.5–85.5, and 11.2 weeks with the spike. The conventional estimate is unchanged at 188 person-days (139–257).
+
+This step's own formula divides each whole package's likely days by the task hours alone. That gives 45× for the engine, 27× for the server and 50× for the frontend. The page does not use those figures: they leave out the design, the plan, the reviews and the fixes, and they count work the milestone did not deliver.
+
+The page is https://claude.ai/artifact/HT1HxkAp8Cg2rAqbYb7EL6, version 2.
 
 ## Left open by the implementers
 
-(Anything a task deferred, with the reason, so that milestone 2 starts from it.)
+Nothing below blocks the merge; each has its reason and the milestone it belongs to.
+
+**Milestone 3 (project home, variables, findings)**
+- A component file the loader cannot read (truncated, `NaN`, a duplicate key) has kind `unknown`, and the project page lists components only, so it disappears from the page. The API carries the loader's reason and the summary counts its error; spec 6.10's "the file is marked as not loaded" holds in the API only.
+- The start page cannot return to a project given on the command line that lies outside the current directory: `/api/open` accepts it, `/api/projects` does not list it.
+
+**Milestone 4 (component editor)**
+- The component page spells declaration pointers with template literals instead of `pointerOf` from `gui/src/lib/pointer.ts`.
+- An open unit input ignores `disabled`, so a unit being edited when the server stops can still be confirmed; the edit is then refused with a banner.
+- An edit that fails because the server is unreachable reads "The change was refused: ddd gui is not answering".
+- `keyedFindings` numbers repeats in list order, so removing the earlier of two identical findings renumbers the survivor: one remount, same output.
+
+**Milestone 8 (hardening and the security review)**
+- A React error boundary, so that a failure in one screen does not unmount the page.
+- On a shared Linux host the token is readable in the browser's command line through `/proc`, and the cookie is sent to every 127.0.0.1 port, another user's server included.
+- Per-port cookies accumulate: every run opened in a browser leaves a session cookie `ddd-gui-<port>` of about 60 bytes, sent to every 127.0.0.1 port until the browser session ends (about 10 KB after some 135 runs).
+- The base class's own 400 and 501 answers carry none of the security headers; the `Server` and `Date` headers name the Python version.
+- The catch-all answer calls `urlsplit` again inside its `except`, so a request target `urlsplit` rejects still gets no answer.
+- Engine helpers the fix wave did not touch (`_unit_below`, `_entries`, `lay_out`) raise on pathological files (a `""` key, `"interface."` beside `"interface"` on one line, values nested about a thousand deep), now answered 500; a file holding `1e999` answers 500 on every read of `/api/file`.
+- The outside-save journey allows 5 s against spec 6.1's two seconds; the promise rests on the 1 s poll and the long poll, tested in Python.
+
+**Whenever the file is next touched**
+- `tests/test_editing.py`: a string value holding a structural character through `_tokens`; the last element of a multi-line array whose bracket sits on its own line, and `_unit_below` past one level of empty nesting; an `apply_changes` on a 0-byte file (refused as unreadable first).
+- `src/ddd/editing.py`: `_set_edit`'s message bypasses `_named()`; the byte-order-mark line repeats `identity.assign`'s.
+- `src/ddd/lsp/edits.py`: a quick fix on a CRLF document now inserts `\r\n` (spec 6.6), untested at `_insert`.
+- `src/ddd/gui/session.py`: `Session.wait`'s `None` is driven by the API test only; `start_polling` checks its thread without the lock (one caller).
+- `src/ddd/gui/api.py` tests: only the "names nothing" flavour of `invalid` at the API level.
+- `src/ddd/gui/server.py`: the Host and Origin allow-lists are spelled twice; the Windows port test restates its attribute.
+- `src/ddd/cli.py`: the `gui -b` help does not say where the usual build directories are searched; `_command_gui` wraps `run()` in a redundant `int()`.
+- SPEC.md 3.6's "(`ddd gui`, section 7)" is plain text where its neighbours link.
+- `cmake/Ddd.cmake:174` and `src/ddd/build_info.py:1` still name an editor as the build record's reader; CHANGELOG.md's released 0.10.0 entry says a refused record is "announced like a record that cannot be read".
+- `gui/src/census.test.ts` asserts at least 7 logic modules where 9 exist; `gui/scripts/licenses.mjs` relies on `execSync`'s default 1 MB buffer; Vitest's text coverage table is empty when every file is fully covered.
+- `gui/e2e/fixtures.ts`: both fixtures copy the demo to the same `outputPath("demo")`, so a journey using both would share one copy.
+
+## Rulings made while executing the plan
+
+Where the plan was silent, wrong or in conflict with the spec, the controlling session decided and went on. Each ruling says what was decided, why, and what it costs if it was wrong.
+
+1. work in place in the main checkout C:/git/ac11/ddd on branch feature/web-gui-skeleton, no linked worktree — the checkout's git-ignored .venv holds the editable install every Python test imports, and the previous plans (review fixes of 2026-09-16) ran here on branches — cost if wrong: a second session editing this checkout at the same time would collide with the implementers.
+2. implementers and task reviewers on sonnet, final whole-branch review on opus — the plan carries the code, but every task runs on a Windows toolchain with quirks (Git Bash PATH, MinGW, exact-text expectations to debug) where a cheaper tier takes more turns — cost if wrong: more tokens per task than haiku would spend.
+3. agents one at a time, launched in the background (memory: sequential-review-agents; a foreground agent gets interrupted) — cost if wrong: slower wall clock.
+4. Node.js is not installed; Tasks 1-9 need none. Before Task 10, check `node --version`; if it is still missing, stop and ask the maintainer to install Node 24.15+ (software installation is outside this worktree) — cost if wrong: a pause before Task 10.
+5. the known failure `tests/test_lsp.py::...::test_a_document_opened_through_a_symlink_is_covered_by_its_build` (needs a Windows privilege this shell lacks, per the local toolchain memory) is expected in every local full run; implementers report it and nothing else as failing — cost if wrong: a real regression in that one test would be missed locally (CI still runs it).
+6. a push after each task goes to the feature branch only (the plan's convention and the push-work-as-you-go memory); no pull request and no CI dispatch without asking (Task 14 Step 2) — cost if wrong: none beyond the wait.
+7. if Task 13 Step 3 takes its fallback (artifact pattern moved to [tool.hatch.build]), the implementer changes the Step 1 test to read the table the pattern lives in, in the same commit — the spec (6.8) binds the archives' contents, not where hatch's table is — cost if wrong: none; the wheel check in publish.yml still guards the result.
+8. the plan mandates nothing the review rubric treats as a defect (no assert-free tests, no duplicated logic blocks); Task 6's broad `except Exception` prints its reason, so it is not a swallowed error — cost if wrong: a reviewer may still raise it, and the loop handles it.
+9. the commit trailer names the model that wrote the commit (the subagent's own attribution instruction gave "Claude Sonnet 5"), not "Claude Opus 5" as conventions.md said — the trailer's purpose is accurate attribution — cost if wrong: trailers differ between tasks; amending pushed commits is not worth it.
+10. fix the duplication in a round, by moving the pointer grammar (ranges' `segments` with its `_SEGMENT` regex, and `_parent`) into a new dependency-free module `src/ddd/pointers.py` (public `segments` and `parent_pointer`) that `ddd.lsp.ranges` and `ddd.editing` both import at module level; `ddd.lsp.ranges` keeps the name `segments` importable (it uses it), and `ddd.editing` drops its own `parent_pointer` definition and its lazy `segments` import — one grammar, and the editing module still never imports `ddd.lsp` at module level — cost if wrong: one small new module and an import path that moved (ranges still serves `segments` to its existing importers).
+11. accept the deletion of Document.line_at — the project deletes code nothing reaches rather than exempting it, no later task of the plan uses it, and the engine's indent_of_line_at keeps the "count lines by \n alone" rule its docstring defended — cost if wrong: a later need re-adds a four-line method.
+12. accept the exception names NoProjectError and NotInProjectError instead of the plan's NoProject/NotInProject — ruff's N818 (selected by the project) requires the Error suffix and every other exception in ddd has it; Task 7's dispatch carries the new names, and every later mention of the old names in the plan means these — cost if wrong: none; a rename either way.
+13. accept the added annotation `found: list[Path] = []` in _descriptions — mypy strict requires it — cost if wrong: none.
+14. add both tests in a fix round — the spec (6.11) wants every refusal tested, and each is a small addition following patterns already in the file; the plan's test list simply missed them — cost if wrong: one short round.
+15. accept both deviations — a test contradicting itself is a plan defect, and a suppression ruff calls unused fails ruff's own RUF100 — cost if wrong: none.
+16. Task 8's review runs on opus rather than sonnet — the server is the GUI's security boundary, where a missed bypass costs more than the tokens — cost if wrong: a more expensive review of one task.
+17. fix both sentences in one round so that each names both readers, the language server and ddd gui — the spec (6.2) makes ddd gui a reader of every build record naming its project, and documentation that names one reader of two is false by omission; SPEC.md's sentence is outside the plan's list but carries the same claim — cost if wrong: two sentences to re-word.
+18. App.tsx declares `let page: ReactNode;` (type import from react) — Biome's recommended rules reject an untyped let, and a type annotation changes nothing at run time; biome.json stays as it is — cost if wrong: none.
+19. ComponentPage keeps `component?.name` although the generated type makes `component` required, with a one-line comment — the brief's "the type check says which" cannot happen (TypeScript never reports an unneeded optional chain), and spec 6.10 says a file that parses but fails its schema still opens and can be edited, so the page must not crash on one without `component` — cost if wrong: one unneeded `?.`.
+20. Step 6's look is done by the implementer with a throwaway Playwright script in the scratchpad driving the installed Edge headless against `ddd gui ... --no-browser`, saving screenshots there; nothing from it is committed — a subagent has no screen, and a window opening on the maintainer's desktop is a side effect nobody asked for — cost if wrong: the look is scripted rather than seen by a person (Task 12 scripts the same journey anyway).
+21. Task 11 skips the Python gate (pytest, ruff, mypy) — it changes only gui/src, and no Python test reads gui/ (tests only rglob docs, src/ddd *.py and examples *.ddd.json) — cost if wrong: a failure would surface in Task 12's or Task 13's full run instead.
+22. treat the controller finding as a failed review and run fix round 1 — key each finding by its content (severity, check, pointer, message) plus which repeat of that content it is, computed by a small function in a new gui/src/lib module with its own Vitest test under the 100 % gate, used by both lists; no array index, no suppression — the spec (6.11) puts logic in the unit-tested modules, the keys must be unique whatever the server sends, and the plan's file list did not foresee the module — cost if wrong: one short round and one small module beyond the plan's file list.
+23. Task 12's gate is Step 3 plus npm run format, lint and typecheck (tsconfig includes e2e and playwright.config.ts) and npm test; it skips the Python gate unless a journey exposes a server defect that changes Python — the task adds only gui/playwright.config.ts and gui/e2e — cost if wrong: a failure would surface in Task 13's full run instead.
+24. a journey failing on the page's or the server's behaviour is fixed in this task, in the code where the defect lives, as its own commit with that code's gate (the npm checks for gui/src; the focused tests and the full Python gate for src/ddd), never by loosening a selector or a timeout; a fix that would change an accessible name of the brief or a behaviour the spec states stops the task with NEEDS_CONTEXT — the brief says to fix it "there", and Tasks 11 and 8 are closed — cost if wrong: a defect fix reviewed under Task 12 instead of its own task.
+25. the missing count assertions enter fix round 1 as a plan-mandated spec gap — spec 6.11 requires the journeys to drive "every step of section 6.1", item 2 includes the counts, and nothing else tests ProjectPage's rendering of them (Vitest leaves screens out; the Python tests stop at the API) — so journey 1 asserts each demo component's exact error and warning counts, and the unit journey asserts Controller's and SensorHub's counts on the project page while the mismatch stands — cost if wrong: a few lines of journey and one short round.
+26. the silent catch in removeCopy enters the same round as Important, not Minor — the review rubric names swallowed errors Important and says a stated rationale never downgrades a finding, and the implementer's own evidence (4 of 7 copies still locked in one run) means every local run leaves copies of the demo in %TEMP% that nothing removes. Fix: each journey's copy goes under Playwright's per-test output directory (testInfo.outputPath), which Playwright empties at the start of every run and git ignores (gui/test-results/), and the fixture stops removing it — no retry loop and no catch; a failed journey then keeps its copy beside its trace — cost if wrong: copies of the demo stay under gui/test-results until the next run.
+27. Task 13 also rewords the four sentences its change leaves incomplete (dependabot.yml's header and the developer page's last CI paragraph on "the extension's lock file", TestWhatKeepsTheToolchainMoving's docstring, pyproject.toml's sdist comment on what the documentation tests read) so each names the browser interface's lock file or manifest as well — Task 9's ruling held documentation that names one of two to be false by omission, and all four sit in files the task already edits — cost if wrong: four sentences re-worded.
+28. Task 13 also checks the release path locally: python -m build into the scratchpad (the sdist, then the wheel built from it, as publish.yml does), the sdist listing src/ddd/gui/static/index.html, gui/package.json and gui/package-lock.json and nothing from gui/node_modules, gui/src/generated or gui/test-results, and publish.yml's new wheel check run against that wheel — the brief's Step 3 builds a wheel from the tree only, while a release builds it from the sdist, and a broken release build would first show on a tag — cost if wrong: one more local build.
+29. if the wheel builds cannot download their build requirements (hatchling, hatch-requirements-txt), the implementer installs those two into the venv and builds with --no-build-isolation, saying so in the report — the venv is this checkout's development environment and the two are build tools, not dependencies of ddd — cost if wrong: two packages more in the venv.
+30. the licence wording goes to the final review's triage rather than a fix round — the sentence repeats spec 6.8's own "the BSD licences" and no behaviour depends on it — cost if wrong: one phrase of the developer page, fixable in the final fix wave.
+31. F1 — the signature a revision stores is taken before the analysis reads the files (poll: the stats it compared; edit: stats after the write, before the analysis; files without taken stats, every file on open: unknown, so the next poll analyses once more) — the review's probe showed a save lost for good — cost if wrong: one extra analysis after opening a project or adding a file.
+32. F2 — the cookie is named ddd-gui-<port> — the spec names no cookie, and the plan's single name makes two servers sign each other out — cost if wrong: a cookie name that differs from the plan's constraints file.
+33. F3 — the Cookie header is read by hand (split on ';', partition '=', compare_digest on this server's pairs), a malformed pair ignored — SimpleCookie fails on cookies other local apps set — cost if wrong: a few lines of parsing instead of the stdlib class.
+34. F4 — load_builds records a reason for a record whose format is newer than this DDD reads, read leniently so it applies whether or not its keys validate; other malformed records stay silent — spec 6.10 promises the reason, and the language server's log gains it too — cost if wrong: one more logged refusal in the language server.
+35. F5 — the engine refuses unresolvable pointers as invalid, and the server answers any other exception 500 {"error": "internal"} with the traceback on stderr — spec 6.5 says every error answers with a status and a JSON body — cost if wrong: a new error code the page shows as a refusal message.
+36. F6 — one strict parse (the loader's: no NaN, no duplicate keys) exposed by ddd.loading for the session and the engine; _send_json with allow_nan=False; request() rejects a non-JSON success body — spec 6.10 refuses edits to a file that is not valid JSON, and the loader already refuses both — cost if wrong: a file the loader refuses is also not editable in the GUI (it was already a finding).
+37. F7 — the component page keeps the previous data only while the same file refetches — keepPreviousData alone would show the last component's table under another component's address — cost if wrong: none beyond one function.
+38. F8-F12 — publish.yml type-checks before building; the changelog says only the unit's value changes; the spec 6.11 tests the plan missed are added (tabs, an object's last member, every endpoint over HTTP on the demo and on a project with an unparseable file); the seven build-record sentences name both readers; the developer page lists the exact licences — each is the spec's or the Task 9 ruling's own standard applied — cost if wrong: a longer fix wave.
+39. Minor 6 (the start page cannot return to a command-line project outside the current directory) is parked for milestone 3's home page — it is navigation the spec does not describe — cost if wrong: a restart of ddd gui in that case until milestone 3.
+40. the e2e journey's 5 s timeout against spec 6.1's "within two seconds" is parked as it stands — the promise rests on the 1 s poll and the long poll, both tested in Python, and a 2 s browser timeout would flake on a loaded CI runner — cost if wrong: a slower page would not fail the journey.
+41. the review's milestone 8 notes (a React error boundary; the token on shared Linux hosts; the cookie sent to every 127.0.0.1 port; security headers on the base class's 400 and 501) are parked for milestone 8's security review, and go into the plan's "Left open by the implementers" — the spec's trust model (4.3) covers a single-user workstation, which is milestone 1's audience — cost if wrong: a shared Linux host is exposed until milestone 8.
+42. the fix wave runs on opus, and its scoped re-review too — the fixes touch the security boundary (cookies), concurrency (signatures) and every layer from the engine to the page — cost if wrong: a more expensive wave.
+43. concern (1) is parked — both are code comments explaining why the record exists, true for the language server, not published pages or help text, and resuming a 556,610-token fixer for two comments costs more than it buys against a weekly limit at 75 % — cost if wrong: two comments name one reader of two until either file is next touched.
+44. concern (2) is accepted — a project description the loader reports as json-syntax is treated like the truncated one it already was, and a second parsing rule for project files is what F6 removed — cost if wrong: a NaN in a project description stops ddd gui with exit 2 instead of opening a project the analysis cannot read anyway.
+45. concern (3) needs no change to the repository — the spec names no cookie; the ledger records F2's ruling, and the plan's progress log will say the cookie is per port — cost if wrong: none.
+46. parked — the catch-all answer calls urlsplit again inside its except, so a request target urlsplit rejects (GET http://[/api/session) still gets no answer — no browser sends one, and 8df608b dropped it too — cost if wrong: a hand-made malformed request gets no answer until milestone 8's hardening.
+47. parked for milestone 3 — a component file the loader cannot read (truncated, and now NaN or a duplicate key) has kind unknown, so the project page, which lists components only, does not show it, although the API carries the loader's reason and its error counts in the summary; spec 6.10's "the file is marked as not loaded" holds in the API, not on the page — the gap predates the fix wave for truncated files, and milestone 3 builds the project home and the findings screen that list every file — cost if wrong: until milestone 3, a broken component disappears from the project page instead of being marked.
+48. parked for milestone 8 — per-port cookies accumulate: every run of ddd gui opened in a browser leaves a session cookie ddd-gui-<port> of about 60 bytes that the browser sends to every 127.0.0.1 port until the session ends (and browsers that restore sessions keep them), about 10 KB after some 135 runs — a Max-Age would sign out a page left open overnight, which is a design question for the security review — cost if wrong: a developer who opens very many runs in one browser session could see another local server refuse its oversized request headers.
+49. parked for milestone 8 — engine helpers untouched by the wave (_unit_below, _entries, lay_out) raise on pathological files (a "" key, "interface." beside "interface" on one line, values nested ~1000 deep), now answered 500 by the catch-all; a file holding 1e999 passes the strict parse as inf and answers 500 on every read of /api/file — none is reachable from a file the loader accepts as a valid description, and each now fails as a JSON answer instead of a blank page — cost if wrong: such a file cannot be viewed or edited in the GUI until milestone 8.
+50. parked — CHANGELOG.md:64, in the released 0.10.0 entry, says a record is "announced like a record that cannot be read", which no version did — a released entry is history, and the unreleased entry now describes what the language server logs — cost if wrong: one inaccurate sentence in a past release note.
+51. the page does not take the plan's Step 3 formula as written (whole packages' likely days over task hours alone: 45x, 27x, 50x) but measures from the request to the hand-over, counts only the part of each package milestone 1 delivered, and gives each measured range a slow end that counts the pull request's review as taking as long again — the formula's figures leave out the design, the plan, the reviews and the fixes and count work not delivered, and a management estimate built on them would promise a pace the maintainer's review cannot keep — cost if wrong: the page is more cautious than the measurement (28 days instead of about 20).

@@ -115,6 +115,22 @@ class TestProjects:
         body = get(Api(Session(root)), "/api/projects").body
         assert [entry["record"] for entry in body["refused"]] == [record.resolve().as_posix()]
 
+    def test_a_record_from_a_newer_ddd_is_listed_with_both_formats(self, root: Path) -> None:
+        """Spec 6.10: the start page lists it with the reason, as the language server logs it."""
+        from conftest import build_record
+        from ddd.build_info import BUILD_INFO_FORMAT
+
+        newer = BUILD_INFO_FORMAT + 1
+        record = build_record(root, root / "p.ddd.json", format=newer, colour="blue")
+        body = get(Api(Session(root)), "/api/projects").body
+        assert body["refused"] == [
+            {
+                "record": record.resolve().as_posix(),
+                "reason": f"written in format {newer} by a newer DDD, and this one understands "
+                f"up to format {BUILD_INFO_FORMAT}",
+            }
+        ]
+
     def test_a_project_found_can_be_opened(self, api: Api, root: Path) -> None:
         reply = post(api, "/api/open", {"path": (root / "other" / "q.ddd.json").as_posix()})
         assert (reply.status, reply.body["project"]["name"]) == (200, "Q")

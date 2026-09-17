@@ -2342,9 +2342,12 @@ an edit lands where the editor shows it; a client that takes versioned edits is 
 version of each document an edit was computed for. Each finding is also published at the
 locations of its notes - a note stating no place of its own being published at the first line
 of the file its finding is on, the protocol having no way to say "here". The build records a
-search discovers are announced as log messages, and a record that cannot be read, or that
-names a check this version has not got, is skipped and the reason announced with them. A
-record whose severities name a plugin's check that no plugin of the project registers is
+search discovers are announced as log messages, and a record written by a newer DDD - its
+`format` higher than this version reads, whether or not its keys are ones this version knows -
+or naming a check this version has not got is skipped and the reason announced with them. A
+record that is not a build record at all is skipped without one: a build wrote it, and nobody
+fixes it in an editor. A record whose severities name a plugin's check that no plugin of the
+project registers is
 reported as a `plugin-invalid` finding at the project file, which is the editor's answer to
 what `ddd check` refuses a `-W` for: silently accepted, a build silencing a check by a name
 nothing registers looks exactly like a build silencing one that exists.

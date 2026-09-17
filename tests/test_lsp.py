@@ -33,7 +33,7 @@ from conftest import (
     session,
     write_tree,
 )
-from ddd.build_info import BUILD_INFO_FILENAME, BuildInfo
+from ddd.build_info import BUILD_INFO_FILENAME, BUILD_INFO_FORMAT, BuildInfo
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
 from ddd.loading import load_workspace
 from ddd.lsp import diagnostics as service
@@ -325,16 +325,32 @@ class TestDiscovery:
         assert found.image == "firmware.elf"
         assert found.project == (tmp_path / "p.ddd.json").as_posix()
 
-    @pytest.mark.parametrize("content", ["not json at all", '{"project": 7}', "{}"])
-    def test_a_record_that_makes_no_sense_is_skipped(self, tmp_path: Path, content: str) -> None:
+    @pytest.mark.parametrize(
+        "content", ["not json at all", '{"project": 7}', "{}", '{"format": "newer"}', "[2]"]
+    )
+    def test_a_record_that_makes_no_sense_is_skipped_in_silence(
+        self, tmp_path: Path, content: str
+    ) -> None:
         """Written by a build rather than by a person, so there is nobody to report it to."""
         path = tmp_path / BUILD_INFO_FILENAME
         path.write_text(content, encoding="utf-8")
-        assert load_builds([path]) == []
+        refused: dict[Path, str] = {}
+        assert load_builds([path], refused) == []
+        assert refused == {}
 
-    def test_a_record_from_a_newer_ddd_is_skipped(self, tmp_path: Path) -> None:
-        path = build_record(tmp_path, tmp_path / "p.ddd.json", format=99)
-        assert load_builds([path]) == []
+    @pytest.mark.parametrize("extra", [{}, {"colour": "blue"}])
+    def test_a_record_from_a_newer_ddd_is_skipped_with_both_formats_named(
+        self, tmp_path: Path, extra: dict[str, str]
+    ) -> None:
+        """Whether or not its keys are ones this version knows, since a newer record is exactly
+        one that may carry keys it does not. Skipped in silence, its project was analysed under
+        the default severities with nothing to say why - which is most likely to happen while a
+        team is upgrading DDD."""
+        newer = BUILD_INFO_FORMAT + 1
+        path = build_record(tmp_path, tmp_path / "p.ddd.json", format=newer, **extra)
+        refused: dict[Path, str] = {}
+        assert load_builds([path], refused) == []
+        assert refused == {path: NEWER_RECORD}
 
     def test_a_record_that_cannot_be_read_is_skipped(self, tmp_path: Path) -> None:
         assert load_builds([tmp_path / "absent.json"]) == []
@@ -387,6 +403,30 @@ class TestDiscovery:
         # project above it, which is what it does for any file no usable record claims
         drawn = published(writer)[(tmp_path / "a.ddd.json").as_uri()]
         assert [entry["code"] for entry in drawn] == ["missing-producer"]
+
+    def test_a_record_from_a_newer_ddd_is_said_out_loud(self, tmp_path: Path) -> None:
+        write_tree(tmp_path, {"p.ddd.json": project("P")})
+        record = build_record(
+            tmp_path, tmp_path / "p.ddd.json", format=BUILD_INFO_FORMAT + 1, colour="blue"
+        )
+        writer = io.BytesIO()
+        Server(io.BytesIO(), writer, root=tmp_path).refresh(tmp_path / "p.ddd.json")
+        said = [
+            message["params"]["message"]
+            for message in sent(writer)
+            if message.get("method") == "window/logMessage"
+        ]
+        assert said == [
+            f"{record}: {NEWER_RECORD}; this record is ignored, so the project it names is not "
+            "analysed"
+        ]
+
+
+NEWER_RECORD = (
+    f"written in format {BUILD_INFO_FORMAT + 1} by a newer DDD, and this one understands up to "
+    f"format {BUILD_INFO_FORMAT}"
+)
+"""Why a build record one format newer than this version reads is refused."""
 
 
 EXITING_CHECK_PLUGIN = """

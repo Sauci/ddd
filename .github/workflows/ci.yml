@@ -22,14 +22,14 @@ concurrency:
 
 jobs:
   test:
-    # The package claims python 3.12 and 3.13, and claims to be os independent. This is what
-    # turns both into tested claims: a path handling bug that appeared only on linux has
+    # The package claims python 3.12, 3.13 and 3.14, and claims to be os independent. This is
+    # what turns both into tested claims: a path handling bug that appeared only on linux has
     # already reached a user of this project once, having passed everything on windows.
     strategy:
       fail-fast: false # one cell failing must not hide whether the others do
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.12", "3.13", "3.14"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -95,7 +95,7 @@ jobs:
           cache-dependency-path: requirements*.txt
       - uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
           cache-dependency-path: editors/vscode/package-lock.json
       - run: pip install -e .

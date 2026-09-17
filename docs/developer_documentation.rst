@@ -409,8 +409,8 @@ the image built, and the service exited with a usage error from an option set tw
 old. The five other services are not run here; what they exercise is either covered by a job
 above or, for ``compile``, the run a contributor does locally.
 
-The suite runs across a matrix of ubuntu and windows on python 3.12 and 3.13, which is the
-four combinations the classifiers in ``pyproject.toml`` advertise. That is not thoroughness
+The suite runs across a matrix of ubuntu and windows on python 3.12, 3.13 and 3.14, which is
+the six combinations the classifiers in ``pyproject.toml`` advertise. That is not thoroughness
 for its own sake: a path handling defect that only appeared on linux has already reached a
 user of this project, having passed the whole suite on windows first. A test in
 ``tests/test_documentation.py`` keeps the matrix and those classifiers in agreement, so

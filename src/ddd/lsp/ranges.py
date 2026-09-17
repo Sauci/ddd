@@ -167,6 +167,16 @@ class Document:
         """
         return self._values.get(pointer)
 
+    def span_of(self, pointer: str) -> tuple[int, int] | None:
+        """Where an entry sits in the text, as offsets: a member's key and value together, or an
+        element's value.
+
+        What an edit that removes or moves an entry cuts along. :meth:`value_span_of` leaves a
+        member's key out, which is right for replacing its value and wrong for taking the member
+        away.
+        """
+        return self._spans.get(pointer)
+
     def _resolve(self, pointer: str) -> tuple[int, int] | None:
         """The span of the pointer, of its nearest documented ancestor, or nothing."""
         current = pointer

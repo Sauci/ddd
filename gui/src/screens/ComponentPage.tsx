@@ -23,6 +23,13 @@ export function ComponentPage({ file, state, disabled }: Props) {
   const content = useQuery({
     queryKey: ["file", file, state?.revision],
     queryFn: () => getFile(file),
+    // The table stays up while this file is read again for a newer revision: swapped for
+    // "Reading the file…", it lost an open unit editor's draft and the scroll position on every
+    // edit. Only this file's answer is kept - another component's page starts from nothing, not
+    // from the last one's table - and an edit made from it carries the fingerprint it was read
+    // at, which the server refuses as stale if the file has moved on.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === file ? previous : undefined,
   });
   const edit = useMutation({
     mutationFn: ({ pointer, unit }: { pointer: string; unit: string }) => {

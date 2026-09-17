@@ -68,15 +68,23 @@ test("escape leaves a unit as it was", async ({ page, gui }) => {
   expect(readFileSync(file).equals(before)).toBe(true);
 });
 
-test("a change saved by another editor reaches the page", async ({ page, gui }) => {
+test("a change saved by another editor reaches the page, and a unit being typed keeps its draft", async ({
+  page,
+  gui,
+}) => {
   const file = join(gui.directory, CONTROLLER);
   await page.goto(gui.address);
   await page.getByRole("button", { name: "Controller", exact: true }).click();
   await expect(page.getByRole("button", { name: "Change unit of ValueB" })).toHaveText("V");
+  await page.getByRole("button", { name: "Change unit of ValueA" }).click();
+  await page.getByRole("textbox", { name: "Unit of ValueA" }).fill("rp");
   writeFileSync(file, readFileSync(file, "utf8").replace('"unit": "V"', '"unit": "mV"'));
   await expect(page.getByRole("button", { name: "Change unit of ValueB" })).toHaveText("mV", {
     timeout: 5_000,
   });
+  // The table stays while the file is read again for the new revision, so the editor open in it
+  // does too: swapped for "Reading the file…", it lost the draft.
+  await expect(page.getByRole("textbox", { name: "Unit of ValueA" })).toHaveValue("rp");
 });
 
 test("an edit made from a page that is out of date is refused, and the file reloaded", async ({

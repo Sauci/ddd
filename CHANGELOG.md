@@ -14,7 +14,7 @@ its own.  A check identifier is the one entry of that list a release only ever a
 name a project has written into a severity override does not change once it has been
 published, as the specification requires ([section 4](SPEC.md#4-consistency-checks)).
 
-## Unreleased
+## 0.10.0
 
 This release is two things at once.  It finishes what 0.9.0 started - constants that hold any
 number, string data, the dumped dictionary written as a file rather than redirected, a

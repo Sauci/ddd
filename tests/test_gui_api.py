@@ -11,7 +11,7 @@ import pytest
 from conftest import component, declare, project, write_tree
 from ddd import __version__
 from ddd.diagnostics import CHECKS
-from ddd.editing import UNWRITABLE, EditError, fingerprint
+from ddd.editing import UNVERIFIED, UNWRITABLE, EditError, fingerprint
 from ddd.gui.api import Api, Reply
 from ddd.gui.session import Session
 
@@ -217,6 +217,10 @@ class TestFiles:
     def test_a_file_request_needs_a_path(self, api: Api) -> None:
         assert get(api, "/api/file").status == 400
 
+    def test_a_file_request_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root)), "/api/file", path=(root / "a.ddd.json").as_posix())
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
+
 
 class TestDictionaryAndChecks:
     def test_the_dictionary_of_the_current_revision_is_served(self, api: Api) -> None:
@@ -283,6 +287,18 @@ class TestEdit:
         monkeypatch.setattr(api.session, "edit", unwritable)
         reply = post(api, "/api/edit", unit_edit(api, root, "Hz"))
         assert (reply.status, reply.body["error"]) == (500, "unwritable")
+
+    def test_an_edit_that_does_not_read_back_is_a_refusal_the_page_can_act_on(
+        self, api: Api, root: Path, monkeypatch
+    ) -> None:
+        def unverified(changes):
+            raise EditError(
+                UNVERIFIED, "the edited file does not read back as the intended document"
+            )
+
+        monkeypatch.setattr(api.session, "edit", unverified)
+        reply = post(api, "/api/edit", unit_edit(api, root, "Hz"))
+        assert (reply.status, reply.body["error"]) == (409, "unverified")
 
     def test_an_edit_outside_the_project_is_not_found(self, api: Api, root: Path) -> None:
         reply = post(api, "/api/edit", unit_edit(api, root, "Hz", name="other/q.ddd.json"))

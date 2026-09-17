@@ -1,25 +1,30 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { cpSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { test as base } from "@playwright/test";
+import { test as base, type TestInfo } from "@playwright/test";
 
 const DEMO = fileURLToPath(new URL("../../examples/demo/", import.meta.url));
 
 export interface Gui {
   /** The address ddd gui printed, token included. */
   address: string;
-  /** The temporary copy of examples/demo the server edits. */
+  /** The copy of examples/demo the server edits, under this test's own output directory. */
   directory: string;
   /** Stops the server; stopping twice is harmless. */
   stop: () => Promise<void>;
 }
 
 /** `ddd gui` over a fresh copy of the demo, with the project named or not. */
-async function started(named: boolean, use: (gui: Gui) => Promise<void>): Promise<void> {
-  const directory = mkdtempSync(join(tmpdir(), "ddd-gui-e2e-"));
+async function started(
+  named: boolean,
+  use: (gui: Gui) => Promise<void>,
+  testInfo: TestInfo,
+): Promise<void> {
+  // Under test-results/, which Playwright empties at the start of every run: a failed journey
+  // then keeps its copy beside its trace, and nothing here has to remove it.
+  const directory = testInfo.outputPath("demo");
   cpSync(DEMO, directory, { recursive: true });
   const project = named ? [join(directory, "demo.ddd.json")] : [];
   // python -m ddd rather than the ddd launcher: on Windows the launcher starts python as a child
@@ -43,22 +48,6 @@ async function started(named: boolean, use: (gui: Gui) => Promise<void>): Promis
     await use({ address: await served(child), directory, stop });
   } finally {
     await stop();
-    removeCopy(directory);
-  }
-}
-
-/**
- * Windows can hold a file of the just-killed server's working directory locked for anywhere
- * from nothing up to several minutes past the point where Node considers it exited (observed
- * with antivirus scanning enabled); retrying cannot be relied on to bridge that within a test's
- * timeout. A copy still locked once the retries above are exhausted is left for the OS's own
- * temporary-directory cleanup rather than failing a journey whose assertions already ran.
- */
-function removeCopy(directory: string): void {
-  try {
-    rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
-  } catch {
-    // best-effort: see the comment above.
   }
 }
 
@@ -89,9 +78,9 @@ function terminated(child: ChildProcess): Promise<void> {
 
 export const test = base.extend<{ gui: Gui; bareGui: Gui }>({
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
-  gui: async ({}, use) => started(true, use),
+  gui: async ({}, use, testInfo) => started(true, use, testInfo),
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
-  bareGui: async ({}, use) => started(false, use),
+  bareGui: async ({}, use, testInfo) => started(false, use, testInfo),
 });
 
 export { expect } from "@playwright/test";

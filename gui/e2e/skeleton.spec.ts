@@ -1,15 +1,23 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 
 const CONTROLLER = join("components", "controller.ddd.json");
 const COMPONENTS = ["Controller", "SensorHub", "UserInterface", "EventLogger"];
+
+/** The project page's row for one component, to read its Errors and Warnings cells from. */
+const componentRow = (page: Page, name: string) =>
+  page.getByRole("row").filter({ has: page.getByRole("button", { name, exact: true }) });
 
 test("the demo opens on its project page, with every component", async ({ page, gui }) => {
   await page.goto(gui.address);
   await expect(page.getByRole("heading", { name: "DemoDevice" })).toBeVisible();
   for (const name of COMPONENTS) {
     await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
+    const cells = componentRow(page, name).getByRole("cell");
+    await expect(cells.nth(1)).toHaveText("0");
+    await expect(cells.nth(2)).toHaveText("0");
   }
 });
 
@@ -34,6 +42,8 @@ test("a unit is written as one value and the disagreement is shown on both sides
   await expect(page.locator(".findings").getByText("definition-mismatch")).toBeVisible();
 
   await page.getByRole("button", { name: "DemoDevice" }).click();
+  await expect(componentRow(page, "Controller").getByRole("cell").nth(1)).toHaveText("1");
+  await expect(componentRow(page, "SensorHub").getByRole("cell").nth(1)).toHaveText("1");
   await page.getByRole("button", { name: "SensorHub", exact: true }).click();
   await expect(page.locator(".findings").getByText("definition-mismatch")).toBeVisible();
 

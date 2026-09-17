@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=39bb1c6d"></script>
+      <script src="_static/documentation_options.js?v=82662543"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/js/versions.js?v=a915def3"></script>
@@ -684,7 +684,7 @@ directory named after its tag and lists only the ones beginning with <code class
 same run started on a branch would have built whatever that branch’s <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> said
 and uploaded it under no tag, with no <code class="docutils literal notranslate"><span class="pre">.vsix</span></code> and no documentation directory - and an index
 accepts a file name once and for ever, so the only way back is the next version number.</p>
-<p><strong>The version is spelled in nine files, and a test holds only three of them together.</strong>
+<p><strong>The version is spelled in ten files, and a test holds five of them together.</strong>
 <code class="docutils literal notranslate"><span class="pre">src/ddd/__init__.py</span></code> is where it lives: <code class="docutils literal notranslate"><span class="pre">docs/conf.py</span></code> imports <code class="docutils literal notranslate"><span class="pre">__version__</span></code> rather than
 restating it, and the banner of every generated file carries it from there. <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>,
 which the release tag is checked against, and <code class="docutils literal notranslate"><span class="pre">editors/vscode/package.json</span></code>, which the
@@ -693,13 +693,15 @@ extension is packaged with, repeat it, and a test each asserts that they agree w
 and in the entry for the root package - and a test now asserts that both agree with
 <code class="docutils literal notranslate"><span class="pre">__version__</span></code> as well. Nothing else would: what <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">ci</span></code> compares with the manifest is the
 <em>dependencies</em>, not the root package’s own version, so a bump that edits only the manifest
-packaged a <code class="docutils literal notranslate"><span class="pre">.vsix</span></code> whose lock file still said the version before. The other five files
-spell it out as text and nothing
+packaged a <code class="docutils literal notranslate"><span class="pre">.vsix</span></code> whose lock file still said the version before. <code class="docutils literal notranslate"><span class="pre">cmake/Ddd.cmake</span></code> states
+it as <code class="docutils literal notranslate"><span class="pre">DDD_MODULE_VERSION</span></code>, because the module refuses a <code class="docutils literal notranslate"><span class="pre">ddd</span></code> of another release and so
+has to know its own - a release that bumps the package and not the module refuses itself - and
+a test asserts that too. The other five files spell it out as text and nothing
 derives it for them: the wheel file name in <code class="docutils literal notranslate"><span class="pre">README.md</span></code> and in <a class="reference internal" href="getting_started.html"><span class="doc">Getting started</span></a>, the two
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">--version</span></code> transcripts of that page - only the first of which the transcript test re-runs,
 since the second carries a trailing comment and is shown rather than run - and the banner of a
 generated file quoted in <a class="reference internal" href="getting_started.html"><span class="doc">Getting started</span></a>, <a class="reference internal" href="generated_artefacts.html"><span class="doc">Generated artefacts</span></a>,
-<a class="reference internal" href="faq.html"><span class="doc">FAQ</span></a> and <a class="reference internal" href="templates.html"><span class="doc">Templates</span></a>. Bumping the version means walking all nine in the release
+<a class="reference internal" href="faq.html"><span class="doc">FAQ</span></a> and <a class="reference internal" href="templates.html"><span class="doc">Templates</span></a>. Bumping the version means walking all ten in the release
 commit.</p>
 <p>The publishing jobs name a deployment environment - <code class="docutils literal notranslate"><span class="pre">pypi</span></code>, <code class="docutils literal notranslate"><span class="pre">testpypi</span></code>. As this
 repository stands, neither carries a deployment branch policy and neither has a protection

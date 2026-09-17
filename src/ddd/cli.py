@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import os
 import sys
+import unicodedata
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,9 +44,9 @@ from ddd.diagnostics import (
     SeverityPolicy,
     UnknownCheckError,
 )
-from ddd.identity import UNREADABLE, assign
+from ddd.identity import UNREADABLE, UNWRITABLE, assign
 from ddd.ir import Comparable, DataDictionary
-from ddd.loading import load_dictionary, load_workspace
+from ddd.loading import load_dictionary, load_workspace, resolve_path
 from ddd.models import (
     ComponentFile,
     ConstantsFile,
@@ -75,6 +77,12 @@ from ddd.plugins import (
 EXIT_OK = 0
 EXIT_FINDINGS = 1
 EXIT_USAGE = 2
+EXIT_INTERRUPTED = 130
+"""What a shell reports for a command killed by SIGINT, and what Ctrl-C ends a run with.
+
+Distinct from the findings and usage codes on purpose: a script that stops a long run by hand
+must not read the result as a project with errors.
+"""
 
 GENERATOR = f"ddd {__version__}"
 
@@ -117,6 +125,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         handler: Any = args.handler
         return int(handler(args))
+    except KeyboardInterrupt:
+        # Ctrl-C during a long run, or during a plugin's hook, which re-raises it rather than
+        # blaming the plugin for it. One line instead of the thirty a traceback costs, and a
+        # code of its own so that a caller does not read a stopped run as a failed check.
+        print("ddd: interrupted", file=sys.stderr)
+        return EXIT_INTERRUPTED
+    except BrokenPipeError:
+        # `ddd schema component | head -1`: the reader stopped reading, which is what a pager
+        # and `head` do, and nothing about it is this run's error - reported as a usage error
+        # it failed a paging script on the tool's side under `set -o pipefail`. stdout is
+        # pointed at the null device first, the recipe python's own documentation gives, so
+        # that the interpreter's final flush does not print `Exception ignored` after us.
+        with contextlib.suppress(OSError, ValueError):
+            target = sys.stdout.fileno()
+            os.dup2(os.open(os.devnull, os.O_WRONLY), target)
+        return EXIT_OK
     except UnknownCheckError as error:
         # UnknownCheckError is a ValueError, listed first only to keep its own wording apart
         # from the clause below; being one, `_reported_on_failure` already covers it too.
@@ -143,8 +167,27 @@ def _plugin_artefact(arguments: Sequence[str]) -> str | None:
     return None
 
 
+class _Parser(argparse.ArgumentParser):
+    """A parser that spells its options out, for this command and every subcommand of it.
+
+    argparse accepts any unambiguous prefix of a long option by default, so ``--stand`` and
+    ``--dict`` were as good as ``--standalone`` and ``--dictionary`` - until a second option
+    starting with those letters is added, and every script that took the offer breaks with
+    argparse's "ambiguous option" as its only clue. What a command accepts is part of the
+    tool's interface ([the changelog's preamble]); what it happens not to be ambiguous about
+    today is not, and an abbreviation nobody published is not worth that trap.
+
+    A subcommand is a parser of its own, built by ``add_parser`` from the class of the parser
+    that owns the subparsers rather than from its settings, so ``allow_abbrev`` has to be
+    carried by the class to reach ``ddd check --standalone`` and the options of an artefact.
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(allow_abbrev=False, **kwargs)
+
+
 def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _Parser(
         prog="ddd",
         description=(
             "Data dictionary for the global variables of a component based "
@@ -382,12 +425,14 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
 
     sources = subparsers.add_parser(
         "sources",
-        help="list every description file a project is built out of",
+        help="list every file a project is built out of, its plugins' modules included",
         description=(
-            "Prints one absolute path per line: the project file and every file it includes "
-            "however deeply. A build system needs exactly this "
+            "Prints one absolute path per line: the project file, every file it includes "
+            "however deeply, and the module of every plugin those files name. A build system "
+            "needs exactly this "
             "to know when the generated files are out of date, because a project pulls its "
-            "components in through 'includes' and none of them is named on the command line."
+            "components in through 'includes' and names its plugins under 'plugins', and "
+            "none of them is named on the command line."
         ),
     )
     sources.add_argument("project", type=Path, help="project or component description file")
@@ -564,6 +609,38 @@ def _add_plugin_argument(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _where(path: Path) -> Location:
+    """A finding's place, out of a path typed on the command line.
+
+    Resolved rather than taken as typed: a ``location`` is "an absolute, forward-slashed
+    path" (``docs/consistency_checks.rst``), and everything the loader locates is one, because
+    it resolves every file it reads. The paths this module locates a finding at itself - the
+    project or candidate a comparison is about, the address map a note is about - arrive as
+    somebody typed them, and a relative one is unresolvable to whoever reads the json without
+    the working directory the run had. It is also unorderable against the rest: within one
+    severity the findings sort by path, so a relative one landed apart from the findings of
+    the very file it is about. The text report is unchanged, because it renders every path
+    back against the working directory.
+    """
+    return Location(resolve_path(path))
+
+
+def _verify_overrides(bag: DiagnosticBag, plugins: Sequence[Plugin] = ()) -> None:
+    """Hold every ``-W`` naming a plugin's check to the checks the run's plugins register.
+
+    ``plugins`` are the ones whose checks are not on the bag already: a baseline's, which ran
+    on a bag of its own. Their checks are checks this run knows - an override naming one of
+    them, ``-W layout/removed-entry=ignore`` beside the ``missing-plugin`` the same run
+    reports about that plugin, was refused as naming a check no loaded plugin registers,
+    which is the opposite of what happened. Registered only where nothing has claimed the
+    identifier yet: a check both sides declare keeps the candidate's own, because the
+    candidate's plugins are the ones that report through this bag.
+    """
+    for plugin in plugins:
+        bag.register(info for info in plugin.checks if info.identifier not in bag.registered)
+    bag.policy.verify(bag.registered)
+
+
 def _plugins_from_arguments(
     specs: Sequence[str], bag: DiagnosticBag | None = None
 ) -> tuple[Plugin, ...]:
@@ -592,22 +669,36 @@ def _plugins_from_arguments(
 
 
 def _command_check(args: argparse.Namespace) -> int:
-    resolved, bag = _analyze(args)
+    # The plugins of a run with a baseline include the baseline's own - loaded for its
+    # analysis, on a bag of its own - and those are known only once it has been read. So a
+    # `-W` naming a plugin's check is verified below rather than at the end of the analysis,
+    # which is where a run without a baseline verifies it.
+    resolved, bag = _analyze(args, verify=args.baseline is None)
     dictionary = resolved.dictionary if resolved is not None else None
     # With a baseline, one command answers both questions and returns one exit code, which
     # is what a ci job wants: is the project consistent, and is it still a replacement?
-    if resolved is not None and args.baseline is not None:
+    if args.baseline is not None:
         with _reported_on_failure(bag, args.format):
-            baseline = _read_baseline(args.baseline, bag)
-            if baseline is not None:
-                compare(baseline, resolved.dictionary, bag, location=Location(args.project))
+            # Not read at all when the project did not resolve: its errors are what this run
+            # has to say, and a comparison against them would say nothing. The overrides are
+            # still held to what did load, so a typo is reported by the run that made it.
+            baseline = (
+                _read_baseline(args.baseline, bag, getattr(args, "standalone", False))
+                if resolved is not None
+                else None
+            )
+            _verify_overrides(bag, () if baseline is None else baseline.plugins)
+            if resolved is not None and baseline is not None:
+                location = _where(args.project)
+                compare(baseline.dictionary, resolved.dictionary, bag, location=location)
                 run_compare_hooks(
                     resolved.plugins,
-                    baseline,
+                    baseline.dictionary,
                     resolved.dictionary,
                     bag,
                     resolved.locate,
-                    Location(args.project),
+                    location,
+                    _where(args.baseline),
                 )
     _report(bag, args.format)
     if args.format == "json":
@@ -645,12 +736,21 @@ def _command_compare(args: argparse.Namespace) -> int:
                 )
                 raise ValueError(msg)
             plugins = _plugins_from_arguments(args.plugin, bag)
-        bag.policy.verify(bag.registered)
+        _verify_overrides(bag, baseline.plugins)
 
-        location = Location(args.candidate)
-        paired = compare(baseline, candidate.dictionary, bag, location=location)
-        run_compare_hooks(plugins, baseline, candidate.dictionary, bag, candidate.locate, location)
+        location = _where(args.candidate)
+        paired = compare(baseline.dictionary, candidate.dictionary, bag, location=location)
+        run_compare_hooks(
+            plugins,
+            baseline.dictionary,
+            candidate.dictionary,
+            bag,
+            candidate.locate,
+            location,
+            _where(args.baseline),
+        )
         if args.renames is not None:
+            _refuse_a_source(args.renames, "--renames", *candidate.sources, *baseline.sources)
             # Written whether or not the comparison found errors: a delivery that cannot be
             # accepted still needs its renames listed, so that whoever fixes it knows what
             # moved.
@@ -667,11 +767,15 @@ def _command_compare(args: argparse.Namespace) -> int:
     _report(bag, args.format)
     if args.format != "json":
         # The file names, not the project names: two deliveries of one project share a name.
+        # And when the two file names coincide as well - which they do whenever the
+        # deliveries are kept in a directory each - the names say nothing at all
+        # ("pressure.ddd.json can replace pressure.ddd.json"), so the line falls back to the
+        # paths as they were typed, which is what tells them apart.
         verdict = "cannot" if bag.has_errors else "can"
-        print(
-            f"{args.candidate.name} {verdict} replace {args.baseline.name}",
-            file=sys.stderr,
-        )
+        candidate, baseline = args.candidate.name, args.baseline.name
+        if candidate == baseline:
+            candidate, baseline = args.candidate.as_posix(), args.baseline.as_posix()
+        print(f"{candidate} {verdict} replace {baseline}", file=sys.stderr)
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
 
 
@@ -710,7 +814,7 @@ def _check_address_coverage(
         "address-missing",
         f"the address map has no entry for {_listed(missing)}; "
         f"{'it reaches' if len(missing) == 1 else 'they reach'} the a2l at address 0",
-        Location(path),
+        _where(path),
         notes=notes,
     )
 
@@ -898,6 +1002,8 @@ def _command_generate(args: argparse.Namespace) -> int:
             backends.append(backend_of(plugin, dictionary, GENERATOR))
         files = render(dictionary, backends, args.output_dir)
         if args.dictionary is not None:
+            _refuse_a_directory(args.dictionary, "--dictionary")
+            _refuse_a_source(args.dictionary, "--dictionary", *resolved.sources)
             files.append(_dictionary_file(dictionary, args.dictionary, files))
         try:
             results = write(files, dry_run=args.dry_run)
@@ -943,7 +1049,16 @@ def _command_list(args: argparse.Namespace) -> int:
                     "components": [
                         component.model_dump(mode="json") for component in dictionary.components
                     ],
-                    "variables": [entry.model_dump(mode="json") for entry in dictionary.listed],
+                    # `name` in front of the record itself, because a leaf's is a property of
+                    # the model rather than a field of it: a leaf row carried `path` and no
+                    # `name` at all, so a script keying the rows on `name` - the key the other
+                    # shape of row has always had, and the one the table is sorted by - dropped
+                    # every member of every structured variable in silence. First, as it
+                    # already was on a plain object, where it repeats what the record states.
+                    "variables": [
+                        {"name": entry.name, **entry.model_dump(mode="json")}
+                        for entry in dictionary.listed
+                    ],
                     **_diagnostics_payload(bag),
                 },
                 indent=2,
@@ -951,6 +1066,10 @@ def _command_list(args: argparse.Namespace) -> int:
         )
     else:
         _print_table(dictionary)
+        # Before the findings, as `sources` and `artefacts` already flush: redirected into
+        # one file, stdout is block buffered and stderr is not, so the table arrived after
+        # every finding of the run - which is not the order anybody reads a log in.
+        sys.stdout.flush()
         _report(bag, args.format)
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
 
@@ -971,14 +1090,18 @@ def _command_dump(args: argparse.Namespace) -> int:
         return EXIT_FINDINGS
     if args.output is None:
         print(_dictionary_text(resolved.dictionary), end="")
+        # The findings go to stderr, the dictionary to stdout, and `ddd dump p.ddd.json > log
+        # 2>&1` sends both to one file where only stdout is buffered: flushed here, the
+        # document is where the reader expects it rather than under the findings about it.
+        sys.stdout.flush()
         _report(bag, args.format, stream=sys.stderr)
     else:
-        _write_dictionary(resolved.dictionary, args.output, bag, args.format)
+        _write_dictionary(resolved, args.output, bag, args.format)
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
 
 
 def _write_dictionary(
-    dictionary: DataDictionary, path: Path, bag: DiagnosticBag, output_format: str
+    resolved: Resolved, path: Path, bag: DiagnosticBag, output_format: str
 ) -> None:
     """``dump -o``: the dictionary into ``path``, reported the way ``generate`` reports a file.
 
@@ -993,7 +1116,9 @@ def _write_dictionary(
     written is reported after the findings of the run, as ``generate`` reports one.
     """
     with _reported_on_failure(bag, output_format, sys.stderr):
-        text = _dictionary_text(dictionary)
+        _refuse_a_directory(path, "-o")
+        _refuse_a_source(path, "-o", *resolved.sources)
+        text = _dictionary_text(resolved.dictionary)
         try:
             (result,) = write([GeneratedFile(path, text)])
         except OSError as error:
@@ -1009,17 +1134,26 @@ def _write_dictionary(
 
 
 def _command_id(args: argparse.Namespace) -> int:
-    """Stamp identities into description files, reporting what was written."""
+    """Stamp identities into description files, reporting what was written.
+
+    Every file on the command line is attempted, and the ones that could not be used are
+    reported after the total rather than instead of it: a run over a directory of
+    descriptions must not stop at the first file it cannot read - or, just as ordinarily,
+    cannot write - leaving everything after it unstamped and saying nothing about what it
+    did before.
+    """
     written = 0
-    skipped: list[Path] = []
+    skipped: list[tuple[Path, str]] = []
     for path in args.files:
         count = assign(path)
         if count == UNREADABLE:
-            skipped.append(path)
+            skipped.append((path, "not readable as json, skipped"))
+        elif count == UNWRITABLE:
+            skipped.append((path, "cannot be written, skipped"))
         else:
             written += count
-    for path in skipped:
-        print(f"{path}: not readable as json, skipped", file=sys.stderr)
+    for path, reason in skipped:
+        print(f"{path}: {reason}", file=sys.stderr)
     print(f"wrote {written} id{'' if written == 1 else 's'}", file=sys.stderr)
     return EXIT_FINDINGS if skipped else EXIT_OK
 
@@ -1123,20 +1257,29 @@ def _command_build_info(args: argparse.Namespace) -> int:
         strict=args.strict,
         severity=tuple(args.severity),
     )
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    # newline="" for the same reason the schemas use it: a file committed or compared across
-    # platforms must not differ by its line endings alone.
-    args.output.write_text(build_info_text(info), encoding="utf-8", newline="")
+    try:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        # newline="" for the same reason the schemas use it: a file committed or compared
+        # across platforms must not differ by its line endings alone.
+        args.output.write_text(build_info_text(info), encoding="utf-8", newline="")
+    except OSError as error:
+        raise OSError(describe_write_failure(error, args.output.as_posix())) from None
     print(f"wrote {args.output.as_posix()}", file=sys.stderr)
     return EXIT_OK
 
 
 def _write_schema(path: Path, kind: str, plugins: Sequence[Plugin] = ()) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # newline="" keeps the line endings as written on every platform, the same discipline the
-    # generated sources follow: a schema committed from Windows must not differ from the same
-    # schema committed from linux.
-    path.write_text(schema_text(kind, plugins), encoding="utf-8", newline="")
+    # Guarded like every other file this tool writes: `ddd schema all -o afile.txt` answered
+    # `[WinError 183] Cannot create a file when that file already exists: 'afile.txt'`, which
+    # is the mkdir talking about a file the caller named as a directory, and says neither.
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # newline="" keeps the line endings as written on every platform, the same discipline
+        # the generated sources follow: a schema committed from Windows must not differ from
+        # the same schema committed from linux.
+        path.write_text(schema_text(kind, plugins), encoding="utf-8", newline="")
+    except OSError as error:
+        raise OSError(describe_write_failure(error, path.as_posix())) from None
     print(f"wrote {path.as_posix()}", file=sys.stderr)
 
 
@@ -1350,27 +1493,47 @@ class Resolved:
     plugins: tuple[Plugin, ...]
     locate: Callable[[str], Location | None]
     from_description: bool
+    sources: tuple[Path, ...]
+    """Every file this side was read out of, resolved: a project and its whole include tree,
+    or the single file an archived dump was read from. What :func:`_refuse_a_source` holds an
+    output path against."""
 
 
-def _analyze(args: argparse.Namespace, stream: Any = None) -> tuple[Resolved | None, DiagnosticBag]:
+def _analyze(
+    args: argparse.Namespace, stream: Any = None, *, verify: bool = True
+) -> tuple[Resolved | None, DiagnosticBag]:
+    """Load and analyse ``args.project`` under the run's policy.
+
+    ``verify`` is left to the caller by ``ddd check --baseline`` alone, which knows the
+    plugins of the run only once the baseline has been read as well.
+    """
     # The standalone policy goes first, so that an explicit -W on the same run overrides it:
     # the flag sets the floor for a component read alone, the caller still has the last word.
     standalone = list(STANDALONE_POLICY) if getattr(args, "standalone", False) else []
     policy = SeverityPolicy.from_strings([*standalone, *args.severity], strict=args.strict)
     bag = DiagnosticBag(policy)
     workspace = load_workspace(args.project, bag)
-    if workspace is None or bag.has_errors:
+    if workspace is None:
+        # Nothing was read, so nothing says which plugins this project names: holding a `-W`
+        # naming one of their checks to an empty registry would blame the command line for a
+        # file the run could not open.
         return None, bag
     with _reported_on_failure(bag, args.format, stream):
         # An override naming a plugin check is verified once the project is read - only then
         # is it known which plugins loaded - so this has to sit inside the block: the
         # load-time findings gathered by then are reported before the usage error, as
-        # `compare` already does.
-        bag.policy.verify(bag.registered)
+        # `compare` already does. Before the gate below rather than after it, because the
+        # plugins are loaded by the time an include goes missing: verified afterwards, a typo
+        # on the command line surfaced only on the first run that happened to load cleanly,
+        # which is the run that no longer needed telling.
+        if verify:
+            _verify_overrides(bag)
+        if bag.has_errors:
+            return None, bag
         # A plugin hook that raises is a usage error naming the plugin (section 3.11); the
         # findings collected before the hook ran are the project's, and are printed first.
         dictionary = analyze(workspace, bag)
-    return Resolved(dictionary, workspace.plugins, workspace.locate, True), bag
+    return Resolved(dictionary, workspace.plugins, workspace.locate, True, workspace.sources()), bag
 
 
 def _read_dictionary(path: Path, bag: DiagnosticBag) -> Resolved | None:
@@ -1383,14 +1546,55 @@ def _read_dictionary(path: Path, bag: DiagnosticBag) -> Resolved | None:
         workspace = load_workspace(path, bag)
         if workspace is None or bag.has_errors:
             return None
-        return Resolved(analyze(workspace, bag), workspace.plugins, workspace.locate, True)
+        return Resolved(
+            analyze(workspace, bag),
+            workspace.plugins,
+            workspace.locate,
+            True,
+            workspace.sources(),
+        )
     dictionary = load_dictionary(path, bag)
     if dictionary is None:
         return None
-    return Resolved(dictionary, (), lambda _: Location(path), False)
+    archived = _where(path)
+    return Resolved(dictionary, (), lambda _: archived, False, (archived.path,))
 
 
-def _read_baseline(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
+def _refuse_a_directory(path: Path, option: str) -> None:
+    """Refuse an output path with no file name of its own, in the tool's own words.
+
+    ``-o .``, ``-o ..`` and ``-o C:/`` name a place rather than a file. The writer stages
+    every file beside its target, and a path with no final component has nothing to stage
+    beside: what came out was python's ``WindowsPath('.') has an empty name``, printed as the
+    whole of what the run had to say about a mistake as ordinary as a missing file name.
+    """
+    if not path.name:
+        msg = f"{option} names a directory, '{path.as_posix()}'; give it a file to write"
+        raise ValueError(msg)
+
+
+def _refuse_a_source(path: Path, option: str, *sources: Path) -> None:
+    """Refuse an output path that names a file this run read; a usage error naming it.
+
+    ``-o``, ``--renames`` and ``--dictionary`` each name a file on the command line, and the
+    obvious way to get one wrong is to complete the name of a description sitting in the same
+    directory: the run then replaced a hand-written source with the dictionary or with a list
+    of renames, reported `wrote ...` and exited 0, and the next command over the project read
+    whatever had landed there. Nothing DDD writes is ever a file it read, so the pair is
+    always a mistake rather than a request, and it is refused before anything is written.
+
+    Compared on the resolved path, as the sources themselves are, so that an alias, a
+    relative spelling or a junction cannot slip past the comparison.
+    """
+    if resolve_path(path) in set(sources):
+        msg = (
+            f"{option} would write over '{path.as_posix()}', which this run reads; "
+            f"give it a file of its own"
+        )
+        raise ValueError(msg)
+
+
+def _read_baseline(path: Path, bag: DiagnosticBag, standalone: bool = False) -> Resolved | None:
     """Resolve the baseline side of a comparison, in a bag of its own.
 
     A baseline given as a project description has to be analysed to become a dictionary, and
@@ -1403,8 +1607,16 @@ def _read_baseline(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
     compared against whatever resolved, because a delivery that cannot be accepted still needs
     its differences listed; a candidate given as a description is not analysed once the shared
     bag holds an error, so a broken baseline stops that run at the errors.
+
+    ``-W`` does not reach it either, for the same reason and against the same objection: the
+    overrides used to be shared, so ``-W unused-output=error`` - a run asking to be told about
+    *its own* unread outputs - promoted a warning about a predecessor into an error, carried
+    it over as ``in the baseline:`` and refused a verdict about the delivery. What does reach
+    it is ``standalone``, the floor a component read on its own sets: that is a statement
+    about how the file was handed over, and the baseline was handed over the same way.
     """
-    own = DiagnosticBag(SeverityPolicy(bag.policy.overrides, strict=False))
+    floor = STANDALONE_POLICY if standalone else ()
+    own = DiagnosticBag(SeverityPolicy.from_strings(floor, strict=False))
     resolved = _read_dictionary(path, own)
     for diagnostic in own.sorted:
         if diagnostic.severity is Severity.ERROR:
@@ -1413,8 +1625,13 @@ def _read_baseline(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
                 f"in the baseline: {diagnostic.message}",
                 diagnostic.location,
                 diagnostic.notes,
+                # At the severity the baseline's own analysis gave it: "the run fails on
+                # them" (4.1) is what makes a comparison against an untrustworthy dictionary
+                # visible, and a `-W` of this run relaxing the check would leave the run
+                # reporting no verdict and exiting 0.
+                severity=diagnostic.severity,
             )
-    return resolved.dictionary if resolved is not None else None
+    return resolved
 
 
 def _holds_a_description(path: Path) -> bool:
@@ -1510,6 +1727,20 @@ def _init_cell(entry: Comparable) -> str:
     return f"{stated} (= {reading})" if reading is not None else stated
 
 
+def _display_width(text: str) -> int:
+    """Columns a terminal spends on ``text``, which is not always its number of code points.
+
+    The table padded with ``str.ljust``, which counts code points: a unit such as ``温度`` is
+    two of them and four columns wide, so its row got the padding of a two-column cell and
+    every cell after it started two columns right of its header. The East Asian width property
+    is what says which characters are drawn double width - ``W`` for the ones that always are,
+    ``F`` for the full width forms of characters that also have a half width one - and it is
+    the rule every terminal and every pager applies. ``°C``, ``µs`` and the accented letters a
+    description is otherwise likely to carry are narrow and unaffected.
+    """
+    return sum(2 if unicodedata.east_asian_width(character) in "WF" else 1 for character in text)
+
+
 def _print_table(dictionary: DataDictionary) -> None:
     rows = [("VARIABLE", "KIND", "DATATYPE", "UNIT", "SHAPE", "INIT", "PRODUCER", "CONSUMERS")]
     for entry in dictionary.listed:
@@ -1528,7 +1759,12 @@ def _print_table(dictionary: DataDictionary) -> None:
                 ", ".join(entry.consumers) or "-",
             )
         )
-    widths = [max(len(row[column]) for row in rows) for column in range(len(rows[0]))]
+    widths = [max(_display_width(row[column]) for row in rows) for column in range(len(rows[0]))]
     for row in rows:
-        cells = (value.ljust(width) for value, width in zip(row, widths, strict=True))
+        # Padded by hand rather than with `str.ljust`, which counts code points and would
+        # leave a wide cell pushing the rest of its row to the right.
+        cells = (
+            value + " " * (width - _display_width(value))
+            for value, width in zip(row, widths, strict=True)
+        )
         print("  ".join(cells).rstrip())

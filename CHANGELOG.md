@@ -286,6 +286,183 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   written the access path, `abcdefghjkmn[0].a` with no `.` before the index, so a migration
   script written from that sentence matched nothing and now has the spelling to key on.
 
+* **The command line, and what a plugin may reach from it.**  What a review of the whole tool
+  found at the boundary between the commands, the plugins they run, the paths they are given
+  and the streams they write to.
+
+  *A plugin prints on stderr.*  A hook, and the backend a `backend` hook returns, now runs
+  with standard output bound to standard error - the arrangement `ddd lsp` has always made
+  before a plugin could reach the protocol wire.  Standard output is a document on the command
+  line too: a `print` left in a check hook wrote its line in front of the `--format json`
+  report of `check`, `generate` and `list`, so a job's `json.loads` failed on it, and in front
+  of the dictionary of `ddd dump > baseline.json`, so what a build archived was not json; a
+  plugin's backend did the same to `generate --format json`, and both wrote onto the stdout
+  `dump -o` promises empty.  What a plugin prints is redirected rather than swallowed: it is
+  read on stderr, beside everything else DDD says about a run.
+
+  *An output file is never a source file.*  `ddd dump -o`, `ddd compare --renames` and
+  `ddd generate --dictionary` each name a file on the command line, and the obvious way to
+  get one wrong is to complete the name of a description sitting in the same directory:
+  `ddd dump components/sensor_hub.ddd.json -o components/sensor_hub.ddd.json` replaced the
+  hand-written component with the dictionary, said `wrote ... (updated)` and exited 0.  All
+  three now refuse a target that resolves to a file the run read - a description of the
+  project, one of its includes, a plugin module, or an archived dictionary being compared -
+  as a usage error naming it, before anything is written.
+
+  *A finding says where the file is.*  A `location` is "an absolute, forward-slashed path
+  together with the json pointer", and every finding of an analysis was one, because the
+  loader resolves what it reads.  The findings the command line places itself were not: a
+  comparison's own findings, the ones `check --baseline` adds, the note about an address map
+  and everything reported about an archived dictionary carried the path as it was typed, so
+  `--format json` handed a dashboard a `location.path` of `work/p.ddd.json` that nobody can
+  resolve without knowing the working directory of the run - beside absolute paths in the
+  same document.  In text they also sorted apart: within one severity the findings sort by
+  path, so a relative one landed after every absolute one instead of beside the findings of
+  the file it is about, which is not what the comparison page says.  All of them are built
+  from the resolved path now.
+
+  *An option is spelled in full.*  `argparse` accepts any unambiguous prefix of a long option
+  unless it is told not to, so `ddd check p.ddd.json --stand` and `ddd generate all ... --dict
+  d.json` worked - and would break the day a second option starts with those letters, with
+  "ambiguous option" as the whole of the explanation.  Every command and every artefact now
+  takes its options spelled out.
+
+  *Ctrl-C, and what a plugin cannot be blamed for.*  A hook that raised a `BaseException`
+  which is neither `Exception` nor `SystemExit` - `asyncio.CancelledError`, or one a plugin
+  declared itself - escaped as a traceback under the findings exit code; it is the plugin's
+  failure like any other, named as one.  A `KeyboardInterrupt` inside a hook is not: it still
+  stops the run, and the run now ends with `ddd: interrupted` and **exit code 130**, the code
+  a shell reports for a command killed by `SIGINT`, instead of thirty lines of python.  A
+  plugin's own model is held to the same rule as its hooks, as it already was for the other
+  two.
+
+  *A closed pipe is not an error.*  `ddd schema component | head -1` ended with
+  `ddd: [Errno 32] Broken pipe` and exit 2, which fails a paging script on the tool's side
+  under `set -o pipefail`; the run now ends at 0 and in silence.
+
+  *`-o .` names a directory.*  `ddd dump p.ddd.json -o .` and `generate --dictionary .` ended
+  with `WindowsPath('.') has an empty name` - python's words about pathlib, printed as the
+  whole of what the run had to say about a missing file name.  Both now say which option
+  needs a file.
+
+  *Six messages that said too little.*  `ddd id --assign` stopped at the first file it could
+  not write, with `[Errno 13] Permission denied: 'ro.ddd.json'` and no total, the files after
+  it unstamped - where a file that cannot be *parsed* has always been reported while the
+  others are stamped; a file that cannot be written is now reported the same way and the run
+  goes on.  `--address-map`, `ddd schema -o` and `ddd build-info -o` handed back the bare
+  errno text, naming neither the option nor what the run was doing with the file; they say
+  `cannot read the address map '...'` and `cannot write '...'` now, as `compare` and
+  `generate` already did.  The verdict line printed two file names, which for two deliveries
+  of one project kept in a directory each read `pressure.ddd.json can replace
+  pressure.ddd.json`; where the names coincide it now prints the paths as they were typed.  A
+  dumped dictionary handed to `check`, `list` or `dump` was refused as a vocabulary file
+  stating three kinds at once - "file has 'types' and 'constants' and 'rasters' at the top
+  level" - and is now recognised and pointed at `ddd compare`.  And `missing-plugin` for the
+  baseline was located at the candidate, which does not record the plugin it is about, and
+  said the run "has not loaded" a plugin the run had loaded to analyse that very baseline: it
+  sits at the file that records the plugin now and says the plugin is not among the
+  candidate's, which is what did not run.  A `-W` naming a check of such a plugin is accepted
+  for the same reason, instead of being refused as naming a check nothing registers.
+
+  *A redirected run reads in the order it happened.*  `ddd list p.ddd.json > log 2>&1` put the
+  two errors of the run at the top of the file and the table at the bottom: redirected, stdout
+  is block buffered and stderr is not, so the table arrived when the process ended.  `list`
+  and `dump` now flush before their findings, as `sources` and `artefacts` already did.  The
+  table also padded its columns to a count of code points, which is not a count of columns: a
+  unit such as `温度` is two code points and four columns wide, so every cell after it on that
+  row started two columns right of its header.  It is measured by display width now.
+
+  *Every row of `ddd list --format json` carries a `name`.*  A member of a structured variable
+  was published as a row carrying `path` and no `name` at all - `name` being a property of the
+  model rather than a field of it - while a plain object carried `name` and no `path`, so a
+  script keying the rows on `name` dropped every member of every structure in silence.  Both
+  shapes now open with `name`, a member's being its access path.  And the json payloads
+  themselves are documented for the first time: `list`, `artefacts`, `checks` and the
+  `generated` key of `generate` and `dump -o` are on the CLI page with an example each, and
+  their shapes are stated in the specification beside the commands.
+
+  *The address map is read like every other file, and its grammar is the documented one.*
+  The map `--address-map` names was read as plain utf-8 where the description files, the
+  dumped dictionaries and the build records are all read `utf-8-sig`, so a map a Windows tool
+  or Notepad wrote came back as `Unexpected UTF-8 BOM (decode using utf-8-sig)` - python's
+  advice to a programmer, for a file nobody writes by hand.  Its addresses were parsed with
+  python's `int()`, which took `0x1_0000` as `0x00010000`, `+5` as `5` and the Arabic-Indic
+  `١٢` as `12`; a string address is now written in decimal or behind a `0x` prefix and in no
+  other way, whatever whitespace surrounds it.  And a symbol the map states twice is refused,
+  where the second address used to win in silence, as the description loader already refuses
+  a repeated key.  Every complaint about a map spells its path forward-slashed, as the rest
+  of the tool does.
+
+  *What a check hook changes is what everything after it sees.*  A hook is handed the
+  resolved dictionary itself, and the `extensions` blocks inside its frozen models are
+  ordinary dictionaries, so a hook that writes into one has changed what the backends render,
+  what `ddd dump` prints and what `ddd compare` reads back.  Nothing said so.  The plugins
+  page now does, in both directions: a hook that reports does not assign, and a value a
+  plugin computes for its own artefact belongs to that artefact rather than to a block.
+  Read-only views were the alternative and were not taken: they would copy every block on
+  every run against something no plugin has a reason to do, change the type every plugin
+  already written against the api sees, and still leave `object.__setattr__` one line away -
+  a guarantee that reads as complete and is not.
+
+  *A `-W` is held to the plugins of the run, and grades this run alone.*  An override naming a
+  plugin's check is verified once the project has been read, and the run used to return before
+  verifying it whenever the read reported an error: `ddd check p.ddd.json -W layout/x=error`
+  over a project with a missing include reported the missing file and never a word about
+  `layout/x`, so a typo on the command line surfaced only on the first run that happened to
+  load cleanly - the run that no longer needed telling.  The plugins are loaded by the time an
+  include goes missing, so the override is now held to them either way.  With `--baseline` the
+  plugins of the run include the baseline's own, which were loaded to analyse it, so a `-W`
+  naming one of their checks is accepted there as `ddd compare` already accepts it.  And a
+  `-W` no longer reaches the baseline's own analysis at all: `-W unused-output=error`, a run
+  asking to be told about *its own* unread outputs, promoted a predecessor's into an error,
+  carried it over as `in the baseline:` and refused a verdict on a delivery that is fine -
+  where `--strict`, which says the same thing in one word, had always left the baseline alone.
+  The errors that analysis does produce are carried at the severity it gave them, so the one
+  line saying the dictionary the comparison rests on cannot be trusted is not relaxed away by
+  this run's policy.  `--standalone` still reaches it: that says how the file was handed over,
+  and the baseline was handed over the same way.
+
+  *What the pages had wrong about all of this.*  `ddd compare --plugin` is refused beside a
+  project *candidate*, which names its own plugins - not "beside a description", which is what
+  section 7 and the CLI page said while 3.11 and the code said the other thing.  The build
+  page now says that configuring imports the plugins a project names, so `cmake` runs that
+  python before it has built anything, and that the published pre-commit hook needs Python
+  3.12 - which a machine with an older `python3` used to learn from pip, in a message naming
+  nothing of the project's.  The CLI page no longer says a component "generates on its own":
+  `ddd generate` has no `--standalone`, and a component whose inputs nobody produces generates
+  under `--force` or under a `-W` it has decided about.  The templates page says that a
+  template directory is code, rendered in an unsandboxed environment, which had been stated
+  for plugins alone - a template reads as data and is not.  The plugins page's list of what a
+  plugin's artefact accepts was missing `--dictionary`.  And two of the tool's own texts had
+  fallen behind the pages that quote them as authoritative: `ddd checks` describes
+  `init-invalid` as it fires - an enumerator, a shape and a string init included, as the
+  specification, the checks page and the README already said - and `ddd sources --help` says
+  it lists the plugin modules as well as the descriptions.
+
+  **Migration:** a script spelling an option by a prefix - `--stand`, `--dict` - now fails
+  with "unrecognized arguments" and needs the option's full name; nothing else on any command
+  line changes.  The text report of the findings is unchanged - every path is still rendered
+  against the directory the command ran in.  A reader of `--format json` that resolved
+  `location.path` against the working directory gets the same file; one that compared it with
+  a path as typed no longer matches, and should compare resolved paths.  The message of a
+  finding about a baseline that cannot be read now spells the file out in full, as the same
+  message about a description has always done.  A caller that reads exit codes sees one more:
+  130, for a run stopped by hand.  A plugin that printed to standard output on purpose - to
+  produce a document of its own there - writes a file instead.  A script that matched the
+  wording of `missing-plugin`, or the verdict line of two deliveries whose file names
+  coincide, matches new text; no check identifier, option or file format changes.  A run that
+  relaxed or silenced a check so that its *baseline* would resolve - `-W
+  file-extension=warning` over a tree that does not follow the naming convention - now reports
+  that check as `in the baseline:` and attempts no comparison: give the run a baseline that
+  checks clean on its own, or the archived `ddd dump` of it, which is what a delivery
+  comparison has always asked for.  A `-W` that named a check of a plugin the project does not
+  name, and went unnoticed because the project happened not to load, is now the usage error it
+  always was.  An address map whose writer spelled an address `+5` or `0x1_0000`, or that
+  states one symbol twice, is now refused instead of read: both come from a generator, and
+  the message names the symbol.  A reader of `ddd list --format json` that keyed its rows on
+  `name` now sees the members of every structured variable it used to drop; one that keyed on
+  `path` is unaffected, since the key is still there.
+
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`
   through the c templates, a `SYSTEM_CONSTANT` in the a2l - whether or not a shape names it,

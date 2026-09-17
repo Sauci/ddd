@@ -70,6 +70,20 @@ line and an indented ``{% if %}`` does not leave its indentation behind; the tra
 of a template is kept, and a rendered file that does not end in one gets one added.
 Undefined values are strict, which is the subject of a section of its own below.
 
+A template directory is code
+----------------------------
+
+That environment is an ordinary ``jinja2.Environment`` and not a sandboxed one, so a template
+runs with the privileges of the run that renders it: ``ddd generate c -t tools/templates`` is
+running what is in ``tools/templates``, exactly as naming a :doc:`plugin <plugins>` runs the
+plugin's module. The plugin rule is easy to accept - a plugin is obviously python - and this
+one is easy to miss, because a template reads as data: it is the c file you want with holes
+in it, and the holes are expressions the engine evaluates. Both are the same bargain, and it
+is the ordinary one for a build: the templates of a repository are as much part of what
+``cmake``, ``make`` or a ci job executes as its scripts are. Review a template directory the
+way you review a plugin, point ``-t`` at one you would run a build out of, and treat a
+template arriving from elsewhere as you would treat a patch.
+
 How the template directory is read
 ----------------------------------
 

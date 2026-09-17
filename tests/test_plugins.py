@@ -1332,6 +1332,70 @@ class TestTheHookBoundary:
             run_check_hooks((plugin,), dictionary, bag, lambda _: None)
 
 
+class TestAnInterruptedRun:
+    """Ctrl-C is the user's, and anything else a plugin raises is the plugin's.
+
+    ``_call`` caught ``Exception`` and ``SystemExit``, which is not everything: a
+    ``BaseException`` of another kind - ``asyncio.CancelledError``, or one a plugin declared
+    itself - escaped as a traceback carrying the findings exit code, and a ``KeyboardInterrupt``
+    inside a hook printed thirty lines of python.
+    """
+
+    def tagged_project(self, tree: Path, body: str) -> str:
+        source = TAG_PLUGIN.replace(
+            "def check(context: CheckContext) -> None:\n",
+            f"def check(context: CheckContext) -> None:\n    {body}\n",
+        )
+        write_plugin(tree / "tools", source=source)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        return str(tree / "project.ddd.json")
+
+    def test_a_base_exception_from_a_hook_is_the_plugins_failure(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        body = 'raise type("Boom", (BaseException,), {})("boom")'
+        assert main(["check", self.tagged_project(tree, body)]) == EXIT_USAGE
+        captured = capsys.readouterr().err
+        assert "plugin 'tag' failed in its check hook: boom" in captured
+        assert "Traceback" not in captured
+
+    def test_a_base_exception_from_a_plugins_model_is_too(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A validator on a plugin's own model is plugin code on the same footing."""
+        source = MODEL_PLUGIN.replace("BODY", 'raise type("Boom", (BaseException,), {})("boom")')
+        write_plugin(tree / "tools", "model_plugin.py", source)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/model_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"broken": {"tag": "t"}})
+                ),
+            },
+        )
+        assert main(["check", str(tree / "project.ddd.json")]) == EXIT_USAGE
+        captured = capsys.readouterr().err
+        assert "plugin 'broken' failed validating an 'extensions' block: boom" in captured
+        assert "Traceback" not in captured
+
+    def test_an_interrupt_is_one_line_and_the_shell_s_own_code(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """130 is what a shell reports for a command killed by SIGINT, and what a caller
+        that distinguishes an interrupt from a finding looks for."""
+        assert main(["check", self.tagged_project(tree, "raise KeyboardInterrupt")]) == 130
+        captured = capsys.readouterr().err
+        assert "ddd: interrupted" in captured
+        assert "Traceback" not in captured
+
+
 class TestThePluginModelBoundary:
     """A plugin's pydantic model is plugin code too, and is guarded like a hook.
 
@@ -1469,6 +1533,70 @@ class TestTheCompareHook:
         assert "its comparison rules did not run" in captured
         assert "tag/retagged" not in captured
 
+    def test_each_side_s_missing_plugin_sits_on_the_file_that_records_it(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Both findings were located at the candidate, so the one about the baseline pointed
+        at a file that does not record the plugin it is about."""
+        old, new = two_deliveries(tree, "a", "b")
+        old_dump, new_dump = (
+            dumped(old, tree, "old.json", capsys),
+            dumped(new, tree, "new.json", capsys),
+        )
+        assert main(["compare", old_dump, new_dump]) == EXIT_OK
+        located = {
+            line.split(": warning[missing-plugin]: ")[0]: line
+            for line in capsys.readouterr().err.splitlines()
+            if "missing-plugin" in line
+        }
+        assert set(located) == {Path(old_dump).as_posix(), Path(new_dump).as_posix()}
+        assert "the baseline was produced" in located[Path(old_dump).as_posix()]
+        assert "the candidate was produced" in located[Path(new_dump).as_posix()]
+
+    def test_a_plugin_only_the_baseline_names_is_not_called_unloaded(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The run did load it - for the baseline's own analysis - and its rules still did
+        not run, because the comparison hooks are the candidate's."""
+        old, _ = two_deliveries(tree, "a", "b")
+        write_tree(
+            tree,
+            {
+                "plain.ddd.json": project("P", "plain-a.ddd.json"),
+                "plain-a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        arguments = ["compare", old, str(tree / "plain.ddd.json"), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_OK
+        captured = capsys.readouterr().err
+        assert "is not among the candidate's plugins" in captured
+        assert "this run has not loaded" not in captured
+
+    def test_an_override_naming_a_check_of_the_baselines_plugin_is_accepted(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The plugin ran for the baseline, so its checks are checks this run knows; refusing
+        the override said the opposite of what the same run reports beside it."""
+        old, _ = two_deliveries(tree, "a", "b")
+        write_tree(
+            tree,
+            {
+                "plain.ddd.json": project("P", "plain-a.ddd.json"),
+                "plain-a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        arguments = ["compare", old, str(tree / "plain.ddd.json"), "-W", "missing-id=ignore"]
+        assert main([*arguments, "-W", "tag/retagged=ignore"]) == EXIT_OK
+        assert "unknown check" not in capsys.readouterr().err
+
+    def test_an_override_naming_a_check_nobody_registers_is_still_refused(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = two_deliveries(tree, "a", "b")
+        arguments = ["compare", old, new, "-W", "tag/no-such=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        assert "unknown check 'tag/no-such'" in capsys.readouterr().err
+
     def test_the_option_loads_the_plugin_for_two_dumps(
         self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -1550,6 +1678,108 @@ class TestTheCompareHook:
         plugins = (Plugin(name="bare"), Plugin(name="tag"))
         run_compare_hooks(plugins, dictionary, dictionary, bag, lambda _: None, None)
         assert checks(bag) == []
+
+
+class TestWhenAnOverrideIsVerified:
+    """A ``-W`` naming a plugin's check is held to the plugins this run loaded, whether or
+    not the run got as far as a dictionary, and to all of them when there is a baseline."""
+
+    def broken_project(self, tree: Path) -> str:
+        """A project naming the tag plugin and one include that does not exist."""
+        write_plugin(tree / "tools")
+        write_tree(
+            tree,
+            {
+                "p.ddd.json": project(
+                    "P", "a.ddd.json", "gone.ddd.json", plugins=["tools/tag_plugin.py"]
+                ),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        return str(tree / "p.ddd.json")
+
+    def test_a_typo_is_refused_although_the_load_reported_an_error(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The plugins are loaded by the time an include is missed, so a check name nothing
+        registers is a usage error on this run rather than on the first run that happens to
+        load cleanly - which is when the typo used to surface."""
+        arguments = ["check", self.broken_project(tree), "-W", "tag/no-such=error"]
+        assert main(arguments) == EXIT_USAGE
+        captured = capsys.readouterr().err
+        assert "unknown check 'tag/no-such'" in captured
+        # The findings gathered before the usage error are still printed first.
+        assert "error[file-not-found]" in captured
+
+    def test_a_check_the_loaded_plugin_registers_survives_that_failure(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        arguments = ["check", self.broken_project(tree), "-W", "tag/bad-prefix=error"]
+        assert main(arguments) == EXIT_FINDINGS
+        assert "unknown check" not in capsys.readouterr().err
+
+    def test_a_check_of_a_plugin_only_the_baseline_names_is_accepted(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``ddd compare`` accepts it; ``ddd check --baseline`` refused it, because the
+        overrides were verified at the end of the analysis - before the baseline was read."""
+        old, _ = two_deliveries(tree, "a", "b")
+        write_tree(
+            tree,
+            {
+                "plain.ddd.json": project("P", "plain-a.ddd.json"),
+                "plain-a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        arguments = [
+            "check",
+            str(tree / "plain.ddd.json"),
+            "--baseline",
+            old,
+            "-W",
+            "missing-id=ignore",
+            "-W",
+            "tag/retagged=ignore",
+        ]
+        assert main(arguments) == EXIT_OK
+        assert "unknown check" not in capsys.readouterr().err
+
+    def test_a_typo_beside_a_baseline_is_still_refused(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = two_deliveries(tree, "a", "b")
+        arguments = ["check", new, "--baseline", old, "-W", "tag/no-such=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        assert "unknown check 'tag/no-such'" in capsys.readouterr().err
+
+    def test_a_baseline_that_cannot_be_read_leaves_the_candidates_plugins(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Nothing says which plugins an unreadable baseline names, so the overrides are held
+        to the candidate's - the plugin it does name is still accepted."""
+        _, new = two_deliveries(tree, "a", "b")
+        arguments = [
+            "check",
+            new,
+            "--baseline",
+            str(tree / "gone.json"),
+            "-W",
+            "missing-id=ignore",
+            "-W",
+            "tag/bad-prefix=ignore",
+        ]
+        assert main(arguments) == EXIT_FINDINGS
+        captured = capsys.readouterr().err
+        assert "unknown check" not in captured
+        assert "gone.json" in captured
+
+    def test_a_candidate_that_did_not_resolve_beside_a_baseline_still_holds_the_override(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, _ = two_deliveries(tree, "a", "b")
+        arguments = ["check", self.broken_project(tree), "--baseline", old, "-W", "no/such=error"]
+        assert main(arguments) == EXIT_USAGE
+        assert "unknown check 'no/such'" in capsys.readouterr().err
 
 
 _GENERATE_SIGNATURE = (
@@ -2116,6 +2346,130 @@ class TestChecksCommand:
         assert main(["checks", "--plugin", "tools/tag_plugin.py", "--format", "json"]) == EXIT_OK
         listed = json.loads(capsys.readouterr().out)
         assert listed[-1]["check"] == "tag/retagged"
+
+
+PRINTING_PLUGIN = TAG_PLUGIN.replace(
+    "def check(context: CheckContext) -> None:\n",
+    'def check(context: CheckContext) -> None:\n    print("NOISY-CHECK-STDOUT")\n',
+).replace(
+    "        lines = [\n",
+    '        print("NOISY-GENERATE-STDOUT")\n        lines = [\n',
+)
+"""A plugin with a debugging ``print`` left in its check hook and in its backend."""
+
+
+class TestAPluginThatPrints:
+    """Whatever a plugin prints goes to stderr, so no document on stdout carries it.
+
+    stdout is a document on four of these commands - the json report of ``check`` and
+    ``generate``, the dictionary of ``dump`` - and is promised empty on the fifth
+    (``dump -o``, ``SPEC.md:1870``). A ``print`` left in a hook is the plugin's own business
+    and still has to be readable, so it lands on stderr rather than being swallowed: the
+    arrangement ``ddd lsp`` already makes before a plugin can reach the wire.
+    """
+
+    @pytest.fixture
+    def noisy(self, tree: Path) -> str:
+        write_plugin(tree / "tools", source=PRINTING_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        return str(tree / "project.ddd.json")
+
+    def test_check_json_carries_the_document_alone(
+        self, noisy: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["check", noisy, "-W", "missing-id=ignore", "--format", "json"]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert json.loads(captured.out)["summary"] == {"error": 0, "warning": 0, "info": 0}
+        assert "NOISY-CHECK-STDOUT" in captured.err
+
+    def test_generate_json_carries_the_document_alone(
+        self, noisy: str, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        quiet = ["-W", "missing-id=ignore", "--format", "json"]
+        assert main(["generate", "tag", noisy, "-o", str(tree / "gen"), *quiet]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert [entry["status"] for entry in json.loads(captured.out)["generated"]] == ["created"]
+        assert "NOISY-CHECK-STDOUT" in captured.err
+        assert "NOISY-GENERATE-STDOUT" in captured.err
+
+    def test_dump_carries_the_dictionary_alone(
+        self, noisy: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["dump", noisy, "-W", "missing-id=ignore"]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert json.loads(captured.out)["format"] == DICTIONARY_FORMAT
+        assert "NOISY-CHECK-STDOUT" in captured.err
+
+    def test_dump_to_a_file_leaves_stdout_empty(
+        self, noisy: str, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        target = tree / "out.json"
+        assert main(["dump", noisy, "-o", str(target), "-W", "missing-id=ignore"]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "NOISY-CHECK-STDOUT" in captured.err
+        assert json.loads(target.read_text(encoding="utf-8"))["format"] == DICTIONARY_FORMAT
+
+
+MUTATING_PLUGIN = TAG_PLUGIN.replace(
+    "def check(context: CheckContext) -> None:\n",
+    "def check(context: CheckContext) -> None:\n"
+    "    for entry in context.dictionary.objects:\n"
+    '        block = entry.extensions.get("tag")\n'
+    "        if block is not None:\n"
+    '            block["tag"] = "rewritten"\n'
+    '    context.dictionary.extensions["mutated"] = {"by": "the check hook"}\n',
+)
+"""A check hook that rewrites the blocks it was handed, rather than only reading them."""
+
+
+class TestWhatACheckHookChanges:
+    """The dictionary a check hook receives is the one every later step consumes.
+
+    A hook is handed the resolved dictionary itself: the models are frozen, but the
+    ``extensions`` blocks inside them are ordinary dicts, so a hook that writes into one is
+    writing into what the backends render, what ``dump`` prints and what the comparison reads.
+    Handing out deep-copied read-only views instead would cost a copy of every block on every
+    run to prevent something no plugin has a reason to do, would change the type every plugin
+    already written against the api sees, and would still not be a guarantee - the models are
+    frozen and ``object.__setattr__`` is one line away. So it is stated on the plugins page,
+    and pinned here, rather than defended half way.
+    """
+
+    @pytest.fixture
+    def rewriting(self, tree: Path) -> str:
+        write_plugin(tree / "tools", source=MUTATING_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "original"}})
+                ),
+            },
+        )
+        return str(tree / "project.ddd.json")
+
+    def test_the_artefacts_render_what_the_hook_left_behind(
+        self, rewriting: str, tree: Path
+    ) -> None:
+        quiet = ["-W", "missing-id=ignore"]
+        assert main(["generate", "tag", rewriting, "-o", str(tree / "gen"), *quiet]) == EXIT_OK
+        assert (tree / "gen" / "tags.txt").read_text(encoding="utf-8") == "X rewritten\n"
+
+    def test_the_dumped_dictionary_carries_what_the_hook_left_behind(
+        self, rewriting: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["dump", rewriting, "-W", "missing-id=ignore"]) == EXIT_OK
+        dictionary = json.loads(capsys.readouterr().out)
+        assert dictionary["objects"][0]["extensions"]["tag"]["tag"] == "rewritten"
+        assert dictionary["extensions"]["mutated"] == {"by": "the check hook"}
 
 
 class TestTheLanguageServerAndPlugins:

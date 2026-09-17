@@ -328,15 +328,16 @@ def guarding_plugin_model(name: str, what: str) -> Iterator[None]:
     model raises is the plugin author's mistake and reached the caller raw: a ``RuntimeError``
     ended ``ddd check`` in a traceback, and a ``sys.exit`` in a validator ended it with the
     plugin's own exit code, printing none of the findings, and took the language server down
-    with it. Both are wrapped here the way :func:`_call` wraps a hook, so that the cli reports
-    one line and exit 2 and the server reports ``plugin-invalid`` and keeps running.
-    ``KeyboardInterrupt`` is deliberately not listed, exactly as in :func:`_call`.
+    with it. Both are wrapped here the way :func:`_call` wraps a hook - and so is a
+    ``BaseException`` of any other kind, for the same reason - so that the cli reports one
+    line and exit 2 and the server reports ``plugin-invalid`` and keeps running.
+    ``KeyboardInterrupt`` is deliberately re-raised, exactly as in :func:`_call`.
     """
     try:
         yield
-    except ValidationError:
+    except (ValidationError, KeyboardInterrupt):
         raise
-    except (Exception, SystemExit) as error:
+    except BaseException as error:
         detail = _exit_text(error) if isinstance(error, SystemExit) else str(error)
         msg = f"plugin '{name}' failed {what}: {detail}"
         raise PluginError(msg) from error
@@ -379,21 +380,46 @@ def run_compare_hooks(
     bag: DiagnosticBag,
     locate: Callable[[str], Location | None],
     location: Location | None,
+    baseline_location: Location | None = None,
 ) -> None:
     """Run every compare hook, after saying which recorded plugin is not among ``plugins``.
 
     A comparison that silently skipped a rule would be a confident "can replace" with a hole
-    in it; ``missing-plugin`` is what closes the hole, once per plugin and side.
+    in it; ``missing-plugin`` is what closes the hole, once per plugin and side. Each side's
+    finding is located at the file that records the plugin - ``baseline_location`` is the
+    baseline's, and defaults to the candidate's for a caller that has no separate place for
+    it - because a finding about the baseline pointing at the candidate sends the reader to a
+    file that does not name the plugin the message is about.
+
+    The comparison hooks are the candidate's, so a plugin the baseline names and the
+    candidate does not is one this run may perfectly well have loaded - it ran for the
+    baseline's own analysis - and whose comparison rules still did not run. That side's
+    message says what is not in play rather than claiming the run never loaded it; the
+    candidate's side, where the run really has not, says so.
     """
     loaded = {plugin.name for plugin in plugins}
-    for side, dictionary in (("baseline", baseline), ("candidate", candidate)):
+    sides = (
+        # The baseline's own plugins may perfectly well have been loaded - by its analysis,
+        # when it is given as a description - and their comparison rules still did not run,
+        # because the rules in play are the candidate's. Saying "this run has not loaded" of
+        # a plugin the run had just imported and run is what the wording avoids; on the
+        # candidate's side the run really has not loaded it, and says so.
+        (
+            "baseline",
+            baseline,
+            baseline_location or location,
+            "is not among the candidate's plugins",
+        ),
+        ("candidate", candidate, location, "this run has not loaded"),
+    )
+    for side, dictionary, where, why in sides:
         for name in dictionary.plugins:
             if name not in loaded:
                 bag.add(
                     "missing-plugin",
-                    f"the {side} was produced with plugin '{name}', which this run has not "
-                    f"loaded; its comparison rules did not run",
-                    location,
+                    f"the {side} was produced with plugin '{name}', which {why}; its "
+                    f"comparison rules did not run",
+                    where,
                 )
     for plugin in plugins:
         if plugin.compare is not None:
@@ -483,13 +509,28 @@ class _GuardedBackend:
 
 def _call[C, R](plugin: Plugin, hook: str, function: Callable[[C], R], context: C) -> R:
     try:
-        return function(context)
-    except (Exception, SystemExit) as error:
-        # SystemExit is not an Exception: sys.exit() in a hook would otherwise escape _call
-        # uncaught, taking ddd check's exit code and printing none of the run's findings, and
-        # killing the language server outright. It is a defect of the plugin like any other
-        # here. KeyboardInterrupt is not listed and still propagates - it is the user's
-        # interrupt to own, never the plugin's error to be blamed for.
+        # A hook runs with stdout bound to stderr, which is the arrangement `ddd lsp` already
+        # makes before a plugin can reach the json-rpc wire (`serve`). stdout is a document on
+        # the command line too - the `--format json` report, the dictionary `dump` prints - and
+        # is promised empty by `dump -o`; a `print` left in a hook would otherwise land inside
+        # one of them and a build's `json.loads` would fail on it. Redirected rather than
+        # swallowed: what a plugin says is still its author's to read, on the stream every
+        # other word this tool writes about a run goes to. `sys.stderr` is read here, at each
+        # call, so a caller that replaced either stream is followed rather than bypassed.
+        with contextlib.redirect_stdout(sys.stderr):
+            return function(context)
+    except KeyboardInterrupt:
+        # The user's own Ctrl-C, and never the plugin's error to be blamed for: it has to
+        # keep stopping the run. `main` turns it into one line and exit 130.
+        raise
+    except BaseException as error:
+        # Everything else a hook can raise, which is more than `Exception`: `SystemExit` from
+        # a hook calling sys.exit() - deliberately, or by copying a script's own __main__
+        # guard - would otherwise take ddd check's exit code and print none of the run's
+        # findings, and kill the language server outright; and a BaseException of a third
+        # kind, `asyncio.CancelledError` or one the plugin declared itself, escaped as a
+        # traceback under the findings exit code. Both are a defect of the plugin like any
+        # other here, and are reported as one.
         detail = _exit_text(error) if isinstance(error, SystemExit) else str(error)
         msg = f"plugin '{plugin.name}' failed in its {hook} hook: {detail}"
         raise PluginError(msg) from error

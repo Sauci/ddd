@@ -106,8 +106,10 @@ Every check identifier is spelled ``<name>/<check>``. The prefix is the namespac
 cannot shadow a built-in check, two plugins cannot collide, and a severity override targets
 one exactly as it targets a built-in check - ``-W layout/duplicate-key=warning``,
 ``--strict``, ``ignore``. The plugin's checks are registered when the plugin is loaded, so an
-override naming one is accepted first and verified once the project is read; one that no
-loaded plugin registered is a usage error, the same outcome an unknown built-in check gets.
+override naming one is accepted first and verified once the project is read - whether or not
+the read reported findings of its own - and one that no loaded plugin registered is a usage
+error, the same outcome an unknown built-in check gets. A run given a baseline is held to the
+baseline's plugins as well, which it loaded to analyse it.
 
 The hooks
 ~~~~~~~~~
@@ -139,16 +141,30 @@ notes)``, exactly as a built-in check does. ``locate`` returns the producing dec
 under ``ddd check``, and the dump file when the dictionary was read back from an archive,
 because a dump records a component's file name and not the position of each declaration.
 
+**The dictionary a hook receives is the one every later step consumes.** It is handed over
+as it is, not as a copy: the models are frozen, but the ``extensions`` blocks inside them are
+ordinary dictionaries, so a hook that writes into one has changed what the backends render,
+what ``ddd dump`` prints and archives, and what ``ddd compare`` reads back. That is worth
+knowing in both directions. A hook that means to *report* on the project must not assign, and
+a hook that needs to compute something for its own artefact should hand it to the artefact
+rather than leave it in a block - a later release that copies the dictionary between the two
+steps would take the value with it. The blocks are not offered as a channel between hooks.
+
 ``compare`` runs after the built-in comparison. The plugins in play are the candidate's: a
 project description names its own, and an archived dump has ``ddd compare --plugin``. A
-compared dictionary that records a plugin the run has not loaded is ``missing-plugin``, a
-warning saying that plugin's rules did not run, so that a comparison can never silently skip
-one.
+compared dictionary that records a plugin that is not among the candidate's is
+``missing-plugin``, a warning saying that plugin's rules did not run, so that a comparison
+can never silently skip one; it is reported at the file that records the plugin. A plugin
+only the baseline names is one the run did load - for the baseline's own analysis - and
+whose comparison rules still did not run, which is why the warning says what is not in play
+rather than what was never loaded, and why a ``-W`` naming one of its checks is accepted.
 
 ``backend`` returns an object satisfying the ``Backend`` protocol - a ``name`` and a
 ``generate(dictionary, output_dir)`` returning ``GeneratedFile`` entries - and is selected as
-``ddd generate <name>``, with the common options ``-o``, ``--dry-run`` and ``--force``, and
-the severity and format options every analysis takes, ``-W``, ``--strict`` and ``--format``.
+``ddd generate <name>``, with the common options ``-o``, ``--dry-run``, ``--force`` and
+``--dictionary FILE``, which writes the resolved dictionary in the same write as the
+artefact, and the severity and format options every analysis takes, ``-W``, ``--strict`` and
+``--format``.
 A plugin's artefact takes no option of its own, and none of the built-in artefacts' either:
 ``-t`` names the templates the c sources are rendered from, and ``--address-map`` and
 ``--byte-order`` belong to the a2l, so each is refused here as an unrecognized argument. It
@@ -187,6 +203,15 @@ no usage error to give, reports either of them as a ``plugin-invalid`` finding a
 serving the workspace; and a module body that exits while it is imported is ``plugin-invalid``
 exactly as one that raises there.
 
+A hook, and the backend a ``backend`` hook returns, runs with ``sys.stdout`` bound to
+``sys.stderr``. Standard output is a document wherever DDD writes one there - the
+``--format json`` report, the dictionary ``ddd dump`` prints, the json-rpc wire of the
+language server - and ``ddd dump -o`` promises it empty, so a ``print`` left in a hook would
+otherwise be read as part of one of them and a build's ``json.loads`` would fail on it. It is
+redirected rather than silenced: what a plugin prints is still its author's to read, on the
+stream every other word DDD says about a run goes to. A plugin that wants to write a file of
+its own writes one; a plugin that wants to be quiet prints nothing.
+
 The models are the one place where raising is part of the contract. A ``@field_validator`` on
 ``object_model`` or ``project_model`` runs on every block written against it, and the
 ``ValueError`` or ``AssertionError`` pydantic turns into a ``ValidationError`` is how a model
@@ -217,7 +242,16 @@ plugin's own decision, not one the api makes for it.
 Naming a plugin runs it. That is true of every ``ddd`` command on the project, and of the
 language server, which runs the plugins of every project it analyses when a file is opened
 or saved; the :doc:`editor page <editor_integration>` says what that means for a repository
-you did not write, and why the server will not run there until you trust the workspace.
+you did not write, and why the server will not run there until you trust the workspace. It
+is true of the cmake integration too: ``ddd_generate()`` runs ``ddd`` at configure time, so
+the plugins a project names are imported when CMake runs, not only when the generation does
+(see :doc:`build_integration`).
+
+The templates a run renders from are code in the same sense, and easier to overlook because
+a template looks like data: they are jinja2, rendered in an ordinary unsandboxed
+environment, so ``-t`` names a directory whose contents run with the privileges of the run.
+:doc:`templates` says so beside the rest of what a template directory decides. Review one
+the way you review a plugin.
 
 What the dictionary carries
 ---------------------------

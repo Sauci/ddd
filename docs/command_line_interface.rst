@@ -56,7 +56,92 @@ The one exception is ``ddd dump``, whose standard output is itself the payload: 
 diagnostics go to standard error, so that both formats leave the dictionary alone. Given
 ``-o``, the dictionary goes into that file instead and standard output stays empty; the
 diagnostics stay where they were, and in json they name the file written, with its status,
-as ``generate`` names its own.
+under the same ``generated`` key ``generate`` uses:
+
+.. code-block:: text
+
+   $ ddd dump examples/demo/demo.ddd.json -o build/dump/demo.json --format json
+   {
+     "diagnostics": [],
+     "summary": {
+       "error": 0,
+       "warning": 0,
+       "info": 0
+     },
+     "generated": [
+       {
+         "path": "build/dump/demo.json",
+         "status": "created"
+       }
+     ]
+   }
+
+A ``path`` is spelled as the run was asked for it - relative when ``-o`` was relative - and a
+``status`` is ``created``, ``updated`` or ``unchanged``.
+
+``ddd list --format json`` answers with the project, its components and one row per variable
+beside the diagnostics. A row is the record the :doc:`data dictionary <data_dictionary>`
+carries for that object, so the rows come in two shapes: a member of a structured variable
+carries ``path``, ``instance`` and ``instance_id`` where a plain object carries ``id``. Every
+row of either shape opens with ``name`` - a member's being its access path - so one key
+answers what a row is about:
+
+.. code-block:: text
+
+   $ ddd list examples/demo/demo.ddd.json --format json
+   {
+     "project": "DemoDevice",
+     "components": [
+   ...
+     "variables": [
+       {
+         "name": "AxisA",
+   ...
+         "name": "Diagnosis.faults",
+         "path": "Diagnosis.faults",
+         "instance": "Diagnosis",
+   ...
+     "diagnostics": [],
+     "summary": {
+       "error": 0,
+       "warning": 0,
+       "info": 0
+     }
+   }
+
+``ddd artefacts --format json`` answers with ``artefacts``, one ``{"name", "kind"}`` per
+artefact with ``kind`` either ``built-in`` or ``plugin``, and ``plugins_without_artefact``,
+the names the text format puts in a note:
+
+.. code-block:: text
+
+   $ ddd artefacts examples/layout/project.ddd.json --format json
+   {
+     "artefacts": [
+       {
+         "name": "c",
+         "kind": "built-in"
+       },
+   ...
+       {
+         "name": "layout",
+         "kind": "plugin"
+       }
+     ],
+     "plugins_without_artefact": [],
+     "diagnostics": [],
+     "summary": {
+       "error": 0,
+       "warning": 0,
+       "info": 0
+     }
+   }
+
+``ddd checks --format json`` is a list rather than an object, one entry per check, each
+carrying ``check``, ``default_severity``, ``description``, ``overridable``,
+``needs_every_component`` and ``comparison`` - the last three being the facts the text format
+marks with ``(fixed)``, ``(project)`` and ``(comparison)``. ``ddd sources --format json``
+carries its listing as ``sources``, described with the command further down this page.
 
 The exit code is the same everywhere, which lets a build system treat DDD like a compiler:
 
@@ -71,8 +156,9 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
    * - ``1``
      - findings: at least one diagnostic of severity ``error`` survived the severity policy.
        ``ddd sources`` and ``ddd artefacts`` also exit ``1`` when the root file cannot be read
-       at all, and ``ddd id`` when one of the files it was given was not readable as json and
-       had to be skipped, which it reports without a diagnostic.
+       at all, and ``ddd id`` when one of the files it was given was not readable as json, or
+       could not be written back, and had to be skipped - the others are stamped either way,
+       and it reports each skipped file without a diagnostic.
    * - ``2``
      - the command line itself was wrong: a missing or malformed argument, an unknown
        severity, or an unknown check that names no plugin, in ``-W``, a fixed check
@@ -81,10 +167,29 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
        is printed. A usage error raised by a step that follows the analysis instead - a
        plugin hook that raises, an override naming a plugin check no loaded plugin
        registers, a ``--renames`` file, a dumped dictionary or an artefact that cannot be
-       written, an address map that cannot be read, ``--plugin`` refused beside a
-       description, or a run that would write nothing - reports the findings of the run
+       written, an output path naming a file the run itself read (``dump -o``,
+       ``compare --renames`` and ``generate --dictionary`` each refuse one, naming it, since
+       nothing DDD writes is ever a file it read), an address map that cannot be read,
+       ``ddd compare --plugin`` refused beside a project description on the *candidate*
+       side, which names its own plugins, or a run that would write nothing - reports the
+       findings of the run
        first, in the requested format, before the error follows; the exit code is still
        ``2``.
+   * - ``130``
+     - the run was interrupted: Ctrl-C, or anything else that raises ``KeyboardInterrupt``,
+       inside DDD or inside a plugin's hook. It is the code a shell reports for a command
+       killed by ``SIGINT``, and it is distinct from ``1`` and ``2`` so that a script does
+       not read a run somebody stopped as a project with errors. The run prints one line,
+       ``ddd: interrupted``, and no traceback.
+
+A reader of standard output that stops reading is not an error either: ``ddd schema component
+| head -1`` ends at ``0`` and in silence, where the broken pipe used to be reported as a usage
+error and failed a paging script under ``set -o pipefail``.
+
+Every long option is spelled in full. ``argparse`` offers any unambiguous prefix by default,
+and DDD turns that off: ``--stand`` for ``--standalone`` would work until the day a second
+option begins with those letters, and the script that took the offer would then fail with
+"ambiguous option" and nothing else to go on.
 
 The commands
 ------------
@@ -188,8 +293,13 @@ The commands
        ``generate`` falls back to them.
 
 ``FILE`` is a project description or a single component description in every command that
-takes one. A component checks, lists, dumps and generates on its own, which is what lets a
-supplier verify a component long before an integrator ever sees it.
+takes one. A component checks, lists and dumps on its own - with ``--standalone`` holding
+back the checks that need the rest of the project - which is what lets a supplier verify a
+component long before an integrator ever sees it. ``ddd generate`` takes no ``--standalone``:
+generating from a component is generating the c and the a2l of a project of one, and the
+inputs nobody produces there are errors that stop the run. A supplier who wants the files
+anyway asks for them with ``--force``, or silences the checks it has decided about with
+``-W``.
 
 The ``-t`` of the c-rendering artefacts has no default at all: an invocation that renders c
 without it is refused rather than falling back to templates of DDD's own.
@@ -294,7 +404,9 @@ be wrong in the ordinary case: editing a component would change nothing the buil
 the image would happily link yesterday's globals and ship yesterday's a2l.
 
 ``ddd sources`` closes that gap. It prints one absolute path per line: the project file
-itself and every description it includes however deeply:
+itself, every description it includes however deeply, and the module of every
+:doc:`plugin <plugins>` those files name, since a plugin decides what the generation writes
+as much as a description does. The demo names none, so its listing is descriptions alone:
 
 .. code-block:: text
 

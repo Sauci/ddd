@@ -51,6 +51,16 @@ an exception, so "nothing to do" and "could not read it" arrive here looking ide
 command exits non-zero on the second and says nothing about the first.
 """
 
+UNWRITABLE = -2
+"""What :func:`assign` returns for a file it read, had ids for, and could not write back.
+
+A read-only file in a checkout, or one an editor is holding: the command is given a list of
+files and stamps what it can, so a write that fails is reported like a read that failed and
+the files after it are still stamped. Collapsed into one answer the way :data:`UNREADABLE`
+collapses the several reasons a file cannot be read: what the caller does about either is to
+look at that one file.
+"""
+
 
 def new_id() -> str:
     """A fresh identity: twelve characters of the unambiguous lowercase base32 alphabet."""
@@ -153,10 +163,11 @@ def insertions(document: Document) -> list[Insertion]:
 def assign(path: Path) -> int:
     """Write an id into every producing declaration of ``path`` that lacks one.
 
-    Returns how many were written, or :data:`UNREADABLE` for a file that is not json. A file
-    that reads but declares no data objects is left exactly as it was and reports zero: the
-    loader is what has something to say about a description, and this command must not
-    rewrite one it could not read.
+    Returns how many were written, :data:`UNREADABLE` for a file that is not json, or
+    :data:`UNWRITABLE` for one that could not be written back. A file that reads but declares
+    no data objects is left exactly as it was and reports zero: the loader is what has
+    something to say about a description, and this command must not rewrite one it could not
+    read.
     """
     from ddd.lsp.ranges import Document
 
@@ -179,5 +190,11 @@ def assign(path: Path) -> int:
     for entry in reversed(wanted):
         text = f"{text[: entry.offset]}{entry.text}{text[entry.offset + entry.length :]}"
     mark = codecs.BOM_UTF8 if raw.startswith(codecs.BOM_UTF8) else b""
-    path.write_bytes(mark + text.encode("utf-8"))
+    try:
+        path.write_bytes(mark + text.encode("utf-8"))
+    except OSError:
+        # The command is handed a list of files and stamps what it can: a file it may not
+        # write - read-only in the checkout, held open by an editor - is one file to report,
+        # not a reason to leave the rest of the list untouched and print no total.
+        return UNWRITABLE
     return len(wanted)

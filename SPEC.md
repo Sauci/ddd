@@ -762,7 +762,7 @@ project rather than a description of one.
 | --- | --- |
 | `format` | version of this document format, raised only when its shape changes; today `1` |
 | `project` | absolute path of the project description the build runs DDD on; absolute because this file lives in the build tree while the project need not |
-| `image` | the build target the record was written for, by name, for example `firmware.elf`; a component linked into both a firmware and a test binary belongs to two projects, which need not agree about it. Optional on the command line (`--image`) and empty when no target is named; the build integration of [section 7.1](#71-build-system-integration) always names one |
+| `image` | the build target the record was written for, by name, for example `firmware.elf`; a component linked into both a firmware and a test binary belongs to two projects, which need not agree about it. Optional on the command line (`--image`) and written as the empty string `""`, never as `null`, when no target is named; the build integration of [section 7.1](#71-build-system-integration) always names one |
 | `strict` | whether the build reports warnings as errors |
 | `severity` | the severity overrides the build applies, as `check=severity` ([section 4](#4-consistency-checks)), in the order given |
 
@@ -1136,14 +1136,23 @@ is a usage error before anything is written. A hook reports through the bag exac
 built-in check does, and a hook that raises, or exits the interpreter rather than
 returning, is a usage error naming the plugin and the hook; the language server, which has
 no usage error to give and does not stop, reports the same failure as a `plugin-invalid`
-finding at the project file ([section 7.2](#72-editor-integration)). A plugin's own models
+finding at the project file ([section 7.2](#72-editor-integration)). Every hook and every
+backend a hook returns runs with standard output bound to standard error, because standard
+output is a document wherever DDD writes one there - a `--format json` report, the
+dictionary `ddd dump` prints, the protocol wire of the language server - and a plugin is
+under no discipline about what it prints; what a plugin writes there is therefore read on
+standard error rather than lost, and never inside a document
+([section 7](#7-tool-interface)). A plugin's own models
 are held to the same rule: a validator on one of them refusing a block is the `schema`
 finding above, but one that raises anything else, or exits the interpreter, is the plugin's
 failure and is reported exactly as a hook's is. Plugin checks are registered per run rather
 than in the built-in registry, and an override naming a plugin check is accepted
 provisionally and held, once the project is read, to the checks the loaded plugins
 registered: one that no loaded plugin registers is then the usage error an unknown built-in
-check is.
+check is. It is held to them whether or not the read reported findings of its own, the
+plugins being loaded before the rest of the project is; and where a run reads a baseline as
+well ([section 4.1](#41-comparing-two-deliveries)), the plugins it is held to include the
+baseline's own, which that run loaded to analyse it.
 
 The dictionary carries every block in resolved form on the object and on the project, and
 records the names of the plugins in play (`plugins`), so that an archived dump keeps every
@@ -1418,9 +1427,12 @@ artefact to archive (`ddd dump`, [section 7](#7-tool-interface)), and the compar
 function of two of them. Either side **may** also be given as a project or component
 description, which is resolved to its dictionary on the spot; the archived dictionary is
 what keeps the question answerable after the descriptions have moved on. The baseline is
-analysed in its own right and without `--strict`, its warnings being its own; only its
-error findings are carried into the report, each prefixed with "in the baseline:", so that
-a broken baseline is visible without drowning the comparison. A candidate given as a
+analysed in its own right, under neither `--strict` nor the `-W` of this run, its findings
+being its own; only its error findings are carried into the report, each prefixed with
+"in the baseline:" and at the severity its own analysis gave them, so that a broken baseline
+is visible without drowning the comparison and without this run's policy relaxing it away.
+What does reach it is `--standalone`, which states how the file was handed over rather than
+how strictly the run grades. A candidate given as a
 description is analysed too, and all of its findings are reported at their own severities.
 The verdict is that the candidate can replace the baseline exactly when no finding of the
 run is reported as an error - the candidate's own, the baseline's carried ones and the
@@ -1429,7 +1441,9 @@ comparison's alike - and the exit code follows the verdict
 error and the candidate is a description, no verdict is printed and the exit code is 1.
 
 In plain text the report closes with a verdict line naming the two files and saying whether
-the candidate can replace the baseline. `ddd compare --renames <file>` writes beside it the
+the candidate can replace the baseline; it names them by file name, and by the paths as
+they were typed where the two file names are the same, as they are for two deliveries of one
+project kept in a directory each. `ddd compare --renames <file>` writes beside it the
 old-to-new name pairs the comparison established, so that a calibration dataset, a
 recording or a test script keyed by the old spelling can be migrated without parsing the
 findings: a JSON list of objects `{"id", "from", "to"}`, one entry per paired object whose
@@ -1528,12 +1542,15 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
 - `project-mismatch`: the two dictionaries name different projects, so the baseline is
   probably not the predecessor of this candidate.
 - `missing-plugin`: the baseline or the candidate records a plugin
-  ([section 3.11](#311-plugins)) this run has not loaded, so that plugin's comparison rules
-  did not run. Once per plugin and side, because a comparison that silently skipped a rule
-  would be a confident verdict with a hole in it. Each side given as a description runs the
+  ([section 3.11](#311-plugins)) that is not among the candidate's, so that plugin's
+  comparison rules did not run. Once per plugin and side, reported at the file that records
+  it, because a comparison that silently skipped a rule would be a confident verdict with a
+  hole in it. Each side given as a description runs the
   plugins it names for its own analysis; the comparison hooks are the candidate's (or
   `--plugin`'s for a dumped candidate), and `missing-plugin` is reported for a plugin either
-  side records that the comparison did not run.
+  side records that the comparison did not run - including one this run did load, for the
+  baseline's own analysis, whose comparison rules are therefore not in play. A severity
+  override naming a check of such a plugin is accepted, since the run knows it.
 
 Information:
 
@@ -1615,7 +1632,9 @@ per component, the component ([section 7](#7-tool-interface)), not silently empt
 so is any other exception a template's own body raises - a division by zero, a filter handed
 the wrong type - reported the same way rather than as a python traceback. A template
 directory containing no template, and two artefacts claiming the same output path, are usage
-errors rather than findings ([section 7](#7-tool-interface)).
+errors rather than findings ([section 7](#7-tool-interface)). A template is code: it is
+rendered in an unsandboxed template environment, so naming a template directory runs what is
+in it, exactly as naming a plugin runs its module ([section 3.11](#311-plugins)).
 
 Whatever the templates spell, the *data* they are given is fixed: measurements are writable
 variables and calibration objects are `const`, each of them additionally `volatile` when
@@ -1842,13 +1861,18 @@ records what its producing declaration states, resolved: `name`, `id`, `extensio
 declaration wrote it - a list nested one level per dimension, a scalar left a scalar even on
 an array, which is the broadcast the declaration states once and the reader repeats over
 `shape` - `section`, `raster` (the declaration's own, else its component's default), `volatile`,
-`condition` (the producer's), `references`, `owner`, `consumers`, `local` and `a2l` with
-`export` resolved to a boolean. An instance records `name`, `id`, `extensions`, `type`,
+`condition` (the producer's), `references` (the objects this one names, keyed by the role it
+names them in - `axis` for a curve, `x_axis` and `y_axis` for a map, `input` for an axis -
+and `{}` on an object that names none), `owner` (the component producing it, `null` only
+where no component does, which a consistent project has none of), `consumers`, `local` and
+`a2l` with `export` resolved to a boolean. An instance records `name`, `id`, `extensions`, `type`,
 `kind`, `description`, `shape`, `dimensions`, `volatile`, `section`, `raster`, `condition`,
 `owner`, `consumers`, `local` and `a2l`; a leaf records `path`, `instance`, `instance_id`,
 `kind`, `datatype`, `description`, `unit`, `conversion`, `limits`, `shape`, `dimensions`,
 `bits`, `volatile`, `section`, `raster`, `condition`, `owner`, `consumers`, `local` and
-`a2l`, the instance's and the member's `export` folded into one. `types` lists the
+`a2l`, whose `export` is the instance's and the member's folded into one - true only where
+both are, so keeping a structure out of the A2L keeps every member of it out - while its
+`format` and `display_identifier` are the member's own. `types` lists the
 structures in dependency order with their members; `enums` the enum conversions, one per
 name, the best documented variant; `constants` and `rasters` the declared entries. Nothing
 in the document depends on the machine that wrote it.
@@ -1859,11 +1883,16 @@ The addresses of the generated objects are only known after linking. DDD accepts
 to address map in JSON form (`--address-map` of `ddd generate a2l` and `all`): one flat JSON object mapping
 each symbol to its address. The key is the C identifier of an object or, for the member of
 a structured object, its access path, for example `Inlet.latest` or `Inlet[2].raw`, exactly
-as the A2L names it ([section 5.2](#52-a2l)). The address is a JSON integer, or a string
-read as hexadecimal with a `0x` prefix and as decimal without one, and it **must** fit an
-unsigned 32 bit `ECU_ADDRESS`: a map that is not a JSON object, a value that is neither of
-those two spellings, or an address outside `0 .. 0xFFFFFFFF`, is a usage error and nothing
-is written. A key the project does not know is ignored, and an object the map does not
+as the A2L names it ([section 5.2](#52-a2l)). A symbol **shall** be stated once: a map
+naming one twice is a usage error rather than the last of the two addresses silently
+winning. The address is a JSON integer, or a string read as hexadecimal with a `0x` prefix
+and as decimal without one - those two spellings exactly, whatever whitespace surrounds
+them - and it **must** fit an unsigned 32 bit `ECU_ADDRESS`: a map that is not a JSON
+object, a value that is neither of those two spellings, or an address outside
+`0 .. 0xFFFFFFFF`, is a usage error and nothing is written. The file **may** begin with a
+byte order mark, as a description file may ([section 3](#3-file-formats)): it is written by
+a build step, and on Windows that is exactly where one comes from. A key the project does
+not know is ignored, and an object the map does not
 cover keeps address `0x00000000` rather than failing the run: a map extracted from a linker
 output legitimately omits the objects a condition compiled away, and `SYMBOL_LINK` lets a
 downstream tool resolve those it cares about. A map with entries that leaves an object of
@@ -1897,14 +1926,20 @@ the one it needs is asked for only if it stayed, and a run left with nothing to 
 refused rather than reporting success. Every artefact also takes `--dictionary FILE`, a path
 relative to the working directory, which writes the resolved dictionary - the text `ddd dump`
 prints - in the same write as the artefacts, all of them or none; it counts as something to
-write, and a path an artefact of the run is written to is refused;
+write, and a path an artefact of the run is written to is refused, as is one the run read;
 [section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
 table whose rows are sorted by variable name, stating the physical reading of a stated
 initial value beside the raw one, or, in JSON, as an object carrying `project`,
-`components` and `variables` beside the findings);
+`components` and `variables` beside the findings. A `components` entry is the component
+record of the dictionary and a `variables` entry the record of one data object or of one
+leaf of a structured one ([section 5.3](#53-data-dictionary)), so a row carries `path`,
+`instance` and `instance_id` where a plain one carries `id`; both shapes **shall** carry
+`name`, a leaf's being its access path, so that one key says what a row is about);
 reporting what a project can be asked to generate (`ddd artefacts`: `c`, `a2l`, then the
 plugins with a backend in the order the project names them, a plugin without a backend
-being named in a note instead, its block being part of what the `c` templates render;
+being named in a note instead - in JSON the listing is `artefacts`, one `{name, kind}` per
+entry with `kind` either `built-in` or `plugin`, and the note is
+`plugins_without_artefact` - its block being part of what the `c` templates render;
 given `--plugin` instead of a project it answers for those plugins beside the two built-in
 artefacts, and given neither it lists the built-in artefacts alone; what each artefact
 writes is not among them, since a plugin's file names follow from the resolved dictionary
@@ -1918,8 +1953,9 @@ description files in place), so that a later `ddd compare`
 reports a rename as a rename rather than a removal and an unrelated addition - a
 declaration that already carries one is left untouched, so running it again changes
 nothing, an explicit `"id": null` is filled in place, a file that is not a component
-description is left alone, and a file that cannot be parsed, or that nests more deeply than
-a position in it can be located, is reported while the others are stamped, the run exiting 1;
+description is left alone, and a file that cannot be parsed, that nests more deeply than
+a position in it can be located, or that cannot be written back, is reported while the
+others are stamped, the run exiting 1;
 printing the JSON schema of the file
 formats and of the dictionary (`ddd schema`, one kind to stdout or every kind written into
 a directory with `ddd schema all -o`, each file named `ddd_<kind>.schema.json`; `--plugin`
@@ -1938,7 +1974,9 @@ project and the same severities; serving the checks to an editor over the Langua
 Protocol (`ddd lsp`, [section 7.2](#72-editor-integration)); listing the available checks
 (`ddd checks`, each with its default severity, the unrelaxable ones marked, the ones that
 need every component of a project marked `(project)` and the ones that grade a delivery
-comparison marked `(comparison)` - `needs_every_component` and `comparison` in JSON - the
+comparison marked `(comparison)`; in JSON a list rather than an object, one entry per check
+carrying `check`, `default_severity`, `description`, `overridable`,
+`needs_every_component` and `comparison`, the
 built-in ones in the order of the registry and then each `--plugin`'s checks in their
 declared order); reporting where its build system integration and its example templates
 live (`ddd cmake-dir`, `ddd templates-dir`; a piece not installed is a usage error); and
@@ -1963,18 +2001,32 @@ findings at one location keep the order they were reported in; and a
 `ddd check` with no finding at all closes with an `ok:` line counting the objects and
 components it found consistent, and `compare` with a verdict line saying whether the
 candidate file can replace the baseline file ([section 4.1](#41-comparing-two-deliveries)).
-`generate` adds the files it wrote with their status (`created`, `updated` or `unchanged`),
+`generate` adds the files it wrote under `generated`, one `{path, status}` per file with
+`status` one of `created`, `updated` and `unchanged` and `path` spelled as the run was asked
+for it,
 and `dump` keeps its stdout for the dictionary, reporting findings on stderr - with
 `--format json` the findings document goes there too, so stdout carries the dictionary
 alone in both formats; given `-o`, stdout stays empty and the report on stderr adds the file
-written with its status, as `generate`'s does. The exit code distinguishes clean runs (0),
-findings (1) and usage
-errors (2). A usage error raised by a step that follows the analysis - a plugin hook
+written under the same `generated` key, as `generate`'s does. What a command prints to
+stdout is flushed before its findings reach stderr, so that a run redirecting both into one
+file shows its listing, its dictionary or its source list ahead of the findings about it
+rather than behind them. The exit code distinguishes clean runs (0),
+findings (1), usage
+errors (2) and a run stopped by the user (130, the code a shell reports for a command killed
+by SIGINT: an interrupt ends the run with `ddd: interrupted` on stderr rather than with a
+traceback, and is not a finding). A reader of the tool's standard output that stops reading -
+`ddd schema component | head -1` - ends the run at 0 and in silence, since a closed pipe is
+not this run's error. Every long option **must** be spelled in full; no abbreviation of one
+is accepted, so that adding an option cannot change what an existing command line means. A
+usage error raised by a step that follows the analysis - a plugin hook
 that raises, an override naming a plugin check that no loaded plugin registers, which
 is held until the project is read ([section 3.11](#311-plugins)), an address map that
 cannot be read, a `--renames` file, a dumped dictionary or an artefact that cannot be
-written, a `--plugin`
-refused beside a description, or a run that would write nothing - is printed after the
+written, an output path naming a file the run itself read - `ddd dump -o`,
+`ddd compare --renames` and `ddd generate --dictionary` each refuse one, naming it, since
+nothing DDD writes is ever a file it read - a `ddd compare --plugin` refused beside a
+*candidate* given as a project description, which names its own plugins
+([section 3.11](#311-plugins)), or a run that would write nothing - is printed after the
 findings gathered so far - a comparison's own findings and a baseline's carried errors
 included - are reported in the requested format first, because a failed run is exactly
 the run whose findings its reader needs; the exit code is still 2.
@@ -2023,8 +2075,9 @@ linked into the image, so that an object no compiled code references is not drop
 descriptions travel the link graph as a transitive target property, and the project
 description is assembled in the build directory from the closure the image actually links
 ([section 3.6](#36-build-record)); it needs a CMake new enough to carry properties across
-links, and the module itself refuses a CMake older than its stated floor with a message
-naming it. The assembled project is named by `NAME`, defaulting to the image's name sanitised
+links - CMake 3.30, the floor the module refuses a configure below with a message naming it;
+the module as a whole needs 3.20, which is what the hand written `PROJECT` mode asks for.
+The assembled project is named by `NAME`, defaulting to the image's name sanitised
 into an identifier - every character outside `[A-Za-z0-9_]` replaced by `_`, a leading digit
 prefixed with `N` - and that name becomes the A2L project, module and file name
 ([section 5.2](#52-a2l)) and names the dictionary written beside it; its includes keep the link graph's traversal order - the order

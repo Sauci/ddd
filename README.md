@@ -776,8 +776,8 @@ holds back the checks that need the components the file does not contain.
 command that produces findings - `check`, `compare`, `generate`, `list`, `dump`, `sources`,
 `artefacts` and `checks`. The rest have nothing to format: `ddd schema` and `ddd build-info` emit json
 already, `ddd lsp` speaks json-rpc on its own, `ddd cmake-dir` and `ddd templates-dir` print
-a single path, and `ddd id --assign` reports which files it could not read and one total of
-ids written across all of them, not a list of findings. `ddd dump` is the
+a single path, and `ddd id --assign` reports which files it could not read or write and one
+total of ids written across all of them, not a list of findings. `ddd dump` is the
 one command whose stdout is *itself* the payload, so there the diagnostics go to stderr and
 `--format` chooses how they are written; `ddd dump project.ddd.json > baseline.json` works
 in either format, and `ddd dump project.ddd.json -o baseline.json` writes the same text
@@ -876,7 +876,9 @@ consumers depend on `firmware_ddd_headers` rather than on an individual header p
 
 Beside the module, this repository publishes a [pre-commit](https://pre-commit.com) hook,
 `ddd-id`, which runs `ddd id --assign` over the staged `*.ddd.json` files so that no object
-reaches a commit without an identity
+reaches a commit without an identity.  It is a `language: python` hook and ddd needs Python
+3.12 or newer, so a machine whose default `python3` is older needs a `language_version` in its
+own hook entry
 ([documentation](https://sauci.github.io/ddd/latest/build_integration.html)).
 
 ## Compiling the generated code (docker / WSL)

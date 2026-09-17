@@ -23,7 +23,16 @@ from conftest import (
     write_tree,
 )
 from ddd.build_info import BUILD_INFO_FORMAT
-from ddd.cli import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE, _displayed_path, main
+from ddd.cli import (
+    EXIT_FINDINGS,
+    EXIT_OK,
+    EXIT_USAGE,
+    _display_width,
+    _displayed_path,
+    _read_dictionary,
+    main,
+)
+from ddd.diagnostics import DiagnosticBag
 from ddd.ir import DICTIONARY_FORMAT
 from ddd.models.common import OBJECT_ID_PATTERN
 
@@ -1168,13 +1177,142 @@ class TestList:
         # none at all: DDD does not know what is inside it.
         leaf = next(v for v in payload["variables"] if v.get("path") == "Diagnosis.faults")
         assert leaf["instance"] == "Diagnosis" and leaf["owner"] == "SensorHub"
-        assert "name" not in leaf
+        assert leaf["name"] == "Diagnosis.faults"
         assert not [
             v for v in payload["variables"] if v.get("path", "").startswith("Diagnosis.driver")
         ]
         # The json contract of every reporting command: diagnostics and their summary.
         assert payload["diagnostics"] == []
         assert payload["summary"] == {"error": 0, "warning": 0, "info": 0}
+
+    def test_every_variable_row_carries_a_name(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """One key answers "what is this row about" for both shapes of row.
+
+        A leaf's ``name`` is a property of the model and not a field of it, so a leaf row
+        carried ``path`` and no ``name`` at all, and a script keying the rows on ``name``
+        dropped every member of every structured variable in silence.
+        """
+        assert main(["list", str(DEMO), "--format", "json", "-W", "missing-id=ignore"]) == EXIT_OK
+        rows = json.loads(capsys.readouterr().out)["variables"]
+        assert all(isinstance(row.get("name"), str) for row in rows)
+        # And it is the first key of the row, as it already was on a plain object.
+        assert {next(iter(row)) for row in rows} == {"name"}
+        by_name = {row["name"]: row for row in rows}
+        assert by_name["Diagnosis.faults"]["path"] == "Diagnosis.faults"
+        assert "path" not in by_name["ValueE"]
+
+    def test_a_wide_unit_does_not_shift_the_rest_of_its_row(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The table padded to a count of code points, which is not a count of columns.
+
+        A unit such as ``温度`` is two code points and four columns wide, so ``ljust`` added
+        the padding of a two-column cell and every cell after it on that row started two
+        columns to the right of its header.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Wide", unit="温度"),
+                    declare("local", "Narrow", unit="degC"),
+                ),
+            },
+        )
+        arguments = ["list", str(tmp_path / "p.ddd.json"), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_OK
+        header, *rows = capsys.readouterr().out.splitlines()
+        # Every row's last cell is the one-character "-" of CONSUMERS, so the width of what
+        # precedes it is the column that cell starts in; the header says which column that is.
+        start = _display_width(header[: -len("CONSUMERS")])
+        assert {_display_width(row[:-1]) for row in rows} == {start}
+
+
+class TestARedirectedRun:
+    """``ddd list > log 2>&1`` shows its table before the findings, not after them.
+
+    Redirected, standard output is block buffered while standard error is not, so a table
+    printed and left unflushed reached the file when the process ended - after every finding
+    of the run. ``ddd sources`` and ``ddd artefacts`` flush for this reason; ``list`` and
+    ``dump`` did not, and a build log read their output in the wrong order.
+    """
+
+    class _Buffered:
+        """A standard output redirected into a file: what is written waits for a flush."""
+
+        def __init__(self, ledger: list[str]) -> None:
+            self._ledger = ledger
+            self._pending: list[str] = []
+
+        def write(self, text: str) -> int:
+            self._pending.append(text)
+            return len(text)
+
+        def flush(self) -> None:
+            text = "".join(self._pending)
+            self._pending.clear()
+            self._ledger.extend(text.splitlines())
+
+    class _Direct:
+        """A standard error, which is line buffered wherever it is pointed."""
+
+        def __init__(self, ledger: list[str]) -> None:
+            self._ledger = ledger
+            self._partial = ""
+
+        def write(self, text: str) -> int:
+            *whole, self._partial = (self._partial + text).split("\n")
+            self._ledger.extend(whole)
+            return len(text)
+
+        def flush(self) -> None:
+            pass
+
+    def logged(self, monkeypatch: pytest.MonkeyPatch, arguments: list[str]) -> list[str]:
+        """The one file both streams of the run land in, in the order they reach it."""
+        ledger: list[str] = []
+        out = self._Buffered(ledger)
+        monkeypatch.setattr("sys.stdout", out)
+        monkeypatch.setattr("sys.stderr", self._Direct(ledger))
+        assert main(arguments) == EXIT_OK
+        # What the interpreter does with what is left in the buffer when the process ends.
+        out.flush()
+        return ledger
+
+    @pytest.fixture
+    def noisy(self, tmp_path: Path) -> str:
+        """A project that resolves and has something to say: an output nobody reads."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "X")),
+            },
+        )
+        return str(tmp_path / "p.ddd.json")
+
+    def test_the_table_comes_before_the_findings(
+        self, noisy: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        lines = self.logged(monkeypatch, ["list", noisy, "-W", "missing-id=ignore"])
+        assert lines[0].startswith("VARIABLE")
+        assert any("unused-output" in line for line in lines)
+
+    def test_the_dictionary_comes_before_the_findings(
+        self, noisy: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        lines = self.logged(monkeypatch, ["dump", noisy, "-W", "missing-id=ignore"])
+        assert lines[0] == "{"
+        assert any("unused-output" in line for line in lines)
+
+    def test_the_listing_of_sources_still_comes_first(
+        self, noisy: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The control: the two commands that already flushed still do."""
+        lines = self.logged(monkeypatch, ["sources", noisy])
+        assert lines[0].endswith("a.ddd.json")
 
 
 class TestArtefacts:
@@ -1270,6 +1408,22 @@ class TestSchemaAndChecks:
         out = capsys.readouterr().out
         assert "multiple-producers" in out
         assert "(fixed)" in out
+
+    def test_the_registry_describes_every_way_init_invalid_fires(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``ddd checks`` is "the authoritative list", and an editor may quote its wording.
+
+        The entry said "an initial value does not fit the datatype of the variable" while the
+        check also fires for an enumerator, for the shape and for a string init, as the
+        specification, the checks page and the README all say - so the authoritative list was
+        the narrowest of the four texts that describe one check.
+        """
+        assert main(["checks"]) == EXIT_OK
+        entry = next(
+            line for line in capsys.readouterr().out.splitlines() if line.startswith("init-invalid")
+        )
+        assert all(word in entry for word in ("enumerator", "shape", "string"))
 
     def test_checks_marks_the_project_wide_and_the_comparison_checks(
         self, capsys: pytest.CaptureFixture[str]
@@ -1416,6 +1570,16 @@ class TestSources:
         listed = capsys.readouterr().out.splitlines()
         assert PLUGIN_FILE.as_posix() in listed
         assert listed == sorted(listed)
+
+    def test_the_help_says_the_plugin_modules_are_listed(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``--help`` said "the project file and every file it includes however deeply", which
+        is the one text a reader consults before a build depends on the answer - and it left
+        out the half that makes a plugin change re-run the generation."""
+        with pytest.raises(SystemExit):
+            main(["sources", "--help"])
+        assert "plugin" in capsys.readouterr().out
 
     def test_the_plugin_modules_are_in_the_json_list_too(
         self, capsys: pytest.CaptureFixture[str]
@@ -1611,6 +1775,91 @@ class TestBaselineIsolation:
         ]
         assert main(arguments) == EXIT_FINDINGS
         assert "in the baseline:" in capsys.readouterr().err
+
+    def test_an_override_does_not_reach_the_baselines_own_analysis(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``-W`` is this run's taste, and the baseline's findings are its own.
+
+        Sharing the overrides made ``-W unused-output=error`` promote a warning about a
+        predecessor into an error carried over as ``in the baseline:``, so a run that asked
+        to be told about *its* unread outputs got no verdict about the delivery at all -
+        while ``--strict``, which says the same thing in one word, already left the baseline
+        alone.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "old.ddd.json": project("P", "old-a.ddd.json"),
+                "old-a.ddd.json": component("A", declare("output", "X")),
+                "new.ddd.json": project("P", "new-a.ddd.json", "new-b.ddd.json"),
+                "new-a.ddd.json": component("A", declare("output", "X")),
+                "new-b.ddd.json": component("B", declare("input", "X")),
+            },
+        )
+        arguments = [
+            "check",
+            str(tmp_path / "new.ddd.json"),
+            "--baseline",
+            str(tmp_path / "old.ddd.json"),
+            "-W",
+            "unused-output=error",
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_OK
+        assert "in the baseline:" not in capsys.readouterr().err
+
+    def test_a_relaxation_does_not_reach_the_baseline_either(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The other direction of the same rule, and the one that costs something: a baseline
+        that resolved only because this run relaxed an error of its own now reports it."""
+        write_tree(
+            tmp_path,
+            {
+                "old.ddd.json": project("P", "plain.json"),
+                "plain.json": component("A", declare("local", "X")),
+                "new.ddd.json": project("P", "new-a.ddd.json"),
+                "new-a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        arguments = [
+            "check",
+            str(tmp_path / "new.ddd.json"),
+            "--baseline",
+            str(tmp_path / "old.ddd.json"),
+            "-W",
+            "file-extension=warning",
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_FINDINGS
+        assert "in the baseline:" in capsys.readouterr().err
+
+    def test_the_floor_of_a_component_read_alone_still_reaches_the_baseline(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``--standalone`` says how the file was handed over, not how strictly this run
+        grades, and the baseline was handed over the same way."""
+        write_tree(
+            tmp_path,
+            {
+                "old.ddd.json": component("A", declare("input", "X")),
+                "new.ddd.json": component("A", declare("input", "X"), declare("local", "Y")),
+            },
+        )
+        arguments = [
+            "check",
+            "--standalone",
+            str(tmp_path / "new.ddd.json"),
+            "--baseline",
+            str(tmp_path / "old.ddd.json"),
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_OK
+        assert "in the baseline:" not in capsys.readouterr().err
 
     def test_a_bom_marked_description_is_compared_as_a_description(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -1980,13 +2229,17 @@ class TestFindingsSurviveAFailedStep:
             {
                 "project.ddd.json": project("P", "plain.json"),
                 "plain.json": component("A", declare("local", "X")),
+                # The baseline is judged on its own terms - ``-W`` does not reach its
+                # analysis - so it has to be a delivery that resolves without a relaxation.
+                "baseline.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
             },
         )
         project_path = tree / "project.ddd.json"
         severities = ["-W", "file-extension=warning", "-W", "tag/no-such=error"]
         for arguments in (
             ["check", str(project_path), *severities],
-            ["compare", str(project_path), str(project_path), *severities],
+            ["compare", str(tree / "baseline.ddd.json"), str(project_path), *severities],
         ):
             code = main(arguments)
             captured = capsys.readouterr()
@@ -2338,6 +2591,421 @@ class TestGenerateTheDictionary:
         assert not (tmp_path / "gen" / "dictionary.json").exists()
 
 
+class TestWhatAFailedReadOrWriteSays:
+    """A file the run could not read or write is named, beside what it was doing with it.
+
+    ``compare`` and ``generate`` already say ``cannot write the --renames file '...'`` and
+    ``cannot write '...'``; three other paths handed the caller the bare errno text, which
+    names neither the option nor the purpose - ``ddd: [Errno 13] Permission denied: 'adir'``
+    is the whole of what a build read.
+    """
+
+    def test_an_address_map_that_cannot_be_read_names_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        arguments = ["generate", "a2l", str(DEMO), "-o", str(tmp_path / "gen")]
+        assert main([*arguments, "--address-map", str(tmp_path / "nosuch.json")]) == EXIT_USAGE
+        assert "cannot read the address map" in capsys.readouterr().err
+
+    def test_an_address_map_that_is_a_directory_names_it_too(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The other errno a map arrives with, and the one python words the least usefully."""
+        (tmp_path / "amap").mkdir()
+        arguments = ["generate", "a2l", str(DEMO), "-o", str(tmp_path / "gen")]
+        assert main([*arguments, "--address-map", str(tmp_path / "amap")]) == EXIT_USAGE
+        assert "cannot read the address map" in capsys.readouterr().err
+
+    def test_a_schema_that_cannot_be_written_names_the_file(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``all`` takes a directory; given a file, the mkdir failed on the first schema and
+        answered `[WinError 183] Cannot create a file when that file already exists`."""
+        from ddd.cli import SCHEMA_FILENAME
+
+        standing = tmp_path / "afile.txt"
+        standing.write_text("not a directory\n", encoding="utf-8")
+        assert main(["schema", "all", "-o", str(standing)]) == EXIT_USAGE
+        target = f"{standing.as_posix()}/{SCHEMA_FILENAME.format(kind='component')}"
+        assert f"cannot write '{target}'" in capsys.readouterr().err
+
+    def test_one_schema_into_a_directory_says_the_same(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        target = tmp_path / "adir"
+        target.mkdir()
+        assert main(["schema", "component", "-o", str(target)]) == EXIT_USAGE
+        assert f"cannot write '{target.as_posix()}'" in capsys.readouterr().err
+
+    def test_a_build_record_that_cannot_be_written_names_the_file(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        target = tmp_path / "adir"
+        target.mkdir()
+        assert main(["build-info", str(DEMO), "-o", str(target)]) == EXIT_USAGE
+        assert f"cannot write '{target.as_posix()}'" in capsys.readouterr().err
+
+
+class TestADumpHandedToTheWrongCommand:
+    """A dumped dictionary is the one json a user of DDD has at hand beside a description.
+
+    Handed to ``check``, the top-level keys it carries were read as a vocabulary file stating
+    too many kinds at once - "file has 'types' and 'constants' and 'rasters' at the top level;
+    it must have exactly one" - which describes a file nobody wrote.
+    """
+
+    FILES: ClassVar[dict[str, Any]] = {
+        "project.ddd.json": project("P", "a.ddd.json"),
+        "a.ddd.json": component("A", declare("local", "X")),
+    }
+
+    def archive(self, tree: Path, capsys: pytest.CaptureFixture[str]) -> str:
+        write_tree(tree, self.FILES)
+        target = tree / "v1.3.ddd.json"
+        arguments = ["dump", str(tree / "project.ddd.json"), "-o", str(target)]
+        assert main([*arguments, "-W", "missing-id=ignore"]) == EXIT_OK
+        capsys.readouterr()
+        return str(target)
+
+    @pytest.mark.parametrize("command", ["check", "list", "dump"])
+    def test_it_says_what_the_file_is_and_which_command_takes_it(
+        self, command: str, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        archived = self.archive(tree, capsys)
+        assert main([command, archived]) == EXIT_FINDINGS
+        err = capsys.readouterr().err
+        assert "is a dumped data dictionary" in err
+        assert "ddd compare" in err
+        assert "it must have exactly one" not in err
+
+    def test_the_vocabulary_message_is_still_there_for_a_vocabulary_file(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The control: a description stating two kinds at once is what that message is for."""
+        write_tree(tree, {"both.ddd.json": {"types": [], "constants": []}})
+        assert main(["check", str(tree / "both.ddd.json")]) == EXIT_FINDINGS
+        assert "it must have exactly one" in capsys.readouterr().err
+
+
+class TestTheOptionsAreSpelledOut:
+    """No option is accepted by a prefix of its name.
+
+    argparse offers every unambiguous abbreviation by default, so ``--stand`` and ``--dict``
+    were accepted - and a script spelling one of them breaks the day a second option starts
+    with the same letters, with argparse's "ambiguous option" as the only clue. What a
+    command accepts is part of the tool's interface; what it happens not to be ambiguous
+    about today is not.
+    """
+
+    def test_an_abbreviated_option_of_a_command_is_refused(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with pytest.raises(SystemExit) as exit_code:
+            main(["check", str(DEMO), "--stand"])
+        assert exit_code.value.code == EXIT_USAGE
+        assert "unrecognized arguments: --stand" in capsys.readouterr().err
+
+    def test_an_abbreviated_option_of_an_artefact_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        arguments = ["generate", "a2l", str(DEMO), "-o", str(tmp_path / "gen")]
+        with pytest.raises(SystemExit) as exit_code:
+            main([*arguments, "--dict", str(tmp_path / "d.json"), "--dry-run"])
+        assert exit_code.value.code == EXIT_USAGE
+        assert "unrecognized arguments: --dict" in capsys.readouterr().err
+
+    def test_the_option_itself_still_works(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """The control: only the abbreviation is gone, and the short flags still group."""
+        assert main(["check", str(EXAMPLES / "layout" / "storage.ddd.json"), "--standalone"]) == 0
+        assert "ok:" in capsys.readouterr().err
+
+
+class TestAClosedPipe:
+    """``ddd schema component | head -1`` is a reader that stopped reading, not an error.
+
+    The broken pipe arrived as an ``OSError`` and was reported as a usage error: one line of
+    errno text and exit 2, which under ``set -o pipefail`` fails a paging script on the tool's
+    side.
+    """
+
+    class _Closed:
+        """A stdout whose reader is gone; ``fileno`` is what a captured stream refuses."""
+
+        def write(self, text: str) -> int:
+            raise BrokenPipeError(errno.EPIPE, "Broken pipe")
+
+        def flush(self) -> None:
+            raise BrokenPipeError(errno.EPIPE, "Broken pipe")
+
+        def fileno(self) -> int:
+            raise OSError(errno.EBADF, "Bad file descriptor")
+
+    class _ClosedOnFd(_Closed):
+        """The same, on a real file descriptor, so the redirection below can be watched."""
+
+        def __init__(self, descriptor: int) -> None:
+            self._descriptor = descriptor
+
+        def fileno(self) -> int:
+            return self._descriptor
+
+    def test_the_run_ends_quietly_and_successfully(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setattr("sys.stdout", self._Closed())
+        assert main(["schema", "component"]) == EXIT_OK
+        assert capsys.readouterr().err == ""
+
+    def test_what_is_left_of_stdout_goes_to_the_null_device(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Python flushes what it buffered when the interpreter ends; a stdout still pointing
+        at the closed pipe prints ``Exception ignored ... BrokenPipeError`` after the run."""
+        spare = os.open(tmp_path / "spare", os.O_WRONLY | os.O_CREAT)
+        try:
+            monkeypatch.setattr("sys.stdout", self._ClosedOnFd(spare))
+            assert main(["schema", "component"]) == EXIT_OK
+            os.write(spare, b"whatever is still buffered")
+        finally:
+            os.close(spare)
+        assert (tmp_path / "spare").read_bytes() == b""
+        assert capsys.readouterr().err == ""
+
+
+class TestATargetWithNoName:
+    """``-o .`` names a directory, and the refusal says so in the tool's own words.
+
+    The writer stages beside the target, so a path with no final component raised python's
+    ``WindowsPath('.') has an empty name`` - a message about pathlib, printed as the whole of
+    what the run had to say.
+    """
+
+    FILES: ClassVar[dict[str, Any]] = {
+        "project.ddd.json": project("P", "a.ddd.json"),
+        "a.ddd.json": component("A", declare("local", "X")),
+    }
+
+    def test_dump_says_which_option_needs_a_file(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.FILES)
+        monkeypatch.chdir(tree)
+        assert main(["dump", "project.ddd.json", "-o", "."]) == EXIT_USAGE
+        assert "-o names a directory" in capsys.readouterr().err
+
+    def test_the_dictionary_of_a_generate_says_the_same(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.FILES)
+        monkeypatch.chdir(tree)
+        arguments = ["generate", "a2l", "project.ddd.json", "-o", "gen", "--dictionary", "."]
+        assert main(arguments) == EXIT_USAGE
+        assert "--dictionary names a directory" in capsys.readouterr().err
+        assert not (tree / "gen").exists()
+
+
+class TestWhereTheRunsOwnFindingsAre:
+    """A finding DDD locates at a file named on the command line says where that file is.
+
+    ``location`` is "an absolute, forward-slashed path together with the json pointer"
+    (``docs/consistency_checks.rst``), and every finding of an analysis is one, because the
+    loader resolves what it reads. The findings the command line locates itself - a
+    comparison's, a `--baseline` comparison's, the note about an address map - carried the
+    path as it was typed, so a dashboard could not resolve it without knowing the working
+    directory of the run; and in text, where the sort key inside one severity is the path,
+    a relative one sorted apart from the findings of the very file it is about.
+    """
+
+    BASE: ClassVar[dict[str, Any]] = {
+        "app.ddd.json": project("P", "components/a.ddd.json"),
+        "components/a.ddd.json": component(
+            "A", declare("output", "Kept"), declare("output", "Gone")
+        ),
+    }
+    """Sorts the project file before its component, so the order below is a real question."""
+
+    def deliveries(self, tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """An archived baseline beside a candidate that has dropped one unused output.
+
+        What the archiving run printed is drained, so that what each test reads is the output
+        of the one command it is about.
+        """
+        write_tree(tree, self.BASE)
+        assert main(["dump", str(tree / "app.ddd.json"), "-o", str(tree / "base.json")]) == EXIT_OK
+        write_tree(tree, {"components/a.ddd.json": component("A", declare("output", "Kept"))})
+        capsys.readouterr()
+
+    def test_a_comparison_finding_carries_an_absolute_path(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self.deliveries(tree, capsys)
+        monkeypatch.chdir(tree)
+        arguments = ["compare", "base.json", "app.ddd.json", "--format", "json"]
+        assert main([*arguments, "-W", "missing-id=ignore"]) == EXIT_OK
+        payload = json.loads(capsys.readouterr().out)
+        checks = {entry["check"] for entry in payload["diagnostics"]}
+        assert "removed-unused-object" in checks and "unused-output" in checks
+        for entry in payload["diagnostics"]:
+            path = entry["location"]["path"]
+            assert Path(path).is_absolute(), entry
+            assert "\\" not in path
+
+    def test_the_text_output_is_the_one_it_was(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Rendered against the working directory, so what a reader sees is what they typed."""
+        self.deliveries(tree, capsys)
+        monkeypatch.chdir(tree)
+        assert main(["compare", "base.json", "app.ddd.json", "-W", "missing-id=ignore"]) == EXIT_OK
+        lines = capsys.readouterr().err.splitlines()
+        assert [line for line in lines if "removed-unused-object" in line] == [
+            "app.ddd.json: warning[removed-unused-object]: 'Gone' is gone; no component read "
+            "it, but a calibration dataset or an external tool still might"
+        ]
+
+    def test_a_comparison_finding_sorts_with_the_file_it_is_about(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Both are warnings, so the path decides: the project file, then its component.
+
+        Typed, the comparison's path sorted after every absolute one of the analysis - which
+        is what the comparison page says does not happen.
+        """
+        self.deliveries(tree, capsys)
+        monkeypatch.chdir(tree)
+        assert main(["compare", "base.json", "app.ddd.json", "-W", "missing-id=ignore"]) == EXIT_OK
+        err = capsys.readouterr().err
+        assert err.index("warning[removed-unused-object]") < err.index("warning[unused-output]")
+
+    def test_a_baseline_comparison_under_check_carries_an_absolute_path(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``check --baseline`` locates the same findings at the project it was given."""
+        self.deliveries(tree, capsys)
+        monkeypatch.chdir(tree)
+        arguments = ["check", "app.ddd.json", "--baseline", "base.json", "--format", "json"]
+        assert main([*arguments, "-W", "missing-id=ignore"]) == EXIT_OK
+        payload = json.loads(capsys.readouterr().out)
+        located = [
+            entry["location"]["path"]
+            for entry in payload["diagnostics"]
+            if entry["check"] == "removed-unused-object"
+        ]
+        assert located == [(tree / "app.ddd.json").as_posix()]
+
+    def test_the_note_about_an_address_map_carries_an_absolute_path(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.BASE)
+        (tree / "addresses.json").write_text('{"Elsewhere": "0x20001000"}', encoding="utf-8")
+        monkeypatch.chdir(tree)
+        arguments = ["generate", "a2l", "app.ddd.json", "-o", "gen", "--format", "json"]
+        assert main([*arguments, "--address-map", "addresses.json", "-W", "missing-id=ignore"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        located = [
+            entry["location"]["path"]
+            for entry in payload["diagnostics"]
+            if entry["check"] == "address-missing"
+        ]
+        assert located == [(tree / "addresses.json").as_posix()]
+
+    def test_a_finding_a_plugin_places_on_an_archived_dictionary_is_absolute(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A dump has no declaration to point at, so a hook's finding lands on the file."""
+        self.deliveries(tree, capsys)
+        monkeypatch.chdir(tree)
+        resolved = _read_dictionary(Path("base.json"), DiagnosticBag())
+        assert resolved is not None
+        located = resolved.locate("Kept")
+        assert located is not None and located.path == tree / "base.json"
+
+    def test_a_finding_about_a_dump_that_cannot_be_read_is_absolute(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The loader resolves a description before it reads it; a dump is read by its own
+        entry point, and everything reported about it was located as it was typed."""
+        write_tree(tree, self.BASE)
+        (tree / "base.json").write_text("{ not json", encoding="utf-8")
+        monkeypatch.chdir(tree)
+        assert main(["compare", "base.json", "app.ddd.json", "--format", "json"]) == EXIT_FINDINGS
+        payload = json.loads(capsys.readouterr().out)
+        assert [entry["location"]["path"] for entry in payload["diagnostics"]] == [
+            (tree / "base.json").as_posix()
+        ]
+
+
+class TestAnOutputThatIsASource:
+    """A file the run read is not a file the run writes over.
+
+    ``-o``, ``--renames`` and ``--dictionary`` name a file on the command line, and a
+    tab-completed path lands on a description of the very project being read: a
+    hand-written source was replaced by the dictionary, or by a list of renames, and the run
+    said `wrote ...` and exited 0. The refusal names the file, before anything is written.
+    """
+
+    FILES: ClassVar[dict[str, Any]] = {
+        "project.ddd.json": project("P", "a.ddd.json"),
+        "a.ddd.json": component("A", declare("local", "X")),
+    }
+
+    def test_dump_refuses_a_component_of_the_project_it_read(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.FILES)
+        target = tree / "a.ddd.json"
+        before = target.read_bytes()
+        assert main(["dump", str(tree / "project.ddd.json"), "-o", str(target)]) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert f"-o would write over '{target.as_posix()}'" in err
+        assert err.index("info[missing-id]") < err.index("would write over")
+        assert target.read_bytes() == before
+
+    def test_compare_refuses_a_renames_file_that_is_the_project_it_read(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.FILES)
+        root = str(tree / "project.ddd.json")
+        before = (tree / "project.ddd.json").read_bytes()
+        assert main(["compare", root, root, "--renames", root]) == EXIT_USAGE
+        assert f"--renames would write over '{Path(root).as_posix()}'" in capsys.readouterr().err
+        assert (tree / "project.ddd.json").read_bytes() == before
+
+    def test_compare_refuses_a_renames_file_that_is_the_baseline_dump(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The baseline is read too, whichever of the two shapes it has."""
+        write_tree(tree, self.FILES)
+        root = str(tree / "project.ddd.json")
+        archived = tree / "baseline.json"
+        assert main(["dump", root, "-o", str(archived)]) == EXIT_OK
+        before = archived.read_bytes()
+        assert main(["compare", str(archived), root, "--renames", str(archived)]) == EXIT_USAGE
+        assert f"--renames would write over '{archived.as_posix()}'" in capsys.readouterr().err
+        assert archived.read_bytes() == before
+
+    def test_generate_refuses_a_dictionary_that_is_a_source(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Beside the refusal of a path an artefact of the run already claims."""
+        write_tree(tree, self.FILES)
+        target = tree / "a.ddd.json"
+        before = target.read_bytes()
+        arguments = ["generate", "a2l", str(tree / "project.ddd.json"), "-o", str(tree / "gen")]
+        assert main([*arguments, "--dictionary", str(target)]) == EXIT_USAGE
+        assert f"--dictionary would write over '{target.as_posix()}'" in capsys.readouterr().err
+        assert target.read_bytes() == before
+        assert not (tree / "gen").exists()
+
+    def test_a_file_the_run_never_read_is_written(self, tree: Path) -> None:
+        """The control: a target beside the sources, which is what the option is for."""
+        write_tree(tree, self.FILES)
+        root = str(tree / "project.ddd.json")
+        target = tree / "elsewhere.ddd.json"
+        assert main(["dump", root, "-o", str(target)]) == EXIT_OK
+        assert json.loads(target.read_text(encoding="utf-8"))["format"] == DICTIONARY_FORMAT
+
+
 def test_assigning_ids_writes_one_per_producing_declaration(tree, capsys):
     write_tree(
         tree,
@@ -2398,6 +3066,34 @@ def test_assigning_ids_skips_a_file_it_cannot_parse(tree, capsys):
     captured = capsys.readouterr().err
     assert "not readable as json, skipped" in captured
     assert "wrote 0 ids" in captured
+
+
+def test_assigning_ids_reports_a_file_it_cannot_write_and_stamps_the_rest(
+    tree, monkeypatch, capsys
+):
+    """A file that cannot be parsed "is reported while the others are stamped"; one that
+    cannot be written was not held to that - the run stopped on it with a bare errno, the
+    files after it untouched and no total at all."""
+    files = {
+        f"{name}.ddd.json": component(name.upper(), declare("local", f"X{name}"))
+        for name in ("first", "locked", "last")
+    }
+    write_tree(tree, files)
+    writing = Path.write_bytes
+
+    def refusing(self: Path, data: bytes) -> int:
+        if self.name == "locked.ddd.json":
+            raise PermissionError(errno.EACCES, "Permission denied", str(self))
+        return writing(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", refusing)
+    named = [str(tree / name) for name in files]
+    assert main(["id", "--assign", *named]) == EXIT_FINDINGS
+    captured = capsys.readouterr().err
+    assert f"{tree / 'locked.ddd.json'}: cannot be written, skipped" in captured
+    assert "wrote 2 ids" in captured
+    assert '"id"' in (tree / "last.ddd.json").read_text(encoding="utf-8")
+    assert '"id"' not in (tree / "locked.ddd.json").read_text(encoding="utf-8")
 
 
 def test_assigning_ids_keeps_a_byte_order_mark(tree):

@@ -135,6 +135,18 @@ def _parse_json(text: str, path: Path, bag: DiagnosticBag) -> dict[str, Any] | N
     return data
 
 
+def _is_a_dumped_dictionary(data: dict[str, Any]) -> bool:
+    """Whether this document is what ``ddd dump`` writes rather than a description.
+
+    The pair that only a dump has: a ``format`` version, which no description file carries,
+    beside the ``objects`` list that is the dictionary's own shape. Enough to recognise a
+    dump this version wrote and one a later version will, which is the point - what a reader
+    needs to be told about a file it is holding does not depend on the format being one
+    this DDD could read.
+    """
+    return "format" in data and isinstance(data.get("objects"), list)
+
+
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     """Refuse an object that spells the same key twice, which json itself allows.
 
@@ -453,7 +465,13 @@ def load_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
     The counterpart of :func:`load_workspace`: it takes the resolved form rather than the
     description files, which is what makes a published dictionary usable as a baseline long
     after the sources of that delivery have moved on.
+
+    The path is resolved first, as the root of a workspace is: everything reported about
+    this file - that it does not exist, that its json is malformed, that its format is one
+    this version cannot read, that a field does not validate - is located at it, and the
+    ``location`` of a finding is an absolute path whether the caller typed one or not.
     """
+    path = resolve_path(path)
     text = _read_text(path, bag, None)
     if text is None:
         return None
@@ -531,7 +549,7 @@ class _Loader:
         self._project_blocks: dict[str, tuple[dict[str, Any], Location]] = {}
 
     def load(self, path: Path) -> Workspace | None:
-        root = _resolve(path)
+        root = resolve_path(path)
         data = self._read_json(root, origin=None)
         if data is None:
             return None
@@ -617,6 +635,19 @@ class _Loader:
             )
 
     def _detect_kind(self, path: Path, data: dict[str, Any]) -> str | None:
+        if _is_a_dumped_dictionary(data):
+            # Said before the count below, which would otherwise describe this file as a
+            # vocabulary stating three kinds at once - "file has 'types' and 'constants' and
+            # 'rasters' at the top level" - a file nobody wrote. A dump is the one json a
+            # user of DDD has at hand beside a description, and the two are easy to confuse
+            # at a prompt; what it needs is the command that does take it.
+            self._bag.add(
+                "file-kind",
+                "this is a dumped data dictionary, not a description; hand it to "
+                "'ddd compare' as a baseline or a candidate",
+                Location(path),
+            )
+            return None
         present = [key for key in FILE_KINDS if key in data]
         if len(present) > 1:
             listed = " and ".join(f"'{key}'" for key in present)
@@ -995,7 +1026,7 @@ class _Loader:
         raw = Path(pattern)
         if not any(character in pattern for character in _GLOB_CHARACTERS):
             candidate = raw if raw.is_absolute() else source.parent / raw
-            return [_resolve(candidate)]
+            return [resolve_path(candidate)]
 
         # The anchor decides where a pattern starts, not is_absolute(): on Windows both the
         # rooted '/shared/*.ddd.json' and the drive relative 'C:*.ddd.json' carry an anchor
@@ -1012,7 +1043,7 @@ class _Loader:
         matches = sorted(
             resolved
             for match in found
-            if match.is_file() and (resolved := _resolve(match)) not in excluded
+            if match.is_file() and (resolved := resolve_path(match)) not in excluded
         )
         if not matches:
             self._bag.add("include-empty", f"pattern '{pattern}' matches no file", origin)
@@ -1199,7 +1230,7 @@ def _meaningful(items: list[Any]) -> list[Any]:
     ]
 
 
-def _resolve(path: Path) -> Path:
+def resolve_path(path: Path) -> Path:
     """Absolute, symlink free path; works for files that do not exist yet.
 
     A path the operating system refuses to even look at - one with a NUL byte in it, say -

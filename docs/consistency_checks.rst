@@ -169,7 +169,10 @@ colliding on one identifier. Which checks a run actually registers is only known
 plugins are loaded, which happens after the command line is parsed, so an override naming a
 plugin check is accepted provisionally at that point and verified once the project is read;
 one naming a check no loaded plugin registered is then the same usage error an unknown
-built-in check is.
+built-in check is. It is verified whether or not the read found anything - the plugins are
+loaded before the rest of the project, so a typo does not wait for the first run that happens
+to load cleanly - and a run given a baseline as well is held to the baseline's plugins too,
+which it loaded to analyse it.
 
 Checking a component on its own
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -312,7 +315,9 @@ or an a2l file that does not do what the description says - or that does not com
      - error (fixed)
      - the top level of the document is not a json object, or names none of the description
        kinds (``project``, ``component``, ``types``, ``units``, ``sections``,
-       ``constants``, ``rasters``), or several of them at once.
+       ``constants``, ``rasters``), or several of them at once. A dumped data dictionary
+       handed to a command that reads descriptions is recognised as one and named as one,
+       rather than counted as a description stating three kinds at once.
    * - ``file-extension``
      - error
      - a description file is not named ``*.ddd.json``. Relaxable with
@@ -740,9 +745,10 @@ registry can be read in one place.
        probably not the predecessor of this candidate.
    * - ``missing-plugin``
      - warning
-     - a compared dictionary records a plugin this run has not loaded, so that plugin's
-       comparison rules did not run. Once per plugin and side, because a comparison that
-       silently skipped a rule would be a confident verdict with a hole in it.
+     - a compared dictionary records a plugin that is not among the candidate's, so that
+       plugin's comparison rules did not run. Once per plugin and side, reported at the file
+       that records it, because a comparison that silently skipped a rule would be a
+       confident verdict with a hole in it.
    * - ``added-object``
      - info
      - the candidate declares an object the baseline did not.

@@ -294,8 +294,9 @@ The commands
        the stable interface.
    * - ``ddd build-info FILE -o FILE``
      - record which project description a build runs DDD on and under which severity policy,
-       the ``ddd-build.json`` an editor reads; ``ddd_generate()`` calls it at configure
-       time, so a hand-rolled build is the only caller that needs it directly.
+       the ``ddd-build.json`` the language server and ``ddd gui`` read; ``ddd_generate()``
+       calls it at configure time, so a hand-rolled build is the only caller that needs it
+       directly.
    * - ``ddd checks``
      - list every check with its identifier, its default severity, whether it can be relaxed
        (``(fixed)`` if not), whether it needs every component of a project (``(project)``)

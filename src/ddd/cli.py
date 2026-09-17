@@ -369,13 +369,13 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
 
     build_info = subparsers.add_parser(
         "build-info",
-        help="record how a build configured DDD, for an editor to pick up",
+        help="record how a build configured DDD, for the language server and ddd gui to pick up",
         description=(
             "Writes the project description a build runs DDD on, and the severity policy it "
             "applies, into a small json file. A build system calls this at configure time so "
-            "that an editor can report what the build reports. The project description is "
-            "recorded rather than read: with CMake it is often generated later in the same "
-            "configure run, out of the link graph."
+            "that the language server and ddd gui can report what the build reports. The "
+            "project description is recorded rather than read: with CMake it is often "
+            "generated later in the same configure run, out of the link graph."
         ),
     )
     build_info.add_argument("project", type=Path, help="project or component description file")

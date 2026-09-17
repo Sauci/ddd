@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import http.client
 import json
+import shutil
 import socket
 import sys
 import threading
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any, Final
+from urllib.parse import quote
 
 import pytest
 
 import ddd
-from conftest import component, declare, project, write_tree
+from conftest import EXAMPLES, component, declare, project, write_tree
 from ddd.cli import EXIT_OK, EXIT_USAGE
 from ddd.editing import fingerprint
 from ddd.gui import api as api_module
@@ -370,6 +373,153 @@ class TestWhatIsServed:
 
     def test_the_installed_pages_are_looked_for_beside_the_package(self) -> None:
         assert static_directory() == Path(ddd.__file__).parent / "gui" / "static"
+
+
+def answered(
+    server: GuiServer, method: str, path: str, body: object = None, status: int = 200
+) -> dict[str, Any]:
+    """A request's json answer, which has to come with ``status``."""
+    sent = None if body is None else json.dumps(body).encode("utf-8")
+    origin = None if body is None else f"http://127.0.0.1:{server.port}"
+    response, data = ask(server, method, path, body=sent, origin=origin)
+    assert response.status == status, data
+    assert response.getheader("Content-Type") == "application/json; charset=utf-8"
+    answer: dict[str, Any] = json.loads(data)
+    return answer
+
+
+@pytest.fixture
+def demo(tmp_path: Path, pages: Path) -> Iterator[tuple[GuiServer, Path]]:
+    """ddd gui serving a copy of examples/demo, and where the copy is."""
+    root = tmp_path / "demo"
+    shutil.copytree(EXAMPLES / "demo", root)
+    session = Session(root)
+    session.open(root / "demo.ddd.json")
+    for server in serving(Api(session, root / "demo.ddd.json", wait_seconds=0.05), pages):
+        yield server, root.resolve()
+
+
+class TestEveryEndpointOnTheDemo:
+    """Spec 6.11: every endpoint through real HTTP, on a copy of examples/demo."""
+
+    COMPONENTS: Final = {"Controller", "SensorHub", "UserInterface", "EventLogger"}
+
+    def test_the_session_names_the_demo(self, demo) -> None:
+        server, root = demo
+        body = answered(server, "GET", "/api/session")
+        assert body["project"] == {"path": f"{root.as_posix()}/demo.ddd.json", "name": "DemoDevice"}
+        assert (body["version"], body["preview"], body["builds"]) == (ddd.__version__, True, [])
+
+    def test_the_projects_found_include_the_demo(self, demo) -> None:
+        server, root = demo
+        body = answered(server, "GET", "/api/projects")
+        assert body["root"] == root.as_posix()
+        assert {"path": f"{root.as_posix()}/demo.ddd.json", "name": "DemoDevice", "images": []} in (
+            body["projects"]
+        )
+        assert body["refused"] == []
+
+    def test_the_demo_is_opened_again(self, demo) -> None:
+        server, root = demo
+        body = answered(server, "POST", "/api/open", {"path": f"{root.as_posix()}/demo.ddd.json"})
+        assert body["project"]["name"] == "DemoDevice"
+        assert answered(server, "GET", "/api/state")["revision"] == 2
+
+    def test_the_state_lists_the_components_loaded_and_clean(self, demo) -> None:
+        server, _ = demo
+        body = answered(server, "GET", "/api/state")
+        components = [f for f in body["files"] if f["kind"] == "component"]
+        assert {f["name"] for f in components} == self.COMPONENTS
+        assert all(f["loaded"] and f["findings"]["error"] == 0 for f in components)
+        assert not [f for f in body["findings"] if f["severity"] == "error"]
+        waited = answered(server, "GET", f"/api/state?after={body['revision']}")
+        assert waited["revision"] == body["revision"]
+
+    def test_a_component_is_read_with_its_fingerprint(self, demo) -> None:
+        server, root = demo
+        controller = root / "components" / "controller.ddd.json"
+        body = answered(server, "GET", f"/api/file?path={quote(controller.as_posix())}")
+        assert body["data"]["component"]["name"] == "Controller"
+        assert (body["fingerprint"], body["error"]) == (fingerprint(controller.read_bytes()), None)
+
+    def test_the_dictionary_is_the_demos(self, demo) -> None:
+        server, _ = demo
+        body = answered(server, "GET", "/api/dictionary")
+        assert (body["revision"], body["dictionary"]["name"]) == (1, "DemoDevice")
+
+    def test_the_checks_are_listed(self, demo) -> None:
+        server, _ = demo
+        listed = {entry["check"] for entry in answered(server, "GET", "/api/checks")["checks"]}
+        assert {"definition-mismatch", "json-syntax"} <= listed
+
+    def test_an_edit_changes_the_units_value_alone_and_both_sides_disagree(self, demo) -> None:
+        server, root = demo
+        controller = root / "components" / "controller.ddd.json"
+        before = controller.read_bytes()
+        edit = {
+            "changes": [
+                {
+                    "file": controller.as_posix(),
+                    "fingerprint": fingerprint(before),
+                    "operations": [
+                        {
+                            "op": "set",
+                            "pointer": "component.interface[0].definition.unit",
+                            "raw": '"rpm"',
+                        }
+                    ],
+                }
+            ]
+        }
+        body = answered(server, "POST", "/api/edit", edit)
+        after = controller.read_bytes()
+        assert after == before.replace(b'"unit": "%"', b'"unit": "rpm"', 1)
+        assert body == {
+            "revision": 2,
+            "files": [{"path": controller.as_posix(), "fingerprint": fingerprint(after)}],
+        }
+        state = answered(server, "GET", "/api/state")
+        disagreeing = {
+            Path(f["file"]).name for f in state["findings"] if f["check"] == "definition-mismatch"
+        }
+        assert disagreeing == {"controller.ddd.json", "sensor_hub.ddd.json"}
+
+
+class TestAProjectWithAFileThatDoesNotParse:
+    """Spec 6.10: the project still opens, the file is marked as not loaded, its findings say
+    why, and reading it answers the reason instead of a document."""
+
+    @pytest.fixture
+    def broken(self, tmp_path: Path, pages: Path) -> Iterator[tuple[GuiServer, Path]]:
+        root = tmp_path / "project"
+        write_tree(
+            root,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": '{"component": {"name": "B",',
+            },
+        )
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        for server in serving(Api(session, root / "p.ddd.json", wait_seconds=0.05), pages):
+            yield server, root.resolve()
+
+    def test_the_state_marks_the_file_not_loaded_and_says_why(self, broken) -> None:
+        server, root = broken
+        body = answered(server, "GET", "/api/state")
+        files = {Path(f["path"]).name: f for f in body["files"]}
+        assert (files["a.ddd.json"]["loaded"], files["b.ddd.json"]["loaded"]) == (True, False)
+        assert files["b.ddd.json"]["findings"]["error"] == 1
+        why = [f for f in body["findings"] if f["file"] == (root / "b.ddd.json").as_posix()]
+        assert [f["check"] for f in why] == ["json-syntax"]
+
+    def test_the_file_is_answered_as_the_reason_it_does_not_parse(self, broken) -> None:
+        server, root = broken
+        target = root / "b.ddd.json"
+        body = answered(server, "GET", f"/api/file?path={quote(target.as_posix())}")
+        assert (body["data"], body["fingerprint"]) == (None, fingerprint(target.read_bytes()))
+        assert body["error"].startswith(f"{target} is not json: ")
 
 
 class TestRunning:

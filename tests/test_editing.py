@@ -232,10 +232,73 @@ class TestSet:
         assert refused.value.code == INVALID
 
 
+class TestTabs:
+    """A file indented with tabs is edited with tabs."""
+
+    TABBED = (
+        "{\n"
+        '\t"component": {\n'
+        '\t\t"name": "A",\n'
+        '\t\t"interface": [\n'
+        "\t\t\t{\n"
+        '\t\t\t\t"scope": "output",\n'
+        '\t\t\t\t"definition": {\n'
+        '\t\t\t\t\t"name": "S",\n'
+        '\t\t\t\t\t"unit": "rpm"\n'
+        "\t\t\t\t}\n"
+        "\t\t\t}\n"
+        "\t\t]\n"
+        "\t}\n"
+        "}\n"
+    )
+
+    def test_a_value_is_set_in_place(self):
+        pointer = f"{DEFINITION}.unit"
+        assert edited(self.TABBED, Operation("set", pointer, '"Hz"')) == self.TABBED.replace(
+            '"unit": "rpm"', '"unit": "Hz"'
+        )
+
+    def test_a_member_is_added_on_a_line_indented_like_the_one_before_it(self):
+        pointer = f"{DEFINITION}.kind"
+        assert edited(self.TABBED, Operation("set", pointer, '"measurement"')) == (
+            self.TABBED.replace(
+                '\t\t\t\t\t"unit": "rpm"\n',
+                '\t\t\t\t\t"unit": "rpm",\n\t\t\t\t\t"kind": "measurement"\n',
+            )
+        )
+
+    def test_a_structured_member_is_laid_out_one_tab_per_level(self):
+        raw = '[{"name":"T","members":[{"name":"x","datatype":"uint8"}]}]'
+        assert edited(self.TABBED, Operation("set", "component.types", raw)) == (
+            self.TABBED.replace(
+                "\t\t]\n\t}\n}",
+                "\t\t],\n"
+                '\t\t"types": [\n'
+                "\t\t\t{\n"
+                '\t\t\t\t"name": "T",\n'
+                '\t\t\t\t"members": [\n'
+                '\t\t\t\t\t{ "name": "x", "datatype": "uint8" }\n'
+                "\t\t\t\t]\n"
+                "\t\t\t}\n"
+                "\t\t]\n"
+                "\t}\n"
+                "}",
+            )
+        )
+
+
 class TestRemove:
     def test_a_member_takes_the_comma_after_it(self):
         assert edited(MULTI, Operation("remove", "component.name")) == MULTI.replace(
             '    "name": "A",\n', ""
+        )
+
+    def test_the_last_member_of_an_object_takes_the_comma_before_it(self):
+        assert edited(MULTI, Operation("remove", "component.interface")) == (
+            '{\n  "component": {\n    "name": "A"\n  }\n}\n'
+        )
+        assert edited(MULTI, Operation("remove", f"{DEFINITION}.factor")) == MULTI.replace(
+            ', "factor": 1.0', ""
         )
 
     def test_the_last_element_takes_the_comma_before_it(self):

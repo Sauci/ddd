@@ -298,7 +298,7 @@ class TestFollowingTheDisk:
         monkeypatch.undo()
         assert mismatches(session) == 0
         assert session.poll() is True
-        assert mismatches(session) > 0
+        assert mismatches(session) == 2
 
     def test_a_waiting_request_gets_the_newer_revision_as_soon_as_it_exists(
         self, shared: Path
@@ -371,8 +371,9 @@ class TestReadingAndEditing:
     def test_a_file_that_is_not_json_is_read_as_the_loaders_reason(
         self, shared: Path, content: str, reason: str
     ) -> None:
-        """Read by the loader's rule: python's parser handed the page a ``NaN`` its own parser
-        cannot read, and a file whose first ``name`` the page showed and the loader refused."""
+        """Read by the loader's rule: python's parser handed the page a ``NaN`` the page's own
+        parser cannot read, and showed it a file the loader refuses under the last of its two
+        names."""
         (shared.parent / "b.ddd.json").write_text(content, encoding="utf-8")
         session = Session(shared.parent)
         session.open(shared)

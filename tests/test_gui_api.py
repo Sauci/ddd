@@ -244,7 +244,7 @@ class TestFiles:
         body = get(Api(session), "/api/file", path=(root / "b.ddd.json").as_posix()).body
         assert body["data"] is None
         assert reason in body["error"]
-        json.dumps(body, allow_nan=False)
+        assert json.loads(json.dumps(body, allow_nan=False)) == body
 
     def test_a_file_outside_the_project_is_not_found(self, api: Api, root: Path) -> None:
         reply = get(api, "/api/file", path=(root / "other" / "q.ddd.json").as_posix())

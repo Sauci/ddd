@@ -70,7 +70,7 @@
   },
   "scripts": {
     "build": "tsc --project .",
-    "test": "npm run build && node --test out/",
+    "test": "npm run build && node --test \"out/*.test.js\"",
     "package": "npx --yes @vscode/vsce package",
     "publish:marketplace": "npx --yes @vscode/vsce publish --packagePath"
   },

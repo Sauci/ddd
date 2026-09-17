@@ -113,3 +113,44 @@ jobs:
         with:
           name: ddd-vscode-extension
           path: editors/vscode/*.vsix
+
+  gui:
+    # The browser interface: its types generated from the schemas, its lint and type check, its
+    # logic under the coverage gate, its pages compiled, and those pages driven in a browser
+    # against the real `ddd gui` - on both systems the package claims to run on. Node 24, as the
+    # extension job has it; the python package is installed because the types and the server
+    # both come from it.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: gui
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
+      - run: pip install -e ..
+      - run: npm ci
+      - run: npm run schemas
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-${{ matrix.os }}
+          path: gui/playwright-report

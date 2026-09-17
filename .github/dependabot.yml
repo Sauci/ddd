@@ -2,9 +2,10 @@ version: 2
 
 # What this is for is the day of a release rather than the day of an update. Every `uses:` in
 # the three workflows is pinned by a major tag, the development requirements pin `ruff` and
-# `mypy` to a minor, and the extension's lock file pins its dependencies exactly - so nothing
-# moves on its own, and without something proposing the moves nothing moves at all until a
-# release is blocked by a tool nobody upgraded or an action whose major tag was retired.
+# `mypy` to a minor, and the extension's and the browser interface's lock files pin their
+# dependencies exactly - so nothing moves on its own, and without something proposing the
+# moves nothing moves at all until a release is blocked by a tool nobody upgraded or an
+# action whose major tag was retired.
 #
 # Weekly rather than daily: a pull request per dependency per day is noise on a repository
 # with one maintainer, and none of these is a runtime dependency of what customers install.
@@ -27,5 +28,12 @@ updates:
   # extension job and in the job that packages the .vsix attached to a release.
   - package-ecosystem: npm
     directory: /editors/vscode
+    schedule:
+      interval: weekly
+
+  # The browser interface, whose package-lock.json is what `npm ci` installs from in the gui job
+  # and in the release build that compiles the pages into the wheel.
+  - package-ecosystem: npm
+    directory: /gui
     schedule:
       interval: weekly

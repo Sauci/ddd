@@ -49,6 +49,10 @@ ddd = "ddd.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ddd"]
+# The compiled pages of `ddd gui` are written by `npm run build` in gui/ and ignored by git, and
+# hatch leaves out what git ignores - except an artifact. Absent pages are no error: an editable
+# install without them makes `ddd gui` say how to build them.
+artifacts = ["/src/ddd/gui/static"]
 
 # Shipped inside the package so that `ddd cmake-dir` finds it after a plain pip install,
 # not only in a source checkout.
@@ -65,9 +69,10 @@ packages = ["src/ddd"]
 #
 # The sdist carries the tests and the documentation on purpose - it is what an evaluator is
 # sent - so it has to carry what those two read outside src/. The documentation tests read
-# the workflows, the extension manifest and the pre-commit hook definition; the docs build
-# takes its logo and its favicon from assets/logo/. Anything left out here is not a smaller
-# archive, it is a suite that stops at collection and a build that fails on a missing image.
+# the workflows, the extension and browser interface manifests and the pre-commit hook
+# definition; the docs build takes its logo and its favicon from assets/logo/. Anything left
+# out here is not a smaller archive, it is a suite that stops at collection and a build that
+# fails on a missing image.
 include = [
     "/src/ddd",
     "/assets",
@@ -75,6 +80,7 @@ include = [
     "/docker",
     "/docs",
     "/editors/vscode",
+    "/gui",
     "/examples",
     "/schemas",
     "/tests",
@@ -98,6 +104,8 @@ include = [
 exclude = [
     "/docs/superpowers",
 ]
+# The same pages, so that a wheel built from the sdist carries them as well.
+artifacts = ["/src/ddd/gui/static"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -394,11 +394,17 @@ Continuous integration
 
 ``.github/workflows/ci.yml`` runs the commands above - the suite with its coverage gate,
 ``ruff`` twice and ``mypy`` - on every push to ``master`` and every pull request, in two jobs,
-and two more the commands above do not cover. ``extension`` installs node and the package,
+and three more the commands above do not cover. ``extension`` installs node and the package,
 runs ``npm ci``, ``npm test`` and ``npm run package`` in ``editors/vscode``, and uploads the
 ``.vsix`` it produced. Its tests start a real language server, which is why it installs the
 python package as well as compiling typescript, and packaging the extension there proves that
 the artefact a customer is handed can be produced at all.
+
+``gui`` builds and tests the browser interface on ubuntu and windows: it installs the package and
+node, generates the TypeScript types from ``ddd schema``, runs Biome, the type check and Vitest
+with its coverage gate, compiles the pages, and drives them in Chromium against a real
+``ddd gui`` with Playwright. The pages it compiles are thrown away; the release build compiles
+them again, into the wheel.
 
 ``container`` builds the image behind ``docker compose`` and runs the ``generate`` service in
 it. Nothing built the image for a long time, and it is the local equivalent of every other
@@ -429,14 +435,15 @@ release can be cut from a commit this workflow never saw, and an upload to an in
 permanent.
 
 Nothing in the toolchain moves on its own. Every ``uses:`` is pinned by a major tag, the
-extension's lock file pins its dependencies exactly, and ``ruff`` and ``mypy`` are capped to
-a minor in ``requirements-dev.txt`` - those two are gates rather than libraries, so a release
-of either fails the lint job on the day it is published rather than on the day somebody
-upgrades it. What proposes the moves instead is ``.github/dependabot.yml``, weekly, for the
-actions, the requirements files and the extension: a bump then arrives as a pull request that
-ci has already run, which is the difference between upgrading a tool and discovering on a
-release day that one has moved on without you. A test holds every action to one version
-across the three workflows, and both caps to being caps.
+extension's and the browser interface's lock files pin their dependencies exactly, and
+``ruff`` and ``mypy`` are capped to a minor in ``requirements-dev.txt`` - those two are gates
+rather than libraries, so a release of either fails the lint job on the day it is published
+rather than on the day somebody upgrades it. What proposes the moves instead is
+``.github/dependabot.yml``, weekly, for the actions, the requirements files, the extension and
+the browser interface: a bump then arrives as a pull request that ci has already run, which is
+the difference between upgrading a tool and discovering on a release day that one has moved on
+without you. A test holds every action to one version across the three workflows, and both
+caps to being caps.
 
 Building this documentation
 ---------------------------
@@ -666,3 +673,26 @@ refused when it publishes, which reads as a wrong password rather than a wrong s
 expires within a year, and the failure lands on a release that has already uploaded to PyPI.
 Whoever takes that on puts the install instructions back on the four pages at the same time;
 a test refuses the two halves separately.
+
+The browser interface
+---------------------
+
+``ddd gui`` serves pages compiled from ``gui/``, a Vite project in TypeScript and React, into
+``src/ddd/gui/static/``. git ignores the compiled pages; the release build compiles them before
+it builds the wheel, which then carries them. A source checkout needs Node.js 24 to build them,
+with the package installed so that its types can be generated:
+
+.. code-block:: text
+
+   cd gui
+   npm ci
+   npm run schemas     # TypeScript types, from ddd schema all
+   npm run build       # the pages, and third-party-licenses.txt beside them
+   npm run watch       # rebuilds on every change; reload the page ddd gui serves
+
+``npm run lint`` and ``npm run typecheck`` are the frontend's ruff and mypy, and ``npm test``
+runs Vitest with a 100 % gate over the modules that hold logic - ``src/api``, ``src/lib`` and
+``src/state``. The screens are covered by ``npm run e2e``: Playwright drives the real ``ddd gui``
+over a copy of ``examples/demo``, started with the interpreter ``DDD_PYTHON`` names, and
+``PLAYWRIGHT_CHANNEL=msedge`` drives the installed Edge on a machine without Playwright's own
+Chromium. The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0 or BSD.

@@ -1829,6 +1829,15 @@ class TestPackagedResources:
         assert "ddd/templates" in destinations, "ddd templates-dir would find nothing installed"
         assert "ddd/cmake/Ddd.cmake" in destinations, "ddd cmake-dir would find nothing installed"
 
+    def test_the_archives_carry_the_compiled_gui_pages(self) -> None:
+        """git ignores the pages npm compiles, and only an artifact pattern puts a file git
+        ignores into an archive - without it the wheel installs a ddd gui with nothing to serve."""
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        targets = metadata["tool"]["hatch"]["build"]["targets"]
+        assert "/src/ddd/gui/static" in targets["wheel"]["artifacts"]
+        assert "/src/ddd/gui/static" in targets["sdist"]["artifacts"]
+        assert "/gui" in targets["sdist"]["include"]
+
 
 class TestTheCompileService:
     """The container that compiles what the c backend generates, and the README's account of it.
@@ -1946,8 +1955,8 @@ def workflow_actions() -> dict[str, set[str]]:
     return used
 
 
-def dependabot() -> dict[str, str]:
-    """Each ecosystem dependabot watches, to the directory it watches it in.
+def dependabot() -> dict[str, list[str]]:
+    """Each ecosystem dependabot watches, to the directories it watches it in.
 
     Read with a regex rather than a yaml parser, as the pre-commit hook definition is: the
     file is a handful of ``key: value`` lines, and a yaml dependency in the test requirements
@@ -1960,16 +1969,20 @@ def dependabot() -> dict[str, str]:
     assert len(entries) == text.count("package-ecosystem:"), (
         "an entry of dependabot.yml names no directory"
     )
-    return dict(entries)
+    watched: dict[str, list[str]] = {}
+    for ecosystem, directory in entries:
+        watched.setdefault(ecosystem, []).append(directory)
+    return watched
 
 
 class TestWhatKeepsTheToolchainMoving:
     """Everything this repository pins, and the one thing that proposes moving it.
 
     Nothing here moves on its own - the actions are pinned by major tag, the two tools that
-    are gates are capped to a minor, the extension's lock file pins exactly - which is what
-    makes a build reproducible and, without something proposing the updates, what makes a
-    release the moment somebody discovers the toolchain has moved on without them.
+    are gates are capped to a minor, the extension's and the browser interface's lock files
+    pin exactly - which is what makes a build reproducible and, without something proposing
+    the updates, what makes a release the moment somebody discovers the toolchain has moved
+    on without them.
     """
 
     @pytest.mark.parametrize("ecosystem", ["github-actions", "pip", "npm"])
@@ -1979,15 +1992,19 @@ class TestWhatKeepsTheToolchainMoving:
             f"nothing proposes an update for {ecosystem}, so those pins move only when a "
             f"release is already blocked by one of them"
         )
-        directory = (ROOT / watched[ecosystem].lstrip("/")).resolve()
-        assert directory.is_dir(), f"{ecosystem} is watched in {watched[ecosystem]}, which is not"
+        for directory in watched[ecosystem]:
+            assert (ROOT / directory.lstrip("/")).resolve().is_dir(), (
+                f"{ecosystem} is watched in {directory}, which is not a directory"
+            )
 
-    def test_the_node_manifest_is_watched_where_it_lives(self) -> None:
+    def test_the_node_manifests_are_watched_where_they_live(self) -> None:
         """A directory that does not hold the manifest is watched in silence: dependabot
         reports "no dependencies found" on its own page and nothing else."""
-        watched = Path(dependabot()["npm"].lstrip("/"))
-        assert (ROOT / watched / "package.json").is_file()
-        assert (ROOT / watched / "package-lock.json").is_file()
+        watched = {Path(directory.lstrip("/")) for directory in dependabot()["npm"]}
+        assert watched == {Path("editors/vscode"), Path("gui")}
+        for directory in watched:
+            assert (ROOT / directory / "package.json").is_file()
+            assert (ROOT / directory / "package-lock.json").is_file()
 
     @pytest.mark.parametrize("tool", ["ruff", "mypy"])
     def test_the_two_tools_that_are_gates_are_capped(self, tool: str) -> None:

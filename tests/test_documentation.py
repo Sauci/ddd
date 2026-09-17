@@ -1850,6 +1850,19 @@ class TestPackagedResources:
         )
         assert "npm run schemas && npm run typecheck && npm run build" in step, step.strip()
 
+    def test_the_developer_page_names_the_licences_the_pages_may_bundle(self) -> None:
+        """Exactly the ones the build accepts: "BSD" named a family whose members other than
+        the two listed the build turns away."""
+        script = (ROOT / "gui" / "scripts" / "licenses.mjs").read_text(encoding="utf-8")
+        listed = re.search(r"const ALLOWED = new Set\(\[(.*?)\]\)", script)
+        assert listed is not None, "gui/scripts/licenses.mjs no longer lists what it accepts"
+        named = re.search(
+            r"refuses a bundled package whose licence is not (.+?)\.(?:\s|$)",
+            flattened(PAGES["docs/developer_documentation.rst"]),
+        )
+        assert named is not None, "the developer page no longer says which licences are accepted"
+        assert re.split(r", | or ", named.group(1)) == re.findall(r'"([^"]+)"', listed.group(1))
+
 
 class TestTheCompileService:
     """The container that compiles what the c backend generates, and the README's account of it.

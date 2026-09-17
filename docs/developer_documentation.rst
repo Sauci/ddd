@@ -695,4 +695,5 @@ runs Vitest with a 100 % gate over the modules that hold logic - ``src/api``, ``
 ``src/state``. The screens are covered by ``npm run e2e``: Playwright drives the real ``ddd gui``
 over a copy of ``examples/demo``, started with the interpreter ``DDD_PYTHON`` names, and
 ``PLAYWRIGHT_CHANNEL=msedge`` drives the installed Edge on a machine without Playwright's own
-Chromium. The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0 or BSD.
+Chromium. The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0,
+BSD-2-Clause or BSD-3-Clause.

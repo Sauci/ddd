@@ -504,8 +504,8 @@ and never came near the image. The service run after it is the other half of wha
 the image built, and the service exited with a usage error from an option set two releases
 old. The five other services are not run here; what they exercise is either covered by a job
 above or, for <code class="docutils literal notranslate"><span class="pre">compile</span></code>, the run a contributor does locally.</p>
-<p>The suite runs across a matrix of ubuntu and windows on python 3.12 and 3.13, which is the
-four combinations the classifiers in <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> advertise. That is not thoroughness
+<p>The suite runs across a matrix of ubuntu and windows on python 3.12, 3.13 and 3.14, which is
+the six combinations the classifiers in <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> advertise. That is not thoroughness
 for its own sake: a path handling defect that only appeared on linux has already reached a
 user of this project, having passed the whole suite on windows first. A test in
 <code class="docutils literal notranslate"><span class="pre">tests/test_documentation.py</span></code> keeps the matrix and those classifiers in agreement, so

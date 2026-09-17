@@ -631,11 +631,38 @@ class TestInputTheToolMustSurvive:
         assert checks(bag) == ["file-not-found"]
         assert "is too large to read" in messages(bag)
 
+    def test_a_parser_that_gives_up_on_depth_says_so(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """How deep is too deep belongs to the interpreter, and it moves.
+
+        Python 3.12 and 3.13 give up a few thousand levels down; 3.14 reads a hundred
+        thousand without pausing. What has to hold on every one of them is that the parser
+        giving up is a finding rather than the traceback it used to be - so the refusal is
+        asked for here rather than waited for.
+        """
+
+        def giving_up(*args: Any, **kwargs: Any) -> Any:
+            raise RecursionError
+
+        write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
+        monkeypatch.setattr(json, "loads", giving_up)
+        bag = DiagnosticBag()
+        assert load_workspace(tree / "a.ddd.json", bag) is None
+        assert checks(bag) == ["json-syntax"]
+        assert "nested too deeply" in messages(bag)
+
     def test_json_nested_beyond_what_python_can_read(self, tree: Path) -> None:
+        """Deeper than any description, and refused rather than survived by accident.
+
+        Which finding it earns is the interpreter's: ``json-syntax`` where the parser gives
+        up on the depth, ``file-kind`` where it reads the document and meets the list at the
+        top of it. The load fails with one of them, and with no traceback, either way.
+        """
         (tree / "a.ddd.json").write_text("[" * 20_000 + "]" * 20_000, encoding="utf-8")
         bag = DiagnosticBag()
         assert load_workspace(tree / "a.ddd.json", bag) is None
-        assert "nested too deeply" in messages(bag)
+        assert checks(bag) in (["json-syntax"], ["file-kind"]), messages(bag)
 
     def test_a_dumped_dictionary_nested_beyond_what_python_can_read(
         self, tree: Path, capsys: pytest.CaptureFixture[str]
@@ -643,15 +670,20 @@ class TestInputTheToolMustSurvive:
         """Neither side of this comparison names a project or a component, so both reach
         the dictionary reader through ``_holds_a_description``'s own sniff - which used to
         run ``json.loads`` unguarded and end the run with an uncaught ``RecursionError``
-        before ``load_dictionary`` ever had a chance to report anything."""
+        before ``load_dictionary`` ever had a chance to report anything.
+
+        Which finding each side earns is the interpreter's, as above: too deep to read where
+        the parser gives up, a list where the top level should be an object where it does
+        not. The run ends in findings on stderr and in no traceback on either.
+        """
         deep = "[" * 100_000 + "]" * 100_000
         (tree / "baseline.json").write_text(deep, encoding="utf-8")
         (tree / "candidate.json").write_text(deep, encoding="utf-8")
         code = main(["compare", str(tree / "baseline.json"), str(tree / "candidate.json")])
         captured = capsys.readouterr()
         assert code == EXIT_FINDINGS
-        assert "json-syntax" in captured.err
-        assert "nested too deeply" in captured.err
+        assert "baseline.json: error[" in captured.err
+        assert "candidate.json: error[" in captured.err
         assert "Traceback" not in captured.err
         assert "Traceback" not in captured.out
 

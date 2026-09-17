@@ -26,11 +26,15 @@ importing it runs ``ddd.lsp``, which brings up the whole language server, and
 
 from __future__ import annotations
 
+import codecs
+import contextlib
 import copy
+import hashlib
 import json
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 from ddd.pointers import parent_pointer, segments
@@ -46,6 +50,16 @@ UNREADABLE: Final = "unreadable"
 
 UNVERIFIED: Final = "unverified"
 """The edited text did not read back as the intended document."""
+
+STALE: Final = "stale"
+"""A file's fingerprint is not the one on disk: it changed since the edit was computed."""
+
+UNWRITABLE: Final = "unwritable"
+"""A file could not be written; the ones already written were put back where they could be."""
+
+STAGING_SUFFIX: Final = ".ddd-staging"
+"""What a file's new bytes are staged under beside it: the name ``ddd id`` and the artefact
+writer stage under, which no project gives a file of its own."""
 
 _WHITESPACE: Final = " \t\r\n"
 _STRUCTURE: Final = "{}[]:,"
@@ -533,3 +547,88 @@ def _inserted_value(document: Any, pointer: str, value: Any) -> Any:
     container, last = _container(document, pointer)
     container.insert(last, value)
     return document
+
+
+@dataclass(frozen=True, slots=True)
+class FileChange:
+    """The operations for one file, and the fingerprint of the bytes they were computed for."""
+
+    path: Path
+    fingerprint: str
+    operations: tuple[Operation, ...]
+
+
+def fingerprint(data: bytes) -> str:
+    """What says whether a file changed since it was read: the SHA-256 of its bytes, in hex."""
+    return hashlib.sha256(data).hexdigest()
+
+
+def apply_changes(changes: Sequence[FileChange]) -> dict[Path, str]:
+    """Make every change or none of them, and hand back each file's new fingerprint.
+
+    Every file is checked against its fingerprint and edited in memory before anything is
+    written, so a refusal leaves every file as it was. Each write is staged beside its file and
+    renamed onto it; when one fails, the files already written are written back from the bytes
+    read before the edit, and the refusal names any that could not be.
+    """
+    staged: list[tuple[Path, bytes, bytes]] = []
+    for pending in changes:
+        if any(path == pending.path for path, _, _ in staged):
+            raise EditError(INVALID, f"{pending.path} is named twice in one edit")
+        original, new = _edited(pending)
+        staged.append((pending.path, original, new))
+    written: list[tuple[Path, bytes]] = []
+    for path, original, new in staged:
+        try:
+            _stage_and_replace(path, new)
+        except OSError as error:
+            lost = [done for done, before in written if not _put_back(done, before)]
+            outcome = (
+                "these could not be put back: " + ", ".join(str(done) for done in lost)
+                if lost
+                else "the files already written were put back"
+            )
+            raise EditError(
+                UNWRITABLE, f"{path} could not be written ({error}); {outcome}"
+            ) from None
+        written.append((path, original))
+    return {path: fingerprint(new) for path, _, new in staged}
+
+
+def _edited(pending: FileChange) -> tuple[bytes, bytes]:
+    """A file's bytes as they are, and as the change leaves them."""
+    try:
+        original = pending.path.read_bytes()
+    except OSError:
+        raise EditError(STALE, f"{pending.path} can no longer be read") from None
+    if fingerprint(original) != pending.fingerprint:
+        raise EditError(STALE, f"{pending.path} changed on disk since it was read")
+    mark = codecs.BOM_UTF8 if original.startswith(codecs.BOM_UTF8) else b""
+    try:
+        text = original[len(mark) :].decode("utf-8")
+    except UnicodeDecodeError:
+        raise EditError(UNREADABLE, f"{pending.path} is not utf-8") from None
+    try:
+        edited = edit_text(text, pending.operations)
+    except EditError as refusal:
+        raise EditError(refusal.code, f"{pending.path}: {refusal}") from None
+    return original, mark + edited.encode("utf-8")
+
+
+def _stage_and_replace(path: Path, data: bytes) -> None:
+    staging = path.with_name(path.name + STAGING_SUFFIX)
+    try:
+        staging.write_bytes(data)
+        staging.replace(path)
+    except OSError:
+        with contextlib.suppress(OSError):
+            staging.unlink()
+        raise
+
+
+def _put_back(path: Path, data: bytes) -> bool:
+    try:
+        _stage_and_replace(path, data)
+    except OSError:
+        return False
+    return True

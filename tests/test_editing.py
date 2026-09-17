@@ -2,16 +2,26 @@
 
 from __future__ import annotations
 
+import codecs
+from pathlib import Path
+
 import pytest
 
 import ddd.editing as editing
+from ddd.backends.base import STAGING_SUFFIX as ARTEFACT_STAGING_SUFFIX
 from ddd.editing import (
     INVALID,
+    STAGING_SUFFIX,
+    STALE,
     UNREADABLE,
     UNVERIFIED,
+    UNWRITABLE,
     EditError,
+    FileChange,
     Operation,
+    apply_changes,
     edit_text,
+    fingerprint,
     indent_of_line_at,
     indent_unit,
     lay_out,
@@ -356,3 +366,129 @@ class TestRefusals:
         with pytest.raises(EditError) as refused:
             edited('{"a": 1}', Operation("set", "a", "3"), Operation("set", "a", "4"))
         assert refused.value.code == UNVERIFIED
+
+
+def change(path: Path, *operations: Operation) -> FileChange:
+    return FileChange(path, fingerprint(path.read_bytes()), operations)
+
+
+class TestWritingFiles:
+    def test_every_file_is_written_and_its_new_fingerprint_handed_back(self, tmp_path):
+        a = tmp_path / "a.ddd.json"
+        b = tmp_path / "b.ddd.json"
+        a.write_bytes(b'{"unit": "rpm"}')
+        b.write_bytes(b'{"unit": "Hz"}')
+        written = apply_changes(
+            [change(a, Operation("set", "unit", '"V"')), change(b, Operation("set", "unit", '"A"'))]
+        )
+        assert a.read_bytes() == b'{"unit": "V"}'
+        assert b.read_bytes() == b'{"unit": "A"}'
+        assert written == {a: fingerprint(b'{"unit": "V"}'), b: fingerprint(b'{"unit": "A"}')}
+        assert not list(tmp_path.glob(f"*{STAGING_SUFFIX}"))
+
+    def test_a_byte_order_mark_and_crlf_line_endings_survive(self, tmp_path):
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(codecs.BOM_UTF8 + b'{\r\n  "a": 1\r\n}\r\n')
+        apply_changes([change(path, Operation("set", "b", "2"))])
+        assert path.read_bytes() == codecs.BOM_UTF8 + b'{\r\n  "a": 1,\r\n  "b": 2\r\n}\r\n'
+
+    def test_a_file_changed_since_it_was_read_is_stale_and_nothing_is_written(self, tmp_path):
+        a = tmp_path / "a.ddd.json"
+        b = tmp_path / "b.ddd.json"
+        a.write_bytes(b'{"x": 1}')
+        b.write_bytes(b'{"x": 1}')
+        changes = [change(a, Operation("set", "x", "2")), change(b, Operation("set", "x", "2"))]
+        b.write_bytes(b'{"x": 9}')
+        with pytest.raises(EditError) as refused:
+            apply_changes(changes)
+        assert refused.value.code == STALE
+        assert a.read_bytes() == b'{"x": 1}'
+
+    def test_a_file_that_vanished_is_stale(self, tmp_path):
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b"{}")
+        pending = change(path, Operation("set", "x", "1"))
+        path.unlink()
+        with pytest.raises(EditError) as refused:
+            apply_changes([pending])
+        assert refused.value.code == STALE
+
+    def test_a_file_named_twice_is_invalid(self, tmp_path):
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b"{}")
+        with pytest.raises(EditError) as refused:
+            apply_changes([change(path, Operation("set", "x", "1"))] * 2)
+        assert refused.value.code == INVALID
+
+    def test_a_file_that_is_not_utf8_is_unreadable(self, tmp_path):
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"a": "\xff"}')
+        with pytest.raises(EditError) as refused:
+            apply_changes([change(path, Operation("set", "a", "1"))])
+        assert refused.value.code == UNREADABLE
+
+    def test_a_refused_operation_names_its_file(self, tmp_path):
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b"{}")
+        with pytest.raises(EditError) as refused:
+            apply_changes([change(path, Operation("remove", "missing"))])
+        assert refused.value.code == INVALID
+        assert str(refused.value).startswith(str(path))
+
+    def test_a_failed_write_puts_back_the_files_already_written(self, tmp_path, monkeypatch):
+        a = tmp_path / "a.ddd.json"
+        b = tmp_path / "b.ddd.json"
+        a.write_bytes(b'{"x": 1}')
+        b.write_bytes(b'{"x": 1}')
+        real = editing._stage_and_replace
+
+        def failing(path, data):
+            if path == b:
+                raise OSError("disk full")
+            real(path, data)
+
+        monkeypatch.setattr(editing, "_stage_and_replace", failing)
+        with pytest.raises(EditError) as refused:
+            apply_changes(
+                [change(a, Operation("set", "x", "2")), change(b, Operation("set", "x", "2"))]
+            )
+        assert refused.value.code == UNWRITABLE
+        assert "put back" in str(refused.value)
+        assert a.read_bytes() == b'{"x": 1}'
+
+    def test_a_file_that_cannot_be_put_back_is_named(self, tmp_path, monkeypatch):
+        a = tmp_path / "a.ddd.json"
+        b = tmp_path / "b.ddd.json"
+        a.write_bytes(b'{"x": 1}')
+        b.write_bytes(b'{"x": 1}')
+        real = editing._stage_and_replace
+        calls = []
+
+        def failing(path, data):
+            calls.append(path)
+            if path == b or calls.count(a) > 1:
+                raise OSError("disk full")
+            real(path, data)
+
+        monkeypatch.setattr(editing, "_stage_and_replace", failing)
+        with pytest.raises(EditError) as refused:
+            apply_changes(
+                [change(a, Operation("set", "x", "2")), change(b, Operation("set", "x", "2"))]
+            )
+        assert refused.value.code == UNWRITABLE
+        assert f"could not be put back: {a}" in str(refused.value)
+
+    def test_a_write_that_fails_leaves_no_staging_file(self, tmp_path, monkeypatch):
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b"{}")
+
+        def refuse(self, target):
+            raise OSError("held open by an editor")
+
+        monkeypatch.setattr(Path, "replace", refuse)
+        with pytest.raises(EditError):
+            apply_changes([change(path, Operation("set", "x", "1"))])
+        assert not list(tmp_path.glob(f"*{STAGING_SUFFIX}"))
+
+    def test_edits_stage_under_the_name_every_other_writer_stages_under(self):
+        assert STAGING_SUFFIX == ARTEFACT_STAGING_SUFFIX

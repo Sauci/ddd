@@ -23,6 +23,9 @@ export class ServerUnreachable extends Error {
   }
 }
 
+/** What a body that does not parse reads as, told apart from a body that is json's own `null`. */
+const NOT_JSON = Symbol("not json");
+
 export async function request<T>(
   path: string,
   init: RequestInit = {},
@@ -35,13 +38,22 @@ export async function request<T>(
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new ServerUnreachable(error);
   }
-  const body: unknown = await response.json().catch(() => null);
+  const body: unknown = await response.json().catch(() => NOT_JSON);
   if (!response.ok) {
     const code =
       isRecord(body) && typeof body.error === "string" ? body.error : `http-${response.status}`;
     const message =
       isRecord(body) && typeof body.message === "string" ? body.message : response.statusText;
     throw new ApiError(response.status, code, message);
+  }
+  // Refused rather than handed on: returned as null, it reached a screen that read a property
+  // of it, and React unmounted the whole page.
+  if (body === NOT_JSON) {
+    throw new ApiError(
+      response.status,
+      "not-json",
+      `ddd gui's answer to ${pathOf(path)} is not json`,
+    );
   }
   return body as T;
 }
@@ -78,4 +90,9 @@ function post(body: unknown): RequestInit {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+/** An address without its query, which for a file is the file's whole encoded path. */
+function pathOf(address: string): string {
+  return address.split("?", 1)[0] as string;
 }

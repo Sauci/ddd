@@ -18,7 +18,7 @@ from ddd.cli import EXIT_OK, EXIT_USAGE
 from ddd.editing import fingerprint
 from ddd.gui import api as api_module
 from ddd.gui import server as module
-from ddd.gui.api import Api
+from ddd.gui.api import Api, Reply
 from ddd.gui.server import MAX_BODY, GuiServer, run, static_directory
 from ddd.gui.session import Session
 
@@ -327,6 +327,21 @@ class TestWhatIsServed:
         printed = capsys.readouterr().err
         assert "GET /api/session" in printed
         assert "RuntimeError: a defect" in printed
+
+    def test_an_answer_json_cannot_spell_is_a_failure_rather_than_a_body_no_page_reads(
+        self, server, monkeypatch, capsys
+    ) -> None:
+        """Python writes ``NaN`` by default, which no browser's parser reads."""
+
+        def slipped(api: Api, query: object, body: object) -> Reply:
+            return Reply(200, {"limit": float("nan")})
+
+        monkeypatch.setitem(api_module._ROUTES, "/api/session", ("GET", slipped))
+        response, data = ask(server, "GET", "/api/session")
+        assert (response.status, json.loads(data)["error"]) == (500, "internal")
+        assert "ValueError: Out of range float values are not JSON compliant" in (
+            capsys.readouterr().err
+        )
 
     def test_a_page_that_goes_away_while_it_is_answered_is_let_go(
         self, server, monkeypatch, capsys

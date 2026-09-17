@@ -14,7 +14,6 @@ every build record naming the project, or under the defaults when none does.
 
 from __future__ import annotations
 
-import json
 import sys
 import threading
 from collections.abc import Iterable, Mapping, Sequence
@@ -27,6 +26,7 @@ from ddd.build_info import BuildInfo
 from ddd.diagnostics import CheckInfo, Diagnostic, Severity
 from ddd.editing import FileChange, apply_changes, fingerprint
 from ddd.ir import DataDictionary
+from ddd.loading import parse_json_text
 from ddd.lsp.diagnostics import Run, group_findings, run_build, run_project
 from ddd.lsp.discovery import BUILD_DIRECTORY_PATTERNS, discover
 
@@ -194,14 +194,19 @@ class Session:
             self._poller.join()
 
     def read_file(self, path: Path) -> FileContent:
-        """A description file of the open project, parsed, with the fingerprint it was read at."""
+        """A description file of the open project, parsed, with the fingerprint it was read at.
+
+        Parsed by the loader's rule, like every file the session reads: python's own reader
+        takes ``NaN``, which went to the page as a value no browser's parser reads, and a key
+        spelled twice, which showed the page a file ``ddd check`` refuses as though it loaded.
+        """
         target = _source(self._required(), path)
         try:
             data = target.read_bytes()
         except OSError as error:
             return FileContent(target, fingerprint(b""), None, f"{target} cannot be read: {error}")
         try:
-            parsed = json.loads(data.decode("utf-8-sig"))
+            parsed = parse_json_text(data.decode("utf-8-sig"))
         except ValueError as error:
             return FileContent(target, fingerprint(data), None, f"{target} is not json: {error}")
         return FileContent(target, fingerprint(data), parsed, None)
@@ -344,7 +349,7 @@ def _read_json(path: Path) -> Any:
 
 def _parsed(data: bytes) -> Any:
     try:
-        return json.loads(data.decode("utf-8-sig"))
+        return parse_json_text(data.decode("utf-8-sig"))
     except ValueError:
         return None
 

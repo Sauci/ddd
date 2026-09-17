@@ -210,6 +210,26 @@ class TestFiles:
         assert body["fingerprint"] == fingerprint((root / "a.ddd.json").read_bytes())
         assert body["error"] is None
 
+    @pytest.mark.parametrize(
+        ("content", "reason"),
+        [
+            ('{"component": {"name": "B", "limit": NaN}}', "'NaN' is not valid json"),
+            ('{"component": {"name": "B", "name": "C"}}', "key 'name' appears twice"),
+        ],
+    )
+    def test_a_file_the_loader_does_not_read_as_json_is_answered_as_its_reason(
+        self, root: Path, content: str, reason: str
+    ) -> None:
+        """Parsed by python's own reader, the first was answered with a ``NaN`` that the page's
+        parser turned into nothing at all, and the page went blank."""
+        (root / "b.ddd.json").write_text(content, encoding="utf-8")
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        body = get(Api(session), "/api/file", path=(root / "b.ddd.json").as_posix()).body
+        assert body["data"] is None
+        assert reason in body["error"]
+        json.dumps(body, allow_nan=False)
+
     def test_a_file_outside_the_project_is_not_found(self, api: Api, root: Path) -> None:
         reply = get(api, "/api/file", path=(root / "other" / "q.ddd.json").as_posix())
         assert (reply.status, reply.body["error"]) == (404, "not-found")
@@ -379,8 +399,18 @@ class TestEdit:
         reply = post(api, "/api/edit", edit)
         assert (reply.status, reply.body["error"]) == (409, "invalid")
 
-    def test_an_edit_of_a_file_that_is_not_json_is_unreadable(self, root: Path) -> None:
-        (root / "b.ddd.json").write_text("{", encoding="utf-8")
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "{",
+            '{"component": {"name": "B", "limit": NaN}}',
+            '{"component": {"name": "B", "name": "C"}}',
+        ],
+    )
+    def test_an_edit_of_a_file_that_is_not_json_is_unreadable(
+        self, root: Path, content: str
+    ) -> None:
+        (root / "b.ddd.json").write_text(content, encoding="utf-8")
         session = Session(root)
         session.open(root / "p.ddd.json")
         api = Api(session)

@@ -11,7 +11,7 @@ import pytest
 
 from conftest import EXAMPLES, build_record, component, declare, project, write_tree
 from ddd.diagnostics import SeverityPolicy, UnknownCheckError
-from ddd.editing import STALE, EditError, FileChange, Operation, fingerprint
+from ddd.editing import STALE, UNREADABLE, EditError, FileChange, Operation, fingerprint
 from ddd.gui import session as module
 from ddd.gui.session import NoProjectError, NotInProjectError, Session, find_projects
 from ddd.lsp.diagnostics import Run
@@ -31,6 +31,14 @@ PLUGIN = Plugin(
     check=check,
 )
 """
+
+UNPARSED = (
+    "{",
+    '{"component": {"name": "B", "interface": [], "limit": NaN}}',
+    '{"component": {"name": "B", "name": "C", "interface": []}}',
+)
+"""A component that is not json as the loader reads it: cut short, holding ``NaN``, and spelling
+a key twice - the last two being json python's own parser reads."""
 
 
 @pytest.fixture
@@ -181,8 +189,11 @@ class TestOpening:
         kinds = {f.path.name: f.kind for f in revision.files}
         assert kinds["demo_plugin.py"] == "plugin"
 
-    def test_a_file_that_does_not_parse_is_listed_as_not_loaded(self, shared: Path) -> None:
-        (shared.parent / "b.ddd.json").write_text("{", encoding="utf-8")
+    @pytest.mark.parametrize("content", UNPARSED)
+    def test_a_file_that_does_not_parse_is_listed_as_not_loaded(
+        self, shared: Path, content: str
+    ) -> None:
+        (shared.parent / "b.ddd.json").write_text(content, encoding="utf-8")
         revision = Session(shared.parent).open(shared)
         broken = next(f for f in revision.files if f.path.name == "b.ddd.json")
         assert (broken.kind, broken.name, broken.loaded) == ("unknown", None, False)
@@ -349,13 +360,43 @@ class TestReadingAndEditing:
         assert content.error is None
         assert content.fingerprint == fingerprint((shared.parent / "a.ddd.json").read_bytes())
 
-    def test_a_file_that_is_not_json_is_read_as_its_reason(self, shared: Path) -> None:
-        (shared.parent / "b.ddd.json").write_text("{", encoding="utf-8")
+    @pytest.mark.parametrize(
+        ("content", "reason"),
+        [
+            ("{", "Expecting property name"),
+            (UNPARSED[1], "'NaN' is not valid json"),
+            (UNPARSED[2], "key 'name' appears twice"),
+        ],
+    )
+    def test_a_file_that_is_not_json_is_read_as_the_loaders_reason(
+        self, shared: Path, content: str, reason: str
+    ) -> None:
+        """Read by the loader's rule: python's parser handed the page a ``NaN`` its own parser
+        cannot read, and a file whose first ``name`` the page showed and the loader refused."""
+        (shared.parent / "b.ddd.json").write_text(content, encoding="utf-8")
         session = Session(shared.parent)
         session.open(shared)
-        content = session.read_file(shared.parent / "b.ddd.json")
-        assert content.data is None
-        assert content.error is not None and "is not json" in content.error
+        read = session.read_file(shared.parent / "b.ddd.json")
+        assert read.data is None
+        assert read.error is not None and "is not json" in read.error and reason in read.error
+
+    @pytest.mark.parametrize("content", UNPARSED)
+    def test_an_edit_of_a_file_that_is_not_json_is_unreadable(
+        self, shared: Path, content: str
+    ) -> None:
+        target = shared.parent / "b.ddd.json"
+        target.write_text(content, encoding="utf-8")
+        session = Session(shared.parent)
+        session.open(shared)
+        name = FileChange(
+            target,
+            fingerprint(target.read_bytes()),
+            (Operation("set", "component.name", '"X"'),),
+        )
+        with pytest.raises(EditError) as refused:
+            session.edit([name])
+        assert refused.value.code == UNREADABLE
+        assert target.read_text(encoding="utf-8") == content
 
     def test_a_file_that_vanished_is_read_as_its_reason(self, shared: Path) -> None:
         session = Session(shared.parent)

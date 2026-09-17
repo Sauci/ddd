@@ -32,6 +32,21 @@ describe("requests to the server", () => {
     await expect(refused).rejects.toBeInstanceOf(ApiError);
   });
 
+  test("a success whose body is not json is refused with a code of its own", async () => {
+    // Read as null, it reached a screen that read a property of it, and the page went blank.
+    const answered = request("/api/file?path=a.ddd.json", {}, answering(200, '{"limit": NaN}'));
+    await expect(answered).rejects.toBeInstanceOf(ApiError);
+    await expect(answered).rejects.toMatchObject({
+      status: 200,
+      code: "not-json",
+      message: "ddd gui's answer to /api/file is not json",
+    });
+  });
+
+  test("a success whose body is json's null is that null", async () => {
+    await expect(request("/api/dictionary", {}, answering(200, "null"))).resolves.toBeNull();
+  });
+
   test("a failure without the server's error shape is named by its status", async () => {
     const failed = request("/api/state", {}, answering(502, "Bad Gateway"));
     await expect(failed).rejects.toMatchObject({ status: 502, code: "http-502" });

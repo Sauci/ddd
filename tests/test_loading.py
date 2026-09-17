@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
@@ -17,7 +18,13 @@ from conftest import (
     write_tree,
 )
 from ddd.diagnostics import DiagnosticBag
-from ddd.loading import _pattern_anchor, load_dictionary, load_workspace, resolve_path
+from ddd.loading import (
+    _pattern_anchor,
+    load_dictionary,
+    load_workspace,
+    parse_json_text,
+    resolve_path,
+)
 
 
 def test_project_with_components(tree: Path) -> None:
@@ -194,6 +201,35 @@ def test_a_repeated_key_is_refused(tree: Path) -> None:
     )
     assert checks(bag) == ["json-syntax"]
     assert "key 'name' appears twice" in next(iter(bag)).message
+
+
+@pytest.mark.parametrize(
+    ("text", "reason"),
+    [
+        ("{ not json", "Expecting property name"),
+        ('{"limit": NaN}', "'NaN' is not valid json"),
+        ('{"name": "P", "name": "Q"}', "key 'name' appears twice"),
+    ],
+)
+def test_the_loaders_parse_is_the_one_other_readers_are_given(text: str, reason: str) -> None:
+    """``ddd gui`` shows and edits the files the loader reads, and has to refuse what it refuses:
+    read by python's own parser, a file holding ``NaN`` was served as json no browser reads."""
+    assert parse_json_text('{"a": [1.0, true, null]}') == {"a": [1.0, True, None]}
+    with pytest.raises(ValueError, match=reason):
+        parse_json_text(text)
+
+
+def test_a_document_too_deep_for_the_parse_is_refused_like_any_other(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A ``ValueError`` like every other refusal, so a reader needs one ``except`` for all."""
+
+    def giving_up(*args: Any, **kwargs: Any) -> Any:
+        raise RecursionError
+
+    monkeypatch.setattr(json, "loads", giving_up)
+    with pytest.raises(ValueError, match="nested too deeply"):
+        parse_json_text("[]")
 
 
 def test_unknown_top_level_key(tree: Path) -> None:

@@ -37,6 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
+from ddd.loading import parse_json_text
 from ddd.pointers import parent_pointer, segments
 
 if TYPE_CHECKING:
@@ -82,19 +83,16 @@ class EditError(ValueError):
 def parse_raw(raw: object) -> Any:
     """The value a json text stands for, refusing anything but exactly one json value.
 
-    ``NaN`` and ``Infinity`` are refused although python's parser accepts them: they are not
-    json, and nothing else that reads a description would take them.
+    Read by the loader's own rule: ``NaN`` and ``Infinity`` are refused although python's parser
+    accepts them, and so is an object spelling a key twice - the file the value is written into
+    would be one ``ddd check`` refuses to read.
     """
     if not isinstance(raw, str):
         raise EditError(INVALID, "a value is given as json text")
     try:
-        return json.loads(raw, parse_constant=_refuse_constant)
+        return parse_json_text(raw)
     except ValueError as error:
         raise EditError(INVALID, f"{raw!r} is not one json value: {error}") from None
-
-
-def _refuse_constant(name: str) -> Any:
-    raise ValueError(f"{name} is not json")
 
 
 def newline_at(text: str, offset: int) -> str:
@@ -322,22 +320,39 @@ def edit_text(text: str, operations: Sequence[Operation]) -> str:
     the two have to be one document before it starts: when they were not, an operation that
     passed its checks on the text reached into the document for a value it did not hold.
     """
-    from ddd.lsp.ranges import Document
-
-    document = Document(text)
-    if document.data is None:
-        raise EditError(UNREADABLE, "the file is not valid json, so no pointer names a place in it")
+    unreadable = "the file is not json DDD reads, so no pointer names a place in it"
+    document = _read(text, UNREADABLE, unreadable)
     expected = copy.deepcopy(document.data)
     for operation in operations:
         text, expected = _made(document, operation, expected)
-        document = Document(text)
-        if document.data is None:
-            raise EditError(UNVERIFIED, "an edit left the file unreadable")
+        document = _read(text, UNVERIFIED, "an edit left the file unreadable")
         if _canonical(document.data) != _canonical(expected):
             raise EditError(
                 UNVERIFIED, "the edited file does not read back as the intended document"
             )
     return text
+
+
+def _read(text: str, code: str, refusal: str) -> Document:
+    """The text scanned for where its values sit, or refused with ``code`` when DDD does not read
+    it as json.
+
+    Read by the loader's rule before it is scanned. The scan parses with python's own reader,
+    which takes ``NaN`` and a key spelled twice, so a file ``ddd check`` refuses was edited as
+    though it could be read, and an edit spelling a key twice read back as the document it was
+    meant to be - the last spelling winning - and was written.
+    """
+    from ddd.lsp.ranges import Document
+
+    try:
+        parse_json_text(text)
+    except ValueError as error:
+        raise EditError(code, f"{refusal}: {error}") from None
+    document = Document(text)
+    if document.data is None:
+        # Read by the parser and too deep for the scan, which spends more stack per level.
+        raise EditError(code, f"{refusal}: the json is nested too deeply to read")
+    return document
 
 
 def _made(document: Document, operation: Operation, expected: Any) -> tuple[str, Any]:

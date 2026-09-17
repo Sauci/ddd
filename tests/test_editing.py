@@ -42,7 +42,9 @@ class TestRawValues:
     def test_one_json_value_is_read(self, raw, value):
         assert parse_raw(raw) == value
 
-    @pytest.mark.parametrize("raw", ["", "1 2", "NaN", "-Infinity", "{'a': 1}", "rpm"])
+    @pytest.mark.parametrize(
+        "raw", ["", "1 2", "NaN", "-Infinity", "{'a': 1}", "rpm", '{"a": 1, "a": 2}']
+    )
     def test_anything_else_is_refused_as_invalid(self, raw):
         with pytest.raises(EditError) as refused:
             parse_raw(raw)
@@ -310,10 +312,32 @@ class TestMove:
 
 
 class TestRefusals:
-    def test_a_file_that_is_not_json_is_unreadable(self):
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "{",
+            '{"a": NaN}',
+            '{"a": 1, "a": 2}',
+            '{"a": {"b": 1}, "a": 2}',
+            "[" * 600 + "]" * 600,
+        ],
+    )
+    def test_a_file_the_loader_does_not_read_as_json_is_unreadable(self, text):
+        """Python's parser takes ``NaN`` and a key spelled twice, which the loader refuses: read
+        by it, a file ``ddd check`` cannot read was edited as though it could, and the scan
+        followed ``a.b`` into the first ``a`` of the fourth while the document held the second.
+        The last one parses, and is deeper than the scan walks."""
         with pytest.raises(EditError) as refused:
-            edited("{", Operation("set", "a", "1"))
+            edited(text, Operation("set", "a.b", "1"))
         assert refused.value.code == UNREADABLE
+
+    def test_an_edit_that_would_spell_a_key_twice_is_unverified(self, monkeypatch):
+        """Read back by python's parser, the text kept the last spelling of the key and compared
+        equal to the intended document, and a file ``ddd check`` refuses was written."""
+        monkeypatch.setattr(editing, "lay_out", lambda raw, **layout: '2, "b": 2')
+        with pytest.raises(EditError) as refused:
+            edited('{"a": 1}', Operation("set", "b", "2"))
+        assert refused.value.code == UNVERIFIED
 
     @pytest.mark.parametrize(
         "operation",

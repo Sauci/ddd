@@ -245,7 +245,9 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _send_json(self, status: int, body: dict[str, Any]) -> None:
-        data = json.dumps(body).encode("utf-8")
+        # Python writes NaN and Infinity unless told not to, and no browser's parser reads them:
+        # a value that slips through fails here, and is answered as the failure it is.
+        data = json.dumps(body, allow_nan=False).encode("utf-8")
         self._send(status, data, CONTENT_TYPES[".json"], {"Cache-Control": "no-store"})
 
 

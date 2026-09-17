@@ -1838,6 +1838,18 @@ class TestPackagedResources:
         assert "/src/ddd/gui/static" in targets["sdist"]["artifacts"]
         assert "/gui" in targets["sdist"]["include"]
 
+    def test_a_release_type_checks_the_pages_it_compiles(self) -> None:
+        """``npm run build`` is ``vite build``, which strips the types without checking them, so
+        a file format the pages have not caught up with fails a build only where the type check
+        runs - and a release can be cut from a commit ci never saw."""
+        build = PUBLISH_WORKFLOW.split("\n  build:\n", 1)[1]
+        step = next(
+            line
+            for line in build.splitlines()
+            if line.strip().startswith("- run:") and "npm run build" in line
+        )
+        assert "npm run schemas && npm run typecheck && npm run build" in step, step.strip()
+
 
 class TestTheCompileService:
     """The container that compiles what the c backend generates, and the README's account of it.

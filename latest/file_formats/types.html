@@ -110,10 +110,10 @@
 which lays several values out in one c object, a <strong>scalar type</strong>, which fixes what one
 number means and says nothing about where it is stored, and an <strong>external type</strong>, which names
 a c type that a hand written header defines and DDD does not. A declared type has two possible
-homes, and the entries are the same in both: the standalone file this page describes, and
+homes, and the entries are the same in both: the types file this page describes, and
 the <code class="docutils literal notranslate"><span class="pre">types</span></code> list a <a class="reference internal" href="component.html"><span class="doc">component</span></a> may carry for the types it publishes.
 The choice between them is ownership, not visibility - either home puts the name in the
-same project wide namespace. The standalone file is the home of shared types, because a
+same project wide namespace. A types file of its own is the home of shared types, because a
 type with no single owner has no component to live inside: the point of declaring
 <code class="docutils literal notranslate"><span class="pre">Temperature_t</span></code> once is that two components can agree on it without either of them owning it.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>

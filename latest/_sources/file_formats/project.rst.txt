@@ -172,7 +172,7 @@ component with it.
      }
    }
 
-The nesting has no depth limit and no effect on the result: the components of a sub-project
+The nesting has no effect on the result: the components of a sub-project
 become components of the including project, and are checked against all the others exactly as
 if they had been listed directly. What the sub-project keeps is its own file layout and its
 own relative paths, which is the point - it can be checked and delivered on its own, and it

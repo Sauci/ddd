@@ -229,11 +229,19 @@ least resistance and, optionally, the only path that compiles at all.</p>
 else, and that header is the only one a component is expected to include. There is deliberately
 no project wide header offering everything: <code class="docutils literal notranslate"><span class="pre">ddd_globals.h</span></code> declares every object of the
 project, but it exists so that the single definition file can be compiled with full prototype
-checking, and it says so in its own text rather than leaving the reader to guess. Provided a
-component includes its own header, a name it never declared - say <code class="docutils literal notranslate"><span class="pre">BlockA</span></code>, which belongs to
-the user interface - has no declaration on its include path at all, so a reference to it fails
-with an ordinary undeclared identifier error, at the point of the mistake, in the component
-that made it.</p>
+checking, and it says so in its own text rather than leaving the reader to guess. A component
+that includes its own header and nothing else cannot name <code class="docutils literal notranslate"><span class="pre">BlockA</span></code>, which belongs to the
+user interface: the reference fails with an ordinary undeclared identifier error, at the point
+of the mistake, in the component that made it.</p>
+<p>What stops it from including <code class="docutils literal notranslate"><span class="pre">UserInterface.h</span></code> instead is a convention rather than the
+compiler. The headers are generated side by side and travel as one include directory - that is
+what the <a class="reference internal" href="build_integration.html"><span class="doc">cmake integration</span></a> hands each component - so <code class="docutils literal notranslate"><span class="pre">#include</span>
+<span class="pre">&quot;UserInterface.h&quot;</span></code> from the controller’s source compiles. What the build does guarantee is
+that the directory holds the headers of this image and no others, so an include that reaches
+across is at least an include of a component the image really links, and it is one line a
+reviewer can see. What the generated code does enforce by itself is below: a component’s own
+header declares only what that component declared, and <code class="docutils literal notranslate"><span class="pre">--const-inputs</span></code> makes a write to a
+foreign variable a constraint violation wherever its declaration is read.</p>
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/* Controller.h, shortened - the whole file has the same three sections */</span>
 
 <span class="cm">/* outputs - written by Controller, read by other components */</span>
@@ -359,6 +367,27 @@ reads: the identity, a linear factor and offset, an enumeration, or text.</p></t
 <tr class="row-even"><td><p>producer</p></td>
 <td><p>the component that owns a data object, that is the one which declared it <code class="docutils literal notranslate"><span class="pre">output</span></code> or
 <code class="docutils literal notranslate"><span class="pre">local</span></code>. Its declaration is the authoritative one when components disagree.</p></td>
+</tr>
+<tr class="row-odd"><td><p>declared type</p></td>
+<td><p>a scalar, structure or external type a <a class="reference internal" href="file_formats/types.html"><span class="doc">types file</span></a> declares,
+or the component that publishes it, and that a definition names with <code class="docutils literal notranslate"><span class="pre">typename</span></code>
+instead of stating a <code class="docutils literal notranslate"><span class="pre">datatype</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p>instance</p></td>
+<td><p>the data object of a declaration naming a <em>structure</em> type: one c object whose members
+are data objects in their own right. It is a data object like any other - it has a
+producer, consumers and an <code class="docutils literal notranslate"><span class="pre">id</span></code> - and the dictionary records it as its own kind of
+entry.</p></td>
+</tr>
+<tr class="row-odd"><td><p>leaf</p></td>
+<td><p>one member of an instance that holds a value, as the dictionary sees it: what appears
+in <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code>, in the a2l and in an address map. A member naming an external type is
+opaque storage and is no leaf.</p></td>
+</tr>
+<tr class="row-even"><td><p>access path</p></td>
+<td><p>the c expression that reads a member of an instance - <code class="docutils literal notranslate"><span class="pre">Inlet.latest</span></code>, or
+<code class="docutils literal notranslate"><span class="pre">Inlet[2].raw</span></code> for an element of an array of them - which is the name a leaf carries
+and the name the a2l and the address map know it by.</p></td>
 </tr>
 <tr class="row-odd"><td><p>data dictionary</p></td>
 <td><p>the resolved result: every object with its owner, its consumers, its shape and its

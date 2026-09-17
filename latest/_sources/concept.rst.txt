@@ -140,11 +140,20 @@ Every component gets one header containing the declarations of that component an
 else, and that header is the only one a component is expected to include. There is deliberately
 no project wide header offering everything: ``ddd_globals.h`` declares every object of the
 project, but it exists so that the single definition file can be compiled with full prototype
-checking, and it says so in its own text rather than leaving the reader to guess. Provided a
-component includes its own header, a name it never declared - say ``BlockA``, which belongs to
-the user interface - has no declaration on its include path at all, so a reference to it fails
-with an ordinary undeclared identifier error, at the point of the mistake, in the component
-that made it.
+checking, and it says so in its own text rather than leaving the reader to guess. A component
+that includes its own header and nothing else cannot name ``BlockA``, which belongs to the
+user interface: the reference fails with an ordinary undeclared identifier error, at the point
+of the mistake, in the component that made it.
+
+What stops it from including ``UserInterface.h`` instead is a convention rather than the
+compiler. The headers are generated side by side and travel as one include directory - that is
+what the :doc:`cmake integration <build_integration>` hands each component - so ``#include
+"UserInterface.h"`` from the controller's source compiles. What the build does guarantee is
+that the directory holds the headers of this image and no others, so an include that reaches
+across is at least an include of a component the image really links, and it is one line a
+reviewer can see. What the generated code does enforce by itself is below: a component's own
+header declares only what that component declared, and ``--const-inputs`` makes a write to a
+foreign variable a constraint violation wherever its declaration is read.
 
 .. code-block:: c
 
@@ -268,6 +277,23 @@ what a value is *for*, not what it controls.
    * - producer
      - the component that owns a data object, that is the one which declared it ``output`` or
        ``local``. Its declaration is the authoritative one when components disagree.
+   * - declared type
+     - a scalar, structure or external type a :doc:`types file <file_formats/types>` declares,
+       or the component that publishes it, and that a definition names with ``typename``
+       instead of stating a ``datatype``.
+   * - instance
+     - the data object of a declaration naming a *structure* type: one c object whose members
+       are data objects in their own right. It is a data object like any other - it has a
+       producer, consumers and an ``id`` - and the dictionary records it as its own kind of
+       entry.
+   * - leaf
+     - one member of an instance that holds a value, as the dictionary sees it: what appears
+       in ``ddd list``, in the a2l and in an address map. A member naming an external type is
+       opaque storage and is no leaf.
+   * - access path
+     - the c expression that reads a member of an instance - ``Inlet.latest``, or
+       ``Inlet[2].raw`` for an element of an array of them - which is the name a leaf carries
+       and the name the a2l and the address map know it by.
    * - data dictionary
      - the resolved result: every object with its owner, its consumers, its shape and its
        limits worked out. It is the contract between the checking front end and the output

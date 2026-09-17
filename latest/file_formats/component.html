@@ -473,7 +473,7 @@ declining, and <code class="docutils literal notranslate"><span class="pre">desc
 <section id="types-and-constants-of-the-component">
 <h2>Types and constants of the component<a class="headerlink" href="#types-and-constants-of-the-component" title="Link to this heading"></a></h2>
 <p>A component <strong>may</strong> declare the types and the constants it publishes inside its own
-description, in two optional keys whose entries are exactly those of the standalone files: a
+description, in two optional keys whose entries are exactly those of a vocabulary file: a
 <code class="docutils literal notranslate"><span class="pre">types</span></code> list as a <a class="reference internal" href="types.html"><span class="doc">types file</span></a> writes it, and a <code class="docutils literal notranslate"><span class="pre">constants</span></code> list as a
 <a class="reference internal" href="constants.html"><span class="doc">constants file</span></a> writes it. This is the pump of <code class="docutils literal notranslate"><span class="pre">examples/vocabulary</span></code>,
 shortened to the parts that matter:</p>
@@ -513,15 +513,16 @@ shortened to the parts that matter:</p>
 </pre></div>
 </div>
 <p>Declaring them here co-locates a library’s contract in one file; it does <strong>not</strong> scope it.
-The names join the same project wide namespace as those of the standalone files, every
+The names join the same project wide namespace as those a vocabulary file declares, every
 consistency check applies to them unchanged - <code class="docutils literal notranslate"><span class="pre">duplicate-type</span></code> and <code class="docutils literal notranslate"><span class="pre">duplicate-constant</span></code>
 across both homes, <code class="docutils literal notranslate"><span class="pre">reserved-identifier</span></code>, <code class="docutils literal notranslate"><span class="pre">name-collision</span></code>, the unit vocabulary - and
 any component of the project may name them, exactly as if a types or constants file had
 declared them. Which home to choose is therefore a question of ownership rather than of
 visibility: a type or constant that belongs to one component’s published contract reads
 best next to the interface that uses it, and one shared between several components, with no
-single owner to live inside, stays in a standalone file. <code class="docutils literal notranslate"><span class="pre">units</span></code> and <code class="docutils literal notranslate"><span class="pre">sections</span></code> are
-project wide vocabularies with no owner at all, so neither may appear inside a component:</p>
+single owner to live inside, stays in a file of its own. <code class="docutils literal notranslate"><span class="pre">units</span></code>, <code class="docutils literal notranslate"><span class="pre">sections</span></code> and
+<code class="docutils literal notranslate"><span class="pre">rasters</span></code> are project wide vocabularies with no owner at all, so none of the three may
+appear inside a component:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check own_units.ddd.json
 own_units.ddd.json#component.units: error[schema]: Extra inputs are not permitted (got: ['rpm'])
 1 error

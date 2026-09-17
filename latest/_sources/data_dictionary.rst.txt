@@ -387,3 +387,18 @@ than half way through a jinja template.
 
 .. autopydantic_model:: ddd.ir.ComponentDeclaration
    :field-show-constraints: False
+
+.. autopydantic_model:: ddd.ir.ResolvedRaster
+   :field-show-constraints: False
+
+.. autopydantic_model:: ddd.ir.ResolvedStruct
+   :field-show-constraints: False
+
+.. autopydantic_model:: ddd.ir.ResolvedMember
+   :field-show-constraints: False
+
+.. autopydantic_model:: ddd.ir.ResolvedInstance
+   :field-show-constraints: False
+
+.. autopydantic_model:: ddd.ir.ResolvedLeaf
+   :field-show-constraints: False

@@ -510,7 +510,9 @@ post-build step can pick it up without rebuilding the path by hand:</p>
 <span class="nb">install</span><span class="p">(</span><span class="s">FILES</span><span class="w"> </span><span class="s2">"${a2l}"</span><span class="w"> </span><span class="s">DESTINATION</span><span class="w"> </span><span class="s">delivery</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>Beside the artefacts the generation step writes <code class="docutils literal notranslate"><span class="pre">&lt;NAME&gt;.dictionary.json</span></code>, the resolved
+<p>Beside the artefacts the generation step writes <code class="docutils literal notranslate"><span class="pre">&lt;project</span> <span class="pre">name&gt;.dictionary.json</span></code> - the
+name the a2l takes, which beside <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> is the one written inside that file rather than
+<code class="docutils literal notranslate"><span class="pre">NAME</span></code> - the resolved
 <a class="reference internal" href="data_dictionary.html"><span class="doc">data dictionary</span></a> they were all generated from: what a template author
 reads to see what the templates receive, and what a delivery archives for a later
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> (see <a class="reference internal" href="comparing_deliveries.html"><span class="doc">Comparing deliveries</span></a>). The generation writes it itself, with

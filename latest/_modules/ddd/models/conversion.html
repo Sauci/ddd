@@ -190,6 +190,7 @@
 <span class="sd">    """</span>
 
     <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"identity"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"identity"</span>
+<span class="w">    </span><span class="sd">"""The tag of this kind, which may be left out: an empty block is the identity."""</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">to_physical</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">raw</span>
@@ -208,6 +209,9 @@
 <span class="w">    </span><span class="sd">"""``physical = raw * factor + offset``, the scaling of a fixed point value."""</span>
 
     <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"linear"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"linear"</span>
+<span class="w">    </span><span class="sd">"""The tag of this kind, which may be left out: a block stating ``factor`` or ``offset``</span>
+<span class="sd">    is linear."""</span>
+
     <span class="n">factor</span><span class="p">:</span> <span class="n">Real</span> <span class="o">=</span> <span class="mf">1.0</span>
 <span class="w">    </span><span class="sd">"""Scaling; must not be zero, or nothing could be converted back."""</span>
 
@@ -280,13 +284,23 @@
 <span class="sd">    """</span>
 
     <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"enum"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"enum"</span>
+<span class="w">    </span><span class="sd">"""The tag of this kind, which may be left out: a block stating ``enumerators`` or a</span>
+<span class="sd">    ``name`` is an enum."""</span>
+
     <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
 <span class="w">    </span><span class="sd">"""C identifier of the generated ``typedef enum``; shared enums must agree everywhere."""</span>
 
     <span class="n">enumerators</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span>
         <span class="nb">tuple</span><span class="p">[</span><span class="n">Enumerator</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">json_schema_extra</span><span class="o">=</span><span class="n">_publish_mapping_form</span><span class="p">)</span>
     <span class="p">]</span>
-<span class="w">    </span><span class="sd">"""The named values, either as objects or as a ``{"NAME": value}`` mapping."""</span>
+<span class="w">    </span><span class="sd">"""The named values, either as objects or as a ``{"NAME": value}`` mapping.</span>
+
+<span class="sd">    Two of them may not carry the same name, which the mapping form cannot express twice and</span>
+<span class="sd">    the list form can: the generated enumeration would not compile, and a calibration tool</span>
+<span class="sd">    reading the generated table of labels would have two answers for one. Two names sharing a</span>
+<span class="sd">    *value* is a different matter - it is the C idiom for an alias, reported as</span>
+<span class="sd">    ``enum-duplicate-value`` rather than refused.</span>
+<span class="sd">    """</span>
 
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"before"</span><span class="p">)</span>
     <span class="nd">@classmethod</span>
@@ -336,6 +350,8 @@
 
 
 
+<div class="viewcode-block" id="StringConversion">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.StringConversion">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">StringConversion</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Bytes read as text: each element of the array holds one character code.</span>
 
@@ -351,6 +367,8 @@
 <span class="sd">    """</span>
 
     <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"string"</span><span class="p">]</span>
+<span class="w">    </span><span class="sd">"""The tag of this kind, which is required: a string has no key of its own to be</span>
+<span class="sd">    recognised by, so nothing else would tell it from the identity."""</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">to_physical</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">raw</span>
@@ -359,7 +377,8 @@
         <span class="k">return</span> <span class="n">physical</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">describe</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-        <span class="k">return</span> <span class="s2">"string"</span>
+        <span class="k">return</span> <span class="s2">"string"</span></div>
+
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_infer_kind</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>

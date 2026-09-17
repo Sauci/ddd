@@ -593,7 +593,11 @@
 <span class="w">    </span><span class="sd">"""The header that defines the type, spelled the way the generated inclusion writes it.</span>
 
 <span class="sd">    ``my_driver.h`` for the quoted form, ``&lt;os_types.h&gt;`` for the angle form; a subdirectory</span>
-<span class="sd">    path such as ``drivers/status.h`` is allowed in either.</span>
+<span class="sd">    path such as ``drivers/status.h`` is allowed in either. The spelling is written out</span>
+<span class="sd">    exactly as it stands, so one that would unbalance the line is refused here rather than</span>
+<span class="sd">    handed to a compiler: no whitespace, no quote of its own - the quoted form is written</span>
+<span class="sd">    bare - and, for the angle form, exactly one pair of angle brackets wrapping the whole</span>
+<span class="sd">    name.</span>
 <span class="sd">    """</span></div>
 
 

@@ -245,7 +245,11 @@ The commands
        gets archived next to a delivery and handed to ``ddd compare`` later. ``-o`` writes it
        into a file instead, the way ``generate`` writes an artefact: the same bytes on every
        platform, and a file whose content would not change is left untouched, which is what a
-       build depending on it needs and what a redirection cannot promise. ``--standalone``
+       build depending on it needs and what a redirection cannot promise. Unlike ``generate``,
+       a finding does not hold the dictionary back: errors and all, the dictionary is what the
+       project resolved to and ``-o`` writes it, so a script archiving a delivery reads the
+       exit code rather than the presence of the file. Only a root that cannot be read leaves
+       the file as it was - there is then no dictionary at all. ``--standalone``
        dumps a component on its own, as it does for ``list``.
    * - ``ddd id --assign FILE...``
      - write an ``id`` into every producing declaration of the given description files that

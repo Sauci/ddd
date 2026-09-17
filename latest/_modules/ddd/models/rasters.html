@@ -192,7 +192,9 @@
     <span class="n">cycle</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""The period, written as an integer and a unit: ``100us``, ``10ms``, ``1s``.</span>
 
-<span class="sd">    No space and no fractional part - write ``1500us`` rather than ``1.5ms``. Left out, the</span>
+<span class="sd">    No space and no fractional part - write ``1500us`` rather than ``1.5ms``. The period is</span>
+<span class="sd">    one XCP can carry, that is a count of 1 to 255 times a decade from ``1ns`` to ``1s``, so</span>
+<span class="sd">    ``1500us`` is a period and ``1234ms`` is not. Left out, the</span>
 <span class="sd">    event is not cyclic: crank synchronous, on change, on demand. That is a real kind of</span>
 <span class="sd">    raster rather than an omission, which is why the key has no derived default.</span>
 <span class="sd">    """</span>

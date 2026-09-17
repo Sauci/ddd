@@ -453,7 +453,11 @@ unique: each component gets a generated header named after it.</p></td>
 <td><p>error</p></td>
 <td><p>two different files declare a type of the same name. Which of two answers the generated
 c would get is not something an include order should decide, so the second is refused
-rather than allowed to win.</p></td>
+rather than allowed to win. One file declaring a name twice is the other half of the
+same rule and is not this check: a types file is validated as a whole before anything
+looks at what other files declare, so the repeat is a <code class="docutils literal notranslate"><span class="pre">schema</span></code> error located at that
+file, where <code class="docutils literal notranslate"><span class="pre">duplicate-unit</span></code>, <code class="docutils literal notranslate"><span class="pre">duplicate-section</span></code>, <code class="docutils literal notranslate"><span class="pre">duplicate-constant</span></code> and
+<code class="docutils literal notranslate"><span class="pre">duplicate-raster</span></code> cover both cases and point at the entry.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-type</span></code></p></td>
 <td><p>error</p></td>
@@ -515,7 +519,10 @@ The nearest declared name is suggested.</p></td>
 whole number (see the <a class="reference internal" href="file_formats/constants.html"><span class="doc">constants file</span></a>). A constant
 holds any number, because most of what a project names is emitted and dimensions
 nothing; the rule a literal dimension obeys applies only where a shape names one,
-and is reported there. The declaration is dropped, as for an unknown constant.</p></td>
+and is reported there. The declaration is dropped, as for an unknown constant. At a
+structure member it is the type that goes: a member of no known length leaves the
+structure without a size, so the type is unusable and every declaration naming it is
+dropped with it.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-raster</span></code></p></td>
 <td><p>error</p></td>
@@ -780,9 +787,12 @@ everywhere else.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">a2l-unrepresentable</span></code></p></td>
 <td><p>warning</p></td>
-<td><p>an exported object cannot be fully described by the a2l version DDD writes: today that is
-an array of more than three dimensions, which the <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code> of ASAP2 1.6.1 cannot
-carry. The extra dimensions are written out and only a 1.7 reader understands them.</p></td>
+<td><p>an object the a2l carries cannot be fully described by the version DDD writes: today
+that is an array of more than three dimensions, which the <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code> of ASAP2 1.6.1
+cannot carry. It fires for what the file carries rather than for what asked to be
+exported, the closure over references included, so an object kept out of the a2l on its
+own is still reported where an exported axis names it as its <code class="docutils literal notranslate"><span class="pre">input</span></code>. The extra
+dimensions are written out and only a 1.7 reader understands them.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">address-missing</span></code></p></td>
 <td><p>warning</p></td>

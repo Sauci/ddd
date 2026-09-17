@@ -208,6 +208,8 @@
 
 
 
+<div class="viewcode-block" id="ResolvedRaster">
+<a class="viewcode-back" href="../../data_dictionary.html#ddd.ir.ResolvedRaster">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">ResolvedRaster</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""One declared daq event, as the dictionary publishes it."""</span>
 
@@ -228,7 +230,8 @@
 <span class="sd">    """</span>
 
     <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
-<span class="w">    </span><span class="sd">"""Free text from the declaration; the long name of the eventual ``EVENT``."""</span>
+<span class="w">    </span><span class="sd">"""Free text from the declaration; the long name of the eventual ``EVENT``."""</span></div>
+
 
 
 <div class="viewcode-block" id="ResolvedObject">
@@ -317,8 +320,9 @@
 <span class="sd">    Calibration data carries it as ``const volatile``, which is what a value the calibration</span>
 <span class="sd">    tool changes in a running ecu needs - see the field of the same name on the authored</span>
 <span class="sd">    definition. The default is kept although a definition may no longer omit it, so that a</span>
-<span class="sd">    dictionary dumped by an older DDD still reads back; that is what ``DICTIONARY_FORMAT``</span>
-<span class="sd">    exists to make safe.</span>
+<span class="sd">    dictionary dumped by an older DDD still reads back: an older document is read with the</span>
+<span class="sd">    defaults of the format it states, which is what the ``format`` key of this document is</span>
+<span class="sd">    for.</span>
 <span class="sd">    """</span>
 
     <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
@@ -328,7 +332,7 @@
 <span class="w">    </span><span class="sd">"""Other objects this one refers to, keyed by field name (``axis``, ``x_axis``, ...)."""</span>
 
     <span class="n">owner</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">"""Component owning the object; ``None`` only when the project is inconsistent."""</span>
+<span class="w">    </span><span class="sd">"""Component owning the object; ``null`` only when the project is inconsistent."""</span>
 
     <span class="n">consumers</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
 <span class="w">    </span><span class="sd">"""Components declaring the object as an input, sorted; empty when nothing reads it."""</span>
@@ -375,6 +379,8 @@
 
 
 
+<div class="viewcode-block" id="ResolvedMember">
+<a class="viewcode-back" href="../../data_dictionary.html#ddd.ir.ResolvedMember">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">ResolvedMember</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""One member of a structure, as the c templates need it to declare the member.</span>
 
@@ -395,10 +401,10 @@
 <span class="w">    </span><span class="sd">"""What the member is, for a comment beside its declaration."""</span>
 
     <span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">"""Storage of the member when it is a base one; ``None`` when it names a declared type."""</span>
+<span class="w">    </span><span class="sd">"""Storage of the member when it is a base one; ``null`` when it names a declared type."""</span>
 
     <span class="nb">type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">"""Name of the structure this member is, when it is one; ``None`` when it is a datatype.</span>
+<span class="w">    </span><span class="sd">"""Name of the structure this member is, when it is one; ``null`` when it is a datatype.</span>
 
 <span class="sd">    The name as the types file spells it, which in a dictionary carrying an ``unknown-type``</span>
 <span class="sd">    error may be a name no ``types`` entry answers: the member says what it was declared as,</span>
@@ -406,7 +412,7 @@
 <span class="sd">    """</span>
 
     <span class="n">external</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">"""Name of the external type this member is, when it is one; ``None`` otherwise.</span>
+<span class="w">    </span><span class="sd">"""Name of the external type this member is, when it is one; ``null`` otherwise.</span>
 
 <span class="sd">    An external type is one DDD does not declare - a hand written header defines it - so the</span>
 <span class="sd">    member is opaque storage: it appears in the generated structure verbatim, spelled with</span>
@@ -430,7 +436,7 @@
 <span class="sd">    """</span>
 
     <span class="n">bits</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">"""Width in bits when the member is a c bitfield; ``None`` when it is not."""</span>
+<span class="w">    </span><span class="sd">"""Width in bits when the member is a c bitfield; ``null`` when it is not."""</span>
 
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_a_member_states_one_storage</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ResolvedMember</span><span class="p">:</span>
@@ -454,9 +460,12 @@
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">external</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatype</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">type</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">msg</span> <span class="o">=</span> <span class="s2">"a member states one of 'datatype', 'type' and 'external': it holds something"</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-        <span class="k">return</span> <span class="bp">self</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
 
 
+
+<div class="viewcode-block" id="ResolvedStruct">
+<a class="viewcode-back" href="../../data_dictionary.html#ddd.ir.ResolvedStruct">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">ResolvedStruct</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""One structure, in an order a c file can be written out in.</span>
 
@@ -473,9 +482,12 @@
 <span class="w">    </span><span class="sd">"""What the structure is, for a comment above it."""</span>
 
     <span class="n">members</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ResolvedMember</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
-<span class="w">    </span><span class="sd">"""The members, in declaration order."""</span>
+<span class="w">    </span><span class="sd">"""The members, in declaration order."""</span></div>
 
 
+
+<div class="viewcode-block" id="ResolvedInstance">
+<a class="viewcode-back" href="../../data_dictionary.html#ddd.ir.ResolvedInstance">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">ResolvedInstance</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""One variable whose datatype is a structure.</span>
 
@@ -546,7 +558,7 @@
 <span class="w">    </span><span class="sd">"""Preprocessor condition of the producing declaration, if any."""</span>
 
     <span class="n">owner</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">"""Component owning the object; ``None`` only when the project is inconsistent."""</span>
+<span class="w">    </span><span class="sd">"""Component owning the object; ``null`` only when the project is inconsistent."""</span>
 
     <span class="n">consumers</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
 <span class="w">    </span><span class="sd">"""Components declaring the object as an input, sorted."""</span>
@@ -579,9 +591,12 @@
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_dimensions_spell_the_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ResolvedInstance</span><span class="p">:</span>
         <span class="n">_check_dimensions_match</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span><span class="p">)</span>
-        <span class="k">return</span> <span class="bp">self</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
 
 
+
+<div class="viewcode-block" id="ResolvedLeaf">
+<a class="viewcode-back" href="../../data_dictionary.html#ddd.ir.ResolvedLeaf">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">ResolvedLeaf</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""One member of one structured variable, at the end of one access path.</span>
 
@@ -710,7 +725,8 @@
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_dimensions_spell_the_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ResolvedLeaf</span><span class="p">:</span>
         <span class="n">_check_dimensions_match</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span><span class="p">)</span>
-        <span class="k">return</span> <span class="bp">self</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
 
 
 <span class="n">Comparable</span> <span class="o">=</span> <span class="n">ResolvedObject</span> <span class="o">|</span> <span class="n">ResolvedLeaf</span>

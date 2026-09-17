@@ -128,9 +128,12 @@ that name, and the a2l records the constant for the calibration tool.</p>
 the length cap, <code class="docutils literal notranslate"><span class="pre">reserved-identifier</span></code> and <code class="docutils literal notranslate"><span class="pre">name-collision</span></code> apply to it like to any other
 name. <code class="docutils literal notranslate"><span class="pre">value</span></code> is a number: a whole number of either sign that a 64 bit target can hold,
 signed or unsigned, or a finite number written with a fraction. How it is written decides
-which it is - <code class="docutils literal notranslate"><span class="pre">2</span></code> is a whole number and <code class="docutils literal notranslate"><span class="pre">2.0</span></code> is not - and the outputs carry the literal
-as written, so <code class="docutils literal notranslate"><span class="pre">{&quot;name&quot;:</span> <span class="pre">&quot;CELL_GAIN&quot;,</span> <span class="pre">&quot;value&quot;:</span> <span class="pre">2.0}</span></code> reaches a c header as the double
-literal <code class="docutils literal notranslate"><span class="pre">2.0</span></code>. The value is a literal only: an expression would put a parser and an
+which it is - <code class="docutils literal notranslate"><span class="pre">2</span></code> is a whole number, and anything carrying a point or an exponent is
+fractional, so <code class="docutils literal notranslate"><span class="pre">2.0</span></code> and <code class="docutils literal notranslate"><span class="pre">1e3</span></code> both are. The outputs carry the number in its shortest
+spelling that reads back as the same number - a whole number without a point, any other with
+a point or an exponent - so <code class="docutils literal notranslate"><span class="pre">{&quot;name&quot;:</span> <span class="pre">&quot;CELL_GAIN&quot;,</span> <span class="pre">&quot;value&quot;:</span> <span class="pre">2.50}</span></code> reaches a c header as
+the double literal <code class="docutils literal notranslate"><span class="pre">2.5</span></code>, and <code class="docutils literal notranslate"><span class="pre">1e3</span></code> as <code class="docutils literal notranslate"><span class="pre">1000.0</span></code>. The type survives the trip even where
+the spelling does not: a value written with a point is emitted with one. The value is a literal only: an expression would put a parser and an
 evaluation order into a description format, and a constant cannot name another constant -
 what cannot be written cannot cycle. <code class="docutils literal notranslate"><span class="pre">description</span></code> is where the meaning of a number is
 written down once, instead of being implied by every object that happens to use it. The file is listed in the <code class="docutils literal notranslate"><span class="pre">includes</span></code> of a
@@ -144,7 +147,7 @@ ownership, not visibility: a size that belongs to one component’s contract rea
 to the interface it dimensions, and a size no single component owns stays here.
 <code class="docutils literal notranslate"><span class="pre">examples/vocabulary</span></code> is a ready to run project showing both: its pump declares
 <code class="docutils literal notranslate"><span class="pre">PRESSURE_CELLS</span></code> inside its own description, the shared <code class="docutils literal notranslate"><span class="pre">TREND_SAMPLES</span></code> lives in a
-standalone file next to the <a class="reference internal" href="units.html"><span class="doc">unit vocabulary</span></a> and the
+constants file of its own next to the <a class="reference internal" href="units.html"><span class="doc">unit vocabulary</span></a> and the
 <a class="reference internal" href="sections.html"><span class="doc">memory sections</span></a>, and the project checks clean:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/vocabulary/project.ddd.json
 ok: 4 variables in 1 component are consistent

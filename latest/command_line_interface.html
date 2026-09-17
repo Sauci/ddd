@@ -353,7 +353,11 @@ that need the rest of its project held back as <code class="docutils literal not
 gets archived next to a delivery and handed to <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> later. <code class="docutils literal notranslate"><span class="pre">-o</span></code> writes it
 into a file instead, the way <code class="docutils literal notranslate"><span class="pre">generate</span></code> writes an artefact: the same bytes on every
 platform, and a file whose content would not change is left untouched, which is what a
-build depending on it needs and what a redirection cannot promise. <code class="docutils literal notranslate"><span class="pre">--standalone</span></code>
+build depending on it needs and what a redirection cannot promise. Unlike <code class="docutils literal notranslate"><span class="pre">generate</span></code>,
+a finding does not hold the dictionary back: errors and all, the dictionary is what the
+project resolved to and <code class="docutils literal notranslate"><span class="pre">-o</span></code> writes it, so a script archiving a delivery reads the
+exit code rather than the presence of the file. Only a root that cannot be read leaves
+the file as it was - there is then no dictionary at all. <code class="docutils literal notranslate"><span class="pre">--standalone</span></code>
 dumps a component on its own, as it does for <code class="docutils literal notranslate"><span class="pre">list</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span> <span class="pre">FILE...</span></code></p></td>

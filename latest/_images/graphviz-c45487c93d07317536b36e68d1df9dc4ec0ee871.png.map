@@ -1,0 +1,17 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="ddd.ir.ResolvedInstance
+
+One variable whose datatype is a structure.
+
+Kept apart from :class:`ResolvedObject` rather than widening it: an object with no datatype
+and no limits would turn every reader of those two fields into a branch, and they are read
+unconditionally in a dozen places on the strength of always being there.
+" alt="" coords="5,5,283,481"/>
+<area shape="rect" id="node2" title="ddd.models.objects.A2lObjectOptions
+
+What a declaration asks of the a2l backend. Only that backend interprets it.
+
+Nothing here changes the generated c or the meaning of the object; a project that
+generates no a2l can leave the whole block out.
+" alt="" coords="427,455,664,567"/>
+</map>

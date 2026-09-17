@@ -80,6 +80,118 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   document is refused.  The shipped VS Code extension sends `shutdown` first; its launch test
   no longer pins the lenient exit, and its handshake has a timeout.
 
+* **The generated artefacts.**  Everything a review of the whole tool found between a
+  description and the files written from it: four ways the c or the a2l was not what the
+  description said, four inputs that passed every check and reached a compiler, and the
+  example templates a project copies as its starting point.
+
+  *A description may say `/*`.*  The generated c defused the marker that ends a comment and
+  not the one that opens another inside it, so a description, a unit, a member, an enumerator
+  or a constant carrying `/*` rendered `/** opens a comment /* inside */` into the definition
+  file, the shared header, the types header and the component's own header at once - and
+  `-Wcomment`, which `-Wall` turns on, reports `"/*" within comment`, so the warning set this
+  repository verifies the generated code with stopped the build on all four.  Both markers are
+  now spaced apart: `/*` renders as `/ *`, beside the `*/` that already rendered as `* /`.
+
+  *The a2l says what it is encoded in.*  The file is utf-8, as every artefact is, and said
+  so nowhere: ASAP2 1.6.1 has no `ENCODING` keyword - that arrives with 1.7 - and section 1.5
+  of the standard tells a reader to detect the encoding from a byte order mark and to read the
+  file as ISO-8859-1 where there is none.  A unit as ordinary as `°C` therefore reached a
+  calibration tool as `Â°C`, or stopped its parser.  The a2l now opens with a utf-8 byte order
+  mark.  It is the one generated file that carries one: the c sources and the dumped
+  dictionary stay utf-8 with lf and no mark, because a compiler and a json reader already know
+  what they are reading.
+
+  *A derived limit is the number the description implies.*  Limits nobody states are
+  derived by running the raw ends of the datatype through the conversion, and the product was
+  written out as the binary arithmetic left it: a `uint8` under `{"factor": 0.03}` stated an
+  upper limit of `7.6499999999999995` - below `7.65`, the value its own largest raw count
+  stands for - and an `sint16` under `0.1` stated `3276.7000000000003`, one step past the raw
+  range.  A calibration tool that holds data to the limits it reads was refusing the value the
+  description implies, and the engineer reading the a2l saw a number nobody wrote.  Both ends
+  are now rounded to twelve significant digits, the width a reading has always been spelled
+  at, wherever they are derived: the a2l, the dumped dictionary, the hover in the editor and
+  the checks.
+
+  *Two names the generated files could not carry.*  An axis whose `input` named a
+  structured variable passed every check, because an instance of a structure is of kind
+  `measurement` and only its declared type says that it is not one quantity.  The a2l then
+  bound the axis - and the `COM_AXIS` of every curve over it - to `Inst`, while the only
+  records in the file were `Inst.a` and the other members: the dangling reference the export
+  closure exists to prevent, which an ASAP2 checker reports and a calibration tool answers by
+  dropping the reference or refusing the module.  It is now `reference-kind`, and the axis is
+  dropped as every wrong-kind reference is.  Beside it the backend now writes
+  `NO_INPUT_QUANTITY` for any input quantity the dictionary it is rendering does not carry, so
+  a dictionary read back from a dump, written by another producer or edited by a hook still
+  renders a module that loads.  Separately, `name-collision` weighed a declared constant
+  against data objects, enums, enumerators and types but not against the members of a
+  structure - and the example templates emit every constant as a `#define` above the
+  structures, so a constant `raw` beside a member `raw` wrote `#define raw 4` a few lines
+  above `uint16_t raw;` and no compiler accepted the header.  That pair is now compared too,
+  reported at the constant with a note at the member.
+
+  *Two initial values and shapes that reached the compiler.*  An `init` of `1e-50` on a
+  `float32` is inside the range that datatype states and past the precision it has: nothing
+  reported it, and the generated c carried `1e-50F`, which gcc refuses outright - `floating
+  constant truncated to zero`, an error under the same warning set - because the value the
+  storage would hold is not the value the description states.  A non-zero initial value a
+  floating point datatype rounds to zero is now `init-invalid`.  And a shape now states at
+  most 64 dimensions: six hundred of one element each were under every cap there was - they
+  multiply out to one - and ended `ddd generate c` in a `RecursionError` where a finding was
+  owed, the walks that expand a shape descending once per dimension.  It is `schema` at the
+  `dimensions` that state it, and the declaration is dropped, as for every other shape past a
+  limit.
+
+  *A template renders a constant as a literal.*  A `ConstantView` offers `.literal` beside
+  `.value`: the value as a c literal of the narrowest type that holds it.  The two differ only
+  at the ends of the 64 bit range, where there is no literal to write out bare -
+  `-9223372036854775808` is a unary minus over a literal too large for any signed type, and
+  `18446744073709551615` has no signed type at all, so a compiler reads it as unsigned and
+  says so - and the example types header renders `.literal` now.  `.value` is unchanged and
+  stays the number, for a template that does its own formatting.
+
+  *The example templates compile what they generate.*  `docker/compile.sh` compiles every
+  generated header on its own, the header included twice and nothing before it, which is what
+  proves each is self contained; three legitimate projects ended there with `ISO C forbids an
+  empty translation unit`.  The example types header included `<stdint.h>` only when a
+  datatype of the project asked for it, and every other generated header includes that one and
+  nothing else, so a project whose objects are all floating point and one that declares no
+  object at all generated a guard around nothing and two empty translation units out of it;
+  it is included unconditionally now, and `model.needs_stdint` still answers the question for
+  a project's own templates.  The definition file, which an image registering no component
+  left holding one comment, carries a typedef that declares a name and no storage.  And the
+  example plugin's table of addresses and sizes includes `ddd_globals.h`, without which the
+  one artefact that example exists to show was the one the shipped harness could not compile.
+
+  *Four messages that named the wrong thing.*  A template error gave the line of the file the
+  failing frame belongs to under the name of the file being rendered, so a macro imported from
+  a helper reported a line of the importing template - usually a blank one; the helper is named
+  beside the line now.  A `-t` that does not exist, and a `-t` naming one template rather than
+  the directory holding it, both read as a directory holding no template.  A path longer than
+  the platform accepts came back as `No such file or directory` about a directory that is
+  sitting there, and now says that the path itself was refused and how long it is.  And the
+  a2l transliterates `²` and `³`, without which `m/s²` and `m/s` asked for one method name and
+  whichever was met second was pushed onto `_2`.
+
+  **Migration:** three descriptions that used to check clean are now errors, and each is a
+  line to change.  An axis whose `input` names a structured variable: point it at the plain
+  measurement that indexes it, or leave the `input` out, which reads `NO_INPUT_QUANTITY` as it
+  always did.  A constant sharing a name with a structure member: rename either.  An `init` a
+  `float32` rounds to zero: it was never that value.  A shape of more than 64 dimensions is
+  refused, which no description states.  a2l and dictionary files regenerate with the shorter
+  derived limits and the a2l with three bytes in front of it, so a diff against an archived
+  artefact shows both; no stated limit changes and no check turns into a finding, because
+  `limits-out-of-range` weighs a stated limit against the derived range with a relative
+  tolerance of 1e-9, which spans the rounding.  A tool that reads the a2l as ASCII or as
+  ISO-8859-1 without looking at the first three bytes sees them; every reader that follows the
+  standard's own rule, and every one that already read the file as utf-8, is unaffected.
+  Nothing that reads a file *back* into DDD is: the a2l is the one artefact DDD never reads,
+  and the files it does - a description, a dumped dictionary, a build record - are read with a
+  mark tolerated and are still written without one.  Prose carrying neither comment marker
+  renders exactly as it did.  Templates a project wrote are untouched: `.literal` is a name
+  added beside `.value`, and the changes to the example templates are changes to the copy
+  `ddd templates-dir` hands out, not to anything a project already has - a project that took
+  that copy and generates for a float-only or object-less image wants the same two edits.
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`
   through the c templates, a `SYSTEM_CONSTANT` in the a2l - whether or not a shape names it,

@@ -223,6 +223,13 @@ class LayoutBackend:
 
     An entry follows the condition of its object: the c templates compile the object out
     under ``#if``, and a table naming it then would not compile at all.
+
+    The header includes ``ddd_globals.h``, because every entry takes the address and the size
+    of an object and nothing else here declares one. That is the header the shipped c
+    templates write, so a plugin beside templates of another shape declares what it names the
+    way those templates spell it; what it may not do is name an object and include nothing,
+    which leaves a header that only compiles after something else has been included first -
+    and ``docker/compile.sh`` compiles every generated header alone, exactly to catch that.
     """
 
     name = "layout"
@@ -239,6 +246,8 @@ class LayoutBackend:
             "",
             "#include <stddef.h>",
             "#include <stdint.h>",
+            "",
+            '#include "ddd_globals.h"',
             "",
             f"#define DDD_LAYOUT_MAX_KEY {self._settings.max_key}u",
             "",

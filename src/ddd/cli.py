@@ -25,6 +25,7 @@ from ddd.backends import (
     GeneratedFile,
     WriteStatus,
     addressed_symbols,
+    describe_write_failure,
     example_template_directory,
     load_address_map,
     render,
@@ -909,8 +910,7 @@ def _command_generate(args: argparse.Namespace) -> int:
                 if error.filename
                 else args.output_dir.as_posix()
             )
-            msg = f"cannot write '{target}': {error.strerror or error}"
-            raise OSError(msg) from None
+            raise OSError(describe_write_failure(error, target)) from None
 
     if args.format == "json":
         payload = _diagnostics_payload(bag)
@@ -997,8 +997,7 @@ def _write_dictionary(
         try:
             (result,) = write([GeneratedFile(path, text)])
         except OSError as error:
-            msg = f"cannot write '{path.as_posix()}': {error.strerror or error}"
-            raise OSError(msg) from None
+            raise OSError(describe_write_failure(error, path.as_posix())) from None
     shown = path.as_posix()
     if output_format == "json":
         payload = _diagnostics_payload(bag)

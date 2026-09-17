@@ -405,7 +405,7 @@
         },
         "source": {
           "default": "",
-          "description": "Path of the description file, for reference in generated comments.",
+          "description": "File name of the description file, for reference in generated comments.\n\nThe name alone, without the directories above it: a dictionary dumped from two checkouts\nof one project is otherwise two different documents, and the banner of a generated file\nwould carry the path of whoever's machine generated it.",
           "title": "Source",
           "type": "string"
         },
@@ -1051,7 +1051,7 @@
             }
           ],
           "default": null,
-          "description": "Raw initial value, nested to match ``shape``, or the text of a string object; ``null``\nmeans zero initialised."
+          "description": "Raw initial value as the description wrote it, or the text of a string object;\n``null`` means zero initialised.\n\nA list is nested to match ``shape``, one level per dimension. A scalar written for an\narray is carried as the scalar: it initialises every element, and expanding it here\nwould write one literal per element into the dumped dictionary for a value the\ndescription states once. A consumer that needs the elements broadcasts the scalar over\n``shape``, which is what the c backend does to render the initialiser."
         },
         "section": {
           "anyOf": [

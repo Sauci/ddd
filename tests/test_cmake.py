@@ -310,6 +310,188 @@ ddd_generate(img
         assert '#include "vendor_types.h"' in types
 
 
+OPENS_A_COMMENT = "opens a comment /* inside"
+"""The one piece of prose that turns every generated comment into a build failure.
+
+``-Wcomment`` is in ``-Wall`` and reports ``"/*" within comment``; with ``-Werror`` beside it -
+the set ``docker/compile.sh`` and ``docs/generated_artefacts.rst`` verify the generated code
+with - a single description carrying it stops the build in the definition file and in every
+header that repeats it. Nothing shipped carries one, so only a project written here can prove
+the escape."""
+
+
+class TestGeneratedCommentsUnderTheVerifiedWarningSet:
+    """The generated code compiled the way the repository says it verifies it."""
+
+    def write(self, tmp_path: Path) -> None:
+        described = {
+            "component": {
+                "name": "Store",
+                "description": OPENS_A_COMMENT,
+                "constants": [{"name": "STORE_CELLS", "value": 4, "description": OPENS_A_COMMENT}],
+                "interface": [
+                    {
+                        "scope": "local",
+                        "definition": {
+                            "name": "StoreValue",
+                            "kind": "measurement",
+                            "description": OPENS_A_COMMENT,
+                            "unit": OPENS_A_COMMENT,
+                            "datatype": "uint8",
+                            "conversion": {"kind": "identity"},
+                            "volatile": False,
+                        },
+                    }
+                ],
+            }
+        }
+        (tmp_path / "store.ddd.json").write_text(json.dumps(described, indent=2), encoding="utf-8")
+        (tmp_path / "store.c").write_text('#include "Store.h"\n', encoding="utf-8")
+        (tmp_path / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        (tmp_path / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(Comments LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+if(NOT MSVC)
+    add_compile_options(-Wall -Wextra -Wpedantic -Werror -Wconversion -Wshadow -Wcast-qual
+                        -Wstrict-prototypes)
+else()
+    add_compile_options(/W4 /WX)
+endif()
+add_library(store STATIC store.c)
+ddd_add_component(store JSON "{(tmp_path / "store.ddd.json").as_posix()}")
+add_executable(img main.c)
+target_link_libraries(img PRIVATE store)
+ddd_generate(img
+             NAME CommentDevice
+             TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}")
+""",
+            encoding="utf-8",
+        )
+
+    def test_a_description_that_opens_a_comment_compiles(self, tmp_path: Path) -> None:
+        """A description, a unit, a component and a constant, each carrying ``/*``.
+
+        The definition file, the shared header, the types header and the component's own
+        header all repeat the same prose, so the compiler answers for every template the
+        examples ship rather than for the one the assertion below reads.
+        """
+        self.write(tmp_path)
+        configure(tmp_path, tmp_path / "build")
+        build(tmp_path / "build")
+        generated = tmp_path / "build" / "ddd" / "img"
+        assert "/ * inside" in (generated / "ddd_globals.c").read_text(encoding="utf-8")
+
+
+class TestEveryGeneratedHeaderCompilesAlone:
+    """``docker/compile.sh``'s own proof, over the projects it used to fail on.
+
+    The shipped verification writes one translation unit per generated header - the header
+    included twice, and nothing else - so that every header is shown to be self contained and
+    to survive being included a second time. That leaves a header with nothing in it a
+    translation unit with nothing in it, which ``-Wpedantic -Werror`` refuses (``ISO C
+    forbids an empty translation unit``), and three legitimate projects ended there: one whose
+    objects are all floating point, one that declares no object at all, and the layout
+    example, whose plugin writes a table naming objects no include of its own declares.
+    Compiled through cmake rather than by hand so that the flag set is the one every other
+    test in this file uses, and so that MSVC - where the same defect is ``C4206`` - is
+    answered for as well.
+    """
+
+    def generated(self, tmp_path: Path, project: Path) -> Path:
+        output = tmp_path / "gen"
+        run = subprocess.run(
+            [str(DDD), "generate", "all", str(project), "-o", str(output), "-t", TEMPLATES],
+            cwd=tmp_path,
+            env={**os.environ, "PYTHONPATH": str(ROOT / "src"), "PYTHONUTF8": "1"},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert run.returncode == 0, run.stdout + run.stderr
+        return output
+
+    def compile_alone(self, tmp_path: Path, output: Path) -> None:
+        """One translation unit per generated header, beside the generated sources."""
+        units = tmp_path / "units"
+        units.mkdir()
+        sources = sorted(output.glob("*.c"))
+        headers = sorted(output.glob("*.h"))
+        assert headers, "nothing was generated to compile"
+        for header in headers:
+            unit = units / f"tu_{header.stem}.c"
+            unit.write_text(f'#include "{header.name}"\n' * 2, encoding="utf-8")
+            sources.append(unit)
+        listed = "\n    ".join(f'"{source.as_posix()}"' for source in sources)
+        (tmp_path / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(Alone LANGUAGES C)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+if(NOT MSVC)
+    add_compile_options(-Wall -Wextra -Wpedantic -Werror -Wconversion -Wshadow -Wcast-qual
+                        -Wstrict-prototypes)
+else()
+    add_compile_options(/W4 /WX)
+endif()
+add_library(alone STATIC
+    {listed})
+target_include_directories(alone PRIVATE "{output.as_posix()}")
+""",
+            encoding="utf-8",
+        )
+        configure(tmp_path, tmp_path / "build")
+        build(tmp_path / "build")
+
+    def project(self, tmp_path: Path, *includes: str) -> Path:
+        description = tmp_path / "project.ddd.json"
+        description.write_text(
+            json.dumps({"project": {"name": "P", "includes": list(includes)}}), encoding="utf-8"
+        )
+        return description
+
+    def test_a_project_whose_objects_are_all_floating_point_compiles(self, tmp_path: Path) -> None:
+        """No integer datatype, so nothing asked for ``<stdint.h>`` and the types header was
+        a guard around nothing - which every other generated header includes and nothing
+        else, so two translation units ended there rather than one."""
+        (tmp_path / "f.ddd.json").write_text(
+            json.dumps(
+                {
+                    "component": {
+                        "name": "F",
+                        "interface": [declare("local", "Fx", "float32")],
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        output = self.generated(tmp_path, self.project(tmp_path, "f.ddd.json"))
+        assert "#include <stdint.h>" in (output / "ddd_types.h").read_text(encoding="utf-8")
+        self.compile_alone(tmp_path, output)
+
+    def test_an_image_registering_no_component_compiles(self, tmp_path: Path) -> None:
+        """The cmake module calls an empty ``includes`` list a project DDD accepts, and it
+        is - an image that registers no component yet. Everything it generates was empty."""
+        output = self.generated(tmp_path, self.project(tmp_path))
+        assert "This project does not define any global variable" in (
+            output / "ddd_globals.c"
+        ).read_text(encoding="utf-8")
+        self.compile_alone(tmp_path, output)
+
+    def test_the_layout_examples_plugin_header_compiles(self, tmp_path: Path) -> None:
+        """The plugin's table takes the address and the size of every stamped object and
+        included no declaration of any of them, so the one artefact the example exists to
+        show was the one the shipped harness could not compile."""
+        shutil.copytree(LAYOUT, tmp_path / "layout")
+        shutil.copytree(EXAMPLES / "plugins", tmp_path / "plugins")
+        output = self.generated(tmp_path, tmp_path / "layout" / "project.ddd.json")
+        assert '#include "ddd_globals.h"' in (output / "ddd_layout.h").read_text(encoding="utf-8")
+        self.compile_alone(tmp_path, output)
+
+
 class TestAHandWrittenProject:
     def write(self, tmp_path: Path) -> Path:
         """The layout example as shipped, its project naming ``../plugins/ddd_layout.py``."""

@@ -54,6 +54,21 @@ class TestTheExampleProject:
         keys = {entry["name"]: entry["extensions"] for entry in dictionary["objects"]}
         assert keys["EngineHours"] == {"layout": {"key": 12, "version": 3}}
 
+    def test_its_derived_limits_read_as_the_factors_imply(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The shipped example is where a reader meets a derived limit for the first time.
+
+        Both of its scaled objects state ``0.1`` and no limits, so both ends are derived; the
+        ``sint16`` one used to publish ``3276.7000000000003``, the binary product of 32767 and
+        a factor that has no exact float.
+        """
+        assert main(["dump", str(LAYOUT), "-W", "missing-id=ignore"]) == EXIT_OK
+        dictionary = json.loads(capsys.readouterr().out)
+        limits = {entry["name"]: entry["limits"] for entry in dictionary["objects"]}
+        assert limits["CoolantTemperature"] == {"min": -3276.8, "max": 3276.7}
+        assert limits["EngineHours"] == {"min": 0.0, "max": 429496729.5}
+
 
 class TestWithinOneDelivery:
     def test_two_objects_claiming_one_key(

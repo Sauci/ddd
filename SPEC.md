@@ -414,7 +414,10 @@ Kind specific attributes:
   or a map over its two axes, holds at most 10 000 000 elements, the product of its
   dimensions, because the dictionary, the A2L and the generated code carry every element; a
   larger one is `schema` where the shape is written, at `dimensions`, at the `size` of an axis
-  or, for a map, at the whole declaration, and the declaration is dropped. In the A2L the same
+  or, for a map, at the whole declaration, and the declaration is dropped. A shape states at
+  most 64 dimensions, a limit on the list and not on what it multiplies out to, because the
+  walks that expand a shape descend once per dimension; a longer one is `schema` at
+  `dimensions`, and the declaration is dropped. In the A2L the same
   object is described by a
   `MATRIX_DIM` listing the fastest running index first, that is in the reverse order,
   because describing it in C order would state a transposed object; the list is padded with
@@ -422,7 +425,12 @@ Kind specific attributes:
 - `init` is a scalar or a nested list matching the shape of the object. A scalar given
   for an array shaped object initialises every element; the scalar fill applies to the
   whole object only, not to a nested position. An initial value **must** fit the raw
-  range of its datatype and **must** match the shape of the object (`init-invalid`). It is
+  range of its datatype and **must** match the shape of the object (`init-invalid`). On a
+  floating point datatype it **must** also be a magnitude that datatype can hold: a value
+  that is not zero and that the storage rounds to zero is `init-invalid`, because the value
+  the object would start with is not the value the description states - `1e-50` on a
+  `float32`, whose smallest magnitude is about 1.4e-45, and which the generated C carries as
+  a literal a compiler refuses rather than silently zeroes. It is
   compared neither against the limits, which
   are physical while `init` is raw, nor against the enumerators of an enum conversion.
   A `string` object ([section 3.4](#34-conversions)) **may** state its `init` as a JSON
@@ -445,8 +453,12 @@ Kind specific attributes:
   declares it as its `input`. It is a use of the object all the same, so a reference into
   another component's `local` object is `local-conflict`
   ([section 4](#4-consistency-checks)).
-- `input` names the measurement that indexes an axis (A2L input quantity); when omitted,
-  the A2L uses `NO_INPUT_QUANTITY`.
+- `input` names the measurement that indexes an axis (A2L input quantity). It **must** name
+  a plain measurement: an instance of a structure is of kind `measurement` and is still
+  refused (`reference-kind`), because it has no A2L record of its own to be indexed by. When
+  omitted, the A2L uses `NO_INPUT_QUANTITY`, and so it does for a name the dictionary being
+  written does not carry - which no project DDD resolves itself can produce, only a
+  dictionary read back from elsewhere ([section 5.2](#52-a2l)).
 - Calibration objects (every kind except `measurement`) are always generated `const`,
   because the software never writes them, and additionally `volatile` when the declaration
   says so. An object a calibration tool changes in a running target needs both qualifiers.
@@ -501,7 +513,13 @@ whoever states them, and only two *stated* sets of limits can disagree
 (`definition-mismatch`). The resolved limits come from the producer when it states them,
 otherwise from the first declaration in load order that states them, and otherwise they
 are derived; every other declaration that states limits is compared against that stated
-reference. An omitted `unit` is the empty unit and compares as such: a consumer stating none
+reference. A derived end is rounded to twelve significant digits, because a decimal factor
+has no exact binary float: a `uint8` under `{"factor": 0.03}` covers 0 .. `7.65`, the number
+its own largest raw count reads as, rather than the `7.6499999999999995` the multiplication
+produces, and the A2L and the dumped dictionary state the rounded end. The relative tolerance
+of `limits-out-of-range` ([section 4](#4-consistency-checks)) spans the difference, so limits
+copied out of a file an earlier version wrote are still on the range. An omitted `unit` is
+the empty unit and compares as such: a consumer stating none
 against a producer stating `rpm` is `definition-mismatch`. A `typename` compares as what
 it fixes - the `datatype`, `unit`, `conversion` and `limits` of the scalar type - so a
 declaration naming `Speed_t` and one spelling `uint16` with the same unit, conversion and
@@ -1285,10 +1303,15 @@ Errors:
   value pairs are compared, in the textual order of the file, for the list form and the
   mapping form alike, so a reordering conflicts and the free text descriptions do not.
 - `init-invalid`: an initial value or an enumerator does not fit the datatype or the shape,
-  or a string init is not printable ASCII, leaves no room for its terminator, or is written
-  on an object that is not a string.
+  or a non-zero initial value rounds to zero in a floating point datatype, or a string init
+  is not printable ASCII, leaves no room for its terminator, or is written on an object that
+  is not a string.
 - `unknown-reference`, `reference-kind`: a curve, map or axis refers to an object that does
-  not exist or has the wrong kind. The referring object is dropped as unresolvable whatever
+  not exist or has the wrong kind. A structured object ([section 3.3.2](#332-naming-a-declared-type))
+  is the wrong kind for the `input` of an axis as well, although an instance of a structure
+  is of kind `measurement`: it reaches the A2L as one record per value-holding member and
+  none of its own ([section 5.2](#52-a2l)), so an axis indexed by it would name a record the
+  file does not carry. The referring object is dropped as unresolvable whatever
   severity the finding is given, because a curve without its axis has no shape and an axis
   naming an absent measurement would leave a dangling name in the A2L; `incomplete-project`
   says so when the finding is silenced. A reference to an object that was declared but
@@ -1307,7 +1330,11 @@ Errors:
   C identifier or the same generated file. Exactly these pairs are compared: enumerators of
   different enums, an enumerator and a data object, a data object and the name of an enum
   or of a declared type, a declared constant and a data object, an enum, an enumerator or
-  a declared type, and two component names differing only in case. Two pairs that share
+  a declared type, a declared constant and the member of a structure, and two component
+  names differing only in case. The member is the one pair that is not a clash of
+  identifiers - a member has a namespace of its own in C - but of a macro with the text it
+  replaces: a constant is emitted as a preprocessor definition in the same types header, so
+  it rewrites the member where the structure declares it. Two pairs that share
   the same C namespace in the types header are not compared yet: an enum and a declared
   type of one name, and an enumerator and a declared type of one name *(planned)*.
 - `file-extension`: a description file is not named `*.ddd.json`.
@@ -1610,7 +1637,9 @@ those that arise where `missing-producer` is relaxed - is grouped under `<unreso
 the definition file rather than under a component. Names sort by code point, an
 upper case name before every lower case one and `cell[10]` before `cell[2]`, which is a
 spelling rule rather than a locale's; only file paths order as the platform compares them.
-Files are written UTF-8, and a rendered file whose content has not changed is left
+Files are written UTF-8 with LF line endings and no byte order mark - the A2L of
+[section 5.2](#52-a2l) is the one artefact that carries one, because its own format has no
+other way of stating an encoding - and a rendered file whose content has not changed is left
 untouched, so that a regeneration does not cascade into a rebuild.
 
 Assignment of objects to freely chosen generated `.c`/`.h` files is *planned*.
@@ -1634,7 +1663,10 @@ ASAM MCD-2 MC output containing:
   format - an integer and a float object under one conversion therefore share a method
   unless that conversion is an identity with a unit or a linear one whose `factor` and
   `offset` are whole numbers, where the integer defaults to `%8.0` and the float to `%8.3`
-  and each gets its own method - and `COMPU_VTAB` per enum; a string gets no method.
+  and each gets its own method - and one `COMPU_VTAB` per enum a record in the file refers
+  to; a string gets no method. An enum some declaration names and no exported record uses -
+  the conversion of a bitfield member, say - is in the dictionary and not in the A2L, and
+  gets no table.
 - `IF_DATA XCP` on every `MEASUREMENT` whose object resolves to a measurement raster
   ([section 3.10](#310-measurement-rasters)), naming the raster's event channel in the
   `DEFAULT_EVENT_LIST` of a `DAQ_EVENT VARIABLE` block, so that a tool preselects the event
@@ -1658,9 +1690,15 @@ ASAM MCD-2 MC output containing:
   `COMPU_VTAB`s and `COMPU_METHOD`s by their generated names; the `GROUP`s as said.
 
 The A2L is written as `<project name>.a2l` into the output directory (`-o`), beside the C
-sources; a component generated on its own names the file after the component. The file
-opens with `ASAP2_VERSION 1 61` and one `PROJECT` holding one `MODULE`, both named
-after the project ([section 3.1](#31-project-description)). The `PROJECT` carries a
+sources; a component generated on its own names the file after the component. The file is
+UTF-8 and opens with a UTF-8 byte order mark, then the generator comment and
+`ASAP2_VERSION 1 61`, and holds one `PROJECT` holding one `MODULE`, both named
+after the project ([section 3.1](#31-project-description)). The mark is the encoding
+declaration: ASAP2 1.6.1 section 1.5 says a reader detects the encoding from a byte order
+mark and otherwise reads the file as ISO-8859-1, and the `ENCODING` keyword that would say
+it in words arrives only with 1.7. Without the mark a unit such as `°C`, written UTF-8,
+reaches a tool as `Â°C` or stops its parser; no other artefact carries one
+([section 5.1](#51-c-code)). The `PROJECT` carries a
 `HEADER` stating the project description, the project name as `PROJECT_NO` and the
 generator with its version; the `MODULE` carries a `MOD_COMMON` stating the
 byte order and fixed alignments (1/2/4/8, floats 4/8) and, when the project declares
@@ -1675,12 +1713,12 @@ and a tool reading multi byte values under the wrong one misreads every value.
 Generated identifiers are deterministic: record layouts `RL_VALUES_<TYPE>` and
 `RL_AXIS_<TYPE>` per datatype and storage category, computation methods `CM_<enum>`,
 `CM_LIN_<unit>` and `CM_IDENT_<unit>`, the unit slugged into identifier characters with
-`_2`, `_3` appended on a collision, and one `COMPU_VTAB` named `VTAB_<enum>` per enum. The
-suffix is added when the generated name collides - two linear conversions in one unit, or
-one identity with a unit, or one linear conversion with whole `factor` and `offset`, used
-by an integer and by a float object - and the unsuffixed name goes to the method of the
-object that reaches the file first, the plain objects in name order before the member
-paths. An enum is a `TAB_VERB` referring to its `COMPU_VTAB`.
+`_2`, `_3` appended on a collision, and one `COMPU_VTAB` named `VTAB_<enum>` per enum a
+record refers to. The suffix is added when the generated name collides - two linear
+conversions in one unit, or one identity with a unit, or one linear conversion with whole
+`factor` and `offset`, used by an integer and by a float object - and the unsuffixed name
+goes to the method of the object that reaches the file first, the plain objects in name
+order before the member paths. An enum is a `TAB_VERB` referring to its `COMPU_VTAB`.
 A linear conversion is a `RAT_FUNC` whose `COEFFS` state raw as a function of physical, so
 the stated slope is the inverse of `factor`. An identity with a unit is `IDENTICAL`, and
 one without a unit gets no method at all: the record says `NO_COMPU_METHOD`. What the
@@ -1698,7 +1736,11 @@ are written in their shortest round trip form, an integral value without a decim
 Export is closed over references: an exported curve or map pulls the axes it refers to into
 the A2L, and an axis in the file, exported in its own right or pulled in, pulls the
 measurement indexing it, whatever their own `export` says, because an `AXIS_PTS_REF` to an
-absent axis would be an invalid file rather than a smaller one.
+absent axis would be an invalid file rather than a smaller one. An axis whose `input` names
+an object the dictionary does not carry states `NO_INPUT_QUANTITY` instead of the name: the
+checks leave no such reference in a project DDD resolves itself
+([section 4](#4-consistency-checks)), and a dictionary read back from a dump or written by
+another producer is not checked again, where a dangling name would make the module invalid.
 
 A record whose object is declared under a preprocessor condition is preceded by a comment
 naming that condition, because the format has no conditional construct of its own.
@@ -1742,8 +1784,10 @@ a `scope` and a `condition`; only declarations whose object resolved are listed.
 records what its producing declaration states, resolved: `name`, `id`, `extensions`,
 `kind`, `datatype`, `description`, `unit`, `conversion` with its `kind` spelled out,
 `limits` (`min`, `max`, the stated ones or the ones the datatype and conversion imply),
-`shape` (the numbers) and `dimensions` (the spelling, constant names kept), `init`,
-`section`, `raster` (the declaration's own, else its component's default), `volatile`,
+`shape` (the numbers) and `dimensions` (the spelling, constant names kept), `init` as the
+declaration wrote it - a list nested one level per dimension, a scalar left a scalar even on
+an array, which is the broadcast the declaration states once and the reader repeats over
+`shape` - `section`, `raster` (the declaration's own, else its component's default), `volatile`,
 `condition` (the producer's), `references`, `owner`, `consumers`, `local` and `a2l` with
 `export` resolved to a boolean. An instance records `name`, `id`, `extensions`, `type`,
 `kind`, `description`, `shape`, `dimensions`, `volatile`, `section`, `raster`, `condition`,

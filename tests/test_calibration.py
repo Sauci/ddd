@@ -252,6 +252,57 @@ class TestResolution:
         )
         assert checks(bag) == ["unknown-reference"]
 
+    def test_a_structured_input_quantity_is_refused(self, tree: Path) -> None:
+        """A structured instance is of kind ``measurement``, so only its type gives it away.
+
+        It is no quantity a tool can read: an instance has no record of its own in the a2l,
+        only one per value-holding member. Bound to it, the axis carried ``Inst`` as its input
+        quantity and the ``COM_AXIS`` of every curve over it did too, while the only
+        ``MEASUREMENT`` in the file was ``Inst.a`` - the dangling name the closure over
+        references exists to prevent. Refused as any other reference of the wrong kind is,
+        which drops the axis and the curve over it.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "S_t",
+                            "members": [
+                                {
+                                    "name": "a",
+                                    "member": "value",
+                                    "datatype": "uint16",
+                                    "conversion": {"kind": "identity"},
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Inst", typename="S_t", kind="measurement"),
+                    axis("Cx", 2, input="Inst"),
+                    declare("local", "Cv", "uint8", kind="curve", axis="Cx"),
+                ),
+            },
+        )
+        assert checks(bag) == ["reference-kind"]
+        assert "the input of axis 'Cx' must be a plain measurement, but 'Inst' is a " in (
+            messages(bag)
+        )
+        assert "a.ddd.json#component.interface[1].definition.input" in messages(bag)
+        assert dictionary is not None
+        assert [entry.name for entry in dictionary.objects] == []
+        assert [leaf.name for leaf in dictionary.leaves] == ["Inst.a"]
+        rendered = render_files(dictionary, tree / "gen")
+        content = next(file.content for file in rendered if file.path.name == "P.a2l")
+        assert "AXIS_PTS" not in content
+        assert "COM_AXIS" not in content
+
     def test_init_shape_of_a_curve_is_checked_against_the_axis(self, tree: Path) -> None:
         _, bag = run_analysis(
             tree,

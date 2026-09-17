@@ -263,7 +263,7 @@
             }
           ],
           "default": null,
-          "description": "Measurement that indexes the axis; the a2l input quantity.",
+          "description": "Measurement that indexes the axis; the a2l input quantity.\n\nA plain one: an instance of a declared structure is of kind ``measurement`` and is\nrefused here as any other wrong kind is, because it reaches the a2l as one record per\nvalue-holding member and none of its own.",
           "title": "Input"
         }
       },

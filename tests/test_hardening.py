@@ -27,7 +27,7 @@ from ddd.backends import load_address_map
 from ddd.backends.c.literals import c_literal
 from ddd.cli import EXIT_FINDINGS, main
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity, _pointer_order
-from ddd.ir import DICTIONARY_FORMAT
+from ddd.ir import DICTIONARY_FORMAT, DataDictionary
 from ddd.loading import load_dictionary, load_workspace
 from ddd.models import Datatype
 
@@ -155,6 +155,43 @@ class TestGeneratedArtefactsAreCorrect:
         assert dictionary is not None
         with pytest.raises(ValueError, match="no template to render"):
             CBackend(empty).generate(dictionary, tree / "gen")
+
+    def loaded(self, tree: Path) -> DataDictionary:
+        dictionary, _ = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is not None
+        return dictionary
+
+    def test_a_template_directory_that_is_not_there_says_so(self, tree: Path) -> None:
+        """A path nobody created and a directory holding the wrong files are two different
+        mistakes with two different answers; reported as an empty one, the author reads the
+        advice about helper templates and goes looking for a template that is not the
+        problem."""
+        from ddd.backends import CBackend
+
+        dictionary = self.loaded(tree)
+        missing = tree / "nowhere"
+        with pytest.raises(ValueError) as caught:
+            CBackend(missing).generate(dictionary, tree / "gen")
+        assert str(caught.value).startswith(f"no template directory at '{missing.as_posix()}'")
+        assert "ddd templates-dir" in str(caught.value)
+
+    def test_a_template_directory_that_is_a_file_says_so(self, tree: Path) -> None:
+        """``-t`` pointed at one template rather than at the directory holding it."""
+        from ddd.backends import CBackend
+
+        dictionary = self.loaded(tree)
+        single = tree / "ddd_globals.c.jinja2"
+        single.write_text("/* nothing */\n", encoding="utf-8")
+        with pytest.raises(ValueError) as caught:
+            CBackend(single).generate(dictionary, tree / "gen")
+        assert str(caught.value).startswith(f"'{single.as_posix()}' is not a directory")
+        assert "ddd templates-dir" in str(caught.value)
 
 
 class TestNamesThatWouldNotCompile:

@@ -8,6 +8,7 @@ Those mappings belong to the backend that needs them (:mod:`ddd.backends.c.types
 
 from __future__ import annotations
 
+import struct
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Annotated, Any, Final
@@ -220,6 +221,28 @@ class Datatype(StrEnum):
     def raw_max(self) -> float:
         """Largest value representable in the raw (implementation) domain."""
         return self.info.raw_max
+
+    def rounds_to_zero(self, value: float | int | bool) -> bool:
+        """Whether this storage turns a value that is not zero into zero.
+
+        :attr:`raw_min` and :attr:`raw_max` bound the magnitude a datatype can hold from
+        above; a floating point one is bounded from below as well, and nothing above says so.
+        ``float32`` runs out at about 1.4e-45 - the smallest subnormal - so ``1e-50`` is a
+        value inside the stated range that the storage has no bits for, and the generated c
+        carries it as ``1e-50F``, which a compiler rejects rather than silently zeroes:
+        ``floating constant truncated to zero``. An integer datatype answers ``False`` here
+        whatever it is handed, because a whole number outside its range is out of range and
+        is reported as that.
+
+        Asked of the packed bytes rather than of a threshold, because the threshold is the
+        rounding rule as much as the format: the magnitude exactly half way to the smallest
+        subnormal rounds to zero too, ties going to the even significand. ``float64`` answers
+        ``False`` for every value that is not zero, because a python float is one.
+        """
+        if value == 0 or not self.info.is_float:
+            return False
+        packed = "<f" if self.size == 4 else "<d"
+        return bool(struct.unpack(packed, struct.pack(packed, value))[0] == 0.0)
 
     @property
     def schema_description(self) -> str:

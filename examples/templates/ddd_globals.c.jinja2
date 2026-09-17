@@ -51,5 +51,11 @@
 {% endfor %}
 {% if not model.groups %}
 
-/* This project does not define any global variable. */
+/*
+ * This project does not define any global variable.  A translation unit has to
+ * hold at least one declaration - ISO C forbids an empty one, and -Wpedantic
+ * says so - and this typedef is the cheapest one there is: it declares a name
+ * and defines no storage, so the object file stays empty.
+ */
+typedef int ddd_no_global_variables_t;
 {% endif %}

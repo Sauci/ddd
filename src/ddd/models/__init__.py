@@ -21,8 +21,11 @@ from ddd.models.conversion import (
     StringConversion,
     conversion_identity,
     conversion_range,
+    is_above,
+    is_below,
     physical_range,
     raw_reading,
+    round_physical,
 )
 from ddd.models.objects import (
     STRING_DATATYPES,
@@ -139,10 +142,13 @@ __all__ = [
     "discriminator_tags",
     "format_number",
     "format_shape",
+    "is_above",
+    "is_below",
     "is_reserved_identifier",
     "physical_range",
     "raw_reading",
     "refuse_string_misuse",
     "resolve_export",
+    "round_physical",
     "spelled_dimensions",
 ]

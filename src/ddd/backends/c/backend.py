@@ -87,6 +87,7 @@ class CBackend:
         self.generator = generator
 
     def generate(self, dictionary: DataDictionary, output_dir: Path) -> list[GeneratedFile]:
+        self._check_template_dir()
         environment = make_environment(self.template_dir)
         model = build_code_model(dictionary, self.options, self.generator)
 
@@ -128,3 +129,29 @@ class CBackend:
                     )
                 )
         return files
+
+    def _check_template_dir(self) -> None:
+        """Answer for the ``-t`` itself before answering for what is in it.
+
+        jinja's loader treats a path that is not a directory as a directory holding nothing,
+        so a misspelled ``-t``, and a ``-t`` naming one template rather than the directory it
+        sits in, both came out as "no template to render in ..." - which sends the author
+        looking through a directory for the file that is missing from it, when the directory
+        is the mistake. Two sentences for two mistakes, each ending in the same advice,
+        because the answer to all three is the same set of example templates.
+        """
+        spelling = self.template_dir.as_posix()
+        if not self.template_dir.exists():
+            msg = (
+                f"no template directory at '{spelling}': -t/--template-dir names the "
+                f"directory holding the jinja2 templates of the c sources. "
+                f"'ddd templates-dir' prints a set to copy from."
+            )
+            raise ValueError(msg)
+        if not self.template_dir.is_dir():
+            msg = (
+                f"'{spelling}' is not a directory: -t/--template-dir names the directory "
+                f"holding the jinja2 templates of the c sources, not one of the templates. "
+                f"'ddd templates-dir' prints a set to copy from."
+            )
+            raise ValueError(msg)

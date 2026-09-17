@@ -94,7 +94,10 @@ Five templates live there, and four of them produce a file:
    * - ``ddd_globals.c.jinja2``
      - ``ddd_globals.c``, the single definition of every global variable of the project.
        Compile and link it exactly once; from that point on DDD owns the storage of every
-       declared object and a duplicate definition elsewhere fails at link time.
+       declared object and a duplicate definition elsewhere fails at link time. A project
+       that declares no object at all - an image whose components are not registered yet -
+       gets a file carrying one typedef and no storage, because ISO C forbids a translation
+       unit with nothing in it and the warning set below treats that as an error.
    * - ``{component}.h.jinja2``
      - One header per component - ``Controller.h``, ``SensorHub.h``, ``UserInterface.h`` and
        ``EventLogger.h`` for the demo - carrying the objects that component declared and
@@ -195,6 +198,8 @@ description change points at the component that changed:
    /* measurements */
    /** Measurement with a verbal conversion table */
    uint8_t StateA = 0U;
+   /** Name of the current state, as text */
+   uint8_t StateName[16] = "OFF";
    /** Measurement used as the input quantity of AxisA [Hz] */
    volatile uint16_t ValueE = 0U;
    /** Signed measurement with a fixed point conversion [degC] */
@@ -279,6 +284,8 @@ this:
    extern float ValueC;  /* produced by SensorHub */
    /** Measurement with a verbal conversion table */
    extern uint8_t StateA;  /* produced by Controller */
+   /** Name of the current state, as text */
+   extern uint8_t StateName[16];  /* produced by Controller */
    /** Array measurement with four elements [V] */
    extern volatile uint16_t ValueB[4];  /* produced by SensorHub */
    #if defined(FEATURE_X)
@@ -396,10 +403,10 @@ where another does not define it.
    against ``ddd dump --format json``, once without defines and once with ``-DFEATURE_X``::
 
       == symbols   [base]
-      20 of 21 declared variables are defined
+      22 of 23 declared variables are defined
         conditional, absent : ValueG
       == symbols   [defines]
-      21 of 21 declared variables are defined
+      23 of 23 declared variables are defined
         conditional, present: ValueG
 
 Calibration data is const, and volatile when a tool tunes it
@@ -461,8 +468,11 @@ value, reads it back correctly, and the ecu behaves as it did before.
 treats a volatile access as a side effect and takes the object out of the read only category
 altogether: ``.section .rodata`` becomes a plain ``.data``, the section flags ``readelf``
 reports go from ``A`` to ``WA``, and the class ``nm`` prints goes from ``R`` to ``D``.
-Measured on DDD's own generated demo with the flag set quoted above, ``size -A
-ddd_globals.o`` moves from ``.rodata 84`` and ``.data 2`` to ``.data 86``. Naming a section
+Measured with gcc 12.2.0 on DDD's own generated demo with the flag set quoted above, ``size
+-A ddd_globals.o`` moved from ``.rodata 84`` and ``.data 2`` to ``.data 86`` - every byte of
+the calibration data changing category. Those two counts are of the demo as it stood when the
+measurement was taken, and they move with whatever the demo declares; what does not move is
+that all of it goes across. Naming a section
 explicitly does not change this - a ``.calib`` section is emitted ``A`` when its contents are
 ``const`` and ``WA`` when they are ``const volatile``. On a flash target with an ordinary
 linker script that means a ram address with a load region in flash and a copy at startup, so
@@ -622,6 +632,15 @@ running target. DDD writes **ASAP2 1.6.1** and says so on the second line of the
          ALIGNMENT_FLOAT64_IEEE 8
        /end MOD_COMMON
 
+Before that first line the file carries a UTF-8 byte order mark, which is the only encoding
+declaration ASAP2 1.6.1 has: section 1.5 of the standard tells a reader to detect the encoding
+from such a mark and to fall back to ISO-8859-1 where there is none, and the ``ENCODING``
+keyword that would state it in words arrives only with 1.7. Without it a unit as ordinary as
+``°C``, written as the utf-8 DDD writes everywhere, reaches a calibration tool as ``Â°C`` or
+stops its parser. The a2l is the one generated file that carries a mark; the c sources and the
+dumped dictionary stay utf-8 without one, because a compiler and a json reader already know
+what they are reading.
+
 The whole project becomes a single ``MODULE`` named after the project, which is the right
 granularity here: a module is what a calibration tool connects to, and the components of the
 image are one target, not several. ``BYTE_ORDER`` follows ``--byte-order``, which writes
@@ -680,7 +699,7 @@ the format cannot describe storage whose layout DDD does not know; neither appea
    * - ``COMPU_METHOD``
      - one per distinct combination of conversion, unit **and** display format
    * - ``COMPU_VTAB``
-     - one per enum conversion
+     - one per enum conversion a record in the file refers to
    * - ``GROUP``
      - one per component that exports at least one object
 
@@ -986,7 +1005,10 @@ record layout the points are deposited in, a maximum difference of ``0``, the co
 the maximum number of axis points, and the physical limits. The maximum is the ``size`` the
 description gave, because the array generated for the axis is exactly that long and there is
 no room for a calibration tool to add a point. An axis whose description gives no ``input``
-gets the keyword ``NO_INPUT_QUANTITY`` instead of a name.
+gets the keyword ``NO_INPUT_QUANTITY`` instead of a name, and so does one whose ``input``
+names something the dictionary being written does not carry - which the checks leave in no
+project DDD resolves itself, only in a dictionary read back from a dump or written by another
+producer, where a name no record answers to would make the whole module invalid.
 
 A curve or a map then refers to that axis instead of carrying its own copy of the break
 points. The reference is an ``AXIS_DESCR`` of attribute ``COM_AXIS`` - a *common* axis, one

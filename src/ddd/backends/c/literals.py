@@ -37,6 +37,27 @@ def c_literal(value: bool | int | float, datatype: Datatype) -> str:
     return f"{number}{suffix}"
 
 
+def c_constant_literal(value: int | float) -> str:
+    """Render a declared constant as the c literal its value means.
+
+    A constant carries no datatype - it is a named number, and what a shape or an expression
+    does with it is the project's business - so the literal is spelled for the narrowest type
+    that holds the value: an ``int`` where one holds it, and ``long long`` or ``unsigned long
+    long`` past that, which is what :func:`c_literal` already spells for an ``init``. Written
+    out bare instead, the two ends of the 64 bit range are not the numbers they read as:
+    ``18446744073709551615`` has no signed type to be and c takes it as unsigned with a
+    diagnostic, and ``-9223372036854775808`` is a unary minus applied to that same literal.
+    A number with a fraction is a ``double`` literal, which is what it looks like already.
+    """
+    if isinstance(value, float):
+        return c_literal(value, Datatype.FLOAT64)
+    if Datatype.SINT32.raw_min <= value <= Datatype.SINT32.raw_max:
+        return c_literal(value, Datatype.SINT32)
+    if value <= Datatype.SINT64.raw_max:
+        return c_literal(value, Datatype.SINT64)
+    return c_literal(value, Datatype.UINT64)
+
+
 def c_string_literal(text: str) -> str:
     """Render a string init as a c string literal.
 
@@ -127,9 +148,24 @@ def _kind_detail(entry: ResolvedObject) -> str:
 
 
 def sanitize_comment(text: str) -> str:
-    """Make text safe to put inside a ``/* ... */`` comment."""
+    """Make text safe to put inside a ``/* ... */`` comment.
+
+    Both markers are defused, because both of them end a build. ``*/`` closes the comment the
+    template opened and spills the rest of the description into the code; ``/*`` stays inside
+    it and is a diagnostic instead - ``-Wcomment``, which ``-Wall`` turns on, reports ``"/*"
+    within comment``, and the warning set this repository verifies the generated code with
+    (``docker/compile.sh``) carries ``-Werror``. One description reaches the definition file,
+    the shared header, the types header and the component's own header, so one of them stops
+    the compilation of all four.
+
+    The opener is replaced first, and the order is what makes the pair safe rather than a
+    matter of taste: ``/*/`` is both markers sharing one ``*``, and defusing either of them
+    alone re-forms the other out of what is left. Taking the opener first leaves no ``/``
+    immediately before a ``*``, so the second pass can form no new opener, and it inserts a
+    space before the ``/`` it writes, so it can form no new closer either.
+    """
     collapsed = re.sub(r"\s+", " ", text).strip()
-    return collapsed.replace("*/", "* /")
+    return collapsed.replace("/*", "/ *").replace("*/", "* /")
 
 
 def guard_name(*parts: str) -> str:

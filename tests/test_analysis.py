@@ -189,6 +189,57 @@ class TestValueChecks:
         )
         assert checks(bag) == []
 
+    def test_a_float32_init_that_rounds_to_zero_is_refused(self, tree: Path) -> None:
+        """Inside the magnitude the datatype states, and past the precision it has: the
+        literal reaches the generated c as ``1e-50F``, which gcc refuses with ``floating
+        constant truncated to zero`` under the warning set the artefacts page verifies with.
+        The number the storage would hold is not the number the description states."""
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("local", "X", datatype="float32", init=1e-50)],
+                b=[declare("local", "Y")],
+            ),
+        )
+        assert checks(bag) == ["init-invalid"]
+        assert "init value 1e-50 rounds to zero in float32" in messages(bag)
+        assert "definition.init" in messages(bag)
+
+    def test_a_float32_init_in_the_subnormal_range_is_kept(self, tree: Path) -> None:
+        """A denormal is a number float32 holds, not a number it loses: 1e-40 compiles."""
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("local", "X", datatype="float32", init=1e-40)],
+                b=[declare("local", "Y")],
+            ),
+        )
+        assert checks(bag) == []
+
+    def test_a_float32_init_of_zero_is_kept(self, tree: Path) -> None:
+        """Zero rounds to zero and is meant to: only a value the author wrote as something
+        else and the storage turns into nothing is a mistake."""
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("local", "X", datatype="float32", init=0.0)],
+                b=[declare("local", "Y")],
+            ),
+        )
+        assert checks(bag) == []
+
+    def test_a_float64_init_of_the_same_magnitude_is_kept(self, tree: Path) -> None:
+        """The rule is the storage's, not the number's: float64 holds 1e-50 exactly as the
+        description wrote it."""
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("local", "X", datatype="float64", init=1e-50)],
+                b=[declare("local", "Y")],
+            ),
+        )
+        assert checks(bag) == []
+
     def test_array_element_out_of_range(self, tree: Path) -> None:
         _, bag = run_analysis(
             tree,
@@ -257,6 +308,33 @@ class TestValueChecks:
             tree,
             two_components(
                 a=[declare("local", "X", limits={"min": 0, "max": 255})],
+                b=[declare("local", "Y")],
+            ),
+        )
+        assert checks(bag) == []
+
+    def test_a_limit_stated_as_the_unrounded_product_is_still_on_the_range(
+        self, tree: Path
+    ) -> None:
+        """Rounding the derived end would otherwise report every file written before it.
+
+        ``7.6499999999999995`` is what 255 counts of 0.03 computed to, so it is what an
+        earlier ddd wrote into an a2l and into a dumped dictionary, and what an author copied
+        from there into a ``limits``. The derived end is now ``7.65``, a hair below it, and
+        the tolerance both this check and the delivery comparison weigh a derived limit with
+        is what keeps that from becoming a finding on a file nobody changed.
+        """
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[
+                    declare(
+                        "local",
+                        "X",
+                        conversion={"factor": 0.03},
+                        limits={"min": 0, "max": 7.6499999999999995},
+                    )
+                ],
                 b=[declare("local", "Y")],
             ),
         )
@@ -603,6 +681,27 @@ class TestArraysTooLarge:
         assert "'V' has 1000000000 elements; DDD carries at most 10000000" in rendered
         assert dictionary is not None
         assert dictionary.objects == ()
+
+    def test_an_array_of_too_many_dimensions_is_refused_at_its_dimensions(self, tree: Path) -> None:
+        """Six hundred dimensions of one element each multiply out to one, so the element cap
+        never sees them; the walks that expand a shape descend once per dimension, and a
+        scalar ``init`` over that many used to end ``ddd generate c`` in a ``RecursionError``
+        - a traceback where a finding was owed."""
+        dictionary, bag = run_analysis(tree, self.declaring(dimensions=[1] * 600, init=0))
+        assert checks(bag) == ["schema"]
+        rendered = messages(bag)
+        assert "a.ddd.json#component.interface[0].definition.dimensions" in rendered
+        assert "'V' has 600 dimensions; DDD carries at most 64" in rendered
+        assert dictionary is not None
+        assert dictionary.objects == ()
+
+    def test_an_array_at_the_dimension_limit_is_kept(self, tree: Path) -> None:
+        """Sixty-four of them, still one element, and the object is built. The a2l says what
+        it always says past three dimensions, and nothing here is refused."""
+        dictionary, bag = run_analysis(tree, self.declaring(dimensions=[1] * 64, init=0))
+        assert checks(bag) == ["a2l-unrepresentable"]
+        assert dictionary is not None
+        assert dictionary.by_name["V"].shape == (1,) * 64
 
     def test_an_array_at_the_limit_is_kept(self, tree: Path) -> None:
         dictionary, bag = run_analysis(tree, self.declaring(dimensions=[10000000]))

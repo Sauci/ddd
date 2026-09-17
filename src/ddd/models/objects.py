@@ -669,7 +669,11 @@ class Axis(DataObject):
     constant."""
 
     input: Identifier | None = None
-    """Measurement that indexes the axis; the a2l input quantity."""
+    """Measurement that indexes the axis; the a2l input quantity.
+
+    A plain one: an instance of a declared structure is of kind ``measurement`` and is
+    refused here as any other wrong kind is, because it reaches the a2l as one record per
+    value-holding member and none of its own."""
 
     @property
     def declared_shape(self) -> WrittenShape:

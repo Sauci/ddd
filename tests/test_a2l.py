@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from conftest import component, declare, project, render_files, run_analysis
-from ddd.backends import ByteOrder, load_address_map
+from ddd.backends import ByteOrder, load_address_map, write
 from ddd.backends.a2l.model import a2l_string
+from ddd.diagnostics import DiagnosticBag
+from ddd.loading import load_dictionary
 
 
 def a2l(tree: Path, *declarations: dict[str, Any], **options: Any) -> str:
@@ -101,8 +104,18 @@ class TestMeasurements:
         assert "ECU_ADDRESS 0x20000100" in content
 
     def test_limits_are_physical(self, tree: Path) -> None:
+        """And are the decimals the factor implies, not the binary product of the raw end.
+
+        A calibration tool enforces what it reads. ``0.03`` on a ``uint8`` computes as
+        ``7.6499999999999995``, so a tool writing the physical value of raw 255 - ``7.65``,
+        the number the description implies - was refusing it as out of range, and the
+        engineer reading the file saw a limit nobody wrote. The line is matched to its end,
+        because ``3276.7`` is a prefix of the number that was wrong.
+        """
         content = a2l(tree, declare("local", "X", "sint16", conversion={"factor": 0.1}))
-        assert "SWORD CM_LIN_NONE 0 0 -3276.8 3276.7" in content
+        assert "SWORD CM_LIN_NONE 0 0 -3276.8 3276.7\n" in content
+        narrow = a2l(tree, declare("local", "Y", "uint8", conversion={"factor": 0.03}))
+        assert "UBYTE CM_LIN_NONE 0 0 0 7.65\n" in narrow
 
 
 class TestCompuMethods:
@@ -148,6 +161,22 @@ class TestCompuMethods:
         content = a2l(tree, declare("local", "X", "uint8", unit="%", conversion={"factor": 0.5}))
         assert "CM_LIN_PCT" in content
         assert '"%"' in content
+
+    def test_a_superscript_exponent_is_a_digit_of_the_name(self, tree: Path) -> None:
+        """``m/s²`` is the spelling most people type, and the superscript carried none of
+        its meaning into the identifier: the name it produced was the one ``m/s`` deserves,
+        so whichever of the two was met second was pushed onto ``_2`` and neither read as
+        what it is."""
+        content = a2l(
+            tree,
+            declare("local", "X", "uint16", unit="m/s²", conversion={"factor": 0.25}),
+            declare("local", "Y", "uint16", unit="m/s", conversion={"factor": 0.25}),
+            declare("local", "Z", "uint16", unit="m³", conversion={"factor": 0.25}),
+        )
+        assert "CM_LIN_M_PER_S2" in content
+        assert "CM_LIN_M_PER_S " in content
+        assert "CM_LIN_M3" in content
+        assert "CM_LIN_M_PER_S_2" not in content
 
     def test_enum_becomes_a_verbal_table(self, tree: Path) -> None:
         content = a2l(
@@ -339,6 +368,45 @@ class TestForcedOutput:
         content = next(file.content for file in rendered if file.path.name == "Device.a2l")
         assert "CHARACTERISTIC Cv" not in content
 
+    def test_an_input_quantity_the_dictionary_does_not_carry_is_written_as_none(
+        self, tree: Path
+    ) -> None:
+        """The backend answers for a dictionary it did not resolve itself.
+
+        ``ddd check`` refuses an axis whose ``input`` names no measurement, or one of the
+        wrong kind, so no project of this tree reaches here with a dangling name. A dumped
+        dictionary can: it is read back for a comparison long after its sources moved on,
+        another producer may write one, and a plugin's hook may edit one. A name with no
+        record behind it would make the file invalid, which is worse than an axis that says
+        it is indexed by nothing, so the backend writes ``NO_INPUT_QUANTITY`` for a name it
+        does not carry.
+        """
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json"),
+            "a.ddd.json": component(
+                "A",
+                declare("local", "Speed", "uint16"),
+                declare("local", "Cx", "uint16", kind="axis", size=2, input="Speed"),
+                declare("local", "Cv", "uint8", kind="curve", axis="Cx"),
+                description="a component",
+            ),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        payload = json.loads(dictionary.model_dump_json())
+        for entry in payload["objects"]:
+            if entry["name"] == "Cx":
+                entry["references"]["input"] = "Gone"
+        path = tree / "archived.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        archived = load_dictionary(path, DiagnosticBag())
+        assert archived is not None
+        rendered = render_files(archived, tree / "gen")
+        content = next(file.content for file in rendered if file.path.name == "Device.a2l")
+        assert "Gone" not in content
+        assert "0x00000000 NO_INPUT_QUANTITY RL_AXIS_UWORD" in content
+        assert "COM_AXIS NO_INPUT_QUANTITY" in content
+
 
 class TestStrings:
     """A calibration string is an ASCII characteristic; the format has nothing else for text."""
@@ -483,3 +551,44 @@ class TestStrings:
         assert content.count("8 bytes of text; ASAP2 1.6.1 has no string measurement") == 2
         assert "/begin CHARACTERISTIC" not in content
         assert content.count("/begin") == content.count("/end")
+
+
+class TestEncoding:
+    """The a2l says what it is encoded in, the only way ASAP2 1.6.1 has of saying it.
+
+    Section 1.5 of the standard gives a reader one rule: detect the encoding from a byte order
+    mark, and fall back to ISO-8859-1 without one. The tool writes utf-8, so a file without the
+    mark is read as ISO-8859-1 and every non-ASCII unit - ``°C`` above all - arrives as
+    mojibake or stops the parse. The mark belongs to the a2l rather than to the writer, so the
+    c and the dictionary keep the plain utf-8 they promise.
+    """
+
+    def written(self, tree: Path, *declarations: dict[str, Any]) -> dict[str, bytes]:
+        """Every artefact of a one-component project, as the bytes ``write`` puts on disk."""
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json"),
+            "a.ddd.json": component("A", *declarations, description="a component"),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen")
+        write(rendered)
+        return {file.path.name: file.path.read_bytes() for file in rendered}
+
+    def test_the_a2l_starts_with_the_utf_8_byte_order_mark(self, tree: Path) -> None:
+        written = self.written(tree, declare("local", "X"))
+        assert written["Device.a2l"].startswith(b"\xef\xbb\xbf")
+        assert written["Device.a2l"][3:].startswith(b"/* Device.a2l")
+
+    def test_the_c_artefacts_keep_the_plain_utf_8_they_promise(self, tree: Path) -> None:
+        written = self.written(tree, declare("local", "X"))
+        for name in ("ddd_globals.c", "ddd_globals.h", "ddd_types.h", "A.h"):
+            assert not written[name].startswith(b"\xef\xbb\xbf"), name
+
+    def test_a_non_ascii_unit_survives_the_round_trip(self, tree: Path) -> None:
+        """``°C`` is written as utf-8 and reads back as itself once the mark is honoured."""
+        written = self.written(tree, declare("local", "X", "uint16", unit="°C"))
+        text = written["Device.a2l"].decode("utf-8-sig")
+        assert 'IDENTICAL "%8.0" "°C"' in text
+        assert "CM_IDENT_DEGC" in text
+        assert "﻿" not in text

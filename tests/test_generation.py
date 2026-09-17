@@ -97,6 +97,27 @@ class TestGlobalDefinitionFile:
         files = generate(tree, simple(declare("local", "A", description="a */ b")))
         assert "/** a * / b */" in files["ddd_globals.c"]
 
+    def test_comment_start_marker_is_escaped(self, tree: Path) -> None:
+        """``/*`` inside a comment is an error under the flag set the repository compiles with.
+
+        ``-Wcomment`` is in ``-Wall`` and reports ``"/*" within comment``; with ``-Werror``
+        beside it, one description ending up in every header and in the definition file takes
+        the whole build down. The end marker was already defused for the other half of the
+        same reason.
+        """
+        files = generate(tree, simple(declare("local", "A", description="opens /* inside")))
+        assert "/** opens / * inside */" in files["ddd_globals.c"]
+        assert "/*" not in files["ddd_globals.c"].split("/** opens", 1)[1].split("*/", 1)[0]
+
+    def test_overlapping_markers_leave_neither_behind(self, tree: Path) -> None:
+        """``/*/`` is both markers over one ``*``; defusing either one alone re-forms the other."""
+        files = generate(tree, simple(declare("local", "A", description="a /*/ b")))
+        assert "/** a / * / b */" in files["ddd_globals.c"]
+
+    def test_a_unit_is_defused_like_a_description(self, tree: Path) -> None:
+        files = generate(tree, simple(declare("local", "A", description="Rate", unit="/*")))
+        assert "/** Rate [/ *] */" in files["ddd_globals.c"]
+
     def test_variables_are_grouped_by_owning_component(self, tree: Path) -> None:
         files = generate(
             tree,
@@ -133,11 +154,19 @@ class TestTypesHeader:
         header = files["ddd_types.h"]
         assert "typedef enum\n{\n    OFF = 0, /**< switched off */\n    ON = 1\n} Mode_t;" in header
 
-    def test_stdint_is_included_only_when_needed(self, tree: Path) -> None:
+    def test_stdbool_is_included_only_when_needed_and_stdint_always(self, tree: Path) -> None:
+        """``model.needs_stdint`` still answers whether a datatype of the project asks for
+        the header; the example template includes it either way. Every other generated header
+        includes the type header and nothing else, so a type header holding nothing leaves
+        those headers holding nothing too, and ``-Wpedantic`` refuses an empty translation
+        unit - which is what a project whose objects are all floating point used to get."""
         assert "#include <stdint.h>" in generate(tree, simple(declare("local", "A")))["ddd_types.h"]
         only_bool = generate(tree, simple(declare("local", "A", "boolean")))["ddd_types.h"]
-        assert "#include <stdint.h>" not in only_bool
+        assert "#include <stdint.h>" in only_bool
         assert "#include <stdbool.h>" in only_bool
+        only_floats = generate(tree, simple(declare("local", "A", "float32")))["ddd_types.h"]
+        assert "#include <stdint.h>" in only_floats
+        assert "#include <stdbool.h>" not in only_floats
 
     def test_include_guard(self, tree: Path) -> None:
         """The template writes its own guard; the model only normalises the spelling."""

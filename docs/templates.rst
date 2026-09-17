@@ -180,11 +180,20 @@ The model
      - The tool and version that produced the file, such as ``ddd 0.9.0``.
    * - ``model.constants``
      - One entry per :doc:`declared constant <file_formats/constants>`, in name order, each
-       with ``.name``, ``.value`` and ``.description``; empty when the project declares
-       none. Offered so the template can emit them however the house style spells one - the
-       example templates write each as a ``#define`` in the types header - because an array
-       dimensioned by a constant renders its ``array_suffix`` with the constant's *name*,
-       which therefore has to be declared before the first array that uses it.
+       with ``.name``, ``.value``, ``.literal`` and ``.description``; empty when the project
+       declares none. Offered so the template can emit them however the house style spells
+       one - the example templates write each as a ``#define`` in the types header - because
+       an array dimensioned by a constant renders its ``array_suffix`` with the constant's
+       *name*, which therefore has to be declared before the first array that uses it.
+       ``.value`` is the number and nothing else, for a template that does its own
+       formatting; ``.literal`` is that value as a c literal of the narrowest type that
+       holds it, which is what to render where the value is simply to be emitted. The two
+       differ only at the ends of the 64 bit range, where there is no literal to write out
+       bare: ``-9223372036854775808`` renders as ``(-9223372036854775807LL - 1)``, because c
+       has no negative literal and the unary minus would be applied to a literal too large
+       for any signed type, and ``18446744073709551615`` renders as
+       ``18446744073709551615ULL``, because a compiler otherwise reads it as unsigned and
+       says so.
    * - ``model.enums``
      - One entry per enum conversion, each with ``.name`` and ``.enumerators``; an
        enumerator has ``.name``, ``.value`` and ``.description``.
@@ -212,8 +221,13 @@ The model
      - One entry per component, in project order, whether or not the component declares
        anything. These are the interfaces, described below.
    * - ``model.needs_stdint``, ``model.needs_stdbool``
-     - Whether any datatype of the project needs that standard header, so that the generated
-       type header includes it only when something uses it.
+     - Whether any datatype of the project needs that standard header, for a type header that
+       includes it only when something uses it. The shipped example renders
+       ``model.needs_stdbool`` and includes ``<stdint.h>`` unconditionally: every other
+       generated header includes the type header and nothing else, so a type header that is
+       empty - a project whose objects are all floating point, or one that declares no object
+       at all - leaves those headers empty too, and ``-Wpedantic`` refuses an empty
+       translation unit.
    * - ``model.external_includes``
      - The headers of the :doc:`external types <file_formats/types>` in use, deduplicated and
        sorted by spelling, each ready to paste after ``#include``: ``"my_driver.h"`` with its
@@ -264,7 +278,8 @@ themselves:
        what the object is and what it is dimensioned by - or nothing at all if the
        description says nothing. It is plain text without comment markers, already collapsed
        to one line and already defused, so that a ``*/`` in a description cannot end the
-       comment the template opens around it.
+       comment the template opens around it and a ``/*`` cannot open one inside it - which
+       ``-Wcomment``, and so ``-Wall``, reports.
    * - ``.condition``
      - The preprocessor condition the object is guarded by, or nothing. It is validated on
        the way in so that it is safe to emit verbatim into both ``#if`` and the ``#endif``
@@ -384,11 +399,14 @@ interface is found much later by somebody else.
 How the files reach the disk
 ----------------------------
 
-Every generated file is written as utf-8 with LF line endings, on every platform. Descriptions
-carry units and prose in any language, so utf-8 is the only sane choice, and fixed line
-endings mean that a file generated on Windows and the same file generated in a linux
-container are byte for byte identical - which matters as soon as generated code is compared
-across machines or checked in.
+Every generated file is written as utf-8 with LF line endings and no byte order mark, on every
+platform. Descriptions carry units and prose in any language, so utf-8 is the only sane
+choice, and fixed line endings mean that a file generated on Windows and the same file
+generated in a linux container are byte for byte identical - which matters as soon as
+generated code is compared across machines or checked in. The one exception is not a
+template's to make: the a2l, which no template renders, opens with a byte order mark, because
+its own format has no other way of stating an encoding
+(:doc:`generated_artefacts`).
 
 A file whose content has not changed is left untouched rather than rewritten, so its
 timestamp does not move and the compilation of everything that includes it is not triggered

@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ddd.editing import indent_of_line_at, newline_at
 from ddd.models.common import OBJECT_ID_ALPHABET, OBJECT_ID_LENGTH
 from ddd.models.component import Scope
 
@@ -109,32 +110,6 @@ def _unstamped(document: Document) -> list[tuple[str, bool]]:
     return wanted
 
 
-def _newline_at(text: str, offset: int) -> str:
-    """How the line ``offset`` sits on ends, so a line added after it ends the same way.
-
-    All three spellings, found by whichever of ``\\r`` and ``\\n`` comes first. Looking for
-    ``\\n`` alone answered "line feed" for a file written with bare carriage returns, which
-    has none at all: the stamped file then held one line ending of a kind the rest of it
-    does not use. A file with no line break anywhere is given ``\\n``, there being nothing
-    to copy.
-    """
-    carriage = text.find("\r", offset)
-    feed = text.find("\n", offset)
-    if carriage >= 0 and (feed < 0 or carriage < feed):
-        return "\r\n" if carriage + 1 == feed else "\r"
-    return "\n"
-
-
-def _indent_of_line_at(text: str, offset: int) -> str:
-    """The leading whitespace of the line ``offset`` sits on, so the new key lines up.
-
-    Whatever the file is indented with: a project writing tabs gets a tab, and one writing
-    four spaces gets four. The command has no opinion about how a description is formatted.
-    """
-    start = text.rfind("\n", 0, offset) + 1
-    return text[start : len(text) - len(text[start:].lstrip())]
-
-
 @dataclass(frozen=True, slots=True)
 class Insertion:
     """Where an id belongs in a description's text, and what to write there.
@@ -180,8 +155,8 @@ def insertions(document: Document) -> list[Insertion]:
         if stated_null:
             found.append(Insertion(target, span[0], f'"{new_id()}"', span[1] - span[0]))
         else:
-            indent = _indent_of_line_at(document.text, span[1])
-            newline = _newline_at(document.text, span[1])
+            indent = indent_of_line_at(document.text, span[1])
+            newline = newline_at(document.text, span[1])
             found.append(Insertion(target, span[1], f',{newline}{indent}"id": "{new_id()}"'))
     return found
 

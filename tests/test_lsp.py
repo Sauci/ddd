@@ -3094,6 +3094,14 @@ class TestPositions:
         start = document.range_of("after")["start"]
         assert document.pointer_at(start) == "after"
 
+    def test_an_offset_becomes_the_position_the_protocol_counts(self) -> None:
+        """Public because the edit engine hands out offsets and the quick fixes send positions."""
+        document = Document('{\n  "unit": "°C 😀",\n  "a": 1\n}')
+        offset = document.text.index('"a"')
+        assert document.position(offset) == {"line": 2, "character": 2}
+        after_emoji = document.text.index('",\n  "a"')
+        assert document.position(after_emoji)["character"] == len('  "unit": "°C 😀') + 1
+
 
 class TestServer:
     """The loop, which is the only part a test can reach only through the protocol."""

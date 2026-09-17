@@ -41,6 +41,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Final
 
+from ddd.editing import TextEdit, member_addition, removal
 from ddd.identity import insertions
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document, read
@@ -468,7 +469,9 @@ def _erase(document: Document, definition: str, key: str) -> dict[str, Any] | No
     Which comma is the whole difficulty, and it depends on where the member sits. A member
     with one after it is removed up to the start of that one, which takes its own comma and
     leaves the next where this began. The last member is removed from the *end of the one
-    before it*, which takes the comma that used to join them and leaves no trailing one.
+    before it*, which takes the comma that used to join them and leaves no trailing one. The
+    cutting itself is :func:`ddd.editing.removal`'s, which the GUI's edits share; the refusal
+    of an only child stays here, a decision about what a quick fix offers.
 
     An only child is refused: what to leave between the braces is a judgement about the file's
     style rather than about the data. It cannot arise for these keys anyway - every definition
@@ -477,24 +480,7 @@ def _erase(document: Document, definition: str, key: str) -> dict[str, Any] | No
     members = document.value_at(definition)
     if not isinstance(members, dict) or key not in members or len(members) == 1:
         return None
-
-    # Ordered by where each member is written rather than by the parsed object, which keeps
-    # a duplicated key's first position while the text keeps its last: the cut has to agree
-    # with the span it is made from.
-    def position_of(member: str) -> tuple[int, int]:
-        start = document.range_of(f"{definition}.{member}")["start"]
-        return (start["line"], start["character"])
-
-    keys = sorted(members, key=position_of)
-    position = keys.index(key)
-    mine = document.range_of(f"{definition}.{key}")
-    if position < len(keys) - 1:
-        following = document.range_of(f"{definition}.{keys[position + 1]}")
-        cut = {"start": mine["start"], "end": following["start"]}
-    else:
-        previous = document.range_of(f"{definition}.{keys[position - 1]}")
-        cut = {"start": previous["end"], "end": mine["end"]}
-    return {"range": cut, "newText": ""}
+    return _protocol_edit(document, removal(document, f"{definition}.{key}"))
 
 
 def _propagate(
@@ -550,16 +536,19 @@ def _insert(document: Document, definition: str, key: str, raw: str) -> dict[str
 
     After the last member rather than at the front, because that is where a person adding a key
     by hand puts it, and because the first member of a definition is its ``name`` - which is
-    what somebody reading the file scans for.
+    what somebody reading the file scans for. Where the key goes and how it is separated is
+    :func:`ddd.editing.member_addition`'s; the value travels verbatim, as the author of the
+    other declaration wrote it.
     """
     members = document.value_at(definition)
     if not isinstance(members, dict) or not members:
         return None
-    end = document.range_of(f"{definition}.{next(reversed(members))}")["end"]
-    if end["line"] == document.range_of(definition)["start"]["line"]:
-        # Written on one line, and a fix is no reason for it to stop being.
-        separator = ", "
-    else:
-        line = document.line_at(end["line"])
-        separator = ",\n" + line[: len(line) - len(line.lstrip())]
-    return {"range": {"start": end, "end": end}, "newText": f'{separator}"{key}": {raw}'}
+    return _protocol_edit(document, member_addition(document, definition, key, raw, verbatim=True))
+
+
+def _protocol_edit(document: Document, edit: TextEdit) -> dict[str, Any]:
+    """An edit the engine computed as offsets, as the protocol carries it: a range and a text."""
+    return {
+        "range": {"start": document.position(edit.start), "end": document.position(edit.end)},
+        "newText": edit.text,
+    }

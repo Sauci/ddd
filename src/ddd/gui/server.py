@@ -19,12 +19,12 @@ browser told ``nosniff`` then refuses to run the page at all.
 from __future__ import annotations
 
 import contextlib
+import hmac
 import json
 import secrets
 import sys
 import webbrowser
 from collections.abc import Sequence
-from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
@@ -36,6 +36,9 @@ from ddd.gui.api import Api
 from ddd.gui.session import Session
 
 COOKIE: Final = "ddd-gui"
+"""What the cookie a server signs a page in with is called, followed by ``-`` and the server's
+port: a browser sends every cookie of 127.0.0.1 to every port, so under one name a second
+``ddd gui`` replaced the first one's cookie and signed its page out."""
 
 MAX_BODY: Final = 1024 * 1024
 """The largest request body accepted; an edit of a description file is a few hundred bytes."""
@@ -97,6 +100,11 @@ class GuiServer(ThreadingHTTPServer):
         """The address to open; the token in it is what the cookie is given for."""
         return f"http://127.0.0.1:{self.port}/open?token={self.token}"
 
+    @property
+    def cookie(self) -> str:
+        """The name of the cookie this server signs a page in with."""
+        return f"{COOKIE}-{self.port}"
+
     def handle_error(self, request: Any, client_address: Any) -> None:
         """A page that went away mid-answer - a reload, a closed tab - is not an error to print."""
         if not isinstance(sys.exc_info()[1], ConnectionError):
@@ -152,20 +160,30 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _sign_in(self, query: dict[str, list[str]]) -> None:
         given = (query.get("token") or [""])[0]
-        if not secrets.compare_digest(given.encode("utf-8"), self._gui.token.encode("utf-8")):
+        if not hmac.compare_digest(given.encode("utf-8"), self._gui.token.encode("utf-8")):
             self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"])
             return
         target = "/project" if self._gui.api.session.revision is not None else "/"
-        cookie = f"{COOKIE}={self._gui.token}; HttpOnly; SameSite=Strict; Path=/"
+        cookie = f"{self._gui.cookie}={self._gui.token}; HttpOnly; SameSite=Strict; Path=/"
         self._send(303, b"", CONTENT_TYPES[".txt"], {"Location": target, "Set-Cookie": cookie})
 
     def _signed_in(self) -> bool:
-        cookies: SimpleCookie = SimpleCookie()
-        cookies.load(self.headers.get("Cookie", ""))
-        morsel = cookies.get(COOKIE)
-        return morsel is not None and secrets.compare_digest(
-            morsel.value.encode("utf-8"), self._gui.token.encode("utf-8")
-        )
+        """Whether the request carries this server's cookie with the token in it.
+
+        The header is read by hand: the browser sends this server every cookie any app on
+        127.0.0.1 has set, and ``http.cookies.SimpleCookie`` gives up on many of them. It stopped
+        reading at ``prefs={"lang":"en"}`` or ``arr[0]=1`` without a word, which signed the page
+        out behind a cookie that came first, and raised at ``user@site=1``, which left every
+        request unanswered. A pair is split at its first ``=``; one not named for this server is
+        passed over whatever it holds, and every one that is gets its value compared.
+        """
+        name = self._gui.cookie
+        token = self._gui.token.encode("utf-8")
+        for pair in self.headers.get("Cookie", "").split(";"):
+            key, _, value = pair.strip().partition("=")
+            if key == name and hmac.compare_digest(value.encode("utf-8"), token):
+                return True
+        return False
 
     def _from_this_page(self) -> bool:
         port = self._gui.port

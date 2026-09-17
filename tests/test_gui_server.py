@@ -18,8 +18,16 @@ from ddd.cli import EXIT_OK, EXIT_USAGE
 from ddd.editing import fingerprint
 from ddd.gui import server as module
 from ddd.gui.api import Api
-from ddd.gui.server import COOKIE, MAX_BODY, GuiServer, run, static_directory
+from ddd.gui.server import MAX_BODY, GuiServer, run, static_directory
 from ddd.gui.session import Session
+
+FOREIGN_COOKIES = ('prefs={"lang":"en"}', "arr[0]=1", "user@site=1", "lonely")
+"""Cookies other apps on 127.0.0.1 leave in a browser, which sends them to every port."""
+
+
+def cookie(server: GuiServer) -> str:
+    """The name a server signs a page in under, which carries its port."""
+    return f"ddd-gui-{server.port}"
 
 
 @pytest.fixture
@@ -79,7 +87,7 @@ def ask(
     connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
     sent = {"Host": host or f"127.0.0.1:{server.port}"}
     if signed_in:
-        sent["Cookie"] = f"{COOKIE}={server.token}"
+        sent["Cookie"] = f"{cookie(server)}={server.token}"
     if origin is not None:
         sent["Origin"] = origin
     if body is not None:
@@ -98,7 +106,7 @@ class TestSigningIn:
         assert response.status == 303
         assert response.getheader("Location") == "/project"
         assert response.getheader("Set-Cookie") == (
-            f"{COOKIE}={server.token}; HttpOnly; SameSite=Strict; Path=/"
+            f"ddd-gui-{server.port}={server.token}; HttpOnly; SameSite=Strict; Path=/"
         )
 
     def test_without_an_open_project_the_redirect_is_to_the_start_page(
@@ -124,10 +132,46 @@ class TestSigningIn:
         assert (response.status, b"Open the address" in data) == (401, True)
 
     def test_a_cookie_with_another_value_is_not_signed_in(self, server) -> None:
-        response, _ = ask(
-            server, "GET", "/api/session", signed_in=False, headers={"Cookie": f"{COOKIE}=forged"}
-        )
+        forged = {"Cookie": f"{cookie(server)}=forged"}
+        response, _ = ask(server, "GET", "/api/session", signed_in=False, headers=forged)
         assert response.status == 401
+
+    def test_a_second_server_signs_in_under_a_name_of_its_own(
+        self, server, project_file, pages
+    ) -> None:
+        """A browser sends every cookie of 127.0.0.1 to every port. Under one name, opening a
+        second ddd gui replaced the first one's cookie and signed its page out - and a second
+        server is how two projects are looked at side by side."""
+        for other in serving(Api(Session(project_file.parent)), pages):
+            both = {"Cookie": f"{cookie(other)}={other.token}; {cookie(server)}={server.token}"}
+            for asked in (server, other):
+                response, _ = ask(asked, "GET", "/api/session", signed_in=False, headers=both)
+                assert response.status == 200
+            theirs = {"Cookie": f"{cookie(other)}={other.token}"}
+            response, _ = ask(server, "GET", "/api/session", signed_in=False, headers=theirs)
+            assert response.status == 401
+
+    @pytest.mark.parametrize("path", ["/api/session", "/project"])
+    @pytest.mark.parametrize("foreign", FOREIGN_COOKIES)
+    def test_a_cookie_another_app_set_does_not_get_in_the_way(self, server, path, foreign) -> None:
+        """The standard library's cookie parser stopped reading at the first two of these, in
+        silence, which signed the page out; it raised at the third, which left every request
+        unanswered."""
+        sent = {"Cookie": f"{foreign}; {cookie(server)}={server.token}"}
+        response, _ = ask(server, "GET", path, signed_in=False, headers=sent)
+        assert response.status == 200
+
+    def test_cookies_of_other_apps_alone_are_not_signed_in(self, server) -> None:
+        sent = {"Cookie": "; ".join(FOREIGN_COOKIES)}
+        response, data = ask(server, "GET", "/api/session", signed_in=False, headers=sent)
+        assert (response.status, json.loads(data)["error"]) == (401, "unauthorised")
+
+    def test_a_stale_cookie_of_this_servers_name_beside_the_right_one_signs_in(
+        self, server
+    ) -> None:
+        sent = {"Cookie": f"{cookie(server)}={server.token}; {cookie(server)}=stale"}
+        response, _ = ask(server, "GET", "/api/session", signed_in=False, headers=sent)
+        assert response.status == 200
 
 
 class TestWhoMayAsk:
@@ -188,7 +232,7 @@ class TestWhoMayAsk:
         connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
         connection.putrequest("POST", "/api/edit", skip_host=True)
         connection.putheader("Host", f"127.0.0.1:{server.port}")
-        connection.putheader("Cookie", f"{COOKIE}={server.token}")
+        connection.putheader("Cookie", f"{cookie(server)}={server.token}")
         connection.putheader("Origin", f"http://127.0.0.1:{server.port}")
         connection.putheader("Content-Type", "application/json")
         connection.putheader("Content-Length", "ten")

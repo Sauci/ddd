@@ -521,7 +521,8 @@ from the linker output by whatever already parses it in your build:
 The objects the map leaves out keep address 0 and are named once, in the ``address-missing``
 warning - a map from a linker output legitimately lacks what was not linked into this image;
 ``--strict`` makes the warning an error for a post-link build that wants no hole in its a2l.
-Every entry is range checked while the map is read rather than while the a2l is written. A
+An entry the a2l *does* state an address for is range checked while the map is read rather
+than while the a2l is written. A
 negative value would otherwise render as ``0x-0000010`` and a wider one as a 33 bit literal,
 and either makes the whole file unreadable - from a file that a linker script or a patch tool
 wrote, where a wrong entry is exactly the kind of thing that goes unnoticed:
@@ -530,6 +531,13 @@ wrote, where a wrong entry is exactly the kind of thing that goes unnoticed:
 
    $ ddd generate all demo.ddd.json -o gen -t templates --address-map bad.json
    ddd: bad.json: address of 'ValueE' is 4294967296, outside the range 0 .. 0xFFFFFFFF that an a2l address can hold
+
+An entry for a symbol the a2l never names is not weighed that way, because its value is never
+formatted into anything: the recipe of :doc:`build_integration` extracts every defined symbol
+of the image, which on a 64 bit host means a hundred entries of the c runtime sitting above
+4 GB, and refusing those would make the two-run flow impossible to complete on the very host
+the page tells you to try it on. They are counted among the entries the a2l does not carry, in
+the note under the warning above.
 
 The other route needs no map at all: ``SYMBOL_LINK`` is written for every object, always, so
 an a2l address patcher can resolve the symbols against the linked image itself and fill the

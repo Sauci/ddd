@@ -364,7 +364,7 @@ so exactly one of them&amp;#xA;appears here.&amp;#xA;&quot;];
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Paths to component, types, units, sections, constants, rasters or sub-project files,\nrelative to this file.\n\nShell style wildcards (``*``, ``?``, ``[...]``, ``**``) are expanded; the kind of every\nincluded file is detected from its top level key."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Paths to component, types, units, sections, constants, rasters or sub-project files,\nrelative to this file.\n\nShell style wildcards (``*``, ``?``, ``[...]``, ``**``) are expanded; the kind of every\nincluded file is detected from its top level key. An entry that names an existing file is\nthat file whatever characters it holds, so a path under a directory somebody called\n``proj [v2]`` is a path and not a character class; only an entry naming no file is\nexpanded as a pattern."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">               </span><span class="p">},</span>
@@ -463,7 +463,7 @@ so exactly one of them&amp;#xA;appears here.&amp;#xA;&quot;];
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Paths to component, types, units, sections, constants, rasters or sub-project files,\nrelative to this file.\n\nShell style wildcards (``*``, ``?``, ``[...]``, ``**``) are expanded; the kind of every\nincluded file is detected from its top level key."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Paths to component, types, units, sections, constants, rasters or sub-project files,\nrelative to this file.\n\nShell style wildcards (``*``, ``?``, ``[...]``, ``**``) are expanded; the kind of every\nincluded file is detected from its top level key. An entry that names an existing file is\nthat file whatever characters it holds, so a path under a directory somebody called\n``proj [v2]`` is a path and not a character class; only an entry naming no file is\nexpanded as a pattern."</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">            </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">         </span><span class="p">},</span>
@@ -526,11 +526,17 @@ so exactly one of them&amp;#xA;appears here.&amp;#xA;&quot;];
 <dd><p>Paths to component, types, units, sections, constants, rasters or sub-project files,
 relative to this file.</p>
 <p>Shell style wildcards (<code class="docutils literal notranslate"><span class="pre">*</span></code>, <code class="docutils literal notranslate"><span class="pre">?</span></code>, <code class="docutils literal notranslate"><span class="pre">[...]</span></code>, <code class="docutils literal notranslate"><span class="pre">**</span></code>) are expanded; the kind of every
-included file is detected from its top level key.</p>
+included file is detected from its top level key. An entry that names an existing file is
+that file whatever characters it holds, so a path under a directory somebody called
+<code class="docutils literal notranslate"><span class="pre">proj</span> <span class="pre">[v2]</span></code> is a path and not a character class; only an entry naming no file is
+expanded as a pattern.</p>
 <p>Paths to component, types, units, sections, constants, rasters or sub-project files,
 relative to this file.</p>
 <p>Shell style wildcards (<code class="docutils literal notranslate"><span class="pre">*</span></code>, <code class="docutils literal notranslate"><span class="pre">?</span></code>, <code class="docutils literal notranslate"><span class="pre">[...]</span></code>, <code class="docutils literal notranslate"><span class="pre">**</span></code>) are expanded; the kind of every
-included file is detected from its top level key.</p>
+included file is detected from its top level key. An entry that names an existing file is
+that file whatever characters it holds, so a path under a directory somebody called
+<code class="docutils literal notranslate"><span class="pre">proj</span> <span class="pre">[v2]</span></code> is a path and not a character class; only an entry naming no file is
+expanded as a pattern.</p>
 </dd></dl>
 
 <dl class="py attribute pydantic_field">
@@ -14054,7 +14060,7 @@ measurement or a value block, <code class="docutils literal notranslate"><span c
 <dl class="field-list simple">
 <dt class="field-odd">Constraints<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>func</strong> = &lt;function within_64_bits at 0x7f50ffe958a0&gt;</p></li>
+<li><p><strong>func</strong> = &lt;function within_64_bits at 0x7fb780e7fba0&gt;</p></li>
 <li><p><strong>json_schema_input_type</strong> = PydanticUndefined</p></li>
 </ul>
 </dd>
@@ -14068,7 +14074,7 @@ measurement or a value block, <code class="docutils literal notranslate"><span c
 <dl class="field-list simple">
 <dt class="field-odd">Constraints<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>func</strong> = &lt;function within_64_bits at 0x7f50ffe958a0&gt;</p></li>
+<li><p><strong>func</strong> = &lt;function within_64_bits at 0x7fb780e7fba0&gt;</p></li>
 <li><p><strong>json_schema_input_type</strong> = PydanticUndefined</p></li>
 </ul>
 </dd>

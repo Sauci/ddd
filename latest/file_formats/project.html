@@ -234,6 +234,14 @@ for several targets may have an <code class="docutils literal notranslate"><span
 missing one - or a path that turns out to name a directory - is <code class="docutils literal notranslate"><span class="pre">file-not-found</span></code>, which
 cannot be relaxed at all: a pattern may legitimately match nothing, a named file may not be
 absent.</p>
+<p>An entry that <em>names a file</em> is that file even when it holds one of the three characters, the
+literal reading being tried first. This is what lets a project live under a directory somebody
+named <code class="docutils literal notranslate"><span class="pre">proj</span> <span class="pre">[v2]</span></code>: every include written as an absolute path would otherwise be read as a
+character class, match nothing, and take the whole build down - and the cmake module
+(<a class="reference internal" href="../build_integration.html"><span class="doc">Build integration</span></a>) writes exactly such paths. Where no file of that name exists the
+entry is expanded as a pattern as before, so <code class="docutils literal notranslate"><span class="pre">a[12].ddd.json</span></code> still reaches <code class="docutils literal notranslate"><span class="pre">a1.ddd.json</span></code>
+and <code class="docutils literal notranslate"><span class="pre">a2.ddd.json</span></code>; only where a file is spelled exactly like the pattern does the file win,
+and a project that wants the class there renames one of the two.</p>
 <p>The matches of one pattern are processed in sorted order of their resolved paths, so that
 which component loads first is a property of the names rather than of how a file system
 happens to enumerate a directory. That order is what “the first declaration in load order”

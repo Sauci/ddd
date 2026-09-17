@@ -122,7 +122,10 @@
 <span class="sd">    relative to this file.</span>
 
 <span class="sd">    Shell style wildcards (``*``, ``?``, ``[...]``, ``**``) are expanded; the kind of every</span>
-<span class="sd">    included file is detected from its top level key.</span>
+<span class="sd">    included file is detected from its top level key. An entry that names an existing file is</span>
+<span class="sd">    that file whatever characters it holds, so a path under a directory somebody called</span>
+<span class="sd">    ``proj [v2]`` is a path and not a character class; only an entry naming no file is</span>
+<span class="sd">    expanded as a pattern.</span>
 <span class="sd">    """</span>
 
     <span class="n">plugins</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">StringConstraints</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)],</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>

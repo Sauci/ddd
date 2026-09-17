@@ -176,7 +176,9 @@ under the same <code class="docutils literal notranslate"><span class="pre">gene
 </pre></div>
 </div>
 <p>A <code class="docutils literal notranslate"><span class="pre">path</span></code> is spelled as the run was asked for it - relative when <code class="docutils literal notranslate"><span class="pre">-o</span></code> was relative - and a
-<code class="docutils literal notranslate"><span class="pre">status</span></code> is <code class="docutils literal notranslate"><span class="pre">created</span></code>, <code class="docutils literal notranslate"><span class="pre">updated</span></code> or <code class="docutils literal notranslate"><span class="pre">unchanged</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">status</span></code> is <code class="docutils literal notranslate"><span class="pre">created</span></code>, <code class="docutils literal notranslate"><span class="pre">updated</span></code>, <code class="docutils literal notranslate"><span class="pre">unchanged</span></code> or, for a file an earlier <code class="docutils literal notranslate"><span class="pre">generate</span></code>
+wrote into its output directory and this run no longer writes, <code class="docutils literal notranslate"><span class="pre">removed</span></code> (see
+<a class="reference internal" href="generated_artefacts.html#what-a-run-owns"><span class="std std-ref">What a run owns</span></a>).</p>
 <p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span> <span class="pre">--format</span> <span class="pre">json</span></code> answers with the project, its components and one row per variable
 beside the diagnostics. A row is the record the <a class="reference internal" href="data_dictionary.html"><span class="doc">data dictionary</span></a>
 carries for that object, so the rows come in two shapes: a member of a structured variable

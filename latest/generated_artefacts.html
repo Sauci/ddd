@@ -66,6 +66,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#conditional-declarations">Conditional declarations</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#calibration-data-is-const-and-volatile-when-a-tool-tunes-it">Calibration data is const, and volatile when a tool tunes it</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#regeneration-is-stable">Regeneration is stable</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#what-a-run-owns">What a run owns</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#a2l">a2l</a><ul>
@@ -695,6 +696,55 @@ existed before it, which keeps its new content; the failure names the artefact a
 usage error. The staging name is fixed rather than random so that a staging file a crashed
 run left behind is overwritten rather than accumulated, and it is a name no artefact of a
 project would carry: <code class="docutils literal notranslate"><span class="pre">.tmp</span></code> is one people give real files.</p>
+</section>
+<section id="what-a-run-owns">
+<span id="id1"></span><h3>What a run owns<a class="headerlink" href="#what-a-run-owns" title="Link to this heading"></a></h3>
+<p>A run writes what it renders, and what it renders follows from the descriptions - so a
+component that leaves a project simply stops being rendered. Its header used to stay where
+the last run had put it, on the include path of every component, and a translation unit went
+on compiling against the interface of a component the project no longer contains. No build
+system can clean that up either: a per-component file is named from inside a description
+file, which is why it is not among the outputs a build declares (see
+<a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>).</p>
+<p>So <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> owns its output directory. It records the files it wrote there in
+<code class="docutils literal notranslate"><span class="pre">.ddd-manifest.json</span></code> beside them, and the next run removes the recorded files it no longer
+writes, saying so:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates  # after the component left
+wrote       build/gen/ddd_globals.c (updated)
+...
+removed     build/gen/EventLogger.h
+</pre></div>
+</div>
+<p>Two rules bound what that can reach. <strong>Only files DDD itself wrote are ever removed</strong>: a file
+the manifest does not name - a header checked in beside the generated ones, a note, an object
+file of an earlier build - is not DDD’s, and stays however stale it looks. And <strong>only the
+artefacts the run produced</strong> are weighed: <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">a2l</span></code> into the directory a
+<code class="docutils literal notranslate"><span class="pre">generate</span> <span class="pre">all</span></code> filled regenerates the a2l without touching the c sources the image was
+built from, which is the whole point of the two-run flow (<a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>), and the
+same holds for a run that subtracts an artefact with <code class="docutils literal notranslate"><span class="pre">--without</span></code> and for a plugin a project
+has stopped naming. The manifest is written in the same all-or-nothing step as the artefacts
+and renamed after them and after the removals, so a run that fails leaves the previous record
+describing what is still on disk, a file that could not be removed stays recorded for the next
+run to take back, and a run that changes nothing rewrites nothing - the manifest included.
+<code class="docutils literal notranslate"><span class="pre">--dry-run</span></code> says what it would remove and removes nothing.</p>
+<p>The manifest is a small json document, one entry per file, naming the artefact that wrote it:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"files"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"Controller.h"</span><span class="p">:</span><span class="w"> </span><span class="s2">"c"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"DemoDevice.a2l"</span><span class="p">:</span><span class="w"> </span><span class="s2">"a2l"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"DemoDevice.dictionary.json"</span><span class="p">:</span><span class="w"> </span><span class="s2">"--dictionary"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"ddd_globals.c"</span><span class="p">:</span><span class="w"> </span><span class="s2">"c"</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>It is bookkeeping rather than an artefact, so it is not reported among the files a run wrote,
+and a <code class="docutils literal notranslate"><span class="pre">format</span></code> this version does not know is one it declines rather than misreads: such a
+run removes nothing and records what it wrote. Nothing but DDD is meant to read it, and one
+directory holds one: two <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> runs sharing an output directory - a thing to avoid
+for other reasons, since each would overwrite the other’s artefacts - would each take back
+what the other wrote of the artefacts they share.</p>
 </section>
 </section>
 <section id="a2l">

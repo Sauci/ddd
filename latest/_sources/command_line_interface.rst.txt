@@ -77,7 +77,9 @@ under the same ``generated`` key ``generate`` uses:
    }
 
 A ``path`` is spelled as the run was asked for it - relative when ``-o`` was relative - and a
-``status`` is ``created``, ``updated`` or ``unchanged``.
+``status`` is ``created``, ``updated``, ``unchanged`` or, for a file an earlier ``generate``
+wrote into its output directory and this run no longer writes, ``removed`` (see
+:ref:`what-a-run-owns`).
 
 ``ddd list --format json`` answers with the project, its components and one row per variable
 beside the diagnostics. A row is the record the :doc:`data dictionary <data_dictionary>`

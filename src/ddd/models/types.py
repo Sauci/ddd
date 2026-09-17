@@ -487,7 +487,11 @@ class ExternalType(BaseModel):
     """The header that defines the type, spelled the way the generated inclusion writes it.
 
     ``my_driver.h`` for the quoted form, ``<os_types.h>`` for the angle form; a subdirectory
-    path such as ``drivers/status.h`` is allowed in either.
+    path such as ``drivers/status.h`` is allowed in either. The spelling is written out
+    exactly as it stands, so one that would unbalance the line is refused here rather than
+    handed to a compiler: no whitespace, no quote of its own - the quoted form is written
+    bare - and, for the angle form, exactly one pair of angle brackets wrapping the whole
+    name.
     """
 
 

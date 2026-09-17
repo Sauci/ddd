@@ -15,7 +15,7 @@
             }
           ],
           "default": null,
-          "description": "Whether the object belongs in the a2l file; omitted, it does.\n\nThe one a2l option any component may state, not only the producer. Which signals a\ncalibration engineer needs to see is not a property of whoever happens to write the\nvariable: a component reading a value from a library it does not own has as good a claim\nto measuring it.\n\nStated by several, the answer is yes if any of them says so - see ``resolve_export``.",
+          "description": "Whether the object belongs in the a2l file; omitted, it does.\n\nThe one a2l option any component may state, not only the producer. Which signals a\ncalibration engineer needs to see is not a property of whoever happens to write the\nvariable: a component reading a value from a library it does not own has as good a claim\nto measuring it.\n\nStated by several, the answer is yes if any of them says so, and an object nobody\nmentions is exported: see \"Who asks for an export\" on the definition page.",
           "title": "Export"
         },
         "format": {
@@ -29,7 +29,7 @@
             }
           ],
           "default": null,
-          "description": "a2l ``FORMAT`` string, e.g. ``\"%8.3\"``: total width, then decimal places.",
+          "description": "a2l ``FORMAT`` string, e.g. ``\"%8.3\"``: total width, then decimal places.\n\nRefused beside a ``string`` conversion, which has no decimals to display.",
           "title": "Format"
         },
         "display_identifier": {
@@ -112,7 +112,7 @@
               "type": "number"
             }
           ],
-          "description": "The value, a number: a whole number of either sign, or one written with a point.\n\nA literal only: an expression would put a parser and an evaluation order into a\ndescription format, and a constant cannot name another constant, so what cannot be\nwritten cannot cycle.  How it is written settles what it is - ``2`` is a whole number\nand ``2.0`` one with a fraction - because that is what the outputs carry: the generated\ncode emits the literal as written, so the author picks the type rather than the format.\nA whole number is bounded by what a 64 bit target can express, signed or unsigned, and\na fractional one must be finite: ``inf`` and ``nan`` name nothing a description can\nstate, and would reach a template as those words.\n\nNothing here requires the value to be a size.  A constant that a shape names has to be\na whole number of at least 1, the same rule a dimension written as a literal obeys, but\nthat is checked where the shape names it - the declaration is not the place, because a\nconstant may be declared to be emitted and never dimension anything.",
+          "description": "The value, a number: a whole number of either sign, or one written with a point.\n\nA literal only: an expression would put a parser and an evaluation order into a\ndescription format, and a constant cannot name another constant, so what cannot be\nwritten cannot cycle.  How it is written settles what it is - ``2`` is a whole number,\nand anything carrying a point or an exponent is fractional, so ``2.0`` and ``1e3`` both\nare - because that is what the author is picking: the type, not the format.  The\noutputs carry the number in its shortest spelling that reads back as the same number, a\nwhole number without a point and any other with a point or an exponent, so ``2.50``\nreaches the generated code as ``2.5`` and ``1e3`` as ``1000.0``.\nA whole number is bounded by what a 64 bit target can express, signed or unsigned, and\na fractional one must be finite: ``inf`` and ``nan`` name nothing a description can\nstate, and would reach a template as those words.\n\nNothing here requires the value to be a size.  A constant that a shape names has to be\na whole number of at least 1, the same rule a dimension written as a literal obeys, but\nthat is checked where the shape names it - the declaration is not the place, because a\nconstant may be declared to be emitted and never dimension anything.",
           "title": "Value"
         },
         "description": {
@@ -167,6 +167,7 @@
         "kind": {
           "const": "enum",
           "default": "enum",
+          "description": "The tag of this kind, which may be left out: a block stating ``enumerators`` or a\n``name`` is an enum.",
           "title": "Kind",
           "type": "string"
         },
@@ -203,7 +204,7 @@
               "type": "object"
             }
           ],
-          "description": "The named values, either as objects or as a ``{\"NAME\": value}`` mapping.",
+          "description": "The named values, either as objects or as a ``{\"NAME\": value}`` mapping.\n\nTwo of them may not carry the same name, which the mapping form cannot express twice and\nthe list form can: the generated enumeration would not compile, and a calibration tool\nreading the generated table of labels would have two answers for one. Two names sharing a\n*value* is a different matter - it is the C idiom for an alias, reported as\n``enum-duplicate-value`` rather than refused.",
           "title": "Enumerators"
         }
       },
@@ -254,6 +255,7 @@
         "kind": {
           "const": "identity",
           "default": "identity",
+          "description": "The tag of this kind, which may be left out: an empty block is the identity.",
           "title": "Kind",
           "type": "string"
         }
@@ -352,6 +354,7 @@
         "kind": {
           "const": "linear",
           "default": "linear",
+          "description": "The tag of this kind, which may be left out: a block stating ``factor`` or ``offset``\nis linear.",
           "title": "Kind",
           "type": "string"
         },
@@ -567,7 +570,7 @@
             }
           ],
           "default": null,
-          "description": "Component owning the object; ``None`` only when the project is inconsistent.",
+          "description": "Component owning the object; ``null`` only when the project is inconsistent.",
           "title": "Owner"
         },
         "consumers": {
@@ -850,7 +853,7 @@
             }
           ],
           "default": null,
-          "description": "Storage of the member when it is a base one; ``None`` when it names a declared type."
+          "description": "Storage of the member when it is a base one; ``null`` when it names a declared type."
         },
         "type": {
           "anyOf": [
@@ -862,7 +865,7 @@
             }
           ],
           "default": null,
-          "description": "Name of the structure this member is, when it is one; ``None`` when it is a datatype.\n\nThe name as the types file spells it, which in a dictionary carrying an ``unknown-type``\nerror may be a name no ``types`` entry answers: the member says what it was declared as,\nand the finding says that nothing declares it.",
+          "description": "Name of the structure this member is, when it is one; ``null`` when it is a datatype.\n\nThe name as the types file spells it, which in a dictionary carrying an ``unknown-type``\nerror may be a name no ``types`` entry answers: the member says what it was declared as,\nand the finding says that nothing declares it.",
           "title": "Type"
         },
         "external": {
@@ -875,7 +878,7 @@
             }
           ],
           "default": null,
-          "description": "Name of the external type this member is, when it is one; ``None`` otherwise.\n\nAn external type is one DDD does not declare - a hand written header defines it - so the\nmember is opaque storage: it appears in the generated structure verbatim, spelled with\nthis name, and contributes no leaf, because DDD knows neither its layout nor its meaning.",
+          "description": "Name of the external type this member is, when it is one; ``null`` otherwise.\n\nAn external type is one DDD does not declare - a hand written header defines it - so the\nmember is opaque storage: it appears in the generated structure verbatim, spelled with\nthis name, and contributes no leaf, because DDD knows neither its layout nor its meaning.",
           "title": "External"
         },
         "header": {
@@ -922,7 +925,7 @@
             }
           ],
           "default": null,
-          "description": "Width in bits when the member is a c bitfield; ``None`` when it is not.",
+          "description": "Width in bits when the member is a c bitfield; ``null`` when it is not.",
           "title": "Bits"
         }
       },
@@ -1088,7 +1091,7 @@
         },
         "volatile": {
           "default": false,
-          "description": "Generate the object ``volatile``: stated by every declaration, on every kind.\n\nCalibration data carries it as ``const volatile``, which is what a value the calibration\ntool changes in a running ecu needs - see the field of the same name on the authored\ndefinition. The default is kept although a definition may no longer omit it, so that a\ndictionary dumped by an older DDD still reads back; that is what ``DICTIONARY_FORMAT``\nexists to make safe.",
+          "description": "Generate the object ``volatile``: stated by every declaration, on every kind.\n\nCalibration data carries it as ``const volatile``, which is what a value the calibration\ntool changes in a running ecu needs - see the field of the same name on the authored\ndefinition. The default is kept although a definition may no longer omit it, so that a\ndictionary dumped by an older DDD still reads back: an older document is read with the\ndefaults of the format it states, which is what the ``format`` key of this document is\nfor.",
           "title": "Volatile",
           "type": "boolean"
         },
@@ -1123,7 +1126,7 @@
             }
           ],
           "default": null,
-          "description": "Component owning the object; ``None`` only when the project is inconsistent.",
+          "description": "Component owning the object; ``null`` only when the project is inconsistent.",
           "title": "Owner"
         },
         "consumers": {
@@ -1270,6 +1273,7 @@
       "properties": {
         "kind": {
           "const": "string",
+          "description": "The tag of this kind, which is required: a string has no key of its own to be\nrecognised by, so nothing else would tell it from the identity.",
           "title": "Kind",
           "type": "string"
         }

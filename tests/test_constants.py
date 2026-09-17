@@ -325,12 +325,17 @@ class TestTheCheck:
         )
         assert checks(bag) == []
 
-    @pytest.mark.parametrize("value", [0, -8, 1.5])
+    @pytest.mark.parametrize("value", [0, -8, 1.5, 1e1])
     def test_a_constant_that_is_no_size_cannot_dimension_a_declaration(
         self, tree: Path, value: int | float
     ) -> None:
         """Reported where the name is written, the way an undeclared one is: the value is a
-        number, but not one an array can be that long."""
+        number, but not one an array can be that long.
+
+        ``1e1`` is ten and is refused all the same: the spelling settles the type, and a
+        literal carrying a point or an exponent is a fractional number, which is what the
+        specification and the constant's own published description say.
+        """
         _, bag = run_analysis(
             tree,
             self.files(
@@ -386,6 +391,27 @@ class TestTheCheck:
         rendered = messages(bag)
         assert "types.ddd.json#types[0].members[0].dimensions[0]" in rendered
         assert "member 'raw' of structure 'S_t' is dimensioned by 'CELL_GAIN'" in rendered
+
+    def test_silenced_at_a_member_it_is_the_type_that_goes(self, tree: Path) -> None:
+        """A member of no known length leaves the structure without a size, so the type is
+        unusable and every declaration naming it is dropped - which the specification says of
+        ``dimension-value`` at a member and ``incomplete-project`` names among its causes."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P", "constants.ddd.json", "types.ddd.json", "a.ddd.json"
+                ),
+                "constants.ddd.json": constants(constant("CELL_GAIN", 1.5)),
+                "types.ddd.json": struct_type("S_t", value_member("raw", dimensions=["CELL_GAIN"])),
+                "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+            },
+            severities=["dimension-value=ignore"],
+        )
+        assert checks(bag) == ["incomplete-project"]
+        assert "the dimension-value that says why the type is unusable" in messages(bag)
+        assert dictionary is not None
+        assert dictionary.objects == () and dictionary.instances == ()
 
     def test_silencing_it_says_what_the_silence_costs(self, tree: Path) -> None:
         """Relaxed like every shape finding, and the dropped declaration is reported anyway -
@@ -756,10 +782,10 @@ class TestGeneratedC:
         assert "#define PRESSURE_CELLS 8 /**< cells of the manifold */" in header
         assert "#define TAPS 2\n" in header  # no description, no comment
 
-    def test_a_constant_no_shape_names_is_emitted_as_written(self, tree: Path) -> None:
+    def test_a_constant_no_shape_names_is_emitted_as_the_number_it_is(self, tree: Path) -> None:
         """What the vocabulary is for beyond sizes: the value reaches the header as the
-        author wrote it, so a fractional constant stays a double literal and a negative one
-        keeps its sign."""
+        number the author wrote, so a fractional constant stays a double literal and a
+        negative one keeps its sign."""
         dictionary, bag = run_analysis(
             tree,
             {
@@ -778,6 +804,36 @@ class TestGeneratedC:
         assert "#define CELL_GAIN 1.5 /**< counts per bar */" in header
         assert "#define SPARE_CELLS 0\n" in header
         assert "#define ZERO_OFFSET -40\n" in header
+
+    def test_the_spelling_settles_the_type_and_the_output_writes_the_shortest_one(
+        self, tree: Path
+    ) -> None:
+        """What survives the trip is the number and its type, not how it was typed.
+
+        A description states a number; what a template renders is its shortest spelling that
+        reads back as the same number, which is why ``2.50`` arrives as ``2.5`` and ``1e3``
+        as ``1000.0``. The type does survive - a point or an exponent makes the value
+        fractional, and a fractional one is emitted with a point - which is the part an
+        author is choosing, and what the pages and the published description now say.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "constants.ddd.json", "a.ddd.json"),
+                "constants.ddd.json": constants(
+                    constant("C_TRAILING", 2.50),
+                    constant("C_EXPONENT", 1e3),
+                    constant("C_WHOLE", 2),
+                ),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is not None, [d.render() for d in bag]
+        files = {file.path.name: file.content for file in render_files(dictionary, tree / "gen")}
+        header = files["ddd_types.h"]
+        assert "#define C_TRAILING 2.5\n" in header
+        assert "#define C_EXPONENT 1000.0\n" in header
+        assert "#define C_WHOLE 2\n" in header
 
     def test_a_constant_at_the_edge_of_64_bits_is_the_literal_its_author_meant(
         self, tree: Path

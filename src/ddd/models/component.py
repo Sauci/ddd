@@ -132,9 +132,9 @@ class Component(BaseModel):
     writes it.
 
     Co-located for the reason ``types`` may be, and no more scoped than they are: the names
-    join the same project wide namespace as the constants of the standalone files, and any
-    shape of any component names one where it would state a number. ``units`` and
-    ``sections`` remain project wide vocabularies and have no place inside a component.
+    join the same project wide namespace as the constants of a constants file, and any
+    shape of any component names one where it would state a number. ``units``, ``sections``
+    and ``rasters`` remain project wide vocabularies and have no place inside a component.
     """
 
     @model_validator(mode="after")

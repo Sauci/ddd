@@ -291,9 +291,10 @@ Conversions
 The ``conversion`` of a data object is a second tagged union, also discriminated on
 ``kind`` - but here ``kind`` may be left out when the shape of the block makes it
 unambiguous: a block carrying ``enumerators`` or a ``name`` is an enum, one carrying
-``factor`` or ``offset`` is linear, and an empty one is the identity. The published schema
-says so too: the conversion is the one union it publishes as ``anyOf``, since an empty block
-would otherwise match two variants at once.
+``factor`` or ``offset`` is linear, and an empty one is the identity. A string is the one
+kind that is never inferred: it has no key of its own, so ``{"kind": "string"}`` says it.
+The published schema says so too: the conversion is the one union it publishes as ``anyOf``,
+since an empty block would otherwise match two variants at once.
 
 .. autopydantic_model:: ddd.models.IdentityConversion
 
@@ -304,6 +305,8 @@ would otherwise match two variants at once.
 
 .. autopydantic_model:: ddd.models.Enumerator
    :field-show-constraints: False
+
+.. autopydantic_model:: ddd.models.StringConversion
 
 Unit vocabulary
 ~~~~~~~~~~~~~~~

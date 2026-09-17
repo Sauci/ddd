@@ -68,7 +68,7 @@ This specification uses its requirement words with fixed meanings:
 | --- | --- |
 | **shall**, **shall not** | a binding requirement on DDD; an implementation that behaves otherwise does not conform |
 | **must**, **must not** | a validity constraint on data handed to DDD; a violation is reported under the named check for description data, or as a usage error for a command line input, and does not make the tool non-conforming |
-| **should**, **should not** | a recommendation; deviation is allowed but requires a reason |
+| **should**, **should not** | a recommendation; deviation is allowed but requires a reason, and it is addressed to whoever the sentence is about |
 | **may** | a permission: genuinely optional, neither required nor recommended |
 | **can** | a statement of capability or possibility, carrying no requirement |
 
@@ -76,6 +76,16 @@ Plain present tense describes the specified behaviour of DDD and binds like **sh
 sentence "the matches are processed in sorted order" requires exactly that. The explicit
 words mark the sentences in which the kind of obligation is the point. They are set in bold
 wherever they bind; set plain, they are ordinary English.
+
+DDD is not only the command line tool. **shall** binds everything that has to hold for the
+method to work: the tool, what DDD ships beside it - the CMake module
+([section 7.1](#71-build-system-integration)) and an editor extension
+([section 7.2](#72-editor-integration)) - a build that drives DDD
+([section 3.6](#36-build-record)), a reader of the data dictionary
+([section 5.3](#53-data-dictionary)), and the code that defines the project's objects
+([section 1.4](#14-source-code-generation)). Each such sentence names its subject, and a
+requirement DDD cannot check is still a requirement: what a build or a foreign reader does
+wrong, DDD reports nothing about.
 
 ### 1.2 Interface specification
 
@@ -147,19 +157,19 @@ run.
 | **declaration** | one entry of a component interface: a scope, an optional condition and a definition |
 | **definition** | the part of a declaration that says what the object is: kind, datatype, shape, conversion and the remaining keys of [section 3.3](#33-data-object-definition) |
 | **data object** | the subject of a declaration: a measurement, parameter, value block, curve, map or axis |
-| **instance** | a declaration naming a structure type ([section 3.7](#37-type-description)): one C object whose members are data objects in their own right, each reached by its access path |
+| **instance** | the data object of a declaration naming a structure type ([section 3.7](#37-type-description)): one C object whose members are data objects in their own right, each reached by its access path. It is a data object like any other - it has a producer, consumers and an `id`, and the dictionary records it as its own kind of entry ([section 5.3](#53-data-dictionary)) - so every rule this specification states about a data object states it about an instance too |
 | **leaf** | one value-holding member of an instance, as the dictionary sees it; a member naming an external type is opaque and is no leaf |
 | **measurement** | a data object the software writes and reads, the producer writing and the consumers reading; a calibration tool can both read and write it as well |
 | **calibration object** | a data object the software never writes: a parameter, value block, curve, map or axis, generated `const` and changed, if at all, by a calibration tool |
 | **scope** | ownership and visibility of a data object with respect to the declaring component |
 | **producer** | the component that owns a data object; its declaration is the authoritative one |
 | **consumer** | a component that declares a data object as its `input`; it reads what another component produces |
-| **declared type** | a scalar, structure or external type declared by a types file ([section 3.7](#37-type-description)) and named by `typename` where a definition's datatype is stated by name |
-| **constant** | a named integer declared by a constants file ([section 3.9](#39-constant-vocabulary)); a shape names it where it would state a number |
+| **declared type** | a scalar, structure or external type declared by a types file, or inside the component that publishes it ([sections 3.2](#32-software-component-description) and [3.7](#37-type-description)), and named by `typename` where a definition's datatype is stated by name |
+| **constant** | a named number declared by a constants file, or inside the component that publishes it ([sections 3.2](#32-software-component-description) and [3.9](#39-constant-vocabulary)); a shape names one holding a whole number of at least 1 where it would state a size |
 | **access path** | the C expression that reads a member of a structured object, for example `Inlet.latest`, or `Inlet[2].raw` for an element of an array of structures; it is the name under which the A2L and the address map know the member ([section 5.2](#52-a2l)) |
 | **conversion** | the rule that maps the raw (implementation) value to the physical value |
 | **check** | one consistency rule, with a stable identifier and a default severity ([section 4](#4-consistency-checks)) |
-| **finding** | one reported violation of a check, located where it is written; findings reported as errors fail the run ([section 7](#7-tool-interface)) |
+| **finding** | one reported violation of a check, located where it is written; a finding reported as an error fails every command that answers about a project's consistency, which is every command but `ddd sources` and `ddd artefacts` ([section 7](#7-tool-interface)) |
 | **data dictionary** | the resolved result: every object with its owner, users, shape and limits worked out. It is the contract between the checking front end and the output backends, and DDD publishes it |
 | **delivery** | the archived data dictionary of one shipped state of a project; [section 4.1](#41-comparing-two-deliveries) compares two of them |
 
@@ -167,7 +177,7 @@ run.
 
 | scope | meaning |
 | --- | --- |
-| `input` | the component reads the object; another component has to produce it |
+| `input` | the component reads the object; another component has to produce it (`missing-producer`) |
 | `output` | the component owns the object; a second component **must not** produce it (`multiple-producers`) |
 | `local` | the component owns the object exclusively; another component **must not** use it, by a declaration or by a reference (`local-conflict`) |
 
@@ -260,9 +270,11 @@ character class, and `**` matches directories recursively. A dot prefixed file i
 like any other file, and whether matching honours case follows the platform, like the file
 identity above. Only regular files are matched, the file stating the pattern is never
 among the matches, and the matches are processed in sorted
-order of their resolved paths, ordered again as the platform compares them, so that which
-component loads first does not depend on how a file system happens to enumerate a
-directory. A pattern that matches nothing is `include-empty`, and a pattern the platform
+order of their resolved paths, compared by code point of their POSIX spelling as names are
+([section 5.1](#51-c-code)), so that which component loads first depends neither on how a
+file system happens to enumerate a directory nor on which platform reads it: `Zeta.ddd.json`
+loads before `alpha.ddd.json` everywhere. A pattern that matches nothing is
+`include-empty`, and a pattern the platform
 cannot expand counts as matching nothing. An entry without a wildcard
 character is a literal path naming exactly one file, and if that file does not exist, or
 names a directory, the
@@ -293,10 +305,12 @@ The top level key `"component"` is required, and it contains the following eleme
 
 Declaring types and constants inside the component co-locates a library's contract in one
 file; it does not scope it. The declared names live in the same project wide namespace as
-those of the standalone files, every check of [section 4](#4-consistency-checks) applies
-unchanged, and any component **may** name them. Types and constants shared between several
-components, with no single owner to live inside, stay in standalone files. `units` and
-`sections` are project wide vocabularies and have no place inside a component.
+those a types or constants file of its own declares, every check of
+[section 4](#4-consistency-checks) applies unchanged, and any component **may** name them.
+Types and constants shared between several components, with no single owner to live
+inside, stay in a file of their own. `units`, `sections` and `rasters` are project wide
+vocabularies and have no place inside a component ([sections 3.5](#35-memory-placement),
+[3.8](#38-unit-vocabulary) and [3.10](#310-measurement-rasters)).
 
 Each declaration contains:
 
@@ -401,8 +415,8 @@ no datatype could hold it.
 
 Every name is a C identifier of at most 128 characters, the bound the A2L format places on
 an identifier, which is tighter than the bound of C. The cap holds wherever a name is
-written: objects, components, projects, enums, enumerators, types, members and
-`display_identifier`.
+written: objects, components, projects, enums, enumerators, types, members, constants
+([section 3.9](#39-constant-vocabulary)) and `display_identifier`.
 
 Kind specific attributes:
 
@@ -615,8 +629,10 @@ the question "where is this object's unit written down" has exactly one answer.
 
 A declaration naming a **scalar type** is an ordinary object whose datatype, unit,
 conversion and limits come from the type. A declaration naming a **structure** is a
-structured object: it generates one C object, and it reaches the A2L as one object per
-member ([section 5.2](#52-a2l)).
+structured object: it generates one C object, and it reaches the A2L as one record per
+member that holds a value and that the format can describe - not a member of an external
+type, whose layout DDD does not know, and not a `bits` member, which no `SYMBOL_LINK` can
+address ([section 5.2](#52-a2l)).
 
 ### 3.4 Conversions
 
@@ -644,8 +660,9 @@ member ([section 5.2](#52-a2l)).
   enumerators ([section 5.1](#51-c-code)). An enum converts nothing: physical and raw value
   coincide, so the limits of an enum object, stated or derived, are enumerator values.
 - `string` reads a one dimensional array of `uint8` or `sint8` as text, one byte per
-  character. `kind` **must** be stated, because the conversion has no key of its own to be
-  inferred from. It sits on a `measurement` or a `value_block` stating exactly one
+  character. A conversion is a string only where `kind` says so: it has no key of its own
+  to be inferred from, and a conversion stating nothing is the identity rather than a
+  string. It sits on a `measurement` or a `value_block` stating exactly one
   dimension, on a `value` member of one dimension ([section 3.7](#37-type-description)), or
   on a scalar type, whose declarations and members then state the dimension. Any other
   datatype, kind or shape, a `bits` member, and a `unit`, `limits` or `a2l.format` beside
@@ -790,8 +807,8 @@ record it does not understand is one it declines rather than misreads.
 A `types` file declares the types a project names, so that components agree by naming
 rather than by each copying out the same answer. A component **may** instead declare the
 types it publishes inside its own description, with entries of exactly this form
-([section 3.2](#32-software-component-description)); the standalone file is the home of
-types shared between components. It is listed in the `includes` of a
+([section 3.2](#32-software-component-description)); a types file of its own is the home
+of types shared between components. It is listed in the `includes` of a
 project ([section 3.1](#31-project-description)) like a component file, and only there:
 handed to the tool as the root of a run, it is refused, with a hint that it belongs in a
 project's `includes`. It is recognised by its top level key: `types`, a non-empty list of
@@ -907,7 +924,10 @@ there by the running system, by the starting code for a measurement and by the c
 tool for a parameter. Of its `a2l` block, `export` decides for the whole object
 ([section 3.3.1](#331-one-object-several-declarations)) and each member's own `export` for
 the member; `format` and `display_identifier` are per member, a whole structure having no
-display format of its own.
+display format of its own. One stated on the declaration of a structured object is neither
+refused nor used: the dictionary's instance record carries it as the declaration wrote it
+([section 5.3](#53-data-dictionary)), and the A2L, whose records are the members, writes it
+nowhere.
 
 Bit positions and member offsets are not stated, and this specification will not add them.
 C leaves both to the compiler, so DDD reads them back out of the build rather than
@@ -955,9 +975,9 @@ rather than a spelling of one.
 A `constants` file declares named numbers, so that a number the project depends on lives in
 one place and is shared by name. A component **may** instead declare the constants it publishes inside
 its own description, with entries of exactly this form
-([section 3.2](#32-software-component-description)); the standalone file is the home of
-constants shared between components. An array dimension is commonly a named constant of the C project,
-stated once and used by every loop that walks the array; a bare number in a description
+([section 3.2](#32-software-component-description)); a constants file of its own is the
+home of constants shared between components. An array dimension is commonly a named
+constant of the C project, stated once and used by every loop that walks the array; a bare number in a description
 restates that constant and drifts from it silently. The file is an includable vocabulary
 like the units file ([section 3.8](#38-unit-vocabulary)): it is listed in the `includes`
 of a project ([section 3.1](#31-project-description)) and only there, and handed to the
@@ -980,8 +1000,12 @@ tool as the root of a run it is refused, with a hint that it belongs in a projec
   with a note at the first.
 - `"value"` (required): a number, written as one - a whole number of either sign that a 64
   bit target can hold, signed or unsigned, or a finite number written with a fraction. How
-  the number is written decides which it is: `2` is a whole number and `2.0` is not, and
-  the outputs carry the literal as written, so the author picks the type a template emits.
+  the number is written decides which it is: `2` is a whole number, and anything carrying a
+  decimal point or an exponent is fractional, so `2.0` and `1e3` both are - which is why a
+  shape naming `1e1` is `dimension-value`. What the outputs carry is the number in its
+  shortest spelling that reads back as the same number, a whole number without a point and
+  any other with a point or an exponent: `2.50` reaches the C and the A2L as `2.5` and `1e3`
+  as `1000.0`. So the author picks the type a template emits, not its format.
   Every declared constant reaches the outputs whether or not a shape names it - one
   `SYSTEM_CONSTANT` each in the a2l, and the whole vocabulary handed to the C templates - so
   a gain, an offset or a count of zero belongs here as much as a size does. The value is a
@@ -1000,8 +1024,10 @@ dimension written as a literal obeys; naming one that is not is `dimension-value
 where the name is written. The rule is checked there rather than on the declaration because
 only that use needs it: a constant nothing dimensions is any number. Either finding drops the
 declaration, as a typename naming no type does. A structure member's `dimensions` **may**
-name a constant as well, and both findings are then reported at the member
-([section 3.7](#37-type-description)). A name and
+name a constant as well, and both findings are then reported at the member; either one there
+makes the whole type unusable, the way a member naming an unknown type does - a member of no
+known length leaves the structure without a size - so every declaration naming that type is
+dropped as well ([section 3.7](#37-type-description)). A name and
 its value are different spellings of one size: declarations of one object **must** agree on
 the spelling (`definition-mismatch`), exactly as conversions compare as written
 ([section 3.4](#34-conversions)), because the spelling is what reaches every consumer's
@@ -1274,7 +1300,10 @@ Errors:
   a block is claiming something it does not own. Kept a separate identifier from
   `consumer-storage`, whose published description says storage, which a block is not.
 - `duplicate-component`: two files declare the same component name.
-- `duplicate-type`: two files declare the same type name.
+- `duplicate-type`: two files declare the same type name. Unlike the four vocabulary checks
+  below, it is the across-files case alone: one file declaring a name twice is refused as it
+  is read, `schema` at that file ([section 3.7](#37-type-description)), because a types file
+  is validated as a whole before anything looks at what other files declare.
 - `duplicate-unit`: a unit is declared more than once, within one file or across files
   ([section 3.8](#38-unit-vocabulary)).
 - `duplicate-section`: a memory section is declared more than once, within one file or
@@ -1321,7 +1350,7 @@ Errors:
 - `unknown-constant`: a shape names a constant that no file of the project declares
   ([section 3.9](#39-constant-vocabulary)); the nearest declared name is suggested.
 - `dimension-value`: a shape names a constant whose value is no array length - zero, negative,
-  or not a whole number ([section 3.9](#39-constant-vocabulary)). A constant may hold any
+  or not a whole number ([section 3.9](#39-constant-vocabulary)). A constant **may** hold any
   number; one that dimensions something has to be what a literal dimension is.
 - `unknown-raster`: a definition or a component names a measurement raster no file declares
   ([section 3.10](#310-measurement-rasters)). Like a section and unlike a unit there is no
@@ -1370,9 +1399,9 @@ Errors:
   the same C namespace in the types header are not compared yet: an enum and a declared
   type of one name, and an enumerator and a declared type of one name *(planned)*.
 - `file-extension`: a description file is not named `*.ddd.json`.
-- `json-syntax`, `schema`, `file-kind`, `file-not-found`, `include-cycle`, `include-depth`:
-  the file tree cannot be read. These six, with `plugin-not-found` and `plugin-invalid`
-  above, are the eight checks whose severity cannot be changed.
+- `json-syntax`, `schema`, `file-kind`, `file-not-found`, `include-cycle`: the file tree
+  cannot be read. These five, with `include-depth` below and `plugin-not-found` and
+  `plugin-invalid` above, are the eight checks whose severity cannot be changed.
 - `include-depth`: the include tree of a project goes deeper than DDD reads
   ([section 3.1](#31-project-description)). The entry that crosses the limit is not
   followed, and the rest of the project is read as usual, so the finding is one rather than
@@ -1427,15 +1456,16 @@ Information:
   never declare it. This check fires only when the cause is silenced; a reported cause
   already says the declaration could not resolve. It is reported for every declaration
   the dictionary omits on that account: the dropped declaration itself, a variable of a
-  type whose cycle, unknown member type or unknown member constant was silenced, the
+  type whose cycle, unknown member type, unknown member constant or member `dimension-value`
+  was silenced, the
   consumers of an object whose producing declaration was dropped, an object whose own
   reference names nothing or names the wrong kind, and an object referring to one that
   went - a curve over such an axis, an axis indexed by such a measurement - at the
   reference that pulled it down on its producing declaration, and
   at the declaration on every other declaration of it.
-- `missing-id`: a producing declaration or instance states no `id`. The key is an adoption a
-  project takes up one component at a time, so its absence is reported at `info` rather than
-  held against a project that has not started; `-W missing-id=error` is how a project that has
+- `missing-id`: a producing declaration states no `id`, an instance's among them. The key
+  is an adoption a project takes up one component at a time, so its absence is reported at
+  `info` rather than held against a project that has not started; `-W missing-id=error` is how a project that has
   finished migrating turns the same finding into its gate. Left unstated, a later delivery
   that renames the object reports a removal and an unrelated addition rather than the rename
   it was.
@@ -1745,7 +1775,11 @@ the author's declaration order within each scope, and an object no component own
 those that arise where `missing-producer` is relaxed - is grouped under `<unresolved>` in
 the definition file rather than under a component. Names sort by code point, an
 upper case name before every lower case one and `cell[10]` before `cell[2]`, which is a
-spelling rule rather than a locale's; only file paths order as the platform compares them.
+spelling rule rather than a locale's, and the paths a wildcard include matched sort the same
+way, by the code point of their POSIX spelling: nothing in a generated file is ordered by
+what the platform running the tool thinks of a name. Whether two paths are the *same* file
+still follows the platform ([section 3.1](#31-project-description)), because that is a
+property of the file system rather than of the output.
 Files are written UTF-8 with LF line endings and no byte order mark - the A2L of
 [section 5.2](#52-a2l) is the one artefact that carries one, because its own format has no
 other way of stating an encoding - and a rendered file whose content has not changed is left
@@ -1764,7 +1798,8 @@ ASAM MCD-2 MC output containing:
   and no `MATRIX_DIM`; a string measurement is the `UBYTE` or `SBYTE` array it is, with its
   `MATRIX_DIM` and an `ANNOTATION` labelled `string` saying that the format has no string
   measurement, which no version of it has.
-- `RECORD_LAYOUT` per datatype and storage category; maps are stored row wise, that is the
+- `RECORD_LAYOUT` per datatype and storage category - the two things a record layout can
+  describe, the values of an object and the points of an axis; maps are stored row wise, that is the
   C declaration is `[y][x]` and the A2L index mode is `ROW_DIR`. An axis layout states
   `INDEX_INCR DIRECT` and a value layout `ROW_DIR DIRECT`.
 - `AXIS_DESCR` with `COM_AXIS` and `AXIS_PTS_REF` for the axis of a curve or map.
@@ -1836,7 +1871,8 @@ description files do not carry is emitted neutrally: resolution and accuracy of 
 display format defaults to `%8.0` for an integer or `boolean` datatype under an identity
 or under a linear conversion whose `factor` and `offset` are whole numbers, and to `%8.3`
 otherwise. The default is stated on the `COMPU_METHOD`, so an object with no method
-(`NO_COMPU_METHOD`: an identity without a unit) carries no format unless its own `format`
+(`NO_COMPU_METHOD`: an identity without a unit, or a string, which has neither
+([section 3.4](#34-conversions))) carries no format unless its own `format`
 states one ([section 3.3](#33-data-object-definition)), which is written on the record. An
 object stating no `description` carries its name as the A2L long identifier. Quoted
 strings escape backslash and quote and replace control characters by a space, and numbers
@@ -1901,7 +1937,11 @@ records what its producing declaration states, resolved: `name`, `id`, `extensio
 `shape` (the numbers) and `dimensions` (the spelling, constant names kept), `init` as the
 declaration wrote it - a list nested one level per dimension, a scalar left a scalar even on
 an array, which is the broadcast the declaration states once and the reader repeats over
-`shape` - `section`, `raster` (the declaration's own, else its component's default), `volatile`,
+`shape`, and the text of a string object where the declaration wrote text
+([section 3.4](#34-conversions)), which a consumer reads as the character codes it stands
+for followed by the zeros that pad the array, exactly as a delivery comparison does
+([section 4.1](#41-comparing-two-deliveries)) - `section`, `raster` (the declaration's
+own, else its component's default), `volatile`,
 `condition` (the producer's), `references` (the objects this one names, keyed by the role it
 names them in - `axis` for a curve, `x_axis` and `y_axis` for a map, `input` for an axis -
 and `{}` on an object that names none), `owner` (the component producing it, `null` only
@@ -1992,9 +2032,13 @@ artefacts, and given neither it lists the built-in artefacts alone; what each ar
 writes is not among them, since a plugin's file names follow from the resolved dictionary
 and a dry run of `ddd generate all` reports them);
 writing out the data dictionary itself (`ddd dump`, to stdout or, with `-o`, into a file
-written the way `generate` writes an artefact: the same bytes on every platform, left
-untouched when its content would not change, and left as it was when the project does not
-resolve); writing an identity into every
+written the way `generate` writes an artefact - the same bytes on every platform, left
+untouched when its content would not change - and left as it was only where there is no
+dictionary to write, that is where the root itself could not be read. Findings do not hold
+the dictionary back: `dump` prints one and `dump -o` writes one whatever was reported,
+errors included, which is where it parts from `generate` ([section 5](#5-generated-artefacts)),
+and a build archiving a delivery therefore gates on the exit code rather than on the file
+appearing); writing an identity into every
 producing declaration that has none (`ddd id --assign FILE...`, editing the named
 description files textually - the new key is staged in a sibling file and renamed onto the
 description, so a run that dies leaves it as it was), so that a later `ddd compare`
@@ -2104,7 +2148,10 @@ formats up to its own it validates strictly.
 ### 7.1 Build system integration
 
 DDD ships a CMake module with two calls: `ddd_add_component(<target> JSON <file>...)`
-registers descriptions, component and vocabulary files alike, on their target, and
+registers descriptions on their target, components and *vocabulary files* alike - a
+vocabulary file being one of the five kinds that declare no interface of their own but are
+named by the ones that do: `types`, `units`, `sections`, `constants` and `rasters`
+([section 3](#3-file-formats)) - and
 `ddd_generate(<image> ...)` generates every artefact of an image - the built-in ones and
 those of the plugins the call names with `PLUGINS` ([section 3.11](#311-plugins)), which it
 writes into the collected project description; a plugin's files are produced beside the
@@ -2175,7 +2222,9 @@ CI job can check without generating, and a `<stem>_ddd_list` target that runs `d
 on the same project under the same policy, printing the table on the console. The path of
 the A2L, where the run writes one, is
 published as the image's `DDD_A2L` property. The generation also writes the resolved
-dictionary beside the artefacts as `<NAME>.dictionary.json`, by passing `--dictionary` to
+dictionary beside the artefacts as `<project name>.dictionary.json` - the name the A2L takes,
+which beside `PROJECT` is the one written inside that file rather than `NAME` - by passing
+`--dictionary` to
 its one `ddd generate`, so that the dictionary is part of the same write as the artefacts and
 a run failing its checks writes none of them; its path is published as the image's
 `DDD_DICTIONARY` property, and `NO_DICTIONARY` leaves the file and the property out. The tool

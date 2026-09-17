@@ -358,7 +358,11 @@ or an a2l file that does not do what the description says - or that does not com
      - error
      - two different files declare a type of the same name. Which of two answers the generated
        c would get is not something an include order should decide, so the second is refused
-       rather than allowed to win.
+       rather than allowed to win. One file declaring a name twice is the other half of the
+       same rule and is not this check: a types file is validated as a whole before anything
+       looks at what other files declare, so the repeat is a ``schema`` error located at that
+       file, where ``duplicate-unit``, ``duplicate-section``, ``duplicate-constant`` and
+       ``duplicate-raster`` cover both cases and point at the entry.
    * - ``unknown-type``
      - error
      - a ``typename`` names no type any file of the project declares - on a component
@@ -411,7 +415,10 @@ or an a2l file that does not do what the description says - or that does not com
        whole number (see the :doc:`constants file <file_formats/constants>`). A constant
        holds any number, because most of what a project names is emitted and dimensions
        nothing; the rule a literal dimension obeys applies only where a shape names one,
-       and is reported there. The declaration is dropped, as for an unknown constant.
+       and is reported there. The declaration is dropped, as for an unknown constant. At a
+       structure member it is the type that goes: a member of no known length leaves the
+       structure without a size, so the type is unusable and every declaration naming it is
+       dropped with it.
    * - ``unknown-raster``
      - error
      - a definition or a component names a measurement raster no file declares (see the
@@ -637,9 +644,12 @@ it is either a smell or a decision somebody should have taken consciously.
        everywhere else.
    * - ``a2l-unrepresentable``
      - warning
-     - an exported object cannot be fully described by the a2l version DDD writes: today that is
-       an array of more than three dimensions, which the ``MATRIX_DIM`` of ASAP2 1.6.1 cannot
-       carry. The extra dimensions are written out and only a 1.7 reader understands them.
+     - an object the a2l carries cannot be fully described by the version DDD writes: today
+       that is an array of more than three dimensions, which the ``MATRIX_DIM`` of ASAP2 1.6.1
+       cannot carry. It fires for what the file carries rather than for what asked to be
+       exported, the closure over references included, so an object kept out of the a2l on its
+       own is still reported where an exported axis names it as its ``input``. The extra
+       dimensions are written out and only a 1.7 reader understands them.
    * - ``address-missing``
      - warning
      - an object that reaches the a2l has no entry in the map ``--address-map`` was given, so

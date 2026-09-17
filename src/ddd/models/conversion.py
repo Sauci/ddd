@@ -90,6 +90,7 @@ class IdentityConversion(_Frozen):
     """
 
     kind: Literal["identity"] = "identity"
+    """The tag of this kind, which may be left out: an empty block is the identity."""
 
     def to_physical(self, raw: float) -> float:
         return raw
@@ -105,6 +106,9 @@ class LinearConversion(_Frozen):
     """``physical = raw * factor + offset``, the scaling of a fixed point value."""
 
     kind: Literal["linear"] = "linear"
+    """The tag of this kind, which may be left out: a block stating ``factor`` or ``offset``
+    is linear."""
+
     factor: Real = 1.0
     """Scaling; must not be zero, or nothing could be converted back."""
 
@@ -174,13 +178,23 @@ class EnumConversion(_Frozen):
     """
 
     kind: Literal["enum"] = "enum"
+    """The tag of this kind, which may be left out: a block stating ``enumerators`` or a
+    ``name`` is an enum."""
+
     name: Identifier
     """C identifier of the generated ``typedef enum``; shared enums must agree everywhere."""
 
     enumerators: Annotated[
         tuple[Enumerator, ...], Field(min_length=1, json_schema_extra=_publish_mapping_form)
     ]
-    """The named values, either as objects or as a ``{"NAME": value}`` mapping."""
+    """The named values, either as objects or as a ``{"NAME": value}`` mapping.
+
+    Two of them may not carry the same name, which the mapping form cannot express twice and
+    the list form can: the generated enumeration would not compile, and a calibration tool
+    reading the generated table of labels would have two answers for one. Two names sharing a
+    *value* is a different matter - it is the C idiom for an alias, reported as
+    ``enum-duplicate-value`` rather than refused.
+    """
 
     @model_validator(mode="before")
     @classmethod
@@ -244,6 +258,8 @@ class StringConversion(_Frozen):
     """
 
     kind: Literal["string"]
+    """The tag of this kind, which is required: a string has no key of its own to be
+    recognised by, so nothing else would tell it from the identity."""
 
     def to_physical(self, raw: float) -> float:
         return raw

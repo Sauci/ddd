@@ -96,8 +96,14 @@ def project_wide_checks() -> list[str]:
 
 
 def project_wide_counts(text: str) -> list[str]:
-    """The number word of every "N checks ... need every component" claim of one document."""
-    return re.findall(r"(\w+) checks(?: that)? need every component of a project", flattened(text))
+    """The number word of every "N checks ... need every component" claim of one document.
+
+    Both spellings of the subject: a document says the checks need "every component of a
+    project" or "the whole project", and a count was stale under the second while every
+    document that uses the first was pinned.
+    """
+    claim = r"(\w+) checks(?: that)? need (?:every component of a project|the whole project)"
+    return [word for word in re.findall(claim, flattened(text)) if word.lower() in NUMBER_WORDS]
 
 
 def project_wide_enumerations(text: str, tick: str) -> list[list[str]]:
@@ -550,8 +556,31 @@ class TestConcepts:
 
     def test_the_readme_points_at_files_that_exist(self) -> None:
         """A dead link in the README is a lie about where the code lives."""
-        for target in re.findall(r"\]\((?!https?:)([^)#]+)", README):
-            assert (ROOT / target).exists(), f"README links to a missing path: {target}"
+        for kind, target in re.findall(
+            r"\]\(https://github\.com/Sauci/ddd/(blob|tree)/master/([^)#]+)", README
+        ):
+            path = ROOT / target
+            assert path.exists(), f"README links to a missing path: {target}"
+            assert path.is_dir() == (kind == "tree"), (
+                f"README links {target} as a {kind}; GitHub serves a directory under tree/ "
+                f"and a file under blob/"
+            )
+
+    def test_the_readme_links_no_path_a_reader_of_the_package_index_cannot_follow(self) -> None:
+        """The README is the package description (``pyproject.toml``: ``readme``).
+
+        PyPI renders it with the relative links exactly as written, and there is no repository
+        around them there: every one of the thirty-odd links to a file of this repository was
+        a 404 for anybody who arrived through the index rather than through GitHub. They are
+        written absolute, the way the logo already was, which also survives the README being
+        quoted anywhere else.
+        """
+        relative = re.findall(r"\]\((?!https?:|#)([^)]+)\)", README)
+        assert not relative, (
+            f"the README links these paths relatively: {relative}. The package index renders "
+            f"them as written, where nothing resolves them - write "
+            f"https://github.com/Sauci/ddd/blob/master/<path> instead."
+        )
 
     def test_the_spec_points_at_files_that_exist(self) -> None:
         for target in re.findall(r"\]\((?!https?:)([^)#]+)", SPEC):
@@ -1028,6 +1057,28 @@ def descriptions_in(node: object) -> list[str]:
     return []
 
 
+def python_names() -> set[str]:
+    """Every public function and module constant of the package, by name.
+
+    Not the classes: a model's name is often the name of the thing in the file format too -
+    ``Enumerator``, ``Limits`` - and saying it is saying something a reader of the json can
+    act on. A function or a constant never is.
+    """
+    found: set[str] = set()
+    for path in (ROOT / "src" / "ddd").rglob("*.py"):
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
+            if isinstance(node, ast.FunctionDef):
+                found.add(node.name)
+            elif isinstance(node, ast.AnnAssign | ast.Assign):
+                targets = [node.target] if isinstance(node, ast.AnnAssign) else node.targets
+                found.update(
+                    target.id
+                    for target in targets
+                    if isinstance(target, ast.Name) and target.id.isupper()
+                )
+    return {name for name in found if not name.startswith("_")}
+
+
 def enumerations_in(node: object) -> list[dict[str, Any]]:
     """Every closed set of values in a schema, wherever it sits."""
     if isinstance(node, dict):
@@ -1112,14 +1163,15 @@ class TestPublishedSchemas:
     def test_every_authored_field_carries_hover_documentation(self, kind: str) -> None:
         """A field without a description is a blank tooltip in every editor.
 
-        ``kind`` is exempt only where it is a fixed tag with nothing behind it: the ones that
-        select a data object are documented, and checked below.
+        Nothing is exempt. ``kind`` used to be, on the reading that a fixed tag has nothing
+        behind it, and the four conversion tags were the only blank hovers in all eight
+        published schemas - on the one key a reader typing ``"kind": "linear"`` is looking at.
         """
         undocumented = [
             f"{name}.{field}"
             for name, definition in objects_in(published(kind))
             for field, spec in definition.get("properties", {}).items()
-            if "description" not in spec and field != "kind"
+            if "description" not in spec
         ]
         assert not undocumented, (
             f"fields with a blank editor tooltip: {undocumented}. Add an attribute "
@@ -1180,6 +1232,26 @@ class TestPublishedSchemas:
         """Whoever reads these writes json; a dotted module path is an answer to nobody."""
         offenders = [text for text in descriptions_in(published(kind)) if "ddd.models" in text]
         assert not offenders, f"{kind} refers the reader to python: {offenders}"
+
+    @pytest.mark.parametrize("kind", published_kinds())
+    def test_no_description_names_a_python_object_of_this_package(self, kind: str) -> None:
+        """The same rule as above, asked of the names rather than of the module paths.
+
+        These strings are what an editor hovers and what ``ddd schema`` publishes, and a
+        reader of them has the json in front of them and nothing else: "see ``resolve_export``"
+        and "that is what ``DICTIONARY_FORMAT`` exists to make safe" point at code they do not
+        have, and ``None`` is a value the document spells ``null``.
+        """
+        quoted = {
+            name
+            for text in descriptions_in(published(kind))
+            for name in re.findall(r"``([A-Za-z_][A-Za-z_0-9]*)``", text)
+        }
+        offenders = sorted(quoted & (python_names() | {"None"}))
+        assert not offenders, (
+            f"{kind} hovers the names of python objects: {offenders}. Say the rule, or point "
+            f"at the page that states it; write ``null`` for the json value."
+        )
 
 
 class TestTheShorthandsThePagesRecommend:
@@ -1361,6 +1433,97 @@ def without_descriptions(node: Any) -> Any:
     if isinstance(node, list):
         return [without_descriptions(value) for value in node]
     return node
+
+
+UNRELEASED = CHANGELOG.split("## Unreleased", 1)[1].split("\n## ", 1)[0]
+"""The release note of the version being prepared, which is the one still being written into.
+
+Everything above ``## 0.9.0`` describes the tree as it stands, where a released entry
+describes the tree as it stood; a count or a format number that goes stale while eight
+branches write into one section goes stale here.
+"""
+
+REVIEW_PHRASE = "a review of the whole tool"
+"""How an entry that closes a finding of the 2026-09-15 review says where it comes from."""
+
+
+class TestTheReleaseNote:
+    """The unreleased entries are held to the tree they describe.
+
+    They are written one area at a time and read in one go, so a number one entry states can
+    be made wrong by another: the set of checks that need every component lost a member in the
+    same release that the editor entry counted it in, and said ten where the tool has nine.
+    """
+
+    def test_it_counts_the_checks_needing_every_component_as_the_registry_does(self) -> None:
+        counted = project_wide_counts(UNRELEASED)
+        assert counted, "the release note no longer says how many checks need every component"
+        for word in counted:
+            assert NUMBER_WORDS[word.lower()] == len(project_wide_checks()), (
+                f"the release note says {word} checks need every component of a project, and "
+                f"{len(project_wide_checks())} do"
+            )
+
+    def test_it_counts_the_entries_the_review_of_the_whole_tool_wrote(self) -> None:
+        """The opening paragraph counts them, and they were written one branch at a time.
+
+        The count is the reader's map of the release: it says how much of what follows is the
+        answer to one review rather than a feature, and an eighth entry added without touching
+        the paragraph would leave it describing the release before this one.
+        """
+        entries = [line for line in UNRELEASED.splitlines() if line.startswith("* **")]
+        found = sum(1 for entry in UNRELEASED.split("\n* **")[1:] if REVIEW_PHRASE in entry)
+        stated = re.search(
+            r"the (\w+) entries that follow are what that review found", flattened(UNRELEASED)
+        )
+        assert stated is not None, "the release note no longer counts the review's entries"
+        assert NUMBER_WORDS[stated.group(1)] == found, (
+            f"the release note says {stated.group(1)} of its {len(entries)} entries come from "
+            f"the review, and {found} of them say so"
+        )
+
+    def test_it_states_the_format_of_the_dictionary_it_ships(self) -> None:
+        """Three entries tell a reader which format to expect; one bump makes all three wrong."""
+        from ddd.ir import DICTIONARY_FORMAT
+
+        stated = re.findall(
+            r"(?:dictionary (?:is|stays)|still) format (\d+)", flattened(UNRELEASED)
+        )
+        assert stated, "the release note no longer says which dictionary format it ships"
+        assert {int(number) for number in stated} == {DICTIONARY_FORMAT}, (
+            f"the release note announces dictionary format {sorted(set(stated))}, and the "
+            f"tool writes {DICTIONARY_FORMAT}"
+        )
+
+
+def exported_models() -> list[str]:
+    """Every pydantic model ``ddd.models`` exports, by name and in the order it exports them."""
+    import ddd.models
+
+    return [
+        name
+        for name in ddd.models.__all__
+        if isinstance(found := getattr(ddd.models, name), type) and issubclass(found, BaseModel)
+    ]
+
+
+class TestTheContractsPage:
+    """ "The generated reference for every model" is held to the models there are.
+
+    ``StringConversion`` was added to the union, to the loader, to the schemas and to the
+    specification, and the page that promises the reference rendered the other three kinds and
+    not it: a reader looking up what ``{"kind": "string"}`` is held to found the page that says
+    it documents everything, and nothing on it. Nothing here counts the models by hand.
+    """
+
+    CONTRACTS = PAGES["docs/data_contracts.rst"]
+
+    @pytest.mark.parametrize("name", exported_models())
+    def test_every_exported_model_is_rendered(self, name: str) -> None:
+        assert f"autopydantic_model:: ddd.models.{name}" in self.CONTRACTS, (
+            f"ddd.models exports {name} and the contracts page does not render it; add "
+            f"'.. autopydantic_model:: ddd.models.{name}' under the section it belongs to."
+        )
 
 
 class TestTheDictionaryPage:
@@ -2365,6 +2528,24 @@ off instead; these are the keys it hangs off.
 """
 
 
+REFUSED_BUT_NOT_BY_A_CONSTRAINT = [
+    ("types", "ExternalType", "header", "no whitespace"),
+    ("component", "ExternalType", "header", "no whitespace"),
+    ("rasters", "RasterDeclaration", "cycle", "1 to 255 times a decade"),
+    ("component", "EnumConversion", "enumerators", "may not carry the same name"),
+    ("component", "Measurement", "unit", "Refused beside a ``string``"),
+    ("component", "Measurement", "limits", "Refused beside a ``string``"),
+    ("component", "A2lObjectOptions", "format", "Refused beside a ``string``"),
+]
+"""Four rules the loader enforces in python, with the phrase each description carries.
+
+An editor bound to the schema accepts what the loader then refuses - a header spelled
+``"a b.h"``, a ``cycle`` of ``1234ms``, one enumerator name twice, a ``unit`` beside a
+string - so the description of the key says the rule, which is what the file formats index
+promises a reader of a key that no constraint can express.
+"""
+
+
 class TestTheRuleAJsonSchemaCannotCarry:
     @pytest.mark.parametrize(("kind", "model", "key"), WHOLE_NUMBER_KEYS)
     def test_a_strict_integer_key_says_it_is_written_without_a_point(
@@ -2372,3 +2553,10 @@ class TestTheRuleAJsonSchemaCannotCarry:
     ) -> None:
         described = published(kind)["$defs"][model]["properties"][key]["description"]
         assert "without a decimal point" in described, described
+
+    @pytest.mark.parametrize(("kind", "model", "key", "phrase"), REFUSED_BUT_NOT_BY_A_CONSTRAINT)
+    def test_a_key_the_loader_polices_says_what_it_refuses(
+        self, kind: str, model: str, key: str, phrase: str
+    ) -> None:
+        described = published(kind)["$defs"][model]["properties"][key]["description"]
+        assert phrase in described, described

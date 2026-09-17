@@ -369,7 +369,7 @@ Types and constants of the component
 ------------------------------------
 
 A component **may** declare the types and the constants it publishes inside its own
-description, in two optional keys whose entries are exactly those of the standalone files: a
+description, in two optional keys whose entries are exactly those of a vocabulary file: a
 ``types`` list as a :doc:`types file <types>` writes it, and a ``constants`` list as a
 :doc:`constants file <constants>` writes it. This is the pump of ``examples/vocabulary``,
 shortened to the parts that matter:
@@ -411,15 +411,16 @@ shortened to the parts that matter:
    }
 
 Declaring them here co-locates a library's contract in one file; it does **not** scope it.
-The names join the same project wide namespace as those of the standalone files, every
+The names join the same project wide namespace as those a vocabulary file declares, every
 consistency check applies to them unchanged - ``duplicate-type`` and ``duplicate-constant``
 across both homes, ``reserved-identifier``, ``name-collision``, the unit vocabulary - and
 any component of the project may name them, exactly as if a types or constants file had
 declared them. Which home to choose is therefore a question of ownership rather than of
 visibility: a type or constant that belongs to one component's published contract reads
 best next to the interface that uses it, and one shared between several components, with no
-single owner to live inside, stays in a standalone file. ``units`` and ``sections`` are
-project wide vocabularies with no owner at all, so neither may appear inside a component:
+single owner to live inside, stays in a file of its own. ``units``, ``sections`` and
+``rasters`` are project wide vocabularies with no owner at all, so none of the three may
+appear inside a component:
 
 .. code-block:: text
 

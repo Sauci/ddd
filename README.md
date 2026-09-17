@@ -10,7 +10,7 @@ describes the variables it produces and consumes in a small json file, DDD check
 components agree, and then generates the c code so that nobody can write a variable that
 belongs to somebody else.
 
-See [SPEC.md](SPEC.md) for the specification this implementation follows.
+See [SPEC.md](https://github.com/Sauci/ddd/blob/master/SPEC.md) for the specification this implementation follows.
 
 ```text
    *.ddd.json  --->  load  --->  resolve + check  --->  DataDictionary
@@ -27,7 +27,7 @@ See [SPEC.md](SPEC.md) for the specification this implementation follows.
 ```
 
 The front end never mentions c or a2l; a backend never touches the loader or the checks.
-Everything they share is the [DataDictionary](src/ddd/ir.py) - `ddd dump` writes it out and
+Everything they share is the [DataDictionary](https://github.com/Sauci/ddd/blob/master/src/ddd/ir.py) - `ddd dump` writes it out and
 `ddd schema dictionary` publishes its schema.
 
 The **full documentation is at <https://sauci.github.io/ddd/>** - a guided introduction, the
@@ -37,14 +37,14 @@ and <https://sauci.github.io/ddd/latest/> follows `master`, which is what the li
 point into, so that they describe the tree this README sits in rather than whatever was true
 when somebody last wrote it down. This README is the short version.
 
-`ddd --version` prints the release, and [CHANGELOG.md](CHANGELOG.md) says what changed in
+`ddd --version` prints the release, and [CHANGELOG.md](https://github.com/Sauci/ddd/blob/master/CHANGELOG.md) says what changed in
 it - including what a migration costs, since a minor release may still change the file format
 while the major version is `0`. The check identifiers, the command names and their options,
 the json file formats - the description files and, beside them, the address map, the dumped
 dictionary, the `--renames` file and `ddd-build.json` - the `ddd_generate()` and
 `ddd_add_component()` signatures and the names a c template renders from are the tool's
 public interface; the generated a2l is ASAP2 1.6.1.
-Licence terms are in [LICENSE](LICENSE), and problems belong in the
+Licence terms are in [LICENSE](https://github.com/Sauci/ddd/blob/master/LICENSE), and problems belong in the
 [issue tracker](https://github.com/Sauci/ddd/issues).
 
 ## Installation
@@ -145,7 +145,7 @@ ddd lsp                      # speaks the Language Server Protocol on stdin and 
 
 Editors that launch a server themselves - Neovim, Helix, Emacs - need only that command.
 VS Code cannot start one without an extension, so there is one in
-[editors/vscode](editors/vscode); it is a launcher and nothing more, which is why everything
+[editors/vscode](https://github.com/Sauci/ddd/tree/master/editors/vscode); it is a launcher and nothing more, which is why everything
 below works the same either way.  Every release attaches a `ddd-<version>.vsix` to its
 [GitHub release](https://github.com/Sauci/ddd/releases), which is a permanent link needing no
 account and no network policy exception: that installs with
@@ -263,7 +263,7 @@ exist:
   exist after the first configure, so add that directory to `.gitignore` and expect a fresh
   clone to have no validation until then.
 
-Every file under [examples/](examples/) is bound this way, against the [schemas/](schemas/) of
+Every file under [examples/](https://github.com/Sauci/ddd/tree/master/examples) is bound this way, against the [schemas/](https://github.com/Sauci/ddd/tree/master/schemas) of
 this repository, so cloning it is enough to see the effect.
 
 ### Project description
@@ -478,8 +478,9 @@ project's `includes` like a component and each with its own page in the document
   running software can write it, the alignment it guarantees - and a definition places its
   object with `section`
   ([documentation](https://sauci.github.io/ddd/latest/file_formats/sections.html));
-* a **constants** file declares named integer constants, and a shape names one where it
-  would state a number - `"dimensions": ["PRESSURE_CELLS"]` - so a size lives in one place,
+* a **constants** file declares named numbers - whole or fractional, of either sign - and a
+  shape names one holding a whole number of at least 1 where it would state a size -
+  `"dimensions": ["PRESSURE_CELLS"]` - so that size lives in one place,
   the generated c declares the array by the name, and the a2l records it as a
   `SYSTEM_CONSTANT`
   ([documentation](https://sauci.github.io/ddd/latest/file_formats/constants.html));
@@ -494,8 +495,8 @@ inside its own description, with entries exactly as the standalone files write t
 standalone files remain the home of entries shared between components.  Units, sections and
 rasters are project wide vocabularies and stay in files of their own.
 
-[examples/structures](examples/structures) is a ready to run project declaring and consuming
-structured types, and [examples/vocabulary](examples/vocabulary) is one that pins its unit
+[examples/structures](https://github.com/Sauci/ddd/tree/master/examples/structures) is a ready to run project declaring and consuming
+structured types, and [examples/vocabulary](https://github.com/Sauci/ddd/tree/master/examples/vocabulary) is one that pins its unit
 spellings, places its objects into declared memory sections, measures some of them on
 declared rasters and dimensions its arrays by declared constants - one embedded in the pump
 component, one shared in a standalone file; both projects check clean.
@@ -508,8 +509,8 @@ owns an `extensions` block on a definition and on the project, validates it with
 model of its own, and contributes checks (`-W layout/duplicate-key=warning` targets one),
 comparison rules and an artefact (`ddd generate layout`). DDD carries the block into the
 dictionary and never interprets it. The api is documented at
-<https://sauci.github.io/ddd/latest/plugins.html>; [examples/plugins/ddd_layout.py](examples/plugins/ddd_layout.py)
-is a worked example and [examples/layout](examples/layout) a project that names it.
+<https://sauci.github.io/ddd/latest/plugins.html>; [examples/plugins/ddd_layout.py](https://github.com/Sauci/ddd/blob/master/examples/plugins/ddd_layout.py)
+is a worked example and [examples/layout](https://github.com/Sauci/ddd/tree/master/examples/layout) a project that names it.
 
 ## Consistency checks
 
@@ -620,7 +621,7 @@ for the baseline - and graded, because the changes are not equally bad:
 | warning | `missing-plugin` | a compared dictionary records a plugin this run has not loaded, so that plugin's rules did not run |
 | info | `added-object` | the candidate declares something new |
 
-[examples/pressure](examples/pressure) ships the three deliveries of the documentation's worked
+[examples/pressure](https://github.com/Sauci/ddd/tree/master/examples/pressure) ships the three deliveries of the documentation's worked
 example - the release that went out, a working tree with five changes to it and an older tree -
 so `ddd compare examples/pressure/release/pressure.ddd.json examples/pressure/work/pressure.ddd.json`
 can be tried from a checkout; the
@@ -799,7 +800,7 @@ that `ddd dump > baseline.json` and `ddd list | ...` carry only the payload.  Wi
 
 ## CMake integration
 
-[cmake/Ddd.cmake](cmake/Ddd.cmake) turns the whole workflow into two calls.  A component
+[cmake/Ddd.cmake](https://github.com/Sauci/ddd/blob/master/cmake/Ddd.cmake) turns the whole workflow into two calls.  A component
 registers its description on its own target, and the image collects the descriptions of the
 components it links:
 
@@ -823,7 +824,7 @@ ddd_generate(firmware.elf NAME DemoDevice TEMPLATE_DIRECTORY "${CMAKE_CURRENT_SO
 that component, and the one it is meant to include.  What the build hands it is the output
 directory, which holds the headers of every component of *this image* and no others, so the
 isolation is a convention a reviewer can see broken rather than one the compiler enforces.
-A complete, buildable example is in [examples/cmake/](examples/cmake/).
+A complete, buildable example is in [examples/cmake/](https://github.com/Sauci/ddd/tree/master/examples/cmake).
 
 **Collection follows the link graph.**  The descriptions travel as a transitive usage
 requirement (`TRANSITIVE_LINK_PROPERTIES`, hence CMake **3.30**), so an image gets exactly
@@ -844,7 +845,8 @@ plus `firmware_ddd_check` to run the consistency check on its own in ci, `firmwa
 to print the table of the image's variables, and one
 `<target>.ddd` per component that checks a single component before it is integrated.  The
 path of the generated a2l is available as the `DDD_A2L` property of the image, and that of
-`<NAME>.dictionary.json` - the resolved dictionary the generation writes beside the artefacts,
+`<project name>.dictionary.json` - the resolved dictionary the generation writes beside the
+artefacts, under the name the a2l takes,
 in the same write as them (`ddd generate --dictionary`) - as its `DDD_DICTIONARY` property.
 
 In the collected mode `firmware_ddd_headers` carries more than the include directory: the
@@ -913,7 +915,7 @@ docker compose run --rm shell            # an interactive shell in the image
 docker compose run --rm ddd ddd list examples/demo/demo.ddd.json
 ```
 
-`compile` runs [docker/compile.sh](docker/compile.sh), which
+`compile` runs [docker/compile.sh](https://github.com/Sauci/ddd/blob/master/docker/compile.sh), which
 
 1. generates the demo project into `build/gen`,
 2. writes one translation unit per generated header that includes it **twice**, proving
@@ -923,7 +925,7 @@ docker compose run --rm ddd ddd list examples/demo/demo.ddd.json
 4. links all objects into one binary, which is where a duplicated definition or a
    declaration without a definition would show up, and
 5. compares `nm` against `ddd dump --format json` so that every variable DDD promised is
-   defined exactly once and nothing else is ([docker/verify_symbols.py](docker/verify_symbols.py)).
+   defined exactly once and nothing else is ([docker/verify_symbols.py](https://github.com/Sauci/ddd/blob/master/docker/verify_symbols.py)).
 
 Steps 2 to 5 run twice, once plain and once with `-DFEATURE_X`, so the conditional
 declarations are covered in both states:
@@ -961,7 +963,7 @@ python -m mypy
 ```
 
 Coverage runs with every test run and **a gap fails the run**: `--cov-fail-under=100` over
-statements *and* branches, configured in [pyproject.toml](pyproject.toml).  The reasoning is
+statements *and* branches, configured in [pyproject.toml](https://github.com/Sauci/ddd/blob/master/pyproject.toml).  The reasoning is
 that a line nobody executes is a line nobody has ever seen behave - and in a code generator,
 an unexercised branch means an output nobody has ever looked at.  Two consequences worth
 knowing:
@@ -970,16 +972,16 @@ knowing:
   analysis and contract types); the fix was deleting them, not writing tests for them,
 * the paths that only a coverage run reaches - unreadable files, malformed json, relaxed
   severities, odd float literals - live together in
-  [tests/test_edge_cases.py](tests/test_edge_cases.py).
+  [tests/test_edge_cases.py](https://github.com/Sauci/ddd/blob/master/tests/test_edge_cases.py).
 
 Five more suites guard things a type checker cannot:
-[tests/test_backends.py](tests/test_backends.py) walks the import graph so the layering
-cannot rot, [tests/test_cmake.py](tests/test_cmake.py) configures and builds the cmake module
+[tests/test_backends.py](https://github.com/Sauci/ddd/blob/master/tests/test_backends.py) walks the import graph so the layering
+cannot rot, [tests/test_cmake.py](https://github.com/Sauci/ddd/blob/master/tests/test_cmake.py) configures and builds the cmake module
 over the examples with the `cmake` the development requirements install,
-[tests/test_hardening.py](tests/test_hardening.py) holds one test per defect that
+[tests/test_hardening.py](https://github.com/Sauci/ddd/blob/master/tests/test_hardening.py) holds one test per defect that
 once reached a customer-facing artefact or verdict, and
-[tests/test_documentation.py](tests/test_documentation.py) with
-[tests/test_transcripts.py](tests/test_transcripts.py) hold the documentation to the tool:
+[tests/test_documentation.py](https://github.com/Sauci/ddd/blob/master/tests/test_documentation.py) with
+[tests/test_transcripts.py](https://github.com/Sauci/ddd/blob/master/tests/test_transcripts.py) hold the documentation to the tool:
 every check, command, object kind and datatype is named where it should be, no link points at
 a file that no longer exists, and every command a page runs over the examples prints what the
 page shows.
@@ -990,16 +992,16 @@ page shows.
 
 | layer | knows about | does not know about |
 | --- | --- | --- |
-| [models/](src/ddd/models/) | the json file formats, storage sizes, value ranges | c, a2l |
-| [loading.py](src/ddd/loading.py) | files, includes, globs | what the data means |
-| [analysis.py](src/ddd/analysis.py) | ownership, agreement, references | any output format |
-| [ir.py](src/ddd/ir.py) | **the contract**: the resolved dictionary | how it is rendered |
-| [plugins.py](src/ddd/plugins.py) | the plugin api: the blocks, the hooks | the loader, the analysis, any backend |
-| [backends/c/](src/ddd/backends/c/) | `uint16_t`, literals, include guards, templates | a2l, the loader |
-| [backends/a2l/](src/ddd/backends/a2l/) | `UWORD`, compu methods, record layouts, templates | c, the loader |
+| [models/](https://github.com/Sauci/ddd/tree/master/src/ddd/models) | the json file formats, storage sizes, value ranges | c, a2l |
+| [loading.py](https://github.com/Sauci/ddd/blob/master/src/ddd/loading.py) | files, includes, globs | what the data means |
+| [analysis.py](https://github.com/Sauci/ddd/blob/master/src/ddd/analysis.py) | ownership, agreement, references | any output format |
+| [ir.py](https://github.com/Sauci/ddd/blob/master/src/ddd/ir.py) | **the contract**: the resolved dictionary | how it is rendered |
+| [plugins.py](https://github.com/Sauci/ddd/blob/master/src/ddd/plugins.py) | the plugin api: the blocks, the hooks | the loader, the analysis, any backend |
+| [backends/c/](https://github.com/Sauci/ddd/tree/master/src/ddd/backends/c) | `uint16_t`, literals, include guards, templates | a2l, the loader |
+| [backends/a2l/](https://github.com/Sauci/ddd/tree/master/src/ddd/backends/a2l) | `UWORD`, compu methods, record layouts, templates | c, the loader |
 
 A backend is anything with a `name` and a `generate(dictionary, output_dir)` method
-([backends/base.py](src/ddd/backends/base.py)); an output format DDD does not ship is a
+([backends/base.py](https://github.com/Sauci/ddd/blob/master/src/ddd/backends/base.py)); an output format DDD does not ship is a
 [plugin](#plugins)'s backend, which touches nothing inside the tool, and a built-in one is a
 package next to the two existing ones, registered as an artefact of `ddd generate`, as the
 developer documentation describes.  `tests/test_backends.py` enforces the
@@ -1010,7 +1012,7 @@ one run.
 
 ## The specification
 
-[SPEC.md](SPEC.md) is the authoritative contract: it states the file formats, the checks,
+[SPEC.md](https://github.com/Sauci/ddd/blob/master/SPEC.md) is the authoritative contract: it states the file formats, the checks,
 the command line and the generated artefacts this implementation is measured against, and
 the test suite holds the two together.  Where this README summarises and the specification
 binds, the specification wins.

@@ -169,11 +169,15 @@ class A2lObjectOptions(_Frozen):
     variable: a component reading a value from a library it does not own has as good a claim
     to measuring it.
 
-    Stated by several, the answer is yes if any of them says so - see :func:`resolve_export`.
+    Stated by several, the answer is yes if any of them says so, and an object nobody
+    mentions is exported: see "Who asks for an export" on the definition page.
     """
 
     format: A2lFormat | None = None
-    """a2l ``FORMAT`` string, e.g. ``"%8.3"``: total width, then decimal places."""
+    """a2l ``FORMAT`` string, e.g. ``"%8.3"``: total width, then decimal places.
+
+    Refused beside a ``string`` conversion, which has no decimals to display.
+    """
 
     display_identifier: Identifier | None = None
     """Alternative name shown by the calibration tool."""
@@ -436,6 +440,8 @@ class DataObject(_Frozen):
     Free text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:
     every component declaring this object has to spell it the same way, and where the project
     declares a unit vocabulary the spelling is checked against that too (``unknown-unit``).
+    Refused beside a ``string`` conversion: text has no unit, and one stated there would
+    reach the a2l as the unit of a computation method that cannot exist.
     """
 
     section: Annotated[str, StringConstraints(pattern=SECTION_NAME_PATTERN)] | None = None
@@ -495,6 +501,8 @@ class DataObject(_Frozen):
     Omitted, they are derived from ``datatype`` and ``conversion``: the whole range the
     storage can hold, converted. State them to say that the software handles less than that,
     which is what stops a calibration tool offering a value the software cannot take.
+    Refused beside a ``string`` conversion: the range of text is the byte range of its
+    datatype, and stated limits would offer a tool a range over character codes.
     """
 
     a2l: A2lObjectOptions = A2lObjectOptions()

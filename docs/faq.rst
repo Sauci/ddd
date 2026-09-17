@@ -314,7 +314,7 @@ a type and then restating what it fixes is an error rather than an override, so 
 this unit written down" keeps one answer. A type that belongs to one component's published
 contract can also be declared inside that
 :doc:`component's own description <file_formats/component>`, with the same entry and the
-same project wide name; the standalone file is the home of the shared ones.
+same project wide name; a vocabulary file of its own is the home of the shared ones.
 
 How do I keep everybody spelling units the same way?
 ----------------------------------------------------

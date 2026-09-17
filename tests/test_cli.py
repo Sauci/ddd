@@ -2653,6 +2653,27 @@ class TestDumpToAFile:
         assert "file-not-found" in capsys.readouterr().err
         assert target.read_bytes() == b"the previous dictionary\n"
 
+    def test_an_error_stops_generate_and_not_the_dump_of_the_same_project(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The two commands that write "what ``dump`` prints" part here, so the spec says it.
+
+        ``generate`` gates its artefacts on the findings - a delivery is never generated from a
+        project with errors - while ``dump`` describes the project as it is, errors and all,
+        which is what makes it the thing to archive beside a delivery that failed. A build
+        therefore reads the exit code rather than the presence of the file.
+        """
+        write_tree(tree, self.WITH_ERRORS)
+        source = str(tree / "project.ddd.json")
+        dumped = tree / "dumped.json"
+        generated = tree / "gen" / "generated.json"
+        assert main(["dump", source, "-o", str(dumped)]) == EXIT_FINDINGS
+        assert dumped.is_file()
+        arguments = ["generate", "a2l", source, "-o", str(tree / "gen")]
+        assert main([*arguments, "--dictionary", str(generated)]) == EXIT_FINDINGS
+        assert not generated.exists()
+        assert "missing-producer" in capsys.readouterr().err
+
     def test_a_target_that_cannot_be_written_is_a_usage_error_after_the_findings(
         self, tree: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

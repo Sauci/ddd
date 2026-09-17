@@ -14,6 +14,15 @@ its own.  A check identifier is the one entry of that list a release only ever a
 name a project has written into a severity override does not change once it has been
 published, as the specification requires ([section 4](SPEC.md#4-consistency-checks)).
 
+## Unreleased
+
+* **A browser interface, as a preview.**  `ddd gui` serves a browser interface over one
+  project's description files on the developer's own computer and opens the browser on it:
+  the project's components, the findings of each, and a declaration's unit changed in place -
+  written into the file as a one-line change and checked the way `ddd check` checks it.  It is
+  the first step of a GUI for developers who would rather not edit JSON, and its options are
+  not yet part of the public interface.
+
 ## 0.10.0
 
 This release is two things at once.  It finishes what 0.9.0 started - constants that hold any

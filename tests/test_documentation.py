@@ -391,6 +391,7 @@ class TestCommands:
             "schema",
             "build-info",
             "lsp",
+            "gui",
             "checks",
             "cmake-dir",
             "templates-dir",
@@ -1452,33 +1453,28 @@ REVIEW_PHRASE = "a review of the whole tool"
 class TestTheReleaseNote:
     """The unreleased entries are held to the tree they describe.
 
-    They are written one area at a time and read in one go, so a number one entry states can
-    be made wrong by another: the set of checks that need every component lost a member in the
-    same release that the editor entry counted it in, and said ten where the tool has nine.
+    A note is held to every claim it makes rather than required to make it: the note after a
+    release starts with whatever its first change says.
     """
 
     def test_it_counts_the_checks_needing_every_component_as_the_registry_does(self) -> None:
-        counted = project_wide_counts(UNRELEASED)
-        assert counted, "the release note no longer says how many checks need every component"
-        for word in counted:
+        for word in project_wide_counts(UNRELEASED):
             assert NUMBER_WORDS[word.lower()] == len(project_wide_checks()), (
                 f"the release note says {word} checks need every component of a project, and "
                 f"{len(project_wide_checks())} do"
             )
 
     def test_it_counts_the_entries_the_review_of_the_whole_tool_wrote(self) -> None:
-        """The opening paragraph counts them, and they were written one branch at a time.
-
-        The count is the reader's map of the release: it says how much of what follows is the
-        answer to one review rather than a feature, and an eighth entry added without touching
-        the paragraph would leave it describing the release before this one.
-        """
         entries = [line for line in UNRELEASED.splitlines() if line.startswith("* **")]
         found = sum(1 for entry in UNRELEASED.split("\n* **")[1:] if REVIEW_PHRASE in entry)
         stated = re.search(
             r"the (\w+) entries that follow are what that review found", flattened(UNRELEASED)
         )
-        assert stated is not None, "the release note no longer counts the review's entries"
+        if stated is None:
+            assert found == 0, (
+                "entries say they answer the review, and the note does not count them"
+            )
+            return
         assert NUMBER_WORDS[stated.group(1)] == found, (
             f"the release note says {stated.group(1)} of its {len(entries)} entries come from "
             f"the review, and {found} of them say so"
@@ -1491,8 +1487,7 @@ class TestTheReleaseNote:
         stated = re.findall(
             r"(?:dictionary (?:is|stays)|still) format (\d+)", flattened(UNRELEASED)
         )
-        assert stated, "the release note no longer says which dictionary format it ships"
-        assert {int(number) for number in stated} == {DICTIONARY_FORMAT}, (
+        assert {int(number) for number in stated} <= {DICTIONARY_FORMAT}, (
             f"the release note announces dictionary format {sorted(set(stated))}, and the "
             f"tool writes {DICTIONARY_FORMAT}"
         )

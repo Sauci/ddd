@@ -771,6 +771,7 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | `ddd artefacts [FILE]` | list the artefacts `generate` accepts: `c`, `a2l`, and each plugin of the project that provides one |
 | `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for an editor |
 | `ddd lsp` | run the language server, reporting the checks in the editor while a file is written |
+| `ddd gui [PROJECT]` | preview: a browser interface over one project's description files, on this computer only; a change is written into the files in their own layout and checked the way `ddd check` checks it |
 | `ddd checks` | list the checks and their default severity, marking the ones that cannot be relaxed `(fixed)`, need every component of a project `(project)` or grade a delivery comparison `(comparison)`; `--plugin` lists a plugin's checks after the built-in ones |
 | `ddd cmake-dir` | print the directory holding the cmake integration module |
 | `ddd templates-dir` | print the directory holding the example c templates, to copy into a project |

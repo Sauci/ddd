@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from ddd import __version__
 from ddd.analysis import analyze
 from ddd.backends import (
+    DICTIONARY_ARTEFACT,
     A2lBackend,
     A2lOptions,
     Backend,
@@ -25,6 +26,8 @@ from ddd.backends import (
     CBackend,
     COptions,
     GeneratedFile,
+    Manifest,
+    RemovalError,
     WriteStatus,
     addressed_symbols,
     describe_write_failure,
@@ -780,7 +783,7 @@ def _command_compare(args: argparse.Namespace) -> int:
 
 
 def _check_address_coverage(
-    dictionary: DataDictionary, addresses: dict[str, int], path: Path, bag: DiagnosticBag
+    carried: tuple[str, ...], addresses: dict[str, int], path: Path, bag: DiagnosticBag
 ) -> None:
     """Report the objects a supplied address map does not cover, and the entries nobody wants.
 
@@ -794,7 +797,11 @@ def _check_address_coverage(
 
     The entries that match nothing are named in a note rather than as a finding of their own:
     they are usually the other half of the same mistake - the old spelling of the symbol that
-    has just gone missing - and reading them together is what identifies a rename.
+    has just gone missing - and reading them together is what identifies a rename. The
+    symbols the recipe of the build page sweeps up along the way are in that note too,
+    including any whose address no ``ECU_ADDRESS`` could hold: the map reader weighs an
+    address only for a symbol this list carries, because no other one is ever formatted into
+    anything, and this note is where the rest are accounted for.
     """
     if not addresses:
         # The run a build makes before it has linked: the cmake module seeds an empty map so
@@ -802,7 +809,6 @@ def _check_address_coverage(
         # on it could never reach the second run that fills the map. A map that names some
         # objects and not others is another thing, and is reported below.
         return
-    carried = addressed_symbols(dictionary)
     missing = [symbol for symbol in carried if symbol not in addresses]
     if not missing:
         return
@@ -885,10 +891,13 @@ def _written(status: WriteStatus, shown: str, prefix: str = "wrote") -> str:
     """One line of the text report of a written file, as ``generate`` and ``dump -o`` print it.
 
     ``prefix`` is what the run did to a file it did not leave alone - ``would write`` on a dry
-    run - padded so that the paths line up under ``unchanged``.
+    run - padded so that the paths line up under ``unchanged``. A file the run took back
+    carries no status in parentheses: ``removed`` is the whole of what happened to it.
     """
     if status is WriteStatus.UNCHANGED:
         return f"unchanged   {shown}"
+    if status is WriteStatus.REMOVED:
+        return f"{'would remove' if prefix.startswith('would') else 'removed':<11} {shown}"
     return f"{prefix:<11} {shown} ({status.value})"
 
 
@@ -920,7 +929,7 @@ def _dictionary_file(
             "give --dictionary another file"
         )
         raise ValueError(msg)
-    return GeneratedFile(path, _dictionary_text(dictionary))
+    return GeneratedFile(path, _dictionary_text(dictionary), DICTIONARY_ARTEFACT)
 
 
 def _command_generate(args: argparse.Namespace) -> int:
@@ -956,11 +965,16 @@ def _command_generate(args: argparse.Namespace) -> int:
         # Guarded on the artefact, not just on the option: a run that does not write the a2l
         # has no use for the map and must not be killed by one it was never going to read.
         wants_addresses = args.render_a2l and getattr(args, "address_map", None) is not None
-        addresses = load_address_map(args.address_map) if wants_addresses else {}
+        addresses: dict[str, int] = {}
         if wants_addresses:
+            # The symbols the a2l of this run will state an address for, read once: they
+            # decide both which entries of the map are held to what an ECU_ADDRESS can hold
+            # and which objects the map leaves uncovered.
+            carried = addressed_symbols(dictionary)
+            addresses = load_address_map(args.address_map, carried=carried)
             # Before the gate below, so that a --strict build stops rather than writing a
             # file whose addresses it has just been told are incomplete.
-            _check_address_coverage(dictionary, addresses, args.address_map, bag)
+            _check_address_coverage(carried, addresses, args.address_map, bag)
         if bag.has_errors and not args.force:
             _report(bag, args.format)
             return EXIT_FINDINGS
@@ -1001,12 +1015,27 @@ def _command_generate(args: argparse.Namespace) -> int:
                 raise ValueError(msg)
             backends.append(backend_of(plugin, dictionary, GENERATOR))
         files = render(dictionary, backends, args.output_dir)
+        # What this run produced into the directory it writes to, which is what decides the
+        # files of earlier runs it may take back: the artefacts it did not produce - the a2l
+        # of a `--without a2l`, the c of a post-link `generate a2l`, a plugin the project
+        # stopped naming - keep theirs, because this run says nothing about them.
+        produced = {backend.name for backend in backends}
         if args.dictionary is not None:
             _refuse_a_directory(args.dictionary, "--dictionary")
             _refuse_a_source(args.dictionary, "--dictionary", *resolved.sources)
             files.append(_dictionary_file(dictionary, args.dictionary, files))
+            produced.add(DICTIONARY_ARTEFACT)
         try:
-            results = write(files, dry_run=args.dry_run)
+            results = write(
+                files, dry_run=args.dry_run, manifest=Manifest(args.output_dir, produced)
+            )
+        except RemovalError as error:
+            # Said as a removal rather than as a write: the file exists, this run was deleting
+            # it, and the advice a failed write carries - the path is too long for the
+            # platform - is advice about a path that does not exist yet.
+            shown = _displayed_path(Path(str(error.filename)), args.output_dir)
+            msg = f"cannot remove '{shown}': {error.strerror or error}"
+            raise OSError(msg) from None
         except OSError as error:
             # The target is the one thing a caller gets wrong regularly - a path that is a
             # directory, or one nothing may be written to. Naming the file beats the bare

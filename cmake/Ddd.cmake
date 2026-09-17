@@ -38,6 +38,68 @@ endif()
 # environment, or a wrapper script running "python -m ddd".
 find_program(DDD_EXECUTABLE NAMES ddd DOC "The ddd data dictionary tool")
 
+# The release this module belongs to, spelled the way "ddd --version" spells it. Bumped with every other place the
+# release states its version; tests/test_documentation.py compares it with the package's own.
+set(DDD_MODULE_VERSION "0.9.0")
+
+# The module and the tool it drives have to be one release. "ddd cmake-dir" and the header above invite a project to
+# copy this file into its own tree, where it then sits beside whichever ddd the environment happens to have - and the
+# two drift apart silently: every option this module passes is checked by argparse at *build* time, so a module newer
+# than its tool configures cleanly and then fails on "unrecognized arguments: --dictionary", which names the option
+# and not the mismatch behind it, while a module older than its tool builds happily with the option set of a release
+# nobody is running. Asked once, at include time, because it is a property of the pair rather than of anything a call
+# says.
+#
+# Tolerant where it cannot tell - a tool that does not answer --version at all is broken in a way the next
+# execute_process() will say more about - and fatal where it can: a mismatch is a build that fails later, with less
+# to go on.
+function(_ddd_verify_tool_version)
+    execute_process(COMMAND "${DDD_EXECUTABLE}" --version
+                    OUTPUT_VARIABLE output
+                    RESULT_VARIABLE status
+                    ERROR_VARIABLE error
+                    OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT status EQUAL 0 OR NOT output MATCHES "ddd +([^ \t\r\n]+)")
+        message(WARNING "Ddd.cmake: cannot tell which release \"${DDD_EXECUTABLE}\" is (${status}): "
+                        "${error}${output}")
+        return()
+    endif()
+    set(found "${CMAKE_MATCH_1}")
+    # Spelled rather than compared as versions: a prerelease ("0.10.0rc1") is not a CMake version, and VERSION_EQUAL
+    # would read it as the release it precedes.
+    if(NOT found STREQUAL DDD_MODULE_VERSION)
+        message(FATAL_ERROR "Ddd.cmake is ${DDD_MODULE_VERSION} and \"${DDD_EXECUTABLE}\" is ddd ${found}. The "
+                            "module and the tool are one release: this pair configures cleanly and fails at build "
+                            "time, on an option one of the two does not know. Point DDD_EXECUTABLE at the ddd of "
+                            "this release, or include the Ddd.cmake that ships with the tool - \"ddd cmake-dir\" "
+                            "prints the directory it is in.")
+    endif()
+    # Keyed on the pair, so that upgrading either side asks again while an ordinary re-configure does not pay for a
+    # subprocess that answered yesterday.
+    set(DDD_VERSION_HANDSHAKE "${DDD_EXECUTABLE}|${DDD_MODULE_VERSION}" CACHE INTERNAL
+        "The DDD_EXECUTABLE and module version last compared with each other.")
+endfunction()
+
+if(DDD_EXECUTABLE AND NOT DDD_VERSION_HANDSHAKE STREQUAL "${DDD_EXECUTABLE}|${DDD_MODULE_VERSION}")
+    _ddd_verify_tool_version()
+endif()
+
+# A keyword whose value expanded to nothing - ddd_generate(... ADDRESS_MAP ${DDD_MAP}) with DDD_MAP unset or empty,
+# the ordinary CMake mistake - reads to cmake_parse_arguments() as a keyword that was never given at all, and every
+# check below is written as if(arg_X), which cannot tell the two apart. Dropped in silence, each one changes what the
+# call does: ADDRESS_MAP generates an a2l with every ECU_ADDRESS 0x00000000 and makes no map a dependency, so the
+# two-run flow the map was configured for never happens; PROJECT falls into the collected mode and generates out of
+# the link closure instead of out of the file the caller named. Refused here, once, for both functions.
+function(_ddd_refuse_empty_keywords context missing)
+    if(missing)
+        list(JOIN missing "\", \"" spelled)
+        message(FATAL_ERROR "${context}: \"${spelled}\" was given no value. A variable that expands to nothing "
+                            "leaves the keyword with no argument, which reads exactly like a keyword that was "
+                            "never given - so the call would quietly have done something else. Give it a value, "
+                            "or leave the keyword out.")
+    endif()
+endfunction()
+
 # The transitive property feature is only needed when the component descriptions are collected through the link
 # graph; a caller passing PROJECT never reaches this check.
 function(_ddd_require_transitive_properties context)
@@ -157,12 +219,23 @@ endfunction()
 #
 # A file that does not exist yet - generated into the build tree later - is taken to be a component, because that is
 # the only kind worth generating there; nothing can be read off it at configure time either way.
+#
+# So is a file whose json does not parse at all, which is a different answer from "this is not a component": the file
+# says nothing about its kind, and the reading it has to be told about is exactly what "ddd check" says. Answering
+# FALSE dropped it from the target, so ninja reported "no work to do" over a file that does not parse and went on
+# doing so - the target is built at configure time - until somebody configured again, which is not what a developer
+# does after fixing a typo in a description.
 function(_ddd_is_component_file variable description)
     if(NOT EXISTS "${description}")
         set(${variable} TRUE PARENT_SCOPE)
         return()
     endif()
     file(READ "${description}" content)
+    string(JSON kind ERROR_VARIABLE unreadable TYPE "${content}")
+    if(unreadable)
+        set(${variable} TRUE PARENT_SCOPE)
+        return()
+    endif()
     string(JSON unused ERROR_VARIABLE error GET "${content}" "component")
     if(error)
         set(${variable} FALSE PARENT_SCOPE)
@@ -192,6 +265,7 @@ function(ddd_add_component target)
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "ddd_add_component: unknown argument(s) \"${arg_UNPARSED_ARGUMENTS}\".")
     endif()
+    _ddd_refuse_empty_keywords("ddd_add_component" "${arg_KEYWORDS_MISSING_VALUES}")
     if(NOT arg_JSON)
         message(FATAL_ERROR "ddd_add_component: at least one description file is required (JSON <file>...).")
     endif()
@@ -367,6 +441,7 @@ function(ddd_generate image)
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "ddd_generate: unknown argument(s) \"${arg_UNPARSED_ARGUMENTS}\".")
     endif()
+    _ddd_refuse_empty_keywords("ddd_generate" "${arg_KEYWORDS_MISSING_VALUES}")
     # A hand written project names its own plugins, so a second list here would be a second source of truth.
     if(arg_PLUGINS AND arg_PROJECT)
         message(FATAL_ERROR "ddd_generate: PLUGINS cannot be given together with PROJECT: the project description "

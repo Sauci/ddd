@@ -34,7 +34,12 @@ the tool itself rather than guessed:
 Including the module looks for the ``ddd`` executable and remembers it in the cache variable
 ``DDD_EXECUTABLE``. Configure with ``-DDDD_EXECUTABLE=<path>`` to pin a particular
 installation - the one of a virtual environment, or a small wrapper script running
-``python -m ddd``. The module needs CMake 3.20 and says so at include time; collecting the
+``python -m ddd``. The module then asks it for its version and refuses, naming both, a tool
+of another release than the module's own: the two are one release, and a project that copied
+``Ddd.cmake`` into its tree - which the line above invites - otherwise finds out at build
+time, in an ``unrecognized arguments`` from the tool's argument parser, or does not find out
+at all and builds under the option set of a release nobody is running. The module needs CMake
+3.20 and says so at include time; collecting the
 components through the link graph (below) needs CMake 3.30. A cross-compile toolchain file
 that sets ``CMAKE_FIND_ROOT_PATH_MODE_PROGRAM ONLY`` keeps ``find_program`` from seeing host
 tools, so such a project either allows host programs (``BOTH``) or passes
@@ -84,6 +89,11 @@ A registered vocabulary file is left out of that target: it declares no interfac
 one to ``ddd check`` is a ``file-kind`` error the target could never pass. Such a file is
 checked in context instead, through the project of every image that collects it, and a target
 that registers nothing else keeps a ``<target>.ddd`` that does nothing.
+
+Which kind a file is is read at configure time, so a file whose json does not parse at all
+says nothing about itself. It is checked like a component, because what is wrong with it is
+exactly what that check reports: ``ninja <target>.ddd`` names the line and the column, and
+the same target run after the repair checks the repaired file, without configuring again.
 
 Generating an image
 ~~~~~~~~~~~~~~~~~~~
@@ -151,10 +161,19 @@ comments removed; it is what the ``cmake`` compose service configures and builds
                 SCHEMA_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/schemas")
 
 ``sensor_hub.c`` then writes ``#include "SensorHub.h"`` and nothing else: the header DDD
-generated for that component is the only one on its include path, so a component cannot reach
-a variable it never declared. The include directory travels to the components automatically -
-and with it, in the collected mode, the compile usage those headers need to be read - which is
-what keeps the integration down to two lines per component.
+generated for that component is the one it is meant to include, and a variable it never
+declared is one it has no business naming. The isolation is by convention rather than by
+construction - what travels to each component is the *output directory*, one include path
+carrying every component's header and the shared ones beside them, so ``#include
+"Controller.h"`` from another component's source compiles. What the build does guarantee is
+that the directory holds the headers of this image and no others: a component dropped from
+the link graph stops being generated and its header is taken back at the next build (see
+:ref:`what-a-run-owns`), so the include that reaches across is at least an include of a
+component the image really links. Handing each component a directory of its own would make
+the convention a rule, at the price of one include directory per component; that is not what
+this module builds. The include directory travels to the components automatically - and with
+it, in the collected mode, the compile usage those headers need to be read - which is what
+keeps the integration down to two lines per component.
 
 That last part is what the demo's external type is for. ``SensorHub`` declares one, so
 ``sensor_hub`` is the component that publishes the directory holding the vendor header defining
@@ -396,6 +415,14 @@ come from inside the description files and are therefore unknown at configure ti
 precisely why a consumer depends on ``<stem>_ddd_headers`` rather than on an individual header
 path.
 
+That leaves the build system unable to clean a header whose component has left the image, which
+is why ``ddd generate`` cleans it itself: it owns its output directory, records what it wrote
+there and removes, on the next run, the files it no longer writes (see
+:ref:`what-a-run-owns`). Dropping a component from ``target_link_libraries`` therefore takes
+its header out of the include path of every other component at the next build, and
+``ninja -t clean`` followed by a build leaves what a build from nothing leaves - the record
+survives the clean, being no more a declared output than the headers it names.
+
 The path of the generated a2l is published as the ``DDD_A2L`` property of the image, so that a
 post-build step can pick it up without rebuilding the path by hand:
 
@@ -498,6 +525,14 @@ Options
      - do not hand ``<stem>_ddd_headers``, and the compile usage it carries, to the
        registered components.
 
+A keyword given no value is a fatal error naming it, in both calls. ``ADDRESS_MAP
+${DDD_MAP}`` with ``DDD_MAP`` unset or empty - the ordinary CMake mistake - reads to
+``cmake_parse_arguments()`` exactly like a keyword nobody gave, so it used to be dropped in
+silence: the a2l came out with every address ``0x00000000``, no map was seeded and none was a
+dependency, and the two-run flow below never happened.  ``PROJECT`` without a value fell into
+the collected mode and generated out of the link graph instead of out of the file the caller
+meant.
+
 ``NO_PROPAGATE_HEADERS`` is the option a project building **several** images from the same
 components cannot avoid. A component's interface header is generated for one link closure, so
 two images produce two different sets of headers for the same component, and whichever include
@@ -566,13 +601,15 @@ the addresses in it. The c sources of that second run are byte identical, so not
 recompiled, nothing is relinked, and the flow settles after one extra round rather than
 chasing its own tail.
 
-Two things such a script has to get right. A symbol the project does not declare is ignored,
-so listing the whole image does no harm - but an address outside ``0 .. 0xFFFFFFFF`` is
-refused whether or not DDD knows the symbol, which is what a host build of an embedded
-project runs into first. And a structured object's members are addressed under their access
-path, ``Inlet.latest`` rather than ``Inlet``, which a symbol lister does not print: a project
-with structured objects adds the member offsets itself, from the type description or from the
-debug information.
+Two things such a script has to get right. A structured object's members are addressed under
+their access path, ``Inlet.latest`` rather than ``Inlet``, which a symbol lister does not
+print: a project with structured objects adds the member offsets itself, from the type
+description or from the debug information. And the addresses of the objects DDD *does* know
+have to fit the ``0 .. 0xFFFFFFFF`` of an ``ECU_ADDRESS``, which a host build of an embedded
+project runs into first: a 64 bit image is based above 4 GB, and no a2l can describe it. An
+entry for a symbol DDD does not know is neither weighed that way nor written anywhere, so
+listing the whole image does no harm; those entries are named in the note under
+``address-missing``, where a stale or renamed symbol is read beside the object it belongs to.
 
 docker
 ------

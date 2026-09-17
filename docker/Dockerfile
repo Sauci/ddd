@@ -50,7 +50,12 @@ COPY examples/templates ./examples/templates
 # integrates the tool through cmake/Ddd.cmake. They come from pypi rather than from apt because
 # the module needs the TRANSITIVE_LINK_PROPERTIES feature of CMake 3.30 and debian bookworm
 # still ships 3.25 - and because tests/test_cmake.py runs against exactly this pair.
-RUN pip install --no-cache-dir ".[dev]"
+#
+# The docs requirements are here rather than in the `docs` service, which used to install them
+# on every run: a service that installs anything is a second build step nothing pins, needs the
+# network before every documentation build, and leaves the five other services sharing an image
+# that cannot do what the sixth does.
+RUN pip install --no-cache-dir ".[dev,docs]"
 
 COPY docker/compile.sh docker/verify_symbols.py /opt/ddd/bin/
 RUN chmod +x /opt/ddd/bin/compile.sh \

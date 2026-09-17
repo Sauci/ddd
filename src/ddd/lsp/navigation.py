@@ -218,19 +218,35 @@ class Loaded:
     simply absent from the index - and a rename computed over that index rewrites every other
     file of the project and leaves that one holding the old name. An ordinary mid-edit state
     has to refuse the rename, not half-perform it.
+
+    It is also what keeps a refresh from reading one project twice. The search below loads
+    every candidate to ask whether it includes the document, so the answer is already in
+    hand; handing back the read, rather than the path it was read from, is what lets the
+    caller analyse it instead of loading it again.
     """
 
+    path: Path
+    """The description this was read from, which is what a finding about the read names."""
+
     workspace: Workspace
+    bag: DiagnosticBag
+    """What the read reported, for a caller that publishes those findings as well."""
+
     unreadable: tuple[Path, ...]
-    """The files the read reported an error on, sorted; empty when it reported none."""
+    """The files the read reported an error on, sorted; empty when it reported none.
+
+    Settled when the read finished rather than derived on demand: a caller that goes on to
+    analyse this workspace reports into the same bag, and what an edit may not rewrite is a
+    file that did not *load*.
+    """
 
 
 @dataclass(frozen=True, slots=True)
 class Containing:
     """What the search for a document's project found, including what it could not read."""
 
-    projects: tuple[Path, ...] = ()
-    """The descriptions that turned out to include the document, nearest first."""
+    projects: tuple[Loaded, ...] = ()
+    """The descriptions that turned out to include the document, nearest first, as read."""
 
     failed: dict[Path, str] = field(default_factory=dict)
     """Candidate -> why reading it stopped, for the candidates a plugin defect stopped.
@@ -269,14 +285,10 @@ def workspaces(
         if loaded is not None and document.resolve() in loaded.workspace.sources():
             found.append(loaded)
     if not found:
-        found.extend(
-            loaded
-            for loaded in (
-                _loaded(project, unreadable)
-                for project in containing_projects(document, root).projects
-            )
-            if loaded is not None
-        )
+        # Already read, by the search that found them: asking for them again is the second of
+        # the two reads per project this used to cost, and the pair is what made the first
+        # hover after a save take three times what checking the whole project takes.
+        found.extend(resolve_projects(document, root).projects)
     if not found:
         alone = _loaded(document, unreadable)
         if alone is not None:
@@ -305,7 +317,7 @@ def _loaded(path: Path, failed: dict[Path, str]) -> Loaded | None:
         return None
     if workspace is None:
         return None
-    return Loaded(workspace, _unreadable(bag))
+    return Loaded(path, workspace, bag, _unreadable(bag))
 
 
 def _unreadable(bag: DiagnosticBag) -> tuple[Path, ...]:
@@ -318,14 +330,18 @@ def _unreadable(bag: DiagnosticBag) -> tuple[Path, ...]:
     return tuple(sorted(found))
 
 
-def containing_projects(document: Path, root: Path | None) -> Containing:
-    """Descriptions lying at or above the document that turn out to include it.
+def resolve_projects(document: Path, root: Path | None = None) -> Containing:
+    """Descriptions lying at or above the document that turn out to include it, as they read.
 
     A search rather than a guess: every candidate is loaded and asked whether this file is one
     of its sources, so one that does not include the document is discarded however close it
     sits. What it buys is the case an editor meets constantly - a description opened in a tree
     where no build has been configured - in which the alternative is a component cut off from
     the shared vocabularies, whose declarations of shared types resolve to nothing at all.
+
+    The read itself is handed back, which is what makes this the one place a project above a
+    document is loaded: the findings go to the diagnostics, the workspace answers the hovers
+    and the jumps, and neither has to read the file a second time to have it.
 
     A candidate that could not be read answers neither way: the walk carries on past it, and
     it is named in ``failed`` so that the caller can say so.
@@ -356,7 +372,7 @@ def containing_projects(document: Path, root: Path | None) -> Containing:
                 continue
             loaded = _loaded(candidate, failed)
             if loaded is not None and resolved in loaded.workspace.sources():
-                found.append(candidate)
+                found.append(loaded)
         if found:
             # The nearest wins; one further up as well is a sub-project of it, and answering
             # from both would say everything twice.

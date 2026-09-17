@@ -12,8 +12,12 @@ from ddd.backends.a2l import (
     load_address_map,
 )
 from ddd.backends.base import (
+    DICTIONARY_ARTEFACT,
+    MANIFEST_NAME,
     Backend,
     GeneratedFile,
+    Manifest,
+    RemovalError,
     WriteResult,
     WriteStatus,
     describe_write_failure,
@@ -23,6 +27,8 @@ from ddd.backends.base import (
 from ddd.backends.c import CBackend, COptions, example_template_directory
 
 __all__ = [
+    "DICTIONARY_ARTEFACT",
+    "MANIFEST_NAME",
     "A2lBackend",
     "A2lOptions",
     "Backend",
@@ -30,6 +36,8 @@ __all__ = [
     "CBackend",
     "COptions",
     "GeneratedFile",
+    "Manifest",
+    "RemovalError",
     "WriteResult",
     "WriteStatus",
     "addressed_symbols",

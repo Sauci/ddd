@@ -74,6 +74,13 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   which is what `ddd check` refuses the same `-W` for.  And the log no longer says that every
   file is checked on its own, which denied exactly the findings the next message published.
 
+  *What it costs per save.*  A document no build record claims is checked through the project
+  above it, and finding that project means loading every candidate and asking it - an answer
+  that was then thrown away, so the project was read a second time to be checked, and twice
+  more by the first hover or jump after the save.  The read is now handed on rather than
+  dropped: one read of the project per refresh, and one per request that has to look above
+  the document, where each of the two cost two.
+
   **Migration:** none for a description file, a build record or a command.  An editor
   extension other than the shipped one sees three protocol changes: `exit` without `shutdown`
   exits 1, requests outside the session are refused rather than served, and a non-`file:`
@@ -462,6 +469,117 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   the message names the symbol.  A reader of `ddd list --format json` that keyed its rows on
   `name` now sees the members of every structured variable it used to drop; one that keyed on
   `path` is unaffected, since the key is still there.
+
+* **The build that runs the generator.**  What a review of the whole tool found between DDD
+  and the build system driving it: what a run leaves behind in the directory it writes to,
+  the project description the cmake module assembles, the keywords it is called with, and the
+  address map the linker hands back.
+
+  *`ddd generate` owns its output directory.*  A run wrote what it rendered and removed
+  nothing, and what it renders follows from the descriptions - so a component dropped from an
+  image's link graph stopped being rendered and **left its header where it was**, on the
+  include path of every other component, where a translation unit went on compiling against
+  the interface of a component the image no longer links.  The build system could not clean
+  it either: a per-component header is named from inside a description file, so it is not
+  among the outputs `ddd_generate()` declares, and `ninja -t clean` left it behind with the
+  rest.  A run now records the files it wrote, and the artefact each came from, in
+  `.ddd-manifest.json` beside them, and the next run removes the recorded files it no longer
+  writes, reporting each as `removed`.  Only files DDD itself wrote are ever removed - a file
+  the manifest does not name is left alone - and only the artefacts the run produced are
+  weighed, so `ddd generate a2l` into the directory a `generate all` filled still regenerates
+  the a2l without touching the c sources the image was built from, and so does a
+  `--without`.  The record is written in the same all-or-nothing step as the artefacts and
+  renamed after them, so a run that fails, or that changes nothing, changes nothing; a
+  `--dry-run` says what it would remove and removes nothing.
+
+  *An include that names a file is that file.*  An entry of `includes` holding one of `*`,
+  `?` or `[` was a pattern, and the cmake module writes the includes of a collected project as
+  literal absolute paths - so a checkout under a directory somebody named `proj [v2]` turned
+  every one of them into a character class that matches nothing, and **every build failed**
+  with `include-empty` on a project whose files were all there, the message calling a pattern
+  what the module had written as a path.  A literal reading is now tried first: an entry
+  naming an existing file is that file, whatever is in its name, and an entry naming none is
+  expanded as before.
+
+  *An address map may carry what the a2l never addresses.*  Every entry was held to the
+  `0 .. 0xFFFFFFFF` an `ECU_ADDRESS` holds, "whether or not DDD knows the symbol" - and the
+  recipe the build page documents extracts *every* defined symbol of the image, so on a 64 bit
+  host the hundred entries of the c runtime sitting above 4 GB stopped the generation with a
+  usage error.  **Every build after the first failed**, on the very host the page tells the
+  reader to try the two-run flow on, and the a2l kept `ECU_ADDRESS 0x00000000` for ever.  Only
+  the symbols the a2l states an address for are weighed now; the rest are counted among the
+  entries the a2l does not carry and named in the note under `address-missing`, where a stale
+  or renamed symbol is already read beside the object it belongs to.
+
+  *A keyword given no value is refused, and named.*  `ddd_generate(fw.elf ... ADDRESS_MAP
+  ${DDD_MAP})` with `DDD_MAP` unset or empty - the ordinary CMake mistake - reads to
+  `cmake_parse_arguments()` exactly like a keyword nobody gave, and neither call looked at
+  `KEYWORDS_MISSING_VALUES`.  So the a2l was generated with every `ECU_ADDRESS 0x00000000`,
+  no map was seeded and none was a dependency, and the two-run flow the map was configured for
+  never happened - in silence, under a `cmake_minimum_required(VERSION 3.31)` project without
+  so much as an author warning.  `PROJECT` without a value fell into the collected mode and
+  generated out of the link graph instead of out of the file the caller meant.  Both calls now
+  stop the configure step, naming the keyword.
+
+  *The module and the tool are one release.*  Nothing compared them, and `ddd cmake-dir`
+  invites a project to copy `Ddd.cmake` into its own tree, where it sits beside whichever
+  `ddd` the environment has.  Every option the module passes is checked by the tool's
+  argument parser when the build runs it, so a module newer than its tool configured cleanly
+  and then failed with `generate: error: unrecognized arguments: --dictionary`, which names
+  the option and not the mismatch behind it, while a module older than its tool built quietly
+  under the option set of a release nobody was running.  Including the module now runs `ddd
+  --version` once and refuses the pair, naming both versions and the tool.
+
+  *A description that does not parse is still checked.*  A component whose file was not valid
+  json at configure time was read as a file of some other kind and dropped from its own
+  `<target>.ddd` target - so `ninja comp.ddd` answered `no work to do` about a file that does
+  not parse, and went on answering it, the target being built at configure time, until
+  somebody configured again.  Fixing the typo and asking again therefore reported success
+  without having checked anything.  Such a file is now checked like a component, which is the
+  command that has something to say about it.
+
+  *The build page does not promise an isolation the module does not build.*  It said the
+  header generated for a component "is the only one on its include path"; the module puts the
+  whole output directory on every component's include path, so `#include "Controller.h"` from
+  another component's source compiles.  The page and the README now say what is built - one
+  directory, holding the headers of that image and no others - and what the isolation rests
+  on.
+
+  *A generation reads the project once rather than once per component.*  Three phases of a
+  run walked the whole project again for every component in it, which a large project pays
+  for quadratically: the c model asked the dictionary for the objects of each component, a
+  scan of every object there is; the a2l looked for the members of each component's
+  structured variables by walking every member of the project; and the alignment of a placed
+  structure was worked out once per route through the type graph, which doubles per level of
+  a structure holding two of the next one.  A build with an address map also built the whole
+  a2l model a second time, to read off it which symbols the file carries.  Measured on one
+  machine over a synthetic project of a thousand components and fifty-three thousand
+  variables: the c model 7.7 s to 0.9 s, rendering the c sources 7.4 s to 1.1 s, the a2l
+  model 3.1 s to 0.4 s, rendering the a2l 3.3 s to 0.7 s, and the symbols an address map is
+  weighed against 2.8 s to 0.1 s; twenty-two levels of a structure holding two of the next
+  went from 0.7 s to nothing.  Nothing about what is generated changes.
+
+  **Migration:** a directory that a `ddd generate` run is pointed at now belongs to that run:
+  its own files are untouched, but a file DDD wrote there and no longer writes is deleted at
+  the next run, where it used to accumulate.  Two runs generating into one directory - which
+  already overwrote each other's artefacts - now also take each other's files back, and want
+  a directory each.  A `.ddd-manifest.json` appears beside the artefacts; a build that lists
+  its output directory, or archives it as a delivery, sees one more file, and a run into a
+  directory that has none removes nothing, so the first run after this upgrade cleans nothing
+  up.  `ddd generate --format json` can report a fourth `status`, `removed`, beside `created`,
+  `updated` and `unchanged`.  A project whose `includes` holds an entry spelled exactly like
+  a file beside it - `a[12].ddd.json`, with a file of that very name - now reads that file
+  instead of expanding the class; renaming either one is what keeps the class.  A
+  `ddd_generate()` or `ddd_add_component()` call whose keyword expanded to nothing now fails
+  the configure step where it used to be ignored: give the keyword a value, or leave it out.
+  An address map entry outside `0 .. 0xFFFFFFFF` for a symbol the a2l never names is read
+  where it used to be refused; a build that relied on that refusal to catch a wrong map reads
+  the `address-missing` note instead, which names every entry the a2l does not carry.  A
+  project whose `Ddd.cmake` is a copy of another release's now fails the configure step
+  instead of the build step or nothing at all: copy the module of the tool being used, which
+  is what `ddd cmake-dir` prints, or point `DDD_EXECUTABLE` at the matching tool.  A target
+  registering a description that does not parse now fails its `<target>.ddd` target, with the
+  syntax error, where it used to report nothing to do.
 
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`

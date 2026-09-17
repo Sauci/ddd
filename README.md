@@ -279,7 +279,8 @@ this repository, so cloning it is enough to see the effect.
 `includes` lists components **or other projects**, and the types, units, sections,
 constants and rasters files below; the kind of each file is detected from its content.
 Paths are relative to the file that contains them, `*`, `?`, `[...]` and `**` wildcards are
-expanded, and a file reached over two different paths is loaded once.  Include cycles are
+expanded - an entry that names an existing file being that file, whatever characters are in
+its name - and a file reached over two different paths is loaded once.  Include cycles are
 reported instead of hanging.
 
 `plugins` names the python modules the project extends itself with, and `extensions` holds
@@ -651,7 +652,10 @@ extension, a name starting with `_` is a helper that renders nothing on its own,
 containing `{component}` renders once per component.  Renaming a template renames its output.
 
 With the example templates, `ddd generate all -o DIR -t DIR` writes - and rewrites only what
-actually changed, so unchanged output does not trigger a rebuild:
+actually changed, so unchanged output does not trigger a rebuild.  A run owns the directory
+it writes into: it records its own files in `.ddd-manifest.json` beside them and removes, on
+the next run, those it no longer writes - a component that leaves the project takes its header
+with it, and nothing the tool did not write is ever touched.
 
 | file | from | content |
 | --- | --- | --- |
@@ -814,8 +818,10 @@ ddd_generate(firmware.elf NAME DemoDevice TEMPLATE_DIRECTORY "${CMAKE_CURRENT_SO
 ```
 
 `sensor_hub.c` then simply writes `#include "SensorHub.h"` - the header DDD generated for
-that component, and nothing else is on its include path.  A complete, buildable example is
-in [examples/cmake/](examples/cmake/).
+that component, and the one it is meant to include.  What the build hands it is the output
+directory, which holds the headers of every component of *this image* and no others, so the
+isolation is a convention a reviewer can see broken rather than one the compiler enforces.
+A complete, buildable example is in [examples/cmake/](examples/cmake/).
 
 **Collection follows the link graph.**  The descriptions travel as a transitive usage
 requirement (`TRANSITIVE_LINK_PROPERTIES`, hence CMake **3.30**), so an image gets exactly

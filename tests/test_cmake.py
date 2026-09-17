@@ -3,11 +3,18 @@
 ``cmake/Ddd.cmake`` is the largest piece of DDD that no unit test can reach: it is CMake code,
 and everything else in this suite that touches it checks what the file says, not what it does.
 So it is run here, with the ``cmake`` the development requirements install, over the shipped
-example and over two small projects written into the temporary directory - one collecting its
+example and over small projects written into the temporary directory - one collecting its
 components through the link graph and naming a plugin with ``PLUGINS``, one handing the tool a
-hand-written project description that names its own plugin. What is asserted is what a build
-would see: the files the generation writes, the project description the module assembles,
-the schemas it closes over the plugins, and a rebuild that notices an edited plugin.
+hand-written project description that names its own plugin, and several written to exercise
+one keyword each. What is asserted is what a build would see: the files the generation writes,
+the project description the module assembles, the schemas it closes over the plugins, and a
+rebuild that notices an edited plugin.
+
+A configure and a build cost seconds each, and this file is a third of the suite's runtime,
+so a class whose tests ask several questions of one tree configures and builds it once in a
+class-scoped fixture and hands each test what that left behind. A class whose tests need
+different calls, or that edit the tree and build again, keeps a tree per test - which is what
+the ``tmp_path`` ones below are.
 
 Not skipped when ``cmake`` is missing: it comes from ``requirements-dev.txt``, and a test that
 skips when a tool is absent reports success without having run. The generator is ninja, from
@@ -24,11 +31,14 @@ import re
 import shutil
 import subprocess
 import sysconfig
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from conftest import EXAMPLES, declare
+from ddd import __version__
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = Path(sysconfig.get_path("scripts"))
@@ -59,8 +69,9 @@ def cmake(*arguments: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
-def configure(source: Path, build: Path, *definitions: str) -> subprocess.CompletedProcess[str]:
-    run = cmake(
+def attempt(source: Path, build: Path, *definitions: str) -> subprocess.CompletedProcess[str]:
+    """One configure, whether or not it is expected to succeed."""
+    return cmake(
         "-S",
         str(source),
         "-B",
@@ -73,6 +84,10 @@ def configure(source: Path, build: Path, *definitions: str) -> subprocess.Comple
         *definitions,
         cwd=source,
     )
+
+
+def configure(source: Path, build: Path, *definitions: str) -> subprocess.CompletedProcess[str]:
+    run = attempt(source, build, *definitions)
     assert run.returncode == 0, run.stdout + run.stderr
     return run
 
@@ -121,7 +136,187 @@ class TestTheShippedExample:
         build(tmp_path / "build", "sensor_hub.ddd")
 
 
+BUILD_PAGE = ROOT / "docs" / "build_integration.rst"
+"""The page whose recipes two of the classes below run rather than paraphrase."""
+
+
+def example_project(tmp_path: Path) -> Path:
+    """``examples/cmake`` beside the description and template directories it points at.
+
+    Copied rather than built in place, because these tests edit the ``CMakeLists.txt`` the
+    page shows; the relative paths it reaches its neighbours by are rewritten to the copies.
+    """
+    source = tmp_path / "example"
+    shutil.copytree(EXAMPLES / "cmake", source)
+    shutil.copytree(EXAMPLES / "demo", tmp_path / "demo")
+    shutil.copytree(TEMPLATES, tmp_path / "templates")
+    listing = source / "CMakeLists.txt"
+    text = listing.read_text(encoding="utf-8")
+    for spelling, replacement in (
+        ("${CMAKE_CURRENT_SOURCE_DIR}/../../cmake", (ROOT / "cmake").as_posix()),
+        ("${CMAKE_CURRENT_SOURCE_DIR}/../demo", (tmp_path / "demo").as_posix()),
+        ("${CMAKE_CURRENT_SOURCE_DIR}/../templates", (tmp_path / "templates").as_posix()),
+    ):
+        assert spelling in text, f"the example no longer names {spelling}"
+        text = text.replace(spelling, replacement)
+    listing.write_text(text, encoding="utf-8")
+    return source
+
+
+def documented_block(opening: str) -> str:
+    """The code block of the build page that begins with ``opening``, dedented.
+
+    Read out of the page rather than copied into this file: what these tests run then *is*
+    what the page tells a reader to write, and a page that drifts from it fails here.
+    """
+    lines = BUILD_PAGE.read_text(encoding="utf-8").splitlines()
+    start = next(index for index, line in enumerate(lines) if line.strip().startswith(opening))
+    indent = len(lines[start]) - len(lines[start].lstrip())
+    block: list[str] = []
+    for line in lines[start:]:
+        if line.strip() and len(line) - len(line.lstrip()) < indent:
+            break
+        block.append(line[indent:] if line.strip() else "")
+    return "\n".join(block).rstrip() + "\n"
+
+
+@dataclass(frozen=True)
+class Dropped:
+    """What the five steps of the class below left behind, for its two tests to read."""
+
+    generated: Path
+    built: bool
+    """Whether the header of the component that later left was there while it was linked."""
+
+    cleaned: tuple[bool, bool]
+    """After ``ninja -t clean``: whether the header, and whether a declared output, survived."""
+
+    described: dict[str, Any]
+    """The collected project description, once the component had left the link graph."""
+
+    rebuilt: tuple[int, str]
+    """The exit code and output of the build after that, which has to fail."""
+
+
+class TestAComponentThatLeavesTheImage:
+    """The header of a component dropped from the link graph goes with it.
+
+    ``ddd generate`` wrote what it rendered and removed nothing, and the module can declare
+    only the files the template names give away - a per-component header's name comes out of
+    a description file, which is not read at configure time. So dropping a component from
+    ``target_link_libraries`` left its header in the output directory, on the include path of
+    every component, and a translation unit went on compiling against the interface of a
+    component the image no longer links. ``ninja -t clean`` did not take it either.
+    """
+
+    def write(self, tmp_path: Path) -> Path:
+        return example_project(tmp_path)
+
+    def drop_the_event_logger(self, source: Path) -> None:
+        """The trigger: the image stops linking one of its four components.
+
+        ``missing-producer`` is relaxed with it, because ``UserInterface`` reads a value
+        ``EventLogger`` produced: an image that deliberately links a subset of a project is
+        exactly the run that relaxes it, and without that the generation would refuse to
+        write anything and the question of what it leaves behind would never arise.
+        """
+        listing = source / "CMakeLists.txt"
+        text = listing.read_text(encoding="utf-8")
+        linked = "target_link_libraries(firmware.elf PRIVATE user_interface event_logger)"
+        schemas = 'SCHEMA_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/schemas")'
+        assert linked in text, "the example no longer links event_logger into the image"
+        assert schemas in text, (
+            "the example's ddd_generate() call no longer ends on SCHEMA_DIRECTORY"
+        )
+        text = text.replace(linked, linked.replace(" event_logger", ""))
+        relaxed = schemas[:-1] + '\n             SEVERITY "missing-producer=ignore")'
+        listing.write_text(text.replace(schemas, relaxed), encoding="utf-8")
+
+    @pytest.fixture(scope="class")
+    @staticmethod
+    def dropped(tmp_path_factory: pytest.TempPathFactory) -> Dropped:
+        """One story, told once: build, drop the component, clean, regenerate, build again.
+
+        Both questions below are about the same five steps of the same tree - what the drop
+        takes away, and what a clean in the middle of it does not lose - and each of them
+        configuring and building the four-component example on its own costs seven seconds.
+        """
+        story = TestAComponentThatLeavesTheImage()
+        source = story.write(tmp_path_factory.mktemp("leaving"))
+        build_dir = source.parent / "build"
+        configure(source, build_dir)
+        build(build_dir)
+        generated = build_dir / "ddd" / "firmware.elf"
+        built = (generated / "EventLogger.h").is_file()
+        story.drop_the_event_logger(source)
+        # The clean before the regeneration: what it leaves behind is what the next
+        # generation has to know it once wrote.
+        build(build_dir, "clean")
+        cleaned = (
+            (generated / "EventLogger.h").is_file(),
+            (generated / "ddd_globals.c").exists(),
+        )
+        build(build_dir, "firmware_ddd_generation")
+        described = json.loads((generated / "DemoDevice.ddd.json").read_text(encoding="utf-8"))
+        run = cmake("--build", str(build_dir), cwd=build_dir)
+        return Dropped(
+            generated=generated,
+            built=built,
+            cleaned=cleaned,
+            described=described,
+            rebuilt=(run.returncode, run.stdout + run.stderr),
+        )
+
+    def test_its_header_is_removed_and_stops_compiling(self, dropped: Dropped) -> None:
+        """The whole build first, which is what proves the header was usable: ``event_logger.c``
+        includes ``EventLogger.h`` and compiled against it. After the drop it cannot, which is
+        what keeps the include path to the components of the image the build page describes.
+        """
+        generated = dropped.generated
+        assert dropped.built, "the header of a linked component was never written"
+        includes = dropped.described["project"]["includes"]
+        assert not any("event_logger" in entry for entry in includes)
+        assert not (generated / "EventLogger.h").exists(), "the header of a component that left"
+        assert (generated / "SensorHub.h").is_file(), "the components that stayed keep theirs"
+
+        code, output = dropped.rebuilt
+        assert code != 0, "a component the image no longer links still compiled"
+        assert "EventLogger.h" in output
+
+    def test_a_clean_does_not_lose_what_the_next_build_has_to_take_back(
+        self, dropped: Dropped
+    ) -> None:
+        """``ninja -t clean`` removes the files the module declared and leaves the
+        per-component headers it never knew about, so the record of them has to survive it -
+        which it does, being no more a declared output than they are."""
+        assert dropped.cleaned == (True, False), (
+            "a clean either took the header it does not know the name of, or left the "
+            "declared outputs it does"
+        )
+        assert not (dropped.generated / "EventLogger.h").exists(), "the generation after it"
+        assert (dropped.generated / "ddd_globals.c").is_file()
+
+
 class TestACollectedProjectWithPlugins:
+    """Two of these share one configure and one build.
+
+    Both ask what the same tree came out as - the project the module wrote, the schemas it
+    closed over the plugin, the artefacts, and the table the list target prints - and a
+    configure and a build of even this small project cost four seconds together. The two that
+    have a tree of their own are the two that cannot share one: one subtracts the a2l from
+    the call, the other edits the plugin and builds again.
+    """
+
+    @pytest.fixture(scope="class")
+    @staticmethod
+    def built(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path, Path, str]:
+        """The tree, its component, its plugin, and what the list target printed."""
+        source = tmp_path_factory.mktemp("collected")
+        component, plugin = TestACollectedProjectWithPlugins().write(source)
+        configure(source, source / "build")
+        build(source / "build")
+        return source, component, plugin, build(source / "build", "img_ddd_list")
+
     def write(self, tmp_path: Path, options: str = "") -> tuple[Path, Path]:
         """A component carrying the layout plugin's blocks, collected into an image naming it."""
         component = tmp_path / "storage.ddd.json"
@@ -150,17 +345,15 @@ ddd_generate(img
         return component, plugin
 
     def test_the_plugin_reaches_the_project_the_schemas_and_the_artefacts(
-        self, tmp_path: Path
+        self, built: tuple[Path, Path, Path, str]
     ) -> None:
-        component, plugin = self.write(tmp_path)
-        configure(tmp_path, tmp_path / "build")
-        build(tmp_path / "build")
-        generated = tmp_path / "build" / "ddd" / "img"
+        source, component, plugin, _ = built
+        generated = source / "build" / "ddd" / "img"
         described = json.loads((generated / "LayoutDevice.ddd.json").read_text(encoding="utf-8"))
         assert described["project"]["plugins"] == [plugin.as_posix()]
         assert described["project"]["includes"] == [component.as_posix()]
         assert (generated / "ddd_layout.h").is_file(), "the plugin's artefact, under generate all"
-        assert closed_over_layout(tmp_path / "build" / "schemas" / "ddd_component.schema.json")
+        assert closed_over_layout(source / "build" / "schemas" / "ddd_component.schema.json")
 
     def test_no_a2l_keeps_the_plugins_artefact(self, tmp_path: Path) -> None:
         """NO_A2L subtracts the a2l from the run; it does not narrow the run to the c artefact.
@@ -189,14 +382,14 @@ ddd_generate(img
         after = header.read_text(encoding="utf-8")
         assert after != before and "by key, edited" in after.splitlines()[0]
 
-    def test_the_list_target_lists_the_image_with_its_plugins_loaded(self, tmp_path: Path) -> None:
+    def test_the_list_target_lists_the_image_with_its_plugins_loaded(
+        self, built: tuple[Path, Path, Path, str]
+    ) -> None:
         """The image's project names the plugin the blocks belong to, so the table comes out
         with every block placed - and nothing has to be generated or compiled first."""
-        self.write(tmp_path)
-        configure(tmp_path, tmp_path / "build")
-        output = build(tmp_path / "build", "img_ddd_list")
-        assert "EngineHours" in output
-        assert "unknown-extension" not in output
+        listed = built[3]
+        assert "EngineHours" in listed
+        assert "unknown-extension" not in listed
 
 
 VENDOR_HEADER = """#ifndef VENDOR_TYPES_H
@@ -506,6 +699,7 @@ include(Ddd)
 add_executable(img main.c)
 ddd_generate(img
              PROJECT "{(tmp_path / "layout" / "project.ddd.json").as_posix()}"
+             NAME Ignored
              TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"
              SCHEMA_DIRECTORY "${{CMAKE_CURRENT_BINARY_DIR}}/schemas")
 """,
@@ -517,13 +711,18 @@ ddd_generate(img
         self, tmp_path: Path
     ) -> None:
         self.write(tmp_path)
-        configure(tmp_path, tmp_path / "build")
+        configured = configure(tmp_path, tmp_path / "build")
         build(tmp_path / "build")
         assert (tmp_path / "build" / "ddd" / "img" / "ddd_layout.h").is_file()
         assert closed_over_layout(tmp_path / "build" / "schemas" / "ddd_component.schema.json")
         # Named, like the a2l, after the project inside the file rather than after the image.
         dictionary = tmp_path / "build" / "ddd" / "img" / "LayoutDevice.dictionary.json"
         assert json.loads(dictionary.read_text(encoding="utf-8"))["plugins"] == ["layout"]
+        # The call gives NAME as well, which this mode has no use for: the name inside the
+        # file is what everything is named after, and saying so is better than renaming
+        # nothing in silence.
+        assert not (tmp_path / "build" / "ddd" / "img" / "Ignored.a2l").exists()
+        assert "NAME is ignored with PROJECT" in configured.stdout, configured.stdout
 
     def test_an_edited_plugin_regenerates_through_the_sources(self, tmp_path: Path) -> None:
         """``ddd sources`` names the plugin, which is how the module learns to depend on it."""
@@ -563,7 +762,22 @@ ddd_generate(img
 
 
 class TestTheDictionary:
-    """The build writes the resolved dictionary beside what it generated out of it."""
+    """The build writes the resolved dictionary beside what it generated out of it.
+
+    The first two share a configure and a build: they ask two questions of one tree, and this
+    file pays for a tree in seconds. The three below have their own, because each wants a
+    different call - one without the dictionary, one whose description is edited after the
+    build, one with a severity override.
+    """
+
+    @pytest.fixture(scope="class")
+    @staticmethod
+    def built(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, str, str]:
+        """The tree, what configure printed, and what the first build said."""
+        source = tmp_path_factory.mktemp("dictionary")
+        TestTheDictionary().write(source)
+        configured = configure(source, source / "build")
+        return source, configured.stdout, build(source / "build")
 
     def write(self, tmp_path: Path, options: str = "") -> Path:
         """One component collected into an image, which prints where its dictionary goes."""
@@ -592,20 +806,18 @@ message(STATUS "DDD_DICTIONARY=${{dictionary}}")
         return description
 
     def test_it_is_what_the_collected_project_dumps_where_the_property_says(
-        self, tmp_path: Path
+        self, built: tuple[Path, str, str]
     ) -> None:
-        self.write(tmp_path)
-        configured = configure(tmp_path, tmp_path / "build")
-        generated = tmp_path / "build" / "ddd" / "img"
-        printed = re.search(r"DDD_DICTIONARY=(.*)", configured.stdout)
-        assert printed is not None, configured.stdout
+        source, configured, _ = built
+        generated = source / "build" / "ddd" / "img"
+        printed = re.search(r"DDD_DICTIONARY=(.*)", configured)
+        assert printed is not None, configured
         assert Path(printed.group(1).strip()) == generated / "StoreDevice.dictionary.json"
-        build(tmp_path / "build")
         # From outside the build directory the step runs in: the dictionary may not depend on
         # where the tool was started, so a dump from anywhere is the one the build wrote.
         dumped = subprocess.run(
             [str(DDD), "dump", str(generated / "StoreDevice.ddd.json")],
-            cwd=tmp_path,
+            cwd=source,
             env={**os.environ, "PYTHONPATH": str(ROOT / "src"), "PYTHONUTF8": "1"},
             capture_output=True,
             encoding="utf-8",
@@ -615,12 +827,10 @@ message(STATUS "DDD_DICTIONARY=${{dictionary}}")
         written = (generated / "StoreDevice.dictionary.json").read_text(encoding="utf-8")
         assert written == dumped.stdout
 
-    def test_a_finding_is_reported_once(self, tmp_path: Path) -> None:
+    def test_a_finding_is_reported_once(self, built: tuple[Path, str, str]) -> None:
         """The dictionary comes out of the generation's own run, so the build log carries each
         finding once, rather than once for every command that analysed the project."""
-        self.write(tmp_path)
-        configure(tmp_path, tmp_path / "build")
-        output = build(tmp_path / "build")
+        output = built[2]
         assert output.count("warning[unused-output]") == 1, output
 
     def test_no_dictionary_leaves_out_the_file_and_the_property(self, tmp_path: Path) -> None:
@@ -664,6 +874,606 @@ message(STATUS "DDD_DICTIONARY=${{dictionary}}")
         dictionary = tmp_path / "build" / "ddd" / "img" / "StoreDevice.dictionary.json"
         objects = json.loads(dictionary.read_text(encoding="utf-8"))["objects"]
         assert "Unproduced" in {entry["name"] for entry in objects}
+
+
+class TestTheDocumentedAddressMapRecipe:
+    """The two-run flow of the build page, run: three builds, and what the a2l ends up with.
+
+    Every build after the first used to fail. The recipe extracts every defined symbol of the
+    image, and an address outside ``0 .. 0xFFFFFFFF`` was refused whether or not DDD knew the
+    symbol - so on a 64 bit host the hundred entries of the c runtime above 4 GB stopped the
+    generation with a usage error, and the a2l kept ``ECU_ADDRESS 0x00000000`` for ever. Only
+    the symbols the a2l states an address for are weighed now.
+
+    Two adaptations, both of them the page's own subject. The image is linked at a base a 32
+    bit ``ECU_ADDRESS`` can hold, because this host would otherwise place *DDD's own*
+    variables above 4 GB, which is not a thing the tool can do anything about - "what a host
+    build of an embedded project runs into first". And ``address-missing`` is lowered to
+    ``info`` rather than left to ``STRICT``, because this project has the two objects a symbol
+    lister cannot answer for: a structure member, addressed under its access path, and one a
+    condition compiled out of the image - the page says a project adds the first itself, and
+    the specification calls the second a legitimate omission.
+    """
+
+    def write(self, tmp_path: Path) -> Path:
+        source = example_project(tmp_path)
+        recipe = documented_block("set(address_map")
+        assert 'ADDRESS_MAP "${address_map}"' in recipe, "the page no longer names the map so"
+        (source / "cmake").mkdir()
+        (source / "cmake" / "AddressMap.cmake").write_text(
+            documented_block("# cmake/AddressMap.cmake"), encoding="utf-8"
+        )
+        listing = source / "CMakeLists.txt"
+        text = listing.read_text(encoding="utf-8")
+        schemas = 'SCHEMA_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/schemas")'
+        assert schemas in text
+        text = text.replace(
+            "ddd_generate(firmware.elf",
+            recipe.split("ddd_generate(")[0] + "ddd_generate(firmware.elf",
+        ).replace(
+            schemas,
+            schemas[:-1] + '\n             ADDRESS_MAP "${address_map}"'
+            '\n             STRICT\n             SEVERITY "address-missing=info")',
+        )
+        text += "\n" + "add_custom_command(" + recipe.split("add_custom_command(", 1)[1]
+        # A 64 bit image is based above 4 GB - 0x140000000 on Windows, and wherever the loader
+        # cares to put a position independent executable on linux - which no ECU_ADDRESS holds;
+        # an embedded image is not, and it is an embedded image the a2l describes. A GNU
+        # toolchain from end to end, since the recipe reads the nm of binutils as the page
+        # says, but the option is the object format's rather than the toolchain's: `ld` writing
+        # PE takes a base to write at, `ld` writing ELF places a non relocatable executable at
+        # 0x400000 on its own and has no `--image-base` at all.
+        text += (
+            "\nif(WIN32 AND NOT MSVC)\n"
+            '    target_link_options(firmware.elf PRIVATE "-Wl,--image-base,0x400000")\n'
+            "elseif(NOT MSVC)\n"
+            '    target_link_options(firmware.elf PRIVATE "-no-pie")\n'
+            "endif()\n"
+        )
+        listing.write_text(text, encoding="utf-8")
+        return source
+
+    def test_three_builds_settle_with_the_addresses_in_the_a2l(self, tmp_path: Path) -> None:
+        source = self.write(tmp_path)
+        configure(source, tmp_path / "build")
+        generated = tmp_path / "build" / "ddd" / "firmware.elf"
+
+        build(tmp_path / "build")
+        a2l = (generated / "DemoDevice.a2l").read_text(encoding="utf-8")
+        assert "ECU_ADDRESS 0x00000000" in a2l, "the first build runs before anything is linked"
+        extracted = json.loads((generated / "addresses.json").read_text(encoding="utf-8"))
+        assert "ValueA" in extracted, "the step extracts the symbols of the image"
+        assert any(name.startswith("_") for name in extracted), "the c runtime's among them"
+
+        output = build(tmp_path / "build")
+        assert "address-missing" in output, "the two objects a symbol lister cannot answer for"
+        a2l = (generated / "DemoDevice.a2l").read_text(encoding="utf-8")
+        assert f"ECU_ADDRESS 0x{int(extracted['ValueA'], 16):08X}" in a2l
+
+        # "nothing is recompiled, nothing is relinked, and the flow settles after one extra
+        # round rather than chasing its own tail" - the page's own sentence about this flow.
+        assert "no work to do" in build(tmp_path / "build")
+
+
+class TestAKeywordGivenNoValue:
+    """``ADDRESS_MAP ${DDD_MAP}`` with ``DDD_MAP`` unset is the ordinary CMake mistake.
+
+    Neither function read ``KEYWORDS_MISSING_VALUES``, so the keyword was dropped in silence
+    and the call ran as if it had never been given: the a2l came out with every
+    ``ECU_ADDRESS 0x00000000``, no map was seeded and none was a dependency, so the two-run
+    flow the map was configured for never happened - and ``PROJECT`` without a value fell
+    into the collected mode, generating something else entirely.
+    """
+
+    def write(self, tmp_path: Path, call: str) -> Path:
+        component = tmp_path / "store.ddd.json"
+        described = {"component": {"name": "Store", "interface": [declare("local", "Level")]}}
+        component.write_text(json.dumps(described, indent=2), encoding="utf-8")
+        (tmp_path / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        (tmp_path / "store.c").write_text("int store(void) { return 0; }\n", encoding="utf-8")
+        (tmp_path / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(Missing LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+add_library(store STATIC store.c)
+add_executable(img main.c)
+target_link_libraries(img PRIVATE store)
+{call.format(component=component.as_posix(), templates=TEMPLATES.as_posix())}
+""",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    @pytest.mark.parametrize(
+        ("call", "keyword"),
+        [
+            pytest.param(
+                'ddd_add_component(store JSON "{component}")\n'
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" ADDRESS_MAP ${{DDD_MAP}})',
+                "ADDRESS_MAP",
+                id="the address map of the two-run flow",
+            ),
+            pytest.param(
+                'ddd_add_component(store JSON "{component}")\n'
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" PROJECT ${{DDD_PROJECT}})',
+                "PROJECT",
+                id="the project description, which decides the mode",
+            ),
+            pytest.param(
+                'ddd_add_component(store JSON "{component}")\n'
+                "ddd_generate(img TEMPLATE_DIRECTORY ${{DDD_TEMPLATES}})",
+                "TEMPLATE_DIRECTORY",
+                id="the required keyword",
+            ),
+            pytest.param(
+                "ddd_add_component(store JSON ${{DDD_FILES}})\n"
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}")',
+                "JSON",
+                id="the descriptions of a component",
+            ),
+        ],
+    )
+    def test_it_is_refused_and_named(self, tmp_path: Path, call: str, keyword: str) -> None:
+        source = self.write(tmp_path, call)
+        run = attempt(source, tmp_path / "build")
+        assert run.returncode != 0, run.stdout + run.stderr
+        # Rewrapped: cmake folds a message to its own width, so the sentence arrives with
+        # newlines and two-space indents wherever it happened to break.
+        assert f'"{keyword}" was given no value' in " ".join(run.stderr.split())
+
+    def test_a_keyword_with_a_value_still_configures(self, tmp_path: Path) -> None:
+        """The positive control: the same call with the variable set is not refused."""
+        source = self.write(
+            tmp_path,
+            'ddd_add_component(store JSON "{component}")\n'
+            'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" ADDRESS_MAP ${{DDD_MAP}})',
+        )
+        # A map in the source tree has to exist: there, a missing file is a mistake of its own.
+        (tmp_path / "map.json").write_text("{}\n", encoding="utf-8")
+        configure(source, tmp_path / "build", f"-DDDD_MAP={(tmp_path / 'map.json').as_posix()}")
+
+
+VENDOR_TYPES = """#ifndef KEYWORD_VENDOR_H
+#define KEYWORD_VENDOR_H
+typedef struct { unsigned short revision; } VendorState_t;
+#endif
+"""
+"""A header no registered component publishes the directory of: only ``LINK_LIBRARIES`` does."""
+
+
+@dataclass(frozen=True)
+class Configured:
+    """What one configure and three builds of one tree left behind, for the class below."""
+
+    generated: Path
+    configured: str
+    checked: str
+    """The output of building ``<stem>_ddd_check`` before anything else was built."""
+
+    after_check: list[str]
+    """What was in the output directory once the check target had run, by file name."""
+
+    built: str
+    rebuilt: str
+    """The build after a ``DEPENDS`` file was rewritten and nothing else."""
+
+
+class TestTheKeywordsOfOneCall:
+    """Five keywords, a property and a target, asked of one project configured once.
+
+    A configure and a build cost seconds each, and this file is a third of the suite's
+    runtime, so every keyword answered by its own tree is a keyword that goes on being
+    untested instead. These are the ones that can share a project: they are the arguments of
+    one call, they do not contradict each other, and what each does is visible in the tree the
+    build leaves behind. The class is configured and built once, by the fixture below, and
+    each test reads one answer out of it. ``STRICT`` and ``NO_PROPAGATE_HEADERS`` are not here
+    because a project exercising them is a build that fails, which is a project of its own.
+    """
+
+    @pytest.fixture(scope="class")
+    @staticmethod
+    def built(tmp_path_factory: pytest.TempPathFactory) -> Configured:
+        source = tmp_path_factory.mktemp("keywords")
+        (source / "vendor").mkdir()
+        (source / "vendor" / "vendor_types.h").write_text(VENDOR_TYPES, encoding="utf-8")
+        (source / "extra.txt").write_text("the file DEPENDS names\n", encoding="utf-8")
+        (source / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        # Includes nothing: what needs the vendor header here is the *definition* file, which
+        # is the translation unit LINK_LIBRARIES reaches.
+        (source / "store.c").write_text("int store(void) { return 0; }\n", encoding="utf-8")
+        (source / "store.ddd.json").write_text(
+            json.dumps(
+                {
+                    "component": {
+                        "name": "Store",
+                        "description": "one component, so the call has something to generate",
+                        "types": [
+                            {
+                                "type": "external",
+                                "name": "VendorState_t",
+                                "description": "defined by the vendor's own header",
+                                "header": "vendor_types.h",
+                            },
+                            {
+                                "type": "struct",
+                                "name": "VendorBlock_t",
+                                "description": "carries the vendor state",
+                                "members": [
+                                    {
+                                        "name": "state",
+                                        "member": "value",
+                                        "description": "opaque to DDD",
+                                        "typename": "VendorState_t",
+                                    }
+                                ],
+                            },
+                        ],
+                        "interface": [declare("local", "Level", "uint16", id="ab3cd4ef5gh6")],
+                    }
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        # The image is named so that the defaulted NAME has something to sanitise: the stem
+        # names the helper targets as written, and the project name has to be a c identifier.
+        (source / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(Keywords LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+add_library(vendor INTERFACE)
+target_include_directories(vendor INTERFACE "${{CMAKE_CURRENT_SOURCE_DIR}}/vendor")
+add_library(store STATIC store.c)
+ddd_add_component(store JSON "{(source / "store.ddd.json").as_posix()}")
+add_executable(2nd-image.elf main.c)
+target_link_libraries(2nd-image.elf PRIVATE store)
+ddd_generate(2nd-image.elf
+             OUTPUT_DIRECTORY generated
+             TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"
+             BYTE_ORDER big
+             LINK_LIBRARIES vendor
+             DEPENDS "${{CMAKE_CURRENT_SOURCE_DIR}}/extra.txt")
+get_target_property(a2l 2nd-image.elf DDD_A2L)
+message(STATUS "DDD_A2L=${{a2l}}")
+""",
+            encoding="utf-8",
+        )
+        build_dir = source / "build"
+        configured = configure(source, build_dir)
+        generated = build_dir / "generated"
+        # Before anything else, so that what the check target leaves behind is only what
+        # configure wrote there.
+        checked = build(build_dir, "2nd-image_ddd_check")
+        after_check = sorted(path.name for path in generated.iterdir())
+        output = build(build_dir)
+        (source / "extra.txt").write_text("rewritten by the test\n", encoding="utf-8")
+        return Configured(
+            generated=generated,
+            configured=configured.stdout,
+            checked=checked,
+            after_check=after_check,
+            built=output,
+            rebuilt=build(build_dir),
+        )
+
+    def test_the_name_defaults_to_the_image_sanitised_into_an_identifier(
+        self, built: Configured
+    ) -> None:
+        """``2nd-image.elf`` is not a c identifier and the a2l project name has to be one, so
+        the hyphen becomes an underscore and the leading digit gains an ``N``. The helper
+        targets are named after the stem as written - ``2nd-image_ddd_check`` is what the
+        fixture built - because a target name is nobody's identifier."""
+        assert (built.generated / "N2nd_image.a2l").is_file()
+        assert (built.generated / "N2nd_image.ddd.json").is_file(), "the collected project"
+        assert (built.generated / "N2nd_image.dictionary.json").is_file()
+
+    def test_the_output_directory_is_where_the_files_are(self, built: Configured) -> None:
+        """A relative ``OUTPUT_DIRECTORY`` is resolved against the build directory, which is
+        the only place a generated file may go."""
+        assert (built.generated / "ddd_globals.c").is_file()
+        assert built.generated.name == "generated"
+        assert not (built.generated.parent / "ddd" / "2nd-image.elf").exists(), (
+            "the default output directory was used beside the one the call named"
+        )
+
+    def test_the_byte_order_reaches_the_a2l(self, built: Configured) -> None:
+        a2l = (built.generated / "N2nd_image.a2l").read_text(encoding="utf-8")
+        assert "BYTE_ORDER MSB_FIRST" in a2l, "BYTE_ORDER big is MSB_FIRST in ASAP2"
+
+    def test_the_a2l_property_names_the_file_that_was_written(self, built: Configured) -> None:
+        """What a post-build step reads to install or publish the a2l, so it has to be the
+        path the generator actually wrote - the a2l is named from inside the description."""
+        printed = re.search(r"DDD_A2L=(.*)", built.configured)
+        assert printed is not None, built.configured
+        assert Path(printed.group(1).strip()) == built.generated / "N2nd_image.a2l"
+
+    def test_link_libraries_reaches_the_definition_file(self, built: Configured) -> None:
+        """The definition file includes the types header, which includes the vendor header.
+        Nothing registered publishes that directory - the vendor library is linked by no
+        component - so the build compiled only because ``LINK_LIBRARIES`` handed it over."""
+        types = (built.generated / "ddd_types.h").read_text(encoding="utf-8")
+        assert '#include "vendor_types.h"' in types
+        assert "ddd_globals.c.obj" in built.built or "ddd_globals.c.o" in built.built, built.built
+
+    def test_depends_retriggers_the_generation(self, built: Configured) -> None:
+        """A file the project names with ``DEPENDS`` - a linker script, a header the templates
+        read - is a dependency of the generation and nothing else changed between the two
+        builds the fixture ran."""
+        assert "Generating the data dictionary of 2nd-image.elf" in built.rebuilt, built.rebuilt
+
+    def test_the_check_target_checks_without_generating(self, built: Configured) -> None:
+        """What a ci job runs for the verdict alone: the whole project under the same policy,
+        and not one artefact written."""
+        assert "are consistent" in built.checked, built.checked
+        # Both of these are written by the configure step, not by the build: the record of
+        # what the build runs, and the project description assembled from the link closure.
+        assert built.after_check == ["N2nd_image.ddd.json", "ddd-build.json"], (
+            "the check target generated something, which is what it exists not to do"
+        )
+
+
+class TestTheComponentCheckTarget:
+    """What ``ninja <target>.ddd`` says about a component that is wrong in the two ways it can be.
+
+    A description that does not parse at all was skipped at configure time:
+    ``_ddd_is_component_file`` answered FALSE for it, which is the answer it owes a
+    *vocabulary* file, so the target was created with no command on it and ``ninja
+    store.ddd`` said ``no work to do`` about a file that does not parse - and went on saying
+    it, the target being built at configure time, until somebody configured again.  The other
+    way, a description that reads and does not hold together, was pinned nowhere: the shipped
+    example's target is built in this file, and it passes.
+
+    One configure for both, because the two components are two targets of one project and
+    neither test touches the other's file.
+    """
+
+    @pytest.fixture(scope="class")
+    @staticmethod
+    def source(tmp_path_factory: pytest.TempPathFactory) -> Path:
+        source = tmp_path_factory.mktemp("check-targets")
+        # What an editor leaves behind mid-edit, and a merge conflict leaves for longer.
+        (source / "store.ddd.json").write_text("{ broken", encoding="utf-8")
+        (source / "bad.ddd.json").write_text(
+            json.dumps(
+                {
+                    "component": {
+                        "name": "Bad",
+                        "description": "reads, and does not hold together",
+                        "interface": [
+                            declare("local", "Level", "uint8", init=300, id="ab3cd4ef5gh6")
+                        ],
+                    }
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        (source / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        for name in ("store", "bad"):
+            (source / f"{name}.c").write_text(f"int {name}(void) {{ return 0; }}\n", "utf-8")
+        (source / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(Broken LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+add_library(store STATIC store.c)
+ddd_add_component(store JSON "{(source / "store.ddd.json").as_posix()}")
+add_library(bad STATIC bad.c)
+ddd_add_component(bad JSON "{(source / "bad.ddd.json").as_posix()}")
+add_executable(img main.c)
+target_link_libraries(img PRIVATE store bad)
+ddd_generate(img
+             NAME BrokenDevice
+             TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}")
+""",
+            encoding="utf-8",
+        )
+        configure(source, source / "build")
+        return source
+
+    def test_a_description_that_does_not_parse_is_reported_and_the_repair_is_checked(
+        self, source: Path
+    ) -> None:
+        """Configured over the broken file, so the target is the one that configure built.
+
+        The second half is what the target being empty hid: the file is repaired without
+        configuring again - which is what a developer does, the editor being where both
+        happen - and the same target has to run the check over the repaired file.
+        """
+        run = cmake("--build", str(source / "build"), "--target", "store.ddd", cwd=source)
+        assert run.returncode != 0, "a component that does not parse passed its own check target"
+        assert "json-syntax" in run.stdout + run.stderr
+
+        described = {
+            "component": {
+                "name": "Store",
+                "interface": [declare("local", "Level", id="ab3cd4ef5gh6")],
+            }
+        }
+        (source / "store.ddd.json").write_text(json.dumps(described, indent=2), encoding="utf-8")
+        assert "1 component" in build(source / "build", "store.ddd")
+
+    def test_a_component_that_fails_its_own_check_fails_its_target(self, source: Path) -> None:
+        """``init: 300`` on a ``uint8``: an error of the component alone, which is what the
+        standalone check is for. The target has to carry the exit code out of the tool."""
+        run = cmake("--build", str(source / "build"), "--target", "bad.ddd", cwd=source)
+        assert run.returncode != 0, "a component whose own check fails passed its check target"
+        assert "init-invalid" in run.stdout + run.stderr
+
+
+class TestStrict:
+    """``STRICT`` is what a ci build wants and a developer build does not: a warning stops it.
+
+    The positive control is two classes up: ``TestTheDictionary`` builds a project with this
+    very warning, without ``STRICT``, and the build passes with the warning in its log; and
+    ``TestTheDocumentedAddressMapRecipe`` builds a clean project *with* ``STRICT``. What was
+    pinned nowhere is that the keyword reaches the generation at all.
+    """
+
+    def test_a_warning_stops_the_build_and_writes_nothing(self, tmp_path: Path) -> None:
+        described = {"component": {"name": "Store", "interface": [declare("output", "Level")]}}
+        (tmp_path / "store.ddd.json").write_text(json.dumps(described, indent=2), encoding="utf-8")
+        (tmp_path / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        (tmp_path / "store.c").write_text("int store(void) { return 0; }\n", encoding="utf-8")
+        (tmp_path / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(Strict LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+add_library(store STATIC store.c)
+ddd_add_component(store JSON "{(tmp_path / "store.ddd.json").as_posix()}")
+add_executable(img main.c)
+target_link_libraries(img PRIVATE store)
+ddd_generate(img
+             NAME StrictDevice
+             TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"
+             STRICT)
+""",
+            encoding="utf-8",
+        )
+        configure(tmp_path, tmp_path / "build")
+        run = cmake("--build", str(tmp_path / "build"), cwd=tmp_path)
+        assert run.returncode != 0, "STRICT let a build through on a warning"
+        assert "unused-output" in run.stdout + run.stderr
+        assert not (tmp_path / "build" / "ddd" / "img" / "ddd_globals.c").exists(), (
+            "the generation wrote its artefacts and then failed"
+        )
+
+
+class TestPropagatingTheHeaders:
+    """``NO_PROPAGATE_HEADERS``, which a project with two images has to give to both.
+
+    Every other test in this file takes the propagation: a component includes its generated
+    header and nothing in its own ``CMakeLists`` says where that header is. This one is the
+    other half - what a project gets when it opts out, and what it then has to write itself -
+    and the refusal that makes opting out compulsory for the second image.
+    """
+
+    OPT_OUT = "\n             NO_PROPAGATE_HEADERS"
+
+    def write(self, tmp_path: Path, tail: str, options: str = OPT_OUT) -> None:
+        described = {"component": {"name": "Store", "interface": [declare("local", "Level")]}}
+        (tmp_path / "store.ddd.json").write_text(json.dumps(described, indent=2), encoding="utf-8")
+        (tmp_path / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        # Includes the header generated for it, which is what the propagation is for.
+        (tmp_path / "store.c").write_text('#include "Store.h"\n', encoding="utf-8")
+        (tmp_path / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(Propagation LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+add_library(store STATIC store.c)
+ddd_add_component(store JSON "{(tmp_path / "store.ddd.json").as_posix()}")
+add_executable(img main.c)
+target_link_libraries(img PRIVATE store)
+ddd_generate(img
+             NAME StoreDevice
+             TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"{options})
+{tail.format(templates=TEMPLATES.as_posix())}
+""",
+            encoding="utf-8",
+        )
+
+    def test_a_component_is_not_handed_the_headers_and_says_so(self, tmp_path: Path) -> None:
+        """Nothing else tells the compiler where ``Store.h`` is, so the component's own
+        translation unit is where the opt-out becomes visible."""
+        self.write(tmp_path, "")
+        configure(tmp_path, tmp_path / "build")
+        run = cmake("--build", str(tmp_path / "build"), cwd=tmp_path)
+        assert run.returncode != 0, "the headers were propagated after all"
+        assert "Store.h" in run.stdout + run.stderr
+
+    def test_linking_them_by_hand_is_what_the_page_tells_a_project_to_do(
+        self, tmp_path: Path
+    ) -> None:
+        """The interface library is still there and still carries the include directory; what
+        ``NO_PROPAGATE_HEADERS`` withdraws is only the automatic link into every component."""
+        self.write(tmp_path, "target_link_libraries(store PRIVATE img_ddd_headers)")
+        configure(tmp_path, tmp_path / "build")
+        build(tmp_path / "build")
+        assert (tmp_path / "build" / "ddd" / "img" / "Store.h").is_file()
+
+    def test_a_second_image_may_not_hand_the_components_a_second_set(self, tmp_path: Path) -> None:
+        """Two images propagating would give one component two sets of headers, and whichever
+        include directory came first would silently decide which interface it compiles
+        against. The second call refuses, naming the first image."""
+        self.write(
+            tmp_path,
+            "add_executable(second.elf main.c)\n"
+            "target_link_libraries(second.elf PRIVATE store)\n"
+            "ddd_generate(second.elf\n"
+            "             NAME SecondDevice\n"
+            '             TEMPLATE_DIRECTORY "{templates}")',
+            # The first image propagates, which is the default and what makes the second's
+            # propagation the ambiguity: opting *both* out is the answer the message gives.
+            options="",
+        )
+        run = attempt(tmp_path, tmp_path / "build")
+        assert run.returncode != 0, "a second image propagated its headers over the first's"
+        said = " ".join(run.stderr.split())
+        assert "already compile against the headers generated for" in said, said
+        assert "NO_PROPAGATE_HEADERS to *both*" in said
+
+
+class TestAToolOfAnotherRelease:
+    """The module and the ``ddd`` it drives have to be one release.
+
+    ``ddd cmake-dir`` and the header of the module invite a project to copy ``Ddd.cmake`` into
+    its own tree, where it then sits beside whichever ``ddd`` the environment has: 0.10.0's
+    module with 0.9.0's tool, say.  Nothing compared the two.  The configure step passed -
+    ``schema all``, ``build-info`` and ``sources`` are older than either release - and the
+    first *build* failed with argparse's ``unrecognized arguments: --dictionary``, which names
+    the option and not the mismatch behind it; the other way round, the build quietly ran with
+    the old module's option set.  Every other test in this file is the positive control: they
+    all configure against the ``ddd`` of this tree, whose version the module states.
+    """
+
+    def fake_tool(self, tmp_path: Path, version: str) -> Path:
+        """A ``ddd`` that answers ``--version`` and nothing else, as the handshake needs."""
+        if os.name == "nt":
+            tool = tmp_path / "ddd.bat"
+            tool.write_text(f"@echo ddd {version}\n", encoding="utf-8")
+        else:
+            tool = tmp_path / "ddd.sh"
+            tool.write_text(f'#!/bin/sh\necho "ddd {version}"\n', encoding="utf-8")
+            tool.chmod(0o755)
+        return tool
+
+    def write(self, tmp_path: Path) -> None:
+        (tmp_path / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        (tmp_path / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(Mismatch LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+add_executable(img main.c)
+""",
+            encoding="utf-8",
+        )
+
+    def test_the_include_refuses_it_naming_both_versions(self, tmp_path: Path) -> None:
+        """Refused where the module is included, before a single target is defined: the
+        mismatch is a property of the pair, not of anything a call says."""
+        self.write(tmp_path)
+        tool = self.fake_tool(tmp_path, "0.0.1")
+        run = cmake(
+            "-S",
+            str(tmp_path),
+            "-B",
+            str(tmp_path / "build"),
+            "-G",
+            "Ninja",
+            f"-DCMAKE_MAKE_PROGRAM={NINJA}",
+            f"-DDDD_EXECUTABLE={tool.as_posix()}",
+            *compiler(),
+            cwd=tmp_path,
+        )
+        assert run.returncode != 0, "a tool of another release configured without a word"
+        said = " ".join(run.stderr.split())
+        assert "0.0.1" in said and __version__ in said, said
+        assert tool.as_posix() in said.replace("\\", "/"), "the message does not name the tool"
 
 
 @pytest.mark.parametrize("tool", [CMAKE, NINJA, str(DDD)])

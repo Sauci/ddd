@@ -601,6 +601,64 @@ usage error. The staging name is fixed rather than random so that a staging file
 run left behind is overwritten rather than accumulated, and it is a name no artefact of a
 project would carry: ``.tmp`` is one people give real files.
 
+.. _what-a-run-owns:
+
+What a run owns
+~~~~~~~~~~~~~~~
+
+A run writes what it renders, and what it renders follows from the descriptions - so a
+component that leaves a project simply stops being rendered. Its header used to stay where
+the last run had put it, on the include path of every component, and a translation unit went
+on compiling against the interface of a component the project no longer contains. No build
+system can clean that up either: a per-component file is named from inside a description
+file, which is why it is not among the outputs a build declares (see
+:doc:`build_integration`).
+
+So ``ddd generate`` owns its output directory. It records the files it wrote there in
+``.ddd-manifest.json`` beside them, and the next run removes the recorded files it no longer
+writes, saying so:
+
+.. code-block:: text
+
+   $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates  # after the component left
+   wrote       build/gen/ddd_globals.c (updated)
+   ...
+   removed     build/gen/EventLogger.h
+
+Two rules bound what that can reach. **Only files DDD itself wrote are ever removed**: a file
+the manifest does not name - a header checked in beside the generated ones, a note, an object
+file of an earlier build - is not DDD's, and stays however stale it looks. And **only the
+artefacts the run produced** are weighed: ``ddd generate a2l`` into the directory a
+``generate all`` filled regenerates the a2l without touching the c sources the image was
+built from, which is the whole point of the two-run flow (:doc:`build_integration`), and the
+same holds for a run that subtracts an artefact with ``--without`` and for a plugin a project
+has stopped naming. The manifest is written in the same all-or-nothing step as the artefacts
+and renamed after them and after the removals, so a run that fails leaves the previous record
+describing what is still on disk, a file that could not be removed stays recorded for the next
+run to take back, and a run that changes nothing rewrites nothing - the manifest included.
+``--dry-run`` says what it would remove and removes nothing.
+
+The manifest is a small json document, one entry per file, naming the artefact that wrote it:
+
+.. code-block:: json
+
+   {
+     "format": 1,
+     "files": {
+       "Controller.h": "c",
+       "DemoDevice.a2l": "a2l",
+       "DemoDevice.dictionary.json": "--dictionary",
+       "ddd_globals.c": "c"
+     }
+   }
+
+It is bookkeeping rather than an artefact, so it is not reported among the files a run wrote,
+and a ``format`` this version does not know is one it declines rather than misreads: such a
+run removes nothing and records what it wrote. Nothing but DDD is meant to read it, and one
+directory holds one: two ``ddd generate`` runs sharing an output directory - a thing to avoid
+for other reasons, since each would overwrite the other's artefacts - would each take back
+what the other wrote of the artefacts they share.
+
 a2l
 ---
 

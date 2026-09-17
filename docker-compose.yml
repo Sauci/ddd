@@ -87,12 +87,11 @@ services:
   # Builds the html documentation into build/docs/html, out of the same sources and with the
   # same warnings-as-errors gate as the ci job that publishes it to GitHub Pages. This service
   # is the local equivalent of that job, for working on the documentation without pushing.
+  # Its requirements are in the image, like every other service's: installing them here made a
+  # documentation build wait for pypi and run against whatever it answered with that day.
   docs:
     <<: *ddd
-    command:
-      - sh
-      - -c
-      - pip install --quiet -e ".[docs]" && sphinx-build -b html docs build/docs/html -W --keep-going
+    command: ["sphinx-build", "-b", "html", "docs", "build/docs/html", "-W", "--keep-going"]
 
   shell:
     <<: *ddd

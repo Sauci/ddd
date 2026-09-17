@@ -247,7 +247,13 @@ rasters files and/or other (sub-)projects, and names the plugins the project run
 - `"extensions"` (optional): the settings of those plugins, keyed by plugin name
   ([section 3.11](#311-plugins)).
 
-An entry of `includes` containing one of `*`, `?` or `[` is a wildcard pattern, expanded
+An entry of `includes` that names an existing file **shall** be read as that file, whatever
+characters it contains; only an entry naming no file is read as a pattern. The two readings
+overlap only over the three characters below, and a directory carrying one of them - a
+checkout under `C:/work/proj [v2]` - is not something a project chooses, while an absolute
+path written into `includes` by a build system ([section 7.1](#71-build-system-integration))
+is. An entry of `includes` containing one of `*`, `?` or `[` and naming no file is a wildcard
+pattern, expanded
 with the usual shell rules: `*` and `?` match within one path component, `[...]` is a
 character class, and `**` matches directories recursively. A dot prefixed file is matched
 like any other file, and whether matching honours case follows the platform, like the file
@@ -1600,6 +1606,24 @@ resolves to ([section 5.3](#53-data-dictionary)).
 
 ## 5 Generated artefacts
 
+`ddd generate` **shall** own the directory it writes into. It records the files it wrote
+there, and the artefact each of them came from, in a manifest named `.ddd-manifest.json`
+beside them, and on a later run it removes the recorded files it no longer writes: a
+component dropped from a project stops being rendered, and its header - which no build
+system can declare, its name coming out of a description file rather than out of the
+template directory ([section 7.1](#71-build-system-integration)) - must not stay on every
+component's include path. Two rules bound this. Only files the tool itself wrote are ever
+removed: a file the manifest does not name is left alone, whatever it looks like. And only
+the artefacts the run produced are weighed, so `ddd generate a2l` into the directory a
+`generate all` filled regenerates the A2L without touching the C sources
+([section 6](#6-address-information)), and so does a run that subtracts an artefact with
+`--without` or stops naming a plugin. The manifest is written in the same all-or-nothing
+step as the artefacts and renamed after them and after the removals, so a run that fails
+writes, removes and records nothing; a run whose output has not changed rewrites nothing,
+the manifest included; and `--dry-run` reports what it would remove without removing it. A
+manifest whose `format` this version does not know is one it declines rather than misreads
+([section 3.6](#36-build-record)): it removes nothing that run and records what it wrote.
+
 ### 5.1 C code
 
 The C sources **shall** be rendered from templates the *project* provides, and DDD
@@ -1887,9 +1911,15 @@ as the A2L names it ([section 5.2](#52-a2l)). A symbol **shall** be stated once:
 naming one twice is a usage error rather than the last of the two addresses silently
 winning. The address is a JSON integer, or a string read as hexadecimal with a `0x` prefix
 and as decimal without one - those two spellings exactly, whatever whitespace surrounds
-them - and it **must** fit an unsigned 32 bit `ECU_ADDRESS`: a map that is not a JSON
+them. The address of a symbol the project carries **must** fit an unsigned 32 bit
+`ECU_ADDRESS`: a map that is not a JSON
 object, a value that is neither of those two spellings, or an address outside
-`0 .. 0xFFFFFFFF`, is a usage error and nothing is written. The file **may** begin with a
+`0 .. 0xFFFFFFFF` **for a symbol the A2L states an address for**, is a usage error and
+nothing is written. The address of any other symbol is never formatted into anything and is
+therefore not held to that range: extracting every defined symbol of an image - which is what
+[section 7.1](#71-build-system-integration) describes - legitimately yields entries a 32 bit
+field could not hold, and refusing them would make the two-run flow impossible to complete on
+a 64 bit host. The file **may** begin with a
 byte order mark, as a description file may ([section 3](#3-file-formats)): it is written by
 a build step, and on Windows that is exactly where one comes from. A key the project does
 not know is ignored, and an object the map does not
@@ -2002,8 +2032,9 @@ findings at one location keep the order they were reported in; and a
 components it found consistent, and `compare` with a verdict line saying whether the
 candidate file can replace the baseline file ([section 4.1](#41-comparing-two-deliveries)).
 `generate` adds the files it wrote under `generated`, one `{path, status}` per file with
-`status` one of `created`, `updated` and `unchanged` and `path` spelled as the run was asked
-for it,
+`status` one of `created`, `updated`, `unchanged` and `removed` - the last being a file an
+earlier run wrote that this one no longer writes ([section 5](#5-generated-artefacts)) - and
+`path` spelled as the run was asked for it,
 and `dump` keeps its stdout for the dictionary, reporting findings on stderr - with
 `--format json` the findings document goes there too, so stdout carries the dictionary
 alone in both formats; given `-o`, stdout stays empty and the report on stderr adds the file
@@ -2060,10 +2091,13 @@ registers descriptions, component and vocabulary files alike, on their target, a
 those of the plugins the call names with `PLUGINS` ([section 3.11](#311-plugins)), which it
 writes into the collected project description; a plugin's files are produced beside the
 built-in ones without being declared as outputs. `ddd_add_component` needs CMake 3.30, and
-a registered file not named `*.ddd.json` is a configure error; it defines an on-demand
+a registered file not named `*.ddd.json` is a configure error; so, in both calls, is a
+keyword given no value, which the error names: a variable that expanded to nothing reads
+exactly like a keyword nobody gave, and each one silently changes what the call does; it defines an on-demand
 target `<target>.ddd` that runs `ddd check <file> --standalone` on each registered
 component file under the default severity policy, a vocabulary file getting none because it
-declares no interface of its own. `ddd_generate` generates into the build tree and defines
+declares no interface of its own; a registered file whose JSON does not parse at all is
+checked like a component, what is wrong with it being exactly what that check reports. `ddd_generate` generates into the build tree and defines
 two libraries, named after the image without its extension: an interface library
 `<stem>_ddd_headers`, carrying the output directory as an include directory and, in the
 collected mode, the compile usage described at the end of this section; and an object
@@ -2130,7 +2164,12 @@ a run failing its checks writes none of them; its path is published as the image
 itself is found by `find_program`
 into the cache variable `DDD_EXECUTABLE` and is a dependency of the generation, so an
 upgraded DDD regenerates; multi-config generators are refused at configure time, because
-the generated files have one path that every configuration would write to.
+the generated files have one path that every configuration would write to. The module and
+the tool **shall** be one release: including the module runs `ddd --version` and refuses,
+naming both, a tool spelling another version than the module does, because every option the
+module passes is checked when the build runs it and a mismatch is otherwise an unrecognised
+argument at build time, or a silent build under the option set of a release nobody is
+running.
 
 In the collected mode the interface library carries the compile usage of every registered
 target - include directories, compile definitions and compile options, never link edges - so

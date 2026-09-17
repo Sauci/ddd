@@ -739,19 +739,35 @@ class TestInputTheToolMustSurvive:
         assert "schema" in checks(bag)
 
     def test_an_address_outside_the_a2l_field_is_refused(self, tree: Path) -> None:
+        """For a symbol the a2l states an address for: a negative value renders as
+        ``0x-0000010`` and a wider one as a 33 bit literal, either of which makes the whole
+        file unreadable."""
         write_tree(tree, {"map.json": {"X": -16}})
         with pytest.raises(ValueError, match="outside the range"):
-            load_address_map(tree / "map.json")
+            load_address_map(tree / "map.json", carried=("X",))
         write_tree(tree, {"wide.json": {"X": "0x1FFFFFFFF"}})
         with pytest.raises(ValueError, match="outside the range"):
-            load_address_map(tree / "wide.json")
+            load_address_map(tree / "wide.json", carried=("X",))
+
+    def test_an_address_outside_it_is_kept_for_a_symbol_the_a2l_never_states(
+        self, tree: Path
+    ) -> None:
+        """The documented recipe extracts every defined symbol of the image, which on a 64 bit
+        host puts a hundred entries of the c runtime above 4 GB. None of them is formatted
+        into the a2l, so refusing them failed every build after the first for entries nobody
+        asked for; they stay in the map and are named in the ``address-missing`` note."""
+        write_tree(tree, {"map.json": {"X": "0x1000", "___crt_xc_end__": "0x140009018"}})
+        assert load_address_map(tree / "map.json", carried=("X",)) == {
+            "X": 0x1000,
+            "___crt_xc_end__": 0x140009018,
+        }
 
     def test_an_address_map_that_is_not_json_names_the_file(self, tree: Path) -> None:
         """The bare json message says where inside the document; the reader's first question
         is which file, and the map is typically written by a tool nobody is watching."""
         (tree / "map.json").write_text("{ not json", encoding="utf-8")
         with pytest.raises(ValueError) as caught:
-            load_address_map(tree / "map.json")
+            load_address_map(tree / "map.json", carried=())
         assert "map.json" in str(caught.value)
         assert "is not valid json" in str(caught.value)
 
@@ -762,7 +778,7 @@ class TestInputTheToolMustSurvive:
         """12.5 *is* a number, so 'not a number' left the actual rule unsaid."""
         write_tree(tree, {"map.json": {"X": value}})
         with pytest.raises(ValueError, match="address of 'X' is not an integer"):
-            load_address_map(tree / "map.json")
+            load_address_map(tree / "map.json", carried=())
 
     def test_control_characters_never_reach_an_a2l_string(self, tree: Path) -> None:
         dictionary, _ = run_analysis(

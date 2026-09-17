@@ -22,6 +22,7 @@ from conftest import (
     project,
     write_tree,
 )
+from ddd.backends import MANIFEST_NAME
 from ddd.build_info import BUILD_INFO_FORMAT
 from ddd.cli import (
     EXIT_FINDINGS,
@@ -301,6 +302,112 @@ class TestGenerateAll:
         assert "would write nothing" in capsys.readouterr().err
 
 
+class TestGenerateOwnsItsOutputDirectory:
+    """What a run wrote once and no longer writes, the next run takes back.
+
+    A component that leaves a project - dropped from the link graph, renamed, compiled out -
+    stops being rendered, and its header used to stay behind on every component's include
+    path, where a translation unit went on compiling against the interface of a component the
+    image no longer contains. A build system cannot clean it either: the per-component names
+    are the ones it does not know at configure time.
+    """
+
+    def project(self, tree: Path, *components: str) -> list[str]:
+        """The arguments of a ``generate all`` over a project of one component per name."""
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P", *(f"{name.lower()}.ddd.json" for name in components)
+                ),
+                **{
+                    f"{name.lower()}.ddd.json": component(name, declare("local", f"{name}Value"))
+                    for name in components
+                },
+            },
+        )
+        return [
+            "generate",
+            "all",
+            str(tree / "project.ddd.json"),
+            "-o",
+            str(tree / "gen"),
+            "-t",
+            str(TEMPLATES),
+        ]
+
+    def test_a_header_of_a_component_that_is_gone_is_removed_and_said(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(self.project(tree, "A", "B")) == EXIT_OK
+        assert (tree / "gen" / "B.h").is_file()
+        capsys.readouterr()
+        assert main(self.project(tree, "A")) == EXIT_OK
+        assert not (tree / "gen" / "B.h").exists()
+        assert (tree / "gen" / "A.h").is_file()
+        shown = re.escape((tree / "gen" / "B.h").as_posix())
+        assert re.search(rf"^removed\s+{shown}$", capsys.readouterr().err, re.M)
+
+    def test_json_reports_the_removal_beside_the_files_written(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(self.project(tree, "A", "B")) == EXIT_OK
+        capsys.readouterr()
+        assert main([*self.project(tree, "A"), "--format", "json"]) == EXIT_OK
+        generated = json.loads(capsys.readouterr().out)["generated"]
+        removed = (tree / "gen" / "B.h").as_posix()
+        assert {"path": removed, "status": "removed"} in generated
+
+    def test_a_dry_run_says_what_it_would_remove_and_removes_nothing(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(self.project(tree, "A", "B")) == EXIT_OK
+        capsys.readouterr()
+        assert main([*self.project(tree, "A"), "--dry-run"]) == EXIT_OK
+        shown = re.escape((tree / "gen" / "B.h").as_posix())
+        assert re.search(rf"^would remove {shown}$", capsys.readouterr().err, re.M)
+        assert (tree / "gen" / "B.h").is_file()
+
+    def test_a_file_the_run_never_wrote_is_left_where_it_is(self, tree: Path) -> None:
+        """Only the files this tool wrote are ever removed: whatever else a project keeps
+        beside them - a checked-in header, a note, an object file - is not ours to delete."""
+        assert main(self.project(tree, "A", "B")) == EXIT_OK
+        foreign = tree / "gen" / "notes.txt"
+        foreign.write_text("mine\n", encoding="utf-8")
+        assert main(self.project(tree, "A")) == EXIT_OK
+        assert foreign.read_text(encoding="utf-8") == "mine\n"
+
+    def test_a_file_that_cannot_be_removed_is_named_as_a_removal(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Held open, or read only: the run fails naming the file it was deleting.  "cannot
+        write" about a file being deleted would read as the opposite of what happened."""
+        assert main(self.project(tree, "A", "B")) == EXIT_OK
+        real_unlink = Path.unlink
+
+        def refuse(path: Path, **keywords: Any) -> None:
+            if path.name == "B.h":
+                raise OSError(errno.EACCES, "Access is denied", str(path))
+            real_unlink(path, **keywords)
+
+        monkeypatch.setattr(Path, "unlink", refuse)
+        assert main(self.project(tree, "A")) == EXIT_USAGE
+        shown = (tree / "gen" / "B.h").as_posix()
+        assert f"cannot remove '{shown}': Access is denied" in capsys.readouterr().err
+
+    def test_the_a2l_run_of_a_two_run_build_keeps_the_c_the_image_was_built_from(
+        self, tree: Path
+    ) -> None:
+        """``ddd generate a2l`` into the directory a ``generate all`` filled regenerates the
+        a2l "without touching the sources the image was built from": a run weighs the stale
+        files of the artefacts it produced and of no others."""
+        assert main(self.project(tree, "A", "B")) == EXIT_OK
+        arguments = ["generate", "a2l", str(tree / "project.ddd.json"), "-o", str(tree / "gen")]
+        assert main(arguments) == EXIT_OK
+        assert (tree / "gen" / "B.h").is_file()
+        assert (tree / "gen" / "ddd_globals.c").is_file()
+
+
 class TestGenerate:
     def test_writes_every_artefact(self, tmp_path: Path) -> None:
         output = tmp_path / "gen"
@@ -309,6 +416,9 @@ class TestGenerate:
         )
         names = sorted(path.name for path in output.iterdir())
         assert names == [
+            # The record of what the run wrote here, so that the next one can take back what
+            # it no longer writes; every other name is an artefact.
+            MANIFEST_NAME,
             "Controller.h",
             "DemoDevice.a2l",
             "EventLogger.h",
@@ -346,7 +456,9 @@ class TestGenerate:
         output = tmp_path / "gen"
         arguments = ["generate", "a2l", str(DEMO), "-o", str(output)]
         assert main([*arguments, "--address-map", str(addresses)]) == EXIT_OK
-        assert [path.name for path in output.iterdir()] == ["DemoDevice.a2l"]
+        assert [path.name for path in output.iterdir() if path.name != MANIFEST_NAME] == [
+            "DemoDevice.a2l"
+        ]
         assert "ECU_ADDRESS 0x20001000" in (output / "DemoDevice.a2l").read_text(encoding="utf-8")
         assert "unchanged" not in capsys.readouterr().err
 
@@ -851,6 +963,59 @@ class TestGenerate:
         )
         captured = capsys.readouterr().err
         assert "the map also carries 'ValueEE', which the a2l does not" in captured
+
+    def test_an_address_no_a2l_field_could_hold_is_read_where_the_a2l_never_states_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The recipe the build page documents extracts every defined symbol of the image, so
+        on a 64 bit host the map carries a hundred entries of the c runtime above 4 GB - and
+        every build after the first failed on the first of them, which is what the page itself
+        calls "what a host build of an embedded project runs into first". None of them is
+        formatted into the a2l; they are counted among the entries the a2l does not carry."""
+        addresses = tmp_path / "addresses.json"
+        addresses.write_text(
+            json.dumps({"ValueE": "0x20001000", "___crt_xc_end__": "0x140009018"}),
+            encoding="utf-8",
+        )
+        code = main(
+            [
+                "generate",
+                "a2l",
+                str(DEMO),
+                "-o",
+                str(tmp_path / "gen"),
+                "--address-map",
+                str(addresses),
+            ]
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_OK, captured
+        assert "___crt_xc_end__" in captured.split("the map also carries", 1)[1]
+        assert "ECU_ADDRESS 0x20001000" in (tmp_path / "gen" / "DemoDevice.a2l").read_text(
+            encoding="utf-8"
+        )
+
+    def test_an_address_no_a2l_field_could_hold_is_refused_where_the_a2l_states_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The other half of the same rule: for a symbol the a2l addresses, a value no
+        ``ECU_ADDRESS`` can hold would render as a 33 bit literal and make the file
+        unreadable, so it is a usage error naming the symbol."""
+        addresses = tmp_path / "addresses.json"
+        addresses.write_text('{"ValueE": "0x140009018"}', encoding="utf-8")
+        code = main(
+            [
+                "generate",
+                "a2l",
+                str(DEMO),
+                "-o",
+                str(tmp_path / "gen"),
+                "--address-map",
+                str(addresses),
+            ]
+        )
+        assert code == EXIT_USAGE
+        assert "address of 'ValueE' is 5368746008, outside the range" in capsys.readouterr().err
 
     def test_a_project_that_cannot_be_read_generates_nothing(self, tmp_path: Path) -> None:
         write_tree(tmp_path, {"broken.ddd.json": "{ not json"})

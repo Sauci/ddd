@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -50,7 +51,7 @@ is documented and refusing the rest.
 """
 
 
-def load_address_map(path: Path) -> dict[str, int]:
+def load_address_map(path: Path, *, carried: Collection[str]) -> dict[str, int]:
     """Read a ``{"Symbol": "0x20000100"}`` json file produced by the build.
 
     Read ``utf-8-sig`` for the reason every other file this tool reads is: a build step on
@@ -62,10 +63,17 @@ def load_address_map(path: Path) -> dict[str, int]:
     of one symbol cannot both be right, and the map that carries them was merged from two
     sources or written twice by the same one.
 
-    Every entry is range checked here rather than at formatting time. A negative value would
-    otherwise render as ``0x-0000010`` and a wider one as a 33 bit literal, and either makes
-    the whole a2l unreadable - from a file that a linker script or a patch tool wrote, where
-    a wrong entry is exactly the kind of thing that happens unnoticed.
+    An entry is range checked here rather than at formatting time, but only for the symbols
+    ``carried`` names - the ones the a2l is going to state an ``ECU_ADDRESS`` for. For one of
+    those, a negative value would render as ``0x-0000010`` and a wider one as a 33 bit
+    literal, either of which makes the whole a2l unreadable, so it is a usage error naming the
+    symbol. For every other symbol the address is never formatted at all: the documented
+    recipe extracts *every* defined symbol of the image
+    (``docs/build_integration.rst``), which on a 64 bit host means a hundred entries of the c
+    runtime sitting above 4 GB, and refusing those made the two-run flow impossible to
+    complete on the very host the page tells the reader to try it on. They stay in the map as
+    written, so they are counted among the entries the a2l does not carry and named in the
+    ``address-missing`` note rather than dropped in silence.
 
     Every complaint spells the path forward-slashed, as every path this tool prints is: the
     same message about a description file has always been an ``as_posix()`` one, and a map
@@ -93,7 +101,7 @@ def load_address_map(path: Path) -> dict[str, int]:
         raise ValueError(msg)
     addresses: dict[str, int] = {}
     for symbol, value in data.items():
-        addresses[symbol] = _address(where, symbol, value)
+        addresses[symbol] = _address(where, symbol, value, weighed=symbol in carried)
     return addresses
 
 
@@ -115,7 +123,7 @@ def _no_repeats(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return seen
 
 
-def _address(where: str, symbol: str, value: object) -> int:
+def _address(where: str, symbol: str, value: object, *, weighed: bool) -> int:
     # "integer" rather than "number" every time: 12.5 is a perfectly good number, and telling
     # its author so would leave the actual rule - an address is a whole number - unsaid.
     if isinstance(value, bool) or not isinstance(value, int | str):
@@ -134,7 +142,7 @@ def _address(where: str, symbol: str, value: object) -> int:
             )
             raise ValueError(msg)
         number = int(text, 16 if text.lower().startswith("0x") else 10)
-    if not 0 <= number <= ADDRESS_MAX:
+    if weighed and not 0 <= number <= ADDRESS_MAX:
         msg = (
             f"{where}: address of '{symbol}' is {number}, outside the range "
             f"0 .. 0x{ADDRESS_MAX:08X} that an a2l address can hold"

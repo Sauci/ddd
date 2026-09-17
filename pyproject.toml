@@ -82,6 +82,7 @@ include = [
     "/.github/dependabot.yml",
     "/.pre-commit-hooks.yaml",
     "/CHANGELOG.md",
+    "/docker-compose.yml",
     "/LICENSE",
     "/README.md",
     "/SPEC.md",

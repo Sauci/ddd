@@ -25,7 +25,10 @@ class Project(BaseModel):
     relative to this file.
 
     Shell style wildcards (``*``, ``?``, ``[...]``, ``**``) are expanded; the kind of every
-    included file is detected from its top level key.
+    included file is detected from its top level key. An entry that names an existing file is
+    that file whatever characters it holds, so a path under a directory somebody called
+    ``proj [v2]`` is a path and not a character class; only an entry naming no file is
+    expanded as a pattern.
     """
 
     plugins: tuple[Annotated[str, StringConstraints(min_length=1)], ...] = ()

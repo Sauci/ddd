@@ -24,6 +24,7 @@ The mapping follows ASAM MCD-2 MC (ASAP2) 1.6.1:
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from ddd.backends.a2l.options import A2lOptions
@@ -214,22 +215,15 @@ def build_a2l_model(dictionary: DataDictionary, options: A2lOptions, generator: 
 def addressed_symbols(dictionary: DataDictionary) -> tuple[str, ...]:
     """Every symbol this dictionary's a2l carries an ``ECU_ADDRESS`` for, sorted.
 
-    Read off a built model rather than worked out again, because "which objects reach the
-    file" is a question with several parts - what asked to be exported, what an exported
-    record refers to, which members are bitfields - and a second answer to it would be a
-    second thing to keep in step. What a caller does with the list is check a build's address
-    map against it; the model itself is thrown away.
+    Asked of the builder that renders the file rather than worked out again, because "which
+    objects reach the file" is a question with several parts - what asked to be exported, what
+    an exported record refers to, which members are bitfields - and a second answer to it
+    would be a second thing to keep in step. It used to be read off a whole model, built and
+    thrown away, which is the a2l built twice for every build that has an address map: 1.2
+    seconds on top of a 1.7 second render at a thousand components. The selections are the
+    same two; only the record views are not built.
     """
-    model = build_a2l_model(dictionary, A2lOptions(), "")
-    return tuple(
-        sorted(
-            {
-                *(entry.name for entry in model.measurements),
-                *(entry.name for entry in model.characteristics),
-                *(entry.name for entry in model.axis_pts),
-            }
-        )
-    )
+    return _A2lModelBuilder(dictionary, A2lOptions()).addressed()
 
 
 class _A2lModelBuilder:
@@ -249,6 +243,44 @@ class _A2lModelBuilder:
         self._methods = _CompuMethodBuilder()
         self._layouts = _RecordLayoutBuilder()
         self._events = {entry.raster: entry.event for entry in dictionary.rasters}
+        self._carried: dict[str, list[ResolvedLeaf]] | None = None
+        """The members each structured variable contributes, under the variable's name.
+
+        Indexed once, on the first group that asks, because the alternative is what the
+        groups used to do: walk every leaf of the project to find the ones of one component,
+        once per component - a thousand components against ten thousand leaves, half of the
+        second the a2l model took. Left unbuilt for a caller that only wants the names
+        (:meth:`addressed`), which asks nothing about components.
+        """
+
+    def _exported_objects(self) -> Iterator[ResolvedObject]:
+        """The plain objects that reach the file, in the dictionary's order."""
+        return (entry for entry in self._dictionary.objects if entry.name in self._exported)
+
+    def _carried_leaves(self) -> Iterator[ResolvedLeaf]:
+        """The structure members that reach the file, in the dictionary's order."""
+        return (leaf for leaf in self._dictionary.leaves if self._carries(leaf))
+
+    def _carried_by_instance(self) -> dict[str, list[ResolvedLeaf]]:
+        """:attr:`_carried`, indexed on the first ask."""
+        if self._carried is None:
+            index: dict[str, list[ResolvedLeaf]] = {}
+            for leaf in self._carried_leaves():
+                index.setdefault(leaf.instance, []).append(leaf)
+            self._carried = index
+        return self._carried
+
+    def addressed(self) -> tuple[str, ...]:
+        """The name of every record the file carries, sorted.
+
+        The two selections :meth:`build` renders, without the record views: what a caller
+        does with this is weigh a build's address map against it.
+        """
+        entries: tuple[ResolvedObject | ResolvedLeaf, ...] = (
+            *self._exported_objects(),
+            *self._carried_leaves(),
+        )
+        return tuple(sorted({entry.name for entry in entries}))
 
     def build(self, generator: str) -> A2lModel:
         dictionary = self._dictionary
@@ -256,9 +288,7 @@ class _A2lModelBuilder:
         characteristics: list[CharacteristicView] = []
         axis_pts: list[AxisPtsView] = []
 
-        for entry in dictionary.objects:
-            if entry.name not in self._exported:
-                continue
+        for entry in self._exported_objects():
             if entry.kind is ObjectKind.MEASUREMENT:
                 measurements.append(self._measurement(entry))
             elif entry.kind is ObjectKind.AXIS:
@@ -266,9 +296,7 @@ class _A2lModelBuilder:
             else:
                 characteristics.append(self._characteristic(entry))
 
-        for leaf in dictionary.leaves:
-            if not self._carries(leaf):
-                continue
+        for leaf in self._carried_leaves():
             if leaf.kind is ObjectKind.MEASUREMENT:
                 measurements.append(self._measurement(leaf))
             else:
@@ -460,9 +488,15 @@ class _A2lModelBuilder:
         names = [entry.name for entry in component.declarations if entry.name in self._exported]
         measurements = [n for n in names if by_name[n].kind is ObjectKind.MEASUREMENT]
         characteristics = [n for n in names if by_name[n].kind is not ObjectKind.MEASUREMENT]
-        for leaf in self._dictionary.leaves:
-            if leaf.instance not in declared or not self._carries(leaf):
-                continue
+        # The members of the structured variables this component declares, read out of the
+        # index and put back into the order the dictionary carries them in - which is by path,
+        # and is the order the file had while this walked every leaf of the project instead.
+        index = self._carried_by_instance()
+        carried = sorted(
+            (leaf for name in declared for leaf in index.get(name, ())),
+            key=lambda leaf: leaf.path,
+        )
+        for leaf in carried:
             target = measurements if leaf.kind is ObjectKind.MEASUREMENT else characteristics
             target.append(leaf.path)
         if not measurements and not characteristics:

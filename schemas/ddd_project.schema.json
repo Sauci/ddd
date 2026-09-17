@@ -21,7 +21,7 @@
         },
         "includes": {
           "default": [],
-          "description": "Paths to component, types, units, sections, constants, rasters or sub-project files,\nrelative to this file.\n\nShell style wildcards (``*``, ``?``, ``[...]``, ``**``) are expanded; the kind of every\nincluded file is detected from its top level key.",
+          "description": "Paths to component, types, units, sections, constants, rasters or sub-project files,\nrelative to this file.\n\nShell style wildcards (``*``, ``?``, ``[...]``, ``**``) are expanded; the kind of every\nincluded file is detected from its top level key. An entry that names an existing file is\nthat file whatever characters it holds, so a path under a directory somebody called\n``proj [v2]`` is a path and not a character class; only an entry naming no file is\nexpanded as a pattern.",
           "items": {
             "type": "string"
           },

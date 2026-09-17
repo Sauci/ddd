@@ -734,6 +734,22 @@ class TestPackaging:
             "the lock file's entry for the root package is a version behind"
         )
 
+    def test_the_cmake_module_states_this_release(self) -> None:
+        """The module refuses a ``ddd`` of another release, so it has to know its own.
+
+        It is shipped inside the wheel and invited into a project's own tree by ``ddd
+        cmake-dir``, where it then sits beside whichever tool the environment has; the
+        handshake at include time compares this string with what ``ddd --version`` prints, so
+        a release that bumps the package and not the module refuses *itself*.
+        """
+        module = (ROOT / "cmake" / "Ddd.cmake").read_text(encoding="utf-8")
+        stated = re.search(r'set\(DDD_MODULE_VERSION "([^"]+)"\)', module)
+        assert stated is not None, "the module no longer states which release it belongs to"
+        assert stated.group(1) == __version__, (
+            "cmake/Ddd.cmake states another release than the package, so every build "
+            "configured with this tool is refused by its own module"
+        )
+
     def test_the_declared_license_file_exists(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         license_file = metadata["project"]["license"]["file"]
@@ -1621,7 +1637,8 @@ class TestPackagedResources:
 class TestTheCompileService:
     """The container that compiles what the c backend generates, and the README's account of it.
 
-    Nothing in ci builds the image or runs the script, so the only thing holding the two
+    ci builds the image and runs one service in it; it does not run *this* one, which
+    compiles and links what the generator wrote, so what holds the script and the page
     together is what can be read here: the numbers the README shows under ``== symbols``,
     which went two objects stale when the demo gained its two strings, and the path the
     verification reads, which has to be the file the generation writes.
@@ -1678,6 +1695,48 @@ class TestTheCompileService:
         assert ".jar" not in dockerfile, (
             "the image ships a jar again, and docs/conf.py says the launcher on the PATH is "
             "what the documentation build runs"
+        )
+
+
+class TestTheDevelopmentImage:
+    """What the image installs, and what builds it.
+
+    The compose services are the local equivalents of the ci jobs, and the image they share
+    was the one thing no job ever built - which is how a ``COPY`` of a directory removed
+    three releases earlier went on failing ``docker compose build`` until somebody tried to
+    run a service.
+    """
+
+    def compose(self) -> str:
+        return (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+
+    def test_the_documentation_service_runs_out_of_the_image(self) -> None:
+        """A service installing its own requirements is a second, unpinned build step.
+
+        ``docs`` reinstalled ``.[docs]`` on every run - a network round trip before every
+        documentation build, and a set of versions that has nothing to do with the image the
+        other five services share.  The image carries them now.
+        """
+        docs = self.compose().split("docs:", 1)[1]
+        assert "pip install" not in docs.split("shell:", 1)[0], (
+            "the docs service installs its requirements again on every run"
+        )
+        dockerfile = (ROOT / "docker" / "Dockerfile").read_text(encoding="utf-8")
+        assert re.search(r'pip install[^\n]*"\.\[[^"]*docs[^"]*\]"', dockerfile), (
+            "the image does not install the documentation requirements, so the docs service "
+            "has nothing to build with"
+        )
+
+    def test_a_workflow_builds_it(self) -> None:
+        """Otherwise the first person to need the image is the one who finds it broken."""
+        built = [
+            workflow.name
+            for workflow in sorted((ROOT / ".github" / "workflows").glob("*.yml"))
+            if "docker compose build" in workflow.read_text(encoding="utf-8")
+        ]
+        assert built, (
+            "no workflow builds docker/Dockerfile, so nothing notices when the image stops "
+            "building until somebody runs a service"
         )
 
 

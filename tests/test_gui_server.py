@@ -16,6 +16,7 @@ import ddd
 from conftest import component, declare, project, write_tree
 from ddd.cli import EXIT_OK, EXIT_USAGE
 from ddd.editing import fingerprint
+from ddd.gui import api as api_module
 from ddd.gui import server as module
 from ddd.gui.api import Api
 from ddd.gui.server import MAX_BODY, GuiServer, run, static_directory
@@ -304,6 +305,39 @@ class TestWhatIsServed:
         )
         assert response.status == 200, data
         assert target.read_bytes() == before.replace(b'"unit": "rpm"', b'"unit": "Hz"')
+
+    def test_a_request_that_fails_unexpectedly_is_answered_and_its_traceback_printed(
+        self, server, monkeypatch, capsys
+    ) -> None:
+        """Answered as json like every other error. The connection used to drop instead, and the
+        page then said the server was not answering - or, waiting for a revision, had stopped -
+        about a server that was running."""
+
+        def failing(api: Api, query: object, body: object) -> None:
+            raise RuntimeError("a defect")
+
+        monkeypatch.setitem(api_module._ROUTES, "/api/session", ("GET", failing))
+        response, data = ask(server, "GET", "/api/session")
+        assert response.status == 500
+        assert response.getheader("Cache-Control") == "no-store"
+        assert json.loads(data) == {
+            "error": "internal",
+            "message": "ddd gui failed on this request; the terminal it runs in shows why",
+        }
+        printed = capsys.readouterr().err
+        assert "GET /api/session" in printed
+        assert "RuntimeError: a defect" in printed
+
+    def test_a_page_that_goes_away_while_it_is_answered_is_let_go(
+        self, server, monkeypatch, capsys
+    ) -> None:
+        def gone(api: Api, query: object, body: object) -> None:
+            raise ConnectionAbortedError("the tab was closed")
+
+        monkeypatch.setitem(api_module._ROUTES, "/api/session", ("GET", gone))
+        with pytest.raises(http.client.RemoteDisconnected):
+            ask(server, "GET", "/api/session")
+        assert capsys.readouterr().err == ""
 
     def test_a_page_that_went_away_mid_answer_is_not_reported(self, server, capsys) -> None:
         try:

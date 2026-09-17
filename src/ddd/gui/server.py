@@ -23,6 +23,7 @@ import hmac
 import json
 import secrets
 import sys
+import traceback
 import webbrowser
 from collections.abc import Sequence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -126,6 +127,24 @@ class _Handler(BaseHTTPRequestHandler):
         return cast(GuiServer, self.server)
 
     def _answer(self, method: str) -> None:
+        """Answer a request, and answer it as json even when answering it fails.
+
+        Left to the base class, a failure printed its traceback and dropped the connection, and
+        the page then said the server was not answering - or, waiting for a revision, that it
+        had stopped - about a server that was running. The traceback still goes to the terminal,
+        where whoever reads the page's message is sent. A page that went away mid-answer is let
+        go as before: there is nobody left to answer, and nothing worth printing.
+        """
+        try:
+            self._route(method)
+        except ConnectionError:
+            raise
+        except Exception:
+            print(f"ddd gui: {method} {urlsplit(self.path).path} failed:", file=sys.stderr)
+            traceback.print_exc()
+            self._send_json(500, {"error": "internal", "message": _INTERNAL})
+
+    def _route(self, method: str) -> None:
         port = self._gui.port
         if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):
             self._send(421, b"misdirected request", CONTENT_TYPES[".txt"])
@@ -233,6 +252,7 @@ class _Handler(BaseHTTPRequestHandler):
 _SIGN_IN: Final = "open the address ddd gui printed in its terminal"
 _FORBIDDEN: Final = "only this server's own page may change anything, and only as json"
 _PAGES_ARE_READ: Final = "pages are read with GET"
+_INTERNAL: Final = "ddd gui failed on this request; the terminal it runs in shows why"
 
 
 def run(

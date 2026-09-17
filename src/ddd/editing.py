@@ -249,7 +249,7 @@ def indent_unit(document: Document) -> str:
 
 def replacement(document: Document, pointer: str, raw: str) -> TextEdit:
     """The edit writing ``raw`` in place of the value at ``pointer``."""
-    span = document.value_span_of(pointer)
+    span = document.value_span_of(pointer) if _holds(document, pointer) else None
     if span is None:
         raise EditError(INVALID, f"nothing is written at {_named(pointer)}")
     text = document.text
@@ -300,7 +300,7 @@ def removal(document: Document, pointer: str) -> TextEdit:
     The comma after it, or - for the last entry - the one before it, so that none is left
     trailing. Taking the only entry leaves the brackets and nothing between them.
     """
-    span = document.span_of(pointer) if pointer else None
+    span = document.span_of(pointer) if pointer and _holds(document, pointer) else None
     if span is None:
         raise EditError(INVALID, f"nothing to remove at {_named(pointer)}")
     container = parent_pointer(pointer)
@@ -315,7 +315,13 @@ def removal(document: Document, pointer: str) -> TextEdit:
 
 
 def edit_text(text: str, operations: Sequence[Operation]) -> str:
-    """The text with every operation made in order, verified against the parsed document."""
+    """The text with every operation made in order, each verified against the parsed document.
+
+    Verified after every operation rather than once at the end. The next operation is checked
+    against the text the last one left and made on the document that one was meant to leave, so
+    the two have to be one document before it starts: when they were not, an operation that
+    passed its checks on the text reached into the document for a value it did not hold.
+    """
     from ddd.lsp.ranges import Document
 
     document = Document(text)
@@ -323,17 +329,21 @@ def edit_text(text: str, operations: Sequence[Operation]) -> str:
         raise EditError(UNREADABLE, "the file is not valid json, so no pointer names a place in it")
     expected = copy.deepcopy(document.data)
     for operation in operations:
-        if document.data is None:
-            raise EditError(UNVERIFIED, "an edit left the file unreadable")
         text, expected = _made(document, operation, expected)
         document = Document(text)
-    if document.data is None or _canonical(document.data) != _canonical(expected):
-        raise EditError(UNVERIFIED, "the edited file does not read back as the intended document")
+        if document.data is None:
+            raise EditError(UNVERIFIED, "an edit left the file unreadable")
+        if _canonical(document.data) != _canonical(expected):
+            raise EditError(
+                UNVERIFIED, "the edited file does not read back as the intended document"
+            )
     return text
 
 
 def _made(document: Document, operation: Operation, expected: Any) -> tuple[str, Any]:
     """One operation made on the text, and on the parsed document it has to read back as."""
+    if not _spelled(operation.pointer):
+        raise EditError(INVALID, f"{operation.pointer!r} is not a pointer")
     if operation.op == "set":
         raw = _raw_of(operation)
         value = parse_raw(raw)
@@ -353,7 +363,7 @@ def _made(document: Document, operation: Operation, expected: Any) -> tuple[str,
 
 
 def _set_edit(document: Document, pointer: str, raw: str) -> TextEdit:
-    if document.value_span_of(pointer) is not None:
+    if _holds(document, pointer):
         return replacement(document, pointer, raw)
     if _indexed(pointer) is not None:
         raise EditError(INVALID, f"nothing is written at {pointer}")
@@ -483,6 +493,37 @@ def _unit_below(document: Document, pointer: str) -> str | None:
         if found is not None:
             return found
     return None
+
+
+def _holds(document: Document, pointer: str) -> bool:
+    """Whether the parsed document has a value where ``pointer`` points.
+
+    Asked of the parsed document, not of the scan. The scan records a member under its key as
+    written, so a key holding a dot or a bracket - ``{"a.b": 1}`` - is recorded under a pointer
+    the grammar reads as more steps than it is: the text has something under that spelling, and
+    the document has nothing at the place it names, not even a parent to put it in.
+    """
+    parts = segments(pointer)
+    if not parts:
+        return True
+    parent = document.value_at(parent_pointer(pointer))
+    last = parts[-1]
+    if isinstance(last, int):
+        return isinstance(parent, list) and last < len(parent)
+    return isinstance(parent, dict) and last in parent
+
+
+def _spelled(pointer: str) -> bool:
+    """Whether ``pointer`` is written the one way the scan writes a pointer to what it names.
+
+    The grammar reads more spellings than that - ``a..b``, ``a[01]``, ``a]`` - and a pointer
+    spelled one of those ways names nothing the scan recorded, while the helpers here take every
+    pointer they are handed for one it did.
+    """
+    written = "".join(
+        f"[{part}]" if isinstance(part, int) else f".{part}" for part in segments(pointer)
+    )
+    return written.removeprefix(".") == pointer
 
 
 def _indexed(pointer: str) -> tuple[str, int] | None:

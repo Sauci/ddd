@@ -28,6 +28,7 @@ from ddd.editing import (
     member_addition,
     newline_at,
     parse_raw,
+    removal,
     replacement,
 )
 from ddd.lsp.ranges import Document
@@ -337,6 +338,41 @@ class TestRefusals:
     def test_an_operation_that_does_not_fit_is_invalid(self, operation):
         with pytest.raises(EditError) as refused:
             edited('{"a": 1, "list": [1, 2]}', operation)
+        assert refused.value.code == INVALID
+
+    @pytest.mark.parametrize(
+        ("text", "operation"),
+        [
+            ('{"a.b": 1}', Operation("set", "a.b", "2")),
+            ('{"a.b": 1}', Operation("remove", "a.b")),
+            ('{"a": {"b": [1, 2]}, "a.b": [0, 0, 0, 0]}', Operation("set", "a.b[3]", "9")),
+            ('{"a": {"b": [1]}}', Operation("insert", "a..b[0]", "2")),
+            ('{"a]": 1}', Operation("set", "a]", "2")),
+        ],
+    )
+    def test_a_pointer_the_parsed_document_cannot_follow_is_invalid(self, text, operation):
+        """A key holding a dot or a bracket is recorded under a pointer the grammar reads as more
+        steps than it is, so a pointer can name text the parsed document has nothing at, and a
+        pointer can be spelled in ways the grammar reads but no scan writes. Each of these used
+        to raise out of the engine - an assertion, a plain ``ValueError``, an ``IndexError`` -
+        or, for the last, to be refused as unverified after the wrong member was rewritten."""
+        with pytest.raises(EditError) as refused:
+            edited(text, operation)
+        assert refused.value.code == INVALID
+
+    def test_an_operation_that_did_not_read_back_stops_the_ones_after_it(self):
+        """Verified after every operation: the next one is checked against the text the last one
+        left and made on the document that one was meant to leave, which have to be the same
+        document - here the first rewrote the member spelled ``b.c``, and the second reached
+        into the 3 it had meant to write and raised a ``TypeError``."""
+        text = '{"a": {"b": {"c": {"k": 1}}, "b.c": 2}}'
+        with pytest.raises(EditError) as refused:
+            edited(text, Operation("set", "a.b.c", "3"), Operation("set", "a.b.c.k", "9"))
+        assert refused.value.code == UNVERIFIED
+
+    def test_a_removal_of_a_member_the_parsed_document_has_not_got_is_invalid(self):
+        with pytest.raises(EditError) as refused:
+            removal(Document('{"a.b": 1}'), "a.b")
         assert refused.value.code == INVALID
 
     def test_operations_apply_in_order_each_to_the_text_the_last_one_left(self):

@@ -19,7 +19,7 @@ Two choices shape the rest:
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Final
 
@@ -34,6 +34,7 @@ from ddd.diagnostics import (
     SeverityPolicy,
     UnknownCheckError,
 )
+from ddd.ir import DataDictionary
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Loaded, resolve_projects
 from ddd.lsp.ranges import Document, read
@@ -49,8 +50,32 @@ _LSP_SEVERITY: Final[dict[Severity, int]] = {
 }
 
 
+@dataclass(frozen=True, slots=True)
+class Run:
+    """One analysis of one project: what it reported, the files it covered, what it resolved to.
+
+    ``dictionary`` is ``None`` when the analysis did not get that far - a read that reported an
+    error is not analysed, and a plugin that raises stops the run - which is exactly when a
+    reader of the dictionary has nothing it could trust.
+    """
+
+    bag: DiagnosticBag
+    covered: frozenset[Path]
+    dictionary: DataDictionary | None
+
+
 def analyse(info: BuildInfo) -> tuple[DiagnosticBag, frozenset[Path]]:
     """Run the checks over one configured project, exactly as its build would.
+
+    The editor's answer; :func:`run_build` is the same run keeping the dictionary as well.
+    """
+    run = run_build(info)
+    return run.bag, run.covered
+
+
+def run_build(info: BuildInfo) -> Run:
+    """Run the checks over one configured project, exactly as its build would, keeping what it
+    resolved to.
 
     Including the last step of "exactly", which used to be missing: an override naming a
     plugin's check is provisional until the project has been read, because which plugins
@@ -61,20 +86,26 @@ def analyse(info: BuildInfo) -> tuple[DiagnosticBag, frozenset[Path]]:
     nothing registers looks exactly like a build silencing one that exists.
     """
     policy = SeverityPolicy.from_strings(list(info.severity), strict=info.strict)
-    bag = DiagnosticBag(policy)
     project = Path(info.project)
-    bag, covered = _run(project, bag)
+    run = _run(project, DiagnosticBag(policy))
     try:
-        policy.verify(bag.registered)
+        policy.verify(run.bag.registered)
     except UnknownCheckError as fault:
-        bag.add("plugin-invalid", str(fault), Location(project))
-    return bag, covered
+        run.bag.add("plugin-invalid", str(fault), Location(project))
+    return run
+
+
+def run_project(root: Path) -> Run:
+    """Run the checks over a project description under the default severities, the way a
+    project file no build configured is checked."""
+    return _run(root, DiagnosticBag())
 
 
 def analyse_standalone(path: Path) -> tuple[DiagnosticBag, frozenset[Path]]:
     """Run the checks over a file read as "a component on its own"."""
     policy = SeverityPolicy.from_strings(list(STANDALONE_POLICY), strict=False, standalone=True)
-    return _run(path, DiagnosticBag(policy))
+    run = _run(path, DiagnosticBag(policy))
+    return run.bag, run.covered
 
 
 def _analyse_root(path: Path, cache: dict[Path, Document]) -> tuple[DiagnosticBag, frozenset[Path]]:
@@ -91,7 +122,8 @@ def _analyse_root(path: Path, cache: dict[Path, Document]) -> tuple[DiagnosticBa
     mistake.
     """
     if _declares_a_project(path, cache):
-        return _run(path, DiagnosticBag())
+        run = run_project(path)
+        return run.bag, run.covered
     return analyse_standalone(path)
 
 
@@ -120,7 +152,7 @@ def _analysed(loaded: Loaded) -> tuple[DiagnosticBag, frozenset[Path]]:
     return bag, frozenset(loaded.workspace.sources())
 
 
-def _run(root: Path, bag: DiagnosticBag) -> tuple[DiagnosticBag, frozenset[Path]]:
+def _run(root: Path, bag: DiagnosticBag) -> Run:
     """The two phases of a run, and which files it turned out to cover.
 
     The early return when reading reported an error is the same one ``ddd check`` makes: there
@@ -135,19 +167,20 @@ def _run(root: Path, bag: DiagnosticBag) -> tuple[DiagnosticBag, frozenset[Path]
     every file the project covers, rather than of the project file alone.
     """
     covered = frozenset({root})
+    dictionary: DataDictionary | None = None
     try:
         workspace = load_workspace(root, bag)
         if workspace is None:
-            return bag, covered
+            return Run(bag, covered, None)
         covered = frozenset(workspace.sources())
         if not bag.has_errors:
-            analyze(workspace, bag)
+            dictionary = analyze(workspace, bag)
     except PluginError as error:
         # A hook or a model raising is a defect of the plugin, not of the project: ``ddd
         # check`` reports it as a usage error, but the server promises findings and never an
         # exception, so it is turned into one here, on the project file itself.
         bag.add("plugin-invalid", str(error), Location(root))
-    return bag, covered
+    return Run(bag, covered, dictionary)
 
 
 def collect(
@@ -180,7 +213,7 @@ def collect(
     covered: set[Path] = set()
     for info in builds:
         bag, sources = analyse(info)
-        covered |= sources | _group(bag, Path(info.project), grouped)
+        covered |= sources | group_findings(bag, Path(info.project), grouped)
     for document in documents:
         resolved = document.resolve()
         if resolved in covered:
@@ -194,14 +227,14 @@ def collect(
         unreadable = DiagnosticBag()
         for path in sorted(set(containing.failed) - covered):
             unreadable.add("plugin-invalid", containing.failed[path], Location(path))
-        covered |= _group(unreadable, resolved, grouped)
+        covered |= group_findings(unreadable, resolved, grouped)
         if containing.projects:
             for loaded in containing.projects:
                 bag, sources = _analysed(loaded)
-                covered |= sources | _group(bag, loaded.path, grouped)
+                covered |= sources | group_findings(bag, loaded.path, grouped)
             continue
         bag, sources = _analyse_root(resolved, cache)
-        covered |= sources | _group(bag, resolved, grouped)
+        covered |= sources | group_findings(bag, resolved, grouped)
 
     return {
         path: [_as_lsp(finding, cache, path) for finding in grouped.get(path, ())]
@@ -209,7 +242,9 @@ def collect(
     }
 
 
-def _group(bag: DiagnosticBag, fallback: Path, grouped: dict[Path, list[Diagnostic]]) -> set[Path]:
+def group_findings(
+    bag: DiagnosticBag, fallback: Path, grouped: dict[Path, list[Diagnostic]]
+) -> set[Path]:
     """Sort the findings of one run onto the files they belong to, and say which files those were.
 
     A finding with no location at all is about the project rather than about a place in it -

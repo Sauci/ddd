@@ -174,9 +174,30 @@ class TestCheck:
         ]
         assert main(arguments) == EXIT_OK
 
-    def test_strict_promotes_warnings(self) -> None:
-        assert main(["check", str(DEMO)]) == EXIT_OK
-        assert main(["check", str(DEMO), "--strict"]) == EXIT_OK
+    def test_strict_promotes_warnings(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A project whose only finding is a warning: the flag is what changes the verdict.
+
+        Written against a tree with a warning in it rather than against the demo, which is
+        consistent - `ok: 23 variables in 4 components are consistent` with the flag and
+        without it - so a run over the demo says `EXIT_OK` either way and would say it with
+        the promotion deleted.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "X")),
+            },
+        )
+        root = str(tmp_path / "p.ddd.json")
+        assert main(["check", root]) == EXIT_OK
+        assert "1 warning" in capsys.readouterr().err
+        assert main(["check", root, "--strict"]) == EXIT_FINDINGS
+        promoted = capsys.readouterr().err
+        assert "error[unused-output]" in promoted
+        assert "1 error" in promoted
 
     def test_unknown_check_is_a_usage_error(self, capsys: pytest.CaptureFixture[str]) -> None:
         assert main(["check", str(DEMO), "-W", "nope=error"]) == EXIT_USAGE
@@ -1112,8 +1133,14 @@ class TestGenerate:
         assert "is not an integer" in capsys.readouterr().err
 
     def test_json_output(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """The whole payload of a clean run, which is the shape a build reads.
+
+        The statuses alone left the other two keys unpinned on a run with nothing to report -
+        so a `generate` that dropped `diagnostics` or `summary` where there were none would
+        have failed only on a project that had findings, which is the run a build does not do.
+        """
         output = tmp_path / "gen"
-        main(
+        code = main(
             [
                 "generate",
                 "all",
@@ -1126,8 +1153,16 @@ class TestGenerate:
                 "json",
             ]
         )
-        payload = json.loads(capsys.readouterr().out)
+        assert code == EXIT_OK
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
         assert {entry["status"] for entry in payload["generated"]} == {"created"}
+        assert payload["diagnostics"] == []
+        assert payload["summary"] == {"error": 0, "warning": 0, "info": 0}
+        # stdout is the document and nothing else, and under --format json the report is the
+        # document, so nothing at all is said on the other stream.
+        assert json.dumps(payload, indent=2) + "\n" == captured.out
+        assert captured.err == ""
 
     def test_json_spells_a_path_the_way_the_output_directory_was_typed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -3352,15 +3387,13 @@ def test_assigning_ids_keeps_the_line_endings(tree):
 def test_assigning_ids_keeps_a_file_free_of_crlf(tree):
     """The other side of ``test_assigning_ids_keeps_the_line_endings``.
 
-    ``write_tree`` writes through a text-mode file handle with no explicit ``newline``, so on
-    Windows the fixture itself already carries ``\\r\\n`` before this test ever runs -
-    translated back to plain ``\\n`` here first, so the assertion below is actually about
-    ``assign``'s own choice and not an accident of how the fixture wrote the file. A project
+    ``write_tree`` passes ``newline=""`` (``tests/conftest.py``), so the fixture is an lf file
+    on every platform and there is nothing to translate back before stamping it. A project
     that has only ever seen ``\\n`` must not gain a ``\\r`` from being stamped.
     """
     path = tree / "a.ddd.json"
     write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
-    path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n"))
+    assert b"\r\n" not in path.read_bytes()
     assert main(["id", "--assign", str(path)]) == EXIT_OK
     assert b"\r\n" not in path.read_bytes()
 
@@ -3544,28 +3577,28 @@ def test_assigning_ids_keeps_mixed_line_endings(tree):
     assert after.count(b"\n") == text.count("\n") + 2  # the final newline and one line added
 
 
-def test_the_renames_file_is_written_with_the_line_endings_ddd_always_writes(tree, monkeypatch):
-    """Every file DDD writes passes ``newline=""``: the same bytes on Windows as anywhere."""
-    written: dict[str, object] = {}
-    original = Path.write_text
+def test_the_renames_file_is_written_with_the_line_endings_ddd_always_writes(tree):
+    """Every file DDD writes passes ``newline=""``: the same bytes on Windows as anywhere.
 
-    def spy(self: Path, data: str, *args: Any, **kwargs: Any) -> int:
-        written[self.name] = kwargs.get("newline", "unset")
-        return original(self, data, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "write_text", spy)
-    for name in ("old", "new"):
+    Read off the disk rather than watched for the keyword: the bytes are what a build reading
+    the file gets, and a run that reached ``newline=""`` and then wrote crlf some other way
+    would satisfy a spy on the argument. The delivery carries a real rename, so the document
+    is more than the one line an empty ``[]`` would be and there are line endings to weigh.
+    """
+    for name, declared in (("old", "X"), ("new", "Y")):
         write_tree(
             tree,
             {
                 f"{name}.ddd.json": project("P", f"{name}-a.ddd.json"),
-                f"{name}-a.ddd.json": component("A", declare("local", "X")),
+                f"{name}-a.ddd.json": component("A", declare("local", declared, id="k7m2q9xr4t8w")),
             },
         )
     renames = tree / "renames.json"
     arguments = ["compare", str(tree / "old.ddd.json"), str(tree / "new.ddd.json"), "--renames"]
     assert main([*arguments, str(renames), "-W", "missing-id=ignore"]) == EXIT_OK
-    assert written["renames.json"] == ""
+    body = renames.read_bytes()
+    assert b'"X"' in body and b"\r\n" not in body
+    assert body.count(b"\n") > 1
 
 
 def test_assigning_ids_to_a_missing_file_says_so(tree, capsys):

@@ -478,21 +478,39 @@ class TestCommandLineEdges:
         assert exit_info.value.code == 0
         assert "multiple-producers" in capsys.readouterr().out
 
-    def test_importing_the_entry_point_module_does_not_run_it(self) -> None:
-        """Only `python -m ddd` may call sys.exit; a plain import must stay silent."""
+    def test_importing_the_entry_point_module_does_not_run_it(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Only `python -m ddd` may call sys.exit; a plain import must stay silent.
+
+        Both halves of "silent" are observable and both are asserted: no ``SystemExit``
+        escaping the reload, and nothing written to either stream. ``sys.argv`` is pointed at
+        a command that prints, so that a module running its main on import would be loud
+        rather than accidentally quiet.
+        """
+        monkeypatch.setattr(sys, "argv", ["ddd", "checks"])
         module = importlib.import_module("ddd.__main__")
         importlib.reload(module)  # re-executes with __name__ != "__main__"
+        captured = capsys.readouterr()
+        assert (captured.out, captured.err) == ("", "")
 
     def test_the_module_entry_point_runs_as_documented(self) -> None:
-        """`python -m ddd` is the documented way to run from a source checkout."""
+        """`python -m ddd` is the documented way to run from a source checkout.
+
+        The test above already runs the module in process and asserts what it prints and what
+        it exits with; what only a real process can show is the status reaching the shell,
+        which is what a build reads. Asserted rather than left to ``check=True``, whose
+        failure reads as an error of the harness rather than as a verdict of the tool.
+        """
         result = subprocess.run(
             [sys.executable, "-m", "ddd", "--version"],
             capture_output=True,
             text=True,
-            check=True,
+            check=False,
             cwd=Path(__file__).resolve().parents[1],
             env={**_source_env()},
         )
+        assert result.returncode == 0, result.stderr
         assert result.stdout.startswith("ddd ")
 
 

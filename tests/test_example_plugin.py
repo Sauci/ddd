@@ -35,10 +35,18 @@ def delivery(base: Path, name: str, *declarations: dict[str, Any], **settings: A
     return str(base / f"{name}.ddd.json")
 
 
-def compared(base: Path, old: tuple, new: tuple, capsys: pytest.CaptureFixture[str]) -> str:
+def compared(
+    base: Path, old: tuple, new: tuple, capsys: pytest.CaptureFixture[str]
+) -> tuple[int, str]:
+    """The verdict and what was said, so that a rule's severity is weighed beside its text.
+
+    The code came back unasserted here for eleven tests, so nothing said that a ``layout/*``
+    error stops a delivery from replacing another - which is the whole point of registering
+    it as an error rather than as a warning.
+    """
     before, after = delivery(base, "old", *old), delivery(base, "new", *new)
-    main(["compare", before, after, "-W", "missing-id=ignore"])
-    return capsys.readouterr().err
+    code = main(["compare", before, after, "-W", "missing-id=ignore"])
+    return code, capsys.readouterr().err
 
 
 class TestTheExampleProject:
@@ -98,7 +106,7 @@ class TestWithinOneDelivery:
 
 class TestBetweenDeliveries:
     def test_a_changed_layout_with_the_same_version(self, tree: Path, capsys) -> None:
-        err = compared(
+        code, err = compared(
             tree,
             (stamped("X", 1, 2, datatype="uint8"),),
             (stamped("X", 1, 2, datatype="uint16"),),
@@ -108,9 +116,10 @@ class TestBetweenDeliveries:
             "error[layout/version-not-bumped]: 'X' (key 1) changed its layout and kept version 2"
             in err
         )
+        assert code == EXIT_FINDINGS
 
     def test_a_changed_layout_with_a_lower_version(self, tree: Path, capsys) -> None:
-        err = compared(
+        code, err = compared(
             tree,
             (stamped("X", 1, 2, datatype="uint8"),),
             (stamped("X", 1, 1, datatype="uint16"),),
@@ -120,62 +129,78 @@ class TestBetweenDeliveries:
             "error[layout/version-not-bumped]: 'X' (key 1) changed its layout and went from "
             "version 2 to 1" in err
         )
+        assert code == EXIT_FINDINGS
 
     def test_a_changed_layout_with_a_higher_version_is_clean(self, tree: Path, capsys) -> None:
-        err = compared(
+        code, err = compared(
             tree,
             (stamped("X", 1, 2, datatype="uint8"),),
             (stamped("X", 1, 3, datatype="uint16"),),
             capsys,
         )
         assert "layout/" not in err
+        # The plugin is satisfied; the core is not, because the datatype moved. The verdict
+        # is the core's `changed-interface`, which is what the plugin is silent beside.
+        assert "error[changed-interface]" in err
+        assert code == EXIT_FINDINGS
 
     def test_a_changed_unit_is_a_changed_layout(self, tree: Path, capsys) -> None:
-        err = compared(
+        code, err = compared(
             tree, (stamped("X", 1, 1, unit="s"),), (stamped("X", 1, 1, unit="ms"),), capsys
         )
         assert "layout/version-not-bumped" in err
+        assert code == EXIT_FINDINGS
 
     def test_a_changed_version_with_the_same_layout(self, tree: Path, capsys) -> None:
-        err = compared(tree, (stamped("X", 1, 1),), (stamped("X", 1, 2),), capsys)
+        code, err = compared(tree, (stamped("X", 1, 1),), (stamped("X", 1, 2),), capsys)
         assert (
             "warning[layout/needless-version]: 'X' (key 1) went from version 1 to 2 with the "
             "same layout" in err
         )
+        assert code == EXIT_OK  # a warning is a remark, not a refusal
 
     def test_a_changed_description_is_not_a_changed_layout(self, tree: Path, capsys) -> None:
-        err = compared(tree, (stamped("X", 1, 1),), (stamped("X", 1, 1, description="d"),), capsys)
+        code, err = compared(
+            tree, (stamped("X", 1, 1),), (stamped("X", 1, 1, description="d"),), capsys
+        )
         assert "layout/" not in err
+        assert code == EXIT_OK
 
     def test_a_key_now_naming_a_different_object_by_name(self, tree: Path, capsys) -> None:
-        err = compared(tree, (stamped("X", 1, 1),), (stamped("Y", 1, 1),), capsys)
+        code, err = compared(tree, (stamped("X", 1, 1),), (stamped("Y", 1, 1),), capsys)
         assert "error[layout/reused-key]: key 1 was 'X' and is now 'Y', a different object" in err
+        assert code == EXIT_FINDINGS
 
     def test_a_key_now_naming_a_different_object_by_id(self, tree: Path, capsys) -> None:
         old = (stamped("X", 1, 1, id="aaaaaaaaaaaa"),)
         new = (stamped("X", 1, 1, id="bbbbbbbbbbbb"),)
-        assert "layout/reused-key" in compared(tree, old, new, capsys)
+        code, err = compared(tree, old, new, capsys)
+        assert "layout/reused-key" in err
+        assert code == EXIT_FINDINGS
 
     def test_a_renamed_object_keeps_its_key_by_id(self, tree: Path, capsys) -> None:
         old = (stamped("X", 1, 1, id="aaaaaaaaaaaa"),)
         new = (stamped("Y", 1, 1, id="aaaaaaaaaaaa"),)
-        err = compared(tree, old, new, capsys)
+        code, err = compared(tree, old, new, capsys)
         assert "layout/reused-key" not in err
         assert "renamed-object" in err
+        assert code == EXIT_OK
 
     def test_an_object_under_a_different_key(self, tree: Path, capsys) -> None:
         old = (stamped("X", 1, 1, id="aaaaaaaaaaaa"),)
         new = (stamped("X", 2, 1, id="aaaaaaaaaaaa"),)
-        err = compared(tree, old, new, capsys)
+        code, err = compared(tree, old, new, capsys)
         assert (
             "error[layout/key-changed]: 'X' carried key 1 and now carries 2; its entry under "
             "1 is orphaned" in err
         )
         assert "layout/removed-entry" not in err
+        assert code == EXIT_FINDINGS
 
     def test_a_key_that_is_gone(self, tree: Path, capsys) -> None:
-        err = compared(tree, (stamped("X", 1, 1),), (declare("local", "X"),), capsys)
+        code, err = compared(tree, (stamped("X", 1, 1),), (declare("local", "X"),), capsys)
         assert "warning[layout/removed-entry]: key 1 ('X') is gone" in err
+        assert code == EXIT_OK
 
     def test_a_structured_variable_is_compared_by_its_leaves(self, tree: Path, capsys) -> None:
         def files(name: str, datatype: str) -> dict[str, Any]:
@@ -203,7 +228,7 @@ class TestBetweenDeliveries:
             }
 
         write_tree(tree, {**files("old", "uint8"), **files("new", "uint16")})
-        main(
+        code = main(
             [
                 "compare",
                 str(tree / "old.ddd.json"),
@@ -213,6 +238,7 @@ class TestBetweenDeliveries:
             ]
         )
         assert "layout/version-not-bumped" in capsys.readouterr().err
+        assert code == EXIT_FINDINGS
 
     def test_reordered_members_are_a_changed_layout(self, tree: Path, capsys) -> None:
         datatypes = {"a": "uint8", "b": "uint16"}

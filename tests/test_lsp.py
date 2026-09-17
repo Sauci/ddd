@@ -20,10 +20,15 @@ import pytest
 from conftest import (
     EXAMPLES,
     INCONSISTENT,
+    answered,
+    build_record,
     component,
     declare,
     directory_link,
+    framed,
     project,
+    sent,
+    session,
     write_tree,
 )
 from ddd.build_info import BUILD_INFO_FILENAME
@@ -46,35 +51,9 @@ from ddd.lsp.protocol import (
     notification,
     read_message,
     response,
-    write_message,
 )
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.server import Server, uri_to_path
-
-
-def framed(*messages: dict[str, Any]) -> io.BytesIO:
-    """The messages as a client would put them on the wire."""
-    stream = io.BytesIO()
-    for message in messages:
-        write_message(stream, message)
-    stream.seek(0)
-    return stream
-
-
-def session(*messages: dict[str, Any]) -> io.BytesIO:
-    """A whole conversation: the handshake a client opens with, then these messages.
-
-    The server refuses anything that arrives before ``initialize`` - the protocol reserves a
-    code for exactly that - so a test that means to exercise a request says hello first, as
-    every client does. Empty ``params`` leaves the workspace folder the server was constructed
-    with in place, which is the one these tests set up.
-    """
-    return framed({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}}, *messages)
-
-
-def answered(stream: io.BytesIO) -> list[dict[str, Any]]:
-    """What the server said in answer to everything after the handshake."""
-    return sent(stream)[1:]
 
 
 def raw_frame(body: bytes) -> bytes:
@@ -97,24 +76,6 @@ def published(stream: io.BytesIO) -> dict[str, list[dict[str, Any]]]:
         for message in sent(stream)
         if message.get("method") == "textDocument/publishDiagnostics"
     }
-
-
-def sent(stream: io.BytesIO) -> list[dict[str, Any]]:
-    """Everything the server wrote, read back off the wire."""
-    stream.seek(0)
-    received = []
-    while (message := read_message(stream)) is not None:
-        received.append(message)
-    return received
-
-
-def build_record(base: Path, project_file: Path, image: str = "firmware.elf", **extra: Any) -> Path:
-    """A ``ddd-build.json`` where a build would have left one, one directory per image."""
-    path = base / "build" / "ddd" / image / BUILD_INFO_FILENAME
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"format": 1, "project": project_file.as_posix(), "image": image, **extra}
-    path.write_text(json.dumps(payload), encoding="utf-8")
-    return path
 
 
 class TestFraming:
@@ -213,6 +174,12 @@ class TestRanges:
         literal = escaped.replace("%3A", ":")
         decoded = uri_to_path(f"file:///{escaped}/git/x/a.ddd.json")
         assert decoded == uri_to_path(f"file:///{literal}/git/x/a.ddd.json")
+        # Spelled through ``as_posix`` so that the decoding is pinned on both platforms: on
+        # posix the two spellings unquote alike whatever the function does with a drive, so
+        # the equality above holds there even when nothing has been decoded as a drive at
+        # all. ``C:/git/x/...`` on windows, ``/c:/git/x/...`` on posix, and a drive letter
+        # keeps whatever case it arrived in.
+        assert decoded.as_posix().lower().endswith("c:/git/x/a.ddd.json")
         if os.name == "nt":
             assert decoded.is_absolute()
             # ``as_uri`` keeps the drive letter's case, so compare case-blind.
@@ -224,14 +191,17 @@ class TestRanges:
         anything else. Substituting there asked ``url2pathname`` to parse a share name as a
         Windows drive, which is not what it is."""
         found = uri_to_path("file://server/c%3A/a.ddd.json")
-        assert found == Path(f"//server{server_module.url2pathname('/c%3A/a.ddd.json')}")
+        # Written out rather than computed from ``url2pathname``, which is the fallback this
+        # function takes here: an expectation built from it says only that the code ran the
+        # line it ran, and would follow the function anywhere.
+        assert found.as_posix() == "//server/c:/a.ddd.json"
 
     def test_a_drive_colon_with_nothing_after_it_is_left_to_url2pathname(self) -> None:
         """VS Code always sends more path after the drive - ``file:///c%3A/...`` - so a
         colon with nothing following it at all is not a shape any client is known to send,
         and guessing it is a bare drive root is a guess this function is not in a position
         to make."""
-        assert uri_to_path("file:///c%3A") == Path(server_module.url2pathname("/c%3A"))
+        assert uri_to_path("file:///c%3A").as_posix() == "/c:"
 
     def test_a_byte_order_mark_is_read_the_way_the_loader_reads_one(self, tmp_path: Path) -> None:
         """``ddd check`` accepts a BOM on purpose; the editor has to agree with it.
@@ -3391,6 +3361,76 @@ class TestServer:
         # The file that was not opened is published too, which is the point.
         assert drawn[beside.as_uri()][0]["code"] == "definition-mismatch"
 
+    def test_a_configured_build_directory_is_where_the_records_are_looked_for(
+        self, tmp_path: Path
+    ) -> None:
+        """``ddd.buildDirectories`` is the extension's only setting; this is what it buys.
+
+        The record sits where none of the usual names would be searched - the patterns are
+        ``build``, ``out`` and ``cmake-build-*`` directly under the workspace folder - and the
+        project file sits beside the component rather than above it, so no walk upwards finds
+        it either: the configured directory is the only route from the open document to the
+        project. The control below is the same open without it, where the component is checked
+        on its own and ``missing-producer`` is one of the checks a standalone file is spared.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "proj/p.ddd.json": project("P", "../src/a.ddd.json"),
+                "src/a.ddd.json": component("A", declare("input", "Shared")),
+            },
+        )
+        elsewhere = tmp_path / "elsewhere"
+        build_record(elsewhere, tmp_path / "proj" / "p.ddd.json", severity=["missing-id=ignore"])
+        opened = tmp_path / "src" / "a.ddd.json"
+
+        writer = io.BytesIO()
+        Server(
+            session(self.opened(opened)),
+            writer,
+            root=tmp_path,
+            build_directories=[elsewhere],
+        ).run()
+        assert [entry["code"] for entry in published(writer)[opened.as_uri()]] == [
+            "missing-producer"
+        ]
+
+        bare = io.BytesIO()
+        Server(session(self.opened(opened)), bare, root=tmp_path).run()
+        assert not published(bare).get(opened.as_uri())
+
+    def test_the_command_hands_its_build_directories_to_the_server(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The other end of the same setting: ``ddd lsp -b DIR``, as the extension spawns it.
+
+        Fed a real document rather than an empty stream, which returns from the loop before
+        anything is discovered at all - so the argument is followed from the command line
+        through ``serve`` to the publication a client would draw.
+        """
+        from ddd.cli import EXIT_OK, main
+
+        class Stream:
+            def __init__(self, buffer: io.BytesIO) -> None:
+                self.buffer = buffer
+
+        write_tree(
+            tmp_path,
+            {
+                "proj/p.ddd.json": project("P", "../src/a.ddd.json"),
+                "src/a.ddd.json": component("A", declare("input", "Shared")),
+            },
+        )
+        elsewhere = tmp_path / "elsewhere"
+        build_record(elsewhere, tmp_path / "proj" / "p.ddd.json", severity=["missing-id=ignore"])
+        opened = tmp_path / "src" / "a.ddd.json"
+        wire = io.BytesIO()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.stdin", Stream(session(self.opened(opened))))
+        monkeypatch.setattr("sys.stdout", Stream(wire))
+        assert main(["lsp", "-b", str(elsewhere)]) == EXIT_OK
+        assert [entry["code"] for entry in published(wire)[opened.as_uri()]] == ["missing-producer"]
+
     def logged(self, stream: io.BytesIO) -> list[str]:
         return [
             message["params"]["message"]
@@ -3473,11 +3513,21 @@ class TestServer:
         }
 
     def test_saving_refreshes_as_opening_does(self, tmp_path: Path) -> None:
+        """The same publication an open gives, so "refreshes" means what the name says.
+
+        Asserted on what was published rather than on something having been sent: the server
+        logs while it refreshes, and a log line satisfies "it answered" on a save that
+        publishes nothing at all.
+        """
         build_record(tmp_path, INCONSISTENT)
         writer = io.BytesIO()
-        saved = dict(self.opened(INCONSISTENT), method="textDocument/didSave")
+        saved_file = INCONSISTENT.parent / "component_b.ddd.json"
+        saved = dict(self.opened(saved_file), method="textDocument/didSave")
         Server(session(saved), writer, root=tmp_path).run()
-        assert answered(writer)
+        drawn = published(writer)
+        assert [finding["code"] for finding in drawn[saved_file.as_uri()]] == ["multiple-producers"]
+        beside = INCONSISTENT.parent / "component_c.ddd.json"
+        assert drawn[beside.as_uri()][0]["code"] == "definition-mismatch"
 
     def test_shutdown_is_answered_and_exit_ends_the_loop(self, tmp_path: Path) -> None:
         writer = io.BytesIO()
@@ -4076,6 +4126,49 @@ class TestServer:
             "component.interface[0].definition.name"
         )
         assert edits[(tmp_path / "a.ddd.json").as_uri()][0]["range"] == on_disk_a
+
+    def test_the_findings_are_the_disks_while_the_buffer_says_otherwise(
+        self, tmp_path: Path
+    ) -> None:
+        """The other half of the promise above, which nothing pinned.
+
+        Positions come from the buffer because that is what an edit is applied to; the
+        analysis reads the files, because what a build compiles is what is saved. An unsaved
+        edit that would fix - or cause - a finding therefore changes nothing until it is
+        saved, and a server that analysed the buffer instead would draw a squiggle on a
+        project that is fine on disk, or withdraw one from a project that is not.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "Shared")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json", severity=["missing-id=ignore"])
+        # The buffer produces the other finding of the pair: an output nobody reads.
+        buffer = json.dumps(component("A", declare("output", "Shared")), indent=2)
+        uri = (tmp_path / "a.ddd.json").as_uri()
+        writer = io.BytesIO()
+        Server(
+            session(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "textDocument/didOpen",
+                    "params": {
+                        "textDocument": {
+                            "uri": uri,
+                            "languageId": "json",
+                            "version": 1,
+                            "text": buffer,
+                        }
+                    },
+                }
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        assert [entry["code"] for entry in published(writer)[uri]] == ["missing-producer"]
 
     def test_a_change_notification_replaces_the_buffer_and_a_close_forgets_it(
         self, tmp_path: Path

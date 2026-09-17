@@ -24,6 +24,9 @@ from conftest import (
     project,
     render_files,
     run_analysis,
+    scalar_type,
+    struct_type,
+    value_member,
     write_tree,
 )
 from ddd.analysis import analyze
@@ -33,22 +36,6 @@ from ddd.lsp.hover import describe_constant
 from ddd.lsp.navigation import constant_at, definition, index, references, rename_problem
 from ddd.lsp.ranges import Document, read
 from ddd.models import ComponentFile
-
-
-def scalar_type(name: str, **extra: Any) -> dict[str, Any]:
-    return {"type": "scalar", "name": name, "datatype": "uint16", "conversion": {}, **extra}
-
-
-def struct_type(name: str, *members: dict[str, Any]) -> dict[str, Any]:
-    return {"type": "struct", "name": name, "members": list(members)}
-
-
-def value_member(name: str, **extra: Any) -> dict[str, Any]:
-    return {"name": name, "member": "value", "datatype": "uint16", "conversion": {}, **extra}
-
-
-def typed_member(name: str, typename: str) -> dict[str, Any]:
-    return {"name": name, "member": "value", "typename": typename}
 
 
 def constant(name: str, value: int = 8) -> dict[str, Any]:
@@ -197,7 +184,9 @@ class TestALoneComponent:
             declare("local", "Cells", dimensions=["PRESSURE_CELLS"]),
             declare("local", "Trend", dimensions=["SHARED_SIZE"], section=".calib"),
             types=[
-                struct_type("Sensor_t", value_member("raw"), typed_member("cooked", "Temp_t")),
+                struct_type(
+                    "Sensor_t", value_member("raw"), value_member("cooked", typename="Temp_t")
+                ),
                 scalar_type("Temp_t", unit="degC"),
             ],
             constants=[constant("PRESSURE_CELLS")],

@@ -549,7 +549,6 @@ class TestVerdictsThatWereWrong:
         assert "display_identifier: 'FiltGain' -> none" in messages(back)
 
     def test_findings_of_one_file_are_ordered_by_declaration(self) -> None:
-        location = Location(Path("a.ddd.json"), "component.interface[{}]")
         bag = DiagnosticBag()
         for index in (10, 2):
             bag.add("schema", "x", Location(Path("a.ddd.json"), f"component.interface[{index}]"))
@@ -557,14 +556,12 @@ class TestVerdictsThatWereWrong:
             "component.interface[2]",
             "component.interface[10]",
         ]
-        assert location.pointer  # the template itself is not a diagnostic
 
 
 class TestInputTheToolMustSurvive:
     """Every one of these used to end the run with a traceback or a silent pass."""
 
     def test_nan_is_refused(self, tree: Path) -> None:
-        write_tree(tree, {"a.ddd.json": '{"component": {"name": "A", "interface": []}}'})
         (tree / "a.ddd.json").write_text(
             '{"component": {"name": "A", "interface": [{"scope": "local", "definition": '
             '{"name": "X", "datatype": "uint16", "limits": {"min": NaN, "max": 10}}}]}}',
@@ -575,15 +572,28 @@ class TestInputTheToolMustSurvive:
         assert "not valid json" in messages(bag)
 
     def test_a_literal_that_overflows_to_infinity_is_refused(self, tree: Path) -> None:
-        """`1e400` is well formed json, and python reads it as inf: the models catch it."""
+        """`1e400` is well formed json, and python reads it as inf: the models catch it.
+
+        Everything the definition needs is written out - `kind` and `volatile` included -
+        because a definition missing either fails on the discriminator before a number is
+        read at all, and the finding is then `Unable to extract tag using discriminator
+        'kind'` at `definition`. That is a `schema` finding too, so a test asserting the
+        identifier alone on an incomplete payload stays green with the infinity refusal
+        deleted. The pointer and the phrase below are what only the refusal produces.
+        """
         (tree / "a.ddd.json").write_text(
             '{"component": {"name": "A", "interface": [{"scope": "local", "definition": '
-            '{"name": "X", "datatype": "float64", "conversion": {"factor": 1e400}}}]}}',
+            '{"name": "X", "kind": "measurement", "volatile": false, "datatype": "float64", '
+            '"conversion": {"factor": 1e400}}}]}}',
             encoding="utf-8",
         )
         bag = DiagnosticBag()
         assert load_workspace(tree / "a.ddd.json", bag) is None
-        assert "schema" in checks(bag)
+        assert checks(bag) == ["schema"]
+        assert [d.location.pointer for d in bag.sorted if d.location] == [
+            "component.interface[0].definition.conversion.factor"
+        ]
+        assert "finite number" in messages(bag)
 
     def test_a_file_that_is_not_utf8(self, tree: Path) -> None:
         (tree / "a.ddd.json").write_bytes(b"\xff\xfe{ not utf 8")

@@ -2,13 +2,48 @@
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from conftest import checks, component, declare, messages, project, run_analysis
+from conftest import (
+    checks,
+    component,
+    declare,
+    messages,
+    project,
+    run_analysis,
+    scalar_type,
+    struct_type,
+    types,
+    value_member,
+)
 from ddd.diagnostics import CHECKS, DiagnosticBag, Severity
+
+
+def identifiers_added_under(root: Path) -> dict[str, list[str]]:
+    """Every string literal handed to a ``.add(`` as its first argument, by where it is.
+
+    Read as syntax rather than as text so that a spelling split over two lines, or one inside
+    a comment, is counted the way python counts it. Nothing else in the package calls ``add``
+    with a string literal - a set of paths takes a ``Path`` - so no filter on the receiver is
+    needed, and an identifier built rather than written is simply invisible here, which is
+    the honest answer for a walk over the source.
+    """
+    found: dict[str, list[str]] = {}
+    for path in sorted(root.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            if not isinstance(node.func, ast.Attribute) or node.func.attr != "add":
+                continue
+            first = node.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                where = f"{path.relative_to(root.parents[1]).as_posix()}:{node.lineno}"
+                found.setdefault(first.value, []).append(where)
+    return found
 
 
 def two_components(*, a: list[dict], b: list[dict]) -> dict[str, object]:
@@ -763,7 +798,7 @@ class TestEnums:
                 "c.ddd.json": component("C", declare("local", "EXTRA")),
             },
         )
-        assert checks(bag) == ["enum-conflict", "name-collision"], messages(bag)
+        assert sorted(checks(bag)) == ["enum-conflict", "name-collision"], messages(bag)
         assert "'EXTRA' is declared as a variable and is also an enumerator" in messages(bag)
 
     def test_an_identical_copy_collides_with_nothing(self, tree: Path) -> None:
@@ -904,14 +939,30 @@ class TestSeverityPolicy:
         )
         assert bag.has_errors
 
-    def test_every_check_is_registered(self, tree: Path) -> None:
-        # Guards against a typo in a check identifier used by the analysis.
-        assert set(CHECKS) >= {
-            "definition-mismatch",
-            "multiple-producers",
-            "missing-producer",
-            "local-conflict",
-        }
+    def test_every_check_the_code_files_is_registered(self) -> None:
+        """Every identifier handed to a bag, read out of the source rather than listed here.
+
+        An unregistered identifier is not refused: the bag reports it at `error`
+        (`diagnostics.py`), so a typo becomes a finding nobody can silence, under a name no
+        page documents and no `-W` accepts. Four literals were named here before, which
+        guarded those four and left the other sixty-odd sites to whichever test happened to
+        assert that exact spelling.
+
+        A plugin's checks carry a `/` and are registered by the plugin at load time, so they
+        are not in `CHECKS` and are left to `tests/test_plugins.py`.
+        """
+        added = identifiers_added_under(Path(__file__).resolve().parents[1] / "src" / "ddd")
+        assert len(added) > 40, "the walk found almost nothing, so it is weighing nothing"
+        unregistered = sorted(
+            f"{identifier} ({', '.join(sites)})"
+            for identifier, sites in added.items()
+            if "/" not in identifier and identifier not in CHECKS
+        )
+        assert not unregistered, (
+            f"these identifiers reach a bag but are in no CHECKS entry: {unregistered}. An "
+            f"unregistered check is reported at error under a name nothing documents and "
+            f"-W does not accept"
+        )
 
 
 class TestArraysTooLarge:
@@ -1128,7 +1179,7 @@ class TestDroppedDeclarations:
                 ),
             },
         )
-        assert checks(bag) == ["unknown-type", "duplicate-declaration"]
+        assert sorted(checks(bag)) == ["duplicate-declaration", "unknown-type"]
 
     @pytest.mark.parametrize("dropped_first", [True, False])
     def test_a_surviving_producer_owns_the_object_whatever_the_include_order(
@@ -1306,7 +1357,7 @@ class TestDroppedDeclarations:
             },
             severities=["unknown-constant=ignore"],
         )
-        assert checks(bag) == ["incomplete-project", "reference-kind", "incomplete-project"]
+        assert sorted(checks(bag)) == ["incomplete-project", "incomplete-project", "reference-kind"]
         rendered = messages(bag)
         assert "the input of axis 'Az' must be of kind 'measurement'" in rendered
         assert "'Az' is not in the data dictionary" not in rendered
@@ -1688,7 +1739,7 @@ class TestLocalReferences:
             severities=["local-conflict=warning"],
         )
         assert dictionary is not None
-        assert checks(bag) == ["local-conflict", "unused-output"]
+        assert sorted(checks(bag)) == ["local-conflict", "unused-output"]
         rendered = messages(bag)
         assert (
             "'Ax' is local to component 'A' but is also used as the axis of 'Gain' by component 'B'"
@@ -1819,7 +1870,7 @@ class TestLocalReferences:
         # 'unused-output' is the honest second finding: 'Ay' is read only through the map's
         # y_axis key, and that is not a consumer declaration - the check nobody reads the
         # object itself, only refers to it.
-        assert checks(bag) == ["local-conflict", "unused-output"]
+        assert sorted(checks(bag)) == ["local-conflict", "unused-output"]
         rendered = messages(bag)
         assert "b.ddd.json#component.interface[0].definition.x_axis" in rendered
         assert "definition.y_axis" not in rendered
@@ -1907,7 +1958,7 @@ class TestStringInit:
             severities=["unknown-constant=ignore"],
         )
         assert dictionary is not None and dictionary.objects == ()
-        assert checks(bag) == ["incomplete-project", "init-invalid"], messages(bag)
+        assert sorted(checks(bag)) == ["incomplete-project", "init-invalid"], messages(bag)
 
     def test_bytes_and_text_disagree(self, tree: Path) -> None:
         """A byte array in one component and a string in another is a mismatch, as written."""
@@ -2084,3 +2135,254 @@ class TestStringTypes:
             assert leaf.conversion.describe() == "string"
             assert leaf.shape == (16,)
             assert leaf.limits.as_tuple() == (0, 255)
+
+
+def sections_file(*entries: dict[str, Any]) -> dict[str, Any]:
+    return {"sections": list(entries)}
+
+
+def rasters_file(*entries: dict[str, Any]) -> dict[str, Any]:
+    return {"rasters": list(entries)}
+
+
+# One project per check, and where the finding it produces is anchored. The key of each entry
+# names the case, because two of them are one check added from two different places.
+DRAWN_AT: dict[str, tuple[str, dict[str, Any], str]] = {
+    "unused-output": (
+        "unused-output",
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("output", "X")),
+        },
+        "a.ddd.json#component.interface[0]",
+    ),
+    "missing-producer": (
+        "missing-producer",
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("input", "X")),
+        },
+        "a.ddd.json#component.interface[0]",
+    ),
+    "multiple-producers": (
+        "multiple-producers",
+        {
+            "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+            "a.ddd.json": component("A", declare("output", "X")),
+            "b.ddd.json": component("B", declare("output", "X")),
+            "c.ddd.json": component("C", declare("input", "X")),
+        },
+        "b.ddd.json#component.interface[0]",
+    ),
+    "empty-component": (
+        "empty-component",
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A"),
+        },
+        "a.ddd.json#component",
+    ),
+    "duplicate-declaration": (
+        "duplicate-declaration",
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X"), declare("local", "X")),
+        },
+        "a.ddd.json#component.interface[1]",
+    ),
+    "local-conflict": (
+        "local-conflict",
+        {
+            "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X")),
+            "b.ddd.json": component("B", declare("local", "X")),
+        },
+        "b.ddd.json#component.interface[0]",
+    ),
+    "name-similar": (
+        "name-similar",
+        {
+            "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "FilterGain")),
+            "b.ddd.json": component("B", declare("local", "Filtergain")),
+        },
+        "b.ddd.json#component.interface[0].definition.name",
+    ),
+    "name-collision": (
+        "name-collision",
+        {
+            "project.ddd.json": project("P", "c.ddd.json", "a.ddd.json"),
+            "c.ddd.json": {"constants": [{"name": "LIMIT", "value": 4}]},
+            "a.ddd.json": component("A", declare("local", "LIMIT")),
+        },
+        "a.ddd.json#component.interface[0].definition.name",
+    ),
+    "storage-mismatch": (
+        "storage-mismatch",
+        {
+            "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+            "a.ddd.json": component("A", declare("output", "X", a2l={"format": "%8.2"})),
+            "b.ddd.json": component("B", declare("input", "X", a2l={"format": "%8.3"})),
+        },
+        "b.ddd.json#component.interface[0].definition",
+    ),
+    "condition-mismatch": (
+        "condition-mismatch",
+        {
+            "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+            "a.ddd.json": component("A", declare("output", "X", condition="FEATURE_A")),
+            "b.ddd.json": component("B", declare("input", "X", condition="FEATURE_B")),
+        },
+        "b.ddd.json#component.interface[0].condition",
+    ),
+    "consumer-storage": (
+        "consumer-storage",
+        {
+            "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+            "a.ddd.json": component("A", declare("output", "X")),
+            "b.ddd.json": component("B", declare("input", "X", init=3)),
+        },
+        "b.ddd.json#component.interface[0].definition.init",
+    ),
+    "consumer-identity": (
+        "consumer-identity",
+        {
+            "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+            "a.ddd.json": component("A", declare("output", "X")),
+            "b.ddd.json": component("B", declare("input", "X", id="k7m2q9xr4t8w")),
+        },
+        "b.ddd.json#component.interface[0].definition.id",
+    ),
+    "consumer-raster": (
+        "consumer-raster",
+        {
+            "project.ddd.json": project("P", "r.ddd.json", "a.ddd.json", "b.ddd.json"),
+            "r.ddd.json": rasters_file({"raster": "R10", "event": 1}),
+            "a.ddd.json": component("A", declare("output", "X")),
+            "b.ddd.json": component("B", declare("input", "X", raster="R10")),
+        },
+        "b.ddd.json#component.interface[0].definition.raster",
+    ),
+    "unknown-reference": (
+        "unknown-reference",
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "C", kind="curve", axis="Nope")),
+        },
+        "a.ddd.json#component.interface[0].definition.axis",
+    ),
+    "enum-duplicate-value": (
+        "enum-duplicate-value",
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component(
+                "A",
+                declare(
+                    "local",
+                    "X",
+                    conversion={"kind": "enum", "name": "E_t", "enumerators": {"A": 1, "B": 1}},
+                ),
+            ),
+        },
+        "a.ddd.json#component.interface[0].definition.conversion",
+    ),
+    "type-kind": (
+        "type-kind",
+        {
+            "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+            "t.ddd.json": types(struct_type("S_t", value_member("raw"))),
+            "a.ddd.json": component(
+                "A", declare("local", "X", typename="S_t", kind="curve", axis="Ax")
+            ),
+        },
+        "a.ddd.json#component.interface[0].definition",
+    ),
+    "limits-out-of-range": (
+        "limits-out-of-range",
+        {
+            "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+            "t.ddd.json": types(scalar_type("S_t", "uint8", limits={"min": 0, "max": 300})),
+            "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+        },
+        "t.ddd.json#types[0].limits",
+    ),
+    "section-access": (
+        "section-access",
+        {
+            "project.ddd.json": project("P", "s.ddd.json", "a.ddd.json"),
+            "s.ddd.json": sections_file({"section": ".ro", "access": "read-only", "alignment": 4}),
+            "a.ddd.json": component("A", declare("local", "X", section=".ro")),
+        },
+        "a.ddd.json#component.interface[0].definition.section",
+    ),
+    "section-alignment": (
+        "section-alignment",
+        {
+            "project.ddd.json": project("P", "s.ddd.json", "a.ddd.json"),
+            "s.ddd.json": sections_file(
+                {"section": ".small", "access": "read-write", "alignment": 2}
+            ),
+            "a.ddd.json": component("A", declare("local", "X", "uint64", section=".small")),
+        },
+        "a.ddd.json#component.interface[0].definition.section",
+    ),
+    "raster-kind": (
+        "raster-kind",
+        {
+            "project.ddd.json": project("P", "r.ddd.json", "a.ddd.json"),
+            "r.ddd.json": rasters_file({"raster": "R10", "event": 1}),
+            "a.ddd.json": component("A", declare("local", "X", kind="parameter", raster="R10")),
+        },
+        "a.ddd.json#component.interface[0].definition.raster",
+    ),
+    "unknown-raster on a declaration": (
+        "unknown-raster",
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X", raster="Nope")),
+        },
+        "a.ddd.json#component.interface[0].definition.raster",
+    ),
+    "unknown-raster on a component": (
+        "unknown-raster",
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X"), raster="Nope"),
+        },
+        "a.ddd.json#component.raster",
+    ),
+    "duplicate-event": (
+        "duplicate-event",
+        {
+            "project.ddd.json": project("P", "r.ddd.json", "a.ddd.json"),
+            "r.ddd.json": rasters_file(
+                {"raster": "R10", "event": 1}, {"raster": "R20", "event": 1}
+            ),
+            "a.ddd.json": component("A", declare("local", "X")),
+        },
+        "r.ddd.json#rasters[1]",
+    ),
+}
+
+
+class TestWhereEachFindingIsDrawn:
+    """The half of a finding an editor uses, and the half this suite pinned least.
+
+    A check identifier and a message phrase are pinned all over the suite; the location
+    mostly was not, and the location is what an editor underlines. A pointer at the whole
+    file where the mistake is one key, or at the wrong one of two declarations, is a finding
+    a reader cannot act on - and neither shape fails a test that reads the identifier and the
+    words. The cases below are the checks whose anchor nothing else pinned.
+    """
+
+    @pytest.mark.parametrize(("check", "files", "anchor"), DRAWN_AT.values(), ids=list(DRAWN_AT))
+    def test_the_finding_is_anchored_where_the_mistake_is(
+        self, tree: Path, check: str, files: dict[str, Any], anchor: str
+    ) -> None:
+        _, bag = run_analysis(tree, files)
+        drawn = [
+            f"{diagnostic.location.path.name}#{diagnostic.location.pointer}"
+            for diagnostic in bag
+            if diagnostic.check == check and diagnostic.location
+        ]
+        assert drawn == [anchor], f"{check} was drawn at {drawn}"

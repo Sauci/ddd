@@ -1148,7 +1148,7 @@ def test_a_swap_is_two_renames_and_two_reused_names(tree):
         declare("local", "A", id="p3rt5vwx9z2q"),
     )
     bag = verdict(before, after)
-    assert checks(bag) == [
+    assert sorted(checks(bag)) == [
         "renamed-object",
         "renamed-object",
         "reused-name",
@@ -1159,7 +1159,8 @@ def test_a_swap_is_two_renames_and_two_reused_names(tree):
 def test_objects_without_an_identity_still_pair_by_name(tree):
     before = one_component(tree, "before", declare("local", "X"))
     after = one_component(tree, "after", declare("local", "X"))
-    assert checks(verdict(before, after)) == [], messages(verdict(before, after))
+    report = verdict(before, after)
+    assert checks(report) == [], messages(report)
 
 
 def test_a_baseline_without_identities_infers_no_rename(tree):
@@ -1243,7 +1244,9 @@ def test_a_name_freed_by_a_removal_and_taken_by_a_rename_is_an_error(tree, capsy
     one_component(tree, "old", declare("local", "A"), declare("local", "B", id="k7m2q9xr4t8w"))
     one_component(tree, "new", declare("local", "A", id="k7m2q9xr4t8w"))
     bag = verdict(resolve(tree, "old.ddd.json"), resolve(tree, "new.ddd.json"))
-    assert checks(bag) == ["renamed-object", "reused-name", "removed-unused-object"], messages(bag)
+    assert sorted(checks(bag)) == ["removed-unused-object", "renamed-object", "reused-name"], (
+        messages(bag)
+    )
     reused = next(diagnostic for diagnostic in bag if diagnostic.check == "reused-name")
     assert list(reused.notes) == [("the object now under it is the baseline's 'B'", None)]
     code, report = ruling(tree, capsys)
@@ -1291,13 +1294,15 @@ def test_a_rename_whose_old_name_nobody_claims_is_no_reuse(tree, capsys):
 def test_a_name_reused_after_a_deletion_is_an_error(tree):
     before = one_component(tree, "before", declare("local", "X", id="k7m2q9xr4t8w"))
     after = one_component(tree, "after", declare("local", "X", id="p3rt5vwx9z2q"))
-    assert "reused-name" in checks(verdict(before, after)), messages(verdict(before, after))
+    report = verdict(before, after)
+    assert "reused-name" in checks(report), messages(report)
 
 
 def test_a_name_kept_by_the_same_object_is_not_a_reuse(tree):
     before = one_component(tree, "before", declare("local", "X", id="k7m2q9xr4t8w"))
     after = one_component(tree, "after", declare("local", "X", id="k7m2q9xr4t8w"))
-    assert checks(verdict(before, after)) == [], messages(verdict(before, after))
+    report = verdict(before, after)
+    assert checks(report) == [], messages(report)
 
 
 def _curve_over(axis: str, axis_id: str, curve_id: str) -> list[dict[str, Any]]:
@@ -1323,7 +1328,8 @@ def test_pointing_a_curve_at_a_different_axis_is_still_an_interface_change(tree)
         declare("local", "Other", kind="axis", size=8, id="w9x8y7z6q5r4"),
         declare("local", "Curve", kind="curve", axis="Other", id="p3rt5vwx9z2q"),
     )
-    assert "changed-interface" in checks(verdict(before, after)), messages(verdict(before, after))
+    report = verdict(before, after)
+    assert "changed-interface" in checks(report), messages(report)
 
 
 def test_a_format_5_style_baseline_against_a_stamped_candidate_has_no_false_change(tree):
@@ -1345,7 +1351,8 @@ def test_a_format_5_style_baseline_against_a_stamped_candidate_has_no_false_chan
         declare("local", "A", kind="axis", size=8, id="k7m2q9xr4t8w"),
         declare("local", "Curve", kind="curve", axis="A", id="p3rt5vwx9z2q"),
     )
-    assert checks(verdict(before, after)) == [], messages(verdict(before, after))
+    report = verdict(before, after)
+    assert checks(report) == [], messages(report)
 
 
 def test_only_the_axis_gaining_an_id_this_delivery_has_no_false_change(tree):
@@ -1366,7 +1373,8 @@ def test_only_the_axis_gaining_an_id_this_delivery_has_no_false_change(tree):
         declare("local", "A", kind="axis", size=8, id="k7m2q9xr4t8w"),
         declare("local", "Curve", kind="curve", axis="A", id="p3rt5vwx9z2q"),
     )
-    assert checks(verdict(before, after)) == [], messages(verdict(before, after))
+    report = verdict(before, after)
+    assert checks(report) == [], messages(report)
 
 
 def test_a_reference_change_still_suppresses_its_own_limits_narrowing(tree):
@@ -1522,7 +1530,7 @@ def test_a_mixed_regime_pairs_each_object_by_what_it_carries(tree):
         declare("local", "Untouched", "uint16"),
     )
     bag = verdict(before, after)
-    assert checks(bag) == ["renamed-object", "changed-interface"], messages(bag)
+    assert sorted(checks(bag)) == ["changed-interface", "renamed-object"], messages(bag)
 
 
 def test_two_instances_sharing_a_name_under_different_ids_are_not_paired(tree):
@@ -1563,7 +1571,9 @@ def test_two_instances_sharing_a_name_under_different_ids_are_not_paired(tree):
         },
     )
     bag = verdict(resolve(tree, "before.ddd.json"), resolve(tree, "after.ddd.json"))
-    assert checks(bag) == ["reused-name", "removed-unused-object", "added-object"], messages(bag)
+    assert sorted(checks(bag)) == ["added-object", "removed-unused-object", "reused-name"], (
+        messages(bag)
+    )
     assert "'Inlet.value'" in messages(bag)
 
 

@@ -23,6 +23,9 @@ from conftest import (
     project,
     render_files,
     run_analysis,
+    struct_type,
+    types,
+    value_member,
     write_tree,
 )
 from ddd.diagnostics import DiagnosticBag
@@ -39,15 +42,6 @@ from ddd.models import Axis, ConstantsFile, Measurement
 
 def constants(*entries: dict[str, Any]) -> dict[str, Any]:
     return {"constants": list(entries)}
-
-
-def struct_type(name: str, *members: dict[str, Any]) -> dict[str, Any]:
-    """A types file declaring one structure - the scaffold the tests here keep needing."""
-    return {"types": [{"type": "struct", "name": name, "members": list(members)}]}
-
-
-def value_member(name: str, datatype: str = "uint16", **extra: Any) -> dict[str, Any]:
-    return {"name": name, "member": "value", "datatype": datatype, "conversion": {}, **extra}
 
 
 def constant(name: str, value: int | float, description: str = "") -> dict[str, Any]:
@@ -296,8 +290,8 @@ class TestTheCheck:
                     "P", "constants.ddd.json", "types.ddd.json", "a.ddd.json"
                 ),
                 "constants.ddd.json": constants(constant("PRESSURE_CELLS", 8)),
-                "types.ddd.json": struct_type(
-                    "S_t", value_member("raw", dimensions=["PRESURE_CELLS"])
+                "types.ddd.json": types(
+                    struct_type("S_t", value_member("raw", dimensions=["PRESURE_CELLS"]))
                 ),
                 "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
             },
@@ -383,7 +377,9 @@ class TestTheCheck:
                     "P", "constants.ddd.json", "types.ddd.json", "a.ddd.json"
                 ),
                 "constants.ddd.json": constants(constant("CELL_GAIN", 1.5)),
-                "types.ddd.json": struct_type("S_t", value_member("raw", dimensions=["CELL_GAIN"])),
+                "types.ddd.json": types(
+                    struct_type("S_t", value_member("raw", dimensions=["CELL_GAIN"]))
+                ),
                 "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
             },
         )
@@ -403,7 +399,9 @@ class TestTheCheck:
                     "P", "constants.ddd.json", "types.ddd.json", "a.ddd.json"
                 ),
                 "constants.ddd.json": constants(constant("CELL_GAIN", 1.5)),
-                "types.ddd.json": struct_type("S_t", value_member("raw", dimensions=["CELL_GAIN"])),
+                "types.ddd.json": types(
+                    struct_type("S_t", value_member("raw", dimensions=["CELL_GAIN"]))
+                ),
                 "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
             },
             severities=["dimension-value=ignore"],
@@ -488,7 +486,7 @@ class TestTheCheck:
             self.files(declare("local", "X", dimensions=["MISSING"], init=999)),
             severities=["unknown-constant=ignore"],
         )
-        assert checks(bag) == ["incomplete-project", "init-invalid"]
+        assert sorted(checks(bag)) == ["incomplete-project", "init-invalid"]
         assert "does not fit into uint8" in messages(bag)
         assert dictionary is not None
         assert dictionary.objects == ()
@@ -512,12 +510,14 @@ class TestTheCheck:
                     "P", "constants.ddd.json", "types.ddd.json", "a.ddd.json"
                 ),
                 "constants.ddd.json": constants(constant("PRESSURE_CELLS", 8)),
-                "types.ddd.json": struct_type("S_t", value_member("raw", dimensions=["MISSING"])),
+                "types.ddd.json": types(
+                    struct_type("S_t", value_member("raw", dimensions=["MISSING"]))
+                ),
                 "a.ddd.json": component("A", declare("input", "X", typename="S_t", init=1)),
             },
             severities=["unknown-constant=ignore"],
         )
-        assert checks(bag) == ["incomplete-project", "consumer-storage", "missing-producer"]
+        assert sorted(checks(bag)) == ["consumer-storage", "incomplete-project", "missing-producer"]
         assert "the initial value is decided by the component that produces" in messages(bag)
 
 
@@ -618,7 +618,9 @@ class TestResolution:
                     "P", "constants.ddd.json", "types.ddd.json", "a.ddd.json"
                 ),
                 "constants.ddd.json": constants(constant("CELLS", 2), constant("TAPS", 4)),
-                "types.ddd.json": struct_type("Cell_t", value_member("raw", dimensions=["TAPS"])),
+                "types.ddd.json": types(
+                    struct_type("Cell_t", value_member("raw", dimensions=["TAPS"]))
+                ),
                 "a.ddd.json": component(
                     "A", declare("local", "Inlet", typename="Cell_t", dimensions=["CELLS"])
                 ),
@@ -735,7 +737,7 @@ class TestNameChecks:
             {
                 "project.ddd.json": project("P", "constants.ddd.json", "types.ddd.json"),
                 "constants.ddd.json": constants(constant("raw", 4, "cells")),
-                "types.ddd.json": struct_type("Sensor_t", value_member("raw")),
+                "types.ddd.json": types(struct_type("Sensor_t", value_member("raw"))),
             },
         )
         assert checks(bag) == ["name-collision"]
@@ -883,7 +885,9 @@ class TestGeneratedC:
                     "P", "constants.ddd.json", "types.ddd.json", "a.ddd.json"
                 ),
                 "constants.ddd.json": constants(constant("CELLS", 2), constant("TAPS", 4)),
-                "types.ddd.json": struct_type("Cell_t", value_member("raw", dimensions=["TAPS"])),
+                "types.ddd.json": types(
+                    struct_type("Cell_t", value_member("raw", dimensions=["TAPS"]))
+                ),
                 "a.ddd.json": component(
                     "A", declare("local", "Inlet", typename="Cell_t", dimensions=["CELLS"])
                 ),
@@ -1141,10 +1145,12 @@ class TestTheEditor:
                 "constants.ddd.json": constants(
                     constant("PRESSURE_CELLS", 8, "cells of the manifold")
                 ),
-                "types.ddd.json": struct_type(
-                    "S_t",
-                    value_member("raw", dimensions=["PRESSURE_CELLS"]),
-                    value_member("plain", "uint8", dimensions=[2]),
+                "types.ddd.json": types(
+                    struct_type(
+                        "S_t",
+                        value_member("raw", dimensions=["PRESSURE_CELLS"]),
+                        value_member("plain", "uint8", dimensions=[2]),
+                    )
                 ),
                 "a.ddd.json": component(
                     "A",

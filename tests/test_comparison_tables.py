@@ -24,6 +24,9 @@ are otherwise indistinguishable from oversights - and were, until they were writ
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
 import pytest
 
 from ddd import analysis, compare
@@ -153,6 +156,75 @@ _NOT_COMPARED_INSTANCE: dict[str, str] = {
 }
 
 
+# One pair of values per derived field, different from each other and valid where the model
+# holds the key to a pattern. What the pair is does not matter; that the entry the field is
+# excused by tells the two apart does.
+DERIVED_VALUES: dict[str, tuple[Any, Any]] = {
+    "dimensions": ([2], [3]),
+    "size": (4, 8),
+    "input": ("In1", "In2"),
+    "axis": ("Ax1", "Ax2"),
+    "x_axis": ("Ax1", "Ax2"),
+    "y_axis": ("Ay1", "Ay2"),
+    "typename": ("A_t", "B_t"),
+    "a2l": ({"format": "%8.2"}, {"format": "%8.3"}),
+}
+
+_KIND_OF: dict[type[DataObject], dict[str, Any]] = {
+    Measurement: {"kind": "measurement"},
+    Parameter: {"kind": "parameter"},
+    ValueBlock: {"kind": "value_block", "dimensions": [4]},
+    Axis: {"kind": "axis", "size": 4},
+    Curve: {"kind": "curve", "axis": "Ax"},
+    Map: {"kind": "map", "x_axis": "Ax", "y_axis": "Ay"},
+}
+
+
+def declared(model: type[DataObject], **overrides: Any) -> DataObject:
+    """The smallest valid declaration of this kind, with these keys replaced.
+
+    A `typename` names a structure, which carries its own storage, so the two keys that
+    spell a base datatype come off when one is asked for.
+    """
+    storage = {} if "typename" in overrides else {"datatype": "uint8", "conversion": {}}
+    payload = {"name": "X", "volatile": False, **storage, **_KIND_OF[model], **overrides}
+    return model.model_validate(payload)
+
+
+def resolved_object(**overrides: Any) -> ResolvedObject:
+    return ResolvedObject(
+        name="X",
+        kind="measurement",
+        datatype="uint8",
+        conversion={"kind": "identity"},
+        limits={"min": 0, "max": 255},
+        **overrides,
+    )
+
+
+def resolved_leaf(**overrides: Any) -> ResolvedLeaf:
+    return ResolvedLeaf(
+        path="V.a",
+        instance="V",
+        kind="measurement",
+        datatype="uint8",
+        conversion={"kind": "identity"},
+        limits={"min": 0, "max": 255},
+        **overrides,
+    )
+
+
+def resolved_instance(**overrides: Any) -> ResolvedInstance:
+    return ResolvedInstance(name="V", type="S_t", kind="measurement", **overrides)
+
+
+RESOLVED_FORMS: dict[str, Callable[..., Any]] = {
+    "object": resolved_object,
+    "leaf": resolved_leaf,
+    "instance": resolved_instance,
+}
+
+
 class TestEveryModelFieldIsAccountedFor:
     """The guard against the allowlist failing open."""
 
@@ -232,6 +304,63 @@ class TestEveryModelFieldIsAccountedFor:
                 f"valid replacement. Add it to an instance table in ddd/compare.py, or to "
                 f"_NOT_COMPARED_INSTANCE here."
             )
+
+    @pytest.mark.parametrize("field", sorted(DERIVED_AS))
+    def test_the_derived_mapping_is_executed(self, field: str) -> None:
+        """Two declarations differing only in this field, weighed by the entry it maps to.
+
+        The mapping is an excuse: a field is accounted for because some other entry is said to
+        read it. Checking the two names exist leaves the claim itself unchecked - a `shape`
+        entry that stopped reading `dimensions`, or an `a2l format` entry that stopped reading
+        `a2l`, would keep every name valid while the field went back to being compared by
+        nothing, which is the fail-open this file exists to prevent.
+        """
+        target = DERIVED_AS[field]
+        entries = [
+            entry
+            for table in (analysis._INTERFACE_FIELDS, analysis._STORAGE_FIELDS)
+            for entry in table
+            if entry.name == target
+        ]
+        assert entries, f"no entry of the analysis tables is called '{target}'"
+        kinds = [model for model in OBJECT_KINDS if field in model.model_fields]
+        assert kinds, f"no object kind declares '{field}'"
+        one, other = DERIVED_VALUES[field]
+        for model in kinds:
+            first, second = declared(model, **{field: one}), declared(model, **{field: other})
+            assert any(entry.value(first) != entry.value(second) for entry in entries), (
+                f"{model.__name__}.{field} is said to be compared as '{target}', but two "
+                f"declarations differing only in it give the same '{target}': the field is "
+                f"compared by nothing"
+            )
+
+    @pytest.mark.parametrize(
+        ("maker", "tables"),
+        [
+            ("object", ("_INTERFACE_FIELDS", "_STORAGE_FIELDS")),
+            ("leaf", ("_LEAF_INTERFACE_FIELDS", "_LEAF_STORAGE_FIELDS")),
+            ("instance", ("_INSTANCE_INTERFACE_FIELDS", "_INSTANCE_STORAGE_FIELDS")),
+        ],
+    )
+    def test_the_resolved_shape_entry_reads_the_dimension_spellings(
+        self, maker: str, tables: tuple[str, str]
+    ) -> None:
+        """The same claim on the other side: ``dimensions`` is excused as ``shape`` there too.
+
+        A baseline from before dictionary format 4 recorded no spellings, which is what the
+        deferred table is for; the spelled one has to read them, or a delivery that renamed
+        the constant behind a dimension compares clean against a baseline that named it.
+        """
+        entries = [
+            entry for name in tables for entry in getattr(compare, name) if entry.name == "shape"
+        ]
+        assert entries, f"no entry of {tables} is called 'shape'"
+        build = RESOLVED_FORMS[maker]
+        first, second = build(shape=[2], dimensions=["N"]), build(shape=[2], dimensions=["M"])
+        assert any(entry.value(first) != entry.value(second) for entry in entries), (
+            f"the 'shape' entry of {tables} gives the same answer for two shapes spelled "
+            f"differently, so ResolvedObject.dimensions is compared by nothing"
+        )
 
     def test_the_derived_mapping_is_not_stale(self) -> None:
         """A name in DERIVED_AS has to still be a field, and its target still a table entry."""

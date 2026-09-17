@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from conftest import bits_member, scalar_type, struct_type, value_member
 from ddd.models import (
     MEMBER_OBJECT_KINDS,
     Datatype,
@@ -28,29 +29,6 @@ from ddd.models import (
 )
 
 
-def value(name: str = "Speed", **extra: Any) -> dict[str, Any]:
-    storage: dict[str, Any] = (
-        {} if "typename" in extra else {"datatype": "uint16", "conversion": {"kind": "identity"}}
-    )
-    return {"name": name, "member": "value", **storage, **extra}
-
-
-def bits(name: str = "Ready", **extra: Any) -> dict[str, Any]:
-    storage: dict[str, Any] = (
-        {} if "typename" in extra else {"datatype": "uint16", "conversion": {"kind": "identity"}}
-    )
-    return {"name": name, "member": "bits", **storage, "bits": 1, **extra}
-
-
-def structure(*members: dict[str, Any], name: str = "Engine_t", **extra: Any) -> dict[str, Any]:
-    return {"type": "struct", "name": name, "members": list(members) or [value()], **extra}
-
-
-def scalar(name: str = "Speed_t", **extra: Any) -> dict[str, Any]:
-    meaning: dict[str, Any] = {} if "conversion" in extra else {"conversion": {"kind": "identity"}}
-    return {"type": "scalar", "name": name, "datatype": "uint16", **meaning, **extra}
-
-
 class TestMemberShape:
     """Which shapes a member has at all, and what a member is therefore not allowed to say."""
 
@@ -60,7 +38,7 @@ class TestMemberShape:
 
     def test_a_shape_is_stated_rather_than_inferred(self) -> None:
         """A file that forgets a key is told which shape it failed to describe."""
-        payload = value()
+        payload = value_member()
         del payload["member"]
         with pytest.raises(ValidationError, match="Field required"):
             Member.model_validate(payload)
@@ -73,7 +51,7 @@ class TestMemberShape:
     def test_a_member_states_no_storage_class(self) -> None:
         """``const`` qualifies a whole c object, so the declaration decides, not half a struct."""
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-            Member.model_validate(value(kind="measurement"))
+            Member.model_validate(value_member(kind="measurement"))
 
     @pytest.mark.parametrize(
         ("key", "stated"),
@@ -92,7 +70,7 @@ class TestMemberShape:
         Requiring a named scalar type for every member that has a unit would put the friction
         in the wrong place: one timestamp should not cost a ``Milliseconds_t``.
         """
-        member = Member.model_validate(value(**{key: stated}))
+        member = Member.model_validate(value_member(**{key: stated}))
         assert getattr(member, key) is not None
 
     @pytest.mark.parametrize(
@@ -108,14 +86,14 @@ class TestMemberShape:
         qualifies a whole c object, so it cannot be decided a member at a time.
         """
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-            Member.model_validate(value(**{key: stated}))
+            Member.model_validate(value_member(**{key: stated}))
 
     @pytest.mark.parametrize("key", ["unit", "conversion", "limits"])
     def test_a_member_naming_a_type_may_not_restate_what_it_fixes(self, key: str) -> None:
         """The same rule as on a declaration, so one question has one answer in both places."""
         stated = {"unit": "rpm", "conversion": {"factor": 0.5}, "limits": {"min": 0, "max": 1}}
         with pytest.raises(ValidationError, match="already fixes what this value means"):
-            Member.model_validate(value(typename="Speed_t", **{key: stated[key]}))
+            Member.model_validate(value_member(typename="Speed_t", **{key: stated[key]}))
 
     def test_the_limits_of_a_bitfield_come_from_its_width(self) -> None:
         """Not from the storage carrying it, which is the whole point of stating a width.
@@ -130,13 +108,13 @@ class TestMemberShape:
 
     def test_the_limits_of_a_member_follow_its_conversion(self) -> None:
         member = Member.model_validate(
-            value(datatype="uint16", conversion={"factor": 0.1, "offset": -40})
+            value_member(datatype="uint16", conversion={"factor": 0.1, "offset": -40})
         )
         assert member.physical_limits().as_tuple() == (-40.0, 6513.5)
 
     def test_stated_limits_win_over_the_derivation(self) -> None:
         """State them to say the software handles less than the storage could."""
-        member = Member.model_validate(value(limits={"min": 0, "max": 100}))
+        member = Member.model_validate(value_member(limits={"min": 0, "max": 100}))
         assert member.physical_limits().as_tuple() == (0, 100)
 
     def test_only_a_measurement_or_a_parameter_may_instantiate_a_structure(self) -> None:
@@ -146,36 +124,39 @@ class TestMemberShape:
 
 class TestValueMember:
     def test_a_scalar(self) -> None:
-        member = Member.model_validate(value())
+        member = Member.model_validate(value_member())
         assert member.member is MemberKind.VALUE
         assert member.dimensions == ()
         assert member.bits is None
 
     def test_an_array(self) -> None:
-        assert Member.model_validate(value(dimensions=[2, 3])).dimensions == (2, 3)
+        assert Member.model_validate(value_member(dimensions=[2, 3])).dimensions == (2, 3)
 
     def test_a_nested_structure_is_a_value_whose_typename_names_it(self) -> None:
         """Nesting needs no shape of its own: naming a structure is what nests it."""
-        member = Member.model_validate(value("latest", typename="Sample_t"))
+        member = Member.model_validate(value_member("latest", typename="Sample_t"))
         assert member.member is MemberKind.VALUE
         assert member.datatype is None
         assert member.typename == "Sample_t"
 
     def test_the_conversion_is_required_beside_a_datatype(self) -> None:
         """The same rule as on a definition: the identity is an answer, not a default."""
-        payload = value()
+        payload = value_member()
         del payload["conversion"]
         with pytest.raises(ValidationError, match="comes with a 'conversion'"):
             Member.model_validate(payload)
 
     def test_storage_is_named_exactly_once(self) -> None:
         """Neither key is a silence to interpret, and both at once is a contradiction."""
-        payload = value()
+        payload = value_member()
         del payload["datatype"]
         with pytest.raises(ValidationError, match="storage is named exactly once"):
             Member.model_validate(payload)
+        # Written out rather than asked of the builder, which leaves the datatype off a
+        # member that names a type - exactly as `declare` does for a declaration.
+        both = {**value_member(typename="Sample_t"), "datatype": "uint16"}
         with pytest.raises(ValidationError, match="storage is named exactly once"):
-            Member.model_validate(value(typename="Sample_t", datatype="uint16"))
+            Member.model_validate(both)
 
     @pytest.mark.parametrize("datatype", ["boolean", "float64"])
     def test_an_enum_conversion_needs_an_integer_datatype(self, datatype: str) -> None:
@@ -184,7 +165,7 @@ class TestValueMember:
             ValidationError, match=f"requires an integer datatype, got '{datatype}'"
         ):
             Member.model_validate(
-                value(
+                value_member(
                     datatype=datatype,
                     conversion={"kind": "enum", "name": "E_t", "enumerators": {"A": 0}},
                 )
@@ -193,23 +174,23 @@ class TestValueMember:
     def test_it_has_no_bits(self) -> None:
         """A width quietly ignored would generate a full width member and move every offset."""
         with pytest.raises(ValidationError, match="a 'value' member has no 'bits'"):
-            Member.model_validate(value(bits=3))
+            Member.model_validate(value_member(bits=3))
 
     def test_a_dimension_of_zero_is_refused(self) -> None:
         with pytest.raises(ValidationError):
-            Member.model_validate(value(dimensions=[0]))
+            Member.model_validate(value_member(dimensions=[0]))
 
 
 class TestBitsMember:
     def test_a_bitfield(self) -> None:
-        member = Member.model_validate(bits(bits=2))
+        member = Member.model_validate(bits_member(bits=2))
         assert member.member is MemberKind.BITS
         assert member.bits == 2
         assert member.dimensions == ()
 
     def test_a_width_is_required(self) -> None:
         """A forgotten width would turn a one bit flag into a full width member."""
-        payload = bits()
+        payload = bits_member()
         del payload["bits"]
         with pytest.raises(ValidationError, match="a 'bits' member needs a 'bits'"):
             Member.model_validate(payload)
@@ -217,32 +198,32 @@ class TestBitsMember:
     def test_it_has_no_dimensions(self) -> None:
         """An array of bitfields is not something c can express."""
         with pytest.raises(ValidationError, match="a 'bits' member has no 'dimensions'"):
-            Member.model_validate(bits(dimensions=[4]))
+            Member.model_validate(bits_member(dimensions=[4]))
 
     def test_it_fills_its_storage_exactly(self) -> None:
-        assert Member.model_validate(bits(bits=16)).bits == 16
+        assert Member.model_validate(bits_member(bits=16)).bits == 16
 
     def test_it_cannot_be_wider_than_its_storage(self) -> None:
         """A field wider than the type carrying it does not compile."""
         with pytest.raises(ValidationError, match="17 bits does not fit in 'uint16'"):
-            Member.model_validate(bits(bits=17))
+            Member.model_validate(bits_member(bits=17))
 
     @pytest.mark.parametrize("datatype", ["float32", "float64", "boolean"])
     def test_it_needs_an_integer(self, datatype: str) -> None:
         """C allows a bitfield in nothing else."""
         with pytest.raises(ValidationError, match="a bitfield needs an integer datatype"):
-            Member.model_validate(bits(datatype=datatype))
+            Member.model_validate(bits_member(datatype=datatype))
 
     def test_it_cannot_name_a_declared_type(self) -> None:
         """A bitfield has no room for a structure, and a scalar type would carry limits the
         width contradicts."""
         with pytest.raises(ValidationError, match="got the declared type 'Flags_t'"):
-            Member.model_validate(bits(typename="Flags_t", bits=2))
+            Member.model_validate(bits_member(typename="Flags_t", bits=2))
 
     def test_a_width_of_zero_is_refused(self) -> None:
         """A zero width field is a c alignment device, not a variable anybody addresses."""
         with pytest.raises(ValidationError):
-            Member.model_validate(bits(bits=0))
+            Member.model_validate(bits_member(bits=0))
 
 
 class TestDatatypeReference:
@@ -250,28 +231,30 @@ class TestDatatypeReference:
 
     @pytest.mark.parametrize("name", ["boolean", "uint8", "sint16", "uint64", "float32"])
     def test_a_base_name_is_the_datatype(self, name: str) -> None:
-        assert Member.model_validate(value(datatype=name)).datatype is Datatype(name)
+        assert Member.model_validate(value_member(datatype=name)).datatype is Datatype(name)
 
     def test_a_declared_name_stays_a_name(self) -> None:
         """Nothing here can resolve it: the type it names may be declared in another file."""
-        member = Member.model_validate(value(typename="Sample_t"))
+        member = Member.model_validate(value_member(typename="Sample_t"))
         assert member.datatype is None
         assert member.typename == "Sample_t"
 
     def test_an_empty_name_is_neither(self) -> None:
         with pytest.raises(ValidationError):
-            Member.model_validate(value(datatype=""))
+            Member.model_validate(value_member(datatype=""))
 
 
 class TestStructType:
     def test_a_structure(self) -> None:
-        parsed = StructType.model_validate(structure(value("Speed"), bits("Ready")))
+        parsed = StructType.model_validate(
+            struct_type("Engine_t", value_member("Speed"), bits_member("Ready"))
+        )
         assert parsed.type == "struct"
         assert [member.name for member in parsed.members] == ["Speed", "Ready"]
 
     def test_the_type_key_is_required(self) -> None:
         """Every entry of a types file says which kind of entry it is."""
-        payload = structure()
+        payload = struct_type()
         del payload["type"]
         with pytest.raises(ValidationError, match="Field required"):
             StructType.model_validate(payload)
@@ -282,18 +265,20 @@ class TestStructType:
 
     def test_two_members_cannot_share_a_name(self) -> None:
         with pytest.raises(ValidationError, match="declares member 'Speed' twice"):
-            StructType.model_validate(structure(value("Speed"), value("Speed")))
+            StructType.model_validate(
+                struct_type("Engine_t", value_member("Speed"), value_member("Speed"))
+            )
 
     def test_an_unknown_key_is_refused(self) -> None:
         """Offsets and sizes are read back out of the build, never stated here."""
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-            StructType.model_validate(structure(size=14))
+            StructType.model_validate(struct_type(size=14))
 
 
 class TestScalarType:
     def test_a_name_for_what_a_number_means(self) -> None:
         parsed = ScalarType.model_validate(
-            scalar(unit="rpm", conversion={"factor": 0.25}, limits={"min": 0, "max": 8000})
+            scalar_type(unit="rpm", conversion={"factor": 0.25}, limits={"min": 0, "max": 8000})
         )
         assert parsed.type == "scalar"
         assert parsed.datatype is Datatype.UINT16
@@ -303,13 +288,13 @@ class TestScalarType:
 
     def test_what_it_leaves_out_stays_open(self) -> None:
         """Limits are derived from datatype and conversion where the type does not state them."""
-        parsed = ScalarType.model_validate(scalar())
+        parsed = ScalarType.model_validate(scalar_type())
         assert isinstance(parsed.conversion, IdentityConversion)
         assert parsed.unit == ""
         assert parsed.limits is None
 
     def test_the_type_key_is_required(self) -> None:
-        payload = scalar()
+        payload = scalar_type()
         del payload["type"]
         with pytest.raises(ValidationError, match="Field required"):
             ScalarType.model_validate(payload)
@@ -317,13 +302,13 @@ class TestScalarType:
     def test_it_needs_a_base_datatype(self) -> None:
         """A type defined in terms of a second one would chain, and could form a cycle."""
         with pytest.raises(ValidationError, match="Input should be 'boolean', 'uint8'"):
-            ScalarType.model_validate(scalar(datatype="Other_t"))
+            ScalarType.model_validate(scalar_type(datatype="Other_t"))
 
     def test_an_enum_conversion_needs_an_integer_datatype(self) -> None:
         """The rule of a definition holds here, where the meaning is fixed for everybody."""
         with pytest.raises(ValidationError, match="requires an integer datatype, got 'float32'"):
             ScalarType.model_validate(
-                scalar(
+                scalar_type(
                     datatype="float32",
                     conversion={"kind": "enum", "name": "E_t", "enumerators": {"A": 0}},
                 )
@@ -342,19 +327,21 @@ class TestScalarType:
     def test_it_fixes_nothing_that_belongs_to_one_variable(self, key: str, stated: Any) -> None:
         """Two measurements of one type may differ in whether an interrupt writes one of them."""
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-            ScalarType.model_validate(scalar(**{key: stated}))
+            ScalarType.model_validate(scalar_type(**{key: stated}))
 
 
 class TestTypesFile:
     def test_a_file_of_structures_and_scalars(self) -> None:
         """A type is declared once and shared, so both kinds live in the same file."""
-        parsed = TypesFile.model_validate({"types": [structure(name="A_t"), scalar(name="B_t")]})
+        parsed = TypesFile.model_validate(
+            {"types": [struct_type(name="A_t"), scalar_type(name="B_t")]}
+        )
         assert [type(entry) for entry in parsed.types] == [StructType, ScalarType]
         assert [entry.name for entry in parsed.types] == ["A_t", "B_t"]
 
     def test_an_entry_states_which_kind_it_is(self) -> None:
         """A file that omits the key is told so, rather than silently becoming the other kind."""
-        payload = structure()
+        payload = struct_type()
         del payload["type"]
         with pytest.raises(ValidationError, match="Unable to extract tag using discriminator"):
             TypesFile.model_validate({"types": [payload]})
@@ -370,18 +357,20 @@ class TestTypesFile:
     def test_two_types_cannot_share_a_name(self) -> None:
         """Across both kinds: a name is what the whole project agrees on."""
         with pytest.raises(ValidationError, match="'Speed_t' is already declared"):
-            TypesFile.model_validate({"types": [structure(name="Speed_t"), scalar(name="Speed_t")]})
+            TypesFile.model_validate(
+                {"types": [struct_type(name="Speed_t"), scalar_type(name="Speed_t")]}
+            )
 
     def test_the_schema_key_is_allowed(self) -> None:
         """Same editor binding as every other description file."""
         parsed = TypesFile.model_validate(
-            {"$schema": "../schemas/ddd_types.schema.json", "types": [structure()]}
+            {"$schema": "../schemas/ddd_types.schema.json", "types": [struct_type()]}
         )
         assert parsed.schema_reference == "../schemas/ddd_types.schema.json"
 
     def test_an_unknown_key_is_refused(self) -> None:
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-            TypesFile.model_validate({"types": [structure()], "typos": []})
+            TypesFile.model_validate({"types": [struct_type()], "typos": []})
 
 
 class TestBitfieldRange:
@@ -420,7 +409,7 @@ class TestStringMembersAndTypes:
 
     def string(self, **extra: Any) -> dict[str, Any]:
         payload = {"datatype": "uint8", "conversion": {"kind": "string"}, "dimensions": [16]}
-        return value("label", **{**payload, **extra})
+        return value_member("label", **{**payload, **extra})
 
     def test_a_string_member_is_a_value_member_of_one_dimension(self) -> None:
         member = Member.model_validate(self.string())
@@ -429,7 +418,9 @@ class TestStringMembersAndTypes:
 
     def test_a_bitfield_holds_no_string(self) -> None:
         with pytest.raises(ValidationError, match="holds no string"):
-            Member.model_validate(bits("flag", datatype="uint8", conversion={"kind": "string"}))
+            Member.model_validate(
+                bits_member("flag", datatype="uint8", conversion={"kind": "string"})
+            )
 
     @pytest.mark.parametrize("dimensions", [[], [2, 8]])
     def test_a_string_member_states_exactly_one_dimension(self, dimensions: list[int]) -> None:
@@ -456,20 +447,20 @@ class TestStringMembersAndTypes:
 
     def test_a_scalar_type_may_be_a_string(self) -> None:
         parsed = ScalarType.model_validate(
-            scalar("Label_t", datatype="uint8", conversion={"kind": "string"})
+            scalar_type("Label_t", datatype="uint8", conversion={"kind": "string"})
         )
         assert parsed.conversion.describe() == "string"
 
     def test_a_string_type_is_held_to_the_same_rules(self) -> None:
         with pytest.raises(ValidationError, match="needs a byte datatype"):
-            ScalarType.model_validate(scalar("Label_t", conversion={"kind": "string"}))
+            ScalarType.model_validate(scalar_type("Label_t", conversion={"kind": "string"}))
         with pytest.raises(ValidationError, match="has no unit"):
             ScalarType.model_validate(
-                scalar("Label_t", datatype="uint8", unit="s", conversion={"kind": "string"})
+                scalar_type("Label_t", datatype="uint8", unit="s", conversion={"kind": "string"})
             )
         with pytest.raises(ValidationError, match="has no limits"):
             ScalarType.model_validate(
-                scalar(
+                scalar_type(
                     "Label_t",
                     datatype="uint8",
                     limits={"min": 0, "max": 9},

@@ -2104,14 +2104,17 @@ class TestTheSuiteRunsEverythingEverywhere:
 
         The one there was sat on ``if TYPE_CHECKING:``, which ``pyproject.toml`` already
         excludes for the whole project, so it exempted nothing and read as though a rule
-        needed an escape hatch.
+        needed an escape hatch. The other was ``no branch`` over an arm the suite does
+        execute - a stream the language server tests replace - so both spellings are
+        weighed here: half the gate is branches, and the comment that excuses one of them
+        is the same comment.
         """
         exempted = [
             f"{path.relative_to(ROOT).as_posix()}:{number}"
             for directory in ("src", "tests", "tools", "docker")
             for path in sorted((ROOT / directory).rglob("*.py"))
             for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
-            if re.search(r"pragma:\s*no\s+cover", line)
+            if re.search(r"pragma:\s*no\s+(cover|branch)", line)
         ]
         assert not exempted, (
             f"these lines are excused from the coverage gate one by one: {exempted}. A branch "

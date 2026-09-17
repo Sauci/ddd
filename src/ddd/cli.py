@@ -83,7 +83,7 @@ def _write_utf8(stream: Any) -> None:
     terminal agree with them.
     """
     reconfigure = getattr(stream, "reconfigure", None)
-    if reconfigure is not None:  # pragma: no branch - absent only on a replaced stream
+    if reconfigure is not None:
         with contextlib.suppress(OSError, ValueError):
             reconfigure(encoding="utf-8")
 

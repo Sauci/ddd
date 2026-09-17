@@ -283,11 +283,17 @@ $ ddd check examples/demo/components/controller.ddd.json --standalone
 ok: 14 variables in 1 component are consistent
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">--standalone</span></code> is that policy, and the whole of it. It holds back the ten checks that need
-every component of a project - <code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code>, <code class="docutils literal notranslate"><span class="pre">missing-producer</span></code>,
-<code class="docutils literal notranslate"><span class="pre">unknown-constant</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-extension</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-raster</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code>,
-<code class="docutils literal notranslate"><span class="pre">unknown-section</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-type</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code> and <code class="docutils literal notranslate"><span class="pre">unused-output</span></code> - and touches
-nothing else, so everything DDD can decide from the file in front of it is still reported.
+<p><code class="docutils literal notranslate"><span class="pre">--standalone</span></code> is that policy, and the whole of it. It holds back the nine checks that need
+every component of a project - <code class="docutils literal notranslate"><span class="pre">missing-producer</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-constant</span></code>,
+<code class="docutils literal notranslate"><span class="pre">unknown-extension</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-raster</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-section</span></code>,
+<code class="docutils literal notranslate"><span class="pre">unknown-type</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code> and <code class="docutils literal notranslate"><span class="pre">unused-output</span></code> - and touches nothing else, so
+everything DDD can decide from the file in front of it is still reported. A declaration one
+of the nine drops is left out of the dictionary in silence as well, because
+<code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code> - the trace a dropped declaration leaves when the finding that says
+why is silenced - has nothing to say where the missing file is the reason: the constant, the
+raster or the type is declared, in a file this run was not handed. The trace stays for the
+other cause it has, a check the caller’s own <code class="docutils literal notranslate"><span class="pre">-W</span></code> relaxed, which takes a variable out of
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> whether the run was given one component or a whole project.
 Whether a check needs the whole project is stated where the check itself is - <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code>
 marks each one <code class="docutils literal notranslate"><span class="pre">(project)</span></code> - and that is what keeps this set, the one the language server
 holds back for a file no build claims (see <a class="reference internal" href="editor_integration.html"><span class="doc">Editor integration</span></a>) and the one the
@@ -298,12 +304,12 @@ still wins, so a supplier who does want to hear about outputs nobody reads asks 
 back with <code class="docutils literal notranslate"><span class="pre">--standalone</span> <span class="pre">-W</span> <span class="pre">unused-output=warning</span></code>. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> take the
 flag as well: a component that names its project’s vocabulary, or carries the block of a
 plugin only its project loads, is listed or dumped on its own under the same policy.</p>
-<p>Naming the overrides by hand instead is the mistake the flag exists to end. Two of the ten are
-about the other side of the interface; the other eight are about names the component uses and
-the file it lives in does not carry - a type, a unit, a section, a constant, a raster, a
-plugin’s <code class="docutils literal notranslate"><span class="pre">extensions</span></code> block, an axis or an input quantity another component declares, and the
-declaration DDD then has to drop. A component using the vocabulary of its project meets the
-second group at once:</p>
+<p>Naming the overrides by hand instead is the mistake the flag exists to end. Two of the nine
+are about the other side of the interface; the other seven are about names the component uses
+and the file it lives in does not carry - a type, a unit, a section, a constant, a raster, a
+plugin’s <code class="docutils literal notranslate"><span class="pre">extensions</span></code> block, an axis or an input quantity another component declares, and
+the declaration DDD then has to drop. A component using the vocabulary of its project meets
+the second group at once:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/vocabulary/pump.ddd.json -W missing-producer=ignore -W unused-output=ignore
 ...
 6 errors
@@ -705,7 +711,10 @@ zero, such as <code class="docutils literal notranslate"><span class="pre">1e-50
 does not have (for a curve or a map, the shape given by its axes), or an enumerator does
 not fit the datatype of the variable, or does not fit into a c <code class="docutils literal notranslate"><span class="pre">int</span></code>, which every
 enumerator has to (C11 6.7.2.2), or a string init that is not printable ASCII, leaves
-no room for its terminator, or sits on an object that is not a string.</p></td>
+no room for its terminator, or sits on an object that is not a string. The values of
+one initialiser that are wrong in the same way are one finding, which names how many
+there are and what else is among them: a table typed one datatype too narrow is one
+mistake, not one per element.</p></td>
 </tr>
 </tbody>
 </table>

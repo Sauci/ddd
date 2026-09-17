@@ -358,8 +358,10 @@ dumps a component on its own, as it does for <code class="docutils literal notra
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span> <span class="pre">FILE...</span></code></p></td>
 <td><p>write an <code class="docutils literal notranslate"><span class="pre">id</span></code> into every producing declaration of the given description files that
-has none, editing them in place; a declaration that has one is left alone, so a second
-run changes nothing. The identity is what lets <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> report a rename as a
+has none, as one added line each: the file keeps its byte order mark, its line endings
+and its formatting, and the new text is staged beside it and renamed onto it, so a run
+that dies leaves a hand-authored description as it was. A declaration that has one is
+left alone, so a second run changes nothing. The identity is what lets <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> report a rename as a
 rename, and what <code class="docutils literal notranslate"><span class="pre">missing-id</span></code> asks for.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">KIND</span></code></p></td>

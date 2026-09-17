@@ -117,6 +117,8 @@
     <span class="n">Identifier</span><span class="p">,</span>
     <span class="n">Number</span><span class="p">,</span>
     <span class="n">ObjectId</span><span class="p">,</span>
+    <span class="n">PluginName</span><span class="p">,</span>
+    <span class="n">RasterName</span><span class="p">,</span>
     <span class="n">Real</span><span class="p">,</span>
     <span class="n">TypeName</span><span class="p">,</span>
     <span class="n">format_number</span><span class="p">,</span>
@@ -125,8 +127,23 @@
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.conversion</span><span class="w"> </span><span class="kn">import</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">,</span> <span class="n">StringConversion</span><span class="p">,</span> <span class="n">conversion_range</span>
 
-<span class="nb">type</span> <span class="n">InitScalar</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">ge</span><span class="o">=-</span><span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">63</span><span class="p">),</span> <span class="n">le</span><span class="o">=</span><span class="mi">2</span><span class="o">**</span><span class="mi">64</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]</span> <span class="o">|</span> <span class="nb">bool</span> <span class="o">|</span> <span class="n">Real</span>
-<span class="sd">"""One raw number of an init: exact for whole values, and bounded to what 64 bits can hold."""</span>
+<span class="nb">type</span> <span class="n">InitScalar</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ge</span><span class="o">=-</span><span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">63</span><span class="p">),</span> <span class="n">le</span><span class="o">=</span><span class="mi">2</span><span class="o">**</span><span class="mi">64</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]</span>
+    <span class="o">|</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)]</span>
+    <span class="o">|</span> <span class="n">Annotated</span><span class="p">[</span><span class="n">Real</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)]</span>
+<span class="p">)</span>
+<span class="sd">"""One raw number of an init: exact for whole values, and bounded to what 64 bits can hold.</span>
+
+<span class="sd">Every arm is strict, so each spelling stays what it was written as. Strictness is about the</span>
+<span class="sd">spelling and not about the arm: a whole number keeps matching the integer arm wherever it is</span>
+<span class="sd">written, including on a float object, and a json ``true`` keeps matching the boolean one.</span>
+<span class="sd">What it refuses is text - ``"1"``, ``" 1 "``, ``"1_0"``, ``"1e2"``, and the words ``"on"``,</span>
+<span class="sd">``"off"``, ``"yes"`` and ``"true"`` that a lax boolean arm reads as truth values. Without it,</span>
+<span class="sd">this union is reached one level inside a list, where no ``str`` arm stands in front of it to</span>
+<span class="sd">claim a quoted value, and pydantic's lax pass parsed all of them into numbers: the file then</span>
+<span class="sd">said something its author did not write, and ``["on", "off"]`` on a ``uint8[2]`` reached the</span>
+<span class="sd">generated c as ``{ 1U, 0U }``.</span>
+<span class="sd">"""</span>
 
 <span class="nb">type</span> <span class="n">InitElement</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span><span class="n">InitScalar</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">InitElement</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">BeforeValidator</span><span class="p">(</span><span class="n">within_64_bits</span><span class="p">)]</span>
 <span class="sd">"""What a list init holds: numbers, or lists of them, never text.</span>
@@ -152,11 +169,11 @@
 
 <span class="sd">The ``str`` arm is for a string object, whose init is its text; the analysis refuses it on</span>
 <span class="sd">any other object (``init-invalid``), because only there is the conversion known - a</span>
-<span class="sd">declaration naming a scalar type learns its conversion from the type. pydantic picks an arm</span>
-<span class="sd">by the exact type of the value before it tries to coerce, so a quoted number ``"12"`` is</span>
-<span class="sd">now text, refused where a number was meant, where it used to be read as the number: the one</span>
-<span class="sd">place the quoted-spelling question left open on :data:`Number` is answered. Only the whole</span>
-<span class="sd">init may be text: a list holds numbers, see ``InitElement``.</span>
+<span class="sd">declaration naming a scalar type learns its conversion from the type. A quoted number</span>
+<span class="sd">``"12"`` is text here, refused where a number was meant, because the ``str`` arm claims it</span>
+<span class="sd">before any other arm is asked to coerce it. That is this level's answer only: one level</span>
+<span class="sd">down there is no ``str`` arm, which is why every arm of :data:`InitScalar` is strict. Only</span>
+<span class="sd">the whole init may be text: a list holds numbers, see ``InitElement``.</span>
 <span class="sd">"""</span>
 
 <span class="nb">type</span> <span class="n">Shape</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
@@ -484,7 +501,7 @@
 <span class="sd">    component at a time; ``missing-id`` says where it has not.</span>
 <span class="sd">    """</span>
 
-    <span class="n">extensions</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">extensions</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="n">PluginName</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
 <span class="w">    </span><span class="sd">"""Blocks owned by the project's plugins, keyed by plugin name.</span>
 
 <span class="sd">    ``{"layout": {"key": 12, "version": 3}}``: what a plugin the project names needs to know</span>
@@ -532,7 +549,7 @@
 <span class="sd">    Left out, the object goes wherever the toolchain's defaults put it.</span>
 <span class="sd">    """</span>
 
-    <span class="n">raster</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">raster</span><span class="p">:</span> <span class="n">RasterName</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""Measurement raster the object is updated in, named in the project's rasters file.</span>
 
 <span class="sd">    A producer key like ``section``: the producing component's task is what updates the</span>
@@ -544,6 +561,12 @@
 <span class="sd">    At the top level rather than inside ``a2l``, although only that backend reads it today:</span>
 <span class="sd">    which task updates a value is an engineering claim about the data, the way ``section``</span>
 <span class="sd">    is, and not a presentation choice.</span>
+
+<span class="sd">    Spelled the way a declaration spells it - printable ASCII, no space, at most eight</span>
+<span class="sd">    characters - so a name no rasters file could ever declare is refused where it is</span>
+<span class="sd">    written rather than reported as ``unknown-raster``, which sends the reader looking for</span>
+<span class="sd">    a declaration that could not exist. The same rule a ``section`` reference has always</span>
+<span class="sd">    been held to.</span>
 <span class="sd">    """</span>
 
     <span class="n">init</span><span class="p">:</span> <span class="n">InitValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
@@ -737,6 +760,9 @@
 <span class="sd">    Each an integer of at least 1, or the name of a constant the project declares, in a</span>
 <span class="sd">    constants file or in a component - ``[3, 4]`` and ``["PRESSURE_CELLS", 4]`` are both</span>
 <span class="sd">    shapes.</span>
+
+<span class="sd">    A whole number written without a decimal point: ``4``, not ``4.0``, which the published</span>
+<span class="sd">    schema accepts and the loader refuses.</span>
 <span class="sd">    """</span>
 
     <span class="nd">@property</span>
@@ -765,6 +791,9 @@
 
 <span class="sd">    Each an integer of at least 1, or the name of a constant the project declares, mixed</span>
 <span class="sd">    freely.</span>
+
+<span class="sd">    A whole number written without a decimal point: ``4``, not ``4.0``, which the published</span>
+<span class="sd">    schema accepts and the loader refuses.</span>
 <span class="sd">    """</span>
 
     <span class="nd">@property</span>
@@ -780,8 +809,11 @@
 
     <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="n">ObjectKind</span><span class="o">.</span><span class="n">AXIS</span><span class="p">]</span>
     <span class="n">size</span><span class="p">:</span> <span class="n">Dimension</span>
-<span class="w">    </span><span class="sd">"""Number of axis points: an integer of at least 1, or the name of a declared</span>
-<span class="sd">    constant."""</span>
+<span class="w">    </span><span class="sd">"""Number of axis points: an integer of at least 1, or the name of a declared constant.</span>
+
+<span class="sd">    A whole number written without a decimal point: ``4``, not ``4.0``, which the published</span>
+<span class="sd">    schema accepts and the loader refuses.</span>
+<span class="sd">    """</span>
 
     <span class="nb">input</span><span class="p">:</span> <span class="n">Identifier</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""Measurement that indexes the axis; the a2l input quantity.</span>

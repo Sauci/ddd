@@ -186,12 +186,18 @@ names it finds there, and therefore does not know before a run which files that 
 Those naming rules are part of the interface a project depends on: <a class="reference internal" href="templates.html"><span class="doc">Templates</span></a> documents
 them, and the module docstring of <code class="docutils literal notranslate"><span class="pre">src/ddd/backends/c/backend.py</span></code> states them again next to
 the code that implements them.</p>
-<p>Five smaller modules sit beside them. <code class="docutils literal notranslate"><span class="pre">diagnostics.py</span></code> holds the severity policy and the
+<p>Six smaller modules sit beside them. <code class="docutils literal notranslate"><span class="pre">diagnostics.py</span></code> holds the severity policy and the
 registry of every check, and is what both the loader and the analysis report through.
 <code class="docutils literal notranslate"><span class="pre">compare.py</span></code> answers the directional question of whether one dictionary may replace
 another, and is the second consumer of the contract next to the backends. <code class="docutils literal notranslate"><span class="pre">cli.py</span></code> is the
 only module that knows about argument parsing, exit codes and where output goes; it is also
-where the backends a <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> run uses are assembled. <code class="docutils literal notranslate"><span class="pre">identity.py</span></code> makes an object
+where the backends a <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> run uses are assembled, and it reaches every layer
+above through an import inside the handler that needs it rather than at the top of the file,
+so that <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">--version</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">--help</span></code> - which a cmake configure step asks for once per
+project and a pre-commit hook once per file - are answered without building a single
+contract. <code class="docutils literal notranslate"><span class="pre">names.py</span></code> is what makes that possible: the handful of spellings argparse reads
+while it is still deciding what was asked for, in a module that imports nothing, each of them
+the one definition of its name. <code class="docutils literal notranslate"><span class="pre">identity.py</span></code> makes an object
 identity and writes one into a description file textually, so that <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span></code>
 produces a diff of one line per object rather than a reformatted document. <code class="docutils literal notranslate"><span class="pre">build_info.py</span></code>
 is the hand-off from a build to an editor: which project description was configured, and

@@ -126,6 +126,7 @@
     <span class="n">model_validator</span><span class="p">,</span>
 <span class="p">)</span>
 
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.diagnostics</span><span class="w"> </span><span class="kn">import</span> <span class="n">index_order</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">Datatype</span><span class="p">,</span> <span class="n">Identifier</span><span class="p">,</span> <span class="n">hash_excluding_mappings</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.component</span><span class="w"> </span><span class="kn">import</span> <span class="n">Scope</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConstantDeclaration</span>
@@ -380,6 +381,11 @@
 <span class="sd">    Only what a declaration takes. The meaning of the member - its unit, its conversion, its</span>
 <span class="sd">    limits - travels with the *leaf* instead, because that is the form the a2l consumes and</span>
 <span class="sd">    there is no second place a reader should have to look.</span>
+
+<span class="sd">    Exactly one of ``datatype``, ``type`` and ``external`` is stated: a member holds a value</span>
+<span class="sd">    of a base datatype, is a structure, or is storage of a type DDD does not describe. A</span>
+<span class="sd">    member stating none of them would be storage with no size, no meaning and no name, which</span>
+<span class="sd">    a consumer of this document has nothing to do with.</span>
 <span class="sd">    """</span>
 
     <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
@@ -392,7 +398,12 @@
 <span class="w">    </span><span class="sd">"""Storage of the member when it is a base one; ``None`` when it names a declared type."""</span>
 
     <span class="nb">type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">"""Name of the structure this member is, when it is one; ``None`` when it is a datatype."""</span>
+<span class="w">    </span><span class="sd">"""Name of the structure this member is, when it is one; ``None`` when it is a datatype.</span>
+
+<span class="sd">    The name as the types file spells it, which in a dictionary carrying an ``unknown-type``</span>
+<span class="sd">    error may be a name no ``types`` entry answers: the member says what it was declared as,</span>
+<span class="sd">    and the finding says that nothing declares it.</span>
+<span class="sd">    """</span>
 
     <span class="n">external</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""Name of the external type this member is, when it is one; ``None`` otherwise.</span>
@@ -422,18 +433,26 @@
 <span class="w">    </span><span class="sd">"""Width in bits when the member is a c bitfield; ``None`` when it is not."""</span>
 
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">_an_external_member_carries_its_header</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ResolvedMember</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""``external`` and ``header`` travel together, and beside no other storage.</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_a_member_states_one_storage</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ResolvedMember</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Exactly one of ``datatype``, ``type`` and ``external``, and ``header`` with the last.</span>
 
 <span class="sd">        A member is spelled exactly one way - a base datatype, a structure, or an external</span>
-<span class="sd">        type - so an external name next to either of the others, or a header without the</span>
-<span class="sd">        name it defines, is a document contradicting itself.</span>
+<span class="sd">        type - so an external name next to either of the others, or a header without the name</span>
+<span class="sd">        it defines, is a document contradicting itself. So is a member spelled no way at all:</span>
+<span class="sd">        it declares storage with no size, no meaning and no name, which reads back out of a</span>
+<span class="sd">        dump, compares clean against a member that holds a value, and reaches a forced c</span>
+<span class="sd">        header as ``None x;``. A member whose type nothing declares carries that name under</span>
+<span class="sd">        ``type`` - ``unknown-type`` is what says nothing declares it - so this is the document</span>
+<span class="sd">        saying it holds something, wrong as that something may turn out to be.</span>
 <span class="sd">        """</span>
         <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">external</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span> <span class="o">!=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">header</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
             <span class="n">msg</span> <span class="o">=</span> <span class="s2">"'external' and 'header' are stated together: the header defines the type"</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">external</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">type</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">):</span>
             <span class="n">msg</span> <span class="o">=</span> <span class="s2">"an external member names no 'datatype' and no 'type'; it is opaque storage"</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">external</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatype</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">type</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">"a member states one of 'datatype', 'type' and 'external': it holds something"</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
 
@@ -789,6 +808,10 @@
     <span class="n">leaves</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ResolvedLeaf</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
 <span class="w">    </span><span class="sd">"""Every member of every structured variable, flattened, sorted by path.</span>
 
+<span class="sd">    By path with every ``[n]`` in it read as the number it is, so the elements of an array of</span>
+<span class="sd">    structures are in the order they are stored in rather than in the order their spellings</span>
+<span class="sd">    happen to sort in: ``[2]`` before ``[10]``.</span>
+
 <span class="sd">    Written out rather than worked out on demand, because the dictionary is a produced</span>
 <span class="sd">    document: a generator DDD does not ship reads it without importing python, and no backend</span>
 <span class="sd">    should repeat resolution the analysis has already done.</span>
@@ -854,8 +877,12 @@
 
 <span class="sd">        A summary that counted only the plain ones told a project with four objects that it</span>
 <span class="sd">        had two, which is the sort of quiet wrongness that costs somebody an afternoon.</span>
+
+<span class="sd">        Ordered by name with every ``[n]`` read as the number it is, the way</span>
+<span class="sd">        :attr:`leaves` is: an element is one of a run, and an instance of twelve listed</span>
+<span class="sd">        ``[0], [10], [11], [1]`` reads as a listing of something else.</span>
 <span class="sd">        """</span>
-        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">comparable</span><span class="o">.</span><span class="n">values</span><span class="p">(),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">entry</span><span class="p">:</span> <span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="p">))</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">comparable</span><span class="o">.</span><span class="n">values</span><span class="p">(),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">entry</span><span class="p">:</span> <span class="n">index_order</span><span class="p">(</span><span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="p">)))</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">unowned</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ResolvedObject</span> <span class="o">|</span> <span class="n">ResolvedInstance</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">"""Every variable no component declares as output; only possible when</span>

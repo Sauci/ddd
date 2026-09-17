@@ -154,13 +154,15 @@ three stages:
   standalone checks below - so the thinner answer is never given silently.
 * **Standalone.** A file belonging to no build, to no such project, and declaring no project
   of its own is still checked, on
-  its own, but only for what one file can decide. The ten checks that need every component
+  its own, but only for what one file can decide. The nine checks that need every component
   of a project - ``unknown-type``, ``unknown-unit``, ``unknown-section``,
   ``unknown-constant``, ``unknown-raster``, ``unknown-extension``, ``missing-producer``,
-  ``unknown-reference``, ``unused-output`` and ``incomplete-project`` - are held back,
-  because a component read alone has inputs nobody produces and outputs nobody reads by
-  construction rather than by mistake. Each check declares whether it needs the whole
-  project, so the two modes cannot drift apart.
+  ``unknown-reference`` and ``unused-output`` - are held back, because a component read alone
+  has inputs nobody produces and outputs nobody reads by construction rather than by mistake.
+  A declaration one of them drops is dropped in silence too: ``incomplete-project`` says that
+  the dictionary is a variable short, and the file that declares the constant, the raster or
+  the type is simply one this server was not shown. Each check declares whether it needs the
+  whole project, so the two modes cannot drift apart.
 
 What the server runs
 --------------------

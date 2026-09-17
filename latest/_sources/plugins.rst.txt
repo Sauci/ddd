@@ -37,7 +37,10 @@ installed. A sub-project may name plugins too, and the set in play is the union.
 the generation when a plugin changes exactly as it does when a component does.
 
 ``extensions`` on the project holds each plugin's settings, keyed by the plugin's name and
-validated against its project model with defaults filled in. A definition states its block
+validated against its project model with defaults filled in. The key is spelled the way a
+plugin's ``name`` is - ``[a-z][a-z0-9_]*`` - so a block keyed ``my-plugin`` or ``Layout``,
+which no plugin could ever claim, is refused where it is written instead of being carried to
+the end of the run as ``unknown-extension``. A definition states its block
 under the same key:
 
 .. code-block:: json

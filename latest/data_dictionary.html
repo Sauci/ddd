@@ -464,7 +464,7 @@ than half way through a jinja template.</p>
 <p>What <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> writes and every backend reads. Unlike the description files, this one
 is produced rather than authored: every derived property is already worked out, so a
 consumer never has to repeat the resolution and two consumers can never disagree about it.</p>
-<div class="graphviz"><img src="_images/graphviz-d0ceb1542c047e32cae334b22e581afbe1423519.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<div class="graphviz"><img src="_images/graphviz-676f806eb330f3ba90d6b52ec70f96066faf4d37.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -565,7 +565,10 @@ a string exists. A byte has no reading of its&amp;#xA;own, so no reading is prod
    &quot;ddd.ir.ResolvedMember&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedMember&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;type&lt;/td&gt;&lt;td port=&quot;type&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;external&lt;/td&gt;&lt;td port=&quot;external&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;header&lt;/td&gt;&lt;td port=&quot;header&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;bits&lt;/td&gt;&lt;td port=&quot;bits&quot;&gt;int | None&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.ir.ResolvedMember&amp;#xA;&amp;#xA;One member of a structure, as the c templates need it to declare the member.&amp;#xA;&amp;#xA;Only what a \
 declaration takes. The meaning of the member - its unit, its conversion, its&amp;#xA;limits - travels with the *leaf* instead, because \
-that is the form the a2l consumes and&amp;#xA;there is no second place a reader should have to look.&amp;#xA;&quot;];
+that is the form the a2l consumes and&amp;#xA;there is no second place a reader should have to look.&amp;#xA;&amp;#xA;Exactly one of ``datatype``, ``\
+type`` and ``external`` is stated: a member holds a value&amp;#xA;of a base datatype, is a structure, or is storage of a type DDD does \
+not describe. A&amp;#xA;member stating none of them would be storage with no size, no meaning and no name, which&amp;#xA;a consumer of this \
+document has nothing to do with.&amp;#xA;&quot;];
    &quot;ddd.ir.ResolvedObject&quot;:conversion:e -&gt; &quot;ddd.models.conversion.EnumConversion&quot;:_root:w   [arrowhead=noneteetee,
       arrowtail=nonenone];
    &quot;ddd.ir.ResolvedObject&quot;:conversion:e -&gt; &quot;ddd.models.conversion.IdentityConversion&quot;:_root:w   [arrowhead=noneteetee,
@@ -683,7 +686,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"leaves"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Every member of every structured variable, flattened, sorted by path.\n\nWritten out rather than worked out on demand, because the dictionary is a produced\ndocument: a generator DDD does not ship reads it without importing python, and no backend\nshould repeat resolution the analysis has already done."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Every member of every structured variable, flattened, sorted by path.\n\nBy path with every ``[n]`` in it read as the number it is, so the elements of an array of\nstructures are in the order they are stored in rather than in the order their spellings\nhappen to sort in: ``[2]`` before ``[10]``.\n\nWritten out rather than worked out on demand, because the dictionary is a produced\ndocument: a generator DDD does not ship reads it without importing python, and no backend\nshould repeat resolution the analysis has already done."</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">            </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/ResolvedLeaf"</span>
 <span class="w">         </span><span class="p">},</span>
@@ -730,7 +733,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">            </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
-<span class="w">                     </span><span class="nt">"pattern"</span><span class="p">:</span><span class="w"> </span><span class="s2">"^%\\d*\\.\\d+$"</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"pattern"</span><span class="p">:</span><span class="w"> </span><span class="s2">"^%[0-9]*\\.[0-9]+$"</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -885,10 +888,17 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
 <span class="w">                     </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                     </span><span class="p">},</span>
 <span class="w">                     </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The enumerators as a ``{\"NAME\": value}`` mapping."</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"minProperties"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"propertyNames"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maxLength"</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">"minLength"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">"pattern"</span><span class="p">:</span><span class="w"> </span><span class="s2">"^[A-Za-z_][A-Za-z0-9_]*$"</span>
+<span class="w">                     </span><span class="p">},</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
 <span class="w">                  </span><span class="p">}</span>
 <span class="w">               </span><span class="p">],</span>
@@ -916,7 +926,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; two enumerators of one enum sharing one is reported as a warning.\n\n``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and\noccasionally meant as an alias - but the a2l table then offers a calibration tool two\nnames for one reading.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; two enumerators of one enum sharing one is reported as a warning.\n\n``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and\noccasionally meant as an alias - but the a2l table then offers a calibration tool two\nnames for one reading.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it.\n\nA whole number written without a decimal point: ``4``, not ``4.0``, which the published\nschema accepts and the loader refuses."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
@@ -1505,7 +1515,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"ResolvedMember"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"One member of a structure, as the c templates need it to declare the member.\n\nOnly what a declaration takes. The meaning of the member - its unit, its conversion, its\nlimits - travels with the *leaf* instead, because that is the form the a2l consumes and\nthere is no second place a reader should have to look."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"One member of a structure, as the c templates need it to declare the member.\n\nOnly what a declaration takes. The meaning of the member - its unit, its conversion, its\nlimits - travels with the *leaf* instead, because that is the form the a2l consumes and\nthere is no second place a reader should have to look.\n\nExactly one of ``datatype``, ``type`` and ``external`` is stated: a member holds a value\nof a base datatype, is a structure, or is storage of a type DDD does not describe. A\nmember stating none of them would be storage with no size, no meaning and no name, which\na consumer of this document has nothing to do with."</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">            </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Name of the member, as it is written in the c struct."</span><span class="p">,</span>
@@ -1543,7 +1553,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">                  </span><span class="p">}</span>
 <span class="w">               </span><span class="p">],</span>
 <span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Name of the structure this member is, when it is one; ``None`` when it is a datatype."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Name of the structure this member is, when it is one; ``None`` when it is a datatype.\n\nThe name as the types file spells it, which in a dictionary carrying an ``unknown-type``\nerror may be a name no ``types`` entry answers: the member says what it was declared as,\nand the finding says that nothing declares it."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Type"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"external"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
@@ -2088,10 +2098,16 @@ before the one that contains it.</p>
 <dt class="sig sig-object py" id="ddd.ir.DataDictionary.leaves">
 <span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">leaves</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">ResolvedLeaf</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">()</span></span><a class="headerlink" href="#ddd.ir.DataDictionary.leaves" title="Link to this definition"></a></dt>
 <dd><p>Every member of every structured variable, flattened, sorted by path.</p>
+<p>By path with every <code class="docutils literal notranslate"><span class="pre">[n]</span></code> in it read as the number it is, so the elements of an array of
+structures are in the order they are stored in rather than in the order their spellings
+happen to sort in: <code class="docutils literal notranslate"><span class="pre">[2]</span></code> before <code class="docutils literal notranslate"><span class="pre">[10]</span></code>.</p>
 <p>Written out rather than worked out on demand, because the dictionary is a produced
 document: a generator DDD does not ship reads it without importing python, and no backend
 should repeat resolution the analysis has already done.</p>
 <p>Every member of every structured variable, flattened, sorted by path.</p>
+<p>By path with every <code class="docutils literal notranslate"><span class="pre">[n]</span></code> in it read as the number it is, so the elements of an array of
+structures are in the order they are stored in rather than in the order their spellings
+happen to sort in: <code class="docutils literal notranslate"><span class="pre">[2]</span></code> before <code class="docutils literal notranslate"><span class="pre">[10]</span></code>.</p>
 <p>Written out rather than worked out on demand, because the dictionary is a produced
 document: a generator DDD does not ship reads it without importing python, and no backend
 should repeat resolution the analysis has already done.</p>
@@ -2427,7 +2443,7 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
-<span class="w">                     </span><span class="nt">"pattern"</span><span class="p">:</span><span class="w"> </span><span class="s2">"^%\\d*\\.\\d+$"</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"pattern"</span><span class="p">:</span><span class="w"> </span><span class="s2">"^%[0-9]*\\.[0-9]+$"</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -2505,10 +2521,17 @@ out.&amp;#xA;&quot;];
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
 <span class="w">                     </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                     </span><span class="p">},</span>
 <span class="w">                     </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The enumerators as a ``{\"NAME\": value}`` mapping."</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"minProperties"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"propertyNames"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maxLength"</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">"minLength"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">"pattern"</span><span class="p">:</span><span class="w"> </span><span class="s2">"^[A-Za-z_][A-Za-z0-9_]*$"</span>
+<span class="w">                     </span><span class="p">},</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
 <span class="w">                  </span><span class="p">}</span>
 <span class="w">               </span><span class="p">],</span>
@@ -2536,7 +2559,7 @@ out.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; two enumerators of one enum sharing one is reported as a warning.\n\n``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and\noccasionally meant as an alias - but the a2l table then offers a calibration tool two\nnames for one reading.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; two enumerators of one enum sharing one is reported as a warning.\n\n``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and\noccasionally meant as an alias - but the a2l table then offers a calibration tool two\nnames for one reading.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it.\n\nA whole number written without a decimal point: ``4``, not ``4.0``, which the published\nschema accepts and the loader refuses."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>

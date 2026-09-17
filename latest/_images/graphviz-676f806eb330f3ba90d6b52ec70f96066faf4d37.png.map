@@ -113,6 +113,11 @@ One member of a structure, as the c templates need it to declare the member.
 Only what a declaration takes. The meaning of the member &#45; its unit, its conversion, its
 limits &#45; travels with the *leaf* instead, because that is the form the a2l consumes and
 there is no second place a reader should have to look.
+
+Exactly one of ``datatype``, ``type`` and ``external`` is stated: a member holds a value
+of a base datatype, is a structure, or is storage of a type DDD does not describe. A
+member stating none of them would be storage with no size, no meaning and no name, which
+a consumer of this document has nothing to do with.
 " alt="" coords="1289,2056,1567,2308"/>
 <area shape="rect" id="node17" title="ddd.models.conversion.Enumerator
 

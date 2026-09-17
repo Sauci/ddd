@@ -102,7 +102,7 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">field_validator</span><span class="p">,</span> <span class="n">model_validator</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileRoot</span><span class="p">,</span> <span class="n">Identifier</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileRoot</span><span class="p">,</span> <span class="n">Identifier</span><span class="p">,</span> <span class="n">RasterName</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConstantDeclaration</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.objects</span><span class="w"> </span><span class="kn">import</span> <span class="n">AnyDataObject</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">AnyType</span><span class="p">,</span> <span class="n">check_distinct_type_names</span>
@@ -144,9 +144,9 @@
 <span class="w">    </span><span class="sd">"""C preprocessor expression wrapping the generated declaration, e.g. ``defined(FEAT_X)``.</span>
 
 <span class="sd">    One expression, written as it would appear after ``#if``. It is emitted verbatim into the</span>
-<span class="sd">    generated files, so it cannot span lines and cannot contain ``#``, ``//``, ``/*`` or</span>
-<span class="sd">    ``*/`` - each of which would let a description file put arbitrary directives, or live</span>
-<span class="sd">    code, into somebody else's build.</span>
+<span class="sd">    generated files, so it cannot span lines, cannot end in ``\\`` and cannot contain ``#``,</span>
+<span class="sd">    ``//``, ``/*`` or ``*/`` - each of which would let a description file put arbitrary</span>
+<span class="sd">    directives, or live code, into somebody else's build.</span>
 <span class="sd">    """</span>
 
     <span class="n">definition</span><span class="p">:</span> <span class="n">AnyDataObject</span>
@@ -159,10 +159,10 @@
 
 <span class="sd">        The text is emitted verbatim into ``#if &lt;condition&gt;`` and into the trailing</span>
 <span class="sd">        ``#endif /* &lt;condition&gt; */`` of every generated file, and into a comment in the a2l.</span>
-<span class="sd">        A line break would put arbitrary directives inside the guarded region, and a comment</span>
-<span class="sd">        marker would close the trailer early and leave whatever follows as live code -</span>
-<span class="sd">        neither of which the author of a description file should be able to do to somebody</span>
-<span class="sd">        else's build.</span>
+<span class="sd">        A line break would put arbitrary directives inside the guarded region, a comment</span>
+<span class="sd">        marker would close the trailer early and leave whatever follows as live code, and a</span>
+<span class="sd">        trailing backslash splices the line after the ``#if`` into the directive - none of</span>
+<span class="sd">        which the author of a description file should be able to do to somebody else's build.</span>
 <span class="sd">        """</span>
         <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">None</span>
@@ -176,6 +176,12 @@
             <span class="k">if</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">stripped</span><span class="p">:</span>
                 <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"a condition cannot contain '</span><span class="si">{</span><span class="n">token</span><span class="si">}</span><span class="s2">'"</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">stripped</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"</span><span class="se">\\</span><span class="s2">"</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="s2">"a condition cannot end in a backslash, which would splice the line after "</span>
+                <span class="s2">"the '#if' into it"</span>
+            <span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">stripped</span></div>
 
 
@@ -193,7 +199,7 @@
     <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
 <span class="w">    </span><span class="sd">"""Free text describing the component, offered to the c templates."""</span>
 
-    <span class="n">raster</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">raster</span><span class="p">:</span> <span class="n">RasterName</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""Default measurement raster for every variable this component produces.</span>
 
 <span class="sd">    The common case stated once: a component updates nearly all of its measurements in one</span>

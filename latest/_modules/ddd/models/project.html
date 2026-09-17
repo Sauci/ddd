@@ -101,7 +101,7 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">StringConstraints</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileRoot</span><span class="p">,</span> <span class="n">Identifier</span><span class="p">,</span> <span class="n">hash_excluding_mappings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileRoot</span><span class="p">,</span> <span class="n">Identifier</span><span class="p">,</span> <span class="n">PluginName</span><span class="p">,</span> <span class="n">hash_excluding_mappings</span>
 
 
 <div class="viewcode-block" id="Project">
@@ -138,7 +138,7 @@
 <span class="sd">    union, because the blocks a plugin interprets may sit in any component.</span>
 <span class="sd">    """</span>
 
-    <span class="n">extensions</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">extensions</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="n">PluginName</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
 <span class="w">    </span><span class="sd">"""The settings of each plugin, keyed by plugin name: ``{"layout": {"max_key": 4095}}``.</span>
 
 <span class="sd">    Validated against the plugin's project model, defaults filled in, and carried into the</span>

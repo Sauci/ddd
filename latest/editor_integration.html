@@ -242,13 +242,15 @@ A description the server cannot read, because a plugin of its own raises, is nam
 standalone checks below - so the thinner answer is never given silently.</p></li>
 <li><p><strong>Standalone.</strong> A file belonging to no build, to no such project, and declaring no project
 of its own is still checked, on
-its own, but only for what one file can decide. The ten checks that need every component
+its own, but only for what one file can decide. The nine checks that need every component
 of a project - <code class="docutils literal notranslate"><span class="pre">unknown-type</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-section</span></code>,
 <code class="docutils literal notranslate"><span class="pre">unknown-constant</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-raster</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-extension</span></code>, <code class="docutils literal notranslate"><span class="pre">missing-producer</span></code>,
-<code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code>, <code class="docutils literal notranslate"><span class="pre">unused-output</span></code> and <code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code> - are held back,
-because a component read alone has inputs nobody produces and outputs nobody reads by
-construction rather than by mistake. Each check declares whether it needs the whole
-project, so the two modes cannot drift apart.</p></li>
+<code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code> and <code class="docutils literal notranslate"><span class="pre">unused-output</span></code> - are held back, because a component read alone
+has inputs nobody produces and outputs nobody reads by construction rather than by mistake.
+A declaration one of them drops is dropped in silence too: <code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code> says that
+the dictionary is a variable short, and the file that declares the constant, the raster or
+the type is simply one this server was not shown. Each check declares whether it needs the
+whole project, so the two modes cannot drift apart.</p></li>
 </ul>
 </section>
 <section id="what-the-server-runs">

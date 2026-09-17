@@ -522,7 +522,11 @@ would fight over. Use a single-config generator such as Ninja.</p>
 directory, which has to exist, or a dotted module name passed through as written. They
 are written into the <code class="docutils literal notranslate"><span class="pre">plugins</span></code> of the generated project description in this order,
 the schemas are closed over them, and a path among them is a dependency of the
-generation. Refused together with <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code>, whose file names its own.</p></td>
+generation. Refused together with <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code>, whose file names its own.
+<strong>Configuring imports them</strong>, as any <code class="docutils literal notranslate"><span class="pre">ddd</span></code> command over the project does (see
+<a class="reference internal" href="plugins.html"><span class="doc">Plugins</span></a>): the module runs when <code class="docutils literal notranslate"><span class="pre">cmake</span></code> runs, not only when the build
+generates. The same is true of the plugins a <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> file names, which the
+configure-time <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> reads it to find.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NAME</span> <span class="pre">&lt;name&gt;</span></code></p></td>
 <td><p>project name, and therefore the name of the a2l file and of the dictionary beside it.
@@ -543,7 +547,8 @@ file.</p></td>
 editor validation; they are rewritten on every configure, so they cannot describe a
 version of DDD that is no longer installed. They are closed over the project’s plugins
 - the <code class="docutils literal notranslate"><span class="pre">PLUGINS</span></code> given here, or the ones a <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> file names - so an editor
-validates a plugin’s block as it is typed.</p></td>
+validates a plugin’s block as it is typed. Writing them imports each plugin, at
+configure time, as the <code class="docutils literal notranslate"><span class="pre">PLUGINS</span></code> row above says.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span> <span class="pre">&lt;file&gt;</span></code></p></td>
 <td><p>the symbol to address map filling the addresses into the a2l, written by a step of the
@@ -778,6 +783,19 @@ repository rather than writing an invocation of its own:</p>
 <p>pre-commit passes the staged <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> files, and the hook stamps an id into every
 producing declaration that has none. A project, types or units file among them is a no-op: only
 a component file declares data objects.</p>
+<p>The hook is a <code class="docutils literal notranslate"><span class="pre">language:</span> <span class="pre">python</span></code> hook, so pre-commit builds it an environment of its own out
+of whichever interpreter it finds, and DDD needs <strong>Python 3.12 or newer</strong>. On a machine whose
+default <code class="docutils literal notranslate"><span class="pre">python3</span></code> is older - Ubuntu 22.04 ships 3.10 - <code class="docutils literal notranslate"><span class="pre">pre-commit</span> <span class="pre">install-hooks</span></code> fails
+inside pip with “requires a different Python” and names no file of yours. Pin the interpreter
+in the hook entry rather than in the machine:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">repos</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">repo</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://github.com/Sauci/ddd</span>
+<span class="w">    </span><span class="nt">rev</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;the release you pin&gt;</span>
+<span class="w">    </span><span class="nt">hooks</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ddd-id</span>
+<span class="w">        </span><span class="nt">language_version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python3.12</span>
+</pre></div>
+</div>
 <p><strong>The commit then fails, and that is the intended behaviour.</strong> pre-commit reports <code class="docutils literal notranslate"><span class="pre">files</span> <span class="pre">were</span>
 <span class="pre">modified</span> <span class="pre">by</span> <span class="pre">this</span> <span class="pre">hook</span></code> whenever a hook changes something on disk, even when the hook itself
 succeeded. So the new ids arrive in the working tree for their author to read and stage, rather

@@ -61,6 +61,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#why-the-templates-belong-to-the-project">Why the templates belong to the project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-a2l-file-is-not-templated">The a2l file is not templated</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#why-jinja2">Why jinja2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-template-directory-is-code">A template directory is code</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#how-the-template-directory-is-read">How the template directory is read</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#what-a-template-receives">What a template receives</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#the-model">The model</a></li>
@@ -174,6 +175,19 @@ and <code class="docutils literal notranslate"><span class="pre">lstrip_blocks</
 line and an indented <code class="docutils literal notranslate"><span class="pre">{%</span> <span class="pre">if</span> <span class="pre">%}</span></code> does not leave its indentation behind; the trailing newline
 of a template is kept, and a rendered file that does not end in one gets one added.
 Undefined values are strict, which is the subject of a section of its own below.</p>
+</section>
+<section id="a-template-directory-is-code">
+<h2>A template directory is code<a class="headerlink" href="#a-template-directory-is-code" title="Link to this heading"></a></h2>
+<p>That environment is an ordinary <code class="docutils literal notranslate"><span class="pre">jinja2.Environment</span></code> and not a sandboxed one, so a template
+runs with the privileges of the run that renders it: <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">c</span> <span class="pre">-t</span> <span class="pre">tools/templates</span></code> is
+running what is in <code class="docutils literal notranslate"><span class="pre">tools/templates</span></code>, exactly as naming a <a class="reference internal" href="plugins.html"><span class="doc">plugin</span></a> runs the
+plugin’s module. The plugin rule is easy to accept - a plugin is obviously python - and this
+one is easy to miss, because a template reads as data: it is the c file you want with holes
+in it, and the holes are expressions the engine evaluates. Both are the same bargain, and it
+is the ordinary one for a build: the templates of a repository are as much part of what
+<code class="docutils literal notranslate"><span class="pre">cmake</span></code>, <code class="docutils literal notranslate"><span class="pre">make</span></code> or a ci job executes as its scripts are. Review a template directory the
+way you review a plugin, point <code class="docutils literal notranslate"><span class="pre">-t</span></code> at one you would run a build out of, and treat a
+template arriving from elsewhere as you would treat a patch.</p>
 </section>
 <section id="how-the-template-directory-is-read">
 <h2>How the template directory is read<a class="headerlink" href="#how-the-template-directory-is-read" title="Link to this heading"></a></h2>

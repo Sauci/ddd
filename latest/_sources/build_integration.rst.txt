@@ -436,6 +436,10 @@ Options
        are written into the ``plugins`` of the generated project description in this order,
        the schemas are closed over them, and a path among them is a dependency of the
        generation. Refused together with ``PROJECT``, whose file names its own.
+       **Configuring imports them**, as any ``ddd`` command over the project does (see
+       :doc:`plugins`): the module runs when ``cmake`` runs, not only when the build
+       generates. The same is true of the plugins a ``PROJECT`` file names, which the
+       configure-time ``ddd sources`` reads it to find.
    * - ``NAME <name>``
      - project name, and therefore the name of the a2l file and of the dictionary beside it.
        Defaults to the image name without its extension, with anything that is not a c
@@ -452,7 +456,8 @@ Options
        editor validation; they are rewritten on every configure, so they cannot describe a
        version of DDD that is no longer installed. They are closed over the project's plugins
        - the ``PLUGINS`` given here, or the ones a ``PROJECT`` file names - so an editor
-       validates a plugin's block as it is typed.
+       validates a plugin's block as it is typed. Writing them imports each plugin, at
+       configure time, as the ``PLUGINS`` row above says.
    * - ``ADDRESS_MAP <file>``
      - the symbol to address map filling the addresses into the a2l, written by a step of the
        project's own (below). A map inside the build tree that does not exist at configure
@@ -693,6 +698,21 @@ repository rather than writing an invocation of its own:
 pre-commit passes the staged ``*.ddd.json`` files, and the hook stamps an id into every
 producing declaration that has none. A project, types or units file among them is a no-op: only
 a component file declares data objects.
+
+The hook is a ``language: python`` hook, so pre-commit builds it an environment of its own out
+of whichever interpreter it finds, and DDD needs **Python 3.12 or newer**. On a machine whose
+default ``python3`` is older - Ubuntu 22.04 ships 3.10 - ``pre-commit install-hooks`` fails
+inside pip with "requires a different Python" and names no file of yours. Pin the interpreter
+in the hook entry rather than in the machine:
+
+.. code-block:: yaml
+
+   repos:
+     - repo: https://github.com/Sauci/ddd
+       rev: <the release you pin>
+       hooks:
+         - id: ddd-id
+           language_version: python3.12
 
 **The commit then fails, and that is the intended behaviour.** pre-commit reports ``files were
 modified by this hook`` whenever a hook changes something on disk, even when the hook itself

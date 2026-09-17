@@ -262,7 +262,10 @@ colliding on one identifier. Which checks a run actually registers is only known
 plugins are loaded, which happens after the command line is parsed, so an override naming a
 plugin check is accepted provisionally at that point and verified once the project is read;
 one naming a check no loaded plugin registered is then the same usage error an unknown
-built-in check is.</p>
+built-in check is. It is verified whether or not the read found anything - the plugins are
+loaded before the rest of the project, so a typo does not wait for the first run that happens
+to load cleanly - and a run given a baseline as well is held to the baseline’s plugins too,
+which it loaded to analyse it.</p>
 <section id="checking-a-component-on-its-own">
 <h3>Checking a component on its own<a class="headerlink" href="#checking-a-component-on-its-own" title="Link to this heading"></a></h3>
 <p>Checking a single component before it is integrated is the one case where a relaxed policy is
@@ -400,7 +403,9 @@ utf-8. The finding carries the line and the column the parser stopped at.</p></t
 <td><p>error (fixed)</p></td>
 <td><p>the top level of the document is not a json object, or names none of the description
 kinds (<code class="docutils literal notranslate"><span class="pre">project</span></code>, <code class="docutils literal notranslate"><span class="pre">component</span></code>, <code class="docutils literal notranslate"><span class="pre">types</span></code>, <code class="docutils literal notranslate"><span class="pre">units</span></code>, <code class="docutils literal notranslate"><span class="pre">sections</span></code>,
-<code class="docutils literal notranslate"><span class="pre">constants</span></code>, <code class="docutils literal notranslate"><span class="pre">rasters</span></code>), or several of them at once.</p></td>
+<code class="docutils literal notranslate"><span class="pre">constants</span></code>, <code class="docutils literal notranslate"><span class="pre">rasters</span></code>), or several of them at once. A dumped data dictionary
+handed to a command that reads descriptions is recognised as one and named as one,
+rather than counted as a description stating three kinds at once.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">file-extension</span></code></p></td>
 <td><p>error</p></td>
@@ -912,9 +917,10 @@ probably not the predecessor of this candidate.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">missing-plugin</span></code></p></td>
 <td><p>warning</p></td>
-<td><p>a compared dictionary records a plugin this run has not loaded, so that plugin’s
-comparison rules did not run. Once per plugin and side, because a comparison that
-silently skipped a rule would be a confident verdict with a hole in it.</p></td>
+<td><p>a compared dictionary records a plugin that is not among the candidate’s, so that
+plugin’s comparison rules did not run. Once per plugin and side, reported at the file
+that records it, because a comparison that silently skipped a rule would be a
+confident verdict with a hole in it.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">added-object</span></code></p></td>
 <td><p>info</p></td>

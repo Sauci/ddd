@@ -233,8 +233,8 @@ them together with everything else.
      - the two sides of a comparison describe differently named projects
    * - warning
      - ``missing-plugin``
-     - a compared dictionary records a plugin this run has not loaded, so that plugin's
-       comparison rules did not run
+     - a compared dictionary records a plugin that is not among the candidate's, so that
+       plugin's comparison rules did not run
    * - info
      - ``added-object``
      - the candidate declares an object the baseline did not
@@ -625,11 +625,14 @@ A baseline that cannot be read at all is a different matter, and it stops the ru
 .. code-block:: text
 
    $ ddd compare examples/pressure/release/PressureLoop-1.3.0.json examples/pressure/work/pressure.ddd.json
-   examples/pressure/release/PressureLoop-1.3.0.json: error[file-not-found]: in the baseline: file 'examples/pressure/release/PressureLoop-1.3.0.json' does not exist
+   examples/pressure/release/PressureLoop-1.3.0.json: error[file-not-found]: in the baseline: file '/home/you/ddd/examples/pressure/release/PressureLoop-1.3.0.json' does not exist
    1 error
 
 The ``in the baseline:`` prefix is there so that a missing or malformed file on the reference
-side is never mistaken for a problem with the delivery being judged.
+side is never mistaken for a problem with the delivery being judged. The message spells the
+file out in full, as it does for a description that cannot be found: what a finding is
+*located* at is an absolute path - rendered here against the directory the command ran in -
+and a file that is not there is worth naming where it was looked for.
 
 The baseline's warnings are not findings of this run
 ----------------------------------------------------
@@ -656,15 +659,28 @@ Used as the baseline of a comparison, that warning does not reappear:
 .. code-block:: text
 
    $ ddd compare examples/pressure/v1.3/pressure.ddd.json examples/pressure/release/pressure.ddd.json
-   pressure.ddd.json can replace pressure.ddd.json
+   examples/pressure/release/pressure.ddd.json can replace examples/pressure/v1.3/pressure.ddd.json
+
+The verdict line names the two files rather than the two projects, because two deliveries of
+one project carry one project name - and, as here, one file name too, so where the two file
+names are the same it spells the paths out as they were typed.
+
+Neither does this run's ``-W`` reach it, for the same reason and in both directions.
+``-W unused-output=error`` is a run asking to be told about *its own* unread outputs; applied
+to the baseline as well it promoted the ``ValveDuty`` above into an error about a delivery
+that went out long ago, carried it over and refused a verdict. ``--standalone`` does reach it,
+because that states how the file was handed over - a component read on its own - and the
+baseline was handed over the same way.
 
 Its errors are another matter. A baseline that could not be read, as in the missing-file
 example above, or whose own components disagree has no dictionary that can be trusted, so
-every error it produces is carried over under the ``in the baseline:`` prefix, and the run
-fails on them: with a description on the candidate side the comparison is not attempted and
-no verdict is printed, and with an archived dump on the candidate side the errors are reported
-beside the comparison and the verdict is a refusal. A baseline that is to be compared against
-has to be one that checks clean of errors on its own.
+every error it produces is carried over under the ``in the baseline:`` prefix, at the severity
+its own analysis gave it, and the run fails on them: with a description on the candidate side
+the comparison is not attempted and no verdict is printed, and with an archived dump on the
+candidate side the errors are reported beside the comparison and the verdict is a refusal.
+A ``-W`` of this run does not relax one of them either - the line saying the dictionary the
+comparison rests on cannot be trusted is not this run's to soften. A baseline that is to be
+compared against has to be one that checks clean of errors on its own.
 
 In a build pipeline
 -------------------

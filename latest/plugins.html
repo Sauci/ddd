@@ -202,8 +202,10 @@ underline in the editor; it is a recommendation, not a rule.</p>
 cannot shadow a built-in check, two plugins cannot collide, and a severity override targets
 one exactly as it targets a built-in check - <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">layout/duplicate-key=warning</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--strict</span></code>, <code class="docutils literal notranslate"><span class="pre">ignore</span></code>. The plugin’s checks are registered when the plugin is loaded, so an
-override naming one is accepted first and verified once the project is read; one that no
-loaded plugin registered is a usage error, the same outcome an unknown built-in check gets.</p>
+override naming one is accepted first and verified once the project is read - whether or not
+the read reported findings of its own - and one that no loaded plugin registered is a usage
+error, the same outcome an unknown built-in check gets. A run given a baseline is held to the
+baseline’s plugins as well, which it loaded to analyse it.</p>
 <section id="the-hooks">
 <h3>The hooks<a class="headerlink" href="#the-hooks" title="Link to this heading"></a></h3>
 <p>Each hook receives one context object rather than positional arguments, so that a field can
@@ -240,15 +242,28 @@ finding already in the bag. A hook reports with <code class="docutils literal no
 <span class="pre">notes)</span></code>, exactly as a built-in check does. <code class="docutils literal notranslate"><span class="pre">locate</span></code> returns the producing declaration
 under <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code>, and the dump file when the dictionary was read back from an archive,
 because a dump records a component’s file name and not the position of each declaration.</p>
+<p><strong>The dictionary a hook receives is the one every later step consumes.</strong> It is handed over
+as it is, not as a copy: the models are frozen, but the <code class="docutils literal notranslate"><span class="pre">extensions</span></code> blocks inside them are
+ordinary dictionaries, so a hook that writes into one has changed what the backends render,
+what <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> prints and archives, and what <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> reads back. That is worth
+knowing in both directions. A hook that means to <em>report</em> on the project must not assign, and
+a hook that needs to compute something for its own artefact should hand it to the artefact
+rather than leave it in a block - a later release that copies the dictionary between the two
+steps would take the value with it. The blocks are not offered as a channel between hooks.</p>
 <p><code class="docutils literal notranslate"><span class="pre">compare</span></code> runs after the built-in comparison. The plugins in play are the candidate’s: a
 project description names its own, and an archived dump has <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span> <span class="pre">--plugin</span></code>. A
-compared dictionary that records a plugin the run has not loaded is <code class="docutils literal notranslate"><span class="pre">missing-plugin</span></code>, a
-warning saying that plugin’s rules did not run, so that a comparison can never silently skip
-one.</p>
+compared dictionary that records a plugin that is not among the candidate’s is
+<code class="docutils literal notranslate"><span class="pre">missing-plugin</span></code>, a warning saying that plugin’s rules did not run, so that a comparison
+can never silently skip one; it is reported at the file that records the plugin. A plugin
+only the baseline names is one the run did load - for the baseline’s own analysis - and
+whose comparison rules still did not run, which is why the warning says what is not in play
+rather than what was never loaded, and why a <code class="docutils literal notranslate"><span class="pre">-W</span></code> naming one of its checks is accepted.</p>
 <p><code class="docutils literal notranslate"><span class="pre">backend</span></code> returns an object satisfying the <code class="docutils literal notranslate"><span class="pre">Backend</span></code> protocol - a <code class="docutils literal notranslate"><span class="pre">name</span></code> and a
 <code class="docutils literal notranslate"><span class="pre">generate(dictionary,</span> <span class="pre">output_dir)</span></code> returning <code class="docutils literal notranslate"><span class="pre">GeneratedFile</span></code> entries - and is selected as
-<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">&lt;name&gt;</span></code>, with the common options <code class="docutils literal notranslate"><span class="pre">-o</span></code>, <code class="docutils literal notranslate"><span class="pre">--dry-run</span></code> and <code class="docutils literal notranslate"><span class="pre">--force</span></code>, and
-the severity and format options every analysis takes, <code class="docutils literal notranslate"><span class="pre">-W</span></code>, <code class="docutils literal notranslate"><span class="pre">--strict</span></code> and <code class="docutils literal notranslate"><span class="pre">--format</span></code>.
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">&lt;name&gt;</span></code>, with the common options <code class="docutils literal notranslate"><span class="pre">-o</span></code>, <code class="docutils literal notranslate"><span class="pre">--dry-run</span></code>, <code class="docutils literal notranslate"><span class="pre">--force</span></code> and
+<code class="docutils literal notranslate"><span class="pre">--dictionary</span> <span class="pre">FILE</span></code>, which writes the resolved dictionary in the same write as the
+artefact, and the severity and format options every analysis takes, <code class="docutils literal notranslate"><span class="pre">-W</span></code>, <code class="docutils literal notranslate"><span class="pre">--strict</span></code> and
+<code class="docutils literal notranslate"><span class="pre">--format</span></code>.
 A plugin’s artefact takes no option of its own, and none of the built-in artefacts’ either:
 <code class="docutils literal notranslate"><span class="pre">-t</span></code> names the templates the c sources are rendered from, and <code class="docutils literal notranslate"><span class="pre">--address-map</span></code> and
 <code class="docutils literal notranslate"><span class="pre">--byte-order</span></code> belong to the a2l, so each is refused here as an unrecognized argument. It
@@ -283,6 +298,14 @@ rather than ending the run with that code and printing nothing. The language ser
 no usage error to give, reports either of them as a <code class="docutils literal notranslate"><span class="pre">plugin-invalid</span></code> finding and keeps
 serving the workspace; and a module body that exits while it is imported is <code class="docutils literal notranslate"><span class="pre">plugin-invalid</span></code>
 exactly as one that raises there.</p>
+<p>A hook, and the backend a <code class="docutils literal notranslate"><span class="pre">backend</span></code> hook returns, runs with <code class="docutils literal notranslate"><span class="pre">sys.stdout</span></code> bound to
+<code class="docutils literal notranslate"><span class="pre">sys.stderr</span></code>. Standard output is a document wherever DDD writes one there - the
+<code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code> report, the dictionary <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> prints, the json-rpc wire of the
+language server - and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">-o</span></code> promises it empty, so a <code class="docutils literal notranslate"><span class="pre">print</span></code> left in a hook would
+otherwise be read as part of one of them and a build’s <code class="docutils literal notranslate"><span class="pre">json.loads</span></code> would fail on it. It is
+redirected rather than silenced: what a plugin prints is still its author’s to read, on the
+stream every other word DDD says about a run goes to. A plugin that wants to write a file of
+its own writes one; a plugin that wants to be quiet prints nothing.</p>
 <p>The models are the one place where raising is part of the contract. A <code class="docutils literal notranslate"><span class="pre">&#64;field_validator</span></code> on
 <code class="docutils literal notranslate"><span class="pre">object_model</span></code> or <code class="docutils literal notranslate"><span class="pre">project_model</span></code> runs on every block written against it, and the
 <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> or <code class="docutils literal notranslate"><span class="pre">AssertionError</span></code> pydantic turns into a <code class="docutils literal notranslate"><span class="pre">ValidationError</span></code> is how a model
@@ -311,7 +334,15 @@ plugin’s own decision, not one the api makes for it.</p>
 <p>Naming a plugin runs it. That is true of every <code class="docutils literal notranslate"><span class="pre">ddd</span></code> command on the project, and of the
 language server, which runs the plugins of every project it analyses when a file is opened
 or saved; the <a class="reference internal" href="editor_integration.html"><span class="doc">editor page</span></a> says what that means for a repository
-you did not write, and why the server will not run there until you trust the workspace.</p>
+you did not write, and why the server will not run there until you trust the workspace. It
+is true of the cmake integration too: <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code> runs <code class="docutils literal notranslate"><span class="pre">ddd</span></code> at configure time, so
+the plugins a project names are imported when CMake runs, not only when the generation does
+(see <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>).</p>
+<p>The templates a run renders from are code in the same sense, and easier to overlook because
+a template looks like data: they are jinja2, rendered in an ordinary unsandboxed
+environment, so <code class="docutils literal notranslate"><span class="pre">-t</span></code> names a directory whose contents run with the privileges of the run.
+<a class="reference internal" href="templates.html"><span class="doc">Templates</span></a> says so beside the rest of what a template directory decides. Review one
+the way you review a plugin.</p>
 </section>
 </section>
 <section id="what-the-dictionary-carries">

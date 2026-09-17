@@ -1201,6 +1201,13 @@ hexadecimal strings, whichever the tool producing it finds easier:</p>
 <span class="p">}</span>
 </pre></div>
 </div>
+<p>A string address is written in decimal, or in hexadecimal behind a <code class="docutils literal notranslate"><span class="pre">0x</span></code> prefix, and in
+neither case anything else: the file is machine written and read by nobody, so a spelling
+nothing produces on purpose - a digit separator, a leading <code class="docutils literal notranslate"><span class="pre">+</span></code>, digits of another script -
+is refused rather than guessed at. A symbol the file states twice is refused as well, instead
+of the second address quietly winning, because two addresses for one symbol mean the map was
+merged from two sources or written twice. The file may carry a byte order mark, as every
+other file DDD reads may.</p>
 <p>Writing that file is the project’s step: DDD ships no extractor and runs no toolchain tool,
 so the map comes from whatever reads the linked image - <code class="docutils literal notranslate"><span class="pre">nm</span></code>, the map file, the debug
 information. <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a> shows one worked way of doing it, as a post-build step

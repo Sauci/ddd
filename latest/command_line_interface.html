@@ -157,7 +157,85 @@ report:</p>
 diagnostics go to standard error, so that both formats leave the dictionary alone. Given
 <code class="docutils literal notranslate"><span class="pre">-o</span></code>, the dictionary goes into that file instead and standard output stays empty; the
 diagnostics stay where they were, and in json they name the file written, with its status,
-as <code class="docutils literal notranslate"><span class="pre">generate</span></code> names its own.</p>
+under the same <code class="docutils literal notranslate"><span class="pre">generated</span></code> key <code class="docutils literal notranslate"><span class="pre">generate</span></code> uses:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd dump examples/demo/demo.ddd.json -o build/dump/demo.json --format json
+{
+  "diagnostics": [],
+  "summary": {
+    "error": 0,
+    "warning": 0,
+    "info": 0
+  },
+  "generated": [
+    {
+      "path": "build/dump/demo.json",
+      "status": "created"
+    }
+  ]
+}
+</pre></div>
+</div>
+<p>A <code class="docutils literal notranslate"><span class="pre">path</span></code> is spelled as the run was asked for it - relative when <code class="docutils literal notranslate"><span class="pre">-o</span></code> was relative - and a
+<code class="docutils literal notranslate"><span class="pre">status</span></code> is <code class="docutils literal notranslate"><span class="pre">created</span></code>, <code class="docutils literal notranslate"><span class="pre">updated</span></code> or <code class="docutils literal notranslate"><span class="pre">unchanged</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span> <span class="pre">--format</span> <span class="pre">json</span></code> answers with the project, its components and one row per variable
+beside the diagnostics. A row is the record the <a class="reference internal" href="data_dictionary.html"><span class="doc">data dictionary</span></a>
+carries for that object, so the rows come in two shapes: a member of a structured variable
+carries <code class="docutils literal notranslate"><span class="pre">path</span></code>, <code class="docutils literal notranslate"><span class="pre">instance</span></code> and <code class="docutils literal notranslate"><span class="pre">instance_id</span></code> where a plain object carries <code class="docutils literal notranslate"><span class="pre">id</span></code>. Every
+row of either shape opens with <code class="docutils literal notranslate"><span class="pre">name</span></code> - a member’s being its access path - so one key
+answers what a row is about:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd list examples/demo/demo.ddd.json --format json
+{
+  "project": "DemoDevice",
+  "components": [
+...
+  "variables": [
+    {
+      "name": "AxisA",
+...
+      "name": "Diagnosis.faults",
+      "path": "Diagnosis.faults",
+      "instance": "Diagnosis",
+...
+  "diagnostics": [],
+  "summary": {
+    "error": 0,
+    "warning": 0,
+    "info": 0
+  }
+}
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">artefacts</span> <span class="pre">--format</span> <span class="pre">json</span></code> answers with <code class="docutils literal notranslate"><span class="pre">artefacts</span></code>, one <code class="docutils literal notranslate"><span class="pre">{&quot;name&quot;,</span> <span class="pre">&quot;kind&quot;}</span></code> per
+artefact with <code class="docutils literal notranslate"><span class="pre">kind</span></code> either <code class="docutils literal notranslate"><span class="pre">built-in</span></code> or <code class="docutils literal notranslate"><span class="pre">plugin</span></code>, and <code class="docutils literal notranslate"><span class="pre">plugins_without_artefact</span></code>,
+the names the text format puts in a note:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd artefacts examples/layout/project.ddd.json --format json
+{
+  "artefacts": [
+    {
+      "name": "c",
+      "kind": "built-in"
+    },
+...
+    {
+      "name": "layout",
+      "kind": "plugin"
+    }
+  ],
+  "plugins_without_artefact": [],
+  "diagnostics": [],
+  "summary": {
+    "error": 0,
+    "warning": 0,
+    "info": 0
+  }
+}
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span> <span class="pre">--format</span> <span class="pre">json</span></code> is a list rather than an object, one entry per check, each
+carrying <code class="docutils literal notranslate"><span class="pre">check</span></code>, <code class="docutils literal notranslate"><span class="pre">default_severity</span></code>, <code class="docutils literal notranslate"><span class="pre">description</span></code>, <code class="docutils literal notranslate"><span class="pre">overridable</span></code>,
+<code class="docutils literal notranslate"><span class="pre">needs_every_component</span></code> and <code class="docutils literal notranslate"><span class="pre">comparison</span></code> - the last three being the facts the text format
+marks with <code class="docutils literal notranslate"><span class="pre">(fixed)</span></code>, <code class="docutils literal notranslate"><span class="pre">(project)</span></code> and <code class="docutils literal notranslate"><span class="pre">(comparison)</span></code>. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span> <span class="pre">--format</span> <span class="pre">json</span></code>
+carries its listing as <code class="docutils literal notranslate"><span class="pre">sources</span></code>, described with the command further down this page.</p>
 <p>The exit code is the same everywhere, which lets a build system treat DDD like a compiler:</p>
 <table class="docutils align-default">
 <colgroup>
@@ -176,8 +254,9 @@ as <code class="docutils literal notranslate"><span class="pre">generate</span><
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
 <td><p>findings: at least one diagnostic of severity <code class="docutils literal notranslate"><span class="pre">error</span></code> survived the severity policy.
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">artefacts</span></code> also exit <code class="docutils literal notranslate"><span class="pre">1</span></code> when the root file cannot be read
-at all, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span></code> when one of the files it was given was not readable as json and
-had to be skipped, which it reports without a diagnostic.</p></td>
+at all, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span></code> when one of the files it was given was not readable as json, or
+could not be written back, and had to be skipped - the others are stamped either way,
+and it reports each skipped file without a diagnostic.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">2</span></code></p></td>
 <td><p>the command line itself was wrong: a missing or malformed argument, an unknown
@@ -187,13 +266,31 @@ before any analysis, so the project was never examined and nothing but the error
 is printed. A usage error raised by a step that follows the analysis instead - a
 plugin hook that raises, an override naming a plugin check no loaded plugin
 registers, a <code class="docutils literal notranslate"><span class="pre">--renames</span></code> file, a dumped dictionary or an artefact that cannot be
-written, an address map that cannot be read, <code class="docutils literal notranslate"><span class="pre">--plugin</span></code> refused beside a
-description, or a run that would write nothing - reports the findings of the run
+written, an output path naming a file the run itself read (<code class="docutils literal notranslate"><span class="pre">dump</span> <span class="pre">-o</span></code>,
+<code class="docutils literal notranslate"><span class="pre">compare</span> <span class="pre">--renames</span></code> and <code class="docutils literal notranslate"><span class="pre">generate</span> <span class="pre">--dictionary</span></code> each refuse one, naming it, since
+nothing DDD writes is ever a file it read), an address map that cannot be read,
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span> <span class="pre">--plugin</span></code> refused beside a project description on the <em>candidate</em>
+side, which names its own plugins, or a run that would write nothing - reports the
+findings of the run
 first, in the requested format, before the error follows; the exit code is still
 <code class="docutils literal notranslate"><span class="pre">2</span></code>.</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">130</span></code></p></td>
+<td><p>the run was interrupted: Ctrl-C, or anything else that raises <code class="docutils literal notranslate"><span class="pre">KeyboardInterrupt</span></code>,
+inside DDD or inside a plugin’s hook. It is the code a shell reports for a command
+killed by <code class="docutils literal notranslate"><span class="pre">SIGINT</span></code>, and it is distinct from <code class="docutils literal notranslate"><span class="pre">1</span></code> and <code class="docutils literal notranslate"><span class="pre">2</span></code> so that a script does
+not read a run somebody stopped as a project with errors. The run prints one line,
+<code class="docutils literal notranslate"><span class="pre">ddd:</span> <span class="pre">interrupted</span></code>, and no traceback.</p></td>
+</tr>
 </tbody>
 </table>
+<p>A reader of standard output that stops reading is not an error either: <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">component</span>
+<span class="pre">|</span> <span class="pre">head</span> <span class="pre">-1</span></code> ends at <code class="docutils literal notranslate"><span class="pre">0</span></code> and in silence, where the broken pipe used to be reported as a usage
+error and failed a paging script under <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">-o</span> <span class="pre">pipefail</span></code>.</p>
+<p>Every long option is spelled in full. <code class="docutils literal notranslate"><span class="pre">argparse</span></code> offers any unambiguous prefix by default,
+and DDD turns that off: <code class="docutils literal notranslate"><span class="pre">--stand</span></code> for <code class="docutils literal notranslate"><span class="pre">--standalone</span></code> would work until the day a second
+option begins with those letters, and the script that took the offer would then fail with
+“ambiguous option” and nothing else to go on.</p>
 <section id="the-commands">
 <h2>The commands<a class="headerlink" href="#the-commands" title="Link to this heading"></a></h2>
 <table class="docutils align-default">
@@ -315,8 +412,13 @@ starting point for its own. They are an example and not a default: no run of
 </tbody>
 </table>
 <p><code class="docutils literal notranslate"><span class="pre">FILE</span></code> is a project description or a single component description in every command that
-takes one. A component checks, lists, dumps and generates on its own, which is what lets a
-supplier verify a component long before an integrator ever sees it.</p>
+takes one. A component checks, lists and dumps on its own - with <code class="docutils literal notranslate"><span class="pre">--standalone</span></code> holding
+back the checks that need the rest of the project - which is what lets a supplier verify a
+component long before an integrator ever sees it. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> takes no <code class="docutils literal notranslate"><span class="pre">--standalone</span></code>:
+generating from a component is generating the c and the a2l of a project of one, and the
+inputs nobody produces there are errors that stop the run. A supplier who wants the files
+anyway asks for them with <code class="docutils literal notranslate"><span class="pre">--force</span></code>, or silences the checks it has decided about with
+<code class="docutils literal notranslate"><span class="pre">-W</span></code>.</p>
 <p>The <code class="docutils literal notranslate"><span class="pre">-t</span></code> of the c-rendering artefacts has no default at all: an invocation that renders c
 without it is refused rather than falling back to templates of DDD’s own.</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen
@@ -405,7 +507,9 @@ A build system that made the generated code depend on the project file alone wou
 be wrong in the ordinary case: editing a component would change nothing the build can see, and
 the image would happily link yesterday’s globals and ship yesterday’s a2l.</p>
 <p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> closes that gap. It prints one absolute path per line: the project file
-itself and every description it includes however deeply:</p>
+itself, every description it includes however deeply, and the module of every
+<a class="reference internal" href="plugins.html"><span class="doc">plugin</span></a> those files name, since a plugin decides what the generation writes
+as much as a description does. The demo names none, so its listing is descriptions alone:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd sources examples/demo/demo.ddd.json
 /home/you/ddd/examples/demo/components/controller.ddd.json
 /home/you/ddd/examples/demo/components/sensor_hub.ddd.json
@@ -1104,7 +1208,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 </section>
 <section id="ddd-sources">
 <h4>ddd sources<a class="headerlink" href="#ddd-sources" title="Link to this heading"></a></h4>
-<p>Prints one absolute path per line: the project file and every file it includes however deeply. A build system needs exactly this to know when the generated files are out of date, because a project pulls its components in through ‘includes’ and none of them is named on the command line.</p>
+<p>Prints one absolute path per line: the project file, every file it includes however deeply, and the module of every plugin those files name. A build system needs exactly this to know when the generated files are out of date, because a project pulls its components in through ‘includes’ and names its plugins under ‘plugins’, and none of them is named on the command line.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd sources [-h] [--format {text,json}] project</span>
 </pre></div>
 </div>

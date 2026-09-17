@@ -1150,6 +1150,14 @@ hexadecimal strings, whichever the tool producing it finds easier:
      "ParameterA": 134234112
    }
 
+A string address is written in decimal, or in hexadecimal behind a ``0x`` prefix, and in
+neither case anything else: the file is machine written and read by nobody, so a spelling
+nothing produces on purpose - a digit separator, a leading ``+``, digits of another script -
+is refused rather than guessed at. A symbol the file states twice is refused as well, instead
+of the second address quietly winning, because two addresses for one symbol mean the map was
+merged from two sources or written twice. The file may carry a byte order mark, as every
+other file DDD reads may.
+
 Writing that file is the project's step: DDD ships no extractor and runs no toolchain tool,
 so the map comes from whatever reads the linked image - ``nm``, the map file, the debug
 information. :doc:`build_integration` shows one worked way of doing it, as a post-build step

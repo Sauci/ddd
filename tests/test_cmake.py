@@ -916,13 +916,18 @@ class TestTheDocumentedAddressMapRecipe:
             '\n             STRICT\n             SEVERITY "address-missing=info")',
         )
         text += "\n" + "add_custom_command(" + recipe.split("add_custom_command(", 1)[1]
-        # A 64 bit image is based above 4 GB - 0x140000000 on Windows - which no ECU_ADDRESS
-        # holds; an embedded image is not, and it is an embedded image the a2l describes. The
-        # GNU spelling only: the recipe reads the nm of binutils, as the page says, so this is
-        # a GNU toolchain test from end to end.
+        # A 64 bit image is based above 4 GB - 0x140000000 on Windows, and wherever the loader
+        # cares to put a position independent executable on linux - which no ECU_ADDRESS holds;
+        # an embedded image is not, and it is an embedded image the a2l describes. A GNU
+        # toolchain from end to end, since the recipe reads the nm of binutils as the page
+        # says, but the option is the object format's rather than the toolchain's: `ld` writing
+        # PE takes a base to write at, `ld` writing ELF places a non relocatable executable at
+        # 0x400000 on its own and has no `--image-base` at all.
         text += (
-            "\nif(NOT MSVC)\n"
+            "\nif(WIN32 AND NOT MSVC)\n"
             '    target_link_options(firmware.elf PRIVATE "-Wl,--image-base,0x400000")\n'
+            "elseif(NOT MSVC)\n"
+            '    target_link_options(firmware.elf PRIVATE "-no-pie")\n'
             "endif()\n"
         )
         listing.write_text(text, encoding="utf-8")

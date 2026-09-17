@@ -437,6 +437,26 @@ def test_every_documented_run_prints_what_the_page_shows(
     assert not complaints, "\n\n".join(complaints)
 
 
+def test_the_pages_this_module_runs_were_found() -> None:
+    """Positive control: an empty parameter set is reported as a skip, not as a failure.
+
+    Both tests above are parametrized over sets computed at import, from the pages, with a
+    regex for the shell prompt. pytest answers a parametrize over nothing with one skipped
+    test - "got empty parameter set" - and a green run, so a drift in how the pages spell a
+    prompt, or in what counts as runnable, would silence the strongest guard in the suite
+    rather than fail it. Every documented command would stop being run, and nothing would say
+    so louder than a line in the summary nobody reads.
+    """
+    assert any(SHOWN.values()), (
+        "no page is seen to show a ddd command, so the guard that every page showing one runs "
+        "one of them is parametrized over nothing"
+    )
+    assert any(RUNS.values()), (
+        "no command on any page is seen as runnable, so nothing re-runs the documentation and "
+        "the transcripts are unguarded"
+    )
+
+
 class TestTheMatcher:
     """The elision rule is the one thing here that could pass a stale page by accident."""
 

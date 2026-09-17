@@ -317,10 +317,13 @@ The command line's boundary with plugins, paths and streams.
 - [ ] **Task 5 (`P5-M10`, `P10-M12`, `S-M3`, `P5-M16`):** a component whose file cannot be parsed
       still gets its check target; the module compares its own version with the tool's at include
       time; the build page's include-isolation sentence says what the module builds.
-- [ ] **Task 6 (`P10-M1`, `M2`, `M3`, `M4`):** the c model buckets objects and instances by owner
-      once; the a2l indexes leaves by instance once; a run with an address map builds the a2l
-      model once; the alignment walk is memoised. Test: a generation bounded in the size of the
-      project.
+- [ ] **Task 6 (`P10-M1`, `M2`, `M3`, `M4`, `P6-M13`):** the c model buckets objects and
+      instances by owner once; the a2l indexes leaves by instance once; a run with an address map
+      builds the a2l model once; the alignment walk is memoised. Test: a generation bounded in the
+      size of the project. With them the language server's repeated work: `collect` loads a
+      containing project twice per refresh and `workspaces` does both again on the first request
+      after a save (the previous review's "three lookups, two implementations"), which one
+      `resolve_projects(document)` used by both would settle.
 - [ ] **Task 7:** the cmake tests the review lists as missing (`STRICT`, `ADDRESS_MAP` and the
       two-run flow, `NO_PROPAGATE_HEADERS`, `LINK_LIBRARIES`, `DEPENDS`, `BYTE_ORDER`,
       `OUTPUT_DIRECTORY`, `NAME` defaulting, `DDD_A2L`, `<stem>_ddd_check`, a failing
@@ -421,6 +424,8 @@ except: `P7-I3` and the four release questions (the maintainer's), `P10-M13` and
 deferred strict-mode residue, kept deferred by decision 10), `P11B-I2` (branch 9 task 5),
 `P4-M11`'s Windows device names (unreproducible on this machine; the path-length half is branch 3
 task 7), `P9-M11` (the layer table's wording, branch 2 task 5), `P8-M17` (branch 7 task 7).
+`P6-M13` was missing from every branch when this plan was first written, as the implementer of
+branch 1 noticed; it is in branch 6 task 6, beside the other measured repetitions.
 
 **Order.** Branch 3 task 3 introduces the tolerance helper that branch 4 task 2 consumes; branch
 7 task 7 changes the include sort that branch 8 task 1 documents; branch 1 task 3 changes the

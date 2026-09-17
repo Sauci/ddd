@@ -547,8 +547,8 @@ file - ``#component.interface[0].definition`` - because a description file has n
 editor could jump to that means anything on its own, whereas that path is exactly where the
 offending value sits. Then comes the severity and the identifier of the check,
 ``definition-mismatch``: the identifier is part of the public interface of the tool and does
-not change within a major version, so a build script can raise or lower this particular check
-with ``-W definition-mismatch=warning`` without becoming sensitive to the wording. Then the
+not change once it has been published, so a build script can raise or lower this particular
+check with ``-W definition-mismatch=warning`` without becoming sensitive to the wording. Then the
 message names both components and, in brackets, the single attribute that differs.
 
 The **note** on the second line is the other half of the diagnostic. A disagreement has two

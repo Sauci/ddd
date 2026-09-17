@@ -92,7 +92,7 @@ jobs:
       # needs a GitHub account to reach.
       - run: npm run package
         working-directory: editors/vscode
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: ddd-vscode-extension
           path: editors/vscode/*.vsix

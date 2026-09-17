@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
@@ -78,6 +79,27 @@ def write_tree(base: Path, files: Mapping[str, Any]) -> Path:
         written = content if isinstance(content, str) else json.dumps(content, indent=2)
         path.write_text(written, encoding="utf-8", newline="")
     return base
+
+
+def directory_link(link: Path, target: Path) -> None:
+    """A second spelling of a directory, made the way the platform allows unprivileged.
+
+    What a test about two spellings of one path needs is a path whose ``resolve()`` is a
+    different path, and every platform has one; only the word for it differs. ``symlink_to``
+    needs ``SeCreateSymbolicLinkPrivilege`` on Windows, which an ordinary account does not
+    hold, so a junction is made there - any account may make one, and ``mklink /J`` is a
+    ``cmd`` builtin nothing else needs.
+
+    Here rather than in one suite because the alternative is a test that skips: the case a
+    junction was written for was exercised on the windows cells of the matrix and reported
+    skipped on the ubuntu ones, which is success without having run.
+    """
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        link.symlink_to(target, target_is_directory=True)
 
 
 def run_analysis(

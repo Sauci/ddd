@@ -45,12 +45,13 @@ log() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 
 log "generate  $PROJECT -> $OUTPUT ${GENFLAGS}"
 read -r -a generate_flags <<<"$GENFLAGS"
-ddd generate all "$PROJECT" -o "$OUTPUT" --template-dir "$TEMPLATES" "${generate_flags[@]}"
-# The severity overrides in GENFLAGS apply here too: pointed at a single component file,
-# 'ddd dump' would otherwise exit 1 on the missing producers that the generate step was
-# explicitly told to tolerate, and take the whole run down with it.
-read -r -a policy_flags <<<"$(printf '%s\n' "$GENFLAGS" | grep -oE -- '(-W [^ ]+|--strict)' | tr '\n' ' ')"
-ddd dump "$PROJECT" --format json "${policy_flags[@]}" >"$OUTPUT/dictionary.json"
+# --dictionary writes what 'ddd dump --format json' prints, in the run that generates the
+# artefacts. As a second command it was a second analysis of the same project - and one that
+# had to be handed the severity overrides out of GENFLAGS by hand, or, pointed at a single
+# component file, exited 1 on the missing producers the generate step had been told to
+# tolerate and took the whole run down with it.
+ddd generate all "$PROJECT" -o "$OUTPUT" --template-dir "$TEMPLATES" \
+    --dictionary "$OUTPUT/dictionary.json" "${generate_flags[@]}"
 
 compile_variant() {
     local label="$1"

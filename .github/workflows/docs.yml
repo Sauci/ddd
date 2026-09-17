@@ -80,6 +80,16 @@ jobs:
     permissions:
       contents: write # the gh-pages branch, which is the site
     steps:
+      # The deploy job builds nothing, so it needs none of the sources but the script that
+      # writes the version index. Fetched into its own directory, and sparsely: the branch
+      # that is the site is checked out below, into `site`, and a checkout of the repository
+      # at the root of the workspace would clean the rest of it away.
+      - name: Fetch the release machinery
+        uses: actions/checkout@v7
+        with:
+          path: repository
+          sparse-checkout: tools
+
       # A release is written under its own tag and frozen there; master is the moving one and
       # always lands in the same place.
       #
@@ -154,52 +164,14 @@ jobs:
       # published long before this one - which is why it is rewritten from what is on disk
       # rather than appended to. The root of the site redirects to the newest release: a
       # reader arriving without a version in the url wants the one they can install, not
-      # master's account of features that are not released yet.
+      # master's account of features that are not released yet, and not a release candidate.
+      #
+      # The rule lives in the repository rather than in a heredoc here, so that the suite can
+      # run it: as a heredoc nothing could, and it crowned the newest tag whatever it was -
+      # publishing v0.10.0rc1 would have redirected the site at a release candidate and
+      # labelled it "(stable)" in the menu of every page.
       - name: Write the version index
-        run: |
-          python3 - <<'PY'
-          import json
-          import pathlib
-          import re
-
-          site = pathlib.Path("site")
-
-          def order(name):
-              """Newest first, with a prerelease behind the release it leads to."""
-              match = re.fullmatch(r"v(\d+(?:\.\d+)*)(.*)", name)
-              if not match:
-                  return ((), False, name)
-              numbers = tuple(int(part) for part in match.group(1).split("."))
-              return (numbers, match.group(2) == "", match.group(2))
-
-          tags = sorted(
-              (d.name for d in site.iterdir() if d.is_dir() and d.name.startswith("v")),
-              key=order,
-              reverse=True,
-          )
-          versions = (["latest"] if (site / "latest").is_dir() else []) + tags
-          # Before the first release there is nothing else to land on.
-          stable = tags[0] if tags else "latest"
-
-          (site / "versions.json").write_text(
-              json.dumps({"stable": stable, "versions": versions}, indent=2) + "\n"
-          )
-          (site / "index.html").write_text(
-              "<!DOCTYPE html>\n"
-              '<html lang="en">\n'
-              "  <head>\n"
-              '    <meta charset="utf-8">\n'
-              f'    <meta http-equiv="refresh" content="0; url=./{stable}/">\n'
-              f'    <link rel="canonical" href="./{stable}/">\n'
-              "    <title>DDD documentation</title>\n"
-              "  </head>\n"
-              "  <body>\n"
-              f'    <p>Redirecting to <a href="./{stable}/">the {stable} documentation</a>.</p>\n'
-              "  </body>\n"
-              "</html>\n"
-          )
-          print(f"stable is {stable}, versions are {', '.join(versions)}")
-          PY
+        run: python3 repository/tools/site_versions.py site
 
       # Sphinx puts every asset it generates under a leading underscore - `_static`,
       # `_images`, `_sources`, `_modules`, `_plantuml` - and Jekyll, which GitHub runs over a

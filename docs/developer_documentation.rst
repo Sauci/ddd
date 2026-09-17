@@ -31,7 +31,7 @@ Layers
      - what the data means
    * - ``src/ddd/analysis.py``
      - ownership, agreement between components, references
-     - any output format
+     - how anything is rendered
    * - ``src/ddd/ir.py``
      - **the contract**: the resolved data dictionary
      - how it is rendered
@@ -44,8 +44,17 @@ Layers
    * - ``src/ddd/backends/a2l/``
      - ``UWORD``, compu methods, record layouts, its own templates
      - c, the loader, the checks
+   * - ``src/ddd/lsp/``
+     - the language server protocol, a document's bytes and positions in it
+     - any output format
 
-The last two rows are deliberately not symmetric. The a2l backend carries its own templates,
+The analysis row says "how anything is rendered" rather than "any output format" for a
+reason: two of the checks are about what an output format can carry, so the module states
+the three dimensions ``MATRIX_DIM`` holds in ASAP2 1.6.1 and the range of a c ``int`` on a
+32 bit target, and says so in the findings it reports. What it does not know is how a
+``MATRIX_DIM`` or an ``int`` is written, which is what the row is about.
+
+The last two backend rows are deliberately not symmetric. The a2l backend carries its own templates,
 because ASAP2 is a format ASAM defines and a project has nothing to decide about it; the c
 backend carries none, because what generated c looks like is a house style. It is constructed
 with the template directory ``--template-dir`` names, works out what to render from the file
@@ -54,12 +63,23 @@ Those naming rules are part of the interface a project depends on: :doc:`templat
 them, and the module docstring of ``src/ddd/backends/c/backend.py`` states them again next to
 the code that implements them.
 
-Three smaller modules sit beside them. ``diagnostics.py`` holds the severity policy and the
+Five smaller modules sit beside them. ``diagnostics.py`` holds the severity policy and the
 registry of every check, and is what both the loader and the analysis report through.
 ``compare.py`` answers the directional question of whether one dictionary may replace
 another, and is the second consumer of the contract next to the backends. ``cli.py`` is the
 only module that knows about argument parsing, exit codes and where output goes; it is also
-where the backends a ``ddd generate`` run uses are assembled.
+where the backends a ``ddd generate`` run uses are assembled. ``identity.py`` makes an object
+identity and writes one into a description file textually, so that ``ddd id --assign``
+produces a diff of one line per object rather than a reformatted document. ``build_info.py``
+is the hand-off from a build to an editor: which project description was configured, and
+under which severity policy, neither of which any ``*.ddd.json`` file records.
+
+``src/ddd/lsp/`` is a layer of its own rather than a smaller module: nine modules that speak
+the language server protocol over a pipe, locate a json pointer in the bytes of a document
+(``ranges.py``, which ``identity.py`` reuses rather than growing a second scanner), find the
+projects a file belongs to and turn the findings into what an editor underlines. It is a
+second front end over the same loader and analysis, and knows about no output format.
+:doc:`editor_integration` describes what it offers a client.
 
 The two contract pages describe the data that travels between the layers: the input file
 formats under :doc:`data contracts <data_contracts>`, and the resolved form under
@@ -294,14 +314,36 @@ Running the checks
    python -m ruff format .
    python -m mypy
 
-``mypy`` runs in strict mode over ``src/ddd`` with the pydantic plugin; ``ruff`` lints the
-sources, the tests and the documentation configuration with a line length of 100. The suite
-runs in a few seconds, so there is no reason to run anything less than all of it.
+``mypy`` runs in strict mode over ``src/ddd`` and ``tools/`` with the pydantic plugin;
+``ruff`` lints the sources, the tests, the release machinery and the documentation
+configuration with a line length of 100. The whole suite takes a couple of minutes in a warm
+checkout - longer in a fresh environment, where ``tests/test_cmake.py`` configures and builds
+the module - so ``--no-cov`` and a ``-k`` are what a single test is worth running under, and
+the whole of it is what a commit is worth running under. Not ``-q``: the ``addopts`` in
+``pyproject.toml`` carry one already, pytest counts them, and a second drops the summary - the
+"N passed" line and the coverage total both - leaving the exit code as the only statement of
+what happened.
 
-Nothing in the suite skips. A test that skips when a tool is absent reports success without
-having run, and the one place that used to do it - validating the examples against the
-committed schemas, which needs ``jsonschema`` - was skipping everywhere except on the machine
-of whoever happened to have it installed. It is a development dependency instead.
+Nothing in the suite skips, and a test in ``tests/test_documentation.py`` holds it to that:
+no ``pytest.skip``, ``skipif``, ``importorskip`` or ``xfail`` anywhere under ``tests/``. A
+test that skips reports success without having run, so what it covers is covered on somebody
+else's machine and nowhere else. Two places used to do it. Validating the examples against
+the committed schemas needed ``jsonschema``, and skipped everywhere except on the machine of
+whoever happened to have it installed; it is a development dependency instead. A case about a
+second spelling of an output directory made a directory junction, which is a windows feature,
+and skipped on the ubuntu cells of the matrix - so the page said every cell ran everything
+while a third of them ran that one nowhere. A platform makes the *spelling* of such a path
+differ, not the behaviour under test, so ``tests/conftest.py`` offers ``directory_link``: a
+junction on Windows, a symbolic link elsewhere, and a path whose ``resolve()`` is another path
+on both.
+
+The same file carries the positive controls under the guards that read the pages with a
+regex. A guard looping over what a pattern found passes when it found nothing, which is how
+the count of the checks whose severity is fixed went stale: the sentence it counts was
+reworded, the pattern stopped matching, and the suite stayed green. So each such guard has a
+test beside it asserting that the pattern still recognises something - and the two transcript
+tests, which are parametrized over sets computed at import, have one too, because pytest
+answers a parametrize over nothing with a skip rather than a failure.
 
 The repository also ships a small linux image, which is what the generated c code is
 actually compiled with - a generator whose output no compiler has ever accepted is a
@@ -333,8 +375,13 @@ treatment.
 Continuous integration
 ----------------------
 
-``.github/workflows/ci.yml`` runs exactly the commands above - the suite with its coverage
-gate, ``ruff`` twice and ``mypy`` - on every push to ``master`` and every pull request.
+``.github/workflows/ci.yml`` runs the commands above - the suite with its coverage gate,
+``ruff`` twice and ``mypy`` - on every push to ``master`` and every pull request, in two jobs,
+and a third the commands above do not cover: ``extension`` installs node and the package,
+runs ``npm ci``, ``npm test`` and ``npm run package`` in ``editors/vscode``, and uploads the
+``.vsix`` it produced. Its tests start a real language server, which is why it installs the
+python package as well as compiling typescript, and packaging the extension there proves that
+the artefact a customer is handed can be produced at all.
 
 The suite runs across a matrix of ubuntu and windows on python 3.12 and 3.13, which is the
 four combinations the classifiers in ``pyproject.toml`` advertise. That is not thoroughness
@@ -343,15 +390,27 @@ user of this project, having passed the whole suite on windows first. A test in
 ``tests/test_documentation.py`` keeps the matrix and those classifiers in agreement, so
 advertising a new interpreter without testing it fails.
 
-Each job installs the project with ``pip install -e ".[dev]"`` rather than running it out of
-``src``. That is deliberate too, and it is the cheapest check in the file: it exercises the
-packaging metadata, which the tests themselves never touch, so a dependency list that no
-longer builds fails here rather than for whoever installs the distribution.
+The two python jobs install the project with ``pip install -e ".[dev]"`` rather than running
+it out of ``src`` - the extension job installs ``pip install -e .``, since what it needs is a
+``ddd`` on the path to launch. That is deliberate too, and it is the cheapest check in the
+file: it exercises the packaging metadata, which the tests themselves never touch, so a
+dependency list that no longer builds fails here rather than for whoever installs the
+distribution.
 
 Style and types are checked once rather than per platform, since neither varies by platform.
 ``publish.yml`` runs the suite again before it builds a release, which is not redundant: a
 release can be cut from a commit this workflow never saw, and an upload to an index is
 permanent.
+
+Nothing in the toolchain moves on its own. Every ``uses:`` is pinned by a major tag, the
+extension's lock file pins its dependencies exactly, and ``ruff`` and ``mypy`` are capped to
+a minor in ``requirements-dev.txt`` - those two are gates rather than libraries, so a release
+of either fails the lint job on the day it is published rather than on the day somebody
+upgrades it. What proposes the moves instead is ``.github/dependabot.yml``, weekly, for the
+actions, the requirements files and the extension: a bump then arrives as a pull request that
+ci has already run, which is the difference between upgrading a tool and discovering on a
+release day that one has moved on without you. A test holds every action to one version
+across the three workflows, and both caps to being caps.
 
 Building this documentation
 ---------------------------
@@ -423,7 +482,16 @@ there is nothing to switch to.
 
 The root of the site redirects to the newest release rather than to ``latest``. Somebody
 arriving without a version in the url wants the documentation of what they can install, not
-``master``'s account of features that are not released yet.
+``master``'s account of features that are not released yet - and not a release candidate
+either: the newest *release* is the newest tag whose version carries nothing after the
+numbers, so ``v0.10.0rc1`` is published, listed in the menu under its own version, and left
+out of that choice until ``v0.10.0`` follows it. Before the first release there is nothing
+else to land on, so the root points at ``latest``.
+
+That rule is ``tools/site_versions.py``, which the deploy job runs, rather than a heredoc
+inside the workflow: ``tests/test_documentation.py`` pins the orderings it produces - the
+candidate, the release it leads to, and a hotfix on the older line published after it - which
+is what nothing could do while it was a workflow step.
 
 The workflow installs graphviz and plantuml from apt, so publishing needs nothing but a stock
 runner: there is no prepared image to keep in step with the sources. Only html is built. A pdf
@@ -502,15 +570,23 @@ unless that tag is exactly ``v`` followed by the version in ``pyproject.toml``. 
 checked rather than stripped, because the documentation site publishes a release under a
 directory named after its tag and lists only the ones beginning with ``v``.
 
+A dispatch with ``target: pypi`` runs only from a ``v*`` tag, and is checked against
+``pyproject.toml`` there exactly as a release is. On any other ref the job is skipped: the
+same run started on a branch would have built whatever that branch's ``pyproject.toml`` said
+and uploaded it under no tag, with no ``.vsix`` and no documentation directory - and an index
+accepts a file name once and for ever, so the only way back is the next version number.
+
 **The version is spelled in nine files, and a test holds only three of them together.**
 ``src/ddd/__init__.py`` is where it lives: ``docs/conf.py`` imports ``__version__`` rather than
 restating it, and the banner of every generated file carries it from there. ``pyproject.toml``,
 which the release tag is checked against, and ``editors/vscode/package.json``, which the
 extension is packaged with, repeat it, and a test each asserts that they agree with
 ``__version__``. ``editors/vscode/package-lock.json`` records it twice more - in its own header
-and in the entry for the root package - and nothing asserts that either agrees; ``npm ci``
-refuses a lock file out of step with its manifest, so a bump that edits only the manifest fails
-the extension job rather than a test. The other five files spell it out as text and nothing
+and in the entry for the root package - and a test now asserts that both agree with
+``__version__`` as well. Nothing else would: what ``npm ci`` compares with the manifest is the
+*dependencies*, not the root package's own version, so a bump that edits only the manifest
+packaged a ``.vsix`` whose lock file still said the version before. The other five files
+spell it out as text and nothing
 derives it for them: the wheel file name in ``README.md`` and in :doc:`getting_started`, the two
 ``ddd --version`` transcripts of that page - only the first of which the transcript test re-runs,
 since the second carries a trailing comment and is shown rather than run - and the banner of a
@@ -518,14 +594,19 @@ generated file quoted in :doc:`getting_started`, :doc:`generated_artefacts`,
 :doc:`faq` and :doc:`templates`. Bumping the version means walking all nine in the release
 commit.
 
-The publishing jobs name a deployment environment - ``pypi``, ``testpypi`` - and GitHub
-creates an environment with its deployments restricted to the default branch, which is the
-whole of what a release is not: the run is triggered by a tag. An environment whose
-*Deployment branches and tags* is left at that default rejects the release after a green
-build, with *not allowed to deploy ... due to environment protection rules*. In *Settings* →
-*Environments*, choose *Selected branches and tags* for each and add a tag rule for ``v*``;
-this is a setting rather than a file, so it is fixed in the settings rather than in the
-repository, once per repository.
+The publishing jobs name a deployment environment - ``pypi``, ``testpypi``. As this
+repository stands, neither carries a deployment branch policy and neither has a protection
+rule, so nothing in the settings decides which ref may publish: what does is the workflow
+itself, where ``publish-pypi`` runs for a release or for a dispatch from a ``v*`` tag and for
+nothing else.
+
+An environment *can* be created with its deployments restricted to the default branch, which
+is the whole of what a release is not: the run is triggered by a tag. One left at that
+setting rejects the release after a green build, with *not allowed to deploy ... due to
+environment protection rules*, and the fix is in *Settings* → *Environments*: choose
+*Selected branches and tags* and add a tag rule for ``v*``. That is worth doing here as a
+second lock rather than as a repair - a setting saying the same thing as the workflow's
+condition, in the place an audit looks first.
 
 Delivering the editor extension
 -------------------------------

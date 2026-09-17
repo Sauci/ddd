@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING
 from ddd.models.common import OBJECT_ID_ALPHABET, OBJECT_ID_LENGTH
 from ddd.models.component import Scope
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from ddd.lsp.ranges import Document
 
 _PRODUCING = (Scope.OUTPUT.value, Scope.LOCAL.value)

@@ -40,8 +40,10 @@ when somebody last wrote it down. This README is the short version.
 `ddd --version` prints the release, and [CHANGELOG.md](CHANGELOG.md) says what changed in
 it - including what a migration costs, since a minor release may still change the file format
 while the major version is `0`. The check identifiers, the command names and their options,
-the json file formats, the `ddd_generate()` and `ddd_add_component()` signatures and the names
-a c template renders from are the tool's public interface; the generated a2l is ASAP2 1.6.1.
+the json file formats - the description files and, beside them, the address map, the dumped
+dictionary, the `--renames` file and `ddd-build.json` - the `ddd_generate()` and
+`ddd_add_component()` signatures and the names a c template renders from are the tool's
+public interface; the generated a2l is ASAP2 1.6.1.
 Licence terms are in [LICENSE](LICENSE), and problems belong in the
 [issue tracker](https://github.com/Sauci/ddd/issues).
 
@@ -915,10 +917,10 @@ declarations are covered in both states:
 
 ```text
 == symbols   [base]
-20 of 21 declared variables are defined
+22 of 23 declared variables are defined
   conditional, absent : ValueG
 == symbols   [defines]
-21 of 21 declared variables are defined
+23 of 23 declared variables are defined
   conditional, present: ValueG
 ```
 
@@ -957,7 +959,7 @@ knowing:
   severities, odd float literals - live together in
   [tests/test_edge_cases.py](tests/test_edge_cases.py).
 
-Four more suites guard things a type checker cannot:
+Five more suites guard things a type checker cannot:
 [tests/test_backends.py](tests/test_backends.py) walks the import graph so the layering
 cannot rot, [tests/test_cmake.py](tests/test_cmake.py) configures and builds the cmake module
 over the examples with the `cmake` the development requirements install,

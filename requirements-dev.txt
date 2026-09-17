@@ -1,7 +1,12 @@
 pytest>=8.0
 pytest-cov>=5.0
-ruff>=0.6
-mypy>=1.10
+# Capped to a minor, unlike everything else here, because these two are gates rather than
+# libraries: `ruff format --check` fails on a reformatting the new release decided on, and a
+# `mypy` minor adds inferences that turn strict mode red - on whatever ran next, which on the
+# wrong day is the release. A minor bump is then a commit that also carries the fixes, which
+# is what .github/dependabot.yml proposes.
+ruff>=0.16.6,<0.17
+mypy>=2.3.1,<2.4
 # Validates the committed schemas against the examples the way an editor would. Not optional:
 # a test that skips when a tool is missing reports success without having run.
 jsonschema>=4.0

@@ -73,7 +73,7 @@ latex_elements = {
 autosummary_generate = True
 # Only the class docstring. With "both", every pydantic model would also carry the inherited
 # ``BaseModel.__init__`` docstring - three paragraphs of "create a new model by parsing and
-# validating input data", repeated under all twenty-six models, one of them containing a
+# validating input data", repeated under all thirty-five models, one of them containing a
 # markdown link that reStructuredText renders verbatim.
 autoclass_content = "class"
 add_module_names = False
@@ -94,9 +94,11 @@ autodoc_pydantic_field_list_validators = False
 autodoc_pydantic_field_show_constraints = True
 autodoc_pydantic_model_member_order = "bysource"
 
-# plantuml is called through the jar the documentation image ships at /plantuml.jar. A local
-# build rarely has that jar at that path, so PLANTUML_JAR points at another copy and JAVA at
-# another interpreter; without either, the plain ``plantuml`` launcher on the PATH is used.
+# plantuml is called through the ``plantuml`` launcher on the PATH, which is what the
+# documentation image and the Documentation workflow both install from apt - neither ships a
+# jar. A machine that has a jar instead of a launcher points PLANTUML_JAR at it, and JAVA at
+# the interpreter to run it with; /plantuml.jar is only the default that makes PLANTUML_JAR
+# optional, and a path that does not exist falls back to the launcher.
 _jar = Path(os.environ.get("PLANTUML_JAR", "/plantuml.jar"))
 _java = os.environ.get("JAVA", "java")
 plantuml = f'"{_java}" -jar "{_jar}"' if _jar.is_file() else "plantuml"

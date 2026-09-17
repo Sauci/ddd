@@ -21,11 +21,15 @@ from typing import Any, Literal
 
 import jsonschema
 import pytest
+import site_versions
+import verify_symbols
 from pydantic import BaseModel, ValidationError
 
+from conftest import DEMO
 from ddd import __version__
+from ddd.analysis import _MAX_ELEMENTS, _MAX_LEAVES
 from ddd.backends.c.model import CodeModel, MemberView, ObjectView
-from ddd.cli import _SCHEMA_MODELS, _build_parser
+from ddd.cli import _SCHEMA_MODELS, EXIT_OK, _build_parser, main
 from ddd.diagnostics import CHECKS
 from ddd.loading import FILE_KINDS
 from ddd.models import Component, DataObject, Datatype, ObjectKind, ScalarType
@@ -39,6 +43,7 @@ PUBLISH_WORKFLOW = (ROOT / ".github" / "workflows" / "publish.yml").read_text(en
 DOCS_URL = "https://sauci.github.io/ddd/"
 CONSISTENCY_CHECKS = (ROOT / "docs" / "consistency_checks.rst").read_text(encoding="utf-8")
 COMPARING_DELIVERIES = (ROOT / "docs" / "comparing_deliveries.rst").read_text(encoding="utf-8")
+CHANGELOG = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 PAGES = {
     page.relative_to(ROOT).as_posix(): page.read_text(encoding="utf-8")
     for page in sorted((ROOT / "docs").rglob("*.rst"))
@@ -112,6 +117,46 @@ def project_wide_enumerations(text: str, tick: str) -> list[list[str]]:
         re.findall(f"{marker}([a-z][a-z0-9-]*){marker}", found)
         for found in claim.findall(flattened(text))
     ]
+
+
+def spelled_number(word: str) -> int | None:
+    """A number written in words the way the prose writes them, or ``None`` for a non-number."""
+    tens = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50}
+    head, _, unit = word.lower().partition("-")
+    if head in NUMBER_WORDS and not unit:
+        return NUMBER_WORDS[head]
+    if head in tens:
+        return tens[head] + NUMBER_WORDS.get(unit, 0)
+    return None
+
+
+def counted_in_words(text: str, *patterns: str) -> list[str]:
+    """The number words of every claim of one document that one of the patterns recognises.
+
+    A claim counting in digits, or in a word this file has no number for, is not a claim these
+    guards can weigh, so it is left out rather than being answered wrongly - and what is left
+    is what a positive control has to find, or the guard is passing on an empty list.
+    """
+    found = [
+        word.lower()
+        for pattern in patterns
+        for word in re.findall(pattern, flattened(text), flags=re.I)
+    ]
+    return [word for word in found if word in NUMBER_WORDS]
+
+
+def fixed_severity_counts(text: str) -> list[str]:
+    """The number words of every "N checks whose severity ..." claim of one document."""
+    return counted_in_words(
+        text,
+        r"\b(\w+) (?:load time )?(?:checks )?whose severity\b",
+        r"\b(\w+) checks cannot be relaxed",
+    )
+
+
+def description_kind_counts(text: str) -> list[str]:
+    """The number words of every "N description kinds" claim of one document."""
+    return counted_in_words(text, r"\b(\w+) description kinds")
 
 
 def commands() -> list[str]:
@@ -191,6 +236,38 @@ class TestChecks:
         )
 
 
+IDENTIFIER_LIFETIME = {
+    "SPEC.md": SPEC,
+    "CHANGELOG.md": CHANGELOG,
+    "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+    "docs/getting_started.rst": PAGES["docs/getting_started.rst"],
+}
+"""The documents that say how long a check identifier lives, which had better agree."""
+
+
+class TestHowLongACheckIdentifierLives:
+    """One rule, in the four places that state it.
+
+    A build script pins an identifier in a severity override, and what it is entitled to
+    assume was written three ways: the specification and the check reference say an identifier
+    does not change once published, the tutorial said it does not change *within a major
+    version*, and the changelog's preamble listed the identifiers among the interface a
+    release may change provided it says what the migration costs. A reader pinning one got
+    three different lifetimes for it; the specification's is the rule.
+    """
+
+    @pytest.mark.parametrize("document", sorted(IDENTIFIER_LIFETIME))
+    def test_it_is_until_the_end_in_every_document(self, document: str) -> None:
+        text = flattened(IDENTIFIER_LIFETIME[document])
+        assert re.search(r"not\W+change\b[^.]{0,40}\bonce\b", text), (
+            f"{document} no longer says that an identifier does not change once published"
+        )
+        assert "within a major version" not in text, (
+            f"{document} promises an identifier only until the next major version, which is a "
+            f"shorter life than the specification gives it"
+        )
+
+
 class TestTheCheckReference:
     """The reference page promises the registry in one place, so the registry is what it is held to.
 
@@ -225,16 +302,10 @@ class TestTheCheckReference:
         has to count what the registry marks as not overridable.
         """
         expected = sum(1 for info in CHECKS.values() if not info.overridable)
-        text = flattened(PAGES[page])
-        counted = re.findall(
-            r"\b(\w+) (?:load time )?(?:checks )?whose severity\b", text, flags=re.I
-        ) + re.findall(r"\b(\w+) checks cannot be relaxed", text, flags=re.I)
-        for word in counted:
-            if word.lower() in NUMBER_WORDS:
-                assert NUMBER_WORDS[word.lower()] == expected, (
-                    f"{page} counts {word} checks with a fixed severity; "
-                    f"the registry has {expected}"
-                )
+        for word in fixed_severity_counts(PAGES[page]):
+            assert NUMBER_WORDS[word] == expected, (
+                f"{page} counts {word} checks with a fixed severity; the registry has {expected}"
+            )
 
 
 class TestTheFileKinds:
@@ -242,11 +313,10 @@ class TestTheFileKinds:
 
     @pytest.mark.parametrize("page", sorted(PAGES))
     def test_the_description_kinds_are_counted_as_the_loader_counts_them(self, page: str) -> None:
-        for word in re.findall(r"\b(\w+) description kinds", flattened(PAGES[page]), flags=re.I):
-            if word.lower() in NUMBER_WORDS:
-                assert NUMBER_WORDS[word.lower()] == len(FILE_KINDS), (
-                    f"{page} counts {word} description kinds; the loader knows {len(FILE_KINDS)}"
-                )
+        for word in description_kind_counts(PAGES[page]):
+            assert NUMBER_WORDS[word] == len(FILE_KINDS), (
+                f"{page} counts {word} description kinds; the loader knows {len(FILE_KINDS)}"
+            )
 
     def test_the_file_kind_row_names_every_kind(self) -> None:
         """The row explaining the check enumerates what a top level key may be, in full."""
@@ -256,12 +326,55 @@ class TestTheFileKinds:
             assert f"``{kind}``" in row.group(1), f"the file-kind row does not name {kind}"
 
 
+CAPPED = {"docs/faq.rst": PAGES["docs/faq.rst"], "SPEC.md": SPEC}
+"""The documents that state how large a shape may be, and so have to state the same numbers."""
+
+
+class TestTheCapsOnAShape:
+    """Four limits an object is held to, and the page that answered there were none.
+
+    The caps arrived in 0.9.0 and the FAQ's answer did not move, so a reader sizing a buffer
+    by the page met ``error[schema]`` on the day the product went past ten million - the one
+    kind of documentation mistake that costs a whole day, since the page promises exactly
+    the thing the tool refuses.
+
+    Read from the analysis rather than from a list of numbers written here, so that a cap
+    changed in the code fails on the pages that state it.
+    """
+
+    @pytest.mark.parametrize("document", sorted(CAPPED))
+    def test_the_caps_are_stated_as_the_analysis_applies_them(self, document: str) -> None:
+        text = flattened(CAPPED[document])
+        for cap in (_MAX_ELEMENTS, _MAX_LEAVES):
+            spelled = f"{cap:,}".replace(",", " ")
+            assert spelled in text, f"{document} does not state the cap of {spelled}"
+
+    def test_the_page_that_answers_how_large_no_longer_promises_no_bound(self) -> None:
+        answer = flattened(PAGES["docs/faq.rst"]).split("How large may an array be?", 1)[1]
+        assert "no bound" not in answer, "the FAQ still answers that a shape is unbounded"
+        assert "caps neither" not in answer, "the FAQ still answers that DDD caps nothing"
+        assert "schema" in answer, "the FAQ does not say what a shape past a cap is reported as"
+
+
 class TestCommands:
     @pytest.mark.parametrize("command", commands())
     def test_every_command_is_documented_in_the_readme(self, command: str) -> None:
         assert f"ddd {command}" in README or f"`{command}`" in README
 
-    def test_the_command_list_is_what_the_spec_promises(self) -> None:
+    @pytest.mark.parametrize("command", commands())
+    def test_every_command_is_named_in_the_spec(self, command: str) -> None:
+        """The developer page promises both documents, and only one was being read.
+
+        The test beside this one compares the parser with a list written out here, which
+        catches a command appearing or disappearing and says nothing whatever about the
+        specification - so the SPEC could have gone on describing thirteen commands, or
+        naming one that no longer exists, without a red test.
+        """
+        assert f"ddd {command}" in SPEC or f"`{command}`" in SPEC
+
+    def test_the_parser_offers_the_commands_this_suite_knows_about(self) -> None:
+        """A change detector on the parser: a new command has to be added here, and the two
+        tests above then hold it to being documented in both places."""
         assert set(commands()) == {
             "check",
             "compare",
@@ -358,6 +471,26 @@ class TestTheDocumentationSite:
             if version == "latest" and path:
                 target = ROOT / "docs" / path.split("#", 1)[0].replace(".html", ".rst")
                 assert target.is_file(), f"{page} links {link}, and {target.name} does not exist"
+
+    def test_the_build_configuration_counts_the_models_the_pages_render(self) -> None:
+        """``docs/conf.py`` explains a setting by how many models the repetition would hit."""
+        conf = (ROOT / "docs" / "conf.py").read_text(encoding="utf-8")
+        rendered = sum(page.count("autopydantic_model::") for page in PAGES.values())
+        counted = re.search(r"repeated under all ([a-z-]+) models", conf)
+        assert counted is not None, "the comment no longer counts the models"
+        assert spelled_number(counted.group(1)) == rendered, (
+            f"docs/conf.py counts {counted.group(1)} models; the pages render {rendered}"
+        )
+
+    def test_the_acronyms_are_in_the_order_a_reader_looks_them_up_in(self) -> None:
+        """The first table is alphabetical, and a term inserted anywhere else is unfindable.
+
+        Seventeen terms the pages use were missing from it at once, which is how a page-sized
+        table grows: each is added where the writer happened to be reading.
+        """
+        acronyms = PAGES["docs/acronyms.rst"].split("a2l keywords", 1)[0]
+        terms = re.findall(r"^   \* - (.+)$", acronyms, flags=re.MULTILINE)[1:]
+        assert terms == sorted(terms, key=str.lower), f"the acronyms table is out of order: {terms}"
 
 
 def table_rows(page: str, heading: str) -> dict[str, str]:
@@ -584,6 +717,23 @@ class TestPackaging:
         )
         assert manifest["version"] == __version__
 
+    def test_the_lock_file_carries_it_too(self) -> None:
+        """Nothing else compares the lock's own version with anything.
+
+        ``npm ci`` refuses a lock file out of step with its manifest's *dependencies*; the
+        root package's ``version`` is not part of that comparison, and the lock records it
+        twice - in its header and in the entry for the root package. So a release commit that
+        bumped ``package.json`` and left the lock behind packaged a ``.vsix`` whose lock file
+        said the version before, with a green extension job.
+        """
+        lock = json.loads(
+            (ROOT / "editors" / "vscode" / "package-lock.json").read_text(encoding="utf-8")
+        )
+        assert lock["version"] == __version__, "the lock file's header is a version behind"
+        assert lock["packages"][""]["version"] == __version__, (
+            "the lock file's entry for the root package is a version behind"
+        )
+
     def test_the_declared_license_file_exists(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         license_file = metadata["project"]["license"]["file"]
@@ -743,6 +893,10 @@ class TestPackaging:
         read.update(images_the_docs_build_reads())
         # Hatchling writes the build definition into every sdist whatever the list says.
         read.discard("pyproject.toml")
+        # Positive control: the loop below passes over an empty set, and the set is built by
+        # a regex over the suite's own source - so a change of spelling in how a test names a
+        # path would switch this guard off rather than fail it.
+        assert read, "no path under the root is recognised in the suite's sources"
         for name in sorted(read):
             assert (ROOT / name).exists(), f"the suite reads {name}, which is not in the tree"
             # A directory travels either whole, under a pattern that covers it, or in the
@@ -1464,6 +1618,150 @@ class TestPackagedResources:
         assert "ddd/cmake/Ddd.cmake" in destinations, "ddd cmake-dir would find nothing installed"
 
 
+class TestTheCompileService:
+    """The container that compiles what the c backend generates, and the README's account of it.
+
+    Nothing in ci builds the image or runs the script, so the only thing holding the two
+    together is what can be read here: the numbers the README shows under ``== symbols``,
+    which went two objects stale when the demo gained its two strings, and the path the
+    verification reads, which has to be the file the generation writes.
+    """
+
+    def block(self) -> str:
+        """The ``== symbols`` transcript of the README, both variants."""
+        return README.split("== symbols   [base]", 1)[1].split("```", 1)[0]
+
+    def test_the_readme_counts_the_variables_the_demo_declares(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Counted by the script the container runs, over a fresh dump of the shipped demo.
+
+        It is not a ``$ ddd`` command, so the transcript harness never reaches it; the demo
+        gained ``SoftwareLabel`` and ``StateName`` with the strings and the block went on
+        saying twenty-one.
+        """
+        assert main(["dump", str(DEMO), "--format", "json"]) == EXIT_OK
+        declarations = verify_symbols.defines(json.loads(capsys.readouterr().out))
+        declared = {entry["name"] for entry in declarations}
+        conditional = {entry["name"] for entry in declarations if entry["condition"]}
+        shown = self.block()
+        assert f"{len(declared) - len(conditional)} of {len(declared)} declared" in shown, (
+            f"the [base] run defines every one of the {len(declared)} variables the demo "
+            f"declares but the {len(conditional)} behind a condition"
+        )
+        assert f"{len(declared)} of {len(declared)} declared" in shown, (
+            f"the [defines] run defines all {len(declared)} of them"
+        )
+        for name in sorted(conditional):
+            assert f"conditional, absent : {name}" in shown
+            assert f"conditional, present: {name}" in shown
+
+    def test_the_dictionary_verified_is_the_one_the_generation_wrote(self) -> None:
+        """One analysis, not two. The second was a ``ddd dump`` that had to be handed the
+        severity overrides of the first by hand, and exited 1 on the findings the first had
+        been told to tolerate."""
+        script = (ROOT / "docker" / "compile.sh").read_text(encoding="utf-8")
+        written = re.search(r'--dictionary "([^"]+)"', script)
+        read = re.search(r'verify_symbols\.py "([^"]+)"', script)
+        assert written is not None, "the generation does not write the dictionary it verifies"
+        assert read is not None, "nothing hands the dictionary to the symbol check"
+        assert written.group(1) == read.group(1)
+
+    def test_the_image_ships_the_diagram_program_the_docs_build_uses(self) -> None:
+        """``docs/conf.py`` names the launcher on the PATH, which is what the image installs.
+
+        It used to say the image ships a jar at ``/plantuml.jar``; it never did, so the
+        default path never existed and the fallback was always what ran.
+        """
+        dockerfile = (ROOT / "docker" / "Dockerfile").read_text(encoding="utf-8")
+        assert "plantuml" in dockerfile, "the image no longer installs plantuml at all"
+        assert ".jar" not in dockerfile, (
+            "the image ships a jar again, and docs/conf.py says the launcher on the PATH is "
+            "what the documentation build runs"
+        )
+
+
+def workflow_actions() -> dict[str, set[str]]:
+    """Every action the workflows use, to the set of refs they pin it at."""
+    used: dict[str, set[str]] = {}
+    for workflow in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        text = workflow.read_text(encoding="utf-8")
+        for action, ref in re.findall(r"uses:\s*([\w.-]+/[\w.-]+)@(\S+)", text):
+            used.setdefault(action, set()).add(ref)
+    return used
+
+
+def dependabot() -> dict[str, str]:
+    """Each ecosystem dependabot watches, to the directory it watches it in.
+
+    Read with a regex rather than a yaml parser, as the pre-commit hook definition is: the
+    file is a handful of ``key: value`` lines, and a yaml dependency in the test requirements
+    would be a larger commitment than the thing being read.
+    """
+    text = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+    entries = re.findall(
+        r"package-ecosystem:\s*\"?([\w-]+)\"?.*?directory:\s*\"?([^\s\"]+)", text, flags=re.S
+    )
+    assert len(entries) == text.count("package-ecosystem:"), (
+        "an entry of dependabot.yml names no directory"
+    )
+    return dict(entries)
+
+
+class TestWhatKeepsTheToolchainMoving:
+    """Everything this repository pins, and the one thing that proposes moving it.
+
+    Nothing here moves on its own - the actions are pinned by major tag, the two tools that
+    are gates are capped to a minor, the extension's lock file pins exactly - which is what
+    makes a build reproducible and, without something proposing the updates, what makes a
+    release the moment somebody discovers the toolchain has moved on without them.
+    """
+
+    @pytest.mark.parametrize("ecosystem", ["github-actions", "pip", "npm"])
+    def test_every_manifest_of_this_repository_is_watched(self, ecosystem: str) -> None:
+        watched = dependabot()
+        assert ecosystem in watched, (
+            f"nothing proposes an update for {ecosystem}, so those pins move only when a "
+            f"release is already blocked by one of them"
+        )
+        directory = (ROOT / watched[ecosystem].lstrip("/")).resolve()
+        assert directory.is_dir(), f"{ecosystem} is watched in {watched[ecosystem]}, which is not"
+
+    def test_the_node_manifest_is_watched_where_it_lives(self) -> None:
+        """A directory that does not hold the manifest is watched in silence: dependabot
+        reports "no dependencies found" on its own page and nothing else."""
+        watched = Path(dependabot()["npm"].lstrip("/"))
+        assert (ROOT / watched / "package.json").is_file()
+        assert (ROOT / watched / "package-lock.json").is_file()
+
+    @pytest.mark.parametrize("tool", ["ruff", "mypy"])
+    def test_the_two_tools_that_are_gates_are_capped(self, tool: str) -> None:
+        """A library's new release breaks a test; these two fail the lint job by design.
+
+        ``ruff format --check`` disagrees with whatever the new release decided to reformat,
+        and a ``mypy`` minor adds inferences that strict mode reports - on whatever ran next,
+        which on the wrong day is the release. Everything else here is a lower bound.
+        """
+        requirements = (ROOT / "requirements-dev.txt").read_text(encoding="utf-8")
+        line = next(
+            line for line in requirements.splitlines() if line.strip().startswith(f"{tool}>")
+        )
+        assert "<" in line, (
+            f"{line.strip()} takes whatever {tool} is released next, which turns the lint job "
+            f"red on the day it is released rather than on the day somebody upgrades it"
+        )
+
+    def test_an_action_is_pinned_at_one_version_across_the_workflows(self) -> None:
+        """Three workflows, one toolchain: a version bumped in two of them and not the third
+        is how ci ran an upload two majors behind the one the release used."""
+        disagreeing = {
+            action: sorted(refs) for action, refs in workflow_actions().items() if len(refs) > 1
+        }
+        assert not disagreeing, (
+            f"the workflows pin the same action at different versions: {disagreeing}"
+        )
+
+
 class TestContinuousIntegration:
     """The classifiers are a public claim about what this package runs on."""
 
@@ -1485,6 +1783,148 @@ class TestContinuousIntegration:
         tested = set(re.findall(r"\d+\.\d+", listed.group(1)))
         assert tested == advertised, (
             f"ci tests python {sorted(tested)} but the package advertises {sorted(advertised)}"
+        )
+
+
+SKIPPING = {"skip", "skipif", "importorskip", "xfail"}
+"""The four ways pytest is asked to report a test as something other than run or failed."""
+
+
+def pytest_attributes(source: str) -> set[str]:
+    """Every ``pytest.…`` name an expression in the module reaches for.
+
+    Read as syntax rather than as text, so that a test *about* skipping - this one - can name
+    the calls it forbids without matching itself.
+    """
+    found = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Attribute):
+            parts = []
+            root: ast.expr = node
+            while isinstance(root, ast.Attribute):
+                parts.append(root.attr)
+                root = root.value
+            if isinstance(root, ast.Name) and root.id == "pytest":
+                found.add(".".join(["pytest", *reversed(parts)]))
+    return found
+
+
+class TestTheSuiteRunsEverythingEverywhere:
+    """The convention the developer page states, and the controls under the guards.
+
+    Two failure modes that both look like a green run. A test that skips reports success
+    without having run, so the behaviour it covers is covered on somebody's machine and
+    nowhere else; and a guard whose regex or walker finds nothing passes over an empty list,
+    which is how the count of the checks with a fixed severity went stale - the sentence it
+    counts was reworded, the guard stopped recognising it, and nothing was red.
+    """
+
+    @pytest.mark.parametrize("module", sorted(path.name for path in (ROOT / "tests").glob("*.py")))
+    def test_nothing_in_the_suite_skips(self, module: str) -> None:
+        """``docs/developer_documentation.rst`` states this as a rule; here it is enforced.
+
+        The one that got past it was a directory junction, a windows feature, so the case was
+        exercised on the windows cells of the matrix and reported skipped on the ubuntu ones -
+        while the page told a reader that every cell runs everything. A platform makes the
+        *spelling* of a second path to a directory differ, not the behaviour under test, so
+        the way out is a helper that makes one either way rather than a skip.
+        """
+        source = (ROOT / "tests" / module).read_text(encoding="utf-8")
+        skipping = sorted(
+            name for name in pytest_attributes(source) if name.rsplit(".", 1)[1] in SKIPPING
+        )
+        assert not skipping, (
+            f"tests/{module} reaches for {skipping}. A test that does not run reports success: "
+            f"make the case run on every platform - tests/conftest.py's directory_link is how "
+            f"the last one was - or, if it truly cannot, amend the convention on the developer "
+            f"page first"
+        )
+
+    def test_no_line_is_exempted_from_the_coverage_gate(self) -> None:
+        """The gate is 100 % of lines and branches, and an exemption is how that stops meaning
+        anything - one comment at a time, each of them reasonable on its own.
+
+        The one there was sat on ``if TYPE_CHECKING:``, which ``pyproject.toml`` already
+        excludes for the whole project, so it exempted nothing and read as though a rule
+        needed an escape hatch.
+        """
+        exempted = [
+            f"{path.relative_to(ROOT).as_posix()}:{number}"
+            for directory in ("src", "tests", "tools", "docker")
+            for path in sorted((ROOT / directory).rglob("*.py"))
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+            if re.search(r"pragma:\s*no\s+cover", line)
+        ]
+        assert not exempted, (
+            f"these lines are excused from the coverage gate one by one: {exempted}. A branch "
+            f"nothing reaches is a branch to delete; one that is reached needs the test that "
+            f"reaches it. The project-wide exclusions live in pyproject.toml"
+        )
+
+    def test_no_page_recommends_running_the_suite_without_its_summary(self) -> None:
+        """``addopts`` carries ``-q`` already, and a second one silences the count.
+
+        A run that passes both prints the dots, the failures and nothing else: no "N passed",
+        no coverage total, no statement of whether the gate was met. A page recommending that
+        spelling hands a reader a run whose result they have to infer from the exit code.
+        """
+        shown = [
+            (document, line.strip().removeprefix("$ ").strip())
+            for document, text in PAGES.items()
+            for line in text.splitlines()
+            if re.match(r"^\s*(?:\$ )?(?:python -m )?pytest\b", line)
+        ]
+        assert shown, "no page is recognised as showing a pytest command, so this weighs nothing"
+        for document, command in shown:
+            assert not re.search(r"(?<!-)-q\b|--quiet\b", command), (
+                f"{document} shows `{command}`, which silences the summary: the quiet flag is "
+                f"already in the addopts of pyproject.toml"
+            )
+
+    def test_the_pages_that_count_the_fixed_checks_are_recognised(self) -> None:
+        """Positive control: several pages count them, and the guard has to find them."""
+        counting = {page for page in PAGES if fixed_severity_counts(PAGES[page])}
+        assert counting, (
+            "no page is recognised as counting the checks whose severity is fixed, so the "
+            "guard over that count passes on every page without weighing anything"
+        )
+
+    def test_the_page_that_counts_the_description_kinds_is_recognised(self) -> None:
+        counting = {page for page in PAGES if description_kind_counts(PAGES[page])}
+        assert counting, (
+            "no page is recognised as counting the description kinds, so the guard over that "
+            "count passes on every page without weighing anything"
+        )
+
+    @pytest.mark.parametrize("document", ["README.md", "docs/developer_documentation.rst"])
+    def test_the_guard_suites_are_counted_as_they_are_listed(self, document: str) -> None:
+        """Both documents introduce the same list with a number, and both had to be edited
+        when a fifth suite joined it. One of them was; the README went on saying four."""
+        paragraph = next(
+            block
+            for block in PAGES[document].split("\n\n")
+            if re.search(r"\w+ (?:more )?suites guard", block)
+        )
+        counted = re.search(r"(\w+) (?:more )?suites guard", paragraph)
+        assert counted is not None
+        named = set(re.findall(r"tests/test_\w+\.py", paragraph))
+        assert NUMBER_WORDS[counted.group(1).lower()] == len(named), (
+            f"{document} says {counted.group(1)} suites and names {sorted(named)}"
+        )
+
+    def test_the_spec_links_to_its_own_sections(self) -> None:
+        """Positive control under the two guards that walk the SPEC's internal links."""
+        assert spec_links(), (
+            "no internal link is found in the SPEC, so the dangling-anchor guard and the "
+            "numbered-link guard both pass over an empty list"
+        )
+
+    def test_the_published_schemas_carry_closed_sets(self) -> None:
+        """Positive control under the guard that every enumerated value says what it means."""
+        found = {kind: len(enumerations_in(published(kind))) for kind in published_kinds()}
+        assert any(found.values()), (
+            f"no enumeration is found in any published schema, so the per-value documentation "
+            f"guard passes over an empty list for every kind: {found}"
         )
 
 
@@ -1596,6 +2036,38 @@ class TestPublishedDocumentation:
             f"the extension is published without waiting for the tag check: {needs.strip()}"
         )
 
+    def test_the_index_upload_is_reachable_only_from_a_tag(self) -> None:
+        """``workflow_dispatch`` is the dry run, and a dry run may not reach pypi.org.
+
+        The dispatch offers a ``pypi`` target and runs on whichever ref it was started from.
+        Gated on that input alone, a run started on a feature branch built whatever
+        ``pyproject.toml`` said *there* and uploaded it - immutably, under no tag, with the
+        tag check skipped (it is a release only step), no ``.vsix`` and no documentation
+        directory, all of which are release only too. An index accepts a file name once and
+        for ever, so the only way back from that is the next version number.
+        """
+        job = PUBLISH_WORKFLOW.split("\n  publish-pypi:\n", 1)[1]
+        condition = next(line for line in job.splitlines() if line.strip().startswith("if:"))
+        assert "startsWith(github.ref, 'refs/tags/v')" in condition, (
+            f"a dispatch from any ref at all can upload to pypi.org: {condition.strip()}"
+        )
+
+    def test_the_tag_check_covers_every_run_that_can_upload(self) -> None:
+        """Whatever may publish has to have had its tag compared with what was built.
+
+        The check exists because the version lives in ``pyproject.toml`` and the tag is typed
+        by hand. Running it for the release event only left the other door - a dispatch from a
+        tag - opening onto an upload whose file name nobody had compared with anything.
+        """
+        step = PUBLISH_WORKFLOW.split("name: Check tag matches package version\n", 1)[1]
+        condition = next(line for line in step.splitlines() if line.strip().startswith("if:"))
+        assert "github.event_name == 'release'" in condition, (
+            f"a release no longer has its tag compared with the version: {condition.strip()}"
+        )
+        assert "startsWith(github.ref, 'refs/tags/v')" in condition, (
+            f"a dispatch from a tag uploads without the tag being checked: {condition.strip()}"
+        )
+
     def test_the_site_is_published_by_pushing_the_branch(self) -> None:
         """Pages serves ``gh-pages`` itself, and nothing hands it a second copy.
 
@@ -1620,6 +2092,114 @@ class TestPublishedDocumentation:
         assert "git -C site push origin gh-pages" in DOCS_WORKFLOW, (
             "the workflow no longer publishes by pushing the branch Pages serves"
         )
+
+
+class TestTheVersionIndexOfTheSite:
+    """What a reader arriving at the root of the documentation site lands on.
+
+    The menu on every page reads ``versions.json``, including the pages of versions published
+    long before the one being deployed, and the root of the site redirects to whichever
+    version that file calls stable. Both are written by ``tools/site_versions.py``, which the
+    deploy job runs; it used to be a heredoc inside the workflow, where nothing could reach it
+    and the rule it carried - the newest tag is stable - would have crowned the first release
+    candidate published and labelled it "(stable)" beside the release it leads to.
+    """
+
+    def site(self, tmp_path: Path, *names: str) -> Path:
+        site = tmp_path / f"site{len(list(tmp_path.iterdir()))}"
+        site.mkdir()
+        for name in names:
+            (site / name).mkdir()
+        return site
+
+    def index(self, site: Path) -> dict[str, Any]:
+        site_versions.write_index(site)
+        loaded: dict[str, Any] = json.loads((site / "versions.json").read_text(encoding="utf-8"))
+        return loaded
+
+    def test_the_only_release_is_the_stable_one(self, tmp_path: Path) -> None:
+        site = self.site(tmp_path, "latest", "v0.9.0")
+        assert self.index(site) == {"stable": "v0.9.0", "versions": ["latest", "v0.9.0"]}
+
+    def test_a_release_candidate_is_listed_and_is_not_stable(self, tmp_path: Path) -> None:
+        """The case that made this a script: publishing ``v0.10.0rc1`` beside ``v0.9.0``.
+
+        Its directory sorts above every ``v0.9.x`` - it *is* the newer version - so the rule
+        "stable is the newest tag" pointed the root of the site at a release candidate while
+        the version anybody could install was the one below it.
+        """
+        site = self.site(tmp_path, "latest", "v0.9.0", "v0.10.0rc1")
+        assert self.index(site) == {
+            "stable": "v0.9.0",
+            "versions": ["latest", "v0.10.0rc1", "v0.9.0"],
+        }
+
+    def test_the_release_the_candidate_led_to_takes_over(self, tmp_path: Path) -> None:
+        site = self.site(tmp_path, "latest", "v0.9.0", "v0.10.0rc1", "v0.10.0")
+        assert self.index(site) == {
+            "stable": "v0.10.0",
+            "versions": ["latest", "v0.10.0", "v0.10.0rc1", "v0.9.0"],
+        }
+
+    def test_a_hotfix_on_the_old_line_does_not_take_the_site_back(self, tmp_path: Path) -> None:
+        """``v0.9.1`` published after ``v0.10.0`` is older, whatever its publication date.
+
+        The index is rewritten from what is on disk, which carries no dates - only the
+        versions - so this holds by the ordering rather than by remembering anything.
+        """
+        site = self.site(tmp_path, "latest", "v0.9.0", "v0.10.0rc1", "v0.10.0", "v0.9.1")
+        assert self.index(site) == {
+            "stable": "v0.10.0",
+            "versions": ["latest", "v0.10.0", "v0.10.0rc1", "v0.9.1", "v0.9.0"],
+        }
+
+    def test_before_the_first_release_the_root_lands_on_latest(self, tmp_path: Path) -> None:
+        """With no release published there is nothing else to land on - a candidate included."""
+        assert self.index(self.site(tmp_path, "latest"))["stable"] == "latest"
+        assert self.index(self.site(tmp_path, "v0.10.0rc1")) == {
+            "stable": "latest",
+            "versions": ["v0.10.0rc1"],
+        }
+
+    def test_only_version_directories_are_listed(self, tmp_path: Path) -> None:
+        """The branch is the site: ``.nojekyll``, the index itself and anything else pushed."""
+        site = self.site(tmp_path, "latest", "v0.9.0", "assets")
+        (site / "CNAME").write_text("example.com\n", encoding="utf-8")
+        assert self.index(site) == {"stable": "v0.9.0", "versions": ["latest", "v0.9.0"]}
+
+    def test_numbers_are_compared_as_numbers(self, tmp_path: Path) -> None:
+        """``v0.10.0`` is newer than ``v0.9.0``; sorted as text it is not."""
+        site = self.site(tmp_path, "v0.9.0", "v0.10.0", "v0.2.0")
+        assert self.index(site)["versions"] == ["v0.10.0", "v0.9.0", "v0.2.0"]
+
+    def test_the_root_redirects_to_the_stable_version(self, tmp_path: Path) -> None:
+        site = self.site(tmp_path, "latest", "v0.9.0", "v0.10.0rc1")
+        site_versions.write_index(site)
+        page = (site / "index.html").read_text(encoding="utf-8")
+        assert 'content="0; url=./v0.9.0/"' in page
+        assert 'href="./v0.9.0/"' in page
+        assert "v0.10.0rc1" not in page
+
+    def test_the_run_says_what_it_published(self, tmp_path: Path) -> None:
+        """The deploy job's log line, which is all a reader of a run sees of this."""
+        site = self.site(tmp_path, "latest", "v0.9.0", "v0.10.0rc1")
+        assert site_versions.write_index(site) == (
+            "stable is v0.9.0, versions are latest, v0.10.0rc1, v0.9.0"
+        )
+
+    def test_the_script_is_what_the_workflow_runs(self) -> None:
+        """Pinning the orderings above is worth nothing if the workflow inlines them again."""
+        assert "tools/site_versions.py" in DOCS_WORKFLOW, (
+            "the deploy job no longer runs the script these orderings are pinned on"
+        )
+        assert "def order(" not in DOCS_WORKFLOW, (
+            "the version index is computed inside the workflow again, where no test reaches it"
+        )
+
+    def test_the_sdist_carries_it(self) -> None:
+        """The suite runs from the sdist, so what the suite imports has to be in the sdist."""
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        assert "/tools" in metadata["tool"]["hatch"]["build"]["targets"]["sdist"]["include"]
 
 
 class TestPreCommitHook:

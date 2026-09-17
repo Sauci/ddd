@@ -1,7 +1,7 @@
 # XCP measurement rasters
 
 - **Date:** 2026-09-02
-- **Status:** design approved, not implemented
+- **Status:** implemented and released in 0.7.0
 - **Touches:** the loader, the models, the analysis, the data dictionary, the a2l backend
 
 ## 1 What this adds

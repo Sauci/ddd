@@ -1,7 +1,7 @@
 # String conversion
 
 - **Date:** 2026-09-10
-- **Status:** design approved, not implemented
+- **Status:** implemented and merged to master; unreleased
 - **Touches:** the models, the analysis, the data dictionary, the c backend, the a2l
   backend, the editor, the documentation and the demo
 

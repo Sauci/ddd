@@ -17,7 +17,15 @@ from typing import Any
 
 import pytest
 
-from conftest import EXAMPLES, INCONSISTENT, component, declare, project, write_tree
+from conftest import (
+    EXAMPLES,
+    INCONSISTENT,
+    component,
+    declare,
+    directory_link,
+    project,
+    write_tree,
+)
 from ddd.build_info import BUILD_INFO_FILENAME
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
 from ddd.loading import load_workspace
@@ -98,21 +106,6 @@ def sent(stream: io.BytesIO) -> list[dict[str, Any]]:
     while (message := read_message(stream)) is not None:
         received.append(message)
     return received
-
-
-def directory_link(link: Path, target: Path) -> None:
-    """A second spelling of a directory, made the way the platform allows unprivileged.
-
-    ``symlink_to`` needs ``SeCreateSymbolicLinkPrivilege`` on Windows, which an ordinary
-    account does not hold. A junction is the same thing for these tests - a path whose
-    ``resolve()`` is a different path - and any account may make one.
-    """
-    if os.name == "nt":
-        import _winapi
-
-        _winapi.CreateJunction(str(target), str(link))
-    else:
-        link.symlink_to(target, target_is_directory=True)
 
 
 def build_record(base: Path, project_file: Path, image: str = "firmware.elf", **extra: Any) -> Path:

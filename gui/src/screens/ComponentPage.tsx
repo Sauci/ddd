@@ -5,6 +5,7 @@ import type { State } from "../api/types";
 import { Banner } from "../components/Banner";
 import { UnitEditor } from "../components/UnitEditor";
 import { jsonText, setValue } from "../lib/edits";
+import { keyedFindings } from "../lib/findings";
 import type { ComponentFile } from "../lib/formats";
 import { valueAt, within } from "../lib/pointer";
 import { asList, asText } from "../lib/values";
@@ -96,11 +97,8 @@ export function ComponentPage({ file, state, disabled }: Props) {
                   />
                 </td>
                 <td>
-                  {own.map((finding) => (
-                    <span
-                      key={`${finding.check}:${finding.pointer}`}
-                      className={`badge ${finding.severity}`}
-                    >
+                  {keyedFindings(own).map(([finding, key]) => (
+                    <span key={key} className={`badge ${finding.severity}`}>
                       {finding.check}
                     </span>
                   ))}
@@ -115,8 +113,8 @@ export function ComponentPage({ file, state, disabled }: Props) {
         <p className="quiet">None.</p>
       ) : (
         <ul className="findings">
-          {findings.map((finding) => (
-            <li key={`${finding.check}:${finding.pointer}`} className={finding.severity}>
+          {keyedFindings(findings).map(([finding, key]) => (
+            <li key={key} className={finding.severity}>
               <span className="check">{finding.check}</span>{" "}
               <span className="message">{finding.message}</span>
             </li>

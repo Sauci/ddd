@@ -149,7 +149,7 @@ ownership ends up being re-implemented, slightly differently, in a jinja templat
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/analysis.py</span></code></p></td>
 <td><p>ownership, agreement between components, references</p></td>
-<td><p>any output format</p></td>
+<td><p>how anything is rendered</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/ir.py</span></code></p></td>
 <td><p><strong>the contract</strong>: the resolved data dictionary</p></td>
@@ -167,9 +167,18 @@ ownership ends up being re-implemented, slightly differently, in a jinja templat
 <td><p><code class="docutils literal notranslate"><span class="pre">UWORD</span></code>, compu methods, record layouts, its own templates</p></td>
 <td><p>c, the loader, the checks</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/lsp/</span></code></p></td>
+<td><p>the language server protocol, a document’s bytes and positions in it</p></td>
+<td><p>any output format</p></td>
+</tr>
 </tbody>
 </table>
-<p>The last two rows are deliberately not symmetric. The a2l backend carries its own templates,
+<p>The analysis row says “how anything is rendered” rather than “any output format” for a
+reason: two of the checks are about what an output format can carry, so the module states
+the three dimensions <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code> holds in ASAP2 1.6.1 and the range of a c <code class="docutils literal notranslate"><span class="pre">int</span></code> on a
+32 bit target, and says so in the findings it reports. What it does not know is how a
+<code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code> or an <code class="docutils literal notranslate"><span class="pre">int</span></code> is written, which is what the row is about.</p>
+<p>The last two backend rows are deliberately not symmetric. The a2l backend carries its own templates,
 because ASAP2 is a format ASAM defines and a project has nothing to decide about it; the c
 backend carries none, because what generated c looks like is a house style. It is constructed
 with the template directory <code class="docutils literal notranslate"><span class="pre">--template-dir</span></code> names, works out what to render from the file
@@ -177,12 +186,22 @@ names it finds there, and therefore does not know before a run which files that 
 Those naming rules are part of the interface a project depends on: <a class="reference internal" href="templates.html"><span class="doc">Templates</span></a> documents
 them, and the module docstring of <code class="docutils literal notranslate"><span class="pre">src/ddd/backends/c/backend.py</span></code> states them again next to
 the code that implements them.</p>
-<p>Three smaller modules sit beside them. <code class="docutils literal notranslate"><span class="pre">diagnostics.py</span></code> holds the severity policy and the
+<p>Five smaller modules sit beside them. <code class="docutils literal notranslate"><span class="pre">diagnostics.py</span></code> holds the severity policy and the
 registry of every check, and is what both the loader and the analysis report through.
 <code class="docutils literal notranslate"><span class="pre">compare.py</span></code> answers the directional question of whether one dictionary may replace
 another, and is the second consumer of the contract next to the backends. <code class="docutils literal notranslate"><span class="pre">cli.py</span></code> is the
 only module that knows about argument parsing, exit codes and where output goes; it is also
-where the backends a <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> run uses are assembled.</p>
+where the backends a <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> run uses are assembled. <code class="docutils literal notranslate"><span class="pre">identity.py</span></code> makes an object
+identity and writes one into a description file textually, so that <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span></code>
+produces a diff of one line per object rather than a reformatted document. <code class="docutils literal notranslate"><span class="pre">build_info.py</span></code>
+is the hand-off from a build to an editor: which project description was configured, and
+under which severity policy, neither of which any <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> file records.</p>
+<p><code class="docutils literal notranslate"><span class="pre">src/ddd/lsp/</span></code> is a layer of its own rather than a smaller module: nine modules that speak
+the language server protocol over a pipe, locate a json pointer in the bytes of a document
+(<code class="docutils literal notranslate"><span class="pre">ranges.py</span></code>, which <code class="docutils literal notranslate"><span class="pre">identity.py</span></code> reuses rather than growing a second scanner), find the
+projects a file belongs to and turn the findings into what an editor underlines. It is a
+second front end over the same loader and analysis, and knows about no output format.
+<a class="reference internal" href="editor_integration.html"><span class="doc">Editor integration</span></a> describes what it offers a client.</p>
 <p>The two contract pages describe the data that travels between the layers: the input file
 formats under <a class="reference internal" href="data_contracts.html"><span class="doc">data contracts</span></a>, and the resolved form under
 <a class="reference internal" href="data_dictionary.html"><span class="doc">data dictionary</span></a>.</p>
@@ -398,13 +417,34 @@ python<span class="w"> </span>-m<span class="w"> </span>ruff<span class="w"> </s
 python<span class="w"> </span>-m<span class="w"> </span>mypy
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">mypy</span></code> runs in strict mode over <code class="docutils literal notranslate"><span class="pre">src/ddd</span></code> with the pydantic plugin; <code class="docutils literal notranslate"><span class="pre">ruff</span></code> lints the
-sources, the tests and the documentation configuration with a line length of 100. The suite
-runs in a few seconds, so there is no reason to run anything less than all of it.</p>
-<p>Nothing in the suite skips. A test that skips when a tool is absent reports success without
-having run, and the one place that used to do it - validating the examples against the
-committed schemas, which needs <code class="docutils literal notranslate"><span class="pre">jsonschema</span></code> - was skipping everywhere except on the machine
-of whoever happened to have it installed. It is a development dependency instead.</p>
+<p><code class="docutils literal notranslate"><span class="pre">mypy</span></code> runs in strict mode over <code class="docutils literal notranslate"><span class="pre">src/ddd</span></code> and <code class="docutils literal notranslate"><span class="pre">tools/</span></code> with the pydantic plugin;
+<code class="docutils literal notranslate"><span class="pre">ruff</span></code> lints the sources, the tests, the release machinery and the documentation
+configuration with a line length of 100. The whole suite takes a couple of minutes in a warm
+checkout - longer in a fresh environment, where <code class="docutils literal notranslate"><span class="pre">tests/test_cmake.py</span></code> configures and builds
+the module - so <code class="docutils literal notranslate"><span class="pre">--no-cov</span></code> and a <code class="docutils literal notranslate"><span class="pre">-k</span></code> are what a single test is worth running under, and
+the whole of it is what a commit is worth running under. Not <code class="docutils literal notranslate"><span class="pre">-q</span></code>: the <code class="docutils literal notranslate"><span class="pre">addopts</span></code> in
+<code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> carry one already, pytest counts them, and a second drops the summary - the
+“N passed” line and the coverage total both - leaving the exit code as the only statement of
+what happened.</p>
+<p>Nothing in the suite skips, and a test in <code class="docutils literal notranslate"><span class="pre">tests/test_documentation.py</span></code> holds it to that:
+no <code class="docutils literal notranslate"><span class="pre">pytest.skip</span></code>, <code class="docutils literal notranslate"><span class="pre">skipif</span></code>, <code class="docutils literal notranslate"><span class="pre">importorskip</span></code> or <code class="docutils literal notranslate"><span class="pre">xfail</span></code> anywhere under <code class="docutils literal notranslate"><span class="pre">tests/</span></code>. A
+test that skips reports success without having run, so what it covers is covered on somebody
+else’s machine and nowhere else. Two places used to do it. Validating the examples against
+the committed schemas needed <code class="docutils literal notranslate"><span class="pre">jsonschema</span></code>, and skipped everywhere except on the machine of
+whoever happened to have it installed; it is a development dependency instead. A case about a
+second spelling of an output directory made a directory junction, which is a windows feature,
+and skipped on the ubuntu cells of the matrix - so the page said every cell ran everything
+while a third of them ran that one nowhere. A platform makes the <em>spelling</em> of such a path
+differ, not the behaviour under test, so <code class="docutils literal notranslate"><span class="pre">tests/conftest.py</span></code> offers <code class="docutils literal notranslate"><span class="pre">directory_link</span></code>: a
+junction on Windows, a symbolic link elsewhere, and a path whose <code class="docutils literal notranslate"><span class="pre">resolve()</span></code> is another path
+on both.</p>
+<p>The same file carries the positive controls under the guards that read the pages with a
+regex. A guard looping over what a pattern found passes when it found nothing, which is how
+the count of the checks whose severity is fixed went stale: the sentence it counts was
+reworded, the pattern stopped matching, and the suite stayed green. So each such guard has a
+test beside it asserting that the pattern still recognises something - and the two transcript
+tests, which are parametrized over sets computed at import, have one too, because pytest
+answers a parametrize over nothing with a skip rather than a failure.</p>
 <p>The repository also ships a small linux image, which is what the generated c code is
 actually compiled with - a generator whose output no compiler has ever accepted is a
 generator with no evidence behind it. Run it from a WSL shell, where docker speaks linux
@@ -432,22 +472,38 @@ treatment.</p>
 </section>
 <section id="continuous-integration">
 <h2>Continuous integration<a class="headerlink" href="#continuous-integration" title="Link to this heading"></a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">.github/workflows/ci.yml</span></code> runs exactly the commands above - the suite with its coverage
-gate, <code class="docutils literal notranslate"><span class="pre">ruff</span></code> twice and <code class="docutils literal notranslate"><span class="pre">mypy</span></code> - on every push to <code class="docutils literal notranslate"><span class="pre">master</span></code> and every pull request.</p>
+<p><code class="docutils literal notranslate"><span class="pre">.github/workflows/ci.yml</span></code> runs the commands above - the suite with its coverage gate,
+<code class="docutils literal notranslate"><span class="pre">ruff</span></code> twice and <code class="docutils literal notranslate"><span class="pre">mypy</span></code> - on every push to <code class="docutils literal notranslate"><span class="pre">master</span></code> and every pull request, in two jobs,
+and a third the commands above do not cover: <code class="docutils literal notranslate"><span class="pre">extension</span></code> installs node and the package,
+runs <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">ci</span></code>, <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">test</span></code> and <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">run</span> <span class="pre">package</span></code> in <code class="docutils literal notranslate"><span class="pre">editors/vscode</span></code>, and uploads the
+<code class="docutils literal notranslate"><span class="pre">.vsix</span></code> it produced. Its tests start a real language server, which is why it installs the
+python package as well as compiling typescript, and packaging the extension there proves that
+the artefact a customer is handed can be produced at all.</p>
 <p>The suite runs across a matrix of ubuntu and windows on python 3.12 and 3.13, which is the
 four combinations the classifiers in <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> advertise. That is not thoroughness
 for its own sake: a path handling defect that only appeared on linux has already reached a
 user of this project, having passed the whole suite on windows first. A test in
 <code class="docutils literal notranslate"><span class="pre">tests/test_documentation.py</span></code> keeps the matrix and those classifiers in agreement, so
 advertising a new interpreter without testing it fails.</p>
-<p>Each job installs the project with <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">&quot;.[dev]&quot;</span></code> rather than running it out of
-<code class="docutils literal notranslate"><span class="pre">src</span></code>. That is deliberate too, and it is the cheapest check in the file: it exercises the
-packaging metadata, which the tests themselves never touch, so a dependency list that no
-longer builds fails here rather than for whoever installs the distribution.</p>
+<p>The two python jobs install the project with <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">&quot;.[dev]&quot;</span></code> rather than running
+it out of <code class="docutils literal notranslate"><span class="pre">src</span></code> - the extension job installs <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">.</span></code>, since what it needs is a
+<code class="docutils literal notranslate"><span class="pre">ddd</span></code> on the path to launch. That is deliberate too, and it is the cheapest check in the
+file: it exercises the packaging metadata, which the tests themselves never touch, so a
+dependency list that no longer builds fails here rather than for whoever installs the
+distribution.</p>
 <p>Style and types are checked once rather than per platform, since neither varies by platform.
 <code class="docutils literal notranslate"><span class="pre">publish.yml</span></code> runs the suite again before it builds a release, which is not redundant: a
 release can be cut from a commit this workflow never saw, and an upload to an index is
 permanent.</p>
+<p>Nothing in the toolchain moves on its own. Every <code class="docutils literal notranslate"><span class="pre">uses:</span></code> is pinned by a major tag, the
+extension’s lock file pins its dependencies exactly, and <code class="docutils literal notranslate"><span class="pre">ruff</span></code> and <code class="docutils literal notranslate"><span class="pre">mypy</span></code> are capped to
+a minor in <code class="docutils literal notranslate"><span class="pre">requirements-dev.txt</span></code> - those two are gates rather than libraries, so a release
+of either fails the lint job on the day it is published rather than on the day somebody
+upgrades it. What proposes the moves instead is <code class="docutils literal notranslate"><span class="pre">.github/dependabot.yml</span></code>, weekly, for the
+actions, the requirements files and the extension: a bump then arrives as a pull request that
+ci has already run, which is the difference between upgrading a tool and discovering on a
+release day that one has moved on without you. A test holds every action to one version
+across the three workflows, and both caps to being caps.</p>
 </section>
 <section id="building-this-documentation">
 <h2>Building this documentation<a class="headerlink" href="#building-this-documentation" title="Link to this heading"></a></h2>
@@ -515,7 +571,15 @@ such file above it - a local one, a pull request one - shows no menu at all, whi
 there is nothing to switch to.</p>
 <p>The root of the site redirects to the newest release rather than to <code class="docutils literal notranslate"><span class="pre">latest</span></code>. Somebody
 arriving without a version in the url wants the documentation of what they can install, not
-<code class="docutils literal notranslate"><span class="pre">master</span></code>’s account of features that are not released yet.</p>
+<code class="docutils literal notranslate"><span class="pre">master</span></code>’s account of features that are not released yet - and not a release candidate
+either: the newest <em>release</em> is the newest tag whose version carries nothing after the
+numbers, so <code class="docutils literal notranslate"><span class="pre">v0.10.0rc1</span></code> is published, listed in the menu under its own version, and left
+out of that choice until <code class="docutils literal notranslate"><span class="pre">v0.10.0</span></code> follows it. Before the first release there is nothing
+else to land on, so the root points at <code class="docutils literal notranslate"><span class="pre">latest</span></code>.</p>
+<p>That rule is <code class="docutils literal notranslate"><span class="pre">tools/site_versions.py</span></code>, which the deploy job runs, rather than a heredoc
+inside the workflow: <code class="docutils literal notranslate"><span class="pre">tests/test_documentation.py</span></code> pins the orderings it produces - the
+candidate, the release it leads to, and a hotfix on the older line published after it - which
+is what nothing could do while it was a workflow step.</p>
 <p>The workflow installs graphviz and plantuml from apt, so publishing needs nothing but a stock
 runner: there is no prepared image to keep in step with the sources. Only html is built. A pdf
 would want a LaTeX distribution, roughly a gigabyte of packages, and nothing asks for one -
@@ -589,29 +653,40 @@ happens on a published GitHub release tagged <code class="docutils literal notra
 unless that tag is exactly <code class="docutils literal notranslate"><span class="pre">v</span></code> followed by the version in <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>. The prefix is
 checked rather than stripped, because the documentation site publishes a release under a
 directory named after its tag and lists only the ones beginning with <code class="docutils literal notranslate"><span class="pre">v</span></code>.</p>
+<p>A dispatch with <code class="docutils literal notranslate"><span class="pre">target:</span> <span class="pre">pypi</span></code> runs only from a <code class="docutils literal notranslate"><span class="pre">v*</span></code> tag, and is checked against
+<code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> there exactly as a release is. On any other ref the job is skipped: the
+same run started on a branch would have built whatever that branch’s <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> said
+and uploaded it under no tag, with no <code class="docutils literal notranslate"><span class="pre">.vsix</span></code> and no documentation directory - and an index
+accepts a file name once and for ever, so the only way back is the next version number.</p>
 <p><strong>The version is spelled in nine files, and a test holds only three of them together.</strong>
 <code class="docutils literal notranslate"><span class="pre">src/ddd/__init__.py</span></code> is where it lives: <code class="docutils literal notranslate"><span class="pre">docs/conf.py</span></code> imports <code class="docutils literal notranslate"><span class="pre">__version__</span></code> rather than
 restating it, and the banner of every generated file carries it from there. <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>,
 which the release tag is checked against, and <code class="docutils literal notranslate"><span class="pre">editors/vscode/package.json</span></code>, which the
 extension is packaged with, repeat it, and a test each asserts that they agree with
 <code class="docutils literal notranslate"><span class="pre">__version__</span></code>. <code class="docutils literal notranslate"><span class="pre">editors/vscode/package-lock.json</span></code> records it twice more - in its own header
-and in the entry for the root package - and nothing asserts that either agrees; <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">ci</span></code>
-refuses a lock file out of step with its manifest, so a bump that edits only the manifest fails
-the extension job rather than a test. The other five files spell it out as text and nothing
+and in the entry for the root package - and a test now asserts that both agree with
+<code class="docutils literal notranslate"><span class="pre">__version__</span></code> as well. Nothing else would: what <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">ci</span></code> compares with the manifest is the
+<em>dependencies</em>, not the root package’s own version, so a bump that edits only the manifest
+packaged a <code class="docutils literal notranslate"><span class="pre">.vsix</span></code> whose lock file still said the version before. The other five files
+spell it out as text and nothing
 derives it for them: the wheel file name in <code class="docutils literal notranslate"><span class="pre">README.md</span></code> and in <a class="reference internal" href="getting_started.html"><span class="doc">Getting started</span></a>, the two
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">--version</span></code> transcripts of that page - only the first of which the transcript test re-runs,
 since the second carries a trailing comment and is shown rather than run - and the banner of a
 generated file quoted in <a class="reference internal" href="getting_started.html"><span class="doc">Getting started</span></a>, <a class="reference internal" href="generated_artefacts.html"><span class="doc">Generated artefacts</span></a>,
 <a class="reference internal" href="faq.html"><span class="doc">FAQ</span></a> and <a class="reference internal" href="templates.html"><span class="doc">Templates</span></a>. Bumping the version means walking all nine in the release
 commit.</p>
-<p>The publishing jobs name a deployment environment - <code class="docutils literal notranslate"><span class="pre">pypi</span></code>, <code class="docutils literal notranslate"><span class="pre">testpypi</span></code> - and GitHub
-creates an environment with its deployments restricted to the default branch, which is the
-whole of what a release is not: the run is triggered by a tag. An environment whose
-<em>Deployment branches and tags</em> is left at that default rejects the release after a green
-build, with <em>not allowed to deploy … due to environment protection rules</em>. In <em>Settings</em> →
-<em>Environments</em>, choose <em>Selected branches and tags</em> for each and add a tag rule for <code class="docutils literal notranslate"><span class="pre">v*</span></code>;
-this is a setting rather than a file, so it is fixed in the settings rather than in the
-repository, once per repository.</p>
+<p>The publishing jobs name a deployment environment - <code class="docutils literal notranslate"><span class="pre">pypi</span></code>, <code class="docutils literal notranslate"><span class="pre">testpypi</span></code>. As this
+repository stands, neither carries a deployment branch policy and neither has a protection
+rule, so nothing in the settings decides which ref may publish: what does is the workflow
+itself, where <code class="docutils literal notranslate"><span class="pre">publish-pypi</span></code> runs for a release or for a dispatch from a <code class="docutils literal notranslate"><span class="pre">v*</span></code> tag and for
+nothing else.</p>
+<p>An environment <em>can</em> be created with its deployments restricted to the default branch, which
+is the whole of what a release is not: the run is triggered by a tag. One left at that
+setting rejects the release after a green build, with <em>not allowed to deploy … due to
+environment protection rules</em>, and the fix is in <em>Settings</em> → <em>Environments</em>: choose
+<em>Selected branches and tags</em> and add a tag rule for <code class="docutils literal notranslate"><span class="pre">v*</span></code>. That is worth doing here as a
+second lock rather than as a repair - a setting saying the same thing as the workflow’s
+condition, in the place an audit looks first.</p>
 </section>
 <section id="delivering-the-editor-extension">
 <h2>Delivering the editor extension<a class="headerlink" href="#delivering-the-editor-extension" title="Link to this heading"></a></h2>

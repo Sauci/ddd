@@ -125,6 +125,15 @@ measurement and calibration tool reads to know which values exist in the softwar
 where they live, how a raw value is converted into a physical one and within which
 limits it may be calibrated.</p></td>
 </tr>
+<tr class="row-odd"><td><p>API</p></td>
+<td><p>Application programming interface. Used here of the python surface a plugin is written
+against - <code class="docutils literal notranslate"><span class="pre">ddd.plugins.Plugin</span></code>, its hooks and its contexts - and of the token an
+upload to the package index authenticates with.</p></td>
+</tr>
+<tr class="row-even"><td><p>ARXML</p></td>
+<td><p>AUTOSAR XML, the interchange format of an AUTOSAR tool chain. DDD writes none; it is
+named as an example of what a consumer of the resolved dictionary could produce.</p></td>
+</tr>
 <tr class="row-odd"><td><p>ASAM</p></td>
 <td><p>Association for Standardisation of Automation and Measuring Systems, the body that
 publishes the MCD-2 MC standard the generated a2l follows.</p></td>
@@ -133,6 +142,15 @@ publishes the MCD-2 MC standard the generated a2l follows.</p></td>
 <td><p>The former name of ASAM MCD-2 MC, still used for the version number of the format.
 <code class="docutils literal notranslate"><span class="pre">ASAP2_VERSION</span> <span class="pre">1</span> <span class="pre">61</span></code> in the second line of every generated file says that DDD writes
 version 1.6.1.</p></td>
+</tr>
+<tr class="row-odd"><td><p>ASCII</p></td>
+<td><p>American Standard Code for Information Interchange, the 128 character encoding whose
+printable range is what a string <code class="docutils literal notranslate"><span class="pre">init</span></code> is held to and what a raster name may use.</p></td>
+</tr>
+<tr class="row-even"><td><p>AUTOSAR</p></td>
+<td><p>AUTomotive Open System ARchitecture, an automotive software standard. DDD does not
+target it; its <code class="docutils literal notranslate"><span class="pre">Platform_Types.h</span></code> spelling of the integer types (<code class="docutils literal notranslate"><span class="pre">uint16</span></code>) is one
+of the two a template may render, the other being the ISO one (<code class="docutils literal notranslate"><span class="pre">uint16_t</span></code>).</p></td>
 </tr>
 <tr class="row-odd"><td><p>CCP</p></td>
 <td><p>CAN Calibration Protocol, the older of the two protocols a calibration tool uses to
@@ -176,6 +194,16 @@ toolchains. It is the artefact whose link step decides the addresses that later 
 into the a2l, and the file an a2l address patcher resolves the generated
 <code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code> entries against.</p></td>
 </tr>
+<tr class="row-even"><td><p>GCC</p></td>
+<td><p>The GNU Compiler Collection, the compiler the container compiles the generated c with,
+under <code class="docutils literal notranslate"><span class="pre">-Wall</span> <span class="pre">-Wextra</span> <span class="pre">-Wpedantic</span> <span class="pre">-Werror</span> <span class="pre">-Wconversion</span></code> among others. Nothing DDD
+writes is specific to it; it is the strictest of the compilers to hand.</p></td>
+</tr>
+<tr class="row-odd"><td><p>IEEE 754</p></td>
+<td><p>The floating point standard the <code class="docutils literal notranslate"><span class="pre">float32</span></code> and <code class="docutils literal notranslate"><span class="pre">float64</span></code> datatypes follow, and the
+reason a limit or an initial value may be neither infinite nor NaN: no c literal and no
+a2l number carries either.</p></td>
+</tr>
 <tr class="row-even"><td><p>IR</p></td>
 <td><p>Intermediate representation: the resolved data dictionary that sits between the
 checking front end and the output backends, with every limit filled in, every shape
@@ -184,16 +212,67 @@ contract rather than an internal detail - <code class="docutils literal notransl
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">dictionary</span></code> publishes its json schema, so a generator that DDD does not
 ship can consume it.</p></td>
 </tr>
-<tr class="row-odd"><td><p>json</p></td>
+<tr class="row-odd"><td><p>ISO</p></td>
+<td><p>International Organization for Standardization. Named here for the ISO C spelling of
+the integer types - <code class="docutils literal notranslate"><span class="pre">uint16_t</span></code>, from <code class="docutils literal notranslate"><span class="pre">&lt;stdint.h&gt;</span></code> - which is what the example
+templates render.</p></td>
+</tr>
+<tr class="row-even"><td><p>json</p></td>
 <td><p>JavaScript Object Notation, the format of every file DDD reads: the project and
 component descriptions, the address map, the archived
 dictionary used as a comparison baseline, and the machine readable diagnostics.</p></td>
 </tr>
-<tr class="row-even"><td><p>MCD-2 MC</p></td>
+<tr class="row-odd"><td><p>MCD-2 MC</p></td>
 <td><p>Measurement, Calibration and Diagnostics, part 2, Measurement and Calibration: the
 formal ASAM name of the format everybody calls a2l.</p></td>
 </tr>
-<tr class="row-odd"><td><p>XCP</p></td>
+<tr class="row-even"><td><p>MISRA</p></td>
+<td><p>The guidelines of the Motor Industry Software Reliability Association for c in safety
+related software. DDD takes no position on them: a project that needs a deviation
+record above every <code class="docutils literal notranslate"><span class="pre">volatile</span></code> object writes one in its own template.</p></td>
+</tr>
+<tr class="row-odd"><td><p>MSVC</p></td>
+<td><p>The Microsoft Visual C++ compiler. Named on the <a class="reference internal" href="build_integration.html"><span class="doc">build integration</span></a> page, whose recipes guard a compiler flag with <code class="docutils literal notranslate"><span class="pre">if(NOT</span> <span class="pre">MSVC)</span></code>
+because its command line spells warnings differently.</p></td>
+</tr>
+<tr class="row-even"><td><p>NaN</p></td>
+<td><p>Not a number, the IEEE 754 value that is equal to nothing including itself. A limit or
+an initial value may not be one: every comparison against it is false, so it would pass
+every range check in silence, and no output format can carry it.</p></td>
+</tr>
+<tr class="row-odd"><td><p>NVM</p></td>
+<td><p>Non-volatile memory, storage that survives a power cycle. One of the kinds of memory a
+declared <a class="reference internal" href="file_formats/sections.html"><span class="doc">section</span></a> stands for; DDD carries the section
+name and the linker decides what it means.</p></td>
+</tr>
+<tr class="row-even"><td><p>OIDC</p></td>
+<td><p>OpenID Connect, the protocol behind trusted publishing: GitHub mints a short lived
+token for the publishing job and the package index decides whether the claims in it
+match a publisher somebody registered, so no API token is stored in the repository.</p></td>
+</tr>
+<tr class="row-odd"><td><p>RAM</p></td>
+<td><p>Random access memory, the volatile storage a measurement normally lives in. Named in
+the <a class="reference internal" href="consistency_checks.html"><span class="doc">checks</span></a> for what a section usually stands for.</p></td>
+</tr>
+<tr class="row-even"><td><p>ROM</p></td>
+<td><p>Read-only memory, the storage a calibration value normally lives in - often behind an
+emulation overlay so that a calibration tool can write it. Another of the kinds of
+memory a declared section stands for.</p></td>
+</tr>
+<tr class="row-odd"><td><p>UTF-16</p></td>
+<td><p>The two byte Unicode encoding Windows PowerShell 5.1 re-encodes redirected output in,
+which is why <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">-o</span> <span class="pre">FILE</span></code> writes the file itself rather than leaving the bytes
+to the shell: a dictionary redirected with <code class="docutils literal notranslate"><span class="pre">&gt;</span></code> there cannot be read back.</p></td>
+</tr>
+<tr class="row-even"><td><p>VSIX</p></td>
+<td><p>The package format of a Visual Studio Code extension. The <code class="docutils literal notranslate"><span class="pre">ddd-&lt;version&gt;.vsix</span></code>
+attached to each GitHub release is the whole of how the editor extension is delivered.</p></td>
+</tr>
+<tr class="row-odd"><td><p>WSL</p></td>
+<td><p>The Windows Subsystem for Linux, where docker speaks linux containers on a Windows
+machine. It is where the compose services of this repository are run from.</p></td>
+</tr>
+<tr class="row-even"><td><p>XCP</p></td>
 <td><p>Universal Measurement and Calibration Protocol, the successor of CCP. An exported
 measurement with a <a class="reference internal" href="file_formats/rasters.html"><span class="doc">raster</span></a> reaches the generated a2l with
 an <code class="docutils literal notranslate"><span class="pre">IF_DATA</span> <span class="pre">XCP</span></code> block naming its DAQ event; the rest of the protocol - the event

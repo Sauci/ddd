@@ -645,10 +645,53 @@ section for CCP.</p>
 </section>
 <section id="how-large-may-an-array-be">
 <h2>How large may an array be?<a class="headerlink" href="#how-large-may-an-array-be" title="Link to this heading"></a></h2>
-<p>There is no bound: a dimension is any integer of at least one, stated as a number or through
-a <a class="reference internal" href="file_formats/constants.html"><span class="doc">declared constant</span></a>, and DDD caps neither the number of
-dimensions nor their product. What grows with that product is the work. A structured object
-is resolved into one member object per element and member, and those objects are what the
+<p>A dimension is any integer of at least one, stated as a number or through a <a class="reference internal" href="file_formats/constants.html"><span class="doc">declared
+constant</span></a>, and nothing caps how many dimensions an object has. What
+they multiply out to is capped, in four places:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 46.0%" />
+<col style="width: 20.0%" />
+<col style="width: 34.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>what</p></th>
+<th class="head"><p>at most</p></th>
+<th class="head"><p>reported at</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>the elements of an array</p></td>
+<td><p>10 000 000</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, or the <code class="docutils literal notranslate"><span class="pre">size</span></code> of an axis</p></td>
+</tr>
+<tr class="row-odd"><td><p>the elements of a map, over its two axes</p></td>
+<td><p>10 000 000</p></td>
+<td><p>the declaration, which states no shape of its own</p></td>
+</tr>
+<tr class="row-even"><td><p>the leaves of a structure type</p></td>
+<td><p>100 000</p></td>
+<td><p>the innermost type that is already over the limit</p></td>
+</tr>
+<tr class="row-odd"><td><p>the leaves an array of structures contributes</p></td>
+<td><p>100 000</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dimensions</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>A leaf is one value member of one element - <code class="docutils literal notranslate"><span class="pre">cell[0].raw</span></code> and <code class="docutils literal notranslate"><span class="pre">cell[1].raw</span></code> are two -
+because no single address describes them both, and each reaches the dumped dictionary, the
+a2l and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code> as an entry of its own. A structure type is weighed whether or not
+anything declares a variable of it, and a type nesting one that is already over the limit is
+unusable for the same reason.</p>
+<p>Past any of the four, the shape is <code class="docutils literal notranslate"><span class="pre">schema</span></code> where it is written - <code class="docutils literal notranslate"><span class="pre">'Huge'</span> <span class="pre">has</span> <span class="pre">10000001</span>
+<span class="pre">elements;</span> <span class="pre">DDD</span> <span class="pre">carries</span> <span class="pre">at</span> <span class="pre">most</span> <span class="pre">10000000</span></code> - and the declaration is dropped, so the run is one
+finding rather than an expansion nobody waits for. The limits sit well past any array a
+description means to state: a shape larger than one of them is usually a constant that
+resolved to the wrong number, and one that is meant needs splitting into objects a
+calibration tool can carry.</p>
+<p>Inside them, what grows with the product is the work. A structured object is resolved into
+one member object per element and member, and those objects are what the
 checks walk, what the dumped dictionary records and what the a2l describes, so a structured
 object of several million elements takes correspondingly long to check and correspondingly
 much space to archive. The generated initialiser grows the same way, because an <code class="docutils literal notranslate"><span class="pre">init</span></code> is

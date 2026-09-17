@@ -22,6 +22,13 @@ Acronyms and abbreviations
        measurement and calibration tool reads to know which values exist in the software,
        where they live, how a raw value is converted into a physical one and within which
        limits it may be calibrated.
+   * - API
+     - Application programming interface. Used here of the python surface a plugin is written
+       against - ``ddd.plugins.Plugin``, its hooks and its contexts - and of the token an
+       upload to the package index authenticates with.
+   * - ARXML
+     - AUTOSAR XML, the interchange format of an AUTOSAR tool chain. DDD writes none; it is
+       named as an example of what a consumer of the resolved dictionary could produce.
    * - ASAM
      - Association for Standardisation of Automation and Measuring Systems, the body that
        publishes the MCD-2 MC standard the generated a2l follows.
@@ -29,6 +36,13 @@ Acronyms and abbreviations
      - The former name of ASAM MCD-2 MC, still used for the version number of the format.
        ``ASAP2_VERSION 1 61`` in the second line of every generated file says that DDD writes
        version 1.6.1.
+   * - ASCII
+     - American Standard Code for Information Interchange, the 128 character encoding whose
+       printable range is what a string ``init`` is held to and what a raster name may use.
+   * - AUTOSAR
+     - AUTomotive Open System ARchitecture, an automotive software standard. DDD does not
+       target it; its ``Platform_Types.h`` spelling of the integer types (``uint16``) is one
+       of the two a template may render, the other being the ISO one (``uint16_t``).
    * - CCP
      - CAN Calibration Protocol, the older of the two protocols a calibration tool uses to
        reach the values described by an a2l. DDD describes the data, not the transport: no
@@ -64,6 +78,14 @@ Acronyms and abbreviations
        toolchains. It is the artefact whose link step decides the addresses that later go
        into the a2l, and the file an a2l address patcher resolves the generated
        ``SYMBOL_LINK`` entries against.
+   * - GCC
+     - The GNU Compiler Collection, the compiler the container compiles the generated c with,
+       under ``-Wall -Wextra -Wpedantic -Werror -Wconversion`` among others. Nothing DDD
+       writes is specific to it; it is the strictest of the compilers to hand.
+   * - IEEE 754
+     - The floating point standard the ``float32`` and ``float64`` datatypes follow, and the
+       reason a limit or an initial value may be neither infinite nor NaN: no c literal and no
+       a2l number carries either.
    * - IR
      - Intermediate representation: the resolved data dictionary that sits between the
        checking front end and the output backends, with every limit filled in, every shape
@@ -71,6 +93,10 @@ Acronyms and abbreviations
        contract rather than an internal detail - ``ddd dump`` writes it out and
        ``ddd schema dictionary`` publishes its json schema, so a generator that DDD does not
        ship can consume it.
+   * - ISO
+     - International Organization for Standardization. Named here for the ISO C spelling of
+       the integer types - ``uint16_t``, from ``<stdint.h>`` - which is what the example
+       templates render.
    * - json
      - JavaScript Object Notation, the format of every file DDD reads: the project and
        component descriptions, the address map, the archived
@@ -78,6 +104,43 @@ Acronyms and abbreviations
    * - MCD-2 MC
      - Measurement, Calibration and Diagnostics, part 2, Measurement and Calibration: the
        formal ASAM name of the format everybody calls a2l.
+   * - MISRA
+     - The guidelines of the Motor Industry Software Reliability Association for c in safety
+       related software. DDD takes no position on them: a project that needs a deviation
+       record above every ``volatile`` object writes one in its own template.
+   * - MSVC
+     - The Microsoft Visual C++ compiler. Named on the :doc:`build integration
+       <build_integration>` page, whose recipes guard a compiler flag with ``if(NOT MSVC)``
+       because its command line spells warnings differently.
+   * - NaN
+     - Not a number, the IEEE 754 value that is equal to nothing including itself. A limit or
+       an initial value may not be one: every comparison against it is false, so it would pass
+       every range check in silence, and no output format can carry it.
+   * - NVM
+     - Non-volatile memory, storage that survives a power cycle. One of the kinds of memory a
+       declared :doc:`section <file_formats/sections>` stands for; DDD carries the section
+       name and the linker decides what it means.
+   * - OIDC
+     - OpenID Connect, the protocol behind trusted publishing: GitHub mints a short lived
+       token for the publishing job and the package index decides whether the claims in it
+       match a publisher somebody registered, so no API token is stored in the repository.
+   * - RAM
+     - Random access memory, the volatile storage a measurement normally lives in. Named in
+       the :doc:`checks <consistency_checks>` for what a section usually stands for.
+   * - ROM
+     - Read-only memory, the storage a calibration value normally lives in - often behind an
+       emulation overlay so that a calibration tool can write it. Another of the kinds of
+       memory a declared section stands for.
+   * - UTF-16
+     - The two byte Unicode encoding Windows PowerShell 5.1 re-encodes redirected output in,
+       which is why ``ddd dump -o FILE`` writes the file itself rather than leaving the bytes
+       to the shell: a dictionary redirected with ``>`` there cannot be read back.
+   * - VSIX
+     - The package format of a Visual Studio Code extension. The ``ddd-<version>.vsix``
+       attached to each GitHub release is the whole of how the editor extension is delivered.
+   * - WSL
+     - The Windows Subsystem for Linux, where docker speaks linux containers on a Windows
+       machine. It is where the compose services of this repository are run from.
    * - XCP
      - Universal Measurement and Calibration Protocol, the successor of CCP. An exported
        measurement with a :doc:`raster <file_formats/rasters>` reaches the generated a2l with

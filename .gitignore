@@ -18,3 +18,7 @@ node_modules/
 editors/vscode/out/
 *.vsix
 docs/superpowers/*.pdf
+src/ddd/gui/static/
+gui/src/generated/
+gui/test-results/
+gui/playwright-report/

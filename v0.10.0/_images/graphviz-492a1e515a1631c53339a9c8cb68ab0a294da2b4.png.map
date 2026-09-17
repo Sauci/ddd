@@ -1,0 +1,16 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="ddd.models.conversion.StringConversion
+
+Bytes read as text: each element of the array holds one character code.
+
+Stated on a ``uint8`` or ``sint8`` array of one dimension; the rules sit beside the
+datatype because the same pair is written in three places. ``kind`` is required here,
+unlike on the other three kinds: a string has no key of its own to be inferred from,
+and ``{}`` is the identity.
+
+The two mappings are the identity on one byte, so that the derived limits of a string
+are the raw range of its datatype &#45; which is what the a2l record states &#45; and nothing
+that ranges a conversion has to know that a string exists. A byte has no reading of its
+own, so no reading is produced for it, as for the identity.
+" alt="" coords="5,5,163,61"/>
+</map>

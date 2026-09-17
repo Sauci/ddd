@@ -39,11 +39,23 @@ What the server offers
 ----------------------
 
 **Diagnostics.** The findings of the :doc:`consistency checks <consistency_checks>`, reported
-on open and on save, each drawn over the key it is about rather than over the whole file. The
+on open, on save, and when the editor reports that a description file it watches changed on
+disk - a build writes them and a branch switch rewrites them all, and neither is something
+a document event would report. Each is drawn over the key it is about rather than over the
+whole file. The
 server publishes for **every** file of the project rather than only the one on screen,
 because half of a disagreement is always in the other component, and each finding is also
 published at the locations of its notes - of two components declaring the same output,
-neither is the innocent one, so both carry a mark.
+neither is the innocent one, so both carry a mark. A component linked into two images is
+checked under both, and one mistake in it is drawn once: two images reporting the same
+finding in the same words are not two mistakes. Where their severities differ they are
+saying two different things, and both are published.
+
+Everything the server publishes, answers and edits is spelled the way the client spelled the
+document it opened, and resolved for every file it never opened. An editor matches a
+publication to what is on screen by comparing the uri *string*, and a workspace opened
+through a junction, a substituted or mapped drive, a symlinked directory or with a different
+case spells every path in it differently from the way the loader resolves it.
 
 **Hover.** A summary of the data object under the cursor, resolved against the whole
 project rather than read off the file: the shape a curve took from its axis, the limits
@@ -54,7 +66,10 @@ values - DDD describes an interface, and what an engineer calibrates lives in th
 calibration tool. A dimension spelled as the name of a
 :doc:`declared constant <file_formats/constants>` hovers as the constant itself - its value
 and its description - because the number is declared somewhere else, next to the one
-statement of what is being counted.
+statement of what is being counted. A name that names a declared type and no data object -
+a type's own entry, or a ``typename`` on a structure member inside a
+:doc:`types file <file_formats/types>` - hovers as the type: a structure and its members, a
+scalar type's storage and conversion, an external type and the header that defines it.
 
 **Go to definition and find references.** From anywhere in a declaration - or from an
 ``axis``, ``x_axis``, ``y_axis`` or ``input`` reference - go to definition lands on the
@@ -75,6 +90,15 @@ a rename that silently merges two objects compiles, links, and shares storage no
 intended to share; a type may not take the spelling of a base datatype either, which the
 loader would refuse. Only the characters between the quotes are replaced, so formatting
 survives and free text is left alone.
+
+A rename, and every quick fix below, is also refused - naming the file, and before anything
+is written - while the project on disk is not the project the edit would be computed from:
+while an open document has unsaved changes that moved a declaration the edit would touch, and
+while a file of the project reported an error that stopped it being read. A project is
+indexed from what loaded, so a file a ``schema`` error dropped mid edit declares nothing as
+far as the index knows: the rename would rewrite every other file and leave that one holding
+the old name, and a fix would offer to remove a key "no other declaration has" while the
+unloaded producer states exactly that key. Fix the file and ask again.
 
 **Quick fixes.** On a key the declarations of one object have to agree on - a ``unit``, a
 ``conversion``, a ``datatype`` - a ``definition-mismatch`` offers every way of reconciling
@@ -106,16 +130,30 @@ three stages:
   the VS Code extension starts it, which is what makes a bare ``build`` mean the one beside
   the sources. A file claimed by several builds is checked under each of them and the
   findings are published together - a component linked into two images is in two projects,
-  and the answer to which one the reader cares about is both.
+  and the answer to which one the reader cares about is both. Each record is counted under
+  the path it resolves to, so a link inside a build tree does not turn one record into a
+  record per way of spelling it.
   The records a search discovers are announced as log messages, and a record that cannot be
-  read is skipped.
+  read, or that names a check this version of DDD has not got, is skipped and the reason
+  announced with it - skipped in silence, a record nothing can use looks exactly like a
+  workspace nobody ever configured a build in. A record whose severities name a *plugin's*
+  check that no plugin of the project registers is reported as a ``plugin-invalid`` finding
+  on the project file, which is what ``ddd check`` refuses the same ``-W`` for.
 * **A containing project.** A file no build record claims is looked for in a containing
   project instead: the server walks from the file's directory up to the workspace root and
   checks the file under the project descriptions of the nearest directory that include it.
+  A file that is itself a project description is checked as the project it is, rather than
+  searched for above: it lists its components, so every check has what it needs, and the
+  checks that need the whole project are exactly the ones somebody opening a project file is
+  asking about.
+  This stage applies the **default** severities of the :doc:`checks <consistency_checks>` -
+  no ``-W``, no ``--strict`` - because those are properties of a build and no build record
+  named this file.
   A description the server cannot read, because a plugin of its own raises, is named as a
   ``plugin-invalid`` finding on that description, and the opened file falls through to the
   standalone checks below - so the thinner answer is never given silently.
-* **Standalone.** A file belonging to no build and to no such project is still checked, on
+* **Standalone.** A file belonging to no build, to no such project, and declaring no project
+  of its own is still checked, on
   its own, but only for what one file can decide. The ten checks that need every component
   of a project - ``unknown-type``, ``unknown-unit``, ``unknown-section``,
   ``unknown-constant``, ``unknown-raster``, ``unknown-extension``, ``missing-producer``,

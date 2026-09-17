@@ -775,7 +775,8 @@ source tree: it is assembled in the build directory out of the C link closure, s
 components belong together is a property of the build rather than of any authored file. A build **shall** therefore write a record of how it runs DDD (`ddd build-info`), so
 that a tool outside the build can check exactly what the build checks instead of
 re-deriving a project from the file tree and guessing at the severities. The language
-server of [section 7.2](#72-editor-integration) is the reader this record exists for.
+server of [section 7.2](#72-editor-integration) is the reader this record exists for, and
+the browser interface (`ddd gui`, section 7) reads it the same way.
 
 The file is named `ddd-build.json` and lives beside the artefacts of the target that wrote
 it. `ddd build-info` writes wherever its `-o` argument points; `ddd-build.json` is the

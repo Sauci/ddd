@@ -8,7 +8,8 @@ makes it usable from wherever the build already lives - a makefile, a cmake proj
 a terminal. Two commands do not exit: ``ddd lsp``, the language server an editor keeps running
 (see :doc:`editor_integration`), and ``ddd gui``, the preview of a browser interface, which
 serves until it is interrupted. The one file the tool leaves behind for its own use is the
-``ddd-build.json`` that ``ddd build-info`` writes for the language server.
+``ddd-build.json`` that ``ddd build-info`` writes for the language server and for ``ddd gui``,
+which both apply the severities of the build that names a project.
 
 The same discipline governs the output. The findings - everything the tool has to say about
 a project - are written to standard error, one line per finding followed by a summary, while

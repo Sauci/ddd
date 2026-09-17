@@ -49,14 +49,22 @@ async function start(): Promise<void> {
     documentSelector: [{ scheme: "file", language: "json", pattern: DOCUMENTS }],
     // The server reads the description files from disk rather than from the editor, so it is
     // the saves it has to hear about; watching them also covers a file changed by a build or
-    // by a branch switch, which no document event would report.
+    // by a branch switch, which no document event would report. The server acts on the
+    // notification this sends: `workspace/didChangeWatchedFiles` checks the project again.
     synchronize: { fileEvents: vscode.workspace.createFileSystemWatcher(DOCUMENTS) },
   };
-  client = new LanguageClient(SECTION, "DDD", server, options);
+  const starting = new LanguageClient(SECTION, "DDD", server, options);
+  client = starting;
   try {
-    await client.start();
+    await starting.start();
   } catch (reason) {
-    client = undefined;
+    // Only if this is still the client anybody is holding. `ddd.restartServer` stops and
+    // starts, and both halves are awaited: a start that is still on its way to rejecting when
+    // the next one begins would otherwise clear the *new* client on its way out, leaving a
+    // running server nothing can stop and a `deactivate` that leaks it.
+    if (client === starting) {
+      client = undefined;
+    }
     // The overwhelmingly likely cause is that `ddd` is not on the PATH of the editor, which
     // is its own puzzle when it is on the PATH of a terminal, so the message says where to
     // put the answer rather than only what went wrong.

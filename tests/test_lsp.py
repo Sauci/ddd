@@ -11,12 +11,13 @@ import io
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from conftest import INCONSISTENT, component, declare, project, write_tree
+from conftest import EXAMPLES, INCONSISTENT, component, declare, project, write_tree
 from ddd.build_info import BUILD_INFO_FILENAME
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
 from ddd.loading import load_workspace
@@ -30,6 +31,7 @@ from ddd.lsp.protocol import (
     METHOD_NOT_FOUND,
     PARSE_ERROR,
     REQUEST_FAILED,
+    SERVER_NOT_INITIALIZED,
     MessageError,
     ProtocolError,
     error,
@@ -51,18 +53,39 @@ def framed(*messages: dict[str, Any]) -> io.BytesIO:
     return stream
 
 
+def session(*messages: dict[str, Any]) -> io.BytesIO:
+    """A whole conversation: the handshake a client opens with, then these messages.
+
+    The server refuses anything that arrives before ``initialize`` - the protocol reserves a
+    code for exactly that - so a test that means to exercise a request says hello first, as
+    every client does. Empty ``params`` leaves the workspace folder the server was constructed
+    with in place, which is the one these tests set up.
+    """
+    return framed({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}}, *messages)
+
+
+def answered(stream: io.BytesIO) -> list[dict[str, Any]]:
+    """What the server said in answer to everything after the handshake."""
+    return sent(stream)[1:]
+
+
 def raw_frame(body: bytes) -> bytes:
     """One correctly framed message with exactly this body, however broken the body is."""
     return b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body
 
 
 def published(stream: io.BytesIO) -> dict[str, list[dict[str, Any]]]:
-    """The diagnostics the server published, keyed by file name.
+    """The diagnostics the server published, keyed by the uri they went out under.
+
+    The uri string and not the file it names: a client matches a publication to an open
+    editor by comparing that string, so two spellings of one file are two resources to it and
+    a test that compares the files behind them cannot see a publication going to the wrong
+    one. Keying by ``.name`` hid exactly that for every test in this file.
 
     Filtered rather than taken wholesale: the server also logs, and a log line has no uri.
     """
     return {
-        uri_to_path(message["params"]["uri"]).name: message["params"]["diagnostics"]
+        message["params"]["uri"]: message["params"]["diagnostics"]
         for message in sent(stream)
         if message.get("method") == "textDocument/publishDiagnostics"
     }
@@ -77,11 +100,26 @@ def sent(stream: io.BytesIO) -> list[dict[str, Any]]:
     return received
 
 
-def build_record(base: Path, project_file: Path, **extra: Any) -> Path:
-    """A ``ddd-build.json`` where a build would have left one."""
-    path = base / "build" / "ddd" / "firmware.elf" / BUILD_INFO_FILENAME
+def directory_link(link: Path, target: Path) -> None:
+    """A second spelling of a directory, made the way the platform allows unprivileged.
+
+    ``symlink_to`` needs ``SeCreateSymbolicLinkPrivilege`` on Windows, which an ordinary
+    account does not hold. A junction is the same thing for these tests - a path whose
+    ``resolve()`` is a different path - and any account may make one.
+    """
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+def build_record(base: Path, project_file: Path, image: str = "firmware.elf", **extra: Any) -> Path:
+    """A ``ddd-build.json`` where a build would have left one, one directory per image."""
+    path = base / "build" / "ddd" / image / BUILD_INFO_FILENAME
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"format": 1, "project": project_file.as_posix(), "image": "firmware.elf", **extra}
+    payload = {"format": 1, "project": project_file.as_posix(), "image": image, **extra}
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
 
@@ -336,6 +374,55 @@ class TestDiscovery:
     def test_a_record_that_cannot_be_read_is_skipped(self, tmp_path: Path) -> None:
         assert load_builds([tmp_path / "absent.json"]) == []
 
+    @pytest.mark.parametrize(
+        ("override", "reason"),
+        [
+            (["no-such-check=ignore"], "unknown check 'no-such-check'"),
+            (["unused-output"], "expected 'check=severity', got 'unused-output'"),
+        ],
+    )
+    def test_a_record_naming_a_check_this_version_has_not_got_is_skipped(
+        self, tmp_path: Path, override: list[str], reason: str
+    ) -> None:
+        """The severity side of "written by a newer DDD".
+
+        The keys are all known, so the record validates; one of their values names a check
+        this version has not got. Building the policy from it raised out of the first refresh
+        that reached it and took the server with it - a record written by a newer ``ddd`` in
+        the build tree while the editor runs an older one.
+        """
+        path = build_record(tmp_path, tmp_path / "p.ddd.json", severity=override)
+        refused: dict[Path, str] = {}
+        assert load_builds([path], refused) == []
+        assert refused == {path: reason}
+
+    def test_a_record_skipped_for_its_severities_is_said_out_loud(self, tmp_path: Path) -> None:
+        """Skipped silently it looks exactly like a workspace nobody configured a build in."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "X")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json", severity=["no-such-check=ignore"])
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        server.refresh(tmp_path / "a.ddd.json")
+        said = [
+            message["params"]["message"]
+            for message in sent(writer)
+            if message.get("method") == "window/logMessage"
+        ]
+        assert said == [
+            f"{tmp_path / 'build' / 'ddd' / 'firmware.elf' / BUILD_INFO_FILENAME}: unknown check "
+            "'no-such-check'; this record is ignored, so the project it names is not analysed"
+        ]
+        # and the server carries on, answering for the file that was opened through the
+        # project above it, which is what it does for any file no usable record claims
+        drawn = published(writer)[(tmp_path / "a.ddd.json").as_uri()]
+        assert [entry["code"] for entry in drawn] == ["missing-producer"]
+
 
 EXITING_CHECK_PLUGIN = """
 import sys
@@ -348,6 +435,22 @@ def check(context: CheckContext) -> None:
 
 
 PLUGIN = Plugin(name="exiting", check=check)
+"""
+
+REGISTERING_PLUGIN = """
+from ddd.diagnostics import CheckInfo, Severity
+from ddd.plugins import CheckContext, Plugin
+
+
+def check(context: CheckContext) -> None:
+    return None
+
+
+PLUGIN = Plugin(
+    name="demo",
+    checks=(CheckInfo("demo/tagged", Severity.WARNING, "a demonstration check"),),
+    check=check,
+)
 """
 
 EXITING_MODEL_PLUGIN = """
@@ -505,6 +608,45 @@ class TestDiagnostics:
         # checks that context was needed to answer.
         assert codes == {"unused-output", "missing-id"}
 
+    def test_a_component_two_images_share_is_not_underlined_twice(self, tmp_path: Path) -> None:
+        """Every build is run, and a component linked into two images is in both. The two runs
+        filed their findings against the same files, so every squiggle was drawn twice and the
+        Problems count doubled, with nothing to tell the two apart."""
+        build_record(tmp_path, INCONSISTENT)
+        alone = discover(tmp_path)
+        build_record(tmp_path, INCONSISTENT, image="test.elf")
+        assert len(discover(tmp_path)) == 2
+        assert service.collect(discover(tmp_path)) == service.collect(alone)
+
+    def test_two_images_that_disagree_both_have_their_say(self, tmp_path: Path) -> None:
+        """Only an identical finding is dropped. Where the policies differ the two really are
+        two findings, and which image reports the error is what the reader needs to see."""
+        build_record(tmp_path, INCONSISTENT)
+        build_record(tmp_path, INCONSISTENT, image="test.elf", severity=["unused-output=error"])
+        reports = service.collect(discover(tmp_path))
+        drawn = reports[INCONSISTENT.parent / "component_a.ddd.json"]
+        assert sorted(entry["severity"] for entry in drawn if entry["code"] == "unused-output") == [
+            1,
+            2,
+        ]
+
+    def test_a_project_file_no_build_claims_is_checked_as_the_project_it_is(self) -> None:
+        """The standalone policy is for "a component read alone"; a project file is not one.
+
+        Nothing includes a project file, so the search above it finds nothing and it used to
+        fall through to the policy that silences the ten checks the project is the only thing
+        able to answer - in the state every unconfigured checkout is in.
+        """
+        reports = service.collect([], [INCONSISTENT], INCONSISTENT.parent)
+        codes = {entry["code"] for findings in reports.values() for entry in findings}
+        assert codes == {
+            "multiple-producers",
+            "definition-mismatch",
+            "missing-producer",
+            "local-conflict",
+            "unused-output",
+        }
+
     def test_a_file_no_project_claims_falls_back_to_reading_it_alone(self, tmp_path: Path) -> None:
         """A thin answer, but the only honest one when there is nothing else to read."""
         write_tree(tmp_path, {"lonely.ddd.json": component("A", declare("local", "X"))})
@@ -603,19 +745,25 @@ class TestDiagnostics:
         service._group(bag, tmp_path / "root.ddd.json", grouped)
         assert list(grouped) == [tmp_path / "root.ddd.json"]
 
-    def test_a_note_with_nowhere_to_point_keeps_its_text(self) -> None:
-        """Every piece of related information carries a location, so one is invented."""
+    def test_a_note_with_nowhere_to_point_lands_on_the_file_of_its_finding(
+        self, tmp_path: Path
+    ) -> None:
+        """Every piece of related information carries a location, so one is given: the first
+        line of the file the finding itself is on, which is what the docstring always claimed.
+
+        It was sending ``""`` instead, which a client reads as ``file:///`` - a note the
+        reader can click, landing nowhere near the project.
+        """
         finding = Diagnostic("schema", Severity.ERROR, "bad name", None, (("try harder", None),))
-        published = service._as_lsp(finding, {})
+        published = service._as_lsp(finding, {}, tmp_path / "a.ddd.json")
         (related,) = published["relatedInformation"]
         assert related["message"] == "try harder"
-        assert related["location"]["uri"] == ""
+        assert related["location"]["uri"] == (tmp_path / "a.ddd.json").as_uri()
 
     def test_a_file_that_cannot_be_read_still_gets_a_range(self, tmp_path: Path) -> None:
-        finding = Diagnostic(
-            "schema", Severity.ERROR, "unreadable", Location(tmp_path / "gone.json", "a.b")
-        )
-        assert service._as_lsp(finding, {})["range"]["start"] == {"line": 0, "character": 0}
+        gone = tmp_path / "gone.json"
+        finding = Diagnostic("schema", Severity.ERROR, "unreadable", Location(gone, "a.b"))
+        assert service._as_lsp(finding, {}, gone)["range"]["start"] == {"line": 0, "character": 0}
 
     def test_a_hook_that_exits_is_reported_and_the_server_keeps_running(
         self, tmp_path: Path
@@ -1087,7 +1235,7 @@ class TestNavigation:
         self.workspace(tmp_path)
         alone = tmp_path / "a.ddd.json"
         (found,) = workspaces([], alone)
-        assert alone in found.sources()
+        assert alone in found.workspace.sources()
 
     def test_a_document_that_is_in_no_project_at_all_yields_nothing(self, tmp_path: Path) -> None:
         from ddd.lsp.navigation import workspaces
@@ -1106,7 +1254,7 @@ class TestNavigation:
             BuildInfo(project=root.as_posix()),
         ]
         (found,) = workspaces(builds, tmp_path / "a.ddd.json")
-        assert found.name == "P"
+        assert found.workspace.name == "P"
 
 
 class TestHover:
@@ -1861,6 +2009,51 @@ class TestRename:
         assert produced[0]["definition"]["name"] == "EngineSpeed"
         assert produced[1]["definition"]["input"] == "EngineSpeed"
         assert "Speed" not in rewritten[tmp_path / "b.ddd.json"].replace("EngineSpeed", "")
+
+    @pytest.mark.parametrize(
+        "pointer",
+        [
+            "component.interface[2].definition.conversion.name",
+            "component.interface[2].definition.conversion.enumerators[0].name",
+        ],
+    )
+    def test_an_enum_name_and_an_enumerator_open_no_rename_box(
+        self, tmp_path: Path, pointer: str
+    ) -> None:
+        """The subject was the last segment of the pointer, so both of these passed as the
+        object's name: the box opened, and the rename answered an empty edit - or renamed a
+        variable of that name somewhere else instead."""
+        from ddd.lsp.navigation import renameable_at
+
+        self.workspace(tmp_path)
+        assert renameable_at(read(tmp_path / "a.ddd.json", {}), pointer) is None
+
+    @pytest.mark.parametrize("key", ["name", "size", "typename"])
+    def test_a_plugins_own_key_is_not_a_rename_subject(self, tmp_path: Path, key: str) -> None:
+        """An extensions block may spell any key, and three of them are names DDD renames."""
+        from ddd.lsp.navigation import renameable_at
+
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {key: "Whatever"}})
+                )
+            },
+        )
+        pointer = f"component.interface[0].definition.extensions.tag.{key}"
+        assert renameable_at(read(tmp_path / "a.ddd.json", {}), pointer) is None
+
+    def test_a_rename_onto_an_enum_a_types_file_declares_is_refused(self) -> None:
+        """``occupied`` was filled from the conversions of declarations only, so an enum on a
+        structure member registered nothing and the rename went through - to be reported as a
+        name collision by the next check, over every file it had just rewritten."""
+        from ddd.lsp.navigation import index, rename_problem
+
+        root = EXAMPLES / "structures" / "project.ddd.json"
+        built = index(load_workspace(root, DiagnosticBag()))
+        assert "enumerator of enum 'SensorMode_t'" in str(rename_problem(built, "MODE_IDLE"))
+        assert "name of enum 'SensorMode_t'" in str(rename_problem(built, "SensorMode_t"))
 
     def test_only_the_characters_between_the_quotes_are_replaced(self, tmp_path: Path) -> None:
         """Whatever else a project puts on the line is left exactly as it was."""
@@ -2900,13 +3093,10 @@ class TestServer:
         )
         writer = io.BytesIO()
         assert Server(stream, writer, root=tmp_path).run() == 0
-        findings = published(writer)["a.ddd.json"]
-        assert [finding["code"] for finding in findings] == ["missing-producer"]
-        assert [
-            uri_to_path(m["params"]["uri"]).resolve()
-            for m in sent(writer)
-            if m.get("method") == "textDocument/publishDiagnostics"
-        ] == [path.resolve()]
+        # Compared as strings, which is how a client matches a publication to what it shows:
+        # resolving both sides first is what let the spelling defect sit green for a year.
+        assert [finding["code"] for finding in published(writer)[spelled]] == ["missing-producer"]
+        assert list(published(writer)) == [spelled]
 
     def handshake(self, tmp_path: Path) -> dict[str, Any]:
         return {
@@ -2923,6 +3113,53 @@ class TestServer:
             "params": {"textDocument": {"uri": path.as_uri()}},
         }
 
+    def test_opening_the_project_file_does_not_withdraw_the_project_wide_findings(
+        self, tmp_path: Path
+    ) -> None:
+        """A squiggle that disappears when the reader opens another file is worse than none.
+
+        The component was reached through the project above it and reported everything; the
+        project file, reached as a root, used to be read under the policy for a lone
+        component, so the second refresh republished the same files without the two checks the
+        project exists to answer.
+        """
+        tree = tmp_path / "inconsistent"
+        shutil.copytree(INCONSISTENT.parent, tree)
+        stream = framed(
+            self.handshake(tree),
+            self.opened(tree / "component_c.ddd.json"),
+            self.opened(tree / "project.ddd.json"),
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tree).run() == 0
+        # The last word on each file, which is what stays on screen.
+        final = published(writer)
+        drawn = {
+            name: {entry["code"] for entry in final[(tree / name).as_uri()]}
+            for name in ("component_a.ddd.json", "component_c.ddd.json")
+        }
+        assert "missing-producer" in drawn["component_c.ddd.json"]
+        assert "unused-output" in drawn["component_a.ddd.json"]
+
+    def test_opening_a_document_deeper_than_the_scanner_walks_does_not_end_the_server(
+        self, tmp_path: Path
+    ) -> None:
+        """A document python can read and the span scanner cannot used to end the server on
+        the first didOpen, before any publication and before the shutdown answer."""
+        deep = tmp_path / "deep.ddd.json"
+        deep.write_text("[" * 600 + "]" * 600, encoding="utf-8")
+        stream = framed(
+            self.handshake(tmp_path),
+            self.opened(deep),
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert [entry["code"] for entry in published(writer)[deep.as_uri()]] == ["file-kind"]
+
     def test_a_request_without_params_is_refused_rather_than_fatal(self, tmp_path: Path) -> None:
         """One badly shaped message is not the end of the conversation, framing or not.
 
@@ -2932,13 +3169,13 @@ class TestServer:
         off the screen until somebody restarted the server.
         """
         writer = io.BytesIO()
-        stream = framed(
+        stream = session(
             {"jsonrpc": "2.0", "id": 7, "method": "textDocument/hover"},
             {"jsonrpc": "2.0", "id": 8, "method": "shutdown"},
             {"jsonrpc": "2.0", "method": "exit"},
         )
         assert Server(stream, writer, root=tmp_path).run() == 0
-        answers = {message["id"]: message for message in sent(writer) if "id" in message}
+        answers = {message["id"]: message for message in answered(writer) if "id" in message}
         assert answers[7]["error"]["code"] == INVALID_PARAMS
         # And the conversation went on: the request after it was answered normally.
         assert answers[8]["result"] is None
@@ -2946,13 +3183,13 @@ class TestServer:
     def test_a_notification_without_params_is_survived_too(self, tmp_path: Path) -> None:
         """A notification gets no reply by definition, so the only thing to prove is the loop."""
         writer = io.BytesIO()
-        stream = framed(
+        stream = session(
             {"jsonrpc": "2.0", "method": "textDocument/didOpen"},
             {"jsonrpc": "2.0", "id": 9, "method": "shutdown"},
             {"jsonrpc": "2.0", "method": "exit"},
         )
         assert Server(stream, writer, root=tmp_path).run() == 0
-        assert any(message.get("id") == 9 for message in sent(writer))
+        assert any(message.get("id") == 9 for message in answered(writer))
 
     def test_repeating_a_request_does_no_more_reading_than_asking_once(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -2988,7 +3225,7 @@ class TestServer:
 
         def reads(*requests: dict[str, Any]) -> int:
             loads.clear()
-            Server(framed(*requests), io.BytesIO(), root=tmp_path).run()
+            Server(session(*requests), io.BytesIO(), root=tmp_path).run()
             return len(loads)
 
         once = reads(asked)
@@ -3011,9 +3248,9 @@ class TestServer:
         walks: list[Path] = []
         original = server_module.discover
 
-        def counted(root: Path, configured: Any = ()) -> Any:
+        def counted(root: Path, configured: Any = (), refused: Any = None) -> Any:
             walks.append(root)
-            return original(root, configured)
+            return original(root, configured, refused)
 
         monkeypatch.setattr(server_module, "discover", counted)
         asked = [
@@ -3026,7 +3263,7 @@ class TestServer:
             )
             for name in ("a.ddd.json", "b.ddd.json")
         ]
-        Server(framed(*asked), io.BytesIO(), root=tmp_path).run()
+        Server(session(*asked), io.BytesIO(), root=tmp_path).run()
         assert len(walks) == 1
 
     def test_a_save_picks_up_what_changed_on_disk(self, tmp_path: Path) -> None:
@@ -3045,13 +3282,14 @@ class TestServer:
         writer = io.BytesIO()
         server = Server(io.BytesIO(), writer, root=tmp_path)
         server.refresh(tmp_path / "a.ddd.json")
-        assert published(writer)["a.ddd.json"][0]["code"] == "missing-producer"
+        a_uri = (tmp_path / "a.ddd.json").as_uri()
+        assert published(writer)[a_uri][0]["code"] == "missing-producer"
 
         write_tree(tmp_path, {"a.ddd.json": component("A", declare("local", "Shared"))})
         writer = io.BytesIO()
         server.writer = writer
         server.refresh(tmp_path / "a.ddd.json")
-        assert published(writer)["a.ddd.json"] == []
+        assert published(writer)[a_uri] == []
 
     def test_it_announces_what_it_can_do(self, tmp_path: Path) -> None:
         writer = io.BytesIO()
@@ -3064,11 +3302,12 @@ class TestServer:
         build_record(tmp_path, INCONSISTENT)
         writer = io.BytesIO()
         opened = INCONSISTENT.parent / "component_b.ddd.json"
-        Server(framed(self.opened(opened)), writer, root=tmp_path).run()
+        Server(session(self.opened(opened)), writer, root=tmp_path).run()
         drawn = published(writer)
-        assert drawn["component_b.ddd.json"][0]["code"] == "multiple-producers"
+        beside = INCONSISTENT.parent / "component_c.ddd.json"
+        assert drawn[opened.as_uri()][0]["code"] == "multiple-producers"
         # The file that was not opened is published too, which is the point.
-        assert drawn["component_c.ddd.json"][0]["code"] == "definition-mismatch"
+        assert drawn[beside.as_uri()][0]["code"] == "definition-mismatch"
 
     def logged(self, stream: io.BytesIO) -> list[str]:
         return [
@@ -3137,32 +3376,37 @@ class TestServer:
         writer = io.BytesIO()
         server = Server(io.BytesIO(), writer, root=tmp_path)
         server.refresh(tmp_path / "a.ddd.json")
-        assert published(writer)["a.ddd.json"][0]["code"] == "missing-producer"
+        assert (
+            published(writer)[(tmp_path / "a.ddd.json").as_uri()][0]["code"] == "missing-producer"
+        )
 
         # Somebody produces it now, so the project is clean and the squiggle has to go.
         write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "Shared"))})
         writer = io.BytesIO()
         server.writer = writer
         server.refresh(tmp_path / "a.ddd.json")
-        assert published(writer) == {"a.ddd.json": [], "b.ddd.json": []}
+        assert published(writer) == {
+            (tmp_path / "a.ddd.json").as_uri(): [],
+            (tmp_path / "b.ddd.json").as_uri(): [],
+        }
 
     def test_saving_refreshes_as_opening_does(self, tmp_path: Path) -> None:
         build_record(tmp_path, INCONSISTENT)
         writer = io.BytesIO()
         saved = dict(self.opened(INCONSISTENT), method="textDocument/didSave")
-        Server(framed(saved), writer, root=tmp_path).run()
-        assert sent(writer)
+        Server(session(saved), writer, root=tmp_path).run()
+        assert answered(writer)
 
     def test_shutdown_is_answered_and_exit_ends_the_loop(self, tmp_path: Path) -> None:
         writer = io.BytesIO()
-        stream = framed(
+        stream = session(
             {"jsonrpc": "2.0", "id": 4, "method": "shutdown"},
             {"jsonrpc": "2.0", "method": "exit"},
             {"jsonrpc": "2.0", "id": 5, "method": "initialize", "params": {}},
         )
         assert Server(stream, writer, root=tmp_path).run() == 0
         # Only the shutdown was answered: nothing after exit is read.
-        assert [message["id"] for message in sent(writer)] == [4]
+        assert [message["id"] for message in answered(writer)] == [4]
 
     def navigation_request(self, method: str, path: Path, position: dict[str, int]) -> dict:
         return {
@@ -3199,13 +3443,13 @@ class TestServer:
         )["start"]
         writer = io.BytesIO()
         Server(
-            framed(self.navigation_request("textDocument/definition", consumer, position)),
+            session(self.navigation_request("textDocument/definition", consumer, position)),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         (found,) = answer["result"]
-        assert uri_to_path(found["uri"]).name == "a.ddd.json"
+        assert found["uri"] == (tmp_path / "a.ddd.json").as_uri()
 
     def test_references_answer_with_every_declaration(self, tmp_path: Path) -> None:
         consumer = self.shared_workspace(tmp_path)
@@ -3214,25 +3458,24 @@ class TestServer:
         )["start"]
         writer = io.BytesIO()
         Server(
-            framed(self.navigation_request("textDocument/references", consumer, position)),
+            session(self.navigation_request("textDocument/references", consumer, position)),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
-        assert {uri_to_path(found["uri"]).name for found in answer["result"]} == {
-            "a.ddd.json",
-            "b.ddd.json",
+        (answer,) = answered(writer)
+        assert {found["uri"] for found in answer["result"]} == {
+            (tmp_path / name).as_uri() for name in ("a.ddd.json", "b.ddd.json")
         }
 
     def hovered(self, tmp_path: Path, path: Path, pointer: str) -> Any:
         position = Document(path.read_text(encoding="utf-8")).range_of(pointer)["start"]
         writer = io.BytesIO()
         Server(
-            framed(self.navigation_request("textDocument/hover", path, position)),
+            session(self.navigation_request("textDocument/hover", path, position)),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         return answer["result"]
 
     def test_hover_answers_with_markdown(self, tmp_path: Path) -> None:
@@ -3277,13 +3520,13 @@ class TestServer:
         lonely = tmp_path / "gone.ddd.json"
         writer = io.BytesIO()
         Server(
-            framed(
+            session(
                 self.navigation_request("textDocument/hover", lonely, {"line": 0, "character": 0})
             ),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert answer["result"] is None
 
     def test_it_offers_to_rename(self, tmp_path: Path) -> None:
@@ -3309,15 +3552,16 @@ class TestServer:
         consumer = self.shared_workspace(tmp_path)
         writer = io.BytesIO()
         Server(
-            framed(
+            session(
                 self.rename_request(consumer, "component.interface[0].definition.name", "Renamed")
             ),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
-        changed = {uri_to_path(uri).name for uri in answer["result"]["changes"]}
-        assert changed == {"a.ddd.json", "b.ddd.json"}
+        (answer,) = answered(writer)
+        assert set(answer["result"]["changes"]) == {
+            (tmp_path / name).as_uri() for name in ("a.ddd.json", "b.ddd.json")
+        }
 
     def test_rename_to_an_unusable_name_is_refused_with_a_reason(self, tmp_path: Path) -> None:
         """An error rather than an empty edit: an empty edit looks like a rename that did
@@ -3325,12 +3569,76 @@ class TestServer:
         consumer = self.shared_workspace(tmp_path)
         writer = io.BytesIO()
         Server(
-            framed(self.rename_request(consumer, "component.interface[0].definition.name", "int")),
+            session(self.rename_request(consumer, "component.interface[0].definition.name", "int")),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert "reserved" in answer["error"]["message"]
+
+    def half_read_workspace(self, tmp_path: Path) -> Path:
+        """A project one file of which does not load, which is an ordinary mid-edit state."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", "uint99", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+                "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        return tmp_path / "b.ddd.json"
+
+    def test_a_rename_is_refused_while_a_file_of_the_project_did_not_load(
+        self, tmp_path: Path
+    ) -> None:
+        """Indexed as if the dropped file had never declared anything, the rename rewrote the
+        rest of the project around it and left the producer holding the old name - the
+        half-renamed project the drift refusal already exists to prevent."""
+        consumer = self.half_read_workspace(tmp_path)
+        writer = io.BytesIO()
+        Server(
+            session(
+                self.rename_request(consumer, "component.interface[0].definition.name", "Renamed")
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = answered(writer)
+        assert answer["error"]["code"] == REQUEST_FAILED
+        assert "a.ddd.json" in answer["error"]["message"]
+
+    def test_a_quick_fix_is_refused_while_a_file_of_the_project_did_not_load(
+        self, tmp_path: Path
+    ) -> None:
+        """The same hole seen through the lightbulb: it offered to remove the unit of 'Speed'
+        as one no other declaration has, while the unloaded producer declares exactly that."""
+        self.half_read_workspace(tmp_path)
+        elsewhere = tmp_path / "c.ddd.json"
+        span = Document(elsewhere.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition.unit"
+        )
+        writer = io.BytesIO()
+        Server(
+            session(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 13,
+                    "method": "textDocument/codeAction",
+                    "params": {
+                        "textDocument": {"uri": elsewhere.as_uri()},
+                        "range": span,
+                        "context": {"diagnostics": []},
+                    },
+                }
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = answered(writer)
+        assert answer["error"]["code"] == REQUEST_FAILED
+        assert "a.ddd.json" in answer["error"]["message"]
 
     def test_preparing_a_rename_says_where_the_box_goes(self, tmp_path: Path) -> None:
         consumer = self.shared_workspace(tmp_path)
@@ -3339,11 +3647,11 @@ class TestServer:
         )["start"]
         writer = io.BytesIO()
         Server(
-            framed(self.navigation_request("textDocument/prepareRename", consumer, position)),
+            session(self.navigation_request("textDocument/prepareRename", consumer, position)),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert answer["result"]["placeholder"] == "Shared"
 
     def vocabulary_workspace(self, tmp_path: Path) -> Path:
@@ -3395,11 +3703,11 @@ class TestServer:
         position = Document(path.read_text(encoding="utf-8")).range_of(pointer)["start"]
         writer = io.BytesIO()
         Server(
-            framed(self.navigation_request("textDocument/prepareRename", path, position)),
+            session(self.navigation_request("textDocument/prepareRename", path, position)),
             writer,
             root=base,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert answer["result"]["placeholder"] == placeholder
 
     def test_renaming_a_type_rewrites_its_declaration_and_every_typename(
@@ -3408,13 +3716,14 @@ class TestServer:
         base = self.vocabulary_workspace(tmp_path)
         writer = io.BytesIO()
         Server(
-            framed(self.rename_request(base / "types.ddd.json", "types[0].name", "Probe_t")),
+            session(self.rename_request(base / "types.ddd.json", "types[0].name", "Probe_t")),
             writer,
             root=base,
         ).run()
-        (answer,) = sent(writer)
-        changed = {uri_to_path(uri).name for uri in answer["result"]["changes"]}
-        assert changed == {"types.ddd.json", "a.ddd.json"}
+        (answer,) = answered(writer)
+        assert set(answer["result"]["changes"]) == {
+            (base / name).as_uri() for name in ("types.ddd.json", "a.ddd.json")
+        }
 
     @pytest.mark.parametrize(
         "pointer", ["component.interface[0].definition.datatype", "component.name"]
@@ -3428,11 +3737,11 @@ class TestServer:
         position = Document(consumer.read_text(encoding="utf-8")).range_of(pointer)["start"]
         writer = io.BytesIO()
         Server(
-            framed(self.navigation_request("textDocument/prepareRename", consumer, position)),
+            session(self.navigation_request("textDocument/prepareRename", consumer, position)),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert answer["result"] is None
 
     def test_a_file_in_two_projects_is_edited_once(self, tmp_path: Path) -> None:
@@ -3454,7 +3763,7 @@ class TestServer:
             )
         writer = io.BytesIO()
         Server(
-            framed(
+            session(
                 self.rename_request(
                     tmp_path / "a.ddd.json", "component.interface[0].definition.name", "Other"
                 )
@@ -3462,7 +3771,7 @@ class TestServer:
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         (edits,) = answer["result"]["changes"].values()
         assert len(edits) == 1
 
@@ -3490,7 +3799,7 @@ class TestServer:
         )
         writer = io.BytesIO()
         Server(
-            framed(
+            session(
                 {
                     "jsonrpc": "2.0",
                     "id": 13,
@@ -3505,11 +3814,10 @@ class TestServer:
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         (action,) = answer["result"]
         assert "Apply this unit" in action["title"]
-        (uri,) = action["edit"]["changes"]
-        assert uri_to_path(uri).name == "b.ddd.json"
+        assert list(action["edit"]["changes"]) == [(tmp_path / "b.ddd.json").as_uri()]
 
     def test_a_body_that_is_not_json_does_not_end_the_conversation(self, tmp_path: Path) -> None:
         """One malformed frame used to kill the server; now it is one refusal on the wire,
@@ -3522,9 +3830,9 @@ class TestServer:
             self.navigation_request("textDocument/hover", consumer, position)
         ).getvalue()
         writer = io.BytesIO()
-        stream = io.BytesIO(raw_frame(b"{ not json") + follow_up)
+        stream = io.BytesIO(session().getvalue() + raw_frame(b"{ not json") + follow_up)
         assert Server(stream, writer, root=tmp_path).run() == 0
-        refusal, answer = sent(writer)
+        refusal, answer = answered(writer)
         assert refusal["error"]["code"] == PARSE_ERROR
         assert refusal["id"] is None
         assert "**Shared**" in answer["result"]["contents"]["value"]
@@ -3538,9 +3846,11 @@ class TestServer:
             self.navigation_request("textDocument/hover", consumer, position)
         ).getvalue()
         writer = io.BytesIO()
-        stream = io.BytesIO(raw_frame(b'[{"jsonrpc": "2.0", "id": 1}]') + follow_up)
+        stream = io.BytesIO(
+            session().getvalue() + raw_frame(b'[{"jsonrpc": "2.0", "id": 1}]') + follow_up
+        )
         assert Server(stream, writer, root=tmp_path).run() == 0
-        refusal, answer = sent(writer)
+        refusal, answer = answered(writer)
         assert refusal["error"]["code"] == INVALID_REQUEST
         assert refusal["id"] is None
         assert answer["result"] is not None
@@ -3563,22 +3873,22 @@ class TestServer:
         """A client still waiting for an answer looks exactly like a server that has died."""
         writer = io.BytesIO()
         Server(
-            framed({"jsonrpc": "2.0", "id": 9, "method": "textDocument/completion"}),
+            session({"jsonrpc": "2.0", "id": 9, "method": "textDocument/completion"}),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert answer["error"]["code"] == METHOD_NOT_FOUND
 
     def test_a_notification_it_does_not_know_is_simply_ignored(self, tmp_path: Path) -> None:
         """``didClose`` is now one the server knows; ``willSave`` still is not."""
         writer = io.BytesIO()
         Server(
-            framed({"jsonrpc": "2.0", "method": "textDocument/willSave", "params": {}}),
+            session({"jsonrpc": "2.0", "method": "textDocument/willSave", "params": {}}),
             writer,
             root=tmp_path,
         ).run()
-        assert sent(writer) == []
+        assert answered(writer) == []
 
     @pytest.mark.parametrize("key", ["workspaceFolders", "rootUri"])
     def test_the_workspace_root_is_taken_from_either_spelling(
@@ -4352,9 +4662,23 @@ class TestOfferingAnIdentity:
 
 class TestFrameLengths:
     def test_a_negative_length_cannot_be_followed(self) -> None:
-        """``read(-1)`` reads to the end of the stream, which on a live pipe is never."""
+        """A minus sign is not a count of bytes, and ``read(-1)`` would read to the end of the
+        stream, which on a live pipe is never."""
         stream = io.BytesIO(b"Content-Length: -1\r\n\r\n{}")
         with pytest.raises(ProtocolError, match="-1"):
+            read_message(stream)
+
+    @pytest.mark.parametrize("spelling", [b"1_2", b"+7", b"0x10"])
+    def test_a_length_python_would_read_and_a_client_never_writes(self, spelling: bytes) -> None:
+        """``int()`` takes python's own spellings of a number, and ``1_2`` is twelve to it.
+
+        Twelve bytes is not what the client counted, so the frame ends in the middle of the
+        body and every header after it is read out of the tail of a message: observed as one
+        parse error and then a silent exit with the next request never answered. The header is
+        a count of bytes in decimal digits and nothing else.
+        """
+        stream = io.BytesIO(b"Content-Length: " + spelling + b"\r\n\r\n{}")
+        with pytest.raises(ProtocolError, match=re.escape(spelling.decode())):
             read_message(stream)
 
 
@@ -4378,7 +4702,104 @@ class TestSymlinkedWorkspace:
         link.symlink_to(real, target_is_directory=True)
         info = BuildInfo(project=(real / "p.ddd.json").as_posix())
         found = navigation.workspaces([info], link / "a.ddd.json")
-        assert [len(workspace.components) for workspace in found] == [2]
+        assert [len(loaded.workspace.components) for loaded in found] == [2]
+
+
+class TestTheClientsSpelling:
+    """A client's path need not be the one ``resolve()`` gives for the file it names.
+
+    A workspace opened through a junction, a ``subst`` drive, a mapped drive, a symlinked
+    directory or with a different case spells every path in it differently from the disk. The
+    loader resolves everything it reads, and a client keys what it draws on the uri *string* it
+    sent - so what the server says about a document it was handed has to come back in the
+    words it was handed in.
+    """
+
+    def linked(self, tmp_path: Path) -> tuple[Path, Path]:
+        """A small project, and a second spelling of the directory holding it."""
+        real = tmp_path / "real"
+        write_tree(
+            real,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                # 'Own' is read by nobody and carries no id, so a.ddd.json has two findings
+                # of its own; 'Shared' is produced by b, so it has none from the project.
+                "a.ddd.json": component("A", declare("input", "Shared"), declare("output", "Own")),
+                "b.ddd.json": component("B", declare("output", "Shared", id="k7m2q9xr4t8w")),
+            },
+        )
+        link = tmp_path / "link"
+        directory_link(link, real)
+        return real, link
+
+    def test_a_document_is_published_under_the_uri_it_arrived_as(self, tmp_path: Path) -> None:
+        """Published under the resolved path, the squiggles go to a resource the editor is
+        not showing: the document on screen keeps none of its findings."""
+        _, link = self.linked(tmp_path)
+        opened = link / "a.ddd.json"
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"workspaceFolders": [{"uri": link.as_uri()}]},
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {"textDocument": {"uri": opened.as_uri()}},
+            },
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=link).run() == 0
+        assert opened.as_uri() in published(writer)
+
+    def test_a_document_is_not_found_to_be_its_own_containing_project(self, tmp_path: Path) -> None:
+        """The candidate is resolved and the document was not, so every file matched itself -
+        and was then analysed a second time as a project of one, whose inputs nobody writes."""
+        _, link = self.linked(tmp_path)
+        found = navigation.containing_projects(link / "a.ddd.json", link)
+        assert [path.name for path in found.projects] == ["p.ddd.json"]
+
+    def test_the_findings_are_the_projects_and_are_not_doubled(self, tmp_path: Path) -> None:
+        """What the two defects add up to on screen: the file read as its own project
+        reported a missing producer for an input the project does produce."""
+        opened = self.linked(tmp_path)[1] / "a.ddd.json"
+        reports = service.collect([], [opened], opened.parent)
+        codes = [entry["code"] for findings in reports.values() for entry in findings]
+        assert sorted(codes) == ["missing-id", "unused-output"]
+
+    def test_an_edit_is_addressed_to_the_document_on_screen(self, tmp_path: Path) -> None:
+        """A rename keyed by the resolved path is applied to a second, unopened copy of the
+        file, and the one the reader is looking at keeps the old name."""
+        _, link = self.linked(tmp_path)
+        opened = link / "a.ddd.json"
+        position = Document(opened.read_text(encoding="utf-8")).range_of(
+            "component.interface[1].definition.name"
+        )["start"]
+        writer = io.BytesIO()
+        stream = session(
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {"textDocument": {"uri": opened.as_uri()}},
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "textDocument/rename",
+                "params": {
+                    "textDocument": {"uri": opened.as_uri()},
+                    "position": position,
+                    "newName": "Renamed",
+                },
+            },
+        )
+        Server(stream, writer, root=link).run()
+        answer = next(message for message in answered(writer) if message.get("id") == 3)
+        assert list(answer["result"]["changes"]) == [opened.as_uri()]
 
 
 class TestWorkspaceFolders:
@@ -4397,7 +4818,7 @@ class TestWorkspaceFolders:
         server = server_module.Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
         server._initialise({"workspaceFolders": [{"uri": other.as_uri()}, {"uri": home.as_uri()}]})
         found = server._projects_of(home / "components" / "a.ddd.json")
-        assert [workspace.name for workspace in found] == ["P"]
+        assert [loaded.workspace.name for loaded in found] == ["P"]
         # A document under no folder at all falls back to the first, as before.
         assert server._root_for(Path("/nowhere/x.ddd.json")) == other
 
@@ -4455,7 +4876,7 @@ class TestWhatAReconcileActionSettles:
         reported = [{"code": "definition-mismatch"}, {"code": "storage-mismatch"}]
         writer = io.BytesIO()
         server_module.Server(
-            framed(
+            session(
                 {
                     "jsonrpc": "2.0",
                     "id": 14,
@@ -4470,7 +4891,681 @@ class TestWhatAReconcileActionSettles:
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert answer["result"], "the unit disagreement is still offered a fix"
         for action in answer["result"]:
             assert [entry["code"] for entry in action["diagnostics"]] == ["definition-mismatch"]
+
+
+class TestMessagesTheClientGetsWrong:
+    """Somebody else's bytes, in the shapes a client actually sends them wrong.
+
+    None of these is a defect in the checks, and every one of them used to end the
+    conversation - which costs the reader every DDD finding on screen until the client gives
+    up restarting the server.
+    """
+
+    def shutdown(self) -> tuple[dict[str, Any], dict[str, Any]]:
+        return (
+            {"jsonrpc": "2.0", "id": 99, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+
+    def test_a_code_action_whose_context_is_null_is_refused_rather_than_fatal(
+        self, tmp_path: Path
+    ) -> None:
+        """``params.get("context", {})`` defends against the key being absent and not against
+        it being there and null, which is what a client sending no diagnostics may write."""
+        writer = io.BytesIO()
+        stream = session(
+            {
+                "jsonrpc": "2.0",
+                "id": 11,
+                "method": "textDocument/codeAction",
+                "params": {
+                    "textDocument": {"uri": (tmp_path / "a.ddd.json").as_uri()},
+                    "range": {
+                        "start": {"line": 0, "character": 0},
+                        "end": {"line": 0, "character": 0},
+                    },
+                    "context": None,
+                },
+            },
+            *self.shutdown(),
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answers = {message["id"]: message for message in answered(writer) if "id" in message}
+        assert answers[11]["error"]["code"] == INVALID_PARAMS
+        assert answers[99]["result"] is None
+
+    def test_a_workspace_folder_without_a_uri_is_refused_rather_than_fatal(
+        self, tmp_path: Path
+    ) -> None:
+        """``initialize`` is the first message of every session: ending on it means the client
+        never gets a capabilities answer and the server dies before it has served anything.
+
+        A refused handshake leaves the session unopened rather than half open, so the client
+        may send a well formed one and be served from there.
+        """
+        writer = io.BytesIO()
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"workspaceFolders": [{"name": "x"}]},
+            },
+            {"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {}},
+            *self.shutdown(),
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answers = {message["id"]: message for message in sent(writer) if "id" in message}
+        assert answers[1]["error"]["code"] == INVALID_PARAMS
+        assert answers[2]["result"]["serverInfo"]["name"] == "ddd"
+        assert answers[99]["result"] is None
+
+    def test_a_notification_the_server_cannot_read_is_answered_with_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """A notification never gets a reply, which is what the loop's own comment says.
+
+        It was sending one anyway, carrying ``"id": null``, and vscode-jsonrpc draws that in
+        the output channel as an error the reader has no message to act on.
+        """
+        writer = io.BytesIO()
+        stream = session({"jsonrpc": "2.0", "method": "textDocument/didOpen"}, *self.shutdown())
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert [message for message in answered(writer) if "error" in message] == []
+
+    def test_a_document_under_another_scheme_is_refused_rather_than_made_relative(
+        self, tmp_path: Path
+    ) -> None:
+        """``untitled:Untitled-1`` has no path on disk, and reading one out of it names a
+        phantom file under the server's working directory that a finding is then published
+        for. Nothing on disk is nothing this server can say anything about."""
+        writer = io.BytesIO()
+        stream = session(
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": "untitled:Untitled-1",
+                        "languageId": "json",
+                        "version": 1,
+                        "text": "{}",
+                    }
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 12,
+                "method": "textDocument/hover",
+                "params": {
+                    "textDocument": {"uri": "untitled:Untitled-1"},
+                    "position": {"line": 0, "character": 0},
+                },
+            },
+            *self.shutdown(),
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert published(writer) == {}
+        answers = {message["id"]: message for message in answered(writer) if "id" in message}
+        assert answers[12]["error"]["code"] == INVALID_PARAMS
+        assert "untitled:Untitled-1" in answers[12]["error"]["message"]
+        assert answers[99]["result"] is None
+
+
+class TestTheLifecycle:
+    """When the server is willing to serve, and what it says when it is not.
+
+    The protocol puts a beginning and an end on the conversation and says what happens outside
+    them, for a reason a diagnostics server feels as much as any other: a request served before
+    `initialize` is served against workspace folders the client has not sent yet, and one
+    served after `shutdown` is work done for a client that has stopped listening.
+    """
+
+    def opened(self, path: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {"textDocument": {"uri": path.as_uri()}},
+        }
+
+    def published_for(self, root: Path) -> dict[str, list[dict[str, Any]]]:
+        """What the same open publishes when it arrives in the order the protocol asks for."""
+        writer = io.BytesIO()
+        Server(
+            framed(
+                {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+                self.opened(root / "a.ddd.json"),
+            ),
+            writer,
+            root=root,
+        ).run()
+        return published(writer)
+
+    def hover(self, path: Path, request_id: int) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "textDocument/hover",
+            "params": {
+                "textDocument": {"uri": path.as_uri()},
+                "position": {"line": 0, "character": 0},
+            },
+        }
+
+    def test_exiting_without_shutting_down_first_is_not_a_clean_exit(self, tmp_path: Path) -> None:
+        """The protocol says so in as many words, and it is the one thing an exit code can
+        tell the client: a server told to stop without being told to wind down stopped for a
+        reason nobody planned, and a client that restarts it is right to."""
+        stream = framed(
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        assert Server(stream, io.BytesIO(), root=tmp_path).run() == 1
+
+    def test_exiting_after_shutting_down_is_a_clean_exit(self, tmp_path: Path) -> None:
+        stream = framed(
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        assert Server(stream, io.BytesIO(), root=tmp_path).run() == 0
+
+    def test_a_request_before_initialize_is_refused_and_the_session_goes_on(
+        self, tmp_path: Path
+    ) -> None:
+        """-32002 is the code the protocol reserves for exactly this, and the conversation
+        proceeds normally the moment the client does send its `initialize`."""
+        writer = io.BytesIO()
+        stream = framed(
+            self.hover(tmp_path / "a.ddd.json", 7),
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answers = {message["id"]: message for message in sent(writer) if "id" in message}
+        assert answers[7]["error"]["code"] == SERVER_NOT_INITIALIZED
+        assert answers[1]["result"]["serverInfo"]["name"] == "ddd"
+
+    def test_a_notification_before_initialize_is_dropped(self, tmp_path: Path) -> None:
+        """A notification never gets an answer, so the only thing to do with one that arrives
+        too early is nothing - and the file is not analysed against a workspace the client has
+        not described yet."""
+        (tmp_path / "a.ddd.json").write_text('{"nope": 1}', encoding="utf-8")
+        assert self.published_for(tmp_path), "the control: opened in order this file lights up"
+        writer = io.BytesIO()
+        stream = framed(
+            self.opened(tmp_path / "a.ddd.json"),
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert published(writer) == {}
+
+    def test_a_request_after_shutdown_is_refused(self, tmp_path: Path) -> None:
+        """The client has said it wants nothing more; anything it sends after that is a bug on
+        its side, and serving it is work for a reader who has closed the window."""
+        writer = io.BytesIO()
+        stream = framed(
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            self.hover(tmp_path / "a.ddd.json", 8),
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answers = {message["id"]: message for message in sent(writer) if "id" in message}
+        assert answers[8]["error"]["code"] == INVALID_REQUEST
+
+    def test_a_notification_after_shutdown_is_dropped(self, tmp_path: Path) -> None:
+        (tmp_path / "a.ddd.json").write_text('{"nope": 1}', encoding="utf-8")
+        assert self.published_for(tmp_path), "the control: opened in order this file lights up"
+        writer = io.BytesIO()
+        stream = framed(
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            self.opened(tmp_path / "a.ddd.json"),
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert published(writer) == {}
+
+    def test_initializing_twice_is_refused(self, tmp_path: Path) -> None:
+        """The second one would re-point the workspace folders under every answer already
+        given, so the protocol makes it an invalid request rather than a second beginning."""
+        writer = io.BytesIO()
+        stream = framed(
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answers = {message["id"]: message for message in sent(writer) if "id" in message}
+        assert answers[1]["result"]["serverInfo"]["name"] == "ddd"
+        assert answers[2]["error"]["code"] == INVALID_REQUEST
+
+    def test_exit_without_initialize_still_exits(self, tmp_path: Path) -> None:
+        """A client that gave up before saying hello still gets a server that goes away; the
+        protocol names this case so that such a server is not left running."""
+        assert Server(framed({"jsonrpc": "2.0", "method": "exit"}), io.BytesIO()).run() == 1
+
+
+class TestWhatTheServerSaysAboutARecord:
+    """The three answers to "which project is this file checked through"."""
+
+    def test_a_junction_under_the_build_tree_yields_one_record(self, tmp_path: Path) -> None:
+        """``rglob`` walks a junction as if it were a directory - python 3.13 keeps ``**`` out
+        of a symlink and a junction is not one - so a loop under ``build/`` produced a
+        different spelling of the same record per level: twenty-two records, twenty-two log
+        lines and every finding of the project published twenty-two times.
+
+        Windows is where this bites: on posix ``**`` declines to follow the link at all, and
+        the one record is found by the short way round.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        directory_link(tmp_path / "build" / "loop", tmp_path / "build")
+        assert build_files(tmp_path) == [
+            tmp_path / "build" / "ddd" / "firmware.elf" / BUILD_INFO_FILENAME
+        ]
+
+    def test_the_log_says_a_file_under_a_project_is_checked_through_it(
+        self, tmp_path: Path
+    ) -> None:
+        """The line used to say every file is checked on its own, which denies exactly the
+        findings the next message publishes: a component under a project file is checked
+        through that project, record or no record."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "X")),
+            },
+        )
+        writer = io.BytesIO()
+        Server(io.BytesIO(), writer, root=tmp_path).refresh(tmp_path / "a.ddd.json")
+        (said,) = [
+            message["params"]["message"]
+            for message in sent(writer)
+            if message.get("method") == "window/logMessage"
+        ]
+        assert "no ddd-build.json found" in said
+        assert "a project" in said
+        # The very finding the old wording said would not be reported.
+        assert [
+            entry["code"] for entry in published(writer)[(tmp_path / "a.ddd.json").as_uri()]
+        ] == ["missing-producer"]
+
+    def test_a_record_naming_a_plugin_check_nobody_registers_is_reported(
+        self, tmp_path: Path
+    ) -> None:
+        """``ddd check -W layout/no-such=ignore`` refuses the run with a usage error; the
+        server took the same record, kept the override provisional and never held it to the
+        plugins that loaded, so a build silencing a check by a name nothing registers looked
+        exactly like a build silencing one that exists."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json", severity=["layout/no-such=ignore"])
+        reports = service.collect(discover(tmp_path))
+        published_for = reports[tmp_path / "p.ddd.json"]
+        assert [entry["code"] for entry in published_for] == ["plugin-invalid"]
+        assert "layout/no-such" in published_for[0]["message"]
+
+    def test_a_record_naming_a_plugin_check_that_is_registered_is_honoured(
+        self, tmp_path: Path
+    ) -> None:
+        """The control: the same shape of override, for a check a loaded plugin does register,
+        goes on working and reports nothing about itself."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/registering_plugin.py": REGISTERING_PLUGIN,
+                "p.ddd.json": project("P", "a.ddd.json", plugins=["tools/registering_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json", severity=["demo/tagged=ignore"])
+        reports = service.collect(discover(tmp_path))
+        assert "plugin-invalid" not in {
+            entry["code"] for findings in reports.values() for entry in findings
+        }
+
+
+class TestHoveringOnADeclaredType:
+    """The type's own entry, which until now answered only for an external type.
+
+    A reader in a types file gets the same nothing for every name they point at, while the
+    identical name pointed at from a component describes the variable that names it. Both
+    positions are about the type; one of them has no variable to describe instead.
+    """
+
+    def workspace(self, tmp_path: Path) -> list[Any]:
+        from ddd.build_info import BuildInfo
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": {
+                    "types": [
+                        {
+                            "type": "scalar",
+                            "name": "Temperature_t",
+                            "description": "a temperature as this ecu stores one",
+                            "datatype": "uint16",
+                            "unit": "degC",
+                            "conversion": {"factor": 0.1, "offset": -40},
+                        },
+                        {
+                            "type": "struct",
+                            "name": "Sample_t",
+                            "description": "one reading and how good it is",
+                            "members": [
+                                {
+                                    "name": "value",
+                                    "member": "value",
+                                    "typename": "Temperature_t",
+                                },
+                                {
+                                    "name": "quality",
+                                    "member": "value",
+                                    "datatype": "uint8",
+                                    "conversion": {},
+                                },
+                                {
+                                    "name": "history",
+                                    "member": "value",
+                                    "datatype": "uint8",
+                                    "conversion": {},
+                                    "dimensions": [4],
+                                },
+                                {
+                                    "name": "ready",
+                                    "member": "bits",
+                                    "datatype": "uint8",
+                                    "conversion": {},
+                                    "bits": 1,
+                                },
+                            ],
+                        },
+                    ]
+                },
+                "a.ddd.json": component(
+                    "A", declare("output", "Inlet", typename="Sample_t", description="the inlet")
+                ),
+            },
+        )
+        info = BuildInfo(project=(tmp_path / "p.ddd.json").as_posix())
+        return list(navigation.workspaces([info], tmp_path / "t.ddd.json"))
+
+    def hovered(self, tmp_path: Path, name: str, pointer: str) -> Any:
+        projects = self.workspace(tmp_path)
+        path = tmp_path / name
+        document = Document(path.read_text(encoding="utf-8"))
+        position = document.range_of(pointer)["start"]
+        writer = io.BytesIO()
+        Server(
+            session(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 7,
+                    "method": "textDocument/hover",
+                    "params": {
+                        "textDocument": {"uri": path.as_uri()},
+                        "position": position,
+                    },
+                }
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        assert projects
+        (answer,) = answered(writer)
+        return answer["result"]
+
+    def test_a_structures_own_entry_describes_it(self, tmp_path: Path) -> None:
+        result = self.hovered(tmp_path, "t.ddd.json", "types[1].name")
+        assert result is not None
+        rendered = result["contents"]["value"]
+        assert "**Sample_t**" in rendered
+        assert "one reading and how good it is" in rendered
+        assert "**4 members**" in rendered
+        assert "`Temperature_t`" in rendered
+        assert "`uint8`" in rendered
+        # Spelled as the file spells it: an array carries its dimensions and a bitfield its
+        # width, which is what tells a reader what the member costs.
+        assert "`uint8[4]`" in rendered
+        assert "`uint8:1`" in rendered
+
+    def test_a_scalar_types_own_entry_describes_it(self, tmp_path: Path) -> None:
+        rendered = self.hovered(tmp_path, "t.ddd.json", "types[0].name")["contents"]["value"]
+        assert "**Temperature_t**" in rendered
+        assert "`uint16`" in rendered
+        assert "degC" in rendered
+
+    def test_a_typename_inside_a_types_file_describes_the_type_it_names(
+        self, tmp_path: Path
+    ) -> None:
+        """The member says ``"typename": "Temperature_t"`` and the type is declared six lines
+        above it; there is no variable here for the old answer to describe instead."""
+        rendered = self.hovered(tmp_path, "t.ddd.json", "types[1].members[0].typename")["contents"][
+            "value"
+        ]
+        assert "**Temperature_t**" in rendered
+
+    def test_a_typename_on_a_declaration_still_describes_the_variable(self, tmp_path: Path) -> None:
+        """The control, and the reason the type answer is a fallback rather than a winner:
+        from a component, what a reader is asking about is the variable."""
+        rendered = self.hovered(
+            tmp_path, "a.ddd.json", "component.interface[0].definition.typename"
+        )["contents"]["value"]
+        assert "**Inlet**" in rendered
+
+    def test_a_name_no_project_declares_as_a_type_says_nothing(self, tmp_path: Path) -> None:
+        from ddd.lsp.hover import describe_type
+
+        assert describe_type(self.workspace(tmp_path), "Nothing_t") is None
+
+
+class TestInsertingAKey:
+    """Where a quick fix puts a key a definition does not have, and how far in."""
+
+    def document(self, separator: str) -> Any:
+        """One declaration whose last member is written over several lines.
+
+        ``separator`` goes inside a description above it: a line break to ``str.splitlines()``
+        and an ordinary character to everything that counts positions.
+        """
+        return Document(
+            "{\n"
+            '  "component": {\n'
+            '    "name": "A",\n'
+            f'    "description": "before{separator}after",\n'
+            '    "interface": [\n'
+            "      {\n"
+            '        "scope": "output",\n'
+            '        "definition": {\n'
+            '          "name": "Speed",\n'
+            '          "kind": "measurement",\n'
+            '          "datatype": "uint8",\n'
+            '          "conversion": {\n'
+            '            "kind": "identity"\n'
+            "          }\n"
+            "        }\n"
+            "      }\n"
+            "    ]\n"
+            "  }\n"
+            "}"
+        )
+
+    @pytest.mark.parametrize("separator", ["", "\u2028", "\x85"])
+    def test_the_indentation_is_the_one_of_the_line_positions_count(self, separator: str) -> None:
+        """``str.splitlines()`` breaks on a dozen characters a newline is not - a form feed, a
+        NEL, U+2028 - while every position this server hands out counts ``\n`` alone. One of
+        them in a description above the declaration put the two out of step, and the key was
+        inserted with the indentation of the line before: the last member here is written over
+        several lines, so that is twelve spaces where the closing brace stands at ten.
+        """
+        from ddd.lsp.edits import _insert
+
+        edit = _insert(
+            self.document(separator), "component.interface[0].definition", "unit", '"rpm"'
+        )
+        assert edit is not None
+        assert edit["newText"] == ',\n          "unit": "rpm"'
+
+
+class TestHoverMarkdownThatHoldsMarkdown:
+    """A unit and a condition are free text, and two of its characters are markdown.
+
+    A backtick ends the code span the value sits in and a pipe ends the table cell, whatever
+    it sits in - so a unit an editor accepts without complaint (``ddd check --standalone``
+    passes it) drew a table with the row split in two and the rest of the value loose in it.
+    """
+
+    def described(self, tmp_path: Path, **definition: Any) -> str:
+        from ddd.build_info import BuildInfo
+        from ddd.lsp.hover import describe, resolve
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "Speed", **definition)),
+            },
+        )
+        info = BuildInfo(project=(tmp_path / "p.ddd.json").as_posix())
+        dictionary = resolve(navigation.workspaces([info], tmp_path / "a.ddd.json"))
+        assert dictionary is not None
+        rendered = describe(dictionary, "Speed")
+        assert rendered is not None
+        return rendered
+
+    def rows_of(self, rendered: str) -> dict[str, str]:
+        """Each table row as the editor's markdown parser divides it, by its label.
+
+        Split on the unescaped pipes alone, which is exactly what a renderer does: a row that
+        carries one too many is a row with a cell the author did not write.
+        """
+        rows = {}
+        for line in rendered.splitlines():
+            cells = re.split(r"(?<!\\)\|", line)
+            if len(cells) == 4 and cells[1].strip() not in {"", "---"}:
+                rows[cells[1].strip()] = cells[2].strip()
+        return rows
+
+    def test_a_unit_holding_a_backtick_and_a_pipe_stays_in_its_cell(self, tmp_path: Path) -> None:
+        rendered = self.described(tmp_path, unit="a`b|c")
+        assert self.rows_of(rendered)["unit"] == "``a`b\\|c``"
+
+    def test_a_condition_holding_a_pipe_stays_in_its_cell(self, tmp_path: Path) -> None:
+        """``#if defined(A) || defined(B)`` is an ordinary condition to write."""
+        rendered = self.described(tmp_path, condition="defined(A) || defined(B)")
+        assert self.rows_of(rendered)["condition"] == "`defined(A) \\|\\| defined(B)`"
+
+    def test_a_unit_that_is_only_a_backtick_is_still_a_span(self, tmp_path: Path) -> None:
+        """A span whose text begins or ends with a backtick needs a space inside the fence,
+        or the fence swallows it."""
+        assert self.rows_of(self.described(tmp_path, unit="`"))["unit"] == "`` ` ``"
+
+    def test_an_ordinary_unit_is_left_alone(self, tmp_path: Path) -> None:
+        assert self.rows_of(self.described(tmp_path, unit="rpm"))["unit"] == "`rpm`"
+
+
+class TestAWatchedFileChanging:
+    """A file changed on disk by something other than the editor.
+
+    The extension watches `**/*.ddd.json` and says why in as many words: a save is not the
+    only way a description changes - a build writes them, and a branch switch rewrites them
+    all - and neither of those is a document event. The notification it sends for them had no
+    branch in the server at all, so the findings and the jumps went on describing the files as
+    they were until somebody happened to save one.
+    """
+
+    def workspace(self, tmp_path: Path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Shared")),
+                "b.ddd.json": component("B", declare("input", "Shared")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+
+    def changed(self, *paths: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "method": "workspace/didChangeWatchedFiles",
+            "params": {"changes": [{"uri": path.as_uri(), "type": 2} for path in paths]},
+        }
+
+    def opened(self, path: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": path.as_uri(),
+                    "languageId": "json",
+                    "version": 1,
+                    "text": path.read_text(encoding="utf-8"),
+                }
+            },
+        }
+
+    def test_the_open_document_is_checked_again(self, tmp_path: Path) -> None:
+        self.workspace(tmp_path)
+        consumer = tmp_path / "b.ddd.json"
+        producer = tmp_path / "a.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        assert server._handle(self.opened(consumer))
+        # Nothing is wrong yet, and a file with nothing wrong is published only to withdraw
+        # what it said last time.
+        assert consumer.as_uri() not in published(writer)
+
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "Other"))})
+        writer = io.BytesIO()
+        server.writer = writer
+        assert server._handle(self.changed(producer))
+        assert [entry["code"] for entry in published(writer)[consumer.as_uri()]] == [
+            "missing-producer"
+        ]
+
+    def test_a_change_with_nothing_open_still_republishes_the_project(self, tmp_path: Path) -> None:
+        """A branch switch while no description is open: the Problems list is still on screen
+        and still describes the files as they were."""
+        self.workspace(tmp_path)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "Other"))})
+        assert server._handle(self.changed(tmp_path / "a.ddd.json"))
+        drawn = published(writer)[(tmp_path / "b.ddd.json").as_uri()]
+        assert [entry["code"] for entry in drawn] == ["missing-producer"]
+
+    def test_a_notification_carrying_no_change_changes_nothing(self, tmp_path: Path) -> None:
+        self.workspace(tmp_path)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        assert server._handle(self.changed())
+        assert published(writer) == {}

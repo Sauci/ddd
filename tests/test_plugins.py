@@ -2130,6 +2130,7 @@ class TestChecksCommand:
 class TestTheLanguageServerAndPlugins:
     def test_hover_resolution_survives_a_hook_that_raises(self, tree: Path) -> None:
         from ddd.lsp.hover import resolve
+        from ddd.lsp.navigation import Loaded
 
         write_plugin(tree / "tools", source=RAISING_PLUGIN)
         write_tree(
@@ -2141,15 +2142,16 @@ class TestTheLanguageServerAndPlugins:
         )
         workspace = load_workspace(tree / "project.ddd.json", DiagnosticBag())
         assert workspace is not None
-        assert resolve([workspace]) is None
+        assert resolve([Loaded(workspace, ())]) is None
 
     def test_hover_resolution_survives_settings_that_do_not_validate(self, tree: Path) -> None:
         """A hover resolves a project that did not read cleanly; its settings may be wrong."""
         from ddd.lsp.hover import resolve
+        from ddd.lsp.navigation import Loaded
 
         workspace, bag = tagged(tree, declare("local", "X"), settings={"prefix": 3})
         assert workspace is not None and bag.has_errors
-        assert resolve([workspace]) is None
+        assert resolve([Loaded(workspace, ())]) is None
 
     def test_a_plugin_printing_during_a_request_does_not_reach_the_wire(
         self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

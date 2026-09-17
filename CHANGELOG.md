@@ -14,6 +14,70 @@ its own.
 
 ## Unreleased
 
+* **The editor answers about the project, and about the document you have open.**  Fifteen
+  defects of the language server, found by a review of the whole tool, most of them on the
+  most ordinary setup there is - a checkout nobody has built yet.
+
+  *What is checked.*  A project description opened in a tree with no build record was read as
+  "a component on its own", so the ten checks that need the whole project were silenced for
+  the whole project - and because opening a file republishes everything it covers, opening
+  `project.ddd.json` **withdrew** the missing producers and unused outputs from the components
+  that were already showing them.  A project file is now checked as the project it is; the
+  thinner policy stays for a component read alone.  The containing-project stage applies the
+  default severities, which no page said and every page now does.  A component linked into two
+  images is drawn once rather than once per image, unless the two disagree about how loudly to
+  report it.
+
+  *What ends the session.*  A build record naming a check this version has not got ended the
+  server on the first document opened - the client restarts it five times and gives up - and
+  is now skipped and announced like a record that cannot be read.  So are a code action whose
+  `context` is null, an `initialize` naming a workspace folder without a `uri`, a document
+  nested deeper than a position in it can be located (which also ended `ddd id --assign` in a
+  traceback; it now reports the file and exits with the findings code), and a
+  `Content-Length` spelled the way python reads a number rather than the way the protocol
+  writes one - `1_2` was twelve, and the frame ended in the middle of the body.  A request
+  arriving before `initialize` or after `shutdown` is refused with the code the protocol
+  reserves for it, a second `initialize` with the invalid-request error, and `exit` without
+  `shutdown` now ends the run with 1 rather than 0.
+
+  *Where the answer lands.*  Everything published, answered and edited is now spelled the way
+  the client spelled the document it opened, and resolved for every file it never opened.  A
+  workspace opened through a junction, a `subst` or mapped drive, a symlink or with a
+  different case had its findings published against a resource the editor was not showing, and
+  its renames applied to a document that was not on screen; through such a spelling the open
+  file was also found as its own containing project and reported three missing producers the
+  project does produce.  A document under a scheme other than `file:` is refused instead of
+  being read as a relative path - `untitled:Untitled-1` used to publish `file-not-found` for a
+  phantom file in the workspace.  A note with no place of its own is published at the first
+  line of the file its finding is on, where it used to carry an empty uri that a client reads
+  as `file:///`.
+
+  *What the editor offers.*  `F2` on an enum name or an enumerator opened a rename box whose
+  rename returned an empty edit - and, where a variable of that name existed elsewhere, renamed
+  *that* instead; the rename subjects are now matched where they are declared.  A rename and
+  the quick fixes are refused, naming the file, while a file of the project did not load, for
+  the reason a drifted buffer is already refused: a project is indexed from what loaded, so the
+  edit would rewrite every other file and leave that one behind.  Hovering a declared type
+  where it is declared, or a `typename` inside a types file, answered nothing at all and now
+  describes the type.  A unit or a condition holding a backtick or a pipe - `defined(A) ||
+  defined(B)` is an ordinary condition - broke the hover's table; both are now escaped.
+
+  *What the server hears and looks at.*  The extension's file watcher has fed
+  `workspace/didChangeWatchedFiles` since it was written and the server had no branch for it,
+  so a file rewritten by a build or a branch switch changed nothing on screen until somebody
+  saved; the server now checks again on it.  A junction inside a build tree turned one record
+  into a record per level of the loop - twenty-two announcements and every finding published
+  twenty-two times - and records are now counted resolved.  A record whose severities name a
+  plugin's check that nothing registers is reported as `plugin-invalid` on the project file,
+  which is what `ddd check` refuses the same `-W` for.  And the log no longer says that every
+  file is checked on its own, which denied exactly the findings the next message published.
+
+  **Migration:** none for a description file, a build record or a command.  An editor
+  extension other than the shipped one sees three protocol changes: `exit` without `shutdown`
+  exits 1, requests outside the session are refused rather than served, and a non-`file:`
+  document is refused.  The shipped VS Code extension sends `shutdown` first; its launch test
+  no longer pins the lenient exit, and its handshake has a timeout.
+
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`
   through the c templates, a `SYSTEM_CONSTANT` in the a2l - whether or not a shape names it,

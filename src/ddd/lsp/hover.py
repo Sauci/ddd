@@ -20,17 +20,18 @@ knowing about it:
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
 from typing import Final
 
 from ddd.analysis import analyze
 from ddd.diagnostics import DiagnosticBag
 from ddd.ir import DataDictionary, ResolvedInstance, ResolvedLeaf, ResolvedObject
-from ddd.loading import Workspace
+from ddd.lsp.navigation import Loaded
 from ddd.models.common import format_number
 from ddd.models.conversion import EnumConversion, conversion_range, raw_reading
 from ddd.models.objects import ObjectKind, broadcast, flatten, format_shape
-from ddd.models.types import ExternalType
+from ddd.models.types import ExternalType, Member, ScalarType, StructType
 from ddd.plugins import PluginError
 
 BARS: Final = "▁▂▃▄▅▆▇█"
@@ -40,6 +41,9 @@ MAX_ENUMERATORS: Final = 12
 """Past this many, a hover is a wall of text rather than a reminder."""
 
 _AXIS_KEYS: Final = ("axis", "x_axis", "y_axis", "input")
+
+type DeclaredType = ExternalType | ScalarType | StructType
+"""The three shapes a types file declares, which is what ``TypeEntry.declared`` holds."""
 
 
 def sparkline(values: list[float], low: float, high: float) -> str:
@@ -78,7 +82,7 @@ def rows(entry: ResolvedObject) -> list[list[float]]:
     return [values[start : start + width] for start in range(0, len(values), width)]
 
 
-def resolve(projects: Sequence[Workspace]) -> DataDictionary | None:
+def resolve(projects: Sequence[Loaded]) -> DataDictionary | None:
     """The first of these projects, resolved, or nothing when there are none.
 
     Takes the loaded projects rather than the build records that lead to them, because
@@ -90,9 +94,9 @@ def resolve(projects: Sequence[Workspace]) -> DataDictionary | None:
     The findings will already be saying what is wrong with it; refusing to answer what a
     variable is on top of that helps nobody.
     """
-    for workspace in projects:
+    for loaded in projects:
         try:
-            return analyze(workspace, DiagnosticBag())
+            return analyze(loaded.workspace, DiagnosticBag())
         except PluginError:
             # A plugin that raises, or settings that do not validate: the findings of the last
             # save already say so, and a hover that answers nothing beats a server that exits.
@@ -116,7 +120,7 @@ def describe_constant(dictionary: DataDictionary, name: str) -> str | None:
     return "\n".join(lines)
 
 
-def describe_external(projects: Sequence[Workspace], name: str) -> str | None:
+def describe_external(projects: Sequence[Loaded], name: str) -> str | None:
     """The markdown for one external type, or nothing when no project declares that name so.
 
     Answered from the loaded workspace rather than from the resolved dictionary, because an
@@ -125,15 +129,119 @@ def describe_external(projects: Sequence[Workspace], name: str) -> str | None:
     is exactly what the description states, and the header is the half that lives in another
     file from the member naming the type.
     """
-    for workspace in projects:
-        for entry in workspace.types:
-            declared = entry.declared
-            if isinstance(declared, ExternalType) and declared.name == name:
-                lines = [f"**{declared.name}** — external type, defined by `{declared.header}`"]
-                if declared.description:
-                    lines += ["", declared.description]
-                return "\n".join(lines)
+    declared = _declared(projects, name)
+    return _rendered(declared) if isinstance(declared, ExternalType) else None
+
+
+def describe_type(projects: Sequence[Loaded], name: str) -> str | None:
+    """The markdown for one declared type of any kind, or nothing when nothing declares it.
+
+    The answer of last resort for a type name, offered where no data object answered first: in
+    a component a ``typename`` is about the variable that names it, and a reader pointing at
+    it wants what the project made of that variable. Inside a types file there is no variable
+    to describe, and a type's own entry used to answer nothing at all - the one place a name
+    is defined was the one place hovering it said less than anywhere else.
+
+    Answered from the loaded workspace for the reason :func:`describe_external` is: a type is
+    not a data object, so the resolved dictionary holds what *declarations* made of it and a
+    type nothing declares is in no dictionary at all.
+    """
+    declared = _declared(projects, name)
+    return None if declared is None else _rendered(declared)
+
+
+def _declared(projects: Sequence[Loaded], name: str) -> DeclaredType | None:
+    """The entry a project declares under this name, in the order the projects were found."""
+    for loaded in projects:
+        for entry in loaded.workspace.types:
+            if entry.declared.name == name:
+                return entry.declared
     return None
+
+
+def _rendered(declared: DeclaredType) -> str:
+    """One type entry as markdown, in the terms that kind of type is written in."""
+    if isinstance(declared, ExternalType):
+        heading = f"**{declared.name}** — external type, defined by `{declared.header}`"
+        return "\n".join([heading, *_described(declared.description)])
+    if isinstance(declared, ScalarType):
+        return "\n".join(
+            [
+                f"**{declared.name}** — scalar type, `{declared.datatype.value}`",
+                *_described(declared.description),
+                "",
+                "| | |",
+                "|---|---|",
+                *_table(
+                    [
+                        ("unit", _cell(declared.unit) if declared.unit else "*none*"),
+                        ("conversion", _cell(declared.conversion.describe())),
+                    ]
+                ),
+            ]
+        )
+    members = declared.members
+    return "\n".join(
+        [
+            f"**{declared.name}** — structure type",
+            *_described(declared.description),
+            "",
+            f"**{len(members)} member{'s' if len(members) != 1 else ''}**",
+            "",
+            "| member | type |",
+            "|---|---|",
+            *_table([(f"`{member.name}`", _member_type(member)) for member in members]),
+        ]
+    )
+
+
+def _span(text: str) -> str:
+    """One value as an inline code span that the value itself cannot end.
+
+    A unit, a condition and a string init are free text, and a backtick in any of them closed
+    the span early: the rest of the value fell out into the markdown around it. Markdown's
+    answer is not an escape but a longer fence - a span opened with more backticks than the
+    text holds in a row can hold them all - plus a space where the text begins or ends with
+    one, which the fence would otherwise swallow.
+    """
+    longest = max((len(run) for run in re.findall("`+", text)), default=0)
+    fence = "`" * (longest + 1)
+    padding = " " if text.startswith("`") or text.endswith("`") else ""
+    return f"{fence}{padding}{text}{padding}{fence}"
+
+
+def _bars(text: str) -> str:
+    """Free text with its pipes escaped, which is what a cell of a table needs.
+
+    A pipe ends the cell wherever it stands, a code span included, and the table syntax reads
+    a backslash before one as the character rather than the divider. ``defined(A) ||
+    defined(B)`` is an ordinary condition to write and drew three cells where the row has two.
+    """
+    return text.replace("|", "\\|")
+
+
+def _cell(text: str) -> str:
+    """Free text as a code span in a cell of a table: both hazards at once."""
+    return _span(_bars(text))
+
+
+def _described(description: str) -> list[str]:
+    """The free text under a heading, where there is any."""
+    return ["", description] if description else []
+
+
+def _table(cells: Sequence[tuple[str, str]]) -> list[str]:
+    return [f"| {label} | {value} |" for label, value in cells]
+
+
+def _member_type(member: Member) -> str:
+    """What a member is made of, as the file spells it: a base datatype or a declared type."""
+    spelled = member.typename or (member.datatype.value if member.datatype else "")
+    if member.bits is not None:
+        return f"`{spelled}:{member.bits}`"
+    if member.dimensions:
+        return f"`{spelled}{format_shape(tuple(member.dimensions))}`"
+    return f"`{spelled}`"
 
 
 def describe(dictionary: DataDictionary, name: str) -> str | None:
@@ -170,7 +278,7 @@ def _describe_instance(dictionary: DataDictionary, entry: ResolvedInstance) -> s
     if entry.shape:
         facts.append(("shape", f"`{format_shape(entry.spelled_shape)}`"))
     if entry.condition:
-        facts.append(("condition", f"`{entry.condition}`"))
+        facts.append(("condition", _cell(entry.condition)))
     facts.append(("volatile", "yes" if entry.volatile else "no"))
     lines += ["| | |", "|---|---|"]
     lines += [f"| {label} | {value} |" for label, value in facts]
@@ -184,7 +292,7 @@ def _describe_instance(dictionary: DataDictionary, entry: ResolvedInstance) -> s
     lines += [
         f"| `{leaf.path.removeprefix(entry.name).lstrip('.')}` "
         f"| `{_member_storage(leaf)}` "
-        f"| {leaf.unit or '*none*'} "
+        f"| {_bars(leaf.unit) or '*none*'} "
         f"| {format_number(leaf.limits.min)} .. {format_number(leaf.limits.max)} |"
         for leaf in leaves
     ]
@@ -214,7 +322,7 @@ def _ownership(entry: ResolvedObject | ResolvedInstance) -> str:
 
 def _facts(entry: ResolvedObject, dictionary: DataDictionary) -> list[str]:
     """The resolved properties, as a table an editor renders."""
-    rendered = [("unit", f"`{entry.unit}`" if entry.unit else "*none*")]
+    rendered = [("unit", _cell(entry.unit) if entry.unit else "*none*")]
     low, high = conversion_range(entry.conversion, entry.datatype)
     limits = f"{format_number(entry.limits.min)} .. {format_number(entry.limits.max)}"
     if (entry.limits.min, entry.limits.max) == (low, high):
@@ -223,7 +331,7 @@ def _facts(entry: ResolvedObject, dictionary: DataDictionary) -> list[str]:
         # because it means nothing has been narrowed for the calibration tool.
         limits += " — the full range of the datatype"
     rendered.append(("limits", limits))
-    rendered.append(("conversion", f"`{entry.conversion.describe()}`"))
+    rendered.append(("conversion", _cell(entry.conversion.describe())))
     if entry.shape:
         # Spelled as the project writes it: a constant-dimensioned array names its constant.
         rendered.append(("shape", f"`{format_shape(entry.spelled_shape)}`"))
@@ -232,7 +340,7 @@ def _facts(entry: ResolvedObject, dictionary: DataDictionary) -> list[str]:
         if target is not None:
             rendered.append((key, f"`{target}`{_axis_range(dictionary, target)}"))
     if entry.condition:
-        rendered.append(("condition", f"`{entry.condition}`"))
+        rendered.append(("condition", _cell(entry.condition)))
     # Always, unlike the rows above it: every definition states this one, so leaving it out
     # when it is false would be the reader's only way of confusing "no" with "not asked".
     rendered.append(("volatile", "yes" if entry.volatile else "no"))
@@ -255,7 +363,7 @@ def _axis_range(dictionary: DataDictionary, target: str) -> str:
         axis.conversion.to_physical(value)
         for value in flatten(broadcast(axis.init, tuple(axis.shape)))
     ]
-    span = f"{format_number(min(points))} .. {format_number(max(points))} {axis.unit}"
+    span = f"{format_number(min(points))} .. {format_number(max(points))} {_bars(axis.unit)}"
     return f" — {span.rstrip()}"
 
 
@@ -275,7 +383,7 @@ def _drawing(entry: ResolvedObject) -> list[str]:
     """The init values, drawn if there is anything to see in them."""
     if isinstance(entry.init, str):
         # Text, stated as the file spells it: there is no reading to add and nothing to draw.
-        return [f"init `{json.dumps(entry.init)}`"]
+        return [f"init {_span(json.dumps(entry.init))}"]
     if entry.init is not None and not isinstance(entry.init, tuple):
         return [_stated_init(entry, entry.init)]
     drawn = rows(entry)

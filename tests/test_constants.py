@@ -1160,7 +1160,7 @@ class TestTheEditor:
 
         from ddd.lsp.ranges import Document
         from ddd.lsp.server import Server
-        from test_lsp import build_record, framed, sent
+        from test_lsp import answered, build_record, session
 
         build_record(tmp_path, tmp_path / "p.ddd.json")
         position = Document(path.read_text(encoding="utf-8")).range_of(pointer)["start"]
@@ -1171,8 +1171,8 @@ class TestTheEditor:
             "method": "textDocument/hover",
             "params": {"textDocument": {"uri": path.as_uri()}, "position": position},
         }
-        Server(framed(request), writer, root=tmp_path).run()
-        (answer,) = sent(writer)
+        Server(session(request), writer, root=tmp_path).run()
+        (answer,) = answered(writer)
         return answer["result"]
 
     def test_hover_on_a_use_site_shows_the_constant(self, tmp_path: Path) -> None:
@@ -1205,7 +1205,7 @@ class TestTheEditor:
 
         from ddd.lsp.ranges import Document
         from ddd.lsp.server import Server
-        from test_lsp import framed, sent
+        from test_lsp import answered, session
 
         write_tree(tmp_path, {"constants.ddd.json": constants(constant("PRESSURE_CELLS", 8))})
         path = tmp_path / "constants.ddd.json"
@@ -1217,8 +1217,8 @@ class TestTheEditor:
             "method": "textDocument/hover",
             "params": {"textDocument": {"uri": path.as_uri()}, "position": position},
         }
-        Server(framed(request), writer, root=tmp_path).run()
-        (answer,) = sent(writer)
+        Server(session(request), writer, root=tmp_path).run()
+        (answer,) = answered(writer)
         assert answer["result"] is None
 
     def test_a_constant_without_a_description_hovers_without_one(self, tmp_path: Path) -> None:

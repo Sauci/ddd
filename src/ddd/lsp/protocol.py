@@ -16,10 +16,21 @@ one non-ascii character anywhere in a message would put every following message 
 from __future__ import annotations
 
 import json
+import re
 from typing import IO, Any
 
 _HEADER_SEPARATOR = b":"
 _CONTENT_LENGTH = b"content-length"
+
+_LENGTH = re.compile(rb"\d+")
+"""A count of bytes, spelled the one way the protocol spells it.
+
+``int()`` was doing this and takes python's own spellings on top: ``1_2`` is twelve to it,
+``+7`` is seven, and a minus sign is a length ``read()`` reads the whole stream for. A client
+writes none of those, so anything else in the header is a header this reader cannot follow -
+and honouring a length the writer did not mean ends the body in the middle of the message and
+reads every header after it out of somebody's json.
+"""
 
 
 class ProtocolError(Exception):
@@ -64,19 +75,13 @@ def read_message(stream: IO[bytes]) -> dict[str, Any] | None:
     raw_length = headers.get(_CONTENT_LENGTH)
     if raw_length is None:
         return None
-    try:
-        length = int(raw_length)
-    except ValueError:
+    if not _LENGTH.fullmatch(raw_length):
         msg = (
-            f"Content-Length is not a number: {raw_length.decode('utf-8', 'replace')!r}; "
-            f"the stream cannot be re-synchronised"
+            f"Content-Length is not a count of bytes: "
+            f"{raw_length.decode('utf-8', 'replace')!r}; the stream cannot be re-synchronised"
         )
-        raise ProtocolError(msg) from None
-    if length < 0:
-        # read(-1) reads to the end of the stream, which on a live pipe is never.
-        msg = f"Content-Length is negative: {length}; the stream cannot be re-synchronised"
         raise ProtocolError(msg)
-    body = stream.read(length)
+    body = stream.read(int(raw_length))
     try:
         decoded = json.loads(body.decode("utf-8"))
     except ValueError:
@@ -116,6 +121,14 @@ INVALID_REQUEST = -32600
 
 METHOD_NOT_FOUND = -32601
 """The json-rpc code for a request naming a method the server does not implement."""
+
+SERVER_NOT_INITIALIZED = -32002
+"""The language protocol's code for a request that arrived before ``initialize`` did.
+
+Its own code rather than an invalid request, and the distinction is the client's to act on:
+this one says "ask me again once you have told me what the workspace is", where every other
+refusal says the request itself was wrong.
+"""
 
 INVALID_PARAMS = -32602
 """The json-rpc code for a request whose parameters are not the shape the method takes.

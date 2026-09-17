@@ -45,19 +45,24 @@ class Document:
         self._line_starts = _line_starts(text)
         try:
             self.data: Any = json.loads(text)
+            # Scanned without a single defensive branch: a document that has already parsed
+            # cannot surprise the scanner - except by being deeper than the stack it has left.
+            # The scan is under the same guard as the parse because the two give up at
+            # different depths: this walk spends two frames per level where ``json.loads``
+            # spends less, so a document between about five hundred and three thousand levels
+            # deep parses and then dies here, which ended ``ddd id --assign`` in a traceback
+            # and the editor's server on the first didOpen.
+            scanner = _Scanner(text)
+            scanner.value("")
         except (ValueError, RecursionError):
-            # Caught mid edit, or nested too deeply for python to parse at all. Either way
-            # there are no spans to offer and no values to read, which every caller reads as
-            # "nothing here", rather than as an error of its own.
+            # Caught mid edit, or nested too deeply for python to read. Either way there are
+            # no spans to offer and no values to read, which every caller reads as "nothing
+            # here" rather than as an error of its own.
             self.data = None
             self._spans: dict[str, tuple[int, int]] = {}
             self._texts: dict[str, tuple[int, int]] = {}
             self._values: dict[str, tuple[int, int]] = {}
         else:
-            # Scanned without a single defensive branch: a document that has already parsed
-            # cannot surprise the scanner.
-            scanner = _Scanner(text)
-            scanner.value("")
             self._spans = scanner.spans
             self._texts = scanner.texts
             self._values = scanner.values
@@ -103,6 +108,16 @@ class Document:
         except (KeyError, IndexError, TypeError):
             return None
         return value
+
+    def line_at(self, line: int) -> str:
+        """The text of one line, counted the way every position in here counts them.
+
+        ``str.splitlines()`` is the obvious way to ask and the wrong one: it breaks on a dozen
+        characters a newline is not - a form feed, a NEL, U+2028 - and one of those inside a
+        description puts its index out of step with every line number this module hands out.
+        A quick fix then copied its indentation from a neighbouring line.
+        """
+        return self.text[self._line_starts[line] :].partition("\n")[0]
 
     def _offset(self, position: dict[str, int]) -> int:
         """Where a protocol position lands in the text, counting as the protocol counts."""

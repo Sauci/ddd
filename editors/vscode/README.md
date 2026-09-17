@@ -106,7 +106,10 @@ meaning.
 
 Which project a file belongs to is not something the file can say - without `PROJECT`, CMake
 collects the project out of the link graph - so the server reads that build record and applies
-the same severities the build applies. A file no build claims is still checked, on its own.
+the same severities the build applies. A file no build claims is checked through the nearest
+project description above it that includes it, under the default severities; a project
+description is checked as the project it is; and a file neither of those reaches is checked
+on its own, for what one file can decide.
 
 ## Building it
 

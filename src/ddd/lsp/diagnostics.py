@@ -32,6 +32,7 @@ from ddd.diagnostics import (
     Location,
     Severity,
     SeverityPolicy,
+    UnknownCheckError,
 )
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import containing_projects
@@ -49,15 +50,55 @@ _LSP_SEVERITY: Final[dict[Severity, int]] = {
 
 
 def analyse(info: BuildInfo) -> tuple[DiagnosticBag, frozenset[Path]]:
-    """Run the checks over one configured project, exactly as its build would."""
+    """Run the checks over one configured project, exactly as its build would.
+
+    Including the last step of "exactly", which used to be missing: an override naming a
+    plugin's check is provisional until the project has been read, because which plugins
+    there are is a property of the project, and holding it to what actually registered is
+    what ``ddd check`` does before it reports anything. The server cannot answer that with a
+    usage error - it has a session to keep - so it says so where the mistake is, on the
+    project file the record names. Silently accepted, a build silencing a check by a name
+    nothing registers looks exactly like a build silencing one that exists.
+    """
     policy = SeverityPolicy.from_strings(list(info.severity), strict=info.strict)
-    return _run(Path(info.project), DiagnosticBag(policy))
+    bag = DiagnosticBag(policy)
+    project = Path(info.project)
+    bag, covered = _run(project, bag)
+    try:
+        policy.verify(bag.registered)
+    except UnknownCheckError as fault:
+        bag.add("plugin-invalid", str(fault), Location(project))
+    return bag, covered
 
 
 def analyse_standalone(path: Path) -> tuple[DiagnosticBag, frozenset[Path]]:
-    """Run the checks over a file that no build in this workspace claims."""
+    """Run the checks over a file read as "a component on its own"."""
     policy = SeverityPolicy.from_strings(list(STANDALONE_POLICY), strict=False)
     return _run(path, DiagnosticBag(policy))
+
+
+def _analyse_root(path: Path, cache: dict[Path, Document]) -> tuple[DiagnosticBag, frozenset[Path]]:
+    """Run the checks over a file no build and no project above it claims.
+
+    A project file is the whole project, whatever no build record says about it: it lists the
+    components, so every check has what it needs, and the ten that need the whole project are
+    exactly the ones somebody opening a project file wants to see. Reading it under the
+    standalone policy silenced them for every file of the project - and, because opening a
+    file republishes everything it covers, withdrew them from the components as well.
+
+    The thinner policy stays for what it was written for: a component read alone really does
+    have inputs nobody produces and outputs nobody reads, by construction rather than by
+    mistake.
+    """
+    if _declares_a_project(path, cache):
+        return _run(path, DiagnosticBag())
+    return analyse_standalone(path)
+
+
+def _declares_a_project(path: Path, cache: dict[Path, Document]) -> bool:
+    """Whether the file is a project file, keyed on what the loader keys the kind on."""
+    data = read(path, cache).data
+    return isinstance(data, dict) and "project" in data
 
 
 def _run(root: Path, bag: DiagnosticBag) -> tuple[DiagnosticBag, frozenset[Path]]:
@@ -109,16 +150,23 @@ def collect(
     to load. The two differ exactly when a run stopped early - a plugin defect ends the read
     after every file has been read and before the analysis - and counting only the load would
     then check an open file a second time on its own and publish everything about it twice.
+
+    Every key is a resolved path, the document included, because that is the one spelling the
+    loader hands back and two spellings of one file would be published as two files. Which
+    words each one goes out in is the server's to decide, one layer up, where what the client
+    called each document is known.
     """
+    cache: dict[Path, Document] = {}
     grouped: dict[Path, list[Diagnostic]] = {}
     covered: set[Path] = set()
     for info in builds:
         bag, sources = analyse(info)
         covered |= sources | _group(bag, Path(info.project), grouped)
     for document in documents:
-        if document.resolve() in covered:
+        resolved = document.resolve()
+        if resolved in covered:
             continue
-        containing = containing_projects(document, root)
+        containing = containing_projects(resolved, root)
         # A candidate that could not be read is named at its own file. Without this the reader
         # gets the thin standalone analysis below and nothing at all saying why: the project
         # that would have given the full answer is broken, and only the plugin can fix it.
@@ -127,18 +175,17 @@ def collect(
         unreadable = DiagnosticBag()
         for path in sorted(set(containing.failed) - covered):
             unreadable.add("plugin-invalid", containing.failed[path], Location(path))
-        covered |= _group(unreadable, document, grouped)
+        covered |= _group(unreadable, resolved, grouped)
         if containing.projects:
             for project in containing.projects:
                 bag, sources = _run(project, DiagnosticBag())
                 covered |= sources | _group(bag, project, grouped)
             continue
-        bag, sources = analyse_standalone(document)
-        covered |= sources | _group(bag, document, grouped)
+        bag, sources = _analyse_root(resolved, cache)
+        covered |= sources | _group(bag, resolved, grouped)
 
-    cache: dict[Path, Document] = {}
     return {
-        path: [_as_lsp(finding, cache) for finding in grouped.get(path, ())]
+        path: [_as_lsp(finding, cache, path) for finding in grouped.get(path, ())]
         for path in sorted(covered | set(grouped))
     }
 
@@ -152,14 +199,31 @@ def _group(bag: DiagnosticBag, fallback: Path, grouped: dict[Path, list[Diagnost
 
     The files are returned because they are the ones this run has now spoken for, which is
     what :func:`collect` needs in order not to speak for any of them twice.
+
+    A finding equal to one already filed for that file is dropped. Every configured build is
+    run, and a component linked into two images is in both of them, so one mistake in it was
+    published once per image: every squiggle drawn twice and the Problems count doubled, with
+    nothing in what the protocol carries to tell the two copies apart. Equal means the same
+    check, message, place and severity - where two images differ about how loudly to report
+    something, they really are saying two different things and both are kept.
     """
     filed: set[Path] = set()
+    already = {(path, _identity(entry)) for path, entries in grouped.items() for entry in entries}
     for finding in bag.sorted:
         for entry in (finding, *_mirrors(finding)):
             path = entry.location.path if entry.location else fallback
-            grouped.setdefault(path, []).append(entry)
             filed.add(path)
+            key = (path, _identity(entry))
+            if key in already:
+                continue
+            already.add(key)
+            grouped.setdefault(path, []).append(entry)
     return filed
+
+
+def _identity(finding: Diagnostic) -> tuple[str, Severity, Location | None, str]:
+    """What makes two findings the same one, for a reader looking at an underline."""
+    return (finding.check, finding.severity, finding.location, finding.message)
 
 
 def _mirrors(finding: Diagnostic) -> list[Diagnostic]:
@@ -189,7 +253,8 @@ def _mirrors(finding: Diagnostic) -> list[Diagnostic]:
     return mirrors
 
 
-def _as_lsp(finding: Diagnostic, cache: dict[Path, Document]) -> dict[str, Any]:
+def _as_lsp(finding: Diagnostic, cache: dict[Path, Document], filed: Path) -> dict[str, Any]:
+    """One finding as the protocol carries it; ``filed`` is the file it is published for."""
     location = finding.location
     document = read(location.path, cache) if location else None
     pointer = location.pointer if location else ""
@@ -200,7 +265,7 @@ def _as_lsp(finding: Diagnostic, cache: dict[Path, Document]) -> dict[str, Any]:
         "source": SOURCE,
         "message": finding.message,
     }
-    related = [_related(text, note, cache) for text, note in finding.notes]
+    related = [_related(text, note, cache, filed) for text, note in finding.notes]
     if related:
         # Left out entirely rather than sent empty: this is where the "and here is the other
         # declaration" of a mismatch lands, and an empty list is a clickable nothing.
@@ -208,15 +273,17 @@ def _as_lsp(finding: Diagnostic, cache: dict[Path, Document]) -> dict[str, Any]:
     return published
 
 
-def _related(text: str, location: Any, cache: dict[Path, Document]) -> dict[str, Any]:
+def _related(text: str, location: Any, cache: dict[Path, Document], filed: Path) -> dict[str, Any]:
     """One note of a finding, as somewhere the reader can jump to.
 
     A note without a location of its own belongs where its finding is, which the protocol has
     no way to say: every piece of related information carries a location. It is therefore
-    given the first line of the file the finding is on.
+    given the first line of the file the finding is published for - which is what this
+    docstring has always claimed and what an empty uri was not: a client reads ``""`` as
+    ``file:///``, so the note was a thing to click that landed nowhere near the project.
     """
     if location is None:
-        return {"location": {"uri": "", "range": _WHOLE_FIRST_LINE}, "message": text}
+        return {"location": {"uri": filed.as_uri(), "range": _WHOLE_FIRST_LINE}, "message": text}
     document = read(location.path, cache)
     return {
         "location": {

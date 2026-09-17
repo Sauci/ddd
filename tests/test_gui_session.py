@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -12,6 +14,7 @@ from ddd.diagnostics import SeverityPolicy, UnknownCheckError
 from ddd.editing import STALE, EditError, FileChange, Operation, fingerprint
 from ddd.gui import session as module
 from ddd.gui.session import NoProjectError, NotInProjectError, Session, find_projects
+from ddd.lsp.diagnostics import Run
 
 REGISTERING_PLUGIN = """
 from ddd.diagnostics import CheckInfo, Severity
@@ -50,6 +53,35 @@ def unit_of_b(path: Path, unit: str) -> FileChange:
     return FileChange(
         target, fingerprint(target.read_bytes()), (Operation("set", pointer, f'"{unit}"'),)
     )
+
+
+def mismatches(session: Session) -> int:
+    """How many ``definition-mismatch`` findings the newest revision shows."""
+    revision = session.revision
+    assert revision is not None
+    return sum(1 for filed in revision.findings if filed.diagnostic.check == "definition-mismatch")
+
+
+def opened_and_settled(project_file: Path, poll_interval: float = 1.0) -> Session:
+    """A session on the project, past the one analysis more that opening it costs."""
+    session = Session(project_file.parent, poll_interval=poll_interval)
+    session.open(project_file)
+    session.poll()
+    return session
+
+
+def saving_while_analysing(file: Path, unit: bytes) -> Callable[[Path], Run]:
+    """``run_project``, and another editor saving the first unit of ``file`` as ``unit`` once the
+    analysis has read the files but before the session has its answer."""
+    real = module.run_project
+
+    def run(project_file: Path) -> Run:
+        answer = real(project_file)
+        saved = re.sub(rb'"unit": "[^"]*"', b'"unit": ' + unit, file.read_bytes(), count=1)
+        file.write_bytes(saved)
+        return answer
+
+    return run
 
 
 class TestFindingProjects:
@@ -168,27 +200,94 @@ class TestFollowingTheDisk:
     def test_nothing_is_polled_while_no_project_is_open(self, tmp_path: Path) -> None:
         assert Session(tmp_path).poll() is False
 
-    def test_an_unchanged_project_is_not_analysed_again(self, shared: Path) -> None:
+    def test_after_the_one_analysis_more_opening_costs_an_unchanged_project_is_left_alone(
+        self, shared: Path
+    ) -> None:
+        """Opening learns which files the project has from the analysis that reads them, so none
+        of them was stamped before it was read, and the first poll analyses once more."""
         session = Session(shared.parent)
         session.open(shared)
+        assert session.poll() is True
         assert session.poll() is False
-        assert session.revision is not None and session.revision.number == 1
+        assert session.revision is not None and session.revision.number == 2
 
     def test_a_file_changed_on_disk_makes_a_new_revision(self, shared: Path) -> None:
-        session = Session(shared.parent)
-        session.open(shared)
+        session = opened_and_settled(shared)
         (shared.parent / "b.ddd.json").write_text(
             (shared.parent / "b.ddd.json").read_text(encoding="utf-8").replace("rpm", "Hz") + " ",
             encoding="utf-8",
         )
         assert session.poll() is True
-        assert session.revision is not None and session.revision.number == 2
+        assert session.revision is not None and session.revision.number == 3
 
     def test_a_file_removed_from_disk_makes_a_new_revision(self, shared: Path) -> None:
-        session = Session(shared.parent)
-        session.open(shared)
+        session = opened_and_settled(shared)
         (shared.parent / "b.ddd.json").unlink()
         assert session.poll() is True
+
+    def test_a_save_made_while_opening_analyses_is_picked_up_by_the_next_poll(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = Session(shared.parent)
+        consumer = shared.parent / "b.ddd.json"
+        monkeypatch.setattr(module, "run_project", saving_while_analysing(consumer, b'"Hz"'))
+        session.open(shared)
+        monkeypatch.undo()
+        assert mismatches(session) == 0
+        assert session.poll() is True
+        assert mismatches(session) == 2
+
+    def test_a_save_made_while_a_poll_analyses_is_picked_up_by_the_next_poll(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The stamps a revision keeps are the ones taken before its analysis read the files.
+
+        Taken after it, a save landing while the analysis ran was already in them: no later
+        poll saw a change, and the page kept the findings of bytes no longer on disk.
+        """
+        session = opened_and_settled(shared)
+        consumer = shared.parent / "b.ddd.json"
+        consumer.write_bytes(consumer.read_bytes().replace(b'"rpm"', b'"Hz"'))
+        monkeypatch.setattr(module, "run_project", saving_while_analysing(consumer, b'"rpm"'))
+        assert session.poll() is True
+        monkeypatch.undo()
+        assert mismatches(session) == 2
+        assert session.poll() is True
+        assert mismatches(session) == 0
+
+    def test_a_save_made_while_an_edit_is_analysed_is_picked_up_by_the_next_poll(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = opened_and_settled(shared)
+        consumer = shared.parent / "b.ddd.json"
+        monkeypatch.setattr(module, "run_project", saving_while_analysing(consumer, b'"rpm"'))
+        session.edit([unit_of_b(shared, "Hz")])
+        monkeypatch.undo()
+        assert mismatches(session) == 2
+        assert session.poll() is True
+        assert mismatches(session) == 0
+
+    def test_a_save_made_to_a_file_the_analysis_brought_in_is_picked_up_by_the_next_poll(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A file the project did not have when the poll stamped its files has no stamp of its
+        own, so the next poll analyses once more - which is what catches a save made to it while
+        the analysis that brought it in ran."""
+        session = opened_and_settled(shared)
+        write_tree(
+            shared.parent,
+            {
+                "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+            },
+        )
+        newcomer = shared.parent / "c.ddd.json"
+        monkeypatch.setattr(module, "run_project", saving_while_analysing(newcomer, b'"Hz"'))
+        assert session.poll() is True
+        monkeypatch.undo()
+        assert mismatches(session) == 0
+        assert session.poll() is True
+        assert mismatches(session) > 0
 
     def test_a_waiting_request_gets_the_newer_revision_as_soon_as_it_exists(
         self, shared: Path
@@ -208,14 +307,13 @@ class TestFollowingTheDisk:
         assert revision is not None and revision.number == 1
 
     def test_the_polling_thread_notices_a_change(self, shared: Path) -> None:
-        session = Session(shared.parent, poll_interval=0.02)
-        session.open(shared)
+        session = opened_and_settled(shared, poll_interval=0.02)
         session.start_polling()
         session.start_polling()  # a second start keeps the one thread
         try:
             (shared.parent / "a.ddd.json").write_text("{}", encoding="utf-8")
-            revision = session.wait(1, timeout=5)
-            assert revision is not None and revision.number == 2
+            revision = session.wait(2, timeout=5)
+            assert revision is not None and revision.number == 3
         finally:
             session.stop()
 

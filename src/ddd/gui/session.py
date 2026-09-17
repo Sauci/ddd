@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import sys
 import threading
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
@@ -38,6 +38,10 @@ LOAD_CHECKS: Final = frozenset({"file-not-found", "json-syntax", "file-kind", "s
 
 SEARCH_DEPTH: Final = 4
 """How many directories below the start the search for project descriptions goes."""
+
+UNKNOWN: Final = (-1, -1)
+"""The stamp of a file whose modification time and size were not taken before an analysis read
+it: a size no file has, so the next poll finds the file changed and analyses once more."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,7 +160,7 @@ class Session:
         if not _is_project(path):
             raise ValueError(f"{project} is not a project description")
         with self._lock:
-            return self._publish(self._analysed(path))
+            return self._publish(self._analysed(path), {})
 
     def wait(self, after: int, timeout: float) -> Revision | None:
         """The newest revision as soon as it is newer than ``after``, or after ``timeout``."""
@@ -170,9 +174,10 @@ class Session:
         """Analyse the open project again if a file of it changed on disk; say whether one did."""
         with self._lock:
             revision = self._revision
-            if revision is None or _signature(self._signature) == self._signature:
+            stamps = _signature(self._signature)
+            if revision is None or stamps == self._signature:
                 return False
-            self._publish(self._analysed(revision.project))
+            self._publish(self._analysed(revision.project), stamps)
             return True
 
     def start_polling(self) -> None:
@@ -210,7 +215,10 @@ class Session:
                 for pending in changes
             ]
             written = apply_changes(confined)
-            return self._publish(self._analysed(revision.project)), written
+            # After the edit's own write, so the next poll does not take it for somebody else's,
+            # and before the analysis, so a save landing while that runs is not taken for seen.
+            stamps = _signature(self._signature)
+            return self._publish(self._analysed(revision.project), stamps), written
 
     def _poll_until_stopped(self) -> None:
         while not self._stopping.wait(self.poll_interval):
@@ -251,10 +259,20 @@ class Session:
             checks=tuple(registered.values()),
         )
 
-    def _publish(self, revision: Revision) -> Revision:
+    def _publish(
+        self, revision: Revision, stamps: Mapping[Path, tuple[int, int] | None]
+    ) -> Revision:
+        """Make ``revision`` the newest, its files stamped as they were before it read them.
+
+        Before, never after: stamped after the analysis, a save landing while it ran was already
+        in the stamps, so no poll ever saw it and the page kept the findings of bytes no longer
+        on disk. A file with no stamp from before - every file of a project just opened, a file
+        the analysis found newly included - is stamped :data:`UNKNOWN`, which costs one analysis
+        more and catches a save made to that file while this one ran.
+        """
         with self._published:
             self._revision = revision
-            self._signature = _signature(file.path for file in revision.files)
+            self._signature = {file.path: stamps.get(file.path, UNKNOWN) for file in revision.files}
             self._published.notify_all()
         return revision
 

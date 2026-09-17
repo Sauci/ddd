@@ -7,6 +7,10 @@ The package is organised in layers, each knowing only what is below it:
 * :mod:`ddd.analysis` - resolves the data objects and runs the consistency checks
 * :mod:`ddd.ir`       - the resolved dictionary, the contract the backends consume
 * :mod:`ddd.backends` - renders that dictionary: ``backends.c`` and ``backends.a2l``
+
+:mod:`ddd.names` sits beside all of them and below all of them: the few spellings the command
+line is built out of, in a module that imports nothing, so that ``ddd --version`` answers
+without building a single contract.
 """
 
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Severity

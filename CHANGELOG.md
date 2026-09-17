@@ -581,6 +581,215 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   registering a description that does not parse now fails its `<target>.ddd` target, with the
   syntax error, where it used to report nothing to do.
 
+* **What a file says, and what it is told it says.**  What a review of the whole tool found
+  in the reader of a description: a spelling that meant something its author did not write,
+  and three ways a finding about it named the wrong place or was printed more times than
+  there were mistakes.
+
+  *A number in a list `init` is written as a number.*  A quoted value nested inside a list
+  was read as whatever it looked like: `["1", "2"]` on a `uint8[2]` was accepted and dumped
+  as `[1, 2]`, and `["on", "off"]` - words a lax boolean reading turns into truth values -
+  reached the generated c as `{ 1U, 0U }`.  The specification, the type's own contract and
+  the published schema agree that a quoted number is text and that text does not belong
+  inside a list; only the reader disagreed, because the arm that claims a quoted value at the
+  top level - a string object's init is its text - has no counterpart one level down, and the
+  lax pass below it parsed `"1"`, `" 1 "`, `"1_0"`, `"1e2"`, `"on"`, `"off"`, `"yes"` and
+  `"true"` into numbers.  Every arm of a nested init value is now held to the spelling.  What
+  is written as a number still reads as one wherever it stands: a whole number on a float
+  object, a fraction, a json `true`.
+
+  *One mistake in a nested `init` is one finding.*  A value inside a list failed again at
+  every level above it, because a list is not a number either: `[[1, 2], [3, null]]` on a
+  `[2][2]` map was three `schema` errors, two of them saying that a list should have been a
+  valid integer, and an init nested a hundred deep was a hundred errors.  The count told the
+  reader to go looking for problems that were not there, and reading stops the run, so that
+  was the whole answer.  A place that holds what failed is now reported only where nothing
+  under it is, so the finding sits on the element that is wrong.
+
+  *A finding under a definition names the key it is about.*  A definition is a tagged union,
+  and the reader lost the document on the tag: every segment below it was then judged by its
+  spelling alone, so a malformed `extensions` block whose plugin is named with punctuation,
+  or named after one of the variants - `map`, `axis`, `enum`, `string`, `linear` and `curve`
+  are all legal plugin names - was reported at `definition.extensions` with the key gone, and
+  the editor underlined the whole block.  Two such blocks in one definition, or in one
+  project, were even one finding: the reader fixed the first, ran again and met the second.
+  Each now names its key and is counted apart.
+
+  *A table typed one datatype too narrow is one mistake.*  It was one `init-invalid` per
+  element: a `uint8[4096]` initialised with 300 printed 4096 identical lines at one pointer -
+  half a megabyte of text - carried 4096 diagnostics in `--format json`, and put 4096 of them
+  on one range in the editor, where they can only be read one on top of another.  The values
+  of one initialiser that are wrong in the same way are now one finding, which names how many
+  there are and, where they differ, the first few of them.  A declaration with one wrong
+  value reads exactly as it did.
+
+  *A spelling that reaches the compiler is spelled the way the compiler reads it.*  Five
+  places where a description was accepted and something downstream then refused it, or
+  quietly took it to mean something else.  A variable, type, constant or enumerator named
+  `size_t`, `NULL`, `wchar_t`, `ptrdiff_t`, `max_align_t` or `offsetof` passed
+  `reserved-identifier` and stopped the build in the generated header, because the
+  `<stdint.h>` a types header includes brings `<stddef.h>` in with it; those six and the C23
+  `_WIDTH` macros - `UINT8_WIDTH`, `SIZE_WIDTH` and the rest of the family the check already
+  promised to cover - are now reserved with the rest.  An `a2l.format` was matched by an
+  engine in which `\d` is every decimal digit Unicode has, so `"%٣.٢"` in Arabic-Indic
+  digits was written into the a2l as a `FORMAT` string no calibration tool parses, while the
+  published schema, where `\d` is `[0-9]`, refused it; both now say `[0-9]`.  A raster name
+  was capped at eight *characters* where the a2l field it is sized for is nine *bytes*, so
+  eight letters outside ASCII would have overrun it; a name is now printable ASCII.  A
+  `condition` ending in `\` spliced the declaration generated below it into the `#if` and
+  the compiler stopped there; it is refused where the other ways out of an expression are.
+  And a root file whose name begins with `~` was looked for in a home directory: `ddd check
+  ~x.ddd.json` reported `C:/Users/x.ddd.json: file-not-found`, a path nobody wrote.
+  Expanding a tilde is the shell's business, and the tool no longer does it a second time.
+
+  *`ddd id --assign` writes into the file it was given, or into none of it.*  The new key
+  used to be written straight onto the description, so a kill or a full disk between the
+  truncation and the write left a hand-authored file truncated or empty, with nothing left
+  to put back; the text is now staged in a sibling and renamed onto the file, the way every
+  artefact DDD writes already is.  Two more things it did to a file it was pointed at: a
+  declaration whose `name` key carried a json escape - `"name"`, which is `name` - was
+  skipped without a word, `wrote 0 ids` and exit 0, while `ddd check` went on reporting
+  `missing-id` for it; and a file written with bare carriage returns was given one line
+  ending of a kind the rest of it does not use, the search for the file's own having looked
+  for a line feed only.
+
+  *A reference is spelled the way the thing it names is.*  A `raster` on a definition or a
+  component was free text where the declaration it points at is eight printable characters
+  without a space, so `"raster": ""` was answered with `unknown-raster: 'V' is measured in
+  ''`, sending the reader after a declaration no rasters file could have carried; it is now
+  refused where it is written, as a `section` reference always has been, and the
+  specification says so about both.  An `extensions` block is keyed by a plugin's name and
+  is now spelled like one: a key such as `a.b` or `c[1]` also made a pointer no consumer can
+  split - an editor underlined two keys, or an array element - for a block that could never
+  have named a plugin.
+
+  *What the file says, where the file says it.*  The mapping form of `enumerators` is
+  rewritten into the list the model holds before it is validated, so a mistake inside it was
+  reported at `enumerators[0].value`, a key and an index the file has not got; it is now
+  reported at the key that holds it.  The same shorthand published neither the bound on a
+  value nor the pattern a name is held to, where the list form publishes both, so an editor
+  bound to the schema accepted `{"1bad": 0}` and a value past 64 bits and `ddd check` then
+  refused them.  Five keys the loader reads as whole numbers - `dimensions`, `size`, an
+  enumerator's `value`, `event` and `alignment` - now say in their published description
+  that the number is written without a decimal point, which is a rule json schema cannot
+  carry: its `integer` admits `4.0`, and the loader does not.
+
+  *Two answers a run should not have.*  A `cycle` written with five thousand digits was
+  answered with python's advice about `sys.set_int_max_str_digits`; a count that long is no
+  period, and the tool now says so in its own words.  And a description file larger than the
+  memory left to the run ended it with a `MemoryError` traceback, where every other way the
+  read can fail - missing, unreadable, not utf-8, a directory - is a located finding and the
+  rest of the tree is still read.
+
+  *Read once, and answer without reading at all.*  A dumped dictionary handed to `compare` or
+  to `check -b` was read and parsed twice per side - once to find out what kind of file it is
+  and once to validate it - which on the 45 MB dump of a thousand-object project is about a
+  third of a second thrown away per pass.  It is now read once and handed on.  And `ddd
+  --version` and `ddd --help` used to build every contract in the package before answering,
+  0.40 s for a line of text that looks at none of them; the command line now reaches each
+  layer from the handler that needs it, and answers in 0.12 s.  A cmake configure step asks
+  for the version once per project and a pre-commit hook once per file.  Reading a dumped
+  dictionary also gained what a description already had: a finding inside it names the key it
+  is about, so two malformed `extensions` blocks in a dump are two findings rather than one
+  about the whole block.
+
+  *A finding sits where the mistake is written, and names the bound it is about.*  An
+  enumerator no storage can hold was reported at the `conversion` of a declared type and at
+  the whole `definition` of a declaration, so an editor underlined the name, the datatype and
+  the limits of a declaration to say something about one enumerator; both now point at the
+  conversion.  A bitfield names itself there: two bits of a `uint8` hold 0 to 3, and the
+  finding said that 5 does "not fit into uint8" - a claim about a byte the reader knows to be
+  false, about a bound written two keys away - where it now says "the 2-bit field of uint8",
+  as the member's limits do; a value past both the field and the c `int` every enumerator has
+  to be representable in is one finding rather than two.  The note of an `enum-conflict` said
+  "first defined as" and pointed at the best documented copy rather than the first one,
+  because the better documented spelling replaces the registered one; the spelling is what
+  the types header takes, and the place now stays where the enum was first written.  And
+  `duplicate-id` is read over every declaration rather than the surviving ones: a copied
+  declaration whose type nobody declares hid the copied id along with itself, so the second
+  half of one edit's mistake surfaced only once the first half was fixed.
+
+  *What is reported, and when.*  Five places where a run said less than it knew, or said it
+  twice.  `incomplete-project` - the trace a declaration leaves when the finding that dropped
+  it is silenced - was held back with the checks that need every component of a project, so a
+  component checked on its own with any *other* check relaxed lost a variable from `ddd list`
+  and `ddd dump` with nothing said at all, which is the one outcome the trace exists to
+  prevent.  It is no longer one of that set: a run handed a single file weighs the cause
+  instead and stays quiet only where it is itself the reason nobody reported it - a constant
+  declared in a file nobody handed over is not an omission, a `-W dimension-value=ignore`
+  is.  Two of its other appearances were wrong the other way round.  A declaration whose own
+  reference was refused *and reported* earned the trace as well, an info saying that the
+  cause is not reported filed beside the error that is the cause; it now says nothing, and
+  the object that did go in silence keeps the trace of its own.  And a text `init` on an
+  object that is not a string was refused only once the declaration resolved, so silencing
+  the unknown constant that sizes it silenced that too - it is a rule about the conversion,
+  and is now answered where the conversion is read, whatever the shape turns out to be.  The
+  second copy of a `duplicate-declaration` is finally what the checks page says it is,
+  ignored for the rest of the run: its unit, its section and its raster were still read, and
+  answered with findings the reader can only fix by deleting the copy the first finding
+  already names.  And a conflicting second copy of an enum screens the enumerators it adds,
+  which take an identifier in the shared types header like any others and used to take one
+  unscreened.
+
+  *What the dictionary carries.*  Three claims about it that were not true of it, and one
+  answer that depended on the include order.  A structure member naming a type nobody
+  declares carried no storage at all - no `datatype`, no `type`, no `external` - which read
+  back out of a dump, compared clean against a member that holds a value, and reached a
+  `--force` types header as `None ghost;`.  The contract now asks every member to hold
+  something, and such a member records the name it was declared as, which is what the
+  `unknown-type` finding beside it is about and what the compiler then asks for.  The leaves
+  of an instance, and the rows the tool lists from them, are ordered with every `[n]` read as
+  the number it is, so an instance of twelve reads `[0], [1], [2]` where it read `[0], [10],
+  [11], [1]`.  Under a silenced `local-conflict` or `multiple-producers` the owning
+  declaration - whose unit, conversion and `init` reach every consumer's header - was
+  whichever one the project happened to include first; it is now the `local` declaration,
+  else the first producer by component name, so two files generate the same bytes whatever
+  order a third lists them in.  And the ordering walk over the declared structures no longer
+  claims that the structures of a `type-cycle` are left out of the dictionary: they are in it
+  like any others, and the error is what stops anything being generated from them.
+
+  *One rule, one place.*  Four rules were written out twice between the analysis and the
+  comparison - the raw range a bitfield member holds, how a finding spells what an object
+  refers to, what an absent condition is called, and what makes a variable local - and one
+  pair had already drifted: an absent condition read "no condition" in a project report and
+  "none" in a delivery comparison, which put "uses condition no condition" into one sentence.
+  Each is written once now, and `condition-mismatch` says `none`, the way every other
+  unstated value in a finding does.
+
+  **Migration:** a list `init` holding a quoted number or one of those words is now refused
+  with a `schema` finding at the element that holds it, where it used to load, generate and
+  dump.  Write the value without the quotes: `["1", "2"]` becomes `[1, 2]`.  A string object
+  is untouched - its init is its text, written as one string rather than as a list of them.
+  The other three change what a run says about a file it already refused, not what it
+  accepts: a file with one of these mistakes now reports fewer findings than before - one
+  where there was one per enclosing list, one per block and one per element - so a build that
+  counts findings rather than reading them counts differently.  Four more spellings are
+  refused where they used to load: a name reserved by `<stddef.h>` or by the `_WIDTH` family,
+  an `a2l.format` written in non-ASCII digits, a raster name outside printable ASCII, and a
+  `condition` ending in a backslash.  Each of them broke something further along - the
+  compiler, the calibration tool, the a2l event field - so the description that carried one
+  had to change anyway; the finding now names it.  And a path beginning with `~` is read as
+  the name it is: a project that relied on the tool expanding it passes the expansion from
+  its shell instead.  Three more spellings join them: a `raster` reference outside what a
+  rasters file may declare, an `extensions` key outside `[a-z][a-z0-9_]*`, and - on Windows
+  only - a wildcard `includes` entry spelled with a bare drive, `C:*.ddd.json`, which used
+  to expand in the directory the process happened to be in and now expands in the project's,
+  the way the same spelling without the wildcard always did.  Each of the first two was
+  already reported at the end of the run, as `unknown-raster` or `unknown-extension`; the
+  finding moves to where it is written and becomes a `schema` error.  Nothing else accepted
+  before is refused now, and no exit code changes: what does change is the number of findings
+  a run prints.  A component read on its own - `ddd check --standalone`, a build's
+  per-component target, a file no build claims in an editor - reports one `incomplete-project`
+  info per declaration a relaxed check of the caller's own took out of the dictionary, where
+  it used to report none; a run that relaxes none is untouched.  A project run reports one
+  fewer wherever the object's own reference was refused and reported, and one more wherever a
+  text `init` sits on an object that is not a string and never resolved.  An archived dump is
+  read back as it always was, with one exception: one carrying a structure member with no
+  `datatype`, no `type` and no `external` - which only a dump taken from a project with an
+  `unknown-type` error can hold - is now a `schema` error naming the member, where it used to
+  load and compare as though the member held something.  Re-dump it from the project it came
+  from, with the type declared.
+
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`
   through the c templates, a `SYSTEM_CONSTANT` in the a2l - whether or not a shape names it,

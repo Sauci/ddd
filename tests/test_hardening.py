@@ -27,7 +27,7 @@ from conftest import (
 from ddd.backends import load_address_map
 from ddd.backends.c.literals import c_literal
 from ddd.cli import EXIT_FINDINGS, main
-from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity, _pointer_order
+from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity, index_order
 from ddd.ir import DICTIONARY_FORMAT, DataDictionary
 from ddd.loading import load_dictionary, load_workspace
 from ddd.models import Datatype
@@ -598,6 +598,29 @@ class TestInputTheToolMustSurvive:
         bag = DiagnosticBag()
         assert load_workspace(tree / "a.ddd.json", bag) is not None
 
+    def test_a_file_too_large_to_hold_in_memory_is_a_finding(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A log a careless include pattern matched, larger than the memory left.
+
+        ``MemoryError`` was the one failure of the read that reached the caller as a
+        traceback, where everything else it can do - missing, unreadable, not utf-8, a
+        directory - is a located finding and the run goes on to the rest of the tree.
+        """
+        write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
+        reading = Path.read_text
+
+        def refusing(self: Path, *args: Any, **kwargs: Any) -> str:
+            if self.name == "a.ddd.json":
+                raise MemoryError
+            return str(reading(self, *args, **kwargs))
+
+        monkeypatch.setattr(Path, "read_text", refusing)
+        bag = DiagnosticBag()
+        assert load_workspace(tree / "a.ddd.json", bag) is None
+        assert checks(bag) == ["file-not-found"]
+        assert "is too large to read" in messages(bag)
+
     def test_json_nested_beyond_what_python_can_read(self, tree: Path) -> None:
         (tree / "a.ddd.json").write_text("[" * 20_000 + "]" * 20_000, encoding="utf-8")
         bag = DiagnosticBag()
@@ -931,6 +954,53 @@ class TestOneMistakeIsOneFinding:
         )
         assert "at least 1 item" in messages(bag)
 
+    @staticmethod
+    def _bad_init(tree: Path, init: Any) -> DiagnosticBag:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", dimensions=[2, 2], init=init)),
+            },
+        )
+        return bag
+
+    @pytest.mark.parametrize(
+        ("written", "spelled"),
+        [
+            (None, "Input should be a valid integer (got: None)"),
+            ("x", "Input should be a valid integer (got: 'x')"),
+            ({}, "Input should be a valid integer (got: {})"),
+        ],
+    )
+    def test_a_mistake_inside_a_nested_init_is_one_finding_at_the_value(
+        self, tree: Path, written: Any, spelled: str
+    ) -> None:
+        """The enclosing lists are not three mistakes, and they are not lists that should
+        have been integers: each one holds the finding below it, which is the whole story."""
+        bag = self._bad_init(tree, [[1, 2], [3, written]])
+        assert len(bag) == 1, messages(bag)
+        assert f"definition.init[1][1]: error[schema]: {spelled}" in messages(bag), messages(bag)
+
+    def test_a_value_too_wide_for_64_bits_is_reported_where_it_is_written(self, tree: Path) -> None:
+        """The real finding used to arrive behind 'init: should be a valid integer'."""
+        bag = self._bad_init(tree, [[1, 2], [3, 2**64]])
+        assert len(bag) == 1, messages(bag)
+        assert "definition.init[1][1]: error[schema]:" in messages(bag), messages(bag)
+        assert "does not fit 64 bits" in messages(bag), messages(bag)
+
+    def test_two_mistakes_in_one_init_are_still_two_findings(self, tree: Path) -> None:
+        bag = self._bad_init(tree, [[None, 2], [3, None]])
+        assert len(bag) == 2, messages(bag)
+        assert "definition.init[0][0]: error[schema]:" in messages(bag), messages(bag)
+        assert "definition.init[1][1]: error[schema]:" in messages(bag), messages(bag)
+
+    def test_a_whole_init_that_is_the_mistake_still_reports_itself(self, tree: Path) -> None:
+        """Nothing is written under it, so there is no deeper finding to stand in for it."""
+        bag = self._bad_init(tree, {"a": 1})
+        assert len(bag) == 1, messages(bag)
+        assert "definition.init: error[schema]:" in messages(bag), messages(bag)
+
 
 class TestTheArchivedDictionary:
     def test_a_newer_format_is_refused_rather_than_misread(self, tree: Path) -> None:
@@ -1047,6 +1117,17 @@ class TestTheArchivedDictionary:
         assert checks(bag) == ["json-syntax"], messages(bag)
         assert "appears twice in one object" in messages(bag)
 
+    def test_a_finding_inside_a_dumped_entry_names_the_entry(self, tree: Path) -> None:
+        """A dump is validated without the document beside it, so every segment of a finding
+        in it is judged by its shape: an index into a list is an index and not a union tag,
+        and the entry that is wrong is named rather than the list holding it."""
+        payload = self.dump(tree)
+        payload["objects"][0]["name"] = 5
+        (tree / "baseline.json").write_text(json.dumps(payload), encoding="utf-8")
+        bag = DiagnosticBag()
+        assert load_dictionary(tree / "baseline.json", bag) is None
+        assert "baseline.json#objects[0].name: error[schema]" in messages(bag), messages(bag)
+
     def test_the_current_format_round_trips(self, tree: Path) -> None:
         dictionary, _ = run_analysis(
             tree,
@@ -1154,7 +1235,7 @@ class TestDiagnosticPlumbing:
         assert diagnostic.notes == (("why", None),)
 
     def test_a_pointer_index_sorts_as_a_number(self) -> None:
-        assert _pointer_order("a[10].b") > _pointer_order("a[2].b")
+        assert index_order("a[10].b") > index_order("a[2].b")
 
     def test_a_key_that_looks_numeric_still_sorts_as_text(self) -> None:
         """``str.isdigit`` is true of a superscript two, which ``int`` refuses; whether a
@@ -1162,7 +1243,7 @@ class TestDiagnosticPlumbing:
         assert "²".isdigit()
         with pytest.raises(ValueError, match="invalid literal"):
             int("²")
-        assert _pointer_order("²") == ((True, "²"),)
+        assert index_order("²") == ((True, "²"),)
 
 
 class TestBrokenInitPointers:

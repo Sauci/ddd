@@ -1325,14 +1325,16 @@ class TestTheEditor:
             "missing-id",
         }
 
-    def test_exactly_ten_checks_need_every_component(self) -> None:
-        """``incomplete-project`` is one of them, and has to be.
+    def test_exactly_nine_checks_need_every_component(self) -> None:
+        """``incomplete-project`` is not one of them, and must not be.
 
-        It reports that a declaration is missing from the dictionary, which is true of a file
-        read on its own for the same reason the other nine are wrong about one: the constant,
-        the raster or the type is declared, in a file only the project lists. In a run that was
-        shown the whole project it is the finding that stops a relaxed check from quietly
-        shrinking the dictionary.
+        Every one of the nine can be its cause, and a declaration dropped for one of those in
+        a file read on its own is not an omission: the constant, the raster or the type is
+        declared, in a file only the project lists. So the analysis weighs the cause instead
+        and says nothing when the run is itself the reason nobody reported it. What is left is
+        a declaration a caller's own ``-W`` took out of the dictionary, which is as true of a
+        component read alone as of a whole project - and silencing that with the nine left the
+        listing a row short with nothing said at all.
         """
         from ddd.diagnostics import CHECKS
 
@@ -1345,6 +1347,5 @@ class TestTheEditor:
             "missing-producer",
             "unknown-reference",
             "unused-output",
-            "incomplete-project",
             "unknown-extension",
         }

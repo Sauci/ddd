@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
+
+import pytest
 
 from conftest import (
     checks,
@@ -15,7 +17,7 @@ from conftest import (
     write_tree,
 )
 from ddd.diagnostics import DiagnosticBag
-from ddd.loading import load_workspace
+from ddd.loading import _pattern_anchor, load_dictionary, load_workspace, resolve_path
 
 
 def test_project_with_components(tree: Path) -> None:
@@ -506,3 +508,177 @@ class TestPointersWithPunctuation:
         bag = DiagnosticBag()
         load_workspace(tree / "project.ddd.json", bag)
         assert "project.ddd.json#project.extensions.my-plugin: error[schema]" in messages(bag)
+
+    @staticmethod
+    def _under_a_definition(tree: Path, extensions: dict[str, Any]) -> DiagnosticBag:
+        write_tree(
+            tree,
+            {"a.ddd.json": component("A", declare("local", "X", extensions=extensions))},
+        )
+        bag = DiagnosticBag()
+        assert load_workspace(tree / "a.ddd.json", bag) is None
+        return bag
+
+    @pytest.mark.parametrize("name", ["my-plugin", "map", "axis", "enum", "string", "linear"])
+    def test_a_key_below_a_union_tag_is_named_in_the_pointer(self, tree: Path, name: str) -> None:
+        """A definition is a tagged union and pydantic reports the tag it chose as a path
+        segment. The walk steps over the tag; losing the document with it left every key
+        below judged by shape alone, so a punctuated one - or one spelled like another
+        variant, all of them legal plugin names - was dropped and the editor underlined the
+        whole block."""
+        bag = self._under_a_definition(tree, {name: 1})
+        assert f"definition.extensions.{name}: error[schema]" in messages(bag), messages(bag)
+
+    def test_two_malformed_blocks_in_one_definition_are_two_findings(self, tree: Path) -> None:
+        """One finding per place, and these are two places: the reader who fixes the first
+        used to run again to meet the second."""
+        bag = self._under_a_definition(tree, {"a-b": 1, "c-d": 2})
+        assert len(bag) == 2, messages(bag)
+        assert "definition.extensions.a-b: error[schema]" in messages(bag), messages(bag)
+        assert "definition.extensions.c-d: error[schema]" in messages(bag), messages(bag)
+
+    def test_two_blocks_named_after_variants_are_two_findings(self, tree: Path) -> None:
+        bag = self._under_a_definition(tree, {"map": [1], "axis": [2]})
+        assert len(bag) == 2, messages(bag)
+        assert "definition.extensions.map: error[schema]" in messages(bag), messages(bag)
+        assert "definition.extensions.axis: error[schema]" in messages(bag), messages(bag)
+
+    def test_two_plainly_named_blocks_are_still_two_findings(self, tree: Path) -> None:
+        """The control: a key nothing mistakes for a tag was reported twice all along."""
+        bag = self._under_a_definition(tree, {"aa": 1, "bb": 2})
+        assert len(bag) == 2, messages(bag)
+
+    def test_two_malformed_blocks_on_the_project_are_two_findings(self, tree: Path) -> None:
+        write_tree(
+            tree,
+            {"project.ddd.json": {"project": {"name": "P", "extensions": {"a-b": 1, "c-d": 2}}}},
+        )
+        bag = DiagnosticBag()
+        load_workspace(tree / "project.ddd.json", bag)
+        assert len(bag) == 2, messages(bag)
+        assert "project.extensions.a-b: error[schema]" in messages(bag), messages(bag)
+        assert "project.extensions.c-d: error[schema]" in messages(bag), messages(bag)
+
+
+class TestPathsAsWritten:
+    """A path is read as the author wrote it; expansion is the shell's business."""
+
+    def test_a_name_beginning_with_a_tilde_names_a_file(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``~x.ddd.json`` used to be looked for in user ``x``'s home directory."""
+        write_tree(tree, {"~x.ddd.json": component("A", declare("local", "X"))})
+        monkeypatch.chdir(tree)
+        bag = DiagnosticBag()
+        assert load_workspace(Path("~x.ddd.json"), bag) is not None, messages(bag)
+        assert checks(bag) == []
+
+    def test_resolve_path_leaves_a_tilde_where_it_stands(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tree)
+        assert resolve_path(Path("~x.ddd.json")) == resolve_path(tree) / "~x.ddd.json"
+
+
+class TestTheMappingFormOfEnumerators:
+    """The shorthand is rewritten into the list the model holds, and the file is not."""
+
+    @staticmethod
+    def _with(tree: Path, enumerators: Any) -> DiagnosticBag:
+        write_tree(
+            tree,
+            {
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "local",
+                        "X",
+                        conversion={"kind": "enum", "name": "E", "enumerators": enumerators},
+                    ),
+                )
+            },
+        )
+        bag = DiagnosticBag()
+        assert load_workspace(tree / "a.ddd.json", bag) is None
+        return bag
+
+    def test_a_bad_value_is_located_at_the_key_that_holds_it(self, tree: Path) -> None:
+        """``enumerators[0].value`` named neither a key nor an index the file has."""
+        bag = self._with(tree, {"A": "x"})
+        assert "definition.conversion.enumerators.A: error[schema]" in messages(bag), messages(bag)
+
+    def test_a_bad_name_is_located_at_the_entry_that_spells_it(self, tree: Path) -> None:
+        bag = self._with(tree, {"1bad": 0})
+        assert "definition.conversion.enumerators.1bad: error[schema]" in messages(bag), messages(
+            bag
+        )
+
+    def test_the_second_entry_is_located_at_the_second_key(self, tree: Path) -> None:
+        """The i-th key, not the first: a mapping keeps the order it was written in."""
+        bag = self._with(tree, {"A": 0, "B": "x"})
+        assert "definition.conversion.enumerators.B: error[schema]" in messages(bag), messages(bag)
+
+    def test_the_list_form_is_still_indexed(self, tree: Path) -> None:
+        """The control: written as a list, the file does have an ``[1]`` to point at."""
+        bag = self._with(tree, [{"name": "A", "value": 0}, {"name": "B", "value": "x"}])
+        assert "definition.conversion.enumerators[1].value: error[schema]" in messages(bag), (
+            messages(bag)
+        )
+
+
+class TestWhereAWildcardIncludeStartsWalking:
+    """A pattern starts where the literal reading of the same entry would join it.
+
+    On Windows a spelling can carry an anchor and still not be absolute: ``/shared/*.json``
+    is rooted on whatever drive the process is on, and ``C:*.json`` means "on drive C, in
+    whatever directory I am". Taken as the whole base, either made the expansion depend on
+    where ``ddd`` was run from, while the same spelling written without a wildcard was
+    joined onto the project's own directory - two answers to one question.
+    """
+
+    def test_a_relative_pattern_starts_at_the_file_that_names_it(self) -> None:
+        assert _pattern_anchor(PurePosixPath("/proj"), PurePosixPath("sub/*.json")) == (
+            PurePosixPath("/proj")
+        )
+
+    def test_a_posix_rooted_pattern_starts_at_the_root(self) -> None:
+        assert _pattern_anchor(PurePosixPath("/proj"), PurePosixPath("/shared/*.json")) == (
+            PurePosixPath("/")
+        )
+
+    def test_a_windows_rooted_pattern_starts_on_the_project_s_own_drive(self) -> None:
+        assert _pattern_anchor(PureWindowsPath("D:/proj"), PureWindowsPath("/shared/*.json")) == (
+            PureWindowsPath("D:/")
+        )
+
+    def test_a_drive_relative_pattern_starts_where_the_literal_would(self) -> None:
+        assert _pattern_anchor(PureWindowsPath("C:/proj"), PureWindowsPath("C:*.json")) == (
+            PureWindowsPath("C:/proj")
+        )
+
+    def test_a_pattern_on_another_drive_starts_there(self) -> None:
+        assert _pattern_anchor(PureWindowsPath("C:/proj"), PureWindowsPath("D:/lib/*.json")) == (
+            PureWindowsPath("D:/")
+        )
+
+
+class TestWhatADumpedDictionaryIsToldAboutItself:
+    """A dump is read by the same reader a description is, and located the same way.
+
+    The document was not handed to the reporter, so every pointer below the first place was
+    judged by its spelling alone - which is how a punctuated key vanished from a finding
+    about a description, and the fix for that one did not reach this path.
+    """
+
+    @staticmethod
+    def _dumped(tree: Path, **extra: Any) -> DiagnosticBag:
+        write_tree(tree, {"d.json": {"format": 1, "name": "P", "objects": [], **extra}})
+        bag = DiagnosticBag()
+        assert load_dictionary(tree / "d.json", bag) is None
+        return bag
+
+    def test_two_malformed_blocks_are_two_findings_naming_their_keys(self, tree: Path) -> None:
+        bag = self._dumped(tree, extensions={"a-b": 1, "c-d": 2})
+        assert len(bag) == 2, messages(bag)
+        assert "d.json#extensions.a-b: error[schema]" in messages(bag), messages(bag)
+        assert "d.json#extensions.c-d: error[schema]" in messages(bag), messages(bag)

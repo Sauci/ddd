@@ -389,7 +389,8 @@ three are checked before any code is generated, so that the finding names the de
 instead of a compiler naming a line in a generated file nobody wrote.
 
 The name may not be one that the c language, or a header DDD includes, has already claimed.
-``reserved-identifier`` covers the C11 and C23 keywords, everything ``<stdint.h>`` declares,
+``reserved-identifier`` covers the C11 and C23 keywords, everything ``<stdint.h>`` declares
+or brings in with it - ``<stddef.h>``'s ``size_t`` and ``offsetof`` among them -
 and the identifiers C11 7.1.3 reserves for the implementation - which is why any name
 containing a double underscore, or starting with an underscore and a capital letter, is
 refused. Beyond that, two enums may not contribute the same enumerator, and no variable may

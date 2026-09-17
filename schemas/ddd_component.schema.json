@@ -21,7 +21,7 @@
         "format": {
           "anyOf": [
             {
-              "pattern": "^%\\d*\\.\\d+$",
+              "pattern": "^%[0-9]*\\.[0-9]+$",
               "type": "string"
             },
             {
@@ -79,11 +79,13 @@
           "title": "Id"
         },
         "extensions": {
-          "additionalProperties": {
-            "additionalProperties": true,
-            "type": "object"
-          },
           "description": "Blocks owned by the project's plugins, keyed by plugin name.\n\n``{\"layout\": {\"key\": 12, \"version\": 3}}``: what a plugin the project names needs to know\nabout this object and DDD does not. Each block is validated against the model of the\nplugin that owns it and carried into the dictionary in resolved form; a block naming no\nloaded plugin is ``unknown-extension``. Only the producing declaration states one - a\nconsumer stating one is ``consumer-extension``, on the reasoning that makes ``section``\nand ``id`` producer keys: a block says what the object *is*.",
+          "patternProperties": {
+            "^[a-z][a-z0-9_]*$": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
           "title": "Extensions",
           "type": "object"
         },
@@ -144,6 +146,9 @@
         "raster": {
           "anyOf": [
             {
+              "maxLength": 8,
+              "minLength": 1,
+              "pattern": "^[\\x21-\\x7e]+$",
               "type": "string"
             },
             {
@@ -151,7 +156,7 @@
             }
           ],
           "default": null,
-          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.",
+          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.\n\nSpelled the way a declaration spells it - printable ASCII, no space, at most eight\ncharacters - so a name no rasters file could ever declare is refused where it is\nwritten rather than reported as ``unknown-raster``, which sends the reader looking for\na declaration that could not exist. The same rule a ``section`` reference has always\nbeen held to.",
           "title": "Raster"
         },
         "init": {
@@ -247,7 +252,7 @@
               "type": "string"
             }
           ],
-          "description": "Number of axis points: an integer of at least 1, or the name of a declared\nconstant.",
+          "description": "Number of axis points: an integer of at least 1, or the name of a declared constant.\n\nA whole number written without a decimal point: ``4``, not ``4.0``, which the published\nschema accepts and the loader refuses.",
           "title": "Size"
         },
         "input": {
@@ -297,6 +302,9 @@
         "raster": {
           "anyOf": [
             {
+              "maxLength": 8,
+              "minLength": 1,
+              "pattern": "^[\\x21-\\x7e]+$",
               "type": "string"
             },
             {
@@ -442,11 +450,13 @@
           "title": "Id"
         },
         "extensions": {
-          "additionalProperties": {
-            "additionalProperties": true,
-            "type": "object"
-          },
           "description": "Blocks owned by the project's plugins, keyed by plugin name.\n\n``{\"layout\": {\"key\": 12, \"version\": 3}}``: what a plugin the project names needs to know\nabout this object and DDD does not. Each block is validated against the model of the\nplugin that owns it and carried into the dictionary in resolved form; a block naming no\nloaded plugin is ``unknown-extension``. Only the producing declaration states one - a\nconsumer stating one is ``consumer-extension``, on the reasoning that makes ``section``\nand ``id`` producer keys: a block says what the object *is*.",
+          "patternProperties": {
+            "^[a-z][a-z0-9_]*$": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
           "title": "Extensions",
           "type": "object"
         },
@@ -507,6 +517,9 @@
         "raster": {
           "anyOf": [
             {
+              "maxLength": 8,
+              "minLength": 1,
+              "pattern": "^[\\x21-\\x7e]+$",
               "type": "string"
             },
             {
@@ -514,7 +527,7 @@
             }
           ],
           "default": null,
-          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.",
+          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.\n\nSpelled the way a declaration spells it - printable ASCII, no space, at most eight\ncharacters - so a name no rasters file could ever declare is refused where it is\nwritten rather than reported as ``unknown-raster``, which sends the reader looking for\na declaration that could not exist. The same rule a ``section`` reference has always\nbeen held to.",
           "title": "Raster"
         },
         "init": {
@@ -663,7 +676,7 @@
             }
           ],
           "default": null,
-          "description": "C preprocessor expression wrapping the generated declaration, e.g. ``defined(FEAT_X)``.\n\nOne expression, written as it would appear after ``#if``. It is emitted verbatim into the\ngenerated files, so it cannot span lines and cannot contain ``#``, ``//``, ``/*`` or\n``*/`` - each of which would let a description file put arbitrary directives, or live\ncode, into somebody else's build.",
+          "description": "C preprocessor expression wrapping the generated declaration, e.g. ``defined(FEAT_X)``.\n\nOne expression, written as it would appear after ``#if``. It is emitted verbatim into the\ngenerated files, so it cannot span lines, cannot end in ``\\`` and cannot contain ``#``,\n``//``, ``/*`` or ``*/`` - each of which would let a description file put arbitrary\ndirectives, or live code, into somebody else's build.",
           "title": "Condition"
         },
         "definition": {
@@ -738,10 +751,17 @@
             },
             {
               "additionalProperties": {
+                "maximum": 18446744073709551615,
+                "minimum": -9223372036854775808,
                 "type": "integer"
               },
               "description": "The enumerators as a ``{\"NAME\": value}`` mapping.",
               "minProperties": 1,
+              "propertyNames": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
               "type": "object"
             }
           ],
@@ -769,7 +789,7 @@
           "type": "string"
         },
         "value": {
-          "description": "The raw value; two enumerators of one enum sharing one is reported as a warning.\n\n``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and\noccasionally meant as an alias - but the a2l table then offers a calibration tool two\nnames for one reading.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it.",
+          "description": "The raw value; two enumerators of one enum sharing one is reported as a warning.\n\n``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and\noccasionally meant as an alias - but the a2l table then offers a calibration tool two\nnames for one reading.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it.\n\nA whole number written without a decimal point: ``4``, not ``4.0``, which the published\nschema accepts and the loader refuses.",
           "maximum": 18446744073709551615,
           "minimum": -9223372036854775808,
           "title": "Value",
@@ -979,11 +999,13 @@
           "title": "Id"
         },
         "extensions": {
-          "additionalProperties": {
-            "additionalProperties": true,
-            "type": "object"
-          },
           "description": "Blocks owned by the project's plugins, keyed by plugin name.\n\n``{\"layout\": {\"key\": 12, \"version\": 3}}``: what a plugin the project names needs to know\nabout this object and DDD does not. Each block is validated against the model of the\nplugin that owns it and carried into the dictionary in resolved form; a block naming no\nloaded plugin is ``unknown-extension``. Only the producing declaration states one - a\nconsumer stating one is ``consumer-extension``, on the reasoning that makes ``section``\nand ``id`` producer keys: a block says what the object *is*.",
+          "patternProperties": {
+            "^[a-z][a-z0-9_]*$": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
           "title": "Extensions",
           "type": "object"
         },
@@ -1044,6 +1066,9 @@
         "raster": {
           "anyOf": [
             {
+              "maxLength": 8,
+              "minLength": 1,
+              "pattern": "^[\\x21-\\x7e]+$",
               "type": "string"
             },
             {
@@ -1051,7 +1076,7 @@
             }
           ],
           "default": null,
-          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.",
+          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.\n\nSpelled the way a declaration spells it - printable ASCII, no space, at most eight\ncharacters - so a name no rasters file could ever declare is refused where it is\nwritten rather than reported as ``unknown-raster``, which sends the reader looking for\na declaration that could not exist. The same rule a ``section`` reference has always\nbeen held to.",
           "title": "Raster"
         },
         "init": {
@@ -1187,11 +1212,13 @@
           "title": "Id"
         },
         "extensions": {
-          "additionalProperties": {
-            "additionalProperties": true,
-            "type": "object"
-          },
           "description": "Blocks owned by the project's plugins, keyed by plugin name.\n\n``{\"layout\": {\"key\": 12, \"version\": 3}}``: what a plugin the project names needs to know\nabout this object and DDD does not. Each block is validated against the model of the\nplugin that owns it and carried into the dictionary in resolved form; a block naming no\nloaded plugin is ``unknown-extension``. Only the producing declaration states one - a\nconsumer stating one is ``consumer-extension``, on the reasoning that makes ``section``\nand ``id`` producer keys: a block says what the object *is*.",
+          "patternProperties": {
+            "^[a-z][a-z0-9_]*$": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
           "title": "Extensions",
           "type": "object"
         },
@@ -1252,6 +1279,9 @@
         "raster": {
           "anyOf": [
             {
+              "maxLength": 8,
+              "minLength": 1,
+              "pattern": "^[\\x21-\\x7e]+$",
               "type": "string"
             },
             {
@@ -1259,7 +1289,7 @@
             }
           ],
           "default": null,
-          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.",
+          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.\n\nSpelled the way a declaration spells it - printable ASCII, no space, at most eight\ncharacters - so a name no rasters file could ever declare is refused where it is\nwritten rather than reported as ``unknown-raster``, which sends the reader looking for\na declaration that could not exist. The same rule a ``section`` reference has always\nbeen held to.",
           "title": "Raster"
         },
         "init": {
@@ -1343,7 +1373,7 @@
         },
         "dimensions": {
           "default": [],
-          "description": "Array dimensions; empty for a scalar.\n\nEach an integer of at least 1, or the name of a constant the project declares, in a\nconstants file or in a component - ``[3, 4]`` and ``[\"PRESSURE_CELLS\", 4]`` are both\nshapes.",
+          "description": "Array dimensions; empty for a scalar.\n\nEach an integer of at least 1, or the name of a constant the project declares, in a\nconstants file or in a component - ``[3, 4]`` and ``[\"PRESSURE_CELLS\", 4]`` are both\nshapes.\n\nA whole number written without a decimal point: ``4``, not ``4.0``, which the published\nschema accepts and the loader refuses.",
           "items": {
             "anyOf": [
               {
@@ -1423,7 +1453,7 @@
         },
         "dimensions": {
           "default": [],
-          "description": "Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.\nEach dimension is an integer of at least 1, or the name of a constant the project\ndeclares, exactly as on a declaration - the spelling, that is, since the 10 000 000\nelement cap is a declaration's and a map's alone: an array here is weighed in the leaves\nits structure may hold, and a member holding a value is one leaf however long its array.",
+          "description": "Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.\nEach dimension is an integer of at least 1, or the name of a constant the project\ndeclares, exactly as on a declaration - the spelling, that is, since the 10 000 000\nelement cap is a declaration's and a map's alone: an array here is weighed in the leaves\nits structure may hold, and a member holding a value is one leaf however long its array.\n\nA whole number written without a decimal point: ``4``, not ``4.0``, which the published\nschema accepts and the loader refuses.",
           "items": {
             "anyOf": [
               {
@@ -1566,11 +1596,13 @@
           "title": "Id"
         },
         "extensions": {
-          "additionalProperties": {
-            "additionalProperties": true,
-            "type": "object"
-          },
           "description": "Blocks owned by the project's plugins, keyed by plugin name.\n\n``{\"layout\": {\"key\": 12, \"version\": 3}}``: what a plugin the project names needs to know\nabout this object and DDD does not. Each block is validated against the model of the\nplugin that owns it and carried into the dictionary in resolved form; a block naming no\nloaded plugin is ``unknown-extension``. Only the producing declaration states one - a\nconsumer stating one is ``consumer-extension``, on the reasoning that makes ``section``\nand ``id`` producer keys: a block says what the object *is*.",
+          "patternProperties": {
+            "^[a-z][a-z0-9_]*$": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
           "title": "Extensions",
           "type": "object"
         },
@@ -1631,6 +1663,9 @@
         "raster": {
           "anyOf": [
             {
+              "maxLength": 8,
+              "minLength": 1,
+              "pattern": "^[\\x21-\\x7e]+$",
               "type": "string"
             },
             {
@@ -1638,7 +1673,7 @@
             }
           ],
           "default": null,
-          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.",
+          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.\n\nSpelled the way a declaration spells it - printable ASCII, no space, at most eight\ncharacters - so a name no rasters file could ever declare is refused where it is\nwritten rather than reported as ``unknown-raster``, which sends the reader looking for\na declaration that could not exist. The same rule a ``section`` reference has always\nbeen held to.",
           "title": "Raster"
         },
         "init": {
@@ -1912,11 +1947,13 @@
           "title": "Id"
         },
         "extensions": {
-          "additionalProperties": {
-            "additionalProperties": true,
-            "type": "object"
-          },
           "description": "Blocks owned by the project's plugins, keyed by plugin name.\n\n``{\"layout\": {\"key\": 12, \"version\": 3}}``: what a plugin the project names needs to know\nabout this object and DDD does not. Each block is validated against the model of the\nplugin that owns it and carried into the dictionary in resolved form; a block naming no\nloaded plugin is ``unknown-extension``. Only the producing declaration states one - a\nconsumer stating one is ``consumer-extension``, on the reasoning that makes ``section``\nand ``id`` producer keys: a block says what the object *is*.",
+          "patternProperties": {
+            "^[a-z][a-z0-9_]*$": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
           "title": "Extensions",
           "type": "object"
         },
@@ -1977,6 +2014,9 @@
         "raster": {
           "anyOf": [
             {
+              "maxLength": 8,
+              "minLength": 1,
+              "pattern": "^[\\x21-\\x7e]+$",
               "type": "string"
             },
             {
@@ -1984,7 +2024,7 @@
             }
           ],
           "default": null,
-          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.",
+          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.\n\nSpelled the way a declaration spells it - printable ASCII, no space, at most eight\ncharacters - so a name no rasters file could ever declare is refused where it is\nwritten rather than reported as ``unknown-raster``, which sends the reader looking for\na declaration that could not exist. The same rule a ``section`` reference has always\nbeen held to.",
           "title": "Raster"
         },
         "init": {
@@ -2067,7 +2107,7 @@
           "type": "string"
         },
         "dimensions": {
-          "description": "Array dimensions in c declaration order; a value block is never a scalar.\n\nEach an integer of at least 1, or the name of a constant the project declares, mixed\nfreely.",
+          "description": "Array dimensions in c declaration order; a value block is never a scalar.\n\nEach an integer of at least 1, or the name of a constant the project declares, mixed\nfreely.\n\nA whole number written without a decimal point: ``4``, not ``4.0``, which the published\nschema accepts and the loader refuses.",
           "items": {
             "anyOf": [
               {

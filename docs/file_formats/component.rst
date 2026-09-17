@@ -299,8 +299,8 @@ One expression, and nothing else
 
 A condition has to be a **single** preprocessor expression. Surrounding whitespace is
 stripped, and a condition that is empty or only whitespace is the same as no condition at all;
-but a line break and the comment markers ``/*``, ``*/`` and ``//`` are refused, and so is
-``#``:
+but a line break and the comment markers ``/*``, ``*/`` and ``//`` are refused, and so are
+``#`` and a trailing ``\``:
 
 .. code-block:: text
 
@@ -313,8 +313,11 @@ The reason is that the text goes into somebody else's translation unit unchanged
 would let a description file put arbitrary preprocessor directives - an ``#undef``, an
 ``#include``, a redefinition of a macro from a different component - inside the guarded region
 of a file that team never sees. A comment marker would close the trailing
-``#endif /* ... */`` early and leave whatever followed it as live code. Neither is something
-the author of one component should be able to do to everybody else's build, and neither has
+``#endif /* ... */`` early and leave whatever followed it as live code. A backslash at the end
+splices the line the generator writes next into the ``#if`` itself, so ``defined(FEAT_X) \``
+turned the declaration below it into part of the condition, and the compiler stopped there.
+None of them is something the author of one component should be able to do to everybody
+else's build, and none of them has
 any legitimate use in an expression that is only ever meant to say *when* a variable exists.
 Everything a real condition needs is still there: ``defined(FEATURE_X) && !defined(NO_FEATURE_X)``
 is accepted as written.

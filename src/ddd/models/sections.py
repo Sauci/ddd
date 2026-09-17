@@ -56,6 +56,9 @@ class SectionDeclaration(BaseModel):
     section guarantees would be padded or faulting, and either is worth a finding.  Bounded
     to what 64 bits can hold: an alignment no address on a real target could satisfy is
     refused here rather than accepted as a power of two nothing could ever place.
+
+    A whole number written without a decimal point: ``4``, not ``4.0``, which the published
+    schema accepts and the loader refuses.
     """
 
     description: str = ""

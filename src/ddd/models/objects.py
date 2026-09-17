@@ -22,6 +22,8 @@ from ddd.models.common import (
     Identifier,
     Number,
     ObjectId,
+    PluginName,
+    RasterName,
     Real,
     TypeName,
     format_number,
@@ -30,8 +32,23 @@ from ddd.models.common import (
 )
 from ddd.models.conversion import Conversion, EnumConversion, StringConversion, conversion_range
 
-type InitScalar = Annotated[int, Field(ge=-(2**63), le=2**64 - 1)] | bool | Real
-"""One raw number of an init: exact for whole values, and bounded to what 64 bits can hold."""
+type InitScalar = (
+    Annotated[int, Field(strict=True, ge=-(2**63), le=2**64 - 1)]
+    | Annotated[bool, Field(strict=True)]
+    | Annotated[Real, Field(strict=True)]
+)
+"""One raw number of an init: exact for whole values, and bounded to what 64 bits can hold.
+
+Every arm is strict, so each spelling stays what it was written as. Strictness is about the
+spelling and not about the arm: a whole number keeps matching the integer arm wherever it is
+written, including on a float object, and a json ``true`` keeps matching the boolean one.
+What it refuses is text - ``"1"``, ``" 1 "``, ``"1_0"``, ``"1e2"``, and the words ``"on"``,
+``"off"``, ``"yes"`` and ``"true"`` that a lax boolean arm reads as truth values. Without it,
+this union is reached one level inside a list, where no ``str`` arm stands in front of it to
+claim a quoted value, and pydantic's lax pass parsed all of them into numbers: the file then
+said something its author did not write, and ``["on", "off"]`` on a ``uint8[2]`` reached the
+generated c as ``{ 1U, 0U }``.
+"""
 
 type InitElement = Annotated[InitScalar | tuple[InitElement, ...], BeforeValidator(within_64_bits)]
 """What a list init holds: numbers, or lists of them, never text.
@@ -57,11 +74,11 @@ value is reported against.
 
 The ``str`` arm is for a string object, whose init is its text; the analysis refuses it on
 any other object (``init-invalid``), because only there is the conversion known - a
-declaration naming a scalar type learns its conversion from the type. pydantic picks an arm
-by the exact type of the value before it tries to coerce, so a quoted number ``"12"`` is
-now text, refused where a number was meant, where it used to be read as the number: the one
-place the quoted-spelling question left open on :data:`Number` is answered. Only the whole
-init may be text: a list holds numbers, see ``InitElement``.
+declaration naming a scalar type learns its conversion from the type. A quoted number
+``"12"`` is text here, refused where a number was meant, because the ``str`` arm claims it
+before any other arm is asked to coerce it. That is this level's answer only: one level
+down there is no ``str`` arm, which is why every arm of :data:`InitScalar` is strict. Only
+the whole init may be text: a list holds numbers, see ``InitElement``.
 """
 
 type Shape = tuple[int, ...]
@@ -381,7 +398,7 @@ class DataObject(_Frozen):
     component at a time; ``missing-id`` says where it has not.
     """
 
-    extensions: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    extensions: dict[PluginName, dict[str, Any]] = Field(default_factory=dict)
     """Blocks owned by the project's plugins, keyed by plugin name.
 
     ``{"layout": {"key": 12, "version": 3}}``: what a plugin the project names needs to know
@@ -429,7 +446,7 @@ class DataObject(_Frozen):
     Left out, the object goes wherever the toolchain's defaults put it.
     """
 
-    raster: str | None = None
+    raster: RasterName | None = None
     """Measurement raster the object is updated in, named in the project's rasters file.
 
     A producer key like ``section``: the producing component's task is what updates the
@@ -441,6 +458,12 @@ class DataObject(_Frozen):
     At the top level rather than inside ``a2l``, although only that backend reads it today:
     which task updates a value is an engineering claim about the data, the way ``section``
     is, and not a presentation choice.
+
+    Spelled the way a declaration spells it - printable ASCII, no space, at most eight
+    characters - so a name no rasters file could ever declare is refused where it is
+    written rather than reported as ``unknown-raster``, which sends the reader looking for
+    a declaration that could not exist. The same rule a ``section`` reference has always
+    been held to.
     """
 
     init: InitValue | None = None
@@ -631,6 +654,9 @@ class Measurement(DataObject):
     Each an integer of at least 1, or the name of a constant the project declares, in a
     constants file or in a component - ``[3, 4]`` and ``["PRESSURE_CELLS", 4]`` are both
     shapes.
+
+    A whole number written without a decimal point: ``4``, not ``4.0``, which the published
+    schema accepts and the loader refuses.
     """
 
     @property
@@ -653,6 +679,9 @@ class ValueBlock(DataObject):
 
     Each an integer of at least 1, or the name of a constant the project declares, mixed
     freely.
+
+    A whole number written without a decimal point: ``4``, not ``4.0``, which the published
+    schema accepts and the loader refuses.
     """
 
     @property
@@ -665,8 +694,11 @@ class Axis(DataObject):
 
     kind: Literal[ObjectKind.AXIS]
     size: Dimension
-    """Number of axis points: an integer of at least 1, or the name of a declared
-    constant."""
+    """Number of axis points: an integer of at least 1, or the name of a declared constant.
+
+    A whole number written without a decimal point: ``4``, not ``4.0``, which the published
+    schema accepts and the loader refuses.
+    """
 
     input: Identifier | None = None
     """Measurement that indexes the axis; the a2l input quantity.

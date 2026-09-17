@@ -168,6 +168,9 @@ class Member(BaseModel):
     declares, exactly as on a declaration - the spelling, that is, since the 10 000 000
     element cap is a declaration's and a map's alone: an array here is weighed in the leaves
     its structure may hold, and a member holding a value is one leaf however long its array.
+
+    A whole number written without a decimal point: ``4``, not ``4.0``, which the published
+    schema accepts and the loader refuses.
     """
 
     bits: PositiveInt | None = None

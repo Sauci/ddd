@@ -19,9 +19,11 @@ guess which task moves the signal.
      ]
    }
 
-``raster`` is the name a definition refers to, one word without whitespace, and it is also
-the short name the a2l gives the event - a field eight characters wide, which is where the
-limit comes from. It is not a
+``raster`` is the name a definition refers to, one word of printable ASCII without
+whitespace, and it is also
+the short name the a2l gives the event - a field eight bytes wide, which is where the
+limit and the spelling rule both come from: eight characters outside ASCII would be more
+than eight bytes. It is not a
 protocol limit: XCP itself length-prefixes an event channel name and carries far more. A
 longer one is refused rather than shortened, because two names shortened to the same eight
 would collide in a calibration tool rather than here, where the author can still do something
@@ -85,6 +87,12 @@ default does not reach a variable it merely reads. A default reaches no calibrat
 either: no DAQ list carries a ``CHARACTERISTIC``, so a ``raster`` written on one is refused as
 ``raster-kind``, while a default that happens to cover one simply does not apply. A structured
 variable carries one raster for the whole object, and every member inherits it.
+
+A reference is spelled the way a declaration is - printable ASCII, no space, eight characters
+at most - so ``"raster": ""`` or a name too long for the a2l field is refused where it is
+written rather than reported as ``unknown-raster``, which would send the reader looking for a
+declaration no rasters file could have carried. A ``section`` reference has always been held
+to its declaration's spelling the same way.
 
 A measurement that names no raster, whose component names none either, reaches the a2l exactly
 as it did before there were rasters at all: described, but with no preselected event. Adoption

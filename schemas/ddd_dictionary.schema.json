@@ -21,7 +21,7 @@
         "format": {
           "anyOf": [
             {
-              "pattern": "^%\\d*\\.\\d+$",
+              "pattern": "^%[0-9]*\\.[0-9]+$",
               "type": "string"
             },
             {
@@ -189,10 +189,17 @@
             },
             {
               "additionalProperties": {
+                "maximum": 18446744073709551615,
+                "minimum": -9223372036854775808,
                 "type": "integer"
               },
               "description": "The enumerators as a ``{\"NAME\": value}`` mapping.",
               "minProperties": 1,
+              "propertyNames": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
               "type": "object"
             }
           ],
@@ -220,7 +227,7 @@
           "type": "string"
         },
         "value": {
-          "description": "The raw value; two enumerators of one enum sharing one is reported as a warning.\n\n``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and\noccasionally meant as an alias - but the a2l table then offers a calibration tool two\nnames for one reading.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it.",
+          "description": "The raw value; two enumerators of one enum sharing one is reported as a warning.\n\n``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and\noccasionally meant as an alias - but the a2l table then offers a calibration tool two\nnames for one reading.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it.\n\nA whole number written without a decimal point: ``4``, not ``4.0``, which the published\nschema accepts and the loader refuses.",
           "maximum": 18446744073709551615,
           "minimum": -9223372036854775808,
           "title": "Value",
@@ -817,7 +824,7 @@
     },
     "ResolvedMember": {
       "additionalProperties": false,
-      "description": "One member of a structure, as the c templates need it to declare the member.\n\nOnly what a declaration takes. The meaning of the member - its unit, its conversion, its\nlimits - travels with the *leaf* instead, because that is the form the a2l consumes and\nthere is no second place a reader should have to look.",
+      "description": "One member of a structure, as the c templates need it to declare the member.\n\nOnly what a declaration takes. The meaning of the member - its unit, its conversion, its\nlimits - travels with the *leaf* instead, because that is the form the a2l consumes and\nthere is no second place a reader should have to look.\n\nExactly one of ``datatype``, ``type`` and ``external`` is stated: a member holds a value\nof a base datatype, is a structure, or is storage of a type DDD does not describe. A\nmember stating none of them would be storage with no size, no meaning and no name, which\na consumer of this document has nothing to do with.",
       "properties": {
         "name": {
           "description": "Name of the member, as it is written in the c struct.",
@@ -855,7 +862,7 @@
             }
           ],
           "default": null,
-          "description": "Name of the structure this member is, when it is one; ``None`` when it is a datatype.",
+          "description": "Name of the structure this member is, when it is one; ``None`` when it is a datatype.\n\nThe name as the types file spells it, which in a dictionary carrying an ``unknown-type``\nerror may be a name no ``types`` entry answers: the member says what it was declared as,\nand the finding says that nothing declares it.",
           "title": "Type"
         },
         "external": {
@@ -1369,7 +1376,7 @@
     },
     "leaves": {
       "default": [],
-      "description": "Every member of every structured variable, flattened, sorted by path.\n\nWritten out rather than worked out on demand, because the dictionary is a produced\ndocument: a generator DDD does not ship reads it without importing python, and no backend\nshould repeat resolution the analysis has already done.",
+      "description": "Every member of every structured variable, flattened, sorted by path.\n\nBy path with every ``[n]`` in it read as the number it is, so the elements of an array of\nstructures are in the order they are stored in rather than in the order their spellings\nhappen to sort in: ``[2]`` before ``[10]``.\n\nWritten out rather than worked out on demand, because the dictionary is a produced\ndocument: a generator DDD does not ship reads it without importing python, and no backend\nshould repeat resolution the analysis has already done.",
       "items": {
         "$ref": "#/$defs/ResolvedLeaf"
       },

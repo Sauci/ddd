@@ -22,6 +22,8 @@ from pydantic import (
     StringConstraints,
 )
 
+from ddd.names import PLUGIN_NAME_PATTERN
+
 
 class FileRoot(BaseModel):
     """Base of the seven hand-written file roots, one per top level key a description may have.
@@ -55,6 +57,17 @@ Identifier = Annotated[
     StringConstraints(pattern=C_IDENTIFIER_PATTERN, min_length=1, max_length=IDENTIFIER_MAX_LENGTH),
 ]
 """A string that is usable as a c identifier and as an a2l identifier."""
+
+PluginName = Annotated[str, StringConstraints(pattern=PLUGIN_NAME_PATTERN)]
+"""The key of an ``extensions`` block: the name of the plugin that owns it.
+
+The same spelling :mod:`ddd.plugins` holds a plugin's own name to: a key no plugin could be
+called is a block no plugin will ever claim, and saying so where it is written beats an
+``unknown-extension`` the reader goes looking for a declaration of. It also keeps the key out
+of the pointer a finding about the block is located at - ``definition.extensions.a.b`` reads
+as two keys and ``c[1]`` as an index, so a punctuated name left an editor underlining
+something else.
+"""
 
 OBJECT_ID_ALPHABET: Final = "abcdefghjkmnpqrstvwxyz0123456789"
 """The characters an object id is drawn from: lowercase base32 without ``i``, ``l``, ``o``
@@ -100,7 +113,44 @@ c - ``__attribute__((section(".calib")))`` - where a quote would end the string 
 whatever follows would become live code in somebody else's build.
 """
 
-A2L_FORMAT_PATTERN: Final = r"^%\d*\.\d+$"
+RASTER_NAME_LENGTH: Final = 8
+"""Longest raster name: the width of the short name an a2l ``EVENT`` carries.
+
+Not a protocol limit. The protocol layer length-prefixes an event channel name with a byte and
+forbids a terminator, so it carries far more than eight. The eight is from the a2l, whose
+``EVENT`` block declares ``EVENT_CHANNEL_SHORT_NAME`` as ``char[9]`` - eight characters and a
+terminator - beside the ``char[101]`` long name that ``description`` supplies. That is where a
+raster name goes once the module level ``DAQ`` block is written. Nothing writes one yet, and
+the limit is enforced anyway, so that a rasters file which loads today still loads then - the
+reason the cycle rule of :mod:`ddd.models.rasters` is enforced ahead of its use as well.
+
+Counted in characters, which is the same as counting the bytes because
+:data:`RASTER_NAME_PATTERN` admits only the printable ASCII ones.
+"""
+
+RASTER_NAME_PATTERN: Final = r"^[\x21-\x7e]+$"
+"""What a raster name is spelled with: printable ASCII, and no space.
+
+That ``char[9]`` is nine bytes rather than nine characters, so eight letters outside ASCII -
+two utf-8 bytes each for a Cyrillic or a Greek name, three for a CJK one - would not fit the
+field the length above is there to protect. The rule is on the spelling rather than on the
+encoded length so that what the file may say does not depend on how the a2l is encoded.
+"""
+
+RasterName = Annotated[
+    str,
+    StringConstraints(min_length=1, max_length=RASTER_NAME_LENGTH, pattern=RASTER_NAME_PATTERN),
+]
+"""A measurement raster name, where it is declared and where a definition refers to it.
+
+Here rather than in :mod:`ddd.models.rasters` for the reason :data:`SECTION_NAME_PATTERN` is
+here: a reference is held to the spelling of the declaration, and the two saying it in one
+place is what keeps them from drifting. Unpatterned, the reference accepted ``""``, which
+``unknown-raster`` then answered for - sending the reader to look for a declaration a rasters
+file could not have carried.
+"""
+
+A2L_FORMAT_PATTERN: Final = r"^%[0-9]*\.[0-9]+$"
 
 A2lFormat = Annotated[str, StringConstraints(pattern=A2L_FORMAT_PATTERN)]
 """An a2l ``FORMAT`` string: ``%`` then the total width, a dot, and the decimal places.
@@ -108,6 +158,12 @@ A2lFormat = Annotated[str, StringConstraints(pattern=A2L_FORMAT_PATTERN)]
 Constrained rather than passed through, because the value is written into a quoted a2l
 literal: a quote or a backslash in it would unbalance the string and no calibration tool
 would parse the file at all - a whole delivery lost to one typo in one description.
+
+The digits are spelled ``[0-9]`` rather than ``\\d`` because the engine that compiles this
+pattern reads ``\\d`` as every decimal digit Unicode has: ``%٣.٢`` in Arabic-Indic
+digits was accepted and written into the a2l, where no calibration tool reads it as a format
+at all. The same text is published in the schemas, where ``\\d`` is ``[0-9]``, so spelling it
+out also makes the two agree.
 """
 
 Real = Annotated[float, Field(allow_inf_nan=False)]

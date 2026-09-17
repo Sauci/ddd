@@ -627,7 +627,7 @@ class TestDiagnostics:
         """The standalone policy is for "a component read alone"; a project file is not one.
 
         Nothing includes a project file, so the search above it finds nothing and it used to
-        fall through to the policy that silences the ten checks the project is the only thing
+        fall through to the policy that silences the nine checks the project is the only thing
         able to answer - in the state every unconfigured checkout is in.
         """
         reports = service.collect([], [INCONSISTENT], INCONSISTENT.parent)

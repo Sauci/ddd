@@ -22,7 +22,9 @@ from conftest import (
     project,
     write_tree,
 )
+from ddd import identity
 from ddd.backends import MANIFEST_NAME
+from ddd.backends.base import STAGING_SUFFIX
 from ddd.build_info import BUILD_INFO_FORMAT
 from ddd.cli import (
     EXIT_FINDINGS,
@@ -41,7 +43,7 @@ from ddd.models.common import OBJECT_ID_PATTERN
 class TestStandalone:
     """A component checked on its own is judged by what one file can decide.
 
-    Ten checks need every component of a project; the language server holds them back for a
+    Nine checks need every component of a project; the language server holds them back for a
     file no build claims, and a build's per-component target has to do the same instead of
     hand-listing two of them.
     """
@@ -72,6 +74,42 @@ class TestStandalone:
         remaining = {entry["check"] for entry in json.loads(capsys.readouterr().out)["diagnostics"]}
         assert not remaining & held_back
         assert remaining == reported - held_back
+
+    def test_a_cause_the_absent_project_explains_leaves_no_trace(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A shape named by a constant the project declares is a drop the flag is about."""
+        assert main(["check", str(self.PUMP), "--standalone"]) == EXIT_OK
+        assert "incomplete-project" not in capsys.readouterr().err
+
+    def test_a_silenced_cause_that_needs_no_project_still_says_what_went(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``--standalone`` is about what the file was not shown, not about what it says.
+
+        ``incomplete-project`` was silenced with the nine, so a check the caller relaxed took
+        a variable out of the listing and the dump with nothing said at all - the very
+        outcome the trace exists to prevent, and the one the flag has no business hiding: the
+        constant is the component's own, and its value is wrong wherever the rest of the
+        project is.
+        """
+        write_tree(
+            tree,
+            {
+                "c.ddd.json": component(
+                    "C",
+                    declare("local", "Trend", "uint8", dimensions=["ZERO"]),
+                    constants=[{"name": "ZERO", "value": 0}],
+                )
+            },
+        )
+        code = main(
+            ["check", str(tree / "c.ddd.json"), "--standalone", "-W", "dimension-value=ignore"]
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_OK
+        assert "info[incomplete-project]" in captured
+        assert "the dimension-value that says why is not reported" in captured
 
     def test_an_explicit_override_still_wins(self, capsys: pytest.CaptureFixture[str]) -> None:
         """``--standalone`` sets the floor; ``-W`` on the same run says what the caller wants."""
@@ -2466,9 +2504,9 @@ class TestTemplatesDir:
     def test_an_installation_without_the_examples(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        from ddd import cli
+        from ddd import backends
 
-        monkeypatch.setattr(cli, "example_template_directory", lambda: None)
+        monkeypatch.setattr(backends, "example_template_directory", lambda: None)
         assert main(["templates-dir"]) == EXIT_USAGE
         assert "not part of this installation" in capsys.readouterr().err
 
@@ -2479,12 +2517,12 @@ class TestSchemaAll:
     def test_it_writes_every_schema_into_a_directory(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        from ddd.cli import _SCHEMA_MODELS, SCHEMA_FILENAME, schema_text
+        from ddd.cli import SCHEMA_FILENAME, schema_models, schema_text
 
         output = tmp_path / "schemas"
         assert main(["schema", "all", "-o", str(output)]) == EXIT_OK
         assert "wrote" in capsys.readouterr().err
-        for kind in _SCHEMA_MODELS:
+        for kind in schema_models():
             path = output / SCHEMA_FILENAME.format(kind=kind)
             assert path.read_text(encoding="utf-8") == schema_text(kind)
 
@@ -3247,7 +3285,7 @@ def test_assigning_ids_reports_a_file_it_cannot_write_and_stamps_the_rest(
     writing = Path.write_bytes
 
     def refusing(self: Path, data: bytes) -> int:
-        if self.name == "locked.ddd.json":
+        if self.name.startswith("locked.ddd.json"):  # the file, or the sibling staged for it
             raise PermissionError(errno.EACCES, "Permission denied", str(self))
         return writing(self, data)
 
@@ -3335,36 +3373,6 @@ def test_assigning_ids_ignores_a_component_with_no_interface(tree):
     assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_OK
 
 
-def test_assigning_ids_skips_a_declaration_whose_key_the_scanner_cannot_relocate(tree, capsys):
-    r"""A defensive branch a hand authored file can still reach, if never on purpose.
-
-    The scanner in ``ranges.py`` records a value's span under the *raw* text of the key in
-    front of it, unescaped, while ``json.loads`` decodes it - documented on
-    :meth:`~ddd.lsp.ranges._Scanner._string`. The two agree for every key anybody actually
-    types, but a ``"name"`` spelled with a json unicode escape - legal json, if not
-    something a person writes by hand - decodes to the plain string while scanning to the
-    escaped one. ``value_span_of`` then finds nothing for the pointer this module builds
-    off the decoded document, and the declaration is left unstamped rather than the run
-    crashing on a ``None`` span.
-
-    Also the regression check for ``assign`` once counting ``len(pointers)`` - declarations
-    *found* - rather than insertions actually made: this file has exactly one pointer and
-    zero of them resolve, so a miscount would print ``wrote 1 id`` for a file the assertion
-    above has just shown was never touched.
-    """
-    original = (
-        '{\n  "component": {\n    "name": "A",\n    "interface": [\n      {\n'
-        '        "scope": "local",\n        "definition": {\n'
-        '          "\\u006eame": "X",\n          "datatype": "uint8",\n'
-        '          "conversion": {"kind": "identity"},\n          "kind": "measurement",\n'
-        '          "volatile": false\n        }\n      }\n    ]\n  }\n}\n'
-    )
-    write_tree(tree, {"a.ddd.json": original})
-    assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_OK
-    assert (tree / "a.ddd.json").read_text(encoding="utf-8") == original
-    assert "wrote 0 ids" in capsys.readouterr().err
-
-
 class TestBaselineUnderStrict:
     def test_a_warning_in_the_baseline_does_not_abort_a_strict_comparison(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -3424,6 +3432,83 @@ def test_assigning_ids_fills_an_explicit_null(tree, capsys):
     assert "wrote 1 id" in capsys.readouterr().err
     stamped = json.loads(path.read_text(encoding="utf-8"))
     assert re.fullmatch(OBJECT_ID_PATTERN, stamped["component"]["interface"][0]["definition"]["id"])
+
+
+def test_assigning_ids_stamps_a_declaration_whose_name_key_is_escaped(tree, capsys):
+    """``"na\\u006de"`` is ``name``: a json escape is a spelling, not a different key.
+
+    The scan recorded the key as it was written, so the pointer the insertion was computed
+    for named a key the parsed document has not got; the declaration was skipped without a
+    word - ``wrote 0 ids``, exit 0 - while ``ddd check`` went on reporting ``missing-id``
+    for it.
+    """
+    path = tree / "a.ddd.json"
+    path.write_text(
+        r"""{
+  "component": {
+    "name": "A",
+    "interface": [
+      {
+        "scope": "local",
+        "definition": {
+          "kind": "measurement",
+          "na\u006de": "V",
+          "datatype": "uint8",
+          "conversion": {},
+          "volatile": false
+        }
+      }
+    ]
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    assert main(["id", "--assign", str(path)]) == EXIT_OK
+    assert "wrote 1 id" in capsys.readouterr().err
+    stamped = json.loads(path.read_text(encoding="utf-8"))
+    assert re.fullmatch(OBJECT_ID_PATTERN, stamped["component"]["interface"][0]["definition"]["id"])
+
+
+def test_assigning_ids_keeps_a_file_written_with_bare_carriage_returns(tree):
+    """A file written with classic-Mac endings has no ``\\n`` at all, so the search for one
+    found nothing and the line the stamp adds was given the ending the file does not use."""
+    text = json.dumps(component("A", declare("output", "X")), indent=2)
+    path = tree / "a.ddd.json"
+    path.write_bytes(text.replace("\n", "\r").encode("utf-8"))
+    assert main(["id", "--assign", str(path)]) == EXIT_OK
+    after = path.read_bytes()
+    assert b"\n" not in after
+    assert after.count(b"\r") == text.count("\n") + 1  # the line the stamp added
+
+
+def test_assigning_ids_leaves_the_file_alone_when_the_write_fails(tree, monkeypatch, capsys):
+    """The new text goes to a sibling temporary and is renamed onto the description.
+
+    Written straight onto the file, a write that died partway through - a full disk, a kill
+    between the truncation and the write - left a hand-authored description truncated or
+    empty, with nothing left to put back.
+    """
+    path = tree / "a.ddd.json"
+    write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
+    before = path.read_bytes()
+    writing = Path.write_bytes
+
+    def dying(self: Path, data: bytes) -> int:
+        writing(self, data[: len(data) // 2])
+        raise OSError(errno.ENOSPC, "No space left on device", str(self))
+
+    monkeypatch.setattr(Path, "write_bytes", dying)
+    assert main(["id", "--assign", str(path)]) == EXIT_FINDINGS
+    assert f"{path}: cannot be written, skipped" in capsys.readouterr().err
+    assert path.read_bytes() == before
+    assert list(tree.glob("*" + STAGING_SUFFIX)) == []
+
+
+def test_the_id_command_stages_under_the_name_every_writer_stages_under():
+    """One spelling for the sibling nobody else may be keeping; :data:`STAGING_SUFFIX`
+    says why it is that one, and there is no use in the command picking a second."""
+    assert identity.STAGING_SUFFIX == STAGING_SUFFIX
 
 
 def test_assigning_ids_keeps_mixed_line_endings(tree):
@@ -3518,3 +3603,93 @@ class TestDisplayedPath:
         created fails on ``build``, which is above the output directory, not under it."""
         outside = tmp_path.resolve() / "build"
         assert _displayed_path(outside, outside / "gen") == outside.as_posix()
+
+
+class TestWhatOneRunReads:
+    """A dumped dictionary is a file a build reads whole; reading it twice is a second of it."""
+
+    def test_a_dumped_dictionary_is_read_and_parsed_once_per_side(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """It was read to find out what kind of file it is, then read again to be validated.
+
+        Measured on the 45 MB dump of a thousand-object project, each of those passes is
+        about a third of a second, and a comparison does it for both sides.
+        """
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        dump = tree / "baseline.json"
+        assert main(["dump", str(tree / "project.ddd.json"), "-o", str(dump)]) == EXIT_OK
+
+        reads: list[str] = []
+        parses: list[int] = []
+        reading = Path.read_text
+        loading = json.loads
+
+        def counted_read(self: Path, *args: Any, **kwargs: Any) -> str:
+            reads.append(self.name)
+            return str(reading(self, *args, **kwargs))
+
+        def counted_parse(text: Any, *args: Any, **kwargs: Any) -> Any:
+            parses.append(len(text))
+            return loading(text, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", counted_read)
+        monkeypatch.setattr(json, "loads", counted_parse)
+        assert main(["compare", str(dump), str(dump)]) == EXIT_OK
+        assert reads.count("baseline.json") == 2, reads  # one per side
+        assert len(parses) == 2, parses
+
+    def test_asking_for_the_version_leaves_the_project_machinery_unimported(self) -> None:
+        """``ddd --version`` answers before anything is read, and a cmake configure step and
+        a pre-commit hook pay for that answer once per file."""
+        import subprocess
+        import sys
+
+        code = (
+            "import sys\n"
+            "from ddd.cli import main\n"
+            "try:\n"
+            "    main(['--version'])\n"
+            "except SystemExit:\n"
+            "    pass\n"
+            "print(' '.join(sorted(sys.modules)))\n"
+        )
+        finished = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, text=True, check=True
+        )
+        loaded = set(finished.stdout.split())
+        unwanted = {
+            name
+            for name in loaded
+            if name.startswith(("ddd.backends", "ddd.models", "ddd.lsp", "jinja2"))
+            or name in {"ddd.analysis", "ddd.compare", "ddd.ir", "ddd.loading", "ddd.plugins"}
+        }
+        assert not unwanted, sorted(unwanted)
+
+
+class TestTheNamesTheParserIsBuiltFrom:
+    """:mod:`ddd.names` is what argparse may read before a project is; these hold it in place.
+
+    Each value there is the one definition of its name - the modules that own the behaviour
+    import their spelling from it - except these two, which are a list beside an enum and a
+    list beside a table, and drift is what a test is for.
+    """
+
+    def test_the_schema_kinds_are_the_kinds_that_have_a_model(self) -> None:
+        from ddd.cli import schema_models
+        from ddd.names import SCHEMA_KINDS
+
+        assert sorted(schema_models()) == sorted(SCHEMA_KINDS)
+
+    def test_the_byte_orders_are_what_the_a2l_backend_accepts(self) -> None:
+        from ddd.backends import ByteOrder
+        from ddd.names import BYTE_ORDERS
+
+        assert tuple(order.value for order in ByteOrder) == BYTE_ORDERS
+        assert ByteOrder(BYTE_ORDERS[0]) is ByteOrder.LITTLE  # the default the help names

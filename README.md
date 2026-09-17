@@ -240,11 +240,13 @@ missing producers and the unused outputs rather than hide them.
 A file that no build and no project above it claims is still checked, on its own, but only
 for what one file can decide.
 Read alone a component has inputs nobody writes, outputs nobody reads and types, units,
-sections, constants and axes declared in files nobody handed over, so the ten checks that need
+sections, constants and axes declared in files nobody handed over, so the nine checks that need
 every component of a project - `unknown-type`, `unknown-unit`, `unknown-section`,
 `unknown-constant`, `unknown-raster`, `unknown-extension`, `missing-producer`,
-`unknown-reference`, `unused-output` and `incomplete-project` - are left out rather than
-reported about every declaration in it.  Everything a single file settles by itself - an
+`unknown-reference` and `unused-output` - are left out rather than
+reported about every declaration in it.  A declaration one of them drops is left out in
+silence as well: `incomplete-project`, which says that the dictionary is a variable short,
+has nothing to report where the missing file is the reason.  Everything a single file settles by itself - an
 initial value that does not fit, a name c reserves, a duplicate declaration - is reported as
 usual.  `ddd check --standalone` is the same policy on the command line.
 
@@ -549,7 +551,7 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | error | `init-invalid` | an initial value or enumerator does not fit the datatype or the shape |
 | error | `unknown-reference` | a curve, map or axis refers to an object nobody declares |
 | error | `reference-kind` | a reference points at an object of the wrong kind |
-| error | `reserved-identifier` | a name is a c keyword, one of the names `<stdint.h>` or `<stdbool.h>` declares, or one C11 7.1.3 reserves for the implementation - any name containing a double underscore, or starting with an underscore followed by a capital letter |
+| error | `reserved-identifier` | a name is a c keyword, one of the names `<stdint.h>` or `<stdbool.h>` declares or brings in (`<stddef.h>`'s `size_t` among them), or one C11 7.1.3 reserves for the implementation - any name containing a double underscore, or starting with an underscore followed by a capital letter |
 | error | `name-collision` | two generated names would be the same c identifier or the same header |
 | error | `consumer-storage` | an `input` declaration states `init` or `section`, which only the producing component decides |
 | error | `consumer-raster` | an input declaration states a measurement raster only the producer decides |

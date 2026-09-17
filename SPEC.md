@@ -244,7 +244,8 @@ rasters files and/or other (sub-)projects, and names the plugins the project run
   sub-project.
 - `"plugins"` (optional): python modules that extend DDD for this project
   ([section 3.11](#311-plugins)).
-- `"extensions"` (optional): the settings of those plugins, keyed by plugin name
+- `"extensions"` (optional): the settings of those plugins, keyed by plugin name - so
+  each key matches `[a-z][a-z0-9_]*`, and one that does not is `schema`
   ([section 3.11](#311-plugins)).
 
 An entry of `includes` that names an existing file **shall** be read as that file, whatever
@@ -304,9 +305,10 @@ Each declaration contains:
 - `"condition"` (optional): a C preprocessor conditional expression which wraps the
   generated declarations of the object
   ([section 3.3.1](#331-one-object-several-declarations)). The expression **must** be a
-  single line and **must not** contain `#` or a comment token (`//`, `/*`, `*/`)
-  (`schema`): the text is emitted verbatim behind `#if`, where any of them could change
-  the meaning of the generated file. A condition consisting only of whitespace counts as
+  single line, **must not** contain `#` or a comment token (`//`, `/*`, `*/`) and
+  **must not** end in `\` (`schema`): the text is emitted verbatim behind `#if`, where any
+  of them could change the meaning of the generated file - a trailing backslash splices the
+  line after the directive into it. A condition consisting only of whitespace counts as
   no condition.
 - `"definition"` (required): a definition object
   ([section 3.3](#33-data-object-definition)).
@@ -335,7 +337,7 @@ Attributes common to every kind:
 | `section` | none | linker section the object is placed in ([section 3.5](#35-memory-placement)); a storage key the producer states |
 | `raster` | none | measurement raster the object is updated in ([section 3.10](#310-measurement-rasters)), else the producing component's default; a key the producer states, on a measurement only |
 | `a2l` | `{}`; exported unless every stated `export` is `false` ([section 3.3.1.3](#3313-presentation)) | `export`, `format`, `display_identifier`; a `string` takes no `format` (`schema`) |
-| `extensions` | `{}` | one block per plugin the project names, keyed by plugin name ([section 3.11](#311-plugins)); a key the producer states |
+| `extensions` | `{}` | one block per plugin the project names, keyed by plugin name, spelled the way a plugin's `name` is ([section 3.11](#311-plugins)); a key the producer states |
 | `volatile` | required | whether the generated C carries `volatile`, that is whether the value can change without the reading code having written it |
 
 `volatile` has no default because there is nothing to derive one from. Unlike `limits`,
@@ -716,8 +718,10 @@ A definition **may** then state its `section`, a storage key like `init`
 ([section 3.3.1.2](#3312-storage)): the producer states it, a consumer stating one claims
 storage it does not own (`consumer-storage`), and a structured object is placed whole, its
 members having no placement of their own for the same reason they carry no `volatile`. A
-`section` names a declared section the way a `typename` names a declared type: naming one
-that no file declares is `unknown-section`, with the nearest name suggested, and there is
+`section` names a declared section the way a `typename` names a declared type: it is
+spelled the way a declaration spells it, so a reference no sections file could ever declare
+is `schema` where it is written, and naming one
+that no file declares is `unknown-section`, with the nearest name suggested; there is
 no free text fallback, because a section without declared properties would be a name the
 checks can say nothing about. An object without a `section` is placed by the toolchain's
 defaults, which is what makes the vocabulary adoptable gradually.
@@ -1032,7 +1036,8 @@ preselects it.
 ```
 
 `raster` is the name a definition refers to and the short name of the XCP event, so it is at
-most eight characters, and contains no whitespace - the width of that field in the a2l, not a
+most eight characters, all of them printable ASCII and none of them a space - the width of
+that field in the a2l, in bytes rather than characters, not a
 limit of the protocol, which length-prefixes an event channel name and carries far more. A
 longer one is refused rather than shortened (`schema`), because two names shortened to the
 same eight would collide in a calibration tool instead of here. No file DDD writes carries an
@@ -1046,7 +1051,9 @@ period XCP carries (`schema`) - a count of 1 to 255 times a decade from 1 ns to 
 Declaring a raster twice, in one file or across files, is `duplicate-raster`.
 
 Like a memory section ([section 3.5](#35-memory-placement)) and unlike a unit, a raster is a
-reference rather than a spelling: naming one no file declares is `unknown-raster` whether or
+reference rather than a spelling, and it obeys the declaration's own rule - eight printable
+ASCII characters at most, no space - so a name no rasters file could declare is `schema`
+where it is written: naming one no file declares is `unknown-raster` whether or
 not a rasters file exists, because an event nothing describes is a name the a2l could only
 write as a number nobody chose. The vocabulary is project wide and has no place inside a
 component, an event channel number being a property of the target's XCP configuration rather
@@ -1106,7 +1113,9 @@ one on the project, and contributing checks, comparison rules and an artefact of
   grammar or reserved, a check identifier outside its grammar, or a check registered twice.
   Both checks have a fixed severity, because a project cannot be interpreted without the
   plugins it names.
-- `"extensions"` (optional): the settings of each plugin, keyed by plugin name, validated
+- `"extensions"` (optional): the settings of each plugin, keyed by plugin name - a key
+  outside the `[a-z][a-z0-9_]*` a plugin's `name` matches is one no plugin could claim, and
+  is `schema` - validated
   against the plugin's project model with defaults filled in. A plugin with a project model
   and no stated settings is validated as if the project stated `{}`, so a setting the plugin
   requires and the project omits is `schema`, located where the block would be written; a
@@ -1189,13 +1198,19 @@ option is repeatable, and for one check the last override wins; `--strict` then 
 what is still a warning to an error. Overriding a check that cannot be relaxed is a usage
 error rather than a finding, as is naming an unknown check or severity.
 
-Ten checks need every component of a project to mean anything: `unknown-type`,
+Nine checks need every component of a project to mean anything: `unknown-type`,
 `unknown-unit`, `unknown-section`, `unknown-constant`, `unknown-raster`, `unknown-extension`,
-`missing-producer`, `unknown-reference`, `unused-output` and
-`incomplete-project`. Exactly these are the checks held back by `--standalone` - on
-`ddd check`, `ddd list` and `ddd dump` - by the CMake module's per-component target, which
-runs `ddd check --standalone` ([section 7](#7-tool-interface)), and by the language server
-for a file belonging to no project ([section 7.2](#72-editor-integration)).
+`missing-producer`, `unknown-reference` and `unused-output`. Exactly these are the checks
+held back by `--standalone` - on `ddd check`, `ddd list` and `ddd dump` - by the CMake
+module's per-component target, which runs `ddd check --standalone`
+([section 7](#7-tool-interface)), and by the language server for a file belonging to no
+project ([section 7.2](#72-editor-integration)).
+
+`incomplete-project` is not one of them, although every one of the nine can be its cause: a
+run that holds them back weighs the cause instead, and reports nothing where it is itself the
+reason nobody did - a declaration dropped because its constant lives in a file nobody handed
+over is not an omission. What is left is a declaration a caller's own `-W` took out of the
+dictionary, which is as true of a component read alone as of a whole project.
 
 A declaration dropped as unresolvable still counts for the ownership checks: a consumer of
 an object whose producing declaration was dropped is not `missing-producer`, an output
@@ -1333,7 +1348,9 @@ Errors:
   dropped as unresolvable is not reported a second time: the finding at the declaration is
   the one to act on, and the referring object is dropped with it.
 - `reserved-identifier`: a name collides with a C keyword, with a name `<stdint.h>` or
-  `<stdbool.h>` declares, or with one of two families the C standard reserves for the
+  `<stdbool.h>` declares or brings in with it - `<stddef.h>`'s `size_t`, `ptrdiff_t`,
+  `wchar_t`, `max_align_t`, `NULL` and `offsetof` among them - or with one of two families
+  the C standard reserves for the
   implementation everywhere: a double underscore anywhere, or a leading underscore followed
   by a capital letter. The third family of the same clause, every other leading underscore,
   which the standard reserves at file scope only, is not refused and is left to the
@@ -1979,7 +1996,8 @@ written the way `generate` writes an artefact: the same bytes on every platform,
 untouched when its content would not change, and left as it was when the project does not
 resolve); writing an identity into every
 producing declaration that has none (`ddd id --assign FILE...`, editing the named
-description files in place), so that a later `ddd compare`
+description files textually - the new key is staged in a sibling file and renamed onto the
+description, so a run that dies leaves it as it was), so that a later `ddd compare`
 reports a rename as a rename rather than a removal and an unrelated addition - a
 declaration that already carries one is left untouched, so running it again changes
 nothing, an explicit `"id": null` is filled in place, a file that is not a component
@@ -2014,7 +2032,7 @@ printing its own version (`ddd --version`). Beside the command line, the package
 a pre-commit hook, `ddd-id`, that runs `ddd id --assign` on the staged description files.
 The root handed to a command is a project or a single component file; a component alone is
 checked, listed and dumped with every check unless `--standalone` is given to `ddd check`,
-`ddd list` or `ddd dump`, which holds back the ten checks that need every component of a
+`ddd list` or `ddd dump`, which holds back the nine checks that need every component of a
 project ([section 4](#4-consistency-checks)), the
 same set the editor holds back ([section 7.2](#72-editor-integration)); an explicit `-W` on
 the same run still wins. Given a project root, `--standalone` holds the same checks back
@@ -2243,7 +2261,7 @@ description is checked as the project it is, under those same default severities
 its components, so every check has what it needs, and the checks that need the whole project
 are exactly the ones somebody opening a project file is asking about. A file
 belonging to no build, to no such project and declaring no project of its own is still
-checked, on its own, with the ten checks that
+checked, on its own, with the nine checks that
 need every component of a project ([section 4](#4-consistency-checks)) held back: a
 component read alone has inputs nobody produces and outputs nobody reads by construction
 rather than by mistake, and reporting those buries the findings that are about the file in

@@ -694,6 +694,39 @@ class TestLoadingAProject:
         assert checks(bag) == ["schema"]
         assert "definition.extensions.tag.tg" in messages(bag)
 
+    @pytest.mark.parametrize("name", ["a.b", "c[1]", "my-plugin", "Layout", "1st", ""])
+    def test_a_block_is_keyed_by_something_a_plugin_could_be_called(
+        self, tree: Path, name: str
+    ) -> None:
+        """A plugin name is a lowercase identifier, so a block key is one too.
+
+        A key with a ``.`` or a ``[1]`` in it also made a pointer no consumer can split -
+        ``definition.extensions.a.b`` reads as two keys, ``c[1]`` as an index - so an editor
+        underlined the wrong thing for a block that could never have named a plugin anyway.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", extensions={name: {}})),
+            },
+        )
+        assert checks(bag) == ["schema"]
+        assert "String should match pattern" in messages(bag), messages(bag)
+
+    def test_a_project_block_is_keyed_the_same_way(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": {
+                    "project": {"name": "P", "includes": ["a.ddd.json"], "extensions": {"a.b": {}}}
+                },
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert checks(bag) == ["schema"]
+        assert "project.extensions.a.b: error[schema]" in messages(bag), messages(bag)
+
     def test_a_block_naming_no_loaded_plugin_is_unknown(self, tree: Path) -> None:
         _, bag = run_analysis(
             tree,

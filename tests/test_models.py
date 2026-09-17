@@ -76,6 +76,19 @@ class TestIdentifiers:
     def test_reserved(self, name: str) -> None:
         assert is_reserved_identifier(name)
 
+    @pytest.mark.parametrize(
+        "name", ["size_t", "ptrdiff_t", "wchar_t", "max_align_t", "NULL", "offsetof"]
+    )
+    def test_the_names_stdint_brings_in_from_stddef_are_reserved(self, name: str) -> None:
+        """MinGW's <stdint.h> pulls <stddef.h> in, so a variable named size_t breaks the build."""
+        assert is_reserved_identifier(name)
+
+    @pytest.mark.parametrize(
+        "name", ["UINT8_WIDTH", "INT_LEAST16_WIDTH", "UINTMAX_WIDTH", "SIZE_WIDTH", "WCHAR_WIDTH"]
+    )
+    def test_the_c23_width_macros_are_reserved(self, name: str) -> None:
+        assert is_reserved_identifier(name)
+
     @pytest.mark.parametrize("name", ["ValueE", "_speed", "x1", "a_b"])
     def test_allowed(self, name: str) -> None:
         assert not is_reserved_identifier(name)
@@ -234,6 +247,107 @@ class TestArraysAndInit:
             definition(dimensions=[0])
 
 
+class TestInitIsWrittenAsItIsMeant:
+    """A number in a list init is a number, and nothing that merely looks like one.
+
+    The whole init has a text arm - a string object's init is its text - so pydantic picks
+    that arm for a quoted value at the top level and the question never arises there. One
+    level down there is no text arm, and every arm of ``InitScalar`` is strict so that the
+    union does not fall back to reading words: ``"1"`` is not the number, ``"on"`` is not
+    ``true``, and both are refused where the specification, the docstring and the published
+    schema all say text does not belong.
+    """
+
+    @pytest.mark.parametrize(
+        ("written", "spelled"),
+        [
+            ("1", "Input should be a valid integer"),
+            (" 1 ", "Input should be a valid integer"),
+            ("1_0", "Input should be a valid integer"),
+            ("on", "Input should be a valid integer"),
+            ("true", "Input should be a valid integer"),
+            ("1.5", "Input should be a valid integer"),
+            ("1e2", "Input should be a valid integer"),
+        ],
+    )
+    def test_a_quoted_value_in_a_list_is_refused(
+        self, tree: Path, written: str, spelled: str
+    ) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", dimensions=[2], init=[written, written])
+                ),
+            },
+        )
+        assert dictionary is None
+        assert set(checks(bag)) == {"schema"}
+        expected = f"definition.init[0]: error[schema]: {spelled} (got: {written!r})"
+        assert expected in messages(bag), messages(bag)
+
+    def test_a_word_in_a_list_is_not_read_as_a_truth_value(self, tree: Path) -> None:
+        """``["on", "off"]`` on a ``uint8[2]`` used to render as ``{ 1U, 0U }``."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", dimensions=[2], init=["on", "off"])
+                ),
+            },
+        )
+        assert dictionary is None
+        assert "definition.init[1]: error[schema]:" in messages(bag), messages(bag)
+        assert "'off'" in messages(bag), messages(bag)
+
+    def test_a_quoted_number_is_still_text_at_the_top_level(self) -> None:
+        assert definition(init="12").init == "12"
+
+    @pytest.mark.parametrize(
+        ("datatype", "written"),
+        [
+            ("float64", [1, 2]),
+            ("float64", [1.5, 2.5]),
+            ("float32", [1.5, 2]),
+            ("uint8", [1, 2]),
+            ("boolean", [True, False]),
+        ],
+    )
+    def test_a_number_written_as_a_number_still_loads(
+        self, tree: Path, datatype: str, written: list[Any]
+    ) -> None:
+        """Strictness is about the spelling, not about the arm: a whole number on a float
+        type matches the integer arm and is as good an init as ever."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", datatype, dimensions=[2], init=written)
+                ),
+            },
+        )
+        assert dictionary is not None, messages(bag)
+        assert checks(bag) == []
+
+    def test_a_json_boolean_on_an_integer_datatype_is_still_read_as_written(
+        self, tree: Path
+    ) -> None:
+        """The deferred JSON-boolean init: ``true`` is a truth value in every mode, so it
+        reaches the analysis as it always did."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", "uint8", init=True)),
+            },
+        )
+        assert dictionary is not None, messages(bag)
+        assert checks(bag) == []
+
+
 class TestContractStrictness:
     def test_unknown_keys_are_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
@@ -268,6 +382,30 @@ class TestContractStrictness:
             }
         )
         assert model.component.interface[0].condition is None
+
+    def test_a_condition_may_not_end_in_a_backslash(self) -> None:
+        """A trailing backslash splices the next generated line into the ``#if``."""
+        with pytest.raises(ValidationError, match="cannot end in a backslash"):
+            ComponentFile.model_validate(
+                {
+                    "component": {
+                        "name": "C",
+                        "interface": [
+                            {
+                                "scope": "output",
+                                "condition": "defined(FEAT_X) \\",
+                                "definition": {
+                                    "kind": "measurement",
+                                    "name": "X",
+                                    "datatype": "uint8",
+                                    "conversion": {},
+                                    "volatile": False,
+                                },
+                            }
+                        ],
+                    }
+                }
+            )
 
     def test_json_schema_is_generated(self) -> None:
         for model in (ProjectFile, ComponentFile):
@@ -392,6 +530,32 @@ class TestObjectIdentity:
         assert note_text == "first carries the id here"
         assert note_location is not None
         assert note_location.path.name == "a.ddd.json"
+
+    def test_an_id_shared_with_a_declaration_that_was_dropped_is_still_shared(
+        self, tree: Path
+    ) -> None:
+        """The census is what ownership is decided over, and identity is decided with it.
+
+        Read over the surviving declarations only, a copied declaration whose type nobody
+        declares hid the copied id as well: the reader fixed the type, ran again and met the
+        second mistake they had made in the same edit.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "Gamma", typename="Nope_t", id="k7m2q9xr4t8w")
+                ),
+                "b.ddd.json": component("B", declare("local", "Delta", id="k7m2q9xr4t8w")),
+            },
+        )
+        assert checks(bag) == ["unknown-type", "duplicate-id"], messages(bag)
+        # In name order, as it always is, so that the pair is named the same way whichever
+        # of the two the project happens to include first.
+        assert "'Gamma' carries the id 'k7m2q9xr4t8w', which 'Delta' already carries" in messages(
+            bag
+        )
 
 
 class TestQuotedNumbers:
@@ -778,6 +942,19 @@ class TestSixtyFourBitBound:
 
         with pytest.raises(ValidationError, match="less than or equal"):
             ConstantsFile.model_validate({"constants": [{"name": "N", "value": self.HUGE}]})
+
+
+class TestA2lOptions:
+    @pytest.mark.parametrize("spelling", ["%8.3", "%.3", "%12.0"])
+    def test_a_display_format_is_a_width_and_a_decimal_count(self, spelling: str) -> None:
+        parsed = declared(a2l={"format": spelling})
+        assert parsed.a2l is not None
+        assert parsed.a2l.format == spelling
+
+    def test_a_display_format_is_written_in_ascii_digits(self) -> None:
+        """Arabic-Indic digits: no calibration tool parses the FORMAT string they spell."""
+        with pytest.raises(ValidationError, match="String should match pattern"):
+            declared(a2l={"format": "%٣.٢"})
 
 
 class TestStringRules:

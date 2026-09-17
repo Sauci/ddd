@@ -31,6 +31,7 @@ from pydantic import (
     model_validator,
 )
 
+from ddd.diagnostics import index_order
 from ddd.models.common import Datatype, Identifier, hash_excluding_mappings
 from ddd.models.component import Scope
 from ddd.models.constants import ConstantDeclaration
@@ -276,6 +277,11 @@ class ResolvedMember(_Frozen):
     Only what a declaration takes. The meaning of the member - its unit, its conversion, its
     limits - travels with the *leaf* instead, because that is the form the a2l consumes and
     there is no second place a reader should have to look.
+
+    Exactly one of ``datatype``, ``type`` and ``external`` is stated: a member holds a value
+    of a base datatype, is a structure, or is storage of a type DDD does not describe. A
+    member stating none of them would be storage with no size, no meaning and no name, which
+    a consumer of this document has nothing to do with.
     """
 
     name: Identifier
@@ -288,7 +294,12 @@ class ResolvedMember(_Frozen):
     """Storage of the member when it is a base one; ``None`` when it names a declared type."""
 
     type: str | None = None
-    """Name of the structure this member is, when it is one; ``None`` when it is a datatype."""
+    """Name of the structure this member is, when it is one; ``None`` when it is a datatype.
+
+    The name as the types file spells it, which in a dictionary carrying an ``unknown-type``
+    error may be a name no ``types`` entry answers: the member says what it was declared as,
+    and the finding says that nothing declares it.
+    """
 
     external: str | None = None
     """Name of the external type this member is, when it is one; ``None`` otherwise.
@@ -318,18 +329,26 @@ class ResolvedMember(_Frozen):
     """Width in bits when the member is a c bitfield; ``None`` when it is not."""
 
     @model_validator(mode="after")
-    def _an_external_member_carries_its_header(self) -> ResolvedMember:
-        """``external`` and ``header`` travel together, and beside no other storage.
+    def _a_member_states_one_storage(self) -> ResolvedMember:
+        """Exactly one of ``datatype``, ``type`` and ``external``, and ``header`` with the last.
 
         A member is spelled exactly one way - a base datatype, a structure, or an external
-        type - so an external name next to either of the others, or a header without the
-        name it defines, is a document contradicting itself.
+        type - so an external name next to either of the others, or a header without the name
+        it defines, is a document contradicting itself. So is a member spelled no way at all:
+        it declares storage with no size, no meaning and no name, which reads back out of a
+        dump, compares clean against a member that holds a value, and reaches a forced c
+        header as ``None x;``. A member whose type nothing declares carries that name under
+        ``type`` - ``unknown-type`` is what says nothing declares it - so this is the document
+        saying it holds something, wrong as that something may turn out to be.
         """
         if (self.external is None) != (self.header is None):
             msg = "'external' and 'header' are stated together: the header defines the type"
             raise ValueError(msg)
         if self.external is not None and (self.datatype is not None or self.type is not None):
             msg = "an external member names no 'datatype' and no 'type'; it is opaque storage"
+            raise ValueError(msg)
+        if self.external is None and self.datatype is None and self.type is None:
+            msg = "a member states one of 'datatype', 'type' and 'external': it holds something"
             raise ValueError(msg)
         return self
 
@@ -683,6 +702,10 @@ class DataDictionary(_Frozen):
     leaves: tuple[ResolvedLeaf, ...] = ()
     """Every member of every structured variable, flattened, sorted by path.
 
+    By path with every ``[n]`` in it read as the number it is, so the elements of an array of
+    structures are in the order they are stored in rather than in the order their spellings
+    happen to sort in: ``[2]`` before ``[10]``.
+
     Written out rather than worked out on demand, because the dictionary is a produced
     document: a generator DDD does not ship reads it without importing python, and no backend
     should repeat resolution the analysis has already done.
@@ -748,8 +771,12 @@ class DataDictionary(_Frozen):
 
         A summary that counted only the plain ones told a project with four objects that it
         had two, which is the sort of quiet wrongness that costs somebody an afternoon.
+
+        Ordered by name with every ``[n]`` read as the number it is, the way
+        :attr:`leaves` is: an element is one of a run, and an instance of twelve listed
+        ``[0], [10], [11], [1]`` reads as a listing of something else.
         """
-        return tuple(sorted(self.comparable.values(), key=lambda entry: entry.name))
+        return tuple(sorted(self.comparable.values(), key=lambda entry: index_order(entry.name)))
 
     def unowned(self) -> tuple[ResolvedObject | ResolvedInstance, ...]:
         """Every variable no component declares as output; only possible when

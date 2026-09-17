@@ -6,7 +6,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from ddd.models.common import FileRoot, Identifier, hash_excluding_mappings
+from ddd.models.common import FileRoot, Identifier, PluginName, hash_excluding_mappings
 
 
 class Project(BaseModel):
@@ -41,7 +41,7 @@ class Project(BaseModel):
     union, because the blocks a plugin interprets may sit in any component.
     """
 
-    extensions: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    extensions: dict[PluginName, dict[str, Any]] = Field(default_factory=dict)
     """The settings of each plugin, keyed by plugin name: ``{"layout": {"max_key": 4095}}``.
 
     Validated against the plugin's project model, defaults filled in, and carried into the

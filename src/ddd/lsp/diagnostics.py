@@ -73,7 +73,7 @@ def analyse(info: BuildInfo) -> tuple[DiagnosticBag, frozenset[Path]]:
 
 def analyse_standalone(path: Path) -> tuple[DiagnosticBag, frozenset[Path]]:
     """Run the checks over a file read as "a component on its own"."""
-    policy = SeverityPolicy.from_strings(list(STANDALONE_POLICY), strict=False)
+    policy = SeverityPolicy.from_strings(list(STANDALONE_POLICY), strict=False, standalone=True)
     return _run(path, DiagnosticBag(policy))
 
 
@@ -81,7 +81,7 @@ def _analyse_root(path: Path, cache: dict[Path, Document]) -> tuple[DiagnosticBa
     """Run the checks over a file no build and no project above it claims.
 
     A project file is the whole project, whatever no build record says about it: it lists the
-    components, so every check has what it needs, and the ten that need the whole project are
+    components, so every check has what it needs, and the nine that need the whole project are
     exactly the ones somebody opening a project file wants to see. Reading it under the
     standalone policy silenced them for every file of the project - and, because opening a
     file republishes everything it covers, withdrew them from the components as well.

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any, Protocol
 
 from pydantic import BaseModel, ValidationError
@@ -459,7 +459,26 @@ class Workspace:
         return self.locations.get(name)
 
 
-def load_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
+def read_json_document(path: Path) -> dict[str, Any] | None:
+    """The json object a file holds, or nothing, without saying a word about why not.
+
+    What a caller deciding *which reader* a file belongs to needs: whichever reader it then
+    reaches is the one with something to say about it, and a failure here is one that reader
+    meets again and reports properly. Read through the same hooks as everything else - a
+    duplicate key is refused here too - so that a document this accepts is one the reader
+    would accept, and may therefore be handed straight back to it rather than read a second
+    time. A 45 MB dump costs about a third of a second per pass.
+    """
+    quiet = DiagnosticBag()
+    text = _read_text(path, quiet, None)
+    if text is None:
+        return None
+    return _parse_json(text, path, quiet)
+
+
+def load_dictionary(
+    path: Path, bag: DiagnosticBag, document: dict[str, Any] | None = None
+) -> DataDictionary | None:
     """Read a data dictionary that ``ddd dump`` wrote earlier.
 
     The counterpart of :func:`load_workspace`: it takes the resolved form rather than the
@@ -470,20 +489,27 @@ def load_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
     this file - that it does not exist, that its json is malformed, that its format is one
     this version cannot read, that a field does not validate - is located at it, and the
     ``location`` of a finding is an absolute path whether the caller typed one or not.
+
+    ``document`` is what :func:`read_json_document` already read out of that same file, so a
+    caller that had to look inside it to decide whose file it is does not pay for the read
+    and the parse twice. Left out - or ``None``, which is what that function answers for a
+    file it could not read at all - the file is read here, and the failure is reported.
     """
     path = resolve_path(path)
-    text = _read_text(path, bag, None)
-    if text is None:
-        return None
-
-    # Read through the same hooks a description file goes through, rather than handed to
-    # pydantic's own parser: that one has no ``object_pairs_hook``, so a dump spelling one key
-    # twice - ``"name": "P", "name": "Q"`` - kept the last spelling silently and came back as a
-    # delivery of a project the file says twice it is not. What a description may not do, an
-    # archived dictionary of the same project may not do either.
-    data = _parse_json(text, path, bag)
+    data = document
     if data is None:
-        return None
+        text = _read_text(path, bag, None)
+        if text is None:
+            return None
+
+        # Read through the same hooks a description file goes through, rather than handed to
+        # pydantic's own parser: that one has no ``object_pairs_hook``, so a dump spelling one
+        # key twice - ``"name": "P", "name": "Q"`` - kept the last spelling silently and came
+        # back as a delivery of a project the file says twice it is not. What a description
+        # may not do, an archived dictionary of the same project may not do either.
+        data = _parse_json(text, path, bag)
+        if data is None:
+            return None
 
     # The version is read before the document is validated, not after. A dictionary from a
     # later DDD is precisely one that carries fields this version does not know, and the
@@ -497,7 +523,11 @@ def load_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
     try:
         return DataDictionary.model_validate(data)
     except ValidationError as error:
-        _report_validation_error(path, error, bag)
+        # The document goes with the error, as it does for a description: without it every
+        # segment below the first is judged by its spelling alone, so a punctuated key under
+        # ``extensions`` was dropped from the pointer and two malformed blocks counted as
+        # one finding about the whole block.
+        _report_validation_error(path, error, bag, document=data)
         return None
 
 
@@ -1049,7 +1079,7 @@ class _Loader:
         # while reporting is_absolute() as false, and handing either to Path.glob unchanged
         # makes pathlib refuse a non-relative pattern.
         anchor = raw.anchor
-        base = Path(anchor) if anchor else source.parent
+        base = _pattern_anchor(source.parent, raw)
         relative = raw.relative_to(anchor) if anchor else raw
         try:
             found = list(base.glob(relative.as_posix()))
@@ -1181,6 +1211,17 @@ def _read_text(path: Path, bag: DiagnosticBag, origin: Location | None) -> str |
     except ValueError as error:
         # A path the operating system cannot even represent, e.g. one with a NUL byte in it.
         bag.add("file-not-found", f"cannot read '{path.as_posix()}': {error}", where)
+    except MemoryError:
+        # A file larger than the memory left to this run - a log a careless include pattern
+        # matched, most likely. The one way the read could fail that used to reach the caller
+        # as a traceback, where every other is a located finding and the rest of the tree is
+        # still read. Nothing of the file was kept, so the memory is back by the time this
+        # line runs.
+        bag.add(
+            "file-not-found",
+            f"'{path.as_posix()}' is too large to read into memory",
+            where,
+        )
     return None
 
 
@@ -1196,15 +1237,25 @@ def _report_validation_error(
     ``document`` is the data that was validated, so that the pointer can tell a key of it
     from the name of a union branch; without it the shape of each segment decides.
     """
-    for item in _one_per_place(_meaningful(error.errors(include_url=False))):
+    placed = [(_place(item["loc"], document), item) for item in error.errors(include_url=False)]
+    for place, item in _one_per_place(_meaningful(placed)):
         message = item["msg"]
         if item["type"] != "missing":
             message = f"{message} (got: {_short(item.get('input'))})"
-        pointer = ".".join(part for part in (prefix, _pointer(item["loc"], document)) if part)
+        pointer = ".".join(part for part in (prefix, _pointer(place)) if part)
         bag.add("schema", message, Location(path, pointer))
 
 
-def _one_per_place(items: list[Any]) -> list[Any]:
+type _Placed = tuple[tuple[int | str, ...], Any]
+"""One validation error beside the place of the document it is about.
+
+The place is computed once, where the document that was validated is still at hand, and
+both filters below then work in it: what counts as one place, and what counts as a deeper
+finding, are the same question asked twice.
+"""
+
+
+def _one_per_place(items: list[_Placed]) -> list[_Placed]:
     """One finding per place, however many ways the value failed to be what was wanted.
 
     A union that is not discriminated fails once per branch, so a mistyped ``datatype`` arrives
@@ -1215,35 +1266,58 @@ def _one_per_place(items: list[Any]) -> list[Any]:
     that order is chosen to put the likely reading first - for ``datatype``, "one of these
     eleven" says far more than a regular expression does.
     """
-    kept: dict[str, Any] = {}
-    for item in items:
-        kept.setdefault(_pointer(item["loc"]), item)
-    return list(kept.values())
+    kept: dict[tuple[int | str, ...], Any] = {}
+    for place, item in items:
+        kept.setdefault(place, item)
+    return list(kept.items())
 
 
-def _meaningful(items: list[Any]) -> list[Any]:
+def _meaningful(items: list[_Placed]) -> list[_Placed]:
     """Drop the findings that are only consequences of another finding in the same run.
 
-    A list whose single entry fails validation is dropped by pydantic and then reported as
-    too short as well, so one mistake arrives as two errors: the useful one about the entry,
-    and 'Tuple should have at least 1 item after validation, not 0' about the list holding
-    it. Reporting both invites the reader to go looking for a second problem that is not
-    there.
-    """
-    locations = {tuple(item["loc"]) for item in items}
+    Two shapes of that, and one rule. A list whose single entry fails validation is dropped
+    by pydantic and then reported as too short as well, so one mistake arrives as two
+    errors: the useful one about the entry, and 'Tuple should have at least 1 item after
+    validation, not 0' about the list holding it. And a value nested inside lists fails
+    again at every level above it, because a list is not a number either: ``[[1, 2], [3,
+    null]]`` on a map said three times that something should be a valid integer, twice
+    about a list nobody had asked to be one, and the count told the reader to go looking for
+    two more problems that are not there. Reporting either invites that.
 
-    def explained_by_a_deeper_finding(location: tuple[Any, ...]) -> bool:
+    So a place that holds something - a list or an object, or a list pydantic emptied - is
+    dropped as soon as a finding sits strictly under it: whatever is wrong down there is
+    what is wrong here. A ``missing`` key is kept whatever its input holds, because the key
+    that is not there is the mistake itself and nothing can be reported under it.
+    """
+    places = {place for place, _ in items}
+
+    def explained_by_a_deeper_finding(place: tuple[int | str, ...]) -> bool:
         # Strictly deeper: a list that is empty because it was written empty has no finding
         # under it, and has to keep reporting itself.
-        return any(
-            len(other) > len(location) and other[: len(location)] == location for other in locations
-        )
+        return any(len(other) > len(place) and other[: len(place)] == place for other in places)
 
-    return [
-        item
-        for item in items
-        if item["type"] != "too_short" or not explained_by_a_deeper_finding(tuple(item["loc"]))
-    ]
+    def is_only_a_consequence(place: tuple[int | str, ...], item: Any) -> bool:
+        if item["type"] == "missing":
+            return False
+        holds_something = item["type"] == "too_short" or isinstance(item.get("input"), list | dict)
+        return holds_something and explained_by_a_deeper_finding(place)
+
+    return [(place, item) for place, item in items if not is_only_a_consequence(place, item)]
+
+
+def _pattern_anchor[Directory: PurePath](directory: Directory, pattern: PurePath) -> Directory:
+    """Where a wildcard include starts walking: its own anchor, joined onto the project's.
+
+    The same join the literal reading of the entry makes, so that the two agree. An anchor
+    is not the whole story on Windows, where a spelling can carry one and still not be
+    absolute: ``/shared/*.ddd.json`` is rooted on whichever drive the process happens to be
+    on, and ``C:*.ddd.json`` means "on drive C, in whatever directory I am". Taken as the
+    base, either expanded wherever ``ddd`` was run from, while the same spelling without a
+    wildcard - ``C:inproject.ddd.json`` - was joined onto the project's own directory.
+    Nobody writes the second spelling on purpose; the two answering differently is what
+    there was to fix.
+    """
+    return directory / pattern.anchor if pattern.anchor else directory
 
 
 def resolve_path(path: Path) -> Path:
@@ -1254,31 +1328,75 @@ def resolve_path(path: Path) -> Path:
     a property of the platform: linux rejects such a path in ``resolve()`` while Windows
     carries it as far as the read. Degrading here puts every one of them through the same
     handler in :func:`_read_text`, so the run ends with one located finding on both.
+
+    A leading ``~`` is left where it stands: expansion is the shell's, and a root named
+    ``~x.ddd.json`` was being looked for in user ``x``'s home directory, a path its author
+    never wrote.
     """
     try:
-        return Path(path).expanduser().resolve()
+        return Path(path).resolve()
     except (OSError, ValueError):
         return Path(path)
 
 
-def _pointer(loc: tuple[int | str, ...], document: Any = None) -> str:
-    """The dotted pointer of a validation error's location.
+def _place(loc: tuple[int | str, ...], document: Any = None) -> tuple[int | str, ...]:
+    """The segments of a validation error's location that name a place in the document.
 
     Walked against the document where one is given: a segment that is a key of the object
     reached so far, or an index into the list reached so far, is part of the path however it
     is spelled - ``my-plugin`` is a key, not a branch tag - and only a segment the document
     does not have is judged by its shape.
+
+    The walk stays where it was on a segment the document does not have, rather than
+    following it into nothing: a tag is not a step down the document, and a definition is a
+    tagged union, so dropping the document on the first one left every key below it judged
+    by shape alone - a punctuated plugin name under ``extensions``, or one spelled like
+    another variant of that union, was taken for a tag of its own and the finding lost the
+    key it was about.
     """
-    parts: list[str] = []
+    parts: list[int | str] = []
     node = document
     for item in loc:
-        present, node = _child(node, item)
-        if not present and (item in _UNION_TAGS or _is_branch_tag(item)):
-            # pydantic reports the selected variant of a tagged union as a path segment,
-            # and the tried branch of a plain one the same way;
-            # 'definition.measurement.datatype' and 'datatype.str-enum[Datatype]' would
-            # both only confuse the reader.
-            continue
+        present, child = _child(node, item)
+        if present:
+            node = child
+        else:
+            key = _mapping_key(node, item)
+            if key is not None:
+                # The file holds a mapping where the model holds a list, so everything below
+                # this belongs to the shape the model built and none of it to the document.
+                parts.append(key)
+                return tuple(parts)
+            if isinstance(item, str) and (item in _UNION_TAGS or _is_branch_tag(item)):
+                # pydantic reports the selected variant of a tagged union as a path segment,
+                # and the tried branch of a plain one the same way;
+                # 'definition.measurement.datatype' and 'datatype.str-enum[Datatype]' would
+                # both only confuse the reader. An index is never one of those, and asking
+                # here rather than inside the test is what keeps that from being a branch
+                # nothing can reach.
+                continue
+        parts.append(item)
+    return tuple(parts)
+
+
+def _mapping_key(node: Any, item: int | str) -> str | None:
+    """The key an index names, where the document holds a mapping and the model read a list.
+
+    ``enumerators`` accepts ``{"MODE_OFF": 0}`` and rewrites it into the list of objects the
+    model holds before pydantic ever sees it, so a mistake inside it arrives located in that
+    list - ``enumerators, 0, value`` - and the file has neither an ``[0]`` nor a ``value``.
+    A mapping keeps the order it was written in, so the i-th key is the entry the index means
+    and the file does have that.
+    """
+    if isinstance(node, dict) and isinstance(item, int) and item < len(node):
+        return str(list(node)[item])
+    return None
+
+
+def _pointer(place: tuple[int | str, ...]) -> str:
+    """The dotted pointer of a place: ``interface[0].definition.name``."""
+    parts: list[str] = []
+    for item in place:
         if isinstance(item, int):
             parts.append(f"[{item}]")
         elif parts:
@@ -1307,7 +1425,7 @@ def _child(node: Any, item: int | str) -> tuple[bool, Any]:
     return False, None
 
 
-def _is_branch_tag(item: int | str) -> bool:
+def _is_branch_tag(item: str) -> bool:
     """Whether a path segment names a union branch rather than a key of the document.
 
     pydantic spells most of those as ``str-enum[Datatype]`` or ``constrained-str``, neither of
@@ -1315,8 +1433,6 @@ def _is_branch_tag(item: int | str) -> bool:
     than by a list of names, so a new branch needs nothing added here - except a branch that
     is a bare python type, which is spelled as one word and listed above.
     """
-    if not isinstance(item, str):
-        return False
     return item in _BARE_TYPE_TAGS or not item.replace("_", "").replace("$", "").isalnum()
 
 

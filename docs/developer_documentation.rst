@@ -63,12 +63,18 @@ Those naming rules are part of the interface a project depends on: :doc:`templat
 them, and the module docstring of ``src/ddd/backends/c/backend.py`` states them again next to
 the code that implements them.
 
-Five smaller modules sit beside them. ``diagnostics.py`` holds the severity policy and the
+Six smaller modules sit beside them. ``diagnostics.py`` holds the severity policy and the
 registry of every check, and is what both the loader and the analysis report through.
 ``compare.py`` answers the directional question of whether one dictionary may replace
 another, and is the second consumer of the contract next to the backends. ``cli.py`` is the
 only module that knows about argument parsing, exit codes and where output goes; it is also
-where the backends a ``ddd generate`` run uses are assembled. ``identity.py`` makes an object
+where the backends a ``ddd generate`` run uses are assembled, and it reaches every layer
+above through an import inside the handler that needs it rather than at the top of the file,
+so that ``ddd --version`` and ``ddd --help`` - which a cmake configure step asks for once per
+project and a pre-commit hook once per file - are answered without building a single
+contract. ``names.py`` is what makes that possible: the handful of spellings argparse reads
+while it is still deciding what was asked for, in a module that imports nothing, each of them
+the one definition of its name. ``identity.py`` makes an object
 identity and writes one into a description file textually, so that ``ddd id --assign``
 produces a diff of one line per object rather than a reformatted document. ``build_info.py``
 is the hand-off from a build to an editor: which project description was configured, and

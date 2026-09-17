@@ -29,7 +29,7 @@ from conftest import DEMO
 from ddd import __version__
 from ddd.analysis import _MAX_ELEMENTS, _MAX_LEAVES
 from ddd.backends.c.model import CodeModel, MemberView, ObjectView
-from ddd.cli import _SCHEMA_MODELS, EXIT_OK, _build_parser, main
+from ddd.cli import EXIT_OK, _build_parser, main, schema_models
 from ddd.diagnostics import CHECKS
 from ddd.loading import FILE_KINDS
 from ddd.models import Component, DataObject, Datatype, ObjectKind, ScalarType
@@ -426,12 +426,12 @@ class TestTheCommandPage:
             r"print the json schema of ((?:``[a-z]+``(?:, | or )?)+)", flattened(self.COMMAND_PAGE)
         )
         assert listed is not None
-        assert set(re.findall(r"``([a-z]+)``", listed.group(1))) == set(_SCHEMA_MODELS)
+        assert set(re.findall(r"``([a-z]+)``", listed.group(1))) == set(schema_models())
 
     def test_the_readme_lists_the_same_schema_kinds(self) -> None:
         listed = re.search(r"\| `ddd schema ([a-z|\\]+)`", README)
         assert listed is not None
-        assert set(listed.group(1).replace("\\", "").split("|")) == {*_SCHEMA_MODELS, "all"}
+        assert set(listed.group(1).replace("\\", "").split("|")) == {*schema_models(), "all"}
 
     def test_the_commands_said_to_take_format_json_are_the_ones_that_do(self) -> None:
         """Both pages enumerate them, and the command page counts them in words as well."""
@@ -1000,9 +1000,9 @@ class TestCommandLineHelp:
 
 def published_kinds() -> list[str]:
     """The file formats ``ddd schema`` publishes, which is what these tests are about."""
-    from ddd.cli import _SCHEMA_MODELS
+    from ddd.cli import schema_models
 
-    return sorted(_SCHEMA_MODELS)
+    return sorted(schema_models())
 
 
 def published(kind: str) -> dict[str, Any]:
@@ -1273,6 +1273,42 @@ class TestWhatTheLoaderRefusesTheSchemaRefusesAsWell:
             {"types": [{"type": "scalar", "name": name, "datatype": "uint16", "conversion": {}}]},
         )
 
+    @pytest.mark.parametrize(
+        "enumerators", [{"A": 18446744073709551616}, {"1bad": 0}, {"A": 0, "no-dash": 1}]
+    )
+    def test_the_mapping_form_of_enumerators_publishes_its_own_rules(
+        self, enumerators: dict[str, int]
+    ) -> None:
+        """The list form publishes the value bound and the name pattern; the shorthand did
+        not, so an editor bound to the schema accepted what ``ddd check`` then refused."""
+        from ddd.models import ComponentFile
+
+        self.refused(
+            "component",
+            ComponentFile,
+            {
+                "component": {
+                    "name": "Sensor",
+                    "interface": [
+                        {
+                            "scope": "output",
+                            "definition": {
+                                "name": "Mode",
+                                "kind": "measurement",
+                                "datatype": "uint8",
+                                "conversion": {
+                                    "kind": "enum",
+                                    "name": "Mode_t",
+                                    "enumerators": enumerators,
+                                },
+                                "volatile": False,
+                            },
+                        }
+                    ],
+                }
+            },
+        )
+
     @pytest.mark.parametrize("name", ["uint16", "UINT16", "Uint16"])
     def test_a_typename_may_not_spell_a_base_datatype_in_any_case(self, name: str) -> None:
         from ddd.models import ComponentFile
@@ -1399,7 +1435,7 @@ class TestTheBuildIntegrationPage:
     CMAKE_MODULE = (ROOT / "cmake" / "Ddd.cmake").read_text(encoding="utf-8")
 
     def test_the_component_target_holds_back_what_the_registry_says(self) -> None:
-        """A hand-kept list of two checks silenced two of the ten; the flag derives them."""
+        """A hand-kept list of two checks silenced two of the nine; the flag derives them."""
         command = re.search(
             r"\$\{DDD_EXECUTABLE\} check \"\$\{description\}\"(.*?)\n", self.CMAKE_MODULE
         )
@@ -1557,9 +1593,9 @@ class TestCommittedSchemas:
     """
 
     def test_every_committed_schema_is_current(self) -> None:
-        from ddd.cli import _SCHEMA_MODELS, SCHEMA_FILENAME, schema_text
+        from ddd.cli import SCHEMA_FILENAME, schema_models, schema_text
 
-        for kind in sorted(_SCHEMA_MODELS):
+        for kind in sorted(schema_models()):
             path = ROOT / "schemas" / SCHEMA_FILENAME.format(kind=kind)
             assert path.is_file(), f"{path.name} is missing; run: ddd schema all -o schemas"
             assert path.read_text(encoding="utf-8") == schema_text(kind), (
@@ -2309,3 +2345,30 @@ class TestPreCommitHook:
         path, which is the one thing pinning the hook to a ``rev`` is meant to avoid.
         """
         assert self.hook()["language"] == "python"
+
+
+WHOLE_NUMBER_KEYS = [
+    ("component", "Measurement", "dimensions"),
+    ("component", "ValueBlock", "dimensions"),
+    ("component", "Member", "dimensions"),
+    ("component", "Axis", "size"),
+    ("component", "Enumerator", "value"),
+    ("rasters", "RasterDeclaration", "event"),
+    ("sections", "SectionDeclaration", "alignment"),
+]
+"""Every key the loader reads as a strict integer, which no json schema can say.
+
+``integer`` in json schema admits a zero fraction, so an editor bound to the schema accepts
+``4.0`` where ``ddd check`` says "Input should be a valid integer". The file formats index
+says a rule a constraint cannot carry is written into the description of the key it hangs
+off instead; these are the keys it hangs off.
+"""
+
+
+class TestTheRuleAJsonSchemaCannotCarry:
+    @pytest.mark.parametrize(("kind", "model", "key"), WHOLE_NUMBER_KEYS)
+    def test_a_strict_integer_key_says_it_is_written_without_a_point(
+        self, kind: str, model: str, key: str
+    ) -> None:
+        described = published(kind)["$defs"][model]["properties"][key]["description"]
+        assert "without a decimal point" in described, described

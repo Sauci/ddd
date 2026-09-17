@@ -50,6 +50,11 @@ class TestTheFile:
         with pytest.raises(ValidationError):
             RastersFile.model_validate(rasters(raster("Task_10ms")))
 
+    def test_a_name_is_refused_when_its_utf_8_would_overrun_the_event_field(self) -> None:
+        """Eight letters, sixteen bytes: the a2l field is ``char[9]``, counted in bytes."""
+        with pytest.raises(ValidationError):
+            RastersFile.model_validate(rasters(raster("тактовый")))
+
     def test_a_name_of_exactly_the_xcp_event_name_length_is_accepted(self) -> None:
         """Eight characters, which is the limit itself rather than one below it.
 
@@ -82,6 +87,15 @@ class TestTheFile:
         """A count of 1 to 255 times a decade from 1ns to 1s, and nothing else."""
         with pytest.raises(ValidationError, match="no xcp event period"):
             RastersFile.model_validate(rasters(raster(cycle=cycle)))
+
+    def test_a_count_of_five_thousand_digits_is_answered_in_the_tools_own_words(self) -> None:
+        """``int()`` refuses a run of more than 4300 digits, with advice to a programmer.
+
+        The message named ``sys.set_int_max_str_digits`` and carried the whole entry as the
+        value it was about; a count that long is no period whatever python would say of it.
+        """
+        with pytest.raises(ValidationError, match="is not a period"):
+            RastersFile.model_validate(rasters(raster(cycle="1" * 5000 + "ms")))
 
     @pytest.mark.parametrize(
         ("cycle", "nanoseconds"),
@@ -374,6 +388,25 @@ class TestTheReferenceChecks:
         rendered = messages(bag)
         assert "raster '1ms' and raster '10ms' both claim event 2" in rendered
         assert "r.ddd.json#rasters[1]: also claims this event" in rendered
+
+    @pytest.mark.parametrize("spelling", ["", "two wds", "far too long"])
+    def test_a_reference_is_spelled_the_way_a_declaration_is(
+        self, tree: Path, spelling: str
+    ) -> None:
+        """A name no rasters file could declare is refused where it is written.
+
+        ``unknown-raster`` used to answer for it - ``'X' is measured in ''`` - which sends
+        the reader looking for a declaration that could not exist, the way a mistyped
+        ``section`` has always been refused by its own spelling rule instead.
+        """
+        _, bag = run_analysis(tree, self.files(declare("local", "X", raster=spelling)))
+        assert checks(bag) == ["schema"]
+        assert "a.ddd.json#component.interface[0].definition.raster" in messages(bag)
+
+    def test_a_component_default_is_spelled_the_way_a_declaration_is(self, tree: Path) -> None:
+        _, bag = run_analysis(tree, self.files(declare("local", "X"), raster=""))
+        assert checks(bag) == ["schema"]
+        assert "a.ddd.json#component.raster" in messages(bag)
 
     def test_a_declared_raster_is_clean(self, tree: Path) -> None:
         dictionary, bag = run_analysis(tree, self.files(declare("local", "X", raster="10ms")))

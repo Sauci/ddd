@@ -492,15 +492,16 @@ def _member_type(member: ResolvedMember, spell: Callable[[Datatype], str]) -> st
 
     ``spell`` decides how a base datatype is written - the ISO table for ``c_type``, the
     datatype's own name for ``datatype``. An external one is spelled verbatim either way -
-    the header the types header includes is what defines it. The fallback through ``str`` is
-    for a forced generation only: a member whose type resolved to nothing has been reported
-    already, and ``--force`` writes artefacts around it rather than crashing over it.
+    the header the types header includes is what defines it, and so is the name of a
+    structure: under ``--force`` that name may be one nothing declares, which the run has
+    already reported as ``unknown-type`` and which the compiler will ask for in its turn.
     """
     if member.datatype is not None:
         return spell(member.datatype)
     if member.external is not None:
         return member.external
-    return str(member.type)
+    assert member.type is not None  # the contract states exactly one of the three
+    return member.type
 
 
 def _group(

@@ -6,38 +6,15 @@ import argparse
 import contextlib
 import json
 import os
+import re
 import sys
 import unicodedata
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-
-from pydantic import BaseModel
+from typing import TYPE_CHECKING, Any
 
 from ddd import __version__
-from ddd.analysis import analyze
-from ddd.backends import (
-    DICTIONARY_ARTEFACT,
-    A2lBackend,
-    A2lOptions,
-    Backend,
-    ByteOrder,
-    CBackend,
-    COptions,
-    GeneratedFile,
-    Manifest,
-    RemovalError,
-    WriteStatus,
-    addressed_symbols,
-    describe_write_failure,
-    example_template_directory,
-    load_address_map,
-    render,
-    write,
-)
-from ddd.build_info import BuildInfo, build_info_text
-from ddd.compare import compare, renames
 from ddd.diagnostics import (
     CHECKS,
     STANDALONE_POLICY,
@@ -47,35 +24,28 @@ from ddd.diagnostics import (
     SeverityPolicy,
     UnknownCheckError,
 )
-from ddd.identity import UNREADABLE, UNWRITABLE, assign
-from ddd.ir import Comparable, DataDictionary
-from ddd.loading import load_dictionary, load_workspace, resolve_path
-from ddd.models import (
-    ComponentFile,
-    ConstantsFile,
-    ProjectFile,
-    RastersFile,
-    SectionsFile,
-    TypesFile,
-    UnitsFile,
-    format_number,
-    format_shape,
-    raw_reading,
-)
-from ddd.models.schema import PublishedSchema
-from ddd.plugins import (
+from ddd.names import (
     BUILT_IN_ARTEFACTS,
     BUILT_IN_GENERATED,
+    BYTE_ORDERS,
     PLUGIN_NAME_PATTERN,
-    Plugin,
-    PluginInvalidError,
-    PluginNotFoundError,
-    backend_of,
-    block_model,
-    guarding_plugin_model,
-    load_plugin,
-    run_compare_hooks,
+    SCHEMA_KINDS,
 )
+
+if TYPE_CHECKING:
+    from pydantic import BaseModel
+
+    from ddd.backends import Backend, GeneratedFile, WriteStatus
+    from ddd.ir import Comparable, DataDictionary
+    from ddd.plugins import Plugin
+
+# Everything else this module needs is imported by the function that needs it, and the
+# paragraph above says which few are not. `ddd --version` and `ddd --help` are answered by
+# argparse before any handler runs, and a cmake configure step asks for the version once per
+# project while a pre-commit hook asks per file; reaching ddd.models to answer either costs
+# about a third of a second of pydantic building contracts the answer never looks at. The
+# names argparse needs while it is still deciding what was asked for are in :mod:`ddd.names`,
+# which imports nothing, and ddd.diagnostics comes with the package itself.
 
 EXIT_OK = 0
 EXIT_FINDINGS = 1
@@ -165,7 +135,7 @@ def _plugin_artefact(arguments: Sequence[str]) -> str | None:
     """
     if len(arguments) >= 2 and arguments[0] == "generate":
         name = arguments[1]
-        if name not in BUILT_IN_ARTEFACTS and PLUGIN_NAME_PATTERN.match(name):
+        if name not in BUILT_IN_ARTEFACTS and re.fullmatch(PLUGIN_NAME_PATTERN, name):
             return name
     return None
 
@@ -389,7 +359,7 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
             "documentation and validation while a description file is being written."
         ),
     )
-    schema.add_argument("kind", choices=[*sorted(_SCHEMA_MODELS), SCHEMA_ALL])
+    schema.add_argument("kind", choices=[*SCHEMA_KINDS, SCHEMA_ALL])
     schema.add_argument(
         "-o",
         "--output",
@@ -524,11 +494,11 @@ def _add_generate_arguments(
     if with_a2l:
         parser.add_argument(
             "--byte-order",
-            choices=[order.value for order in ByteOrder],
+            choices=list(BYTE_ORDERS),
             # No default here: the handler resolves it, so that a run which subtracted the a2l
             # can tell an option it must refuse from one the parser filled in.
             default=None,
-            help=f"byte order reported in the a2l file, default: {ByteOrder.LITTLE.value}",
+            help=f"byte order reported in the a2l file, default: {BYTE_ORDERS[0]}",
         )
         parser.add_argument(
             "--address-map",
@@ -625,6 +595,8 @@ def _where(path: Path) -> Location:
     the very file it is about. The text report is unchanged, because it renders every path
     back against the working directory.
     """
+    from ddd.loading import resolve_path
+
     return Location(resolve_path(path))
 
 
@@ -653,6 +625,8 @@ def _plugins_from_arguments(
     in, and the mistake is on the command line. The checks are registered on ``bag`` when
     one is given, so that a provisional override can be verified against them.
     """
+    from ddd.plugins import PluginInvalidError, PluginNotFoundError, load_plugin
+
     plugins: list[Plugin] = []
     for spelling in specs:
         try:
@@ -676,6 +650,9 @@ def _command_check(args: argparse.Namespace) -> int:
     # analysis, on a bag of its own - and those are known only once it has been read. So a
     # `-W` naming a plugin's check is verified below rather than at the end of the analysis,
     # which is where a run without a baseline verifies it.
+    from ddd.compare import compare
+    from ddd.plugins import run_compare_hooks
+
     resolved, bag = _analyze(args, verify=args.baseline is None)
     dictionary = resolved.dictionary if resolved is not None else None
     # With a baseline, one command answers both questions and returns one exit code, which
@@ -718,6 +695,9 @@ def _command_check(args: argparse.Namespace) -> int:
 
 
 def _command_compare(args: argparse.Namespace) -> int:
+    from ddd.compare import compare, renames
+    from ddd.plugins import run_compare_hooks
+
     policy = SeverityPolicy.from_strings(args.severity, strict=args.strict)
     bag = DiagnosticBag(policy)
     # The baseline is a delivery that has already gone out; its own findings are not this
@@ -894,6 +874,8 @@ def _written(status: WriteStatus, shown: str, prefix: str = "wrote") -> str:
     run - padded so that the paths line up under ``unchanged``. A file the run took back
     carries no status in parentheses: ``removed`` is the whole of what happened to it.
     """
+    from ddd.backends import WriteStatus
+
     if status is WriteStatus.UNCHANGED:
         return f"unchanged   {shown}"
     if status is WriteStatus.REMOVED:
@@ -923,6 +905,8 @@ def _dictionary_file(
     it is weighed against the files the backends claim; a clash is refused before anything is
     written, as :func:`~ddd.backends.base.render` refuses two backends claiming one file.
     """
+    from ddd.backends import DICTIONARY_ARTEFACT, GeneratedFile
+
     if path.resolve() in {artefact.path for artefact in artefacts}:
         msg = (
             f"the dictionary and an artefact of this run would both write '{path.name}'; "
@@ -933,6 +917,23 @@ def _dictionary_file(
 
 
 def _command_generate(args: argparse.Namespace) -> int:
+    from ddd.backends import (
+        DICTIONARY_ARTEFACT,
+        A2lBackend,
+        A2lOptions,
+        ByteOrder,
+        CBackend,
+        COptions,
+        Manifest,
+        RemovalError,
+        addressed_symbols,
+        describe_write_failure,
+        load_address_map,
+        render,
+        write,
+    )
+    from ddd.plugins import backend_of
+
     _selected(args)
 
     resolved, bag = _analyze(args)
@@ -988,7 +989,7 @@ def _command_generate(args: argparse.Namespace) -> int:
             backends.append(
                 A2lBackend(
                     A2lOptions(
-                        byte_order=ByteOrder(args.byte_order or ByteOrder.LITTLE.value),
+                        byte_order=ByteOrder(args.byte_order or BYTE_ORDERS[0]),
                         addresses=addresses,
                     ),
                     GENERATOR,
@@ -1144,6 +1145,8 @@ def _write_dictionary(
     whatever it is handed. The write sits in a block of its own, so a target that cannot be
     written is reported after the findings of the run, as ``generate`` reports one.
     """
+    from ddd.backends import GeneratedFile, describe_write_failure, write
+
     with _reported_on_failure(bag, output_format, sys.stderr):
         _refuse_a_directory(path, "-o")
         _refuse_a_source(path, "-o", *resolved.sources)
@@ -1171,6 +1174,8 @@ def _command_id(args: argparse.Namespace) -> int:
     cannot write - leaving everything after it unstamped and saying nothing about what it
     did before.
     """
+    from ddd.identity import UNREADABLE, UNWRITABLE, assign
+
     written = 0
     skipped: list[tuple[Path, str]] = []
     for path in args.files:
@@ -1187,16 +1192,35 @@ def _command_id(args: argparse.Namespace) -> int:
     return EXIT_FINDINGS if skipped else EXIT_OK
 
 
-_SCHEMA_MODELS: dict[str, type[BaseModel]] = {
-    "project": ProjectFile,
-    "component": ComponentFile,
-    "types": TypesFile,
-    "units": UnitsFile,
-    "sections": SectionsFile,
-    "rasters": RastersFile,
-    "constants": ConstantsFile,
-    "dictionary": DataDictionary,
-}
+def schema_models() -> dict[str, type[BaseModel]]:
+    """The contract behind each name of :data:`ddd.names.SCHEMA_KINDS`.
+
+    A function rather than a table, so that building the parser - which needs the names and
+    nothing else - does not build every model in the package to learn them.
+    """
+
+    from ddd.ir import DataDictionary
+    from ddd.models import (
+        ComponentFile,
+        ConstantsFile,
+        ProjectFile,
+        RastersFile,
+        SectionsFile,
+        TypesFile,
+        UnitsFile,
+    )
+
+    return {
+        "project": ProjectFile,
+        "component": ComponentFile,
+        "types": TypesFile,
+        "units": UnitsFile,
+        "sections": SectionsFile,
+        "rasters": RastersFile,
+        "constants": ConstantsFile,
+        "dictionary": DataDictionary,
+    }
+
 
 SCHEMA_ALL = "all"
 """``ddd schema all -o DIR`` writes every schema at once, for a project to commit."""
@@ -1213,9 +1237,11 @@ def schema_text(kind: str, plugins: Sequence[Plugin] = ()) -> str:
     plugins, the ``extensions`` property of a definition and of the project closes over their
     models; the dictionary schema stays open, a dump being a produced document.
     """
+    from ddd.models.schema import PublishedSchema
+
     # by_alias so that the key is '$schema' rather than the python attribute name, and
     # PublishedSchema so that what an editor shows is documentation rather than python.
-    published = _SCHEMA_MODELS[kind].model_json_schema(
+    published = schema_models()[kind].model_json_schema(
         by_alias=True, schema_generator=PublishedSchema
     )
     if plugins and kind in ("component", "project"):
@@ -1236,6 +1262,9 @@ def _close_extensions(
     plugin's own model - however nested - may freely declare a field named ``extensions`` of
     its own without that field being mistaken for the block it is itself contributing to.
     """
+    from ddd.models.schema import PublishedSchema
+    from ddd.plugins import block_model, guarding_plugin_model
+
     definitions: dict[str, Any] = schema.setdefault("$defs", {})
     targets = [
         node
@@ -1278,6 +1307,9 @@ def _command_build_info(args: argparse.Namespace) -> int:
     # Built rather than recorded blindly: a typo in a severity override would otherwise be
     # copied into the file as a policy nobody can apply, and would surface at build time
     # instead of here, while the project is being configured.
+    from ddd.backends import describe_write_failure
+    from ddd.build_info import BuildInfo, build_info_text
+
     SeverityPolicy.from_strings(args.severity, strict=args.strict)
     info = BuildInfo(
         # Absolute, because whoever reads this file is not in the directory the build ran in.
@@ -1301,6 +1333,8 @@ def _write_schema(path: Path, kind: str, plugins: Sequence[Plugin] = ()) -> None
     # Guarded like every other file this tool writes: `ddd schema all -o afile.txt` answered
     # `[WinError 183] Cannot create a file when that file already exists: 'afile.txt'`, which
     # is the mkdir talking about a file the caller named as a directory, and says neither.
+    from ddd.backends import describe_write_failure
+
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         # newline="" keeps the line endings as written on every platform, the same discipline
@@ -1321,7 +1355,7 @@ def _command_schema(args: argparse.Namespace) -> int:
                 f"ddd schema {SCHEMA_ALL} -o schemas"
             )
             raise ValueError(msg)
-        for kind in sorted(_SCHEMA_MODELS):
+        for kind in SCHEMA_KINDS:
             _write_schema(args.output / SCHEMA_FILENAME.format(kind=kind), kind, plugins)
         return EXIT_OK
 
@@ -1344,6 +1378,8 @@ def _command_cmake_dir(args: argparse.Namespace) -> int:
 
 def _command_templates_dir(args: argparse.Namespace) -> int:
     """Print the directory holding the example templates, to copy into a project."""
+    from ddd.backends import example_template_directory
+
     directory = example_template_directory()
     if directory is None:
         print("ddd: the example templates are not part of this installation", file=sys.stderr)
@@ -1364,6 +1400,8 @@ def _command_artefacts(args: argparse.Namespace) -> int:
     the resolved dictionary, so they are knowable only once the project has been assembled,
     which is exactly what ``ddd generate all --dry-run`` does.
     """
+    from ddd.loading import load_workspace
+
     bag = DiagnosticBag()
     if args.project is not None and args.plugin:
         msg = "--plugin cannot be given together with a project, which names its own plugins"
@@ -1438,6 +1476,8 @@ def _command_sources(args: argparse.Namespace) -> int:
     include, say - is still reported, beside the listing rather than instead of it: on
     stderr in text, already carried by the diagnostics document in json.
     """
+    from ddd.loading import load_workspace
+
     bag = DiagnosticBag()
     workspace = load_workspace(args.project, bag)
     if args.format == "json":
@@ -1536,10 +1576,15 @@ def _analyze(
     ``verify`` is left to the caller by ``ddd check --baseline`` alone, which knows the
     plugins of the run only once the baseline has been read as well.
     """
+    from ddd.analysis import analyze
+    from ddd.loading import load_workspace
+
     # The standalone policy goes first, so that an explicit -W on the same run overrides it:
     # the flag sets the floor for a component read alone, the caller still has the last word.
     standalone = list(STANDALONE_POLICY) if getattr(args, "standalone", False) else []
-    policy = SeverityPolicy.from_strings([*standalone, *args.severity], strict=args.strict)
+    policy = SeverityPolicy.from_strings(
+        [*standalone, *args.severity], strict=args.strict, standalone=bool(standalone)
+    )
     bag = DiagnosticBag(policy)
     workspace = load_workspace(args.project, bag)
     if workspace is None:
@@ -1571,7 +1616,11 @@ def _read_dictionary(path: Path, bag: DiagnosticBag) -> Resolved | None:
     Accepting both is what makes the command usable in a pipeline: the baseline is normally
     an archived dump, while the candidate is the project sitting in the working tree.
     """
-    if _holds_a_description(path):
+    from ddd.analysis import analyze
+    from ddd.loading import load_dictionary, load_workspace, read_json_document
+
+    document = read_json_document(path)
+    if _holds_a_description(document):
         workspace = load_workspace(path, bag)
         if workspace is None or bag.has_errors:
             return None
@@ -1582,7 +1631,10 @@ def _read_dictionary(path: Path, bag: DiagnosticBag) -> Resolved | None:
             True,
             workspace.sources(),
         )
-    dictionary = load_dictionary(path, bag)
+    # Handed the document this already read rather than leaving the reader to read it again:
+    # a dumped dictionary is the file a build archives whole, and the 45 MB one of a thousand
+    # object project costs about a third of a second per pass, twice over in a comparison.
+    dictionary = load_dictionary(path, bag, document)
     if dictionary is None:
         return None
     archived = _where(path)
@@ -1615,6 +1667,8 @@ def _refuse_a_source(path: Path, option: str, *sources: Path) -> None:
     Compared on the resolved path, as the sources themselves are, so that an alias, a
     relative spelling or a junction cannot slip past the comparison.
     """
+    from ddd.loading import resolve_path
+
     if resolve_path(path) in set(sources):
         msg = (
             f"{option} would write over '{path.as_posix()}', which this run reads; "
@@ -1645,7 +1699,7 @@ def _read_baseline(path: Path, bag: DiagnosticBag, standalone: bool = False) -> 
     about how the file was handed over, and the baseline was handed over the same way.
     """
     floor = STANDALONE_POLICY if standalone else ()
-    own = DiagnosticBag(SeverityPolicy.from_strings(floor, strict=False))
+    own = DiagnosticBag(SeverityPolicy.from_strings(floor, strict=False, standalone=standalone))
     resolved = _read_dictionary(path, own)
     for diagnostic in own.sorted:
         if diagnostic.severity is Severity.ERROR:
@@ -1663,21 +1717,14 @@ def _read_baseline(path: Path, bag: DiagnosticBag, standalone: bool = False) -> 
     return resolved
 
 
-def _holds_a_description(path: Path) -> bool:
+def _holds_a_description(document: dict[str, Any] | None) -> bool:
     """True for a project or component file; a broken file is left to the reader to report.
 
-    ``utf-8-sig`` for the reason the loader reads with it: a description file carrying a byte
-    order mark is accepted by ``ddd check``, and sniffing it with plain utf-8 would misroute
-    it here as a dumped dictionary. Every way this sniff can fail - not valid json, not valid
-    utf-8, which is a ``ValueError`` like the rest, nested too deeply to parse at all -
-    answers ``False`` rather than raising, because this is only a sniff: whichever reader the
-    file actually reaches is what has something to say about it.
+    A file :func:`read_json_document` could not read at all answers ``False`` rather than
+    raising, because this is only a sniff: whichever reader the file actually reaches is what
+    has something to say about it, and it reads the file again to say it.
     """
-    try:
-        data = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError, RecursionError):
-        return False
-    return isinstance(data, dict) and ("project" in data or "component" in data)
+    return document is not None and ("project" in document or "component" in document)
 
 
 def _diagnostics_payload(bag: DiagnosticBag) -> dict[str, Any]:
@@ -1742,6 +1789,8 @@ def _init_cell(entry: Comparable) -> str:
     worth of numbers belongs to the hover and the calibration tool. Text output only: the
     json payload of ``ddd list`` is a published shape and carries the raw value as data.
     """
+    from ddd.models import format_number, raw_reading
+
     init = entry.init
     if init is None:
         return "-"
@@ -1771,6 +1820,8 @@ def _display_width(text: str) -> int:
 
 
 def _print_table(dictionary: DataDictionary) -> None:
+    from ddd.models import format_shape
+
     rows = [("VARIABLE", "KIND", "DATATYPE", "UNIT", "SHAPE", "INIT", "PRODUCER", "CONSUMERS")]
     for entry in dictionary.listed:
         owner = entry.owner or "<unresolved>"

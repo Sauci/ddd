@@ -11,12 +11,18 @@ import dataclasses
 import difflib
 import math
 from collections import defaultdict
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Final
 
-from ddd.compare import ComparedField, differing, spell_out
-from ddd.diagnostics import DiagnosticBag, Location
+from ddd.compare import (
+    ComparedField,
+    describe_condition,
+    describe_references,
+    differing,
+    spell_out,
+)
+from ddd.diagnostics import CHECKS, DiagnosticBag, Location, index_order
 from ddd.ir import (
     ComponentDeclaration,
     DataDictionary,
@@ -141,6 +147,47 @@ costs the outputs one entry per member per element.
 _INT_MIN, _INT_MAX = -(2**31), 2**31 - 1
 """Range of a c ``int`` on the 32 bit targets DDD generates for; bounds every enumerator."""
 
+
+@dataclass(frozen=True, slots=True)
+class _Storage:
+    """The raw values a value's storage holds, and how a finding names that storage.
+
+    A bitfield is why this is not simply a :class:`~ddd.models.Datatype`: two bits of a
+    ``uint8`` hold 0 to 3, and a finding phrased as the datatype told the reader that 5 does
+    not fit into a byte - a claim they know to be false, about a member whose real bound is
+    written two keys away. The c ``int`` every enumerator has to be representable in is the
+    third of these, and is a bound with no datatype at all.
+    """
+
+    phrase: str
+    raw_min: float
+    raw_max: float
+
+    @classmethod
+    def of(cls, datatype: Datatype) -> _Storage:
+        """What a whole datatype holds, named by the datatype."""
+        return cls(datatype.value, datatype.raw_min, datatype.raw_max)
+
+    @classmethod
+    def of_member(cls, member: Member) -> _Storage:
+        """What a member holds: its bitfield's range, or its datatype's."""
+        assert member.datatype is not None
+        if member.bits is None:
+            return cls.of(member.datatype)
+        raw_min, raw_max = bitfield_range(member.datatype, member.bits)
+        return cls(f"the {member.bits}-bit field of {member.datatype.value}", raw_min, raw_max)
+
+
+_C_INT: Final = _Storage("a c 'int', which every enumerator has to", _INT_MIN, _INT_MAX)
+"""The bound C11 6.7.2.2 puts on every enumerator, phrased for the finding that reports it."""
+
+_INIT_VALUES_NAMED: Final = 3
+"""How many further init values a folded ``init-invalid`` spells beside the first.
+
+Enough to show that a table holds more than one wrong number and what kind of numbers they
+are; the count beside them says how many there are in all. A table is initialised with
+thousands of values and the finding has to stay a line."""
+
 _EXPECTED_KIND: Final = {
     "axis": ObjectKind.AXIS,
     "x_axis": ObjectKind.AXIS,
@@ -164,13 +211,6 @@ def _describe_shape(definition: DataObject) -> str:
 def _describe_limits(definition: DataObject) -> str:
     low, high = definition.physical_limits().as_tuple()
     return f"[{format_number(low)}, {format_number(high)}]"
-
-
-def _describe_references(definition: DataObject) -> str:
-    references = definition.references
-    if not references:
-        return "none"
-    return ", ".join(f"{key}={value}" for key, value in sorted(references.items()))
 
 
 def _conversion_value(definition: DataObject) -> object:
@@ -213,7 +253,9 @@ _INTERFACE_FIELDS: tuple[ComparedField[DataObject], ...] = (
     # ``limits`` are not in the table: a declaration may omit them, so the resolved answer is
     # not always the reference declaration's - see :meth:`_Analysis._limits_reference`, which
     # settles whose stated limits count and compares every other stated set against those.
-    ComparedField("references", lambda d: d.references, _describe_references),
+    ComparedField(
+        "references", lambda d: d.references, lambda d: describe_references(d.references)
+    ),
     # Not optional, unlike limits, and it cannot be: the key is required on every definition,
     # so there is no silence to interpret. Every component that reads the object gets the
     # qualifier in its own header, which means every description of it has to agree.
@@ -319,6 +361,18 @@ class DeclarationRef:
         return self.owner.declaration_location(self.index, suffix)
 
 
+def _is_local(producer: DeclarationRef | None) -> bool:
+    """Whether the object is one component's alone: its producing declaration says so.
+
+    One question, one answer, for the two shapes a variable comes in: a plain one resolves
+    through :class:`Variable` and a structured one is built without it, and the two spelled
+    it out apart - so a rule stated once about what ``local`` means was a rule to keep in
+    step twice. It is what the generated header hides from every other component, and what
+    ``local-conflict`` is about.
+    """
+    return producer is not None and producer.scope is Scope.LOCAL
+
+
 def _resolved_raster(producer: DeclarationRef | None, definition: DataObject) -> str | None:
     """The raster of a variable: the producing declaration's own key, else its component's.
 
@@ -368,7 +422,7 @@ class Variable:
 
     @property
     def is_local(self) -> bool:
-        return self.producer is not None and self.producer.scope is Scope.LOCAL
+        return _is_local(self.producer)
 
     @property
     def consumers(self) -> tuple[str, ...]:
@@ -443,8 +497,12 @@ def _ordered_structures(declared: dict[str, LoadedType]) -> list[LoadedType]:
     Alphabetical order does not do it: ``Sensor_t`` sorts before ``Status_t`` and nests it.
 
     A depth first walk in name order, so the result is stable whichever way the includes
-    happened to expand. The graph is known to be acyclic by the time this runs; a cycle is
-    reported by :meth:`_Analysis._check_types` and the structures in it are left out.
+    happened to expand. A cycle is reported by :meth:`_Analysis._check_types` and the
+    structures on it are still listed here, as every declared structure is: the walk carries
+    the names it is still following and does not follow one of them a second time, so a cycle
+    costs it nothing, and ``type-cycle`` is an error, which is what stops a template from
+    looping over a dictionary nothing can be generated from. A ``--force`` run that writes the
+    header anyway writes a structure that names the one holding it, and the compiler says so.
 
     Walked with an explicit stack rather than by recursion, because this one runs over every
     declared type - the ones :data:`_MAX_TYPE_NESTING` refused included, since they still
@@ -604,6 +662,28 @@ def _nesting_depths(declared: dict[str, LoadedType]) -> tuple[dict[str, int], se
     return depths, cyclic
 
 
+def _repeats(loaded: LoadedComponent) -> dict[int, int]:
+    """Where a repeated declaration's name was first declared, by the repeat's own index.
+
+    A component declaring one name twice is ``duplicate-declaration``, and the second copy
+    is ignored for the rest of the run - by every check, which is what this answers for.
+    Decided on the name alone, before anything resolves: a second copy of a name whose first
+    copy could not resolve is still a second copy. Read by the checks that walk a component's
+    interface of their own - its units, its sections, its rasters - so that a copy nothing
+    reads is not answered with a list of mistakes in it, none of which the reader can fix
+    other than by deleting the copy the first finding already names.
+    """
+    first: dict[str, int] = {}
+    repeats: dict[int, int] = {}
+    for index, declaration in enumerate(loaded.component.interface):
+        name = declaration.definition.name
+        if name in first:
+            repeats[index] = first[name]
+        else:
+            first[name] = index
+    return repeats
+
+
 def _resolve_component(loaded: LoadedComponent, kept: set[tuple[str, int]]) -> ResolvedComponent:
     """The component and its interface, in the order the author wrote it.
 
@@ -693,12 +773,14 @@ class _Analysis:
         not unread. Erasing dropped declarations from the census made both findings fire,
         each pointing at the file the mistake was not in."""
         self._dropped: dict[tuple[str, int], bool] = {}
-        """The declarations that were dropped as unresolvable, and whether a finding said why.
+        """The declarations that were dropped as unresolvable, and whether the drop is explained.
 
-        ``True`` when the cause was reported at whatever severity, ``False`` when it was
-        silenced; a silenced cause is what :meth:`_refuse` and :meth:`_drop_for_type` turn
-        into ``incomplete-project``, because an absence nothing mentions is the one way this
-        tool is wrong without anybody being told."""
+        ``True`` when the cause was reported at whatever severity - or when this run is
+        itself the reason nobody reported it, which is what
+        :meth:`_silenced_by_construction` answers - and ``False`` when it was silenced; a
+        silenced cause is what :meth:`_refuse` and :meth:`_drop_for_type` turn into
+        ``incomplete-project``, because an absence nothing mentions is the one way this tool
+        is wrong without anybody being told."""
         self._refs: dict[str, list[DeclarationRef]] = defaultdict(list)
         self._effective: dict[str, DataObject] = {}
         """The definition that counts for each name: the producer's, once known."""
@@ -735,7 +817,9 @@ class _Analysis:
         self._check_enumerator_collisions(ordered)
         self._check_type_name_collisions(ordered)
         self._check_constant_collisions(ordered)
-        self._check_identity_collisions(ordered)
+        # Over the census, dropped declarations included: an id is claimed by the declaration
+        # that writes it down, whether or not the object it names could be resolved.
+        self._check_identity_collisions(sorted(self._census.items()))
 
         # Ownership is decided over every declaration, dropped ones included, because the
         # producer owns the definition and a dropped producer is still the one that claimed
@@ -797,7 +881,10 @@ class _Analysis:
             types=tuple(self._resolve_struct(entry) for entry in _ordered_structures(self._types)),
             instances=tuple(instance for instance, _ in instances),
             leaves=tuple(
-                sorted((leaf for _, leaves in instances for leaf in leaves), key=lambda x: x.path)
+                sorted(
+                    (leaf for _, leaves in instances for leaf in leaves),
+                    key=lambda leaf: index_order(leaf.path),
+                )
             ),
             plugins=tuple(sorted(self._plugins)),
             extensions=extensions,
@@ -845,13 +932,10 @@ class _Analysis:
             return
         for index, member in enumerate(structure.members):
             if isinstance(member.conversion, EnumConversion):
-                assert member.datatype is not None
                 location = entry.location(f"members[{index}].conversion")
-                self._register_enum(member.conversion, location, member.datatype)
-                raw_min, raw_max = _member_raw_range(member)
-                self._check_enum_fits(
-                    member.conversion, raw_min, raw_max, member.datatype.value, location
-                )
+                storage = _Storage.of_member(member)
+                self._register_enum(member.conversion, location, storage)
+                self._check_enum_fits(member.conversion, storage, location)
 
     def _check_member_limits(self, entry: LoadedType) -> None:
         """A member's stated limits are held to its storage, as a declaration's are.
@@ -867,12 +951,13 @@ class _Analysis:
             if member.limits is None or member.datatype is None:
                 continue
             assert member.conversion is not None
-            low, high = physical_range(member.conversion, *_member_raw_range(member))
+            storage = _Storage.of_member(member)
+            low, high = physical_range(member.conversion, storage.raw_min, storage.raw_max)
             self._check_limits_fit(
                 member.limits,
                 low,
                 high,
-                member.datatype,
+                storage.phrase,
                 entry.location(f"members[{index}].limits"),
             )
 
@@ -893,13 +978,14 @@ class _Analysis:
         conversion = declared.conversion
         if isinstance(conversion, EnumConversion):
             location = entry.location("conversion")
-            self._register_enum(conversion, location, datatype)
-            self._check_enum_fits(
-                conversion, datatype.raw_min, datatype.raw_max, datatype.value, location
-            )
+            storage = _Storage.of(datatype)
+            self._register_enum(conversion, location, storage)
+            self._check_enum_fits(conversion, storage, location)
         if declared.limits is not None:
             low, high = conversion_range(conversion, datatype)
-            self._check_limits_fit(declared.limits, low, high, datatype, entry.location("limits"))
+            self._check_limits_fit(
+                declared.limits, low, high, datatype.value, entry.location("limits")
+            )
 
     def _check_string_members(self, entry: LoadedType) -> None:
         """A member naming a string type is a ``value`` member of one dimension.
@@ -963,13 +1049,20 @@ class _Analysis:
         )
 
     def _resolve_member(self, member: Member) -> ResolvedMember:
-        """One member as the dictionary records it, its storage worked out from the registry."""
+        """One member as the dictionary records it, its storage worked out from the registry.
+
+        A member naming a type nobody declares is the one case the registry answers nothing
+        about, and the structure still reaches the dictionary - ``unknown-type`` is an error,
+        and ``--force`` writes the artefacts around it. So the name it names is what it
+        records, under ``type``: the contract asks every member to hold something, and a name
+        the project does not declare is what this file says it holds.
+        """
         external = self._member_external(member)
         return ResolvedMember(
             name=member.name,
             description=member.description,
             datatype=self._member_storage(member),
-            type=self._member_structure(member),
+            type=self._member_structure(member) or self._unresolved_type(member),
             external=member.typename if external is not None else None,
             header=external.header if external is not None else None,
             dimensions=member.dimensions,
@@ -1003,6 +1096,16 @@ class _Analysis:
         entry = self._declared_of(member)
         return entry if isinstance(entry, ExternalType) else None
 
+    def _unresolved_type(self, member: Member) -> str | None:
+        """The name of a member's type when no file declares it; nothing when one does.
+
+        Read by :meth:`_resolve_member` alone, and only once the registry has answered
+        nothing about the name: a member states either a datatype or a typename, so a member
+        the registry cannot place is one naming a type this project has not got - which
+        ``_check_types`` has already reported as ``unknown-type`` on the structure holding it.
+        """
+        return member.typename if self._declared_of(member) is None else None
+
     def _check_units(self) -> None:
         """Every stated unit is in the vocabulary, where the project declares one.
 
@@ -1028,7 +1131,10 @@ class _Analysis:
                 )
 
         for loaded in self._workspace.components:
+            repeats = _repeats(loaded)
             for index, declaration in enumerate(loaded.component.interface):
+                if index in repeats:
+                    continue
                 check(
                     declaration.definition.unit,
                     loaded.declaration_location(index, "definition.unit"),
@@ -1056,10 +1162,11 @@ class _Analysis:
         """
         declared = {entry.section: entry.declared for entry in self._workspace.sections}
         for loaded in self._workspace.components:
+            repeats = _repeats(loaded)
             for index, declaration in enumerate(loaded.component.interface):
                 definition = declaration.definition
                 named = definition.section
-                if named is None:
+                if named is None or index in repeats:
                     continue
                 where = loaded.declaration_location(index, "definition.section")
                 entry = declared.get(named)
@@ -1120,10 +1227,11 @@ class _Analysis:
                     f"raster any file of this project declares{nearest}",
                     loaded.location("component.raster"),
                 )
+            repeats = _repeats(loaded)
             for index, declaration in enumerate(loaded.component.interface):
                 definition = declaration.definition
                 named = definition.raster
-                if named is None or named in declared:
+                if named is None or named in declared or index in repeats:
                     continue
                 nearest = _did_you_mean(named, sorted(declared), cutoff=0.5)
                 self._bag.add(
@@ -1537,12 +1645,8 @@ class _Analysis:
             if member.datatype is None:
                 continue
             assert member.conversion is not None
-            raw_min, raw_max = (
-                bitfield_range(member.datatype, member.bits)
-                if member.bits is not None
-                else (member.datatype.raw_min, member.datatype.raw_max)
-            )
-            if not _derived_range_is_finite(member.conversion, raw_min, raw_max):
+            storage = _Storage.of_member(member)
+            if not _derived_range_is_finite(member.conversion, storage.raw_min, storage.raw_max):
                 location = entry.location(f"members[{index}].conversion")
                 reported = (
                     self._bag.add("schema", _infinite_limits_message(member.datatype), location)
@@ -1824,6 +1928,12 @@ class _Analysis:
         place to edit; the first is named in the message. The one that keeps the id is the
         one the comparison of a later delivery would pair, and choosing that by file order
         would make the report depend on the order of the includes.
+
+        Walked over the census, as ownership is: a declaration that was dropped still wrote
+        the id down. Read over the surviving declarations only, a copied declaration whose
+        type nobody declares hid the copied id along with itself, and the reader met it as a
+        second wave once the first cause was fixed - two mistakes made in one edit, reported
+        one release apart.
         """
         seen: dict[str, DeclarationRef] = {}
         for name, refs in ordered:
@@ -1887,9 +1997,11 @@ class _Analysis:
         The drop is recorded against the declaration rather than the name, because a name may
         be declared by several components and only some of those declarations dropped.
         """
-        reported = self._bag.add(check, message, location, notes) is not None
-        self._dropped[ref.key] = self._dropped.get(ref.key, False) or reported
-        if reported:
+        explained = self._bag.add(check, message, location, notes) is not None or (
+            self._silenced_by_construction(check)
+        )
+        self._dropped[ref.key] = self._dropped.get(ref.key, False) or explained
+        if explained:
             return
         self._bag.add(
             "incomplete-project",
@@ -1898,6 +2010,23 @@ class _Analysis:
             f"reading the dictionary - the listing, the dump, every backend - carries it either",
             location,
         )
+
+    def _silenced_by_construction(self, check: str) -> bool:
+        """Whether this run is itself the reason nobody reported that check.
+
+        A component read on its own - ``ddd check --standalone``, a build's per-component
+        target, a file in an editor that no build claims - is not shown the files its
+        constants, types, sections and axes are declared in, so the checks about them are
+        silenced by :data:`~ddd.diagnostics.STANDALONE_POLICY` rather than by anybody's
+        opinion of them. A declaration dropped for one of those is not an omission: what it
+        names is there, in a file this run was not handed.
+
+        Every other silence is a caller's own ``-W``, and a declaration dropped for one of
+        those leaves the listing, the dump and every backend a row short - which is exactly
+        what ``incomplete-project`` exists to say, whether the run was given one component or
+        a whole project.
+        """
+        return self._bag.policy.standalone and CHECKS[check].needs_every_component
 
     def _shape_resolves(self, ref: DeclarationRef) -> bool:
         """Whether every constant this declaration's shape names is declared.
@@ -2175,8 +2304,9 @@ class _Analysis:
         dump and every backend, and the one place that can say so is this declaration.
         """
         cause = self._poisoned_types[named]
-        self._dropped[ref.key] = cause.reported
-        if cause.reported:
+        explained = cause.reported or self._silenced_by_construction(cause.check)
+        self._dropped[ref.key] = explained
+        if explained:
             return
         self._bag.add(
             "incomplete-project",
@@ -2262,13 +2392,13 @@ class _Analysis:
                 loaded.location(),
             )
 
-        seen: dict[str, DeclarationRef] = {}
+        repeats = _repeats(loaded)
         for index, declaration in enumerate(component.interface):
             original = DeclarationRef(loaded, index, declaration)
-            previous = seen.get(original.name)
-            if previous is not None:
-                # Decided on the name alone, before resolution: a second copy of a name whose
-                # first copy could not resolve is still a second copy.
+            if index in repeats:
+                previous = DeclarationRef(
+                    loaded, repeats[index], component.interface[repeats[index]]
+                )
                 self._bag.add(
                     "duplicate-declaration",
                     f"component '{component.name}' declares '{original.name}' twice "
@@ -2277,7 +2407,6 @@ class _Analysis:
                     notes=[("first declared here", previous.location())],
                 )
                 continue
-            seen[original.name] = original
             ref = self._resolve_type(original)
             # The resolved form goes into the census when there is one: ownership is decided
             # over the census, and what the owning declaration says the object is has to be
@@ -2362,7 +2491,6 @@ class _Analysis:
 
     def _check_declaration(self, ref: DeclarationRef) -> None:
         definition = ref.definition
-        location = ref.location("definition")
 
         self._check_declared_name(ref)
 
@@ -2386,91 +2514,173 @@ class _Analysis:
 
         conversion = definition.conversion
         if isinstance(conversion, EnumConversion):
-            datatype = definition.storage
-            self._register_enum(conversion, ref.location("definition.conversion"), datatype)
-            self._check_enum_fits(
-                conversion, datatype.raw_min, datatype.raw_max, datatype.value, location
-            )
+            # At the conversion, where the enum is written, as it is on a declared type: the
+            # whole definition is what an editor underlines for a finding located there, and
+            # the name, the datatype and the limits have nothing to do with this one.
+            written = ref.location("definition.conversion")
+            storage = _Storage.of(definition.storage)
+            self._register_enum(conversion, written, storage)
+            self._check_enum_fits(conversion, storage, written)
 
     def _check_init(self, definition: DataObject, location: Location) -> None:
+        """What an init holds that its storage cannot: one finding per way of being wrong.
+
+        The ways are counted, not the elements. A table typed one datatype too narrow is one
+        mistake - the datatype of the declaration - made once and true of every element, and
+        reported per element it buried the reader: a ``uint8[4096]`` initialised with 300 was
+        4096 identical lines at one pointer, half a megabyte of text, and 4096 diagnostics on
+        one range in the editor. No per-element pointer exists to lose, so the count and the
+        values that differ say everything the list of them said.
+
+        Text is the one init this weighs without a number to weigh: only a string object
+        takes one, and that is a question about the conversion, which every declaration
+        answers whether or not its shape resolved. Left to :meth:`_check_string_init`, which
+        is reached only once the object is built, silencing the constant a dimension names
+        silenced this as well - and what an init says is wrong outside the datatype whatever
+        the shape turns out to be.
+        """
         datatype = definition.storage
-        for value in definition.scalar_values():
-            if datatype is Datatype.BOOLEAN:
-                if not isinstance(value, bool) and value not in (0, 1):
-                    # Spelled the way it was written, for the reason the integer case below
-                    # is: format_number renders 2.0 as "2", so the refusal read as a
-                    # complaint about a whole number nobody had written.
-                    self._bag.add(
-                        "init-invalid",
-                        f"init value {value!r} is not a valid bool",
-                        location,
-                    )
-                continue
-            if datatype.is_integer and isinstance(value, float):
-                # format_number renders 2.0 as "2", which would read as a contradiction, so
-                # the value is spelled the way it was written in the file.
+        if isinstance(definition.init, str):
+            conversion = definition.conversion
+            assert conversion is not None  # a structured declaration refuses an init outright
+            if not isinstance(conversion, StringConversion):
                 self._bag.add(
                     "init-invalid",
-                    f"init value {value!r} is written as a fractional number, "
-                    f"but '{definition.name}' has the integer datatype {datatype.value}",
+                    f"'{definition.name}' is initialised with text, but its conversion is "
+                    f"{conversion.describe()}; only a string object takes a string init",
                     location,
                 )
-                continue
-            if not (datatype.raw_min <= value <= datatype.raw_max):
-                self._bag.add(
-                    "init-invalid",
-                    f"init value {format_number(value)} does not fit into {datatype.value} "
-                    f"({format_number(datatype.raw_min)} .. {format_number(datatype.raw_max)})",
-                    location,
-                )
-            elif datatype.rounds_to_zero(value):
-                # Inside the magnitude the datatype states and past the precision it has, so
-                # the range check above cannot see it: the value the storage would hold is
-                # zero, which is not the value the description states, and the generated c
-                # says so out loud - a float32 literal that rounds to zero is
-                # `-Werror=overflow`, the warning set the artefacts page verifies with.
-                self._bag.add(
-                    "init-invalid",
-                    f"init value {format_number(value)} rounds to zero in {datatype.value}, "
-                    f"which holds no magnitude that small",
-                    location,
-                )
+            # The printable and terminator rules need the resolved length, so they stay with
+            # the shape, in :meth:`_check_string_init`.
+            return
+        values = definition.scalar_values()
+        if datatype is Datatype.BOOLEAN:
+            # Spelled the way it was written, for the reason the integer case below is:
+            # format_number renders 2.0 as "2", so the refusal read as a complaint about a
+            # whole number nobody had written.
+            self._report_init(
+                [value for value in values if not isinstance(value, bool) and value not in (0, 1)],
+                values,
+                repr,
+                "is not a valid bool",
+                location,
+            )
+            return
+        weighed: Sequence[float | int | bool] = values
+        if datatype.is_integer:
+            # format_number renders 2.0 as "2", which would read as a contradiction, so the
+            # value is spelled the way it was written in the file. A fractional value is not
+            # weighed against the range as well: it is wrong about the datatype, not about
+            # what that datatype can reach.
+            self._report_init(
+                [value for value in values if isinstance(value, float)],
+                values,
+                repr,
+                f"is written as a fractional number, "
+                f"but '{definition.name}' has the integer datatype {datatype.value}",
+                location,
+            )
+            weighed = [value for value in values if not isinstance(value, float)]
+        outside = [
+            value for value in weighed if not (datatype.raw_min <= value <= datatype.raw_max)
+        ]
+        self._report_init(
+            outside,
+            values,
+            format_number,
+            f"does not fit into {datatype.value} "
+            f"({format_number(datatype.raw_min)} .. {format_number(datatype.raw_max)})",
+            location,
+        )
+        # Inside the magnitude the datatype states and past the precision it has, so the
+        # range check above cannot see it: the value the storage would hold is zero, which is
+        # not the value the description states, and the generated c says so out loud - a
+        # float32 literal that rounds to zero is `-Werror=overflow`, the warning set the
+        # artefacts page verifies with.
+        self._report_init(
+            [
+                value
+                for value in weighed
+                if datatype.raw_min <= value <= datatype.raw_max and datatype.rounds_to_zero(value)
+            ],
+            values,
+            format_number,
+            f"rounds to zero in {datatype.value}, which holds no magnitude that small",
+            location,
+        )
+
+    def _report_init(
+        self,
+        offending: Sequence[float | int | bool],
+        values: Sequence[float | int | bool],
+        spell: Callable[[Any], str],
+        predicate: str,
+        location: Location,
+    ) -> None:
+        """One ``init-invalid`` for every init value wrong in the same way.
+
+        The first value is named as it always was, so that a declaration with one mistake
+        reads exactly as it did. Where there are more, the count says how much of the init
+        the mistake covers and the further spellings - at most three, and only the ones that
+        differ from the first - say what else is in there. Shaped like
+        :meth:`_check_enum_fits`, which already names an offending subset in one finding.
+        """
+        if not offending:
+            return
+        spelled = [spell(value) for value in offending]
+        tail = ""
+        if len(spelled) > 1:
+            others = [text for text in dict.fromkeys(spelled) if text != spelled[0]]
+            named = f", the others: {', '.join(others[:_INIT_VALUES_NAMED])}" if others else ""
+            tail = f"; {len(spelled)} of the {len(values)} init values are wrong this way{named}"
+        self._bag.add("init-invalid", f"init value {spelled[0]} {predicate}{tail}", location)
 
     def _check_limits(self, definition: DataObject, location: Location) -> None:
         if definition.limits is None:
             return
         assert definition.conversion is not None
         low, high = conversion_range(definition.conversion, definition.storage)
-        self._check_limits_fit(definition.limits, low, high, definition.storage, location)
+        self._check_limits_fit(definition.limits, low, high, definition.storage.value, location)
 
     def _check_limits_fit(
-        self, limits: Limits, low: float, high: float, datatype: Datatype, location: Location
+        self, limits: Limits, low: float, high: float, phrase: str, location: Location
     ) -> None:
         """Report limits the storage cannot hold, in one spelling wherever they are written.
 
         Three places write a datatype, a conversion and limits side by side - a declaration, a
         structure member and a scalar type - and the mistake is the same one in all three: the
         a2l carries a range the calibration tool offers and the storage cannot take. Shaped
-        like :meth:`_check_enum_fits`, whose callers vary the bounds the same way.
+        like :meth:`_check_enum_fits`, whose callers vary the bounds the same way, and phrased
+        the way they phrase theirs: a member's two bits are not the ``uint8`` they sit in.
         """
         if is_below(limits.min, low) or is_above(limits.max, high):
             self._bag.add(
                 "limits-out-of-range",
                 f"limits [{format_number(limits.min)}, {format_number(limits.max)}] exceed the "
                 f"range [{format_number(low)}, {format_number(high)}] that "
-                f"{datatype.value} can represent with this conversion",
+                f"{phrase} can represent with this conversion",
                 location,
             )
 
     def _register_enum(
-        self, conversion: EnumConversion, location: Location, storage: Datatype | None = None
+        self, conversion: EnumConversion, location: Location, storage: _Storage | None = None
     ) -> None:
         known = self._enums.by_name.get(conversion.name)
         if known is None:
             self._enums.by_name[conversion.name] = (conversion, location)
+            if is_reserved_identifier(conversion.name):
+                self._bag.add(
+                    "reserved-identifier",
+                    f"enum name '{conversion.name}' is reserved by the c language",
+                    location,
+                )
             self._check_enum_names(conversion, location)
             self._check_enum_values(conversion, location, storage)
             return
+        # Whatever this copy says about the enum, the names it introduces reach the same
+        # header: a conflicting second copy carrying an enumerator the first has not got used
+        # to take that c identifier without anybody screening it.
+        self._check_enum_names(conversion, location)
         previous, previous_location = known
         if conversion_identity(previous) != conversion_identity(conversion):
             self._bag.add(
@@ -2486,17 +2696,21 @@ class _Analysis:
             # Same enumerators, but this declaration documents more of them. Picking the
             # better documented variant rather than the first one keeps the generated types
             # header independent of the order the project happens to include its components in.
-            self._enums.by_name[conversion.name] = (conversion, location)
+            # The place stays the first one: "first defined as" is what the note says, and a
+            # reader sent to a file that agrees with the one in front of them learns nothing.
+            self._enums.by_name[conversion.name] = (conversion, previous_location)
 
     def _check_enum_names(self, conversion: EnumConversion, location: Location) -> None:
-        """The enum type name and its enumerators become c identifiers in the types header."""
-        if is_reserved_identifier(conversion.name):
-            self._bag.add(
-                "reserved-identifier",
-                f"enum name '{conversion.name}' is reserved by the c language",
-                location,
-            )
+        """The enumerators of one copy of an enum become c identifiers in the types header.
+
+        Run for every copy, and for the names each of them introduces: a name this enum has
+        already registered is this enum's, however many components spell it out, so it is
+        passed over rather than reported as colliding with itself.
+        """
         for enumerator in conversion.enumerators:
+            previous = self._enums.enumerators.get(enumerator.name)
+            if previous is not None and previous[0] == conversion.name:
+                continue
             if is_reserved_identifier(enumerator.name):
                 self._bag.add(
                     "reserved-identifier",
@@ -2504,7 +2718,6 @@ class _Analysis:
                     f"by the c language",
                     location,
                 )
-            previous = self._enums.enumerators.get(enumerator.name)
             if previous is not None:
                 enum_name, previous_location = previous
                 self._bag.add(
@@ -2519,7 +2732,7 @@ class _Analysis:
             self._enums.enumerators[enumerator.name] = (conversion.name, location)
 
     def _check_enum_values(
-        self, conversion: EnumConversion, location: Location, storage: Datatype | None
+        self, conversion: EnumConversion, location: Location, storage: _Storage | None
     ) -> None:
         by_value: dict[int, list[str]] = defaultdict(list)
         for enumerator in conversion.enumerators:
@@ -2537,40 +2750,36 @@ class _Analysis:
         # extension, so it is caught here rather than in the customer's build. A value that
         # does not even fit the declared storage already earns its finding against that
         # storage, so it is skipped here: one bad value, one finding.
-        self._check_enum_fits(
-            conversion,
-            _INT_MIN,
-            _INT_MAX,
-            "a c 'int', which every enumerator has to",
-            location,
-            except_outside=(storage.raw_min, storage.raw_max) if storage is not None else None,
-        )
+        self._check_enum_fits(conversion, _C_INT, location, except_outside=storage)
 
     def _check_enum_fits(
         self,
         conversion: EnumConversion,
-        lo: float,
-        hi: float,
-        phrase: str,
+        storage: _Storage,
         location: Location,
         *,
-        except_outside: tuple[float, float] | None = None,
+        except_outside: _Storage | None = None,
     ) -> None:
-        """Report the enumerators outside ``lo .. hi``, phrased for what they do not fit into.
+        """Report the enumerators that storage cannot hold, phrased the way it names itself.
 
-        One shape for two bounds: the c ``int`` every enumerator has to be representable in,
-        and the declared storage of the one object naming the enum. A value outside
-        ``except_outside`` is reported against that bound instead and skipped here.
+        One shape for three bounds: the c ``int`` every enumerator has to be representable
+        in, the declared storage of the one object naming the enum, and the bitfield a member
+        narrows that storage to. A value outside ``except_outside`` is reported against that
+        bound instead and skipped here.
         """
-        outside = [e for e in conversion.enumerators if not (lo <= e.value <= hi)]
+        outside = [
+            e for e in conversion.enumerators if not (storage.raw_min <= e.value <= storage.raw_max)
+        ]
         if except_outside is not None:
-            first, last = except_outside
-            outside = [e for e in outside if first <= e.value <= last]
+            outside = [
+                e for e in outside if except_outside.raw_min <= e.value <= except_outside.raw_max
+            ]
         if outside:
             spelled = conversion.spell_enumerators(outside)
             self._bag.add(
                 "init-invalid",
-                f"enumerator(s) {spelled} of enum '{conversion.name}' do not fit into {phrase}",
+                f"enumerator(s) {spelled} of enum '{conversion.name}' do not fit into "
+                f"{storage.phrase}",
                 location,
             )
 
@@ -2591,6 +2800,14 @@ class _Analysis:
         included, and ``multiple-producers`` and ``local-conflict`` still name the first
         declaration in load order: they are about what the project declares, and which of
         those declarations the tool can then build from is a separate question.
+
+        Among the producers that resolved, the ``local`` one owns the object and the rest go
+        by component name. Both findings above are errors, so this only decides anything once
+        one of them is relaxed - and then it decides what the generated files say: taking the
+        first in load order let the order a project lists its components in choose whose unit,
+        whose conversion and whose ``init`` every consumer's header carries. A ``local``
+        declaration is preferred because it is the one that claims the object exclusively, and
+        the name of a component is the same on every machine.
         """
         producers = [ref for ref in refs if ref.scope.is_producer]
         locals_ = [ref for ref in refs if ref.scope is Scope.LOCAL]
@@ -2627,7 +2844,12 @@ class _Analysis:
                 )
 
         owning = [ref for ref in producers if ref.key not in self._dropped] or producers
-        return owning[0] if owning else None
+        if not owning:
+            return None
+        return min(
+            [ref for ref in owning if ref.scope is Scope.LOCAL] or owning,
+            key=lambda ref: ref.component_name,
+        )
 
     def _absent(
         self,
@@ -2735,13 +2957,16 @@ class _Analysis:
                 silenced = next(((key, target) for key, target in gone if not absent[target]), None)
                 if silenced is not None and name not in self._dangling:
                     self._via[name] = silenced
-                # Every absent target weighed, not the first one met: a map over two absent
-                # axes is explained only if both of them were, or the key order of a
-                # definition would decide whether the map's own absence is ever said. A
-                # name's own refusals fold with any, because a reported refusal names the
-                # object itself, so it is never silently absent, while a half-explained
-                # absence through other objects is not explained.
-                explained = own.get(name, True) and all(absent[target] for _, target in gone)
+                # A name with a refusal of its own is answered by that refusal alone: it
+                # names the object itself, so the object is never silently absent, and a
+                # finding saying that the cause is not reported, filed beside the one that
+                # is, sends the reader looking for a silence that is not there.
+                #
+                # Without one, every absent target is weighed, not the first one met: a map
+                # over two absent axes is explained only if both of them were, or the key
+                # order of a definition would decide whether the map's own absence is ever
+                # said. Half explained is not explained.
+                explained = own[name] if name in own else all(absent[target] for _, target in gone)
                 if explained != absent[name]:
                     absent[name] = explained
                     settled = False
@@ -2756,10 +2981,12 @@ class _Analysis:
         requires, or some component does declare it and it was dropped - the fixpoint takes
         the referrer with it, and ``unknown-reference`` would claim that nobody declares the
         target, which is false. Otherwise the finding is written where the name is, and what
-        comes back is whether the bag reported it. A silenced refusal is the one the absence
-        report has to say out loud, so the reference and the check are kept for it - the
-        first silenced one, because a name is absent once however many of its references are
-        wrong, while each of those references is a mistake of its own and is reported.
+        comes back is whether the refusal is explained: reported by the bag, or silenced by
+        this run rather than by anybody's opinion of the check
+        (:meth:`_silenced_by_construction`). A silenced refusal is the one the absence report
+        has to say out loud, so the reference and the check are kept for it - the first
+        silenced one, because a name is absent once however many of its references are wrong,
+        while each of those references is a mistake of its own and is reported.
         """
         found = self._effective.get(target)
         if found is None:
@@ -2793,11 +3020,13 @@ class _Analysis:
         else:
             return None
         location = reference.location(f"definition.{key}")
-        reported = self._bag.add(check, message, location) is not None
-        if not reported:
+        explained = self._bag.add(check, message, location) is not None or (
+            self._silenced_by_construction(check)
+        )
+        if not explained:
             self._via.setdefault(definition.name, (key, target))
             self._dangling.setdefault(definition.name, check)
-        return reported
+        return explained
 
     def _check_local_reference(
         self,
@@ -2984,7 +3213,7 @@ class _Analysis:
             condition=reference.condition,
             owner=producer.component_name if producer else None,
             consumers=tuple(sorted(ref.component_name for ref in consumers)),
-            local=producer is not None and producer.scope is Scope.LOCAL,
+            local=_is_local(producer),
             a2l=definition.a2l.model_copy(
                 update={"export": resolve_export(ref.definition.a2l.export for ref in refs)}
             ),
@@ -3206,29 +3435,24 @@ class _Analysis:
         )
 
     def _check_string_init(self, ref: DeclarationRef, init: str, shape: Shape) -> None:
-        """A string init is the text of a string object, printable, with room for its zero.
+        """A string init is printable, with room for its terminating zero.
 
-        Three ways to be wrong, one identifier - ``init-invalid``, as every wrong init is.
-        The conversion is asked here rather than in the contract because a declaration
-        naming a scalar type only learns it from the type; the length is counted against the
-        resolved dimension, so a length spelled as a constant name is resolved first. The
-        content is printable ASCII, 0x20 to 0x7E, because neither the c literal nor the a2l
-        could carry anything else unambiguously; and the text is shorter than the array so
-        that the terminating zero fits - a string that exactly fills its array is legal c,
-        refused by C++, and indistinguishable in the generated file from one that was meant
-        to be terminated.
+        Two ways to be wrong, one identifier - ``init-invalid``, as every wrong init is - and
+        both need the resolved length, which is why they are here rather than in the contract:
+        a length spelled as a constant name is resolved first. The content is printable ASCII,
+        0x20 to 0x7E, because neither the c literal nor the a2l could carry anything else
+        unambiguously; and the text is shorter than the array so that the terminating zero
+        fits - a string that exactly fills its array is legal c, refused by C++, and
+        indistinguishable in the generated file from one that was meant to be terminated.
+
+        That the object takes a string init at all is :meth:`_check_init`'s: it is a question
+        about the conversion, and one this is in no position to ask, because a declaration
+        whose shape did not resolve never gets here.
         """
         conversion = ref.definition.conversion
-        assert conversion is not None  # a structured declaration refuses an init before this
         location = ref.location("definition.init")
         if not isinstance(conversion, StringConversion):
-            self._bag.add(
-                "init-invalid",
-                f"'{ref.name}' is initialised with text, but its conversion is "
-                f"{conversion.describe()}; only a string object takes a string init",
-                location,
-            )
-            return
+            return  # reported where the conversion is read, whatever the shape came to
         unprintable = sorted({character for character in init if not " " <= character <= "~"})
         if unprintable:
             spelled = ", ".join(f"U+{ord(character):04X}" for character in unprintable)
@@ -3280,8 +3504,8 @@ class _Analysis:
             self._bag.add(
                 "condition-mismatch",
                 f"'{other.name}': component '{other.component_name}' uses condition "
-                f"{_condition(other.condition)} while '{reference.component_name}' uses "
-                f"{_condition(reference.condition)}",
+                f"{describe_condition(other.condition)} while "
+                f"'{reference.component_name}' uses {describe_condition(reference.condition)}",
                 other.location("condition") if other.condition else other.location(),
                 notes=[("reference declaration", reference.location())],
             )
@@ -3324,14 +3548,6 @@ where it lives, which event updates it, which earlier delivery it continues, and
 plugin knows about it are all decided by the component that produces it."""
 
 
-def _member_raw_range(member: Member) -> tuple[float, float]:
-    """The raw values a member's storage holds: its bitfield's, or its datatype's."""
-    assert member.datatype is not None
-    if member.bits is not None:
-        return bitfield_range(member.datatype, member.bits)
-    return (member.datatype.raw_min, member.datatype.raw_max)
-
-
 def _did_you_mean(name: str, candidates: Sequence[str], *, cutoff: float) -> str:
     """`` - did you mean 'Nm'?``: the suggestion suffix, empty when nothing is close enough.
 
@@ -3345,10 +3561,6 @@ def _did_you_mean(name: str, candidates: Sequence[str], *, cutoff: float) -> str
 def _or_list(values: tuple[str, ...]) -> str:
     """``'Nm' or 'rpm'``: how a did-you-mean suggestion spells its candidates."""
     return " or ".join(f"'{value}'" for value in values)
-
-
-def _condition(condition: str | None) -> str:
-    return f"'{condition}'" if condition else "no condition"
 
 
 def _documentation_rank(conversion: EnumConversion) -> tuple[int, tuple[str, ...]]:

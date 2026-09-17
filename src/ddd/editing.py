@@ -33,6 +33,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final
 
+from ddd.pointers import parent_pointer, segments
+
 if TYPE_CHECKING:
     from ddd.lsp.ranges import Document
 
@@ -220,12 +222,6 @@ class Operation:
     pointer: str
     raw: str | None = None
     to: int | None = None
-
-
-def parent_pointer(pointer: str) -> str:
-    """``a.b[2].c`` -> ``a.b[2]`` -> ``a.b`` -> ``a`` -> ``''``."""
-    cut = max(pointer.rfind("."), pointer.rfind("["))
-    return pointer[:cut] if cut > 0 else ""
 
 
 def indent_unit(document: Document) -> str:
@@ -512,8 +508,6 @@ def _canonical(value: Any) -> str:
 
 def _container(document: Any, pointer: str) -> tuple[Any, Any]:
     """Where an entry lives in the parsed document: its container, and its key or index."""
-    from ddd.lsp.ranges import segments
-
     path = segments(pointer)
     container = document
     for segment in path[:-1]:

@@ -24,9 +24,10 @@ from __future__ import annotations
 
 import bisect
 import json
-import re
 from pathlib import Path
 from typing import Any, Final
+
+from ddd.pointers import parent_pointer, segments
 
 _WHITESPACE: Final = " \t\n\r"
 _LITERAL_END: Final = ",}] \t\n\r"
@@ -186,7 +187,7 @@ class Document:
                 return found
             if not current:
                 return None
-            current = _parent(current)
+            current = parent_pointer(current)
 
     def _position(self, offset: int) -> dict[str, int]:
         line = bisect.bisect_right(self._line_starts, offset) - 1
@@ -205,27 +206,10 @@ def _range(start: dict[str, int], end: dict[str, int]) -> dict[str, Any]:
     return {"start": start, "end": end}
 
 
-def _parent(pointer: str) -> str:
-    """``a.b[2].c`` -> ``a.b[2]`` -> ``a.b`` -> ``a`` -> ``''``."""
-    cut = max(pointer.rfind("."), pointer.rfind("["))
-    return pointer[:cut] if cut > 0 else ""
-
-
 def _line_starts(text: str) -> list[int]:
     starts = [0]
     starts.extend(index + 1 for index, character in enumerate(text) if character == "\n")
     return starts
-
-
-_SEGMENT: Final = re.compile(r"\[(\d+)\]|([^.\[\]]+)")
-
-
-def segments(pointer: str) -> list[str | int]:
-    """``a.b[2].c`` -> ``['a', 'b', 2, 'c']``, the way into a parsed document."""
-    return [
-        int(index) if index is not None else key
-        for index, key in (match.group(1, 2) for match in _SEGMENT.finditer(pointer))
-    ]
 
 
 def read(path: Path, cache: dict[Path, Document]) -> Document:

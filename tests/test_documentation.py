@@ -1435,11 +1435,13 @@ def without_descriptions(node: Any) -> Any:
     return node
 
 
-UNRELEASED = CHANGELOG.split("## Unreleased", 1)[1].split("\n## ", 1)[0]
-"""The release note of the version being prepared, which is the one still being written into.
+UNRELEASED = CHANGELOG.split("\n## ", 2)[1].split("\n", 1)[1]
+"""The topmost release note, which is the one describing the tree as it stands.
 
-Everything above ``## 0.9.0`` describes the tree as it stands, where a released entry
-describes the tree as it stood; a count or a format number that goes stale while eight
+While a release is being prepared that section is ``## Unreleased``; the moment it is cut the
+same section carries its number and still describes this tree, until the next change puts an
+``## Unreleased`` above it - which this follows on its own. An older entry describes the tree
+as it stood and is held to nothing; a count or a format number that goes stale while eight
 branches write into one section goes stale here.
 """
 

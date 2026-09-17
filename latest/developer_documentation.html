@@ -416,12 +416,17 @@ page shows beneath it. A page that shows commands and runs none of them fails as
 each of those commands ends in a comment marking it as an illustration, so that no page can
 quietly leave the harness by naming files the examples do not ship. It is the stronger of the
 two documentation guards - a claim about what the tool prints is checked against what it
-prints - so a reworded diagnostic fails there first.</p>
+prints - so a reworded diagnostic fails there first. What it does <em>not</em> run is counted rather
+than left to be discovered: a page that runs one of its commands has the rest read as
+illustrations, and <code class="docutils literal notranslate"><span class="pre">SILENTLY_SHOWN</span></code> in that file records how many such commands each page
+has - 51 of the 170 shown, and three of the eighty-four runs pinning an exit status. A page
+that gains one fails until somebody writes the new number down.</p>
 </section>
 <section id="running-the-checks">
 <h2>Running the checks<a class="headerlink" href="#running-the-checks" title="Link to this heading"></a></h2>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w">              </span><span class="c1"># the suite, the coverage gate and the documentation checks</span>
 python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>--no-cov<span class="w">     </span><span class="c1"># quicker, while working on a single test</span>
+python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>--co<span class="w"> </span>--no-cov<span class="w">  </span><span class="c1"># what would run, without the gate weighing a run of none</span>
 python<span class="w"> </span>-m<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>.
 python<span class="w"> </span>-m<span class="w"> </span>ruff<span class="w"> </span>format<span class="w"> </span>.
 python<span class="w"> </span>-m<span class="w"> </span>mypy
@@ -435,7 +440,9 @@ the module - so <code class="docutils literal notranslate"><span class="pre">--n
 the whole of it is what a commit is worth running under. Not <code class="docutils literal notranslate"><span class="pre">-q</span></code>: the <code class="docutils literal notranslate"><span class="pre">addopts</span></code> in
 <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> carry one already, pytest counts them, and a second drops the summary - the
 “N passed” line and the coverage total both - leaving the exit code as the only statement of
-what happened.</p>
+what happened. And <code class="docutils literal notranslate"><span class="pre">--no-cov</span></code> beside <code class="docutils literal notranslate"><span class="pre">--co</span></code>: coverage is in the <code class="docutils literal notranslate"><span class="pre">addopts</span></code> too, so a
+collection-only run measures a run of nothing and prints <code class="docutils literal notranslate"><span class="pre">Required</span> <span class="pre">test</span> <span class="pre">coverage</span> <span class="pre">of</span> <span class="pre">100%</span> <span class="pre">not</span>
+<span class="pre">reached</span></code> before exiting 0, which reads as a failure and is not one.</p>
 <p>Nothing in the suite skips, and a test in <code class="docutils literal notranslate"><span class="pre">tests/test_documentation.py</span></code> holds it to that:
 no <code class="docutils literal notranslate"><span class="pre">pytest.skip</span></code>, <code class="docutils literal notranslate"><span class="pre">skipif</span></code>, <code class="docutils literal notranslate"><span class="pre">importorskip</span></code> or <code class="docutils literal notranslate"><span class="pre">xfail</span></code> anywhere under <code class="docutils literal notranslate"><span class="pre">tests/</span></code>. A
 test that skips reports success without having run, so what it covers is covered on somebody

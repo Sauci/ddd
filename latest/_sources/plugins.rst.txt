@@ -170,6 +170,14 @@ differently they are spelled: a plugin's artefact must not take the name of a bu
 and neither a ``..`` in the middle nor a directory junction makes a second claim on that name
 a different one.
 
+A c header a plugin writes declares or includes everything it names. ``docker/compile.sh``
+compiles every generated header on its own - the header included twice and nothing else
+before it - so a header that takes the address of an object and includes nothing is a header
+that only compiles after something else has been included first, which is not a promise a
+generated file can make. The example plugin's table includes ``ddd_globals.h``, the header
+the shipped c templates write; templates of another shape spell that declaration differently,
+and the rule is the same.
+
 A hook that raises is a defect of the plugin, not a finding about the project: the exception
 is reported as a usage error naming the plugin and the hook, with exit code 2, after the
 findings the run had already gathered. A hook, or a validator on a plugin's own model,

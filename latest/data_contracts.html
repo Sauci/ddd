@@ -1069,7 +1069,7 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">                  </span><span class="p">}</span>
 <span class="w">               </span><span class="p">],</span>
 <span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Measurement that indexes the axis; the a2l input quantity."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Measurement that indexes the axis; the a2l input quantity.\n\nA plain one: an instance of a declared structure is of kind ``measurement`` and is\nrefused here as any other wrong kind is, because it reaches the a2l as one record per\nvalue-holding member and none of its own."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Input"</span>
 <span class="w">            </span><span class="p">}</span>
 <span class="w">         </span><span class="p">},</span>
@@ -3459,7 +3459,7 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">                  </span><span class="p">}</span>
 <span class="w">               </span><span class="p">],</span>
 <span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Measurement that indexes the axis; the a2l input quantity."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Measurement that indexes the axis; the a2l input quantity.\n\nA plain one: an instance of a declared structure is of kind ``measurement`` and is\nrefused here as any other wrong kind is, because it reaches the a2l as one record per\nvalue-holding member and none of its own."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Input"</span>
 <span class="w">            </span><span class="p">}</span>
 <span class="w">         </span><span class="p">},</span>
@@ -5733,7 +5733,7 @@ out.&amp;#xA;&quot;];
 <span class="w">                  </span><span class="p">}</span>
 <span class="w">               </span><span class="p">],</span>
 <span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Measurement that indexes the axis; the a2l input quantity."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Measurement that indexes the axis; the a2l input quantity.\n\nA plain one: an instance of a declared structure is of kind ``measurement`` and is\nrefused here as any other wrong kind is, because it reaches the a2l as one record per\nvalue-holding member and none of its own."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Input"</span>
 <span class="w">            </span><span class="p">}</span>
 <span class="w">         </span><span class="p">},</span>
@@ -12458,7 +12458,7 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="p">}</span>
 <span class="w">         </span><span class="p">],</span>
 <span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Measurement that indexes the axis; the a2l input quantity."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Measurement that indexes the axis; the a2l input quantity.\n\nA plain one: an instance of a declared structure is of kind ``measurement`` and is\nrefused here as any other wrong kind is, because it reaches the a2l as one record per\nvalue-holding member and none of its own."</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Input"</span>
 <span class="w">      </span><span class="p">}</span>
 <span class="w">   </span><span class="p">},</span>
@@ -12794,6 +12794,13 @@ constant.</p>
 <dt class="sig sig-object py" id="ddd.models.Axis.input">
 <span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">input</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Identifier</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#ddd.models.Axis.input" title="Link to this definition"></a></dt>
 <dd><p>Measurement that indexes the axis; the a2l input quantity.</p>
+<p>A plain one: an instance of a declared structure is of kind <code class="docutils literal notranslate"><span class="pre">measurement</span></code> and is
+refused here as any other wrong kind is, because it reaches the a2l as one record per
+value-holding member and none of its own.</p>
+<p>Measurement that indexes the axis; the a2l input quantity.</p>
+<p>A plain one: an instance of a declared structure is of kind <code class="docutils literal notranslate"><span class="pre">measurement</span></code> and is
+refused here as any other wrong kind is, because it reaches the a2l as one record per
+value-holding member and none of its own.</p>
 </dd></dl>
 
 </dd></dl>
@@ -14047,7 +14054,7 @@ measurement or a value block, <code class="docutils literal notranslate"><span c
 <dl class="field-list simple">
 <dt class="field-odd">Constraints<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>func</strong> = &lt;function within_64_bits at 0x7fecb7ec1da0&gt;</p></li>
+<li><p><strong>func</strong> = &lt;function within_64_bits at 0x7f408c2c9bc0&gt;</p></li>
 <li><p><strong>json_schema_input_type</strong> = PydanticUndefined</p></li>
 </ul>
 </dd>
@@ -14061,7 +14068,7 @@ measurement or a value block, <code class="docutils literal notranslate"><span c
 <dl class="field-list simple">
 <dt class="field-odd">Constraints<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>func</strong> = &lt;function within_64_bits at 0x7fecb7ec1da0&gt;</p></li>
+<li><p><strong>func</strong> = &lt;function within_64_bits at 0x7f408c2c9bc0&gt;</p></li>
 <li><p><strong>json_schema_input_type</strong> = PydanticUndefined</p></li>
 </ul>
 </dd>

@@ -310,6 +310,12 @@ the reloaded document produces byte identical output. Both properties are assert
 test suite (<code class="docutils literal notranslate"><span class="pre">tests/test_backends.py</span></code>), because they are the whole point of publishing the
 contract - a third party generating from a dumped dictionary has to get what DDD would have
 got.</p>
+<p>One field asks something of its reader: <code class="docutils literal notranslate"><span class="pre">init</span></code> is carried as the declaration wrote it, so a
+list is nested one level per dimension and a scalar written for an array is still a scalar -
+<code class="docutils literal notranslate"><span class="pre">&quot;init&quot;:</span> <span class="pre">0</span></code> beside <code class="docutils literal notranslate"><span class="pre">&quot;shape&quot;:</span> <span class="pre">[4]</span></code> means four zeros. It is not expanded here because
+expanding it would write one literal per element for a value the description states once, and
+an array of ten thousand elements would carry ten thousand of them. A generator broadcasts the
+scalar over <code class="docutils literal notranslate"><span class="pre">shape</span></code>, which is what the c backend does before rendering the initialiser.</p>
 <p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">dictionary</span></code> prints the whole thing, definitions included; its top level, which
 is where a consumer starts, is this (the per field documentation the schema also carries is
 elided here for space):</p>
@@ -1085,7 +1091,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Path of the description file, for reference in generated comments."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"File name of the description file, for reference in generated comments.\n\nThe name alone, without the directories above it: a dictionary dumped from two checkouts\nof one project is otherwise two different documents, and the banner of a generated file\nwould carry the path of whoever's machine generated it."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Source"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -1731,7 +1737,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">                  </span><span class="p">}</span>
 <span class="w">               </span><span class="p">],</span>
 <span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Raw initial value, nested to match ``shape``, or the text of a string object; ``null``\nmeans zero initialised."</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Raw initial value as the description wrote it, or the text of a string object;\n``null`` means zero initialised.\n\nA list is nested to match ``shape``, one level per dimension. A scalar written for an\narray is carried as the scalar: it initialises every element, and expanding it here\nwould write one literal per element into the dumped dictionary for a value the\ndescription states once. A consumer that needs the elements broadcasts the scalar over\n``shape``, which is what the c backend does to render the initialiser."</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"section"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
@@ -2299,7 +2305,7 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="p">}</span>
 <span class="w">         </span><span class="p">],</span>
 <span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Raw initial value, nested to match ``shape``, or the text of a string object; ``null``\nmeans zero initialised."</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Raw initial value as the description wrote it, or the text of a string object;\n``null`` means zero initialised.\n\nA list is nested to match ``shape``, one level per dimension. A scalar written for an\narray is carried as the scalar: it initialises every element, and expanding it here\nwould write one literal per element into the dumped dictionary for a value the\ndescription states once. A consumer that needs the elements broadcasts the scalar over\n``shape``, which is what the c backend does to render the initialiser."</span>
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"section"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
@@ -2831,10 +2837,20 @@ no spellings.</p>
 <dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="ddd.ir.ResolvedObject.init">
 <span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">init</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">InitValue</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#ddd.ir.ResolvedObject.init" title="Link to this definition"></a></dt>
-<dd><p>Raw initial value, nested to match <code class="docutils literal notranslate"><span class="pre">shape</span></code>, or the text of a string object; <code class="docutils literal notranslate"><span class="pre">null</span></code>
-means zero initialised.</p>
-<p>Raw initial value, nested to match <code class="docutils literal notranslate"><span class="pre">shape</span></code>, or the text of a string object; <code class="docutils literal notranslate"><span class="pre">null</span></code>
-means zero initialised.</p>
+<dd><p>Raw initial value as the description wrote it, or the text of a string object;
+<code class="docutils literal notranslate"><span class="pre">null</span></code> means zero initialised.</p>
+<p>A list is nested to match <code class="docutils literal notranslate"><span class="pre">shape</span></code>, one level per dimension. A scalar written for an
+array is carried as the scalar: it initialises every element, and expanding it here
+would write one literal per element into the dumped dictionary for a value the
+description states once. A consumer that needs the elements broadcasts the scalar over
+<code class="docutils literal notranslate"><span class="pre">shape</span></code>, which is what the c backend does to render the initialiser.</p>
+<p>Raw initial value as the description wrote it, or the text of a string object;
+<code class="docutils literal notranslate"><span class="pre">null</span></code> means zero initialised.</p>
+<p>A list is nested to match <code class="docutils literal notranslate"><span class="pre">shape</span></code>, one level per dimension. A scalar written for an
+array is carried as the scalar: it initialises every element, and expanding it here
+would write one literal per element into the dumped dictionary for a value the
+description states once. A consumer that needs the elements broadcasts the scalar over
+<code class="docutils literal notranslate"><span class="pre">shape</span></code>, which is what the c backend does to render the initialiser.</p>
 </dd></dl>
 
 <dl class="py attribute pydantic_field">
@@ -2959,7 +2975,7 @@ gave. Two components declaring the&amp;#xA;same name appear here twice and in ``
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Path of the description file, for reference in generated comments."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"File name of the description file, for reference in generated comments.\n\nThe name alone, without the directories above it: a dictionary dumped from two checkouts\nof one project is otherwise two different documents, and the banner of a generated file\nwould carry the path of whoever's machine generated it."</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Source"</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">      </span><span class="p">},</span>
@@ -3054,7 +3070,14 @@ gave. Two components declaring the&amp;#xA;same name appear here twice and in ``
 <dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="ddd.ir.ResolvedComponent.source">
 <span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">source</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></span><a class="headerlink" href="#ddd.ir.ResolvedComponent.source" title="Link to this definition"></a></dt>
-<dd><p>Path of the description file, for reference in generated comments.</p>
+<dd><p>File name of the description file, for reference in generated comments.</p>
+<p>The name alone, without the directories above it: a dictionary dumped from two checkouts
+of one project is otherwise two different documents, and the banner of a generated file
+would carry the path of whoever’s machine generated it.</p>
+<p>File name of the description file, for reference in generated comments.</p>
+<p>The name alone, without the directories above it: a dictionary dumped from two checkouts
+of one project is otherwise two different documents, and the banner of a generated file
+would carry the path of whoever’s machine generated it.</p>
 </dd></dl>
 
 <dl class="py attribute pydantic_field">

@@ -293,11 +293,20 @@ writing every component into every file.</p>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.constants</span></code></p></td>
 <td><p>One entry per <a class="reference internal" href="file_formats/constants.html"><span class="doc">declared constant</span></a>, in name order, each
-with <code class="docutils literal notranslate"><span class="pre">.name</span></code>, <code class="docutils literal notranslate"><span class="pre">.value</span></code> and <code class="docutils literal notranslate"><span class="pre">.description</span></code>; empty when the project declares
-none. Offered so the template can emit them however the house style spells one - the
-example templates write each as a <code class="docutils literal notranslate"><span class="pre">#define</span></code> in the types header - because an array
-dimensioned by a constant renders its <code class="docutils literal notranslate"><span class="pre">array_suffix</span></code> with the constant’s <em>name</em>,
-which therefore has to be declared before the first array that uses it.</p></td>
+with <code class="docutils literal notranslate"><span class="pre">.name</span></code>, <code class="docutils literal notranslate"><span class="pre">.value</span></code>, <code class="docutils literal notranslate"><span class="pre">.literal</span></code> and <code class="docutils literal notranslate"><span class="pre">.description</span></code>; empty when the project
+declares none. Offered so the template can emit them however the house style spells
+one - the example templates write each as a <code class="docutils literal notranslate"><span class="pre">#define</span></code> in the types header - because
+an array dimensioned by a constant renders its <code class="docutils literal notranslate"><span class="pre">array_suffix</span></code> with the constant’s
+<em>name</em>, which therefore has to be declared before the first array that uses it.
+<code class="docutils literal notranslate"><span class="pre">.value</span></code> is the number and nothing else, for a template that does its own
+formatting; <code class="docutils literal notranslate"><span class="pre">.literal</span></code> is that value as a c literal of the narrowest type that
+holds it, which is what to render where the value is simply to be emitted. The two
+differ only at the ends of the 64 bit range, where there is no literal to write out
+bare: <code class="docutils literal notranslate"><span class="pre">-9223372036854775808</span></code> renders as <code class="docutils literal notranslate"><span class="pre">(-9223372036854775807LL</span> <span class="pre">-</span> <span class="pre">1)</span></code>, because c
+has no negative literal and the unary minus would be applied to a literal too large
+for any signed type, and <code class="docutils literal notranslate"><span class="pre">18446744073709551615</span></code> renders as
+<code class="docutils literal notranslate"><span class="pre">18446744073709551615ULL</span></code>, because a compiler otherwise reads it as unsigned and
+says so.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.enums</span></code></p></td>
 <td><p>One entry per enum conversion, each with <code class="docutils literal notranslate"><span class="pre">.name</span></code> and <code class="docutils literal notranslate"><span class="pre">.enumerators</span></code>; an
@@ -331,8 +340,13 @@ and the sequence is empty when the project places nothing.</p></td>
 anything. These are the interfaces, described below.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.needs_stdint</span></code>, <code class="docutils literal notranslate"><span class="pre">model.needs_stdbool</span></code></p></td>
-<td><p>Whether any datatype of the project needs that standard header, so that the generated
-type header includes it only when something uses it.</p></td>
+<td><p>Whether any datatype of the project needs that standard header, for a type header that
+includes it only when something uses it. The shipped example renders
+<code class="docutils literal notranslate"><span class="pre">model.needs_stdbool</span></code> and includes <code class="docutils literal notranslate"><span class="pre">&lt;stdint.h&gt;</span></code> unconditionally: every other
+generated header includes the type header and nothing else, so a type header that is
+empty - a project whose objects are all floating point, or one that declares no object
+at all - leaves those headers empty too, and <code class="docutils literal notranslate"><span class="pre">-Wpedantic</span></code> refuses an empty
+translation unit.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.external_includes</span></code></p></td>
 <td><p>The headers of the <a class="reference internal" href="file_formats/types.html"><span class="doc">external types</span></a> in use, deduplicated and
@@ -394,7 +408,8 @@ already carries one, so asking for it on calibration data does not produce the
 what the object is and what it is dimensioned by - or nothing at all if the
 description says nothing. It is plain text without comment markers, already collapsed
 to one line and already defused, so that a <code class="docutils literal notranslate"><span class="pre">*/</span></code> in a description cannot end the
-comment the template opens around it.</p></td>
+comment the template opens around it and a <code class="docutils literal notranslate"><span class="pre">/*</span></code> cannot open one inside it - which
+<code class="docutils literal notranslate"><span class="pre">-Wcomment</span></code>, and so <code class="docutils literal notranslate"><span class="pre">-Wall</span></code>, reports.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.condition</span></code></p></td>
 <td><p>The preprocessor condition the object is guarded by, or nothing. It is validated on
@@ -519,11 +534,14 @@ interface is found much later by somebody else.</p>
 </section>
 <section id="how-the-files-reach-the-disk">
 <h2>How the files reach the disk<a class="headerlink" href="#how-the-files-reach-the-disk" title="Link to this heading"></a></h2>
-<p>Every generated file is written as utf-8 with LF line endings, on every platform. Descriptions
-carry units and prose in any language, so utf-8 is the only sane choice, and fixed line
-endings mean that a file generated on Windows and the same file generated in a linux
-container are byte for byte identical - which matters as soon as generated code is compared
-across machines or checked in.</p>
+<p>Every generated file is written as utf-8 with LF line endings and no byte order mark, on every
+platform. Descriptions carry units and prose in any language, so utf-8 is the only sane
+choice, and fixed line endings mean that a file generated on Windows and the same file
+generated in a linux container are byte for byte identical - which matters as soon as
+generated code is compared across machines or checked in. The one exception is not a
+template’s to make: the a2l, which no template renders, opens with a byte order mark, because
+its own format has no other way of stating an encoding
+(<a class="reference internal" href="generated_artefacts.html"><span class="doc">Generated artefacts</span></a>).</p>
 <p>A file whose content has not changed is left untouched rather than rewritten, so its
 timestamp does not move and the compilation of everything that includes it is not triggered
 again. Regenerating a project that has not changed therefore reports:</p>
@@ -588,9 +606,11 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <span class="x">#ifndef </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">"ddd"</span><span class="o">,</span> <span class="s2">"types"</span><span class="o">)</span> <span class="cp">}}</span>
 <span class="x">#define </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">"ddd"</span><span class="o">,</span> <span class="s2">"types"</span><span class="o">)</span> <span class="cp">}}</span>
 
-<span class="cp">{%</span> <span class="k">if</span> <span class="nv">model.needs_stdint</span> <span class="cp">%}</span>
+<span class="c">{# Unconditional, although model.needs_stdint says whether a datatype of the project asks</span>
+<span class="c">   for it: every other generated header includes this one and nothing else, so a guard</span>
+<span class="c">   around nothing here is an empty translation unit there - which -Wpedantic refuses - for</span>
+<span class="c">   a project whose objects are all floating point or that declares none at all. #}</span>
 <span class="x">#include &lt;stdint.h&gt;</span>
-<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
 <span class="cp">{%</span> <span class="k">if</span> <span class="nv">model.needs_stdbool</span> <span class="cp">%}</span>
 <span class="x">#include &lt;stdbool.h&gt;</span>
 <span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
@@ -605,7 +625,7 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 
 <span class="x">/* named constants of the data dictionary */</span>
 <span class="cp">{%</span> <span class="k">for</span> <span class="nv">constant</span> <span class="k">in</span> <span class="nv">model.constants</span> <span class="cp">%}</span>
-<span class="x">#define </span><span class="cp">{{</span> <span class="nv">constant.name</span> <span class="cp">}}</span><span class="x"> </span><span class="cp">{{</span> <span class="nv">constant.value</span> <span class="cp">}}{{</span> <span class="o">(</span><span class="s2">" /**&lt; "</span> <span class="o">~</span> <span class="nv">constant.description</span> <span class="o">~</span> <span class="s2">" */"</span><span class="o">)</span> <span class="k">if</span> <span class="nv">constant.description</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}</span>
+<span class="x">#define </span><span class="cp">{{</span> <span class="nv">constant.name</span> <span class="cp">}}</span><span class="x"> </span><span class="cp">{{</span> <span class="nv">constant.literal</span> <span class="cp">}}{{</span> <span class="o">(</span><span class="s2">" /**&lt; "</span> <span class="o">~</span> <span class="nv">constant.description</span> <span class="o">~</span> <span class="s2">" */"</span><span class="o">)</span> <span class="k">if</span> <span class="nv">constant.description</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}</span>
 <span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
 <span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
 <span class="cp">{%</span> <span class="k">for</span> <span class="nv">enum</span> <span class="k">in</span> <span class="nv">model.enums</span> <span class="cp">%}</span>
@@ -688,7 +708,13 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
 <span class="cp">{%</span> <span class="k">if</span> <span class="k">not</span> <span class="nv">model.groups</span> <span class="cp">%}</span>
 
-<span class="x">/* This project does not define any global variable. */</span>
+<span class="x">/*</span>
+<span class="x"> * This project does not define any global variable.  A translation unit has to</span>
+<span class="x"> * hold at least one declaration - ISO C forbids an empty one, and -Wpedantic</span>
+<span class="x"> * says so - and this typedef is the cheapest one there is: it declares a name</span>
+<span class="x"> * and defines no storage, so the object file stays empty.</span>
+<span class="x"> */</span>
+<span class="x">typedef int ddd_no_global_variables_t;</span>
 <span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
 </pre></div>
 </div>

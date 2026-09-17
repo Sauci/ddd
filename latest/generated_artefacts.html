@@ -213,7 +213,10 @@ second object. Software components are not meant to include it.</p></td>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd_globals.c.jinja2</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">ddd_globals.c</span></code>, the single definition of every global variable of the project.
 Compile and link it exactly once; from that point on DDD owns the storage of every
-declared object and a duplicate definition elsewhere fails at link time.</p></td>
+declared object and a duplicate definition elsewhere fails at link time. A project
+that declares no object at all - an image whose components are not registered yet -
+gets a file carrying one typedef and no storage, because ISO C forbids a translation
+unit with nothing in it and the warning set below treats that as an error.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">{component}.h.jinja2</span></code></p></td>
 <td><p>One header per component - <code class="docutils literal notranslate"><span class="pre">Controller.h</span></code>, <code class="docutils literal notranslate"><span class="pre">SensorHub.h</span></code>, <code class="docutils literal notranslate"><span class="pre">UserInterface.h</span></code> and
@@ -310,6 +313,8 @@ description change points at the component that changed:</p>
 <span class="cm">/* measurements */</span>
 <span class="cm">/** Measurement with a verbal conversion table */</span>
 <span class="kt">uint8_t</span><span class="w"> </span><span class="n">StateA</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0U</span><span class="p">;</span>
+<span class="cm">/** Name of the current state, as text */</span>
+<span class="kt">uint8_t</span><span class="w"> </span><span class="n">StateName</span><span class="p">[</span><span class="mi">16</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"OFF"</span><span class="p">;</span>
 <span class="cm">/** Measurement used as the input quantity of AxisA [Hz] */</span>
 <span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0U</span><span class="p">;</span>
 <span class="cm">/** Signed measurement with a fixed point conversion [degC] */</span>
@@ -391,6 +396,8 @@ this:</p>
 <span class="k">extern</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="n">ValueC</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by SensorHub */</span>
 <span class="cm">/** Measurement with a verbal conversion table */</span>
 <span class="k">extern</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">StateA</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by Controller */</span>
+<span class="cm">/** Name of the current state, as text */</span>
+<span class="k">extern</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">StateName</span><span class="p">[</span><span class="mi">16</span><span class="p">];</span><span class="w">  </span><span class="cm">/* produced by Controller */</span>
 <span class="cm">/** Array measurement with four elements [V] */</span>
 <span class="k">extern</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueB</span><span class="p">[</span><span class="mi">4</span><span class="p">];</span><span class="w">  </span><span class="cm">/* produced by SensorHub */</span>
 <span class="cp">#if defined(FEATURE_X)</span>
@@ -504,10 +511,10 @@ where another does not define it.</p>
 generates the demo, compiles it, links it and then compares the symbols of the binary
 against <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">--format</span> <span class="pre">json</span></code>, once without defines and once with <code class="docutils literal notranslate"><span class="pre">-DFEATURE_X</span></code>:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">==</span> <span class="n">symbols</span>   <span class="p">[</span><span class="n">base</span><span class="p">]</span>
-<span class="mi">20</span> <span class="n">of</span> <span class="mi">21</span> <span class="n">declared</span> <span class="n">variables</span> <span class="n">are</span> <span class="n">defined</span>
+<span class="mi">22</span> <span class="n">of</span> <span class="mi">23</span> <span class="n">declared</span> <span class="n">variables</span> <span class="n">are</span> <span class="n">defined</span>
   <span class="n">conditional</span><span class="p">,</span> <span class="n">absent</span> <span class="p">:</span> <span class="n">ValueG</span>
 <span class="o">==</span> <span class="n">symbols</span>   <span class="p">[</span><span class="n">defines</span><span class="p">]</span>
-<span class="mi">21</span> <span class="n">of</span> <span class="mi">21</span> <span class="n">declared</span> <span class="n">variables</span> <span class="n">are</span> <span class="n">defined</span>
+<span class="mi">23</span> <span class="n">of</span> <span class="mi">23</span> <span class="n">declared</span> <span class="n">variables</span> <span class="n">are</span> <span class="n">defined</span>
   <span class="n">conditional</span><span class="p">,</span> <span class="n">present</span><span class="p">:</span> <span class="n">ValueG</span>
 </pre></div>
 </div>
@@ -565,8 +572,11 @@ value, reads it back correctly, and the ecu behaves as it did before.</p>
 treats a volatile access as a side effect and takes the object out of the read only category
 altogether: <code class="docutils literal notranslate"><span class="pre">.section</span> <span class="pre">.rodata</span></code> becomes a plain <code class="docutils literal notranslate"><span class="pre">.data</span></code>, the section flags <code class="docutils literal notranslate"><span class="pre">readelf</span></code>
 reports go from <code class="docutils literal notranslate"><span class="pre">A</span></code> to <code class="docutils literal notranslate"><span class="pre">WA</span></code>, and the class <code class="docutils literal notranslate"><span class="pre">nm</span></code> prints goes from <code class="docutils literal notranslate"><span class="pre">R</span></code> to <code class="docutils literal notranslate"><span class="pre">D</span></code>.
-Measured on DDD’s own generated demo with the flag set quoted above, <code class="docutils literal notranslate"><span class="pre">size</span> <span class="pre">-A</span>
-<span class="pre">ddd_globals.o</span></code> moves from <code class="docutils literal notranslate"><span class="pre">.rodata</span> <span class="pre">84</span></code> and <code class="docutils literal notranslate"><span class="pre">.data</span> <span class="pre">2</span></code> to <code class="docutils literal notranslate"><span class="pre">.data</span> <span class="pre">86</span></code>. Naming a section
+Measured with gcc 12.2.0 on DDD’s own generated demo with the flag set quoted above, <code class="docutils literal notranslate"><span class="pre">size</span>
+<span class="pre">-A</span> <span class="pre">ddd_globals.o</span></code> moved from <code class="docutils literal notranslate"><span class="pre">.rodata</span> <span class="pre">84</span></code> and <code class="docutils literal notranslate"><span class="pre">.data</span> <span class="pre">2</span></code> to <code class="docutils literal notranslate"><span class="pre">.data</span> <span class="pre">86</span></code> - every byte of
+the calibration data changing category. Those two counts are of the demo as it stood when the
+measurement was taken, and they move with whatever the demo declares; what does not move is
+that all of it goes across. Naming a section
 explicitly does not change this - a <code class="docutils literal notranslate"><span class="pre">.calib</span></code> section is emitted <code class="docutils literal notranslate"><span class="pre">A</span></code> when its contents are
 <code class="docutils literal notranslate"><span class="pre">const</span></code> and <code class="docutils literal notranslate"><span class="pre">WA</span></code> when they are <code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span></code>. On a flash target with an ordinary
 linker script that means a ram address with a load region in flash and a copy at startup, so
@@ -715,6 +725,14 @@ ASAP2_VERSION 1 61
     /end MOD_COMMON
 </pre></div>
 </div>
+<p>Before that first line the file carries a UTF-8 byte order mark, which is the only encoding
+declaration ASAP2 1.6.1 has: section 1.5 of the standard tells a reader to detect the encoding
+from such a mark and to fall back to ISO-8859-1 where there is none, and the <code class="docutils literal notranslate"><span class="pre">ENCODING</span></code>
+keyword that would state it in words arrives only with 1.7. Without it a unit as ordinary as
+<code class="docutils literal notranslate"><span class="pre">°C</span></code>, written as the utf-8 DDD writes everywhere, reaches a calibration tool as <code class="docutils literal notranslate"><span class="pre">Â°C</span></code> or
+stops its parser. The a2l is the one generated file that carries a mark; the c sources and the
+dumped dictionary stay utf-8 without one, because a compiler and a json reader already know
+what they are reading.</p>
 <p>The whole project becomes a single <code class="docutils literal notranslate"><span class="pre">MODULE</span></code> named after the project, which is the right
 granularity here: a module is what a calibration tool connects to, and the components of the
 image are one target, not several. <code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span></code> follows <code class="docutils literal notranslate"><span class="pre">--byte-order</span></code>, which writes
@@ -782,7 +800,7 @@ the format cannot describe storage whose layout DDD does not know; neither appea
 <td><p>one per distinct combination of conversion, unit <strong>and</strong> display format</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">COMPU_VTAB</span></code></p></td>
-<td><p>one per enum conversion</p></td>
+<td><p>one per enum conversion a record in the file refers to</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GROUP</span></code></p></td>
 <td><p>one per component that exports at least one object</p></td>
@@ -1052,7 +1070,10 @@ record layout the points are deposited in, a maximum difference of <code class="
 the maximum number of axis points, and the physical limits. The maximum is the <code class="docutils literal notranslate"><span class="pre">size</span></code> the
 description gave, because the array generated for the axis is exactly that long and there is
 no room for a calibration tool to add a point. An axis whose description gives no <code class="docutils literal notranslate"><span class="pre">input</span></code>
-gets the keyword <code class="docutils literal notranslate"><span class="pre">NO_INPUT_QUANTITY</span></code> instead of a name.</p>
+gets the keyword <code class="docutils literal notranslate"><span class="pre">NO_INPUT_QUANTITY</span></code> instead of a name, and so does one whose <code class="docutils literal notranslate"><span class="pre">input</span></code>
+names something the dictionary being written does not carry - which the checks leave in no
+project DDD resolves itself, only in a dictionary read back from a dump or written by another
+producer, where a name no record answers to would make the whole module invalid.</p>
 <p>A curve or a map then refers to that axis instead of carrying its own copy of the break
 points. The reference is an <code class="docutils literal notranslate"><span class="pre">AXIS_DESCR</span></code> of attribute <code class="docutils literal notranslate"><span class="pre">COM_AXIS</span></code> - a <em>common</em> axis, one
 shared between several characteristics - plus an <code class="docutils literal notranslate"><span class="pre">AXIS_PTS_REF</span></code> naming the record above:</p>

@@ -646,8 +646,8 @@ section for CCP.</p>
 <section id="how-large-may-an-array-be">
 <h2>How large may an array be?<a class="headerlink" href="#how-large-may-an-array-be" title="Link to this heading"></a></h2>
 <p>A dimension is any integer of at least one, stated as a number or through a <a class="reference internal" href="file_formats/constants.html"><span class="doc">declared
-constant</span></a>, and nothing caps how many dimensions an object has. What
-they multiply out to is capped, in four places:</p>
+constant</span></a>. How many of them a shape states is capped, and so is what
+they multiply out to - five places in all:</p>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 46.0%" />
@@ -661,19 +661,23 @@ they multiply out to is capped, in four places:</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p>the elements of an array</p></td>
+<tr class="row-even"><td><p>the dimensions of one shape</p></td>
+<td><p>64</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dimensions</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>the elements of an array</p></td>
 <td><p>10 000 000</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, or the <code class="docutils literal notranslate"><span class="pre">size</span></code> of an axis</p></td>
 </tr>
-<tr class="row-odd"><td><p>the elements of a map, over its two axes</p></td>
+<tr class="row-even"><td><p>the elements of a map, over its two axes</p></td>
 <td><p>10 000 000</p></td>
 <td><p>the declaration, which states no shape of its own</p></td>
 </tr>
-<tr class="row-even"><td><p>the leaves of a structure type</p></td>
+<tr class="row-odd"><td><p>the leaves of a structure type</p></td>
 <td><p>100 000</p></td>
 <td><p>the innermost type that is already over the limit</p></td>
 </tr>
-<tr class="row-odd"><td><p>the leaves an array of structures contributes</p></td>
+<tr class="row-even"><td><p>the leaves an array of structures contributes</p></td>
 <td><p>100 000</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">dimensions</span></code></p></td>
 </tr>
@@ -684,7 +688,12 @@ because no single address describes them both, and each reaches the dumped dicti
 a2l and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code> as an entry of its own. A structure type is weighed whether or not
 anything declares a variable of it, and a type nesting one that is already over the limit is
 unusable for the same reason.</p>
-<p>Past any of the four, the shape is <code class="docutils literal notranslate"><span class="pre">schema</span></code> where it is written - <code class="docutils literal notranslate"><span class="pre">'Huge'</span> <span class="pre">has</span> <span class="pre">10000001</span>
+<p>The first cap is about the list rather than the product: six hundred dimensions of one
+element each are one element, and the walks that expand a shape descend once per dimension,
+so the shape is refused for its length before anything multiplies it out. The a2l is
+narrower still and says so where it matters - <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code> in ASAP2 1.6.1 carries three,
+and a shape longer than that is <code class="docutils literal notranslate"><span class="pre">a2l-unrepresentable</span></code>, a warning rather than a refusal.</p>
+<p>Past any of the five, the shape is <code class="docutils literal notranslate"><span class="pre">schema</span></code> where it is written - <code class="docutils literal notranslate"><span class="pre">'Huge'</span> <span class="pre">has</span> <span class="pre">10000001</span>
 <span class="pre">elements;</span> <span class="pre">DDD</span> <span class="pre">carries</span> <span class="pre">at</span> <span class="pre">most</span> <span class="pre">10000000</span></code> - and the declaration is dropped, so the run is one
 finding rather than an expansion nobody waits for. The limits sit well past any array a
 description means to state: a shape larger than one of them is usually a constant that

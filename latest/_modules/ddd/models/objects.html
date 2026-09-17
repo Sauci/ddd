@@ -784,7 +784,11 @@
 <span class="sd">    constant."""</span>
 
     <span class="nb">input</span><span class="p">:</span> <span class="n">Identifier</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">"""Measurement that indexes the axis; the a2l input quantity."""</span>
+<span class="w">    </span><span class="sd">"""Measurement that indexes the axis; the a2l input quantity.</span>
+
+<span class="sd">    A plain one: an instance of a declared structure is of kind ``measurement`` and is</span>
+<span class="sd">    refused here as any other wrong kind is, because it reaches the a2l as one record per</span>
+<span class="sd">    value-holding member and none of its own."""</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">declared_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">WrittenShape</span><span class="p">:</span>

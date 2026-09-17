@@ -607,8 +607,8 @@ How large may an array be?
 --------------------------
 
 A dimension is any integer of at least one, stated as a number or through a :doc:`declared
-constant <file_formats/constants>`, and nothing caps how many dimensions an object has. What
-they multiply out to is capped, in four places:
+constant <file_formats/constants>`. How many of them a shape states is capped, and so is what
+they multiply out to - five places in all:
 
 .. list-table::
    :header-rows: 1
@@ -617,6 +617,9 @@ they multiply out to is capped, in four places:
    * - what
      - at most
      - reported at
+   * - the dimensions of one shape
+     - 64
+     - ``dimensions``
    * - the elements of an array
      - 10 000 000
      - ``dimensions``, or the ``size`` of an axis
@@ -636,7 +639,13 @@ a2l and ``ddd list`` as an entry of its own. A structure type is weighed whether
 anything declares a variable of it, and a type nesting one that is already over the limit is
 unusable for the same reason.
 
-Past any of the four, the shape is ``schema`` where it is written - ``'Huge' has 10000001
+The first cap is about the list rather than the product: six hundred dimensions of one
+element each are one element, and the walks that expand a shape descend once per dimension,
+so the shape is refused for its length before anything multiplies it out. The a2l is
+narrower still and says so where it matters - ``MATRIX_DIM`` in ASAP2 1.6.1 carries three,
+and a shape longer than that is ``a2l-unrepresentable``, a warning rather than a refusal.
+
+Past any of the five, the shape is ``schema`` where it is written - ``'Huge' has 10000001
 elements; DDD carries at most 10000000`` - and the declaration is dropped, so the run is one
 finding rather than an expansion nobody waits for. The limits sit well past any array a
 description means to state: a shape larger than one of them is usually a constant that

@@ -195,7 +195,12 @@
 <span class="w">    </span><span class="sd">"""Free text from the component description, offered to the templates."""</span>
 
     <span class="n">source</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
-<span class="w">    </span><span class="sd">"""Path of the description file, for reference in generated comments."""</span>
+<span class="w">    </span><span class="sd">"""File name of the description file, for reference in generated comments.</span>
+
+<span class="sd">    The name alone, without the directories above it: a dictionary dumped from two checkouts</span>
+<span class="sd">    of one project is otherwise two different documents, and the banner of a generated file</span>
+<span class="sd">    would carry the path of whoever's machine generated it.</span>
+<span class="sd">    """</span>
 
     <span class="n">declarations</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ComponentDeclaration</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
 <span class="w">    </span><span class="sd">"""The interface of the component, in the order it declared it."""</span></div>
@@ -287,8 +292,15 @@
 <span class="sd">    """</span>
 
     <span class="n">init</span><span class="p">:</span> <span class="n">InitValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">"""Raw initial value, nested to match ``shape``, or the text of a string object; ``null``</span>
-<span class="sd">    means zero initialised."""</span>
+<span class="w">    </span><span class="sd">"""Raw initial value as the description wrote it, or the text of a string object;</span>
+<span class="sd">    ``null`` means zero initialised.</span>
+
+<span class="sd">    A list is nested to match ``shape``, one level per dimension. A scalar written for an</span>
+<span class="sd">    array is carried as the scalar: it initialises every element, and expanding it here</span>
+<span class="sd">    would write one literal per element into the dumped dictionary for a value the</span>
+<span class="sd">    description states once. A consumer that needs the elements broadcasts the scalar over</span>
+<span class="sd">    ``shape``, which is what the c backend does to render the initialiser.</span>
+<span class="sd">    """</span>
 
     <span class="n">section</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""Linker section the producing declaration placed the object in; ``null`` for the</span>

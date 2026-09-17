@@ -424,6 +424,14 @@ storage, run through the conversion:
   storage could hold.
 * **string** - the byte range of the datatype, 0 .. 255 for a ``uint8``; nobody may state others.
 
+A derived end is rounded to twelve significant digits, the width a reading is spelled at,
+because a decimal factor has no exact binary float: 255 counts of ``0.03`` multiply out to
+``7.6499999999999995``, and a calibration tool holding data to the limits it reads would then
+refuse ``7.65`` - the value that very raw count stands for. The rounded end is what reaches
+the a2l and the dumped dictionary. Limits **stated** by hand are never rounded; they are
+compared against the derived range with a relative tolerance of 1e-9, so a limit copied out of
+an a2l an earlier version wrote is not reported as off the range.
+
 A **negative factor swaps the two ends**, and DDD swaps them back: the conversion of the
 smallest raw value is then the largest physical value, and limits with ``min`` above ``max``
 would be rejected by the very validation that keeps hand-written limits sane. An ``sint8`` with

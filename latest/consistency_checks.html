@@ -849,7 +849,11 @@ registry can be read in one place.</p>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">changed-interface</span></code></p></td>
 <td><p>error</p></td>
-<td><p>the kind, datatype, unit, scaling, shape, axes or locality of an object changed.</p></td>
+<td><p>the kind, datatype, unit, scaling, shape, axes or locality of an object changed, or
+the layout a released structure fixed for its consumers: the width of a bitfield, the
+order of the members, or the type a structured variable names. Scaling compares an
+enum by its name and its ordered enumerators, whose descriptions are documentation
+and are not compared.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reused-name</span></code></p></td>
 <td><p>error</p></td>
@@ -876,12 +880,18 @@ calibration object whose <code class="docutils literal notranslate"><span class=
 reading twice: it keeps its address and a tool can still write to it, but the compiler
 is now entitled to fold the initial value into the code that reads it, so tuning it
 while the software runs stops working. The section says literally which memory the
-object ends up in, and the raster which DAQ event a calibration tool measures it on.</p></td>
+object ends up in, and the raster which DAQ event a calibration tool measures it on.
+The initial value compares as the bytes it produces, so respelling one without moving
+a byte is not a change; on a structured variable the three storage properties are the
+variable’s own and are reported at it, once, rather than under every member.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">narrowed-limits</span></code></p></td>
 <td><p>warning</p></td>
 <td><p>the physical limits of an object got tighter, so calibrated data may no longer fit.
-Widening is silent, because every value the baseline allowed still fits.</p></td>
+Widening is silent, because every value the baseline allowed still fits. The ends are
+compared with the relative tolerance of <code class="docutils literal notranslate"><span class="pre">limits-out-of-range</span></code>: most limits are
+derived, and a candidate that writes down the ones its datatype implies is not
+narrowing the unrounded ends an older baseline carries.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">changed-owner</span></code></p></td>
 <td><p>warning</p></td>

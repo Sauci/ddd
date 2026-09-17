@@ -116,7 +116,7 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span><span class="p">,</span> <span class="n">Any</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">BaseModel</span><span class="p">,</span>
@@ -343,6 +343,17 @@
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">kind</span><span class="o">.</span><span class="n">is_calibration</span>
 
     <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bits</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Never a bitfield: only a structure member may be one.</span>
+
+<span class="sd">        Here for the reason :attr:`ResolvedLeaf.init` is there: the two forms are one</span>
+<span class="sd">        ``Comparable`` to everything downstream, and a property that answers for the whole</span>
+<span class="sd">        union is what lets one comparison table serve both without a second spelling of</span>
+<span class="sd">        every rule.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">spelled_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">"""The shape as the project spells it: ``dimensions`` where recorded, else the numbers."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span> <span class="k">else</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
@@ -536,6 +547,16 @@
 <span class="w">        </span><span class="sd">"""The shape as the project spells it: ``dimensions`` where recorded, else the numbers."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span> <span class="k">else</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
 
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">written_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""Each dimension as its (spelling, value) pair, exactly as on a plain object.</span>
+
+<span class="sd">        What two deliveries compare, for the same reason: the spelling is what the generated</span>
+<span class="sd">        array declaration carries, so a dimension that changes either half is a changed</span>
+<span class="sd">        interface.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">spelled_shape</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_dimensions_spell_the_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ResolvedInstance</span><span class="p">:</span>
         <span class="n">_check_dimensions_match</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span><span class="p">)</span>
@@ -708,12 +729,16 @@
 
     <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"DDD data dictionary"</span><span class="p">)</span>
 
-    <span class="nb">format</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DICTIONARY_FORMAT</span>
+    <span class="nb">format</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)]</span> <span class="o">=</span> <span class="n">DICTIONARY_FORMAT</span>
 <span class="w">    </span><span class="sd">"""Version of this document format, raised only when the shape of the document changes.</span>
 
 <span class="sd">    Stamped so that a dictionary archived next to a delivery can be read back years later by</span>
 <span class="sd">    a version of DDD that can say "this file is newer than I understand" rather than misread</span>
 <span class="sd">    it. It does not follow the version of the tool.</span>
+
+<span class="sd">    A whole number of at least 1, and strictly that: ``"9"``, ``9.0`` and ``0`` are not</span>
+<span class="sd">    versions any DDD ever wrote, and the check that refuses a dictionary from a newer DDD has</span>
+<span class="sd">    no version to compare them with.</span>
 <span class="sd">    """</span>
 
     <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>

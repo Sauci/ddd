@@ -260,8 +260,9 @@ ddd<span class="w"> </span>compare<span class="w"> </span>baseline.json<span cla
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">renames.json</span></code> holds one entry per renamed object - its <code class="docutils literal notranslate"><span class="pre">id</span></code>, its old name under <code class="docutils literal notranslate"><span class="pre">from</span></code>
 and its new one under <code class="docutils literal notranslate"><span class="pre">to</span></code>; a member of a renamed structured variable is listed under the
-instance’s id followed by its member path, <code class="docutils literal notranslate"><span class="pre">k7m2q9xr4t8w.value</span></code>, so that every entry has an
-id of its own:</p>
+instance’s id followed by the member’s path below the instance as the access path spells it,
+<code class="docutils literal notranslate"><span class="pre">k7m2q9xr4t8w.value</span></code> for a member of a single structure and <code class="docutils literal notranslate"><span class="pre">k7m2q9xr4t8w[2].raw</span></code> for one
+of the third element of an array of them, so that every entry has an id of its own:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">[{</span><span class="w"> </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"k7m2q9xr4t8w"</span><span class="p">,</span><span class="w"> </span><span class="nt">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"FiltGain"</span><span class="p">,</span><span class="w"> </span><span class="nt">"to"</span><span class="p">:</span><span class="w"> </span><span class="s2">"FilterGain"</span><span class="w"> </span><span class="p">}]</span>
 </pre></div>
 </div>
@@ -302,7 +303,9 @@ them together with everything else.</p>
 </tr>
 <tr class="row-odd"><td><p>error</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">changed-interface</span></code></p></td>
-<td><p>kind, datatype, unit, scaling, shape, axes or locality of an object changed</p></td>
+<td><p>kind, datatype, unit, scaling, shape, axes or locality of an object changed, or the
+layout a released structure fixed: a bitfield’s width, the order of the members, or
+the type a structured variable names</p></td>
 </tr>
 <tr class="row-even"><td><p>error</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">reused-name</span></code></p></td>
@@ -352,21 +355,46 @@ comparison rules did not run</p></td>
 </tr>
 </tbody>
 </table>
-<p><code class="docutils literal notranslate"><span class="pre">changed-interface</span></code> is one check rather than seven because the seven properties it covers -
-kind, datatype, unit, conversion, shape, the axes an object refers to, and whether it is
-component local - are the properties a consumer compiles against and calibrates against. Any
-one of them changing makes the consumer wrong in the same way, and the message names which
-ones differ. A dimension compares as its spelling and its value: a name from the
+<p><code class="docutils literal notranslate"><span class="pre">changed-interface</span></code> is one check rather than a dozen because the properties it covers -
+kind, datatype, unit, conversion, shape, the axes an object refers to, whether it is
+component local, and the layout a structure fixed for its consumers - are the properties a
+consumer compiles against and calibrates against. Any one of them changing makes the consumer
+wrong in the same way, and the message names which ones differ. A conversion compares by its
+kind and its parameters, and an enum by its name together with its enumerators in order:
+revaluing <code class="docutils literal notranslate"><span class="pre">ON</span></code> from 1 to 2 changes every reading of every recording keyed on it, while
+documenting an enumerator changes nothing, so descriptions are no more compared here than
+anywhere else. A dimension compares as its spelling and its value: a name from the
 <a class="reference internal" href="file_formats/constants.html"><span class="doc">constant vocabulary</span></a> and the number it stands for are
 different spellings of one size, and the spelling is what the generated code carries, so
 respelling <code class="docutils literal notranslate"><span class="pre">[8]</span></code> as <code class="docutils literal notranslate"><span class="pre">[&quot;PRESSURE_CELLS&quot;]</span></code> changes the interface even while the number
 stands. A baseline archived before dictionary format 4 recorded no spellings at all, so
 against such a baseline only the values are compared: adopting a constant for a size that
-stands reads clean, and a changed size still does not. <code class="docutils literal notranslate"><span class="pre">changed-storage</span></code> covers the four properties that change how an object behaves
-rather than what it means, the initial value, <code class="docutils literal notranslate"><span class="pre">volatile</span></code>, the memory <code class="docutils literal notranslate"><span class="pre">section</span></code> and the
-measurement <code class="docutils literal notranslate"><span class="pre">raster</span></code>; a variable that moved from the 100 ms event to the 1 ms one changes
-the a2l a calibration engineer works with while invalidating nobody’s code.
-<code class="docutils literal notranslate"><span class="pre">changed-a2l</span></code> covers the export flag, the display format and the display identifier, which
+stands reads clean, and a changed size still does not.</p>
+<p>The layout of a <a class="reference internal" href="file_formats/types.html"><span class="doc">structure</span></a> is interface as well. A bitfield
+narrowed from three bits to two changes the value every reader takes out of the word, and
+widened it moves every member after it; two members swapped move every address after the
+first of them while each member still compares identical to the byte - same path, same
+datatype, same conversion, same limits - so a comparison that walked only the members said
+nothing whatsoever about a delivery that had moved every offset of every variable of that
+type. A reordering is reported once, at the structure, because the edit is one line of one
+types file however many variables of it the project declares. And a structured variable is
+compared as a variable, not only through its members: its <code class="docutils literal notranslate"><span class="pre">type</span></code> is what every consumer’s
+header declares, so renaming <code class="docutils literal notranslate"><span class="pre">Sensor_t</span></code> to <code class="docutils literal notranslate"><span class="pre">Sensor2_t</span></code> with the members untouched is a
+changed interface.</p>
+<p><code class="docutils literal notranslate"><span class="pre">changed-storage</span></code> covers the four properties that change how an object behaves rather than
+what it means: the initial value, <code class="docutils literal notranslate"><span class="pre">volatile</span></code>, the memory <code class="docutils literal notranslate"><span class="pre">section</span></code> and the measurement
+<code class="docutils literal notranslate"><span class="pre">raster</span></code>; a variable that moved from the 100 ms event to the 1 ms one changes the a2l a
+calibration engineer works with while invalidating nobody’s code. An initial value compares
+as the bytes it produces and not as it was spelled - DDD offers <code class="docutils literal notranslate"><span class="pre">7</span></code> on a <code class="docutils literal notranslate"><span class="pre">uint8[4]</span></code> and
+<code class="docutils literal notranslate"><span class="pre">[7,</span> <span class="pre">7,</span> <span class="pre">7,</span> <span class="pre">7]</span></code> as two spellings of one array, and a string’s text as the character codes it
+stands for - so a delivery that respells one without moving a byte still replaces its
+predecessor. Where two of them do differ, the finding spells both the way the file spells
+them, cut short past a few elements when the array is long, and names the first index they
+part at. On a structured variable those three properties are the variable’s own, its members
+having no volatility, section or raster of their own, and are reported at the variable, once,
+as its producer and its condition are; what a member answers for is its own datatype,
+meaning, shape, bit width and a2l entry.</p>
+<p><code class="docutils literal notranslate"><span class="pre">changed-a2l</span></code> covers the export flag, the display format and the display identifier, which
 move labels around in a calibration tool without touching the software.</p>
 <p><code class="docutils literal notranslate"><span class="pre">volatile</span></code> is graded differently here than it is <em>inside</em> a project, where it is interface
 and a disagreement is a <code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code> error - see <a class="reference internal" href="consistency_checks.html"><span class="doc">Consistency checks</span></a>. The

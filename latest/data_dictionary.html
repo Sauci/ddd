@@ -325,6 +325,7 @@ elided here for space):</p>
 <span class="w">  </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Format"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">    </span><span class="p">},</span>
@@ -592,7 +593,8 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">   </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Version of this document format, raised only when the shape of the document changes.\n\nStamped so that a dictionary archived next to a delivery can be read back years later by\na version of DDD that can say \"this file is newer than I understand\" rather than misread\nit. It does not follow the version of the tool."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Version of this document format, raised only when the shape of the document changes.\n\nStamped so that a dictionary archived next to a delivery can be read back years later by\na version of DDD that can say \"this file is newer than I understand\" rather than misread\nit. It does not follow the version of the tool.\n\nA whole number of at least 1, and strictly that: ``\"9\"``, ``9.0`` and ``0`` are not\nversions any DDD ever wrote, and the check that refuses a dictionary from a newer DDD has\nno version to compare them with."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Format"</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">      </span><span class="p">},</span>
@@ -1984,15 +1986,21 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 </dl>
 <dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="ddd.ir.DataDictionary.format">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">format</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">8</span></span><a class="headerlink" href="#ddd.ir.DataDictionary.format" title="Link to this definition"></a></dt>
+<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">format</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Annotated</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Field</span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">ge</span></span><span class="o"><span class="pre">=</span></span><span class="m"><span class="pre">1</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="n"><span class="pre">strict</span></span><span class="o"><span class="pre">=</span></span><span class="k"><span class="pre">True</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">8</span></span><a class="headerlink" href="#ddd.ir.DataDictionary.format" title="Link to this definition"></a></dt>
 <dd><p>Version of this document format, raised only when the shape of the document changes.</p>
 <p>Stamped so that a dictionary archived next to a delivery can be read back years later by
 a version of DDD that can say “this file is newer than I understand” rather than misread
 it. It does not follow the version of the tool.</p>
+<p>A whole number of at least 1, and strictly that: <code class="docutils literal notranslate"><span class="pre">&quot;9&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">9.0</span></code> and <code class="docutils literal notranslate"><span class="pre">0</span></code> are not
+versions any DDD ever wrote, and the check that refuses a dictionary from a newer DDD has
+no version to compare them with.</p>
 <p>Version of this document format, raised only when the shape of the document changes.</p>
 <p>Stamped so that a dictionary archived next to a delivery can be read back years later by
 a version of DDD that can say “this file is newer than I understand” rather than misread
 it. It does not follow the version of the tool.</p>
+<p>A whole number of at least 1, and strictly that: <code class="docutils literal notranslate"><span class="pre">&quot;9&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">9.0</span></code> and <code class="docutils literal notranslate"><span class="pre">0</span></code> are not
+versions any DDD ever wrote, and the check that refuses a dictionary from a newer DDD has
+no version to compare them with.</p>
 </dd></dl>
 
 <dl class="py attribute pydantic_field">

@@ -893,29 +893,39 @@
     <span class="k">return</span> <span class="s2">""</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">"[</span><span class="si">{</span><span class="n">dimension</span><span class="si">}</span><span class="s2">]"</span> <span class="k">for</span> <span class="n">dimension</span> <span class="ow">in</span> <span class="n">shape</span><span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">check_shape</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">InitValue</span><span class="p">,</span> <span class="n">shape</span><span class="p">:</span> <span class="n">Shape</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_shape</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">InitValue</span><span class="p">,</span> <span class="n">shape</span><span class="p">:</span> <span class="n">Shape</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Validate a nested init value against an array shape.</span>
 
 <span class="sd">    A string is not judged here: whether it fits is a question about the object's</span>
 <span class="sd">    conversion as much as its shape, and the analysis answers both at once.</span>
+
+<span class="sd">    ``path`` is the access path of the element being judged, empty at the top. A nested init</span>
+<span class="sd">    is wrong at one element of it, and saying so about the whole declaration made the message</span>
+<span class="sd">    a plain untruth: ``[[1], [2]]`` on a ``uint8[2]`` read "init is a list but the object is</span>
+<span class="sd">    a scalar" of an object whose ``"dimensions": [2]`` is two lines above, and it is the</span>
+<span class="sd">    *element* that has no further dimension. The top level keeps its wording, where "init"</span>
+<span class="sd">    and "the object" are the same thing.</span>
 <span class="sd">    """</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
         <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">what</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"element </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">"</span> <span class="k">if</span> <span class="n">path</span> <span class="k">else</span> <span class="s2">"init"</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">shape</span><span class="p">:</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">path</span><span class="p">:</span>
+                <span class="k">return</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">what</span><span class="si">}</span><span class="s2"> is a list but the shape has no further dimension"</span>
             <span class="k">return</span> <span class="s2">"init is a list but the object is a scalar"</span>
         <span class="k">return</span> <span class="kc">None</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
         <span class="c1"># Only the init as a whole may be a scalar, which then fills every element; a scalar</span>
         <span class="c1"># inside a nested list describes no shape, so it is refused rather than broadcast.</span>
         <span class="k">return</span> <span class="p">(</span>
-            <span class="sa">f</span><span class="s2">"init must be a list of </span><span class="si">{</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2"> elements; only the whole init may be a "</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">what</span><span class="si">}</span><span class="s2"> must be a list of </span><span class="si">{</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2"> elements; only the whole init may be a "</span>
             <span class="sa">f</span><span class="s2">"single scalar"</span>
         <span class="p">)</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">!=</span> <span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
-        <span class="k">return</span> <span class="sa">f</span><span class="s2">"init has </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="si">}</span><span class="s2"> elements, expected </span><span class="si">{</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span>
-    <span class="k">for</span> <span class="n">element</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
-        <span class="n">problem</span> <span class="o">=</span> <span class="n">check_shape</span><span class="p">(</span><span class="n">element</span><span class="p">,</span> <span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">what</span><span class="si">}</span><span class="s2"> has </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="si">}</span><span class="s2"> elements, expected </span><span class="si">{</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">element</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+        <span class="n">problem</span> <span class="o">=</span> <span class="n">check_shape</span><span class="p">(</span><span class="n">element</span><span class="p">,</span> <span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">[</span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s2">]"</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">problem</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">problem</span>
     <span class="k">return</span> <span class="kc">None</span>

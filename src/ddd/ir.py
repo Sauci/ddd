@@ -21,7 +21,7 @@ repeat that work, and two backends can never disagree about it.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import (
     BaseModel,
@@ -240,6 +240,17 @@ class ResolvedObject(_Frozen):
         return self.kind.is_calibration
 
     @property
+    def bits(self) -> None:
+        """Never a bitfield: only a structure member may be one.
+
+        Here for the reason :attr:`ResolvedLeaf.init` is there: the two forms are one
+        ``Comparable`` to everything downstream, and a property that answers for the whole
+        union is what lets one comparison table serve both without a second spelling of
+        every rule.
+        """
+        return None
+
+    @property
     def spelled_shape(self) -> tuple[int | str, ...]:
         """The shape as the project spells it: ``dimensions`` where recorded, else the numbers."""
         return self.dimensions if self.dimensions else tuple(self.shape)
@@ -432,6 +443,16 @@ class ResolvedInstance(_Frozen):
         """The shape as the project spells it: ``dimensions`` where recorded, else the numbers."""
         return self.dimensions if self.dimensions else tuple(self.shape)
 
+    @property
+    def written_shape(self) -> tuple[tuple[int | str, int], ...]:
+        """Each dimension as its (spelling, value) pair, exactly as on a plain object.
+
+        What two deliveries compare, for the same reason: the spelling is what the generated
+        array declaration carries, so a dimension that changes either half is a changed
+        interface.
+        """
+        return tuple(zip(self.spelled_shape, self.shape, strict=True))
+
     @model_validator(mode="after")
     def _dimensions_spell_the_shape(self) -> ResolvedInstance:
         _check_dimensions_match(self.shape, self.dimensions)
@@ -602,12 +623,16 @@ class DataDictionary(_Frozen):
 
     model_config = ConfigDict(title="DDD data dictionary")
 
-    format: int = DICTIONARY_FORMAT
+    format: Annotated[int, Field(ge=1, strict=True)] = DICTIONARY_FORMAT
     """Version of this document format, raised only when the shape of the document changes.
 
     Stamped so that a dictionary archived next to a delivery can be read back years later by
     a version of DDD that can say "this file is newer than I understand" rather than misread
     it. It does not follow the version of the tool.
+
+    A whole number of at least 1, and strictly that: ``"9"``, ``9.0`` and ``0`` are not
+    versions any DDD ever wrote, and the check that refuses a dictionary from a newer DDD has
+    no version to compare them with.
     """
 
     name: Identifier

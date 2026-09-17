@@ -159,8 +159,9 @@ the workflow above into:
 
 ``renames.json`` holds one entry per renamed object - its ``id``, its old name under ``from``
 and its new one under ``to``; a member of a renamed structured variable is listed under the
-instance's id followed by its member path, ``k7m2q9xr4t8w.value``, so that every entry has an
-id of its own:
+instance's id followed by the member's path below the instance as the access path spells it,
+``k7m2q9xr4t8w.value`` for a member of a single structure and ``k7m2q9xr4t8w[2].raw`` for one
+of the third element of an array of them, so that every entry has an id of its own:
 
 .. code-block:: json
 
@@ -199,7 +200,9 @@ them together with everything else.
      - an object of the baseline is gone and somebody read it
    * - error
      - ``changed-interface``
-     - kind, datatype, unit, scaling, shape, axes or locality of an object changed
+     - kind, datatype, unit, scaling, shape, axes or locality of an object changed, or the
+       layout a released structure fixed: a bitfield's width, the order of the members, or
+       the type a structured variable names
    * - error
      - ``reused-name``
      - a name of the baseline now names a different object
@@ -236,20 +239,48 @@ them together with everything else.
      - ``added-object``
      - the candidate declares an object the baseline did not
 
-``changed-interface`` is one check rather than seven because the seven properties it covers -
-kind, datatype, unit, conversion, shape, the axes an object refers to, and whether it is
-component local - are the properties a consumer compiles against and calibrates against. Any
-one of them changing makes the consumer wrong in the same way, and the message names which
-ones differ. A dimension compares as its spelling and its value: a name from the
+``changed-interface`` is one check rather than a dozen because the properties it covers -
+kind, datatype, unit, conversion, shape, the axes an object refers to, whether it is
+component local, and the layout a structure fixed for its consumers - are the properties a
+consumer compiles against and calibrates against. Any one of them changing makes the consumer
+wrong in the same way, and the message names which ones differ. A conversion compares by its
+kind and its parameters, and an enum by its name together with its enumerators in order:
+revaluing ``ON`` from 1 to 2 changes every reading of every recording keyed on it, while
+documenting an enumerator changes nothing, so descriptions are no more compared here than
+anywhere else. A dimension compares as its spelling and its value: a name from the
 :doc:`constant vocabulary <file_formats/constants>` and the number it stands for are
 different spellings of one size, and the spelling is what the generated code carries, so
 respelling ``[8]`` as ``["PRESSURE_CELLS"]`` changes the interface even while the number
 stands. A baseline archived before dictionary format 4 recorded no spellings at all, so
 against such a baseline only the values are compared: adopting a constant for a size that
-stands reads clean, and a changed size still does not. ``changed-storage`` covers the four properties that change how an object behaves
-rather than what it means, the initial value, ``volatile``, the memory ``section`` and the
-measurement ``raster``; a variable that moved from the 100 ms event to the 1 ms one changes
-the a2l a calibration engineer works with while invalidating nobody's code.
+stands reads clean, and a changed size still does not.
+
+The layout of a :doc:`structure <file_formats/types>` is interface as well. A bitfield
+narrowed from three bits to two changes the value every reader takes out of the word, and
+widened it moves every member after it; two members swapped move every address after the
+first of them while each member still compares identical to the byte - same path, same
+datatype, same conversion, same limits - so a comparison that walked only the members said
+nothing whatsoever about a delivery that had moved every offset of every variable of that
+type. A reordering is reported once, at the structure, because the edit is one line of one
+types file however many variables of it the project declares. And a structured variable is
+compared as a variable, not only through its members: its ``type`` is what every consumer's
+header declares, so renaming ``Sensor_t`` to ``Sensor2_t`` with the members untouched is a
+changed interface.
+
+``changed-storage`` covers the four properties that change how an object behaves rather than
+what it means: the initial value, ``volatile``, the memory ``section`` and the measurement
+``raster``; a variable that moved from the 100 ms event to the 1 ms one changes the a2l a
+calibration engineer works with while invalidating nobody's code. An initial value compares
+as the bytes it produces and not as it was spelled - DDD offers ``7`` on a ``uint8[4]`` and
+``[7, 7, 7, 7]`` as two spellings of one array, and a string's text as the character codes it
+stands for - so a delivery that respells one without moving a byte still replaces its
+predecessor. Where two of them do differ, the finding spells both the way the file spells
+them, cut short past a few elements when the array is long, and names the first index they
+part at. On a structured variable those three properties are the variable's own, its members
+having no volatility, section or raster of their own, and are reported at the variable, once,
+as its producer and its condition are; what a member answers for is its own datatype,
+meaning, shape, bit width and a2l entry.
+
 ``changed-a2l`` covers the export flag, the display format and the display identifier, which
 move labels around in a calibration tool without touching the software.
 

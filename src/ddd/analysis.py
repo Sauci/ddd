@@ -2397,9 +2397,12 @@ class _Analysis:
         for value in definition.scalar_values():
             if datatype is Datatype.BOOLEAN:
                 if not isinstance(value, bool) and value not in (0, 1):
+                    # Spelled the way it was written, for the reason the integer case below
+                    # is: format_number renders 2.0 as "2", so the refusal read as a
+                    # complaint about a whole number nobody had written.
                     self._bag.add(
                         "init-invalid",
-                        f"init value {format_number(value)} is not a valid bool",
+                        f"init value {value!r} is not a valid bool",
                         location,
                     )
                 continue

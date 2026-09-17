@@ -271,6 +271,36 @@ class TestValueChecks:
         assert checks(bag) == ["init-invalid"]
         assert "init is a list but the object is a scalar" in messages(bag)
 
+    def test_a_list_nested_one_level_too_deep_names_the_element(self, tree: Path) -> None:
+        """The object here is an array; it is its *element* that has no further dimension.
+
+        Reported as "the object is a scalar" it was a plain untruth about a declaration that
+        states ``"dimensions": [2]`` two lines above, and left the author looking for the
+        scalar they had not written.
+        """
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("local", "X", dimensions=[2], init=[[1], [2]])],
+                b=[declare("local", "Y")],
+            ),
+        )
+        assert checks(bag) == ["init-invalid"]
+        assert "element [0] is a list but the shape has no further dimension" in messages(bag)
+
+    def test_a_row_of_the_wrong_length_is_counted_at_that_row(self, tree: Path) -> None:
+        """The same reading one dimension up: the init has two rows as the shape asks, and
+        the row named is the one holding three values where the shape allows two."""
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("local", "X", dimensions=[2, 2], init=[[1, 2], [3, 4, 5]])],
+                b=[declare("local", "Y")],
+            ),
+        )
+        assert checks(bag) == ["init-invalid"]
+        assert "element [1] has 3 elements, expected 2" in messages(bag)
+
     def test_a_conversion_whose_derived_limits_overflow_is_refused(self, tree: Path) -> None:
         """float64 under a factor of 1.8 runs past the largest float there is.
 

@@ -687,7 +687,11 @@ registry can be read in one place.
      - an object of the baseline is gone and a component read it.
    * - ``changed-interface``
      - error
-     - the kind, datatype, unit, scaling, shape, axes or locality of an object changed.
+     - the kind, datatype, unit, scaling, shape, axes or locality of an object changed, or
+       the layout a released structure fixed for its consumers: the width of a bitfield, the
+       order of the members, or the type a structured variable names. Scaling compares an
+       enum by its name and its ordered enumerators, whose descriptions are documentation
+       and are not compared.
    * - ``reused-name``
      - error
      - a name of the baseline now belongs to a different object: the object that carried it
@@ -711,10 +715,16 @@ registry can be read in one place.
        is now entitled to fold the initial value into the code that reads it, so tuning it
        while the software runs stops working. The section says literally which memory the
        object ends up in, and the raster which DAQ event a calibration tool measures it on.
+       The initial value compares as the bytes it produces, so respelling one without moving
+       a byte is not a change; on a structured variable the three storage properties are the
+       variable's own and are reported at it, once, rather than under every member.
    * - ``narrowed-limits``
      - warning
      - the physical limits of an object got tighter, so calibrated data may no longer fit.
-       Widening is silent, because every value the baseline allowed still fits.
+       Widening is silent, because every value the baseline allowed still fits. The ends are
+       compared with the relative tolerance of ``limits-out-of-range``: most limits are
+       derived, and a candidate that writes down the ones its datatype implies is not
+       narrowing the unrounded ends an older baseline carries.
    * - ``changed-owner``
      - warning
      - another component produces the object now.

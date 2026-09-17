@@ -771,29 +771,39 @@ def format_shape(shape: WrittenShape) -> str:
     return "".join(f"[{dimension}]" for dimension in shape)
 
 
-def check_shape(value: InitValue, shape: Shape) -> str | None:
+def check_shape(value: InitValue, shape: Shape, path: str = "") -> str | None:
     """Validate a nested init value against an array shape.
 
     A string is not judged here: whether it fits is a question about the object's
     conversion as much as its shape, and the analysis answers both at once.
+
+    ``path`` is the access path of the element being judged, empty at the top. A nested init
+    is wrong at one element of it, and saying so about the whole declaration made the message
+    a plain untruth: ``[[1], [2]]`` on a ``uint8[2]`` read "init is a list but the object is
+    a scalar" of an object whose ``"dimensions": [2]`` is two lines above, and it is the
+    *element* that has no further dimension. The top level keeps its wording, where "init"
+    and "the object" are the same thing.
     """
     if isinstance(value, str):
         return None
+    what = f"element {path}" if path else "init"
     if not shape:
         if isinstance(value, tuple):
+            if path:
+                return f"{what} is a list but the shape has no further dimension"
             return "init is a list but the object is a scalar"
         return None
     if not isinstance(value, tuple):
         # Only the init as a whole may be a scalar, which then fills every element; a scalar
         # inside a nested list describes no shape, so it is refused rather than broadcast.
         return (
-            f"init must be a list of {shape[0]} elements; only the whole init may be a "
+            f"{what} must be a list of {shape[0]} elements; only the whole init may be a "
             f"single scalar"
         )
     if len(value) != shape[0]:
-        return f"init has {len(value)} elements, expected {shape[0]}"
-    for element in value:
-        problem = check_shape(element, shape[1:])
+        return f"{what} has {len(value)} elements, expected {shape[0]}"
+    for index, element in enumerate(value):
+        problem = check_shape(element, shape[1:], f"{path}[{index}]")
         if problem is not None:
             return problem
     return None

@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
 from conftest import DEMO, checks, component, declare, messages, project, write_tree
 from ddd.analysis import analyze
 from ddd.cli import EXIT_FINDINGS, EXIT_OK, _build_parser, main
-from ddd.compare import compare
+from ddd.compare import _MOST_CANDIDATES, compare
 from ddd.diagnostics import DiagnosticBag, SeverityPolicy
-from ddd.ir import DataDictionary
+from ddd.ir import DataDictionary, ResolvedObject
 from ddd.loading import load_workspace
+from ddd.models import Datatype, IdentityConversion, Limits, ObjectKind
 
 
 def resolve(base: Path, root: str) -> DataDictionary:
@@ -58,6 +60,19 @@ def verdict(baseline: DataDictionary, candidate: DataDictionary, *severities: st
     bag = DiagnosticBag(SeverityPolicy.from_strings(severities))
     compare(baseline, candidate, bag)
     return bag
+
+
+def ruling(base: Path, capsys: pytest.CaptureFixture[str], *arguments: str) -> tuple[int, str]:
+    """Run ``ddd compare`` over the two deliveries ``one_component`` writes as ``old``/``new``.
+
+    What a comparison is *for* is the verdict line and the exit code, and a check that only
+    counts the findings cannot see either: a delivery whose findings are all warnings is a
+    replacement, and the same run under ``--strict`` is not. The tests of this file that
+    decide whether one delivery can stand in for another therefore go through the command.
+    """
+    capsys.readouterr()
+    code = main(["compare", str(base / "old.ddd.json"), str(base / "new.ddd.json"), *arguments])
+    return code, capsys.readouterr().err
 
 
 class TestBreakingChanges:
@@ -377,6 +392,606 @@ class TestGradedChanges:
         assert checks(verdict(old, new, "changed-interface=ignore")) == []
 
 
+class TestAStructuredVariableIsComparedAsAVariable:
+    """A structured variable used to be compared only through its members.
+
+    ``DataDictionary.comparable`` offers the plain objects and the leaves and never the
+    instances, and two things fell between the two. What no member carries at all - the
+    ``type``: renaming ``Sensor_t`` to ``Sensor2_t`` with the members untouched changes what
+    every consumer's header declares and left every leaf identical to the byte, so the
+    comparison said nothing whatsoever. And what every member carries only because the
+    variable does - ``volatile``, ``section``, ``raster``, the producer, the condition: one
+    flip of the variable's ``volatile`` was one ``changed-storage`` per member.
+    """
+
+    MEMBERS: ClassVar[tuple[str, ...]] = ("count", "flags", "value")
+
+    def delivery(
+        self,
+        tree: Path,
+        name: str,
+        *,
+        type_name: str = "Sensor_t",
+        owner: str = "A",
+        constants: str | None = None,
+        **declaration: Any,
+    ) -> DataDictionary:
+        members = [
+            {
+                "name": member,
+                "member": "value",
+                "datatype": "uint8",
+                "conversion": {"kind": "identity"},
+            }
+            for member in self.MEMBERS
+        ]
+        write_tree(
+            tree,
+            {
+                f"{name}.ddd.json": project(
+                    "P",
+                    *([constants] if constants else []),
+                    f"{name}-t.ddd.json",
+                    f"{name}-s.ddd.json",
+                    f"{name}-r.ddd.json",
+                    f"{name}-a.ddd.json",
+                ),
+                f"{name}-t.ddd.json": {
+                    "types": [{"type": "struct", "name": type_name, "members": members}]
+                },
+                f"{name}-s.ddd.json": {
+                    "sections": [{"section": ".fast", "access": "read-write", "alignment": 4}]
+                },
+                f"{name}-r.ddd.json": {
+                    "rasters": [{"raster": "10ms", "event": 0, "cycle": "10ms"}]
+                },
+                f"{name}-a.ddd.json": component(
+                    owner, declare("local", "Inlet", typename=type_name, **declaration)
+                ),
+            },
+        )
+        return resolve(tree, f"{name}.ddd.json")
+
+    def test_a_type_renamed_with_identical_members_is_a_changed_interface(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old = self.delivery(tree, "old", type_name="Sensor_t")
+        new = self.delivery(tree, "new", type_name="Sensor2_t")
+        assert [leaf.path for leaf in old.leaves] == ["Inlet.count", "Inlet.flags", "Inlet.value"]
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"]
+        assert "'Inlet' is not the same object any more (type: 'Sensor2_t' != 'Sensor_t')" in (
+            messages(bag)
+        )
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_FINDINGS
+        assert "cannot replace" in report
+
+    @pytest.mark.parametrize(
+        ("changed", "check", "spelled"),
+        [
+            ({"volatile": True}, "changed-storage", "'Inlet': volatile: true != false"),
+            ({"section": ".fast"}, "changed-storage", "'Inlet': section: .fast != none"),
+            ({"raster": "10ms"}, "changed-storage", "'Inlet': raster: 10ms != none"),
+            (
+                {"condition": "defined(FAST)"},
+                "changed-condition",
+                "'Inlet': condition none became 'defined(FAST)'",
+            ),
+            ({"dimensions": [2]}, "changed-interface", "'Inlet' is not the same object any more"),
+        ],
+    )
+    def test_a_change_to_the_variable_is_reported_once_and_not_once_per_member(
+        self,
+        tree: Path,
+        capsys: pytest.CaptureFixture[str],
+        changed: dict[str, Any],
+        check: str,
+        spelled: str,
+    ) -> None:
+        """Three members, and one edit on the declaration above them: one finding."""
+        old = self.delivery(tree, "old")
+        new = self.delivery(tree, "new", **changed)
+        bag = verdict(old, new)
+        assert len(self.MEMBERS) == 3
+        assert [entry for entry in checks(bag) if entry == check] == [check]
+        assert spelled in messages(bag)
+        for member in self.MEMBERS:
+            assert f"'Inlet.{member}': {check.removeprefix('changed-')}" not in messages(bag)
+        # Graded as the same change on a plain object is: only a changed interface refuses.
+        breaking = check == "changed-interface"
+        code, report = ruling(tree, capsys)
+        assert code == (EXIT_FINDINGS if breaking else EXIT_OK), report
+        assert ("cannot replace" if breaking else "can replace") in report
+
+    def test_a_variable_produced_by_another_component_is_reported_once(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old = self.delivery(tree, "old", owner="A")
+        new = self.delivery(tree, "new", owner="B")
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-owner"]
+        assert "'Inlet' is now produced by B instead of A" in messages(bag)
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_OK, report
+        assert "can replace" in report
+
+    def test_a_member_of_its_own_is_still_reported_at_the_member(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """What the variable now answers for is taken off the leaves and nothing else is."""
+        old = self.delivery(tree, "old")
+        new = self.delivery(tree, "new")
+        wider = new.leaves[0].model_copy(update={"datatype": old.leaves[0].datatype.SINT16})
+        bag = verdict(old, new.model_copy(update={"leaves": (wider, *new.leaves[1:])}))
+        assert checks(bag) == ["changed-interface"]
+        assert "'Inlet.count' is not the same object any more (datatype: sint16 != uint8)" in (
+            messages(bag)
+        )
+
+    def archived(self, dictionary: DataDictionary) -> DataDictionary:
+        """The dictionary as a format 3 dump carried it: no dimension spellings anywhere."""
+        stripped = json.loads(dictionary.model_dump_json())
+        stripped["format"] = 3
+        for group in ("objects", "instances", "leaves"):
+            for entry in stripped[group]:
+                del entry["dimensions"]
+        return DataDictionary.model_validate(stripped)
+
+    def test_an_older_baseline_compares_the_array_dimension_by_value(self, tree: Path) -> None:
+        """An array of structures defers exactly as an array of plain objects does.
+
+        A format 3 dump recorded no spellings at all, so against one only the values can
+        disagree: adopting a declared constant for an array of two structures whose size
+        stands is a clean migration, not a changed interface.
+        """
+        old = self.delivery(tree, "old", dimensions=[2])
+        write_tree(tree, {"new-c.ddd.json": {"constants": [{"name": "N", "value": 2}]}})
+        new = self.delivery(tree, "new", dimensions=["N"], constants="new-c.ddd.json")
+        assert new.instances[0].spelled_shape == ("N",)
+        assert checks(verdict(self.archived(old), new)) == []
+
+    def test_a_resized_array_against_an_older_baseline_still_reports(self, tree: Path) -> None:
+        """The deference is about the spelling only; another size is a changed interface."""
+        old = self.delivery(tree, "old", dimensions=[2])
+        write_tree(tree, {"new-c.ddd.json": {"constants": [{"name": "N", "value": 3}]}})
+        new = self.delivery(tree, "new", dimensions=["N"], constants="new-c.ddd.json")
+        bag = verdict(self.archived(old), new)
+        assert "changed-interface" in checks(bag)
+        assert "'Inlet' is not the same object any more (shape: [N] != [2])" in messages(bag)
+
+    def test_two_identical_deliveries_of_a_structured_variable_compare_clean(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old = self.delivery(tree, "old", volatile=True, section=".fast", raster="10ms")
+        new = self.delivery(tree, "new", volatile=True, section=".fast", raster="10ms")
+        assert checks(verdict(old, new)) == []
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_OK, report
+        assert "can replace" in report
+
+
+class TestTheLayoutOfAStructureIsInterface:
+    """A structure's layout is part of what its consumers compiled against.
+
+    Two edits move every address after them and left no trace at all in the report. A member
+    whose bit width changed carries the new width on its leaf, and ``bits`` was in neither
+    comparison table - narrowing one from four to two was reported as nothing worse than
+    tightened limits, widening it as nothing at all. And a reordering touches no leaf
+    whatsoever: same paths, same datatypes, same conversions, same limits, so the members
+    themselves compare clean however far they have moved. The ``Member`` docstring published
+    in ``ddd_types.schema.json`` and ``ddd_component.schema.json`` has always said a
+    comparison against a baseline reports the reordering.
+    """
+
+    def member(self, name: str, **extra: Any) -> dict[str, Any]:
+        return {
+            "name": name,
+            "member": "bits" if "bits" in extra else "value",
+            "datatype": "uint16",
+            "conversion": {"kind": "identity"},
+            **extra,
+        }
+
+    def delivery(self, tree: Path, name: str, *members: dict[str, Any]) -> DataDictionary:
+        write_tree(
+            tree,
+            {
+                f"{name}.ddd.json": project("P", f"{name}-t.ddd.json", f"{name}-a.ddd.json"),
+                f"{name}-t.ddd.json": {
+                    "types": [{"type": "struct", "name": "S_t", "members": list(members)}]
+                },
+                f"{name}-a.ddd.json": component("A", declare("local", "Inst", typename="S_t")),
+            },
+        )
+        return resolve(tree, f"{name}.ddd.json")
+
+    @pytest.mark.parametrize(
+        ("was", "now", "spelled"),
+        [
+            # Widening moves every member after it, and was silent: the derived limits of a
+            # wider field only grow, and growing limits are deliberately not reported.
+            (2, 4, "bits: 4 != 2"),
+            # Narrowing changes the value every reader gets out of the word, and was reported
+            # as tightened limits alone - the layout change itself unmentioned.
+            (4, 2, "bits: 2 != 4"),
+        ],
+    )
+    def test_a_bitfield_of_another_width_is_a_changed_interface(
+        self,
+        tree: Path,
+        capsys: pytest.CaptureFixture[str],
+        was: int,
+        now: int,
+        spelled: str,
+    ) -> None:
+        old = self.delivery(tree, "old", self.member("a"), self.member("f", bits=was))
+        new = self.delivery(tree, "new", self.member("a"), self.member("f", bits=now))
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"]
+        assert spelled in messages(bag)
+        assert "'Inst.f'" in messages(bag)
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_FINDINGS
+        assert "cannot replace" in report
+
+    def test_two_members_swapped_are_reported_once_at_the_structure(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Nothing about either leaf changed, and every offset of every variable moved."""
+        first, second = self.member("a", datatype="uint8"), self.member("b")
+        old = self.delivery(tree, "old", first, second)
+        new = self.delivery(tree, "new", second, first)
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"]
+        assert "'S_t' is not the same structure any more (members: b, a != a, b)" in messages(bag)
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_FINDINGS
+        assert "cannot replace" in report
+
+    def test_a_member_appended_is_an_addition_and_not_a_reordering(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The members that stayed are where they were, so there is one thing to say."""
+        old = self.delivery(tree, "old", self.member("a"))
+        new = self.delivery(tree, "new", self.member("a"), self.member("b"))
+        bag = verdict(old, new)
+        assert checks(bag) == ["added-object"]
+        assert "'Inst.b' is new" in messages(bag)
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_OK, report
+        assert "can replace" in report
+
+    def test_an_identical_structure_compares_clean(self, tree: Path) -> None:
+        members = (self.member("a", datatype="uint8"), self.member("f", bits=3))
+        old = self.delivery(tree, "old", *members)
+        new = self.delivery(tree, "new", *members)
+        assert checks(verdict(old, new)) == []
+
+
+class TestDerivedLimitsCarryTheAnalysisTolerance:
+    """A limit nobody wrote is computed, and computing it goes through a float.
+
+    ``sint16`` under ``{"factor": 0.1}`` implies [-3276.8, 3276.7], and the binary arithmetic
+    that derives the upper end used to write it out as ``3276.7000000000003``. Rounding it
+    where it is derived is not enough on its own: every dictionary archived before that
+    rounding still carries the unrounded number, and a candidate that makes the implicit
+    limits explicit - or adopts a scalar type that states them - was then narrowing the range
+    by 3e-13. That is a ``narrowed-limits`` warning and, under the ``--strict`` gate the
+    comparison page recommends, "cannot replace" and exit 1 over nothing at all.
+
+    The analysis has weighed a derived limit with a relative tolerance since it was written;
+    the comparison now weighs one with the same one, so the check that reports an impossible
+    limit and the check that reports a narrowed one cannot disagree about which two numbers
+    are the same number.
+    """
+
+    SCALED: ClassVar[dict[str, float]] = {"factor": 0.1}
+
+    def archived(self, tree: Path, dictionary: DataDictionary, **ends: float) -> Path:
+        """The baseline as an older DDD dumped it: the derived limits, unrounded."""
+        entry = dictionary.objects[0].model_copy(update={"limits": Limits(**ends)})
+        path = tree / "baseline.json"
+        older = dictionary.model_copy(update={"objects": (entry,)})
+        path.write_text(older.model_dump_json(indent=2), encoding="utf-8")
+        return path
+
+    def against(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], baseline: Path
+    ) -> tuple[int, str]:
+        capsys.readouterr()
+        code = main(["compare", str(baseline), str(tree / "new.ddd.json"), "--strict"])
+        return code, capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        ("conversion", "implied", "unrounded"),
+        [
+            # The upper end, where 32767 counts of 0.1 overshoot the range they cover.
+            ({"factor": 0.1}, {"min": -3276.8, "max": 3276.7}, 3276.7000000000003),
+            # The lower one, which the same arithmetic overshoots as soon as an offset moves
+            # the raw zero: -32768 counts of 0.1 plus 0.1 is -3276.7000000000003.
+            (
+                {"factor": 0.1, "offset": 0.1},
+                {"min": -3276.7, "max": 3276.8},
+                -3276.7000000000003,
+            ),
+        ],
+    )
+    def test_a_candidate_stating_the_limits_its_datatype_implies_compares_clean(
+        self,
+        tree: Path,
+        capsys: pytest.CaptureFixture[str],
+        conversion: dict[str, float],
+        implied: dict[str, float],
+        unrounded: float,
+    ) -> None:
+        scaled = {"conversion": conversion}
+        old = one_component(tree, "old", declare("local", "T", "sint16", **scaled))
+        assert old.by_name["T"].limits == Limits(**implied), "derived, and rounded where derived"
+
+        end = "min" if unrounded < 0 else "max"
+        baseline = self.archived(tree, old, **{**implied, end: unrounded})
+        assert repr(unrounded) in baseline.read_text(encoding="utf-8"), "the archive is unrounded"
+
+        one_component(tree, "new", declare("local", "T", "sint16", limits=implied, **scaled))
+        code, report = self.against(tree, capsys, baseline)
+        assert code == EXIT_OK, report
+        assert "narrowed-limits" not in report
+        assert "can replace" in report and "cannot replace" not in report
+
+    def test_a_narrowing_anybody_wrote_on_purpose_is_still_reported(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The tolerance absorbs the arithmetic, not a range somebody actually tightened."""
+        scaled = {"conversion": self.SCALED}
+        old = one_component(tree, "old", declare("local", "T", "sint16", **scaled))
+        baseline = self.archived(tree, old, min=-3276.8, max=3276.7000000000003)
+        one_component(
+            tree,
+            "new",
+            declare("local", "T", "sint16", limits={"min": -3276.8, "max": 3000}, **scaled),
+        )
+        code, report = self.against(tree, capsys, baseline)
+        assert code == EXIT_FINDINGS
+        assert "narrowed-limits" in report
+        assert "cannot replace" in report
+
+
+class TestAnInitComparesAsBytes:
+    """An init is compared as the storage it produces, not as the way it was spelled.
+
+    A delivery whose bytes are identical can replace the one before it, so a respelling is
+    not a change: ``7`` on a ``uint8[4]`` is the array it fills, and a string's text is its
+    bytes padded with zeros to the dimension, which is what c writes after the characters.
+    Both respellings are ones the tool itself invites - the strings feature offers the text
+    form for an array of character codes - and both used to be a ``changed-storage`` warning
+    and, under the ``--strict`` gate the comparison page recommends, a "cannot replace".
+
+    The dumped dictionary is not touched: it carries the init as the description wrote it,
+    so an archive still says what was stated. Only the comparison normalises.
+    """
+
+    ARRAY: ClassVar[dict[str, Any]] = {"kind": "value_block", "dimensions": [4]}
+    TEXT: ClassVar[dict[str, Any]] = {
+        "kind": "value_block",
+        "dimensions": [4],
+        "conversion": {"kind": "string"},
+    }
+
+    def deliveries(
+        self, tree: Path, before: object, after: object
+    ) -> tuple[DataDictionary, DataDictionary]:
+        return (
+            one_component(tree, "old", declare("local", "V", "uint8", init=before, **self.ARRAY)),
+            one_component(tree, "new", declare("local", "V", "uint8", init=after, **self.ARRAY)),
+        )
+
+    def text_deliveries(
+        self, tree: Path, before: object, after: object
+    ) -> tuple[DataDictionary, DataDictionary]:
+        return (
+            one_component(tree, "old", declare("local", "V", "uint8", init=before, **self.TEXT)),
+            one_component(tree, "new", declare("local", "V", "uint8", init=after, **self.TEXT)),
+        )
+
+    def test_a_scalar_init_is_the_array_it_fills(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = self.deliveries(tree, 7, [7, 7, 7, 7])
+        assert checks(verdict(old, new)) == []
+        code, report = ruling(tree, capsys, "--strict")
+        assert code == EXIT_OK, report
+        assert "can replace" in report and "cannot replace" not in report
+
+    def test_a_scalar_init_is_the_array_it_fills_the_other_way_round(self, tree: Path) -> None:
+        """The rule is symmetric, and the baseline is as likely to be the expanded side."""
+        old, new = self.deliveries(tree, [7, 7, 7, 7], 7)
+        assert checks(verdict(old, new)) == []
+
+    def test_a_strings_text_is_the_bytes_it_stores(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = self.text_deliveries(tree, [72, 105, 0, 0], "Hi")
+        assert checks(verdict(old, new)) == []
+        code, report = ruling(tree, capsys, "--strict")
+        assert code == EXIT_OK, report
+        assert "can replace" in report and "cannot replace" not in report
+
+    def test_a_different_value_in_the_array_is_still_reported(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The normalisation must not swallow the finding it exists to stop over-reporting."""
+        old, new = self.deliveries(tree, 7, [7, 7, 7, 8])
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-storage"]
+        assert "'V': init:" in messages(bag)
+        code, report = ruling(tree, capsys, "--strict")
+        assert code == EXIT_FINDINGS
+        assert "cannot replace" in report
+
+    def test_a_different_character_in_the_text_is_still_reported(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = self.text_deliveries(tree, [72, 105, 0, 0], "Ho")
+        assert checks(verdict(old, new)) == ["changed-storage"]
+        code, report = ruling(tree, capsys, "--strict")
+        assert code == EXIT_FINDINGS
+        assert "cannot replace" in report
+
+    def test_a_resized_array_does_not_invent_an_initial_value_change(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The array got longer and what it is filled with did not: one finding, not two.
+
+        The shape is a changed interface and says so; a ``changed-storage`` beside it saying
+        ``init: 7 != 7`` would be true of the bytes and nonsense on the page.
+        """
+        one_component(tree, "old", declare("local", "V", "uint8", init=7, **self.ARRAY))
+        new = declare("local", "V", "uint8", init=7, kind="value_block", dimensions=[8])
+        one_component(tree, "new", new)
+        bag = verdict(resolve(tree, "old.ddd.json"), resolve(tree, "new.ddd.json"))
+        assert checks(bag) == ["changed-interface"]
+        assert "shape: [8] != [4]" in messages(bag)
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_FINDINGS
+        assert "cannot replace" in report
+
+    def test_the_dictionary_still_carries_the_init_as_it_was_written(self, tree: Path) -> None:
+        """Only the comparison normalises; the archive says what the description said."""
+        old, new = self.deliveries(tree, 7, [7, 7, 7, 7])
+        assert old.by_name["V"].init == 7
+        assert new.by_name["V"].init == (7, 7, 7, 7)
+
+
+class TestAnInitIsSpelledForAReader:
+    """``changed-storage`` used to print the whole of both inits, in python's spelling.
+
+    A ``uint8[100000]`` block with one element changed was one warning of 600 017 characters,
+    in the text report and in the json, and the reader still had to find the element that
+    moved; a 16 x 16 map cost about 1.6 kB per changed table. And a list came out as a python
+    tuple - ``(7, 7, 7, 8)`` - where the description file, ``ddd list`` and the hover all
+    spell it ``[7, 7, 7, 8]``.
+    """
+
+    def block(self, init: tuple[object, ...]) -> DataDictionary:
+        return DataDictionary(
+            name="P",
+            objects=(
+                ResolvedObject(
+                    name="Table",
+                    kind=ObjectKind.VALUE_BLOCK,
+                    datatype=Datatype.UINT8,
+                    conversion=IdentityConversion(),
+                    limits=Limits(min=0, max=255),
+                    shape=(len(init),),
+                    init=init,
+                ),
+            ),
+        )
+
+    def test_a_long_init_is_abbreviated_and_the_difference_is_named(self) -> None:
+        """Abbreviating alone would be worse than saying nothing: two truncated heads that
+        read identical, on a finding whose whole content is that they differ. The index the
+        two part at is what makes the short spelling safe to print.
+        """
+        changed = [7] * 100000
+        changed[51234] = 8
+        bag = verdict(self.block((7,) * 100000), self.block(tuple(changed)))
+        assert checks(bag) == ["changed-storage"], messages(bag)
+        spelled = messages(bag)
+        assert len(spelled) < 200, f"{len(spelled)} characters"
+        assert "100000 values" in spelled
+        assert "first differs at [51234]: 8 != 7" in spelled
+
+    def test_a_list_init_is_spelled_as_the_file_spells_it(self, tree: Path) -> None:
+        old = one_component(
+            tree, "old", declare("local", "V", "uint8", kind="value_block", dimensions=[4], init=7)
+        )
+        new = one_component(
+            tree,
+            "new",
+            declare("local", "V", "uint8", kind="value_block", dimensions=[4], init=[7, 7, 7, 8]),
+        )
+        bag = verdict(old, new)
+        assert "'V': init: [7, 7, 7, 8] != 7" in messages(bag), messages(bag)
+
+    def test_a_nested_init_is_spelled_as_the_file_spells_it(self, tree: Path) -> None:
+        old = one_component(
+            tree,
+            "old",
+            declare(
+                "local", "M", "uint8", kind="value_block", dimensions=[2, 2], init=[[1, 2], [3, 4]]
+            ),
+        )
+        new = one_component(
+            tree,
+            "new",
+            declare(
+                "local", "M", "uint8", kind="value_block", dimensions=[2, 2], init=[[1, 2], [3, 5]]
+            ),
+        )
+        bag = verdict(old, new)
+        assert "'M': init: [[1, 2], [3, 5]] != [[1, 2], [3, 4]]" in messages(bag), messages(bag)
+
+    def test_a_text_init_longer_than_a_finding_carries_is_abbreviated(self, tree: Path) -> None:
+        """A string's init is its text, and its array is capped by the shape cap and nothing
+        else, so the same warning printed whatever a description happened to write there."""
+        text = {"kind": "value_block", "dimensions": [200], "conversion": {"kind": "string"}}
+        old = one_component(tree, "old", declare("local", "S", "uint8", init="a" * 150, **text))
+        new = one_component(tree, "new", declare("local", "S", "uint8", init="b" * 150, **text))
+        bag = verdict(old, new)
+        spelled = messages(bag)
+        assert checks(bag) == ["changed-storage"], spelled
+        assert len(spelled) < 200, f"{len(spelled)} characters"
+        assert "150 characters" in spelled
+
+    def test_the_index_is_read_off_the_bytes_whichever_side_was_abbreviated(
+        self, tree: Path
+    ) -> None:
+        """A scalar stands for every element of the array it fills, so the two part inside
+        the array and not at the top - from whichever side the scalar was written on."""
+        block: dict[str, Any] = {"kind": "value_block", "dimensions": [4]}
+        old = one_component(tree, "old", declare("local", "V", "uint8", init=[7, 7, 7, 8], **block))
+        new = one_component(tree, "new", declare("local", "V", "uint8", init=7, **block))
+        assert "first differs at [3]: 7 != 8" in messages(verdict(old, new))
+
+    def test_a_resized_array_is_not_given_an_index_it_has_no_element_at(self, tree: Path) -> None:
+        """Two lists that agree as far as the shorter one goes have no first differing
+        element: what differs is how many there are, and both counts are printed already."""
+        old = one_component(
+            tree,
+            "old",
+            declare("local", "V", "uint8", kind="value_block", dimensions=[3], init=[1, 2, 3]),
+        )
+        new = one_component(
+            tree,
+            "new",
+            declare("local", "V", "uint8", kind="value_block", dimensions=[2], init=[1, 2]),
+        )
+        bag = verdict(old, new)
+        assert "'V': init: [1, 2] != [1, 2, 3]" in messages(bag), messages(bag)
+        assert "first differs" not in messages(bag)
+
+    def test_a_short_init_is_still_printed_whole(self, tree: Path) -> None:
+        """The abbreviation must not reach the inits a reader can simply be shown."""
+        old = one_component(tree, "old", declare("local", "V", "uint8", init=1))
+        new = one_component(tree, "new", declare("local", "V", "uint8", init=2))
+        assert "'V': init: 2 != 1" in messages(verdict(old, new))
+
+    def test_gaining_an_init_still_reads_against_none(self, tree: Path) -> None:
+        old = one_component(tree, "old", declare("local", "V", "uint8"))
+        new = one_component(tree, "new", declare("local", "V", "uint8", init=3))
+        assert "'V': init: 3 != none" in messages(verdict(old, new))
+
+    def test_a_boolean_init_is_spelled_as_json_spells_it(self, tree: Path) -> None:
+        """``True`` is python's spelling of what every file, listing and hover writes
+        ``true``, and the storage table beside it already renders ``volatile`` that way."""
+        boolean: dict[str, Any] = {"datatype": "boolean", "conversion": {"kind": "identity"}}
+        old = one_component(tree, "old", declare("local", "V", init=False, **boolean))
+        new = one_component(tree, "new", declare("local", "V", init=True, **boolean))
+        assert "'V': init: true != false" in messages(verdict(old, new))
+
+
 class TestCommandLine:
     def dump_to(self, path: Path, source: Path, capsys: pytest.CaptureFixture[str]) -> None:
         assert main(["dump", str(source)]) == EXIT_OK
@@ -592,6 +1207,63 @@ def test_a_reused_name_is_caught_even_when_the_claimant_has_no_id_yet(tree):
     assert findings[0].notes, "the note says where the old object went"
     note_text, _ = findings[0].notes[0]
     assert note_text == "'FiltGain' is now called 'FilterGain'"
+
+
+def test_a_name_freed_by_a_removal_and_taken_by_a_rename_is_an_error(tree, capsys):
+    """The mirror of the two above, and it used to be two warnings and "can replace".
+
+    The baseline's 'A' never adopted an id, so nothing about *it* can be proved from one; but
+    'B' carries one and the candidate's 'A' carries the same one, which proves the candidate's
+    'A' is the baseline's 'B' and not the 'A' that went. A calibration dataset or a recording
+    keyed by 'A' binds to what the baseline called 'B' - the hazard reused-name is an error
+    for - and the report said only that something was renamed and something else removed.
+    """
+    one_component(tree, "old", declare("local", "A"), declare("local", "B", id="k7m2q9xr4t8w"))
+    one_component(tree, "new", declare("local", "A", id="k7m2q9xr4t8w"))
+    bag = verdict(resolve(tree, "old.ddd.json"), resolve(tree, "new.ddd.json"))
+    assert checks(bag) == ["renamed-object", "reused-name", "removed-unused-object"], messages(bag)
+    reused = next(diagnostic for diagnostic in bag if diagnostic.check == "reused-name")
+    assert list(reused.notes) == [("the object now under it is the baseline's 'B'", None)]
+    code, report = ruling(tree, capsys)
+    assert code == EXIT_FINDINGS
+    assert "cannot replace" in report
+
+
+def test_a_swap_notes_both_halves_of_each_reuse(tree, capsys):
+    """Each name is the old side of one rename and the new side of the other, so each
+    finding says where the object that had the name went *and* what answers to it now."""
+    one_component(
+        tree,
+        "old",
+        declare("local", "A", id="k7m2q9xr4t8w"),
+        declare("local", "B", id="p3rt5vwx9z2q"),
+    )
+    one_component(
+        tree,
+        "new",
+        declare("local", "B", id="k7m2q9xr4t8w"),
+        declare("local", "A", id="p3rt5vwx9z2q"),
+    )
+    bag = verdict(resolve(tree, "old.ddd.json"), resolve(tree, "new.ddd.json"))
+    reused = [diagnostic for diagnostic in bag if diagnostic.check == "reused-name"]
+    assert [note for note, _ in reused[0].notes] == [
+        "'A' is now called 'B'",
+        "the object now under it is the baseline's 'B'",
+    ]
+    code, report = ruling(tree, capsys)
+    assert code == EXIT_FINDINGS
+    assert "cannot replace" in report
+
+
+def test_a_rename_whose_old_name_nobody_claims_is_no_reuse(tree, capsys):
+    """The new side of a rename only proves a reuse when the baseline used that name too."""
+    one_component(tree, "old", declare("local", "A", id="k7m2q9xr4t8w"))
+    one_component(tree, "new", declare("local", "B", id="k7m2q9xr4t8w"))
+    bag = verdict(resolve(tree, "old.ddd.json"), resolve(tree, "new.ddd.json"))
+    assert checks(bag) == ["renamed-object"], messages(bag)
+    code, report = ruling(tree, capsys)
+    assert code == EXIT_OK, report
+    assert "can replace" in report
 
 
 def test_a_name_reused_after_a_deletion_is_an_error(tree):
@@ -989,6 +1661,183 @@ def test_a_storage_only_difference_is_not_offered_as_a_lost_identity(tree):
     findings = [diagnostic for diagnostic in bag if diagnostic.check == "removed-unused-object"]
     assert len(findings) == 1, messages(bag)
     assert findings[0].notes == (), messages(bag)
+
+
+class TestTheLostIdentityNoteIsBounded:
+    """The note is advisory, and it used to cost more than the comparison it annotates.
+
+    It asks of every removal which additions are identical to it, and the additions were
+    grouped on ``kind``, ``datatype`` and ``unit`` alone - so a naming-convention sweep on a
+    project that has no ids yet, which is exactly what ``--renames`` exists for, put every
+    object in one bucket and ran the whole field comparison between every removal and every
+    addition. Ten seconds at 5 300 objects, and no answer at all at 53 000.
+
+    Two halves, and both are load bearing: the bucket now keys on everything hashable the
+    note compares, so a bucket holds genuine candidates rather than everything of one
+    datatype; and a bucket past a small bound is given up on, because the note names a
+    candidate only when there is exactly one and a crowd of identical additions was never
+    going to produce one.
+    """
+
+    def sweep(self, count: int) -> tuple[DataDictionary, DataDictionary]:
+        """Two deliveries of ``count`` objects, every one of them renamed and none of them
+        carrying an id - the project that has not adopted ids renaming everything at once."""
+
+        def objects(prefix: str) -> tuple[ResolvedObject, ...]:
+            return tuple(
+                ResolvedObject(
+                    name=f"{prefix}V{number}",
+                    kind=ObjectKind.MEASUREMENT,
+                    datatype=Datatype.UINT8,
+                    conversion=IdentityConversion(),
+                    limits=Limits(min=0, max=255),
+                )
+                for number in range(count)
+            )
+
+        return (
+            DataDictionary(name="P", objects=objects("")),
+            DataDictionary(name="P", objects=objects("x_")),
+        )
+
+    def test_a_sweep_of_five_thousand_renamed_objects_compares_in_seconds(self) -> None:
+        """The measurement the finding is: 5 000 objects took about three minutes.
+
+        The bound is generous - the comparison is a tenth of a second here - because what is
+        being asserted is that the work is no longer quadratic, and a slower machine may take
+        several times as long without that having changed.
+        """
+        baseline, candidate = self.sweep(5000)
+        bag = DiagnosticBag()
+        start = time.perf_counter()
+        compare(baseline, candidate, bag)
+        elapsed = time.perf_counter() - start
+        assert elapsed < 5.0, f"the sweep took {elapsed:.1f} s"
+        assert len(list(bag)) == 10000, "every object removed and every object added"
+
+    def test_a_removal_with_one_candidate_is_still_offered_it(self, tree: Path) -> None:
+        """The note has to survive the bucketing on an object that fills every keyed field:
+        an enum conversion (whose identity is not a plain value), an array shape, an init, a
+        section, a raster and a reference. Keying on any of them wrongly - spelling one of
+        them into the key in a form that does not compare the way the field does - would file
+        the removal and its one candidate in different buckets and lose the note silently.
+        """
+        for delivery, name in (("before", "FiltGain"), ("after", "FilterGain")):
+            write_tree(
+                tree,
+                {
+                    f"{delivery}.ddd.json": project(
+                        "P", f"{delivery}-r.ddd.json", f"{delivery}-a.ddd.json"
+                    ),
+                    f"{delivery}-r.ddd.json": {
+                        "rasters": [{"raster": "10ms", "event": 0, "cycle": "10ms"}]
+                    },
+                    f"{delivery}-a.ddd.json": component(
+                        "A",
+                        declare("local", "Ax", "uint16", kind="axis", size=3),
+                        declare(
+                            "local",
+                            name,
+                            "uint8",
+                            kind="curve",
+                            axis="Ax",
+                            raster="10ms",
+                            init=[1, 2, 3],
+                            conversion={"kind": "enum", "name": "Mode_t", "enumerators": {"A": 1}},
+                        ),
+                    ),
+                },
+            )
+        bag = verdict(resolve(tree, "before.ddd.json"), resolve(tree, "after.ddd.json"))
+        findings = [entry for entry in bag if entry.check == "removed-unused-object"]
+        assert len(findings) == 1, messages(bag)
+        assert findings[0].notes, messages(bag)
+        note_text, _ = findings[0].notes[0]
+        assert note_text.startswith("'FilterGain' was added with an identical interface")
+
+    def test_a_member_is_offered_a_candidate_under_a_differently_stored_variable(
+        self, tree: Path
+    ) -> None:
+        """A leaf is compared without the fields it only carries because its variable does,
+        so the bucket it is looked up in must leave them out too. ``Outlet`` is volatile where
+        ``Inlet`` was not, which is a property of the variable and nothing the member states:
+        the members themselves are identical, and ``Outlet.a`` is the candidate for the lost
+        identity of ``Inlet.a``.
+        """
+        for delivery, variable, volatile in (("before", "Inlet", False), ("after", "Outlet", True)):
+            write_tree(
+                tree,
+                {
+                    f"{delivery}.ddd.json": project(
+                        "P", f"{delivery}-t.ddd.json", f"{delivery}-a.ddd.json"
+                    ),
+                    f"{delivery}-t.ddd.json": {
+                        "types": [
+                            {
+                                "type": "struct",
+                                "name": "S_t",
+                                "members": [
+                                    {
+                                        "name": "a",
+                                        "member": "value",
+                                        "datatype": "uint8",
+                                        "conversion": {"kind": "identity"},
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    f"{delivery}-a.ddd.json": component(
+                        "A",
+                        declare("local", variable, typename="S_t", volatile=volatile),
+                    ),
+                },
+            )
+        bag = verdict(resolve(tree, "before.ddd.json"), resolve(tree, "after.ddd.json"))
+        findings = [entry for entry in bag if entry.check == "removed-unused-object"]
+        assert len(findings) == 1, messages(bag)
+        assert findings[0].notes, messages(bag)
+        note_text, _ = findings[0].notes[0]
+        assert note_text.startswith("'Outlet.a' was added with an identical interface")
+
+    def test_a_crowded_bucket_is_given_up_on(self, tree: Path) -> None:
+        """What the bound buys, on the one input the key cannot separate.
+
+        Every one of these curves agrees on every hashable field the note compares - kind,
+        datatype, unit, conversion, shape, init, locality, storage and the *names* of its
+        reference fields - and they are told apart only by which axis each one resolves to,
+        which no key can hold. Exactly one of them would match, so without the bound the note
+        would be earned at the price of the full comparison against all of them; past the
+        bound the note is simply not offered.
+        """
+        wanted = _MOST_CANDIDATES + 1
+        before = one_component(
+            tree,
+            "before",
+            declare("local", "Ax", "uint16", kind="axis", size=3),
+            declare("local", "Ay", "uint16", kind="axis", size=3),
+            declare("local", "C", "uint8", kind="curve", axis="Ax"),
+        )
+        after = one_component(
+            tree,
+            "after",
+            declare("local", "Ax", "uint16", kind="axis", size=3),
+            declare("local", "Ay", "uint16", kind="axis", size=3),
+            *[
+                declare(
+                    "local",
+                    f"D{number}",
+                    "uint8",
+                    kind="curve",
+                    axis="Ax" if number == 0 else "Ay",
+                )
+                for number in range(wanted)
+            ],
+        )
+        bag = verdict(before, after)
+        findings = [entry for entry in bag if entry.check == "removed-unused-object"]
+        assert len(findings) == 1, messages(bag)
+        assert findings[0].notes == (), messages(bag)
 
 
 def test_the_renames_file_lists_the_pairs_a_dataset_needs(tree, tmp_path):

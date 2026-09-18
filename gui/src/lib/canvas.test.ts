@@ -5,7 +5,9 @@ import {
   edgesOf,
   fadedNodes,
   firstMatch,
+  flowTitle,
   nodesOf,
+  objectsInDisagreement,
   STROKE,
   shownEdges,
   stateOf,
@@ -77,6 +79,7 @@ test("every flow becomes an arrow announced as one sentence, coloured by its sev
       [graphFlow(A.path, B.path, ["One", "Two"], "error"), graphFlow(B.path, C.path)],
     ),
     () => undefined,
+    () => undefined,
   );
   expect(edges.map((edge) => [edge.source, edge.target])).toEqual([
     [A.path, B.path],
@@ -91,7 +94,11 @@ test("every flow becomes an arrow announced as one sentence, coloured by its sev
 
 test("an arrow tells the canvas when the reader reaches it, by pointer or by keyboard", () => {
   const reached: (string | null)[] = [];
-  const [edge] = edgesOf(reply([A, B], [graphFlow(A.path, B.path)]), (id) => reached.push(id));
+  const [edge] = edgesOf(
+    reply([A, B], [graphFlow(A.path, B.path)]),
+    (id) => reached.push(id),
+    () => undefined,
+  );
   fire(edge?.domAttributes?.onMouseEnter);
   fire(edge?.domAttributes?.onFocus);
   fire(edge?.domAttributes?.onMouseLeave);
@@ -104,12 +111,79 @@ test("an arrow tells the canvas when the reader reaches it, by pointer or by key
 
 test("a flow naming a module the answer does not carry is not drawn", () => {
   const modules = [A, B];
-  expect(edgesOf(reply(modules, [graphFlow("/gone.ddd.json", B.path)]), () => undefined)).toEqual(
-    [],
+  expect(
+    edgesOf(
+      reply(modules, [graphFlow("/gone.ddd.json", B.path)]),
+      () => undefined,
+      () => undefined,
+    ),
+  ).toEqual([]);
+  expect(
+    edgesOf(
+      reply(modules, [graphFlow(A.path, "/gone.ddd.json")]),
+      () => undefined,
+      () => undefined,
+    ),
+  ).toEqual([]);
+});
+
+test("an arrow opens its panel when clicked, or on Enter or Space, and on no other key", () => {
+  const opened: string[] = [];
+  const [edge] = edgesOf(
+    reply([A, B], [graphFlow(A.path, B.path)]),
+    () => undefined,
+    (id) => {
+      opened.push(id);
+    },
   );
-  expect(edgesOf(reply(modules, [graphFlow(A.path, "/gone.ddd.json")]), () => undefined)).toEqual(
-    [],
+  fire(edge?.domAttributes?.onClick);
+  const press = (key: string): boolean => {
+    const handler = edge?.domAttributes?.onKeyDown;
+    if (handler === undefined) throw new Error("the arrow carries no key handler");
+    let prevented = false;
+    handler({ key, preventDefault: () => (prevented = true) } as never);
+    return prevented;
+  };
+  expect([press("Enter"), press(" "), press("a")]).toEqual([true, true, false]);
+  expect(opened).toEqual([edge?.id, edge?.id, edge?.id]);
+});
+
+test("an arrow's variables in disagreement are listed once each, in order", () => {
+  const disagreeing: GraphFlow = {
+    ...graphFlow(A.path, B.path, ["One", "Two"], "error"),
+    disagreements: [
+      { object: "Two", check: "definition-mismatch", severity: "error", message: "m" },
+      { object: "One", check: "definition-mismatch", severity: "warning", message: "m" },
+      { object: "Two", check: "storage-mismatch", severity: "error", message: "m" },
+      { object: null, check: "definition-mismatch", severity: "error", message: "m" },
+    ],
+  };
+  const graph = reply([A, B], [disagreeing, graphFlow(B.path, A.path)]);
+  expect(objectsInDisagreement(graph, `${A.path} -> ${B.path}`)).toEqual(["One", "Two"]);
+  expect(objectsInDisagreement(graph, `${B.path} -> ${A.path}`)).toEqual([]);
+  expect(objectsInDisagreement(graph, "nowhere")).toEqual([]);
+});
+
+test("an arrow naming a variable in disagreement is a button; one that agrees is not", () => {
+  const disagreeing: GraphFlow = {
+    ...graphFlow(A.path, B.path),
+    disagreements: [
+      { object: "One", check: "definition-mismatch", severity: "error", message: "m" },
+    ],
+  };
+  const [opens, agrees] = edgesOf(
+    reply([A, B], [disagreeing, graphFlow(B.path, A.path)]),
+    () => undefined,
+    () => undefined,
   );
+  expect(opens?.ariaRole).toBe("button");
+  expect(agrees?.ariaRole).toBeUndefined();
+});
+
+test("an arrow is named by the modules it joins", () => {
+  const graph = reply([A, B], [graphFlow(A.path, B.path)]);
+  expect(flowTitle(graph, `${A.path} -> ${B.path}`)).toBe("Alpha to Beta");
+  expect(flowTitle(graph, "nowhere")).toBe("nowhere");
 });
 
 test("nothing is dimmed while no module is hovered and nothing is searched for", () => {
@@ -154,6 +228,7 @@ test("a node outside the bright set is faded, and one whose state did not change
 test("an arrow is bright only while both of its ends are, and open only while it is reached", () => {
   const edges = edgesOf(
     reply([A, B, C], [graphFlow(A.path, B.path), graphFlow(B.path, C.path)]),
+    () => undefined,
     () => undefined,
   );
   const shown = shownEdges(edges, new Set([A.path, B.path]), edges[0]?.id ?? null);

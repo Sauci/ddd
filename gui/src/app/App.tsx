@@ -24,6 +24,18 @@ export function App() {
     (file: string) => navigate({ page: "component", file }),
     [navigate],
   );
+  // Also one stable identity: the canvas lays itself out again whenever the arrows' own click
+  // and keyboard handlers change, and those close over this callback.
+  const openVariable = useCallback(
+    (variable: string | undefined) =>
+      navigate(
+        variable === undefined
+          ? { page: "project", view: "graph" }
+          : { page: "project", view: "graph", variable },
+        { replace: true },
+      ),
+    [navigate],
+  );
 
   let page: ReactNode;
   if (session.isPending) {
@@ -53,7 +65,14 @@ export function App() {
           }))}
         />
         {route.view === "graph" ? (
-          <GraphPage project={opened.path} state={state} onComponent={openComponent} />
+          <GraphPage
+            project={opened.path}
+            state={state}
+            variable={route.variable}
+            stopped={stopped}
+            onComponent={openComponent}
+            onVariable={openVariable}
+          />
         ) : (
           <ProjectPage state={state} onComponent={openComponent} />
         )}

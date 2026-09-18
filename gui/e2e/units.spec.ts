@@ -75,6 +75,18 @@ test("the address keeps the panel open across a reload", async ({ page, gui }) =
   await expect(page.getByRole("complementary", { name: "ValueB" })).toBeVisible();
 });
 
+test("the same disagreement is resolved from its arrow on the canvas", async ({ page, gui }) => {
+  const before = drift(gui.directory);
+  await page.goto(gui.address);
+  await page.locator(".flow-label.error").click();
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  await expect(panel).toBeVisible();
+  await expect(page).toHaveURL(/\/project\?variable=ValueA$/);
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect.poll(() => readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+  await expect(page.getByLabel("SensorHub to Controller: 2 variables, agreed")).toBeVisible();
+});
+
 test("no page reports a violation of its content security policy", async ({ page, gui }) => {
   await page.addInitScript(() => {
     const seen: string[] = [];

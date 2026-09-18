@@ -50,7 +50,12 @@ export function FlowEdge({
           // lib/canvas.ts); this is the picture of it, and saying it twice helps nobody.
           aria-hidden="true"
           // It sits on the middle of the curve, over the very stroke a reader aims at: it opens
-          // the same tooltip rather than being a hole in the arrow.
+          // the same tooltip rather than being a hole in the arrow, and the same panel on click -
+          // the keyboard reaches that through the arrow's own group instead, which already
+          // handles Enter and Space, so the label itself is left out of the tab order rather
+          // than given a click handler of its own to reach by keyboard, which would be a second
+          // stop on every arrow.
+          onClick={() => data.onOpen(id)}
           onMouseEnter={() => data.onReached(id)}
           onMouseLeave={() => data.onReached(null)}
           style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}

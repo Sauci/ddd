@@ -4,9 +4,16 @@ import type { GraphFlow, GraphModule } from "../api/types";
 const NODE_WIDTH = 180;
 const NODE_HEIGHT = 48;
 
-/** A module placed on the canvas. */
+/**
+ * A module placed on the canvas.
+ *
+ * It carries the module itself, not only its path: what draws the node needs the name and the
+ * counts beside the position, and a second lookup by path would need a fallback for a module
+ * that was never laid out - a case this function makes impossible, since it places every module
+ * it is given.
+ */
 export interface Placed {
-  path: string;
+  module: GraphModule;
   x: number;
   y: number;
 }
@@ -39,10 +46,10 @@ export function laidOut(
   dagre.layout(graph);
   return sorted.map((module) => {
     const at = saved[module.path];
-    if (at !== undefined) return { path: module.path, x: at.x, y: at.y };
+    if (at !== undefined) return { module, x: at.x, y: at.y };
     // dagre.layout() gives every node it laid out a numeric centre; NodeLabel's x and y are
     // typed optional only because they are unset before layout runs.
     const node = graph.node(module.path) as { x: number; y: number };
-    return { path: module.path, x: node.x - NODE_WIDTH / 2, y: node.y - NODE_HEIGHT / 2 };
+    return { module, x: node.x - NODE_WIDTH / 2, y: node.y - NODE_HEIGHT / 2 };
   });
 }

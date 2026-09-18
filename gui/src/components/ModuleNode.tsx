@@ -1,20 +1,5 @@
 import { Handle, type Node, type NodeProps, Position } from "@xyflow/react";
-
-/**
- * Everything the canvas hands one module's node.
- *
- * `onOpen` takes the module's path - the node's own id - because that is what the component page
- * is addressed by; the path is never shown, only the name is. `faded` is written by the canvas
- * and read by the stylesheet, so that hovering or searching can dim what is not a neighbour.
- */
-export interface ModuleData extends Record<string, unknown> {
-  name: string;
-  loaded: boolean;
-  errors: number;
-  warnings: number;
-  onOpen: (path: string) => void;
-  faded: boolean;
-}
+import type { ModuleData } from "../lib/canvas";
 
 /** One component on the canvas: its name as a button, and a badge when it holds findings. */
 export function ModuleNode({ id, data }: NodeProps<Node<ModuleData>>) {

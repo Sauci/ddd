@@ -1,21 +1,39 @@
 import { useQuery } from "@tanstack/react-query";
-import { Background, Controls, type Edge, MarkerType, type Node, ReactFlow } from "@xyflow/react";
-import { useMemo } from "react";
+import {
+  applyNodeChanges,
+  Background,
+  Controls,
+  type NodeMouseHandler,
+  type OnNodeDrag,
+  type OnNodesChange,
+  ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
+} from "@xyflow/react";
+import { type KeyboardEvent, useCallback, useMemo, useState } from "react";
 import { getGraph } from "../api/client";
 import type { GraphReply, State } from "../api/types";
 import { Banner } from "../components/Banner";
-import { type FlowData, FlowEdge, STROKE, stateOf } from "../components/FlowEdge";
-import { type ModuleData, ModuleNode } from "../components/ModuleNode";
-import { laidOut } from "../lib/layout";
-import { savedPositions } from "../state/positions";
-
-type ModuleNodeType = Node<ModuleData, "module">;
-type FlowEdgeType = Edge<FlowData, "flow">;
+import { FlowEdge } from "../components/FlowEdge";
+import { ModuleNode } from "../components/ModuleNode";
+import {
+  brightOf,
+  edgesOf,
+  fadedNodes,
+  firstMatch,
+  type ModuleNodeType,
+  nodesOf,
+  shownEdges,
+} from "../lib/canvas";
+import { forgetPositions, rememberPosition, savedPositions } from "../state/positions";
 
 // Outside the component on purpose: a fresh object here makes React Flow rebuild every node and
 // every edge on each render, which it says so itself in the console.
 const nodeTypes = { module: ModuleNode };
 const edgeTypes = { flow: FlowEdge };
+
+/** How long the viewport takes to fly to what `Fit` or a search asked for, in milliseconds. */
+const FLIGHT = 300;
 
 interface Props {
   project: string;
@@ -26,7 +44,10 @@ interface Props {
 /** The open project as a canvas: one node per module, one arrow per producing-consuming pair. */
 export function GraphPage({ project, state, onComponent }: Props) {
   const graph = useQuery({
-    queryKey: ["graph", state?.revision],
+    // The project is in the key beside the revision: until the first state answer arrives the
+    // revision is undefined, so two projects opened one after the other in the same session
+    // would share that key and the second would open on the first one's modules.
+    queryKey: ["graph", project, state?.revision],
     queryFn: () => getGraph(),
     // The canvas stays up while the next revision's graph is read: blanked back to "Drawing the
     // project…" on every edit, it lost the viewport and made the screen flash. Only the first
@@ -34,21 +55,23 @@ export function GraphPage({ project, state, onComponent }: Props) {
     placeholderData: (previous) => previous,
   });
 
-  if (graph.isPending) return <p className="quiet">Drawing the project…</p>;
-  if (graph.isError) return <Banner tone="error">{graph.error.message}</Banner>;
-
-  // The endpoint answers no flows both when the dictionary did not resolve (spec 4.5) and when
-  // the modules genuinely share nothing, and nothing in its answer tells the two apart. Several
-  // modules with not one flow between them is, in practice, a dictionary that did not resolve.
-  const noDictionary = graph.data.modules.length > 1 && graph.data.flows.length === 0;
+  if (graph.data === undefined) {
+    if (graph.isError) return <Banner tone="error">{graph.error.message}</Banner>;
+    return <p className="quiet">Drawing the project…</p>;
+  }
   return (
     <>
-      {noDictionary && (
+      {/* Spec 5.6: a server that stopped answering leaves the canvas as it was, and says so
+          beside it - what is drawn is still the truth of the last revision that was read. */}
+      {graph.isError && <Banner tone="error">{graph.error.message}</Banner>}
+      {!graph.data.dictionary && (
         <Banner tone="warning">
           This project has no dictionary, so its modules are drawn without arrows.
         </Banner>
       )}
-      <Canvas graph={graph.data} project={project} onComponent={onComponent} />
+      <ReactFlowProvider>
+        <Canvas graph={graph.data} project={project} onComponent={onComponent} />
+      </ReactFlowProvider>
     </>
   );
 }
@@ -56,6 +79,9 @@ export function GraphPage({ project, state, onComponent }: Props) {
 /**
  * The canvas itself, mounted only once there is a graph to draw so that `fitView` has something
  * to fit. `onComponent` is baked into every node, so the caller keeps one identity for it.
+ *
+ * It lives under a `ReactFlowProvider` because the search box, `Tidy` and `Fit` sit outside the
+ * `<ReactFlow>` element and still have to reach its viewport.
  */
 function Canvas({
   graph,
@@ -66,79 +92,114 @@ function Canvas({
   project: string;
   onComponent: (file: string) => void;
 }) {
-  const nodes = useMemo(() => nodesOf(graph, project, onComponent), [graph, project, onComponent]);
-  const edges = useMemo(() => edgesOf(graph), [graph]);
+  const flow = useReactFlow();
+  const [hovered, setHovered] = useState<string | null>(null);
+  const [reached, setReached] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  /** Every module where it belongs right now: the reader's own position, or the layout's. */
+  const place = useCallback(
+    () => nodesOf(graph, savedPositions(project), onComponent),
+    [graph, project, onComponent],
+  );
+  // React Flow moves a node only through the array it is handed back, so the nodes are state.
+  const [nodes, setNodes] = useState<ModuleNodeType[]>(place);
+  const [drawn, setDrawn] = useState(graph);
+  if (drawn !== graph) {
+    // A new revision lays the canvas out again (spec 5.1), keeping every module the reader
+    // moved where they put it. Adjusted while rendering the new graph rather than in an effect,
+    // so the previous revision's nodes are never painted against it.
+    setDrawn(graph);
+    setNodes(place());
+  }
+  const onNodesChange = useCallback<OnNodesChange<ModuleNodeType>>(
+    (changes) => setNodes((current) => applyNodeChanges(changes, current)),
+    [],
+  );
+  const onDragStop = useCallback<OnNodeDrag<ModuleNodeType>>(
+    (_event, node) => rememberPosition(project, node.id, node.position.x, node.position.y),
+    [project],
+  );
+  const onEnter = useCallback<NodeMouseHandler<ModuleNodeType>>(
+    (_event, node) => setHovered(node.id),
+    [],
+  );
+  const onLeave = useCallback<NodeMouseHandler<ModuleNodeType>>(() => setHovered(null), []);
+
+  const onTidy = useCallback(() => {
+    forgetPositions(project);
+    setNodes(place());
+  }, [project, place]);
+  const onFit = useCallback(() => void flow.fitView({ duration: FLIGHT }), [flow]);
+  const onSearchKey = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      const first = firstMatch(graph.modules, search);
+      // Centred rather than zoomed onto: one module filling the canvas would answer "where is
+      // it" by throwing away everything it is connected to.
+      if (first !== null) {
+        void flow.fitView({ nodes: [{ id: first }], duration: FLIGHT, maxZoom: 1 });
+      }
+    },
+    [flow, graph, search],
+  );
+
+  const edges = useMemo(() => edgesOf(graph, setReached), [graph]);
+  const bright = useMemo(
+    () => brightOf(graph.modules, graph.flows, hovered, search),
+    [graph, hovered, search],
+  );
+  const shownNodes = useMemo(() => fadedNodes(nodes, bright), [nodes, bright]);
+  const shownArrows = useMemo(() => shownEdges(edges, bright, reached), [edges, bright, reached]);
+
   return (
-    <section className="canvas" aria-label="Modules">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        fitView
-        // A reader reads this graph; they do not draw one. Dragging arrives with the arrangement
-        // Task 5 remembers, and React Flow moves a node only for an `onNodesChange` that saves it.
-        nodesDraggable={false}
-        nodesConnectable={false}
-        edgesFocusable={false}
-      >
-        <Background />
-        <Controls />
-      </ReactFlow>
-    </section>
+    <>
+      <div className="canvas-tools">
+        <input
+          // A textbox, not a search box: the journeys look for the role an <input type="text">
+          // has, and the clear button a search field adds has nothing to clear here.
+          type="text"
+          aria-label="Search modules"
+          placeholder="Search modules"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          onKeyDown={onSearchKey}
+        />
+        <button type="button" onClick={onTidy}>
+          Tidy
+        </button>
+        <button type="button" onClick={onFit}>
+          Fit
+        </button>
+      </div>
+      <section className="canvas" aria-label="Modules">
+        <ReactFlow
+          nodes={shownNodes}
+          edges={shownArrows}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          onNodesChange={onNodesChange}
+          onNodeDragStop={onDragStop}
+          onNodeMouseEnter={onEnter}
+          onNodeMouseLeave={onLeave}
+          fitView
+          // A reader reads this graph; they do not draw one, and they do not take a module out
+          // of it either - the delete key would otherwise remove what it is pointing at until
+          // the next revision put it back.
+          nodesConnectable={false}
+          deleteKeyCode={null}
+          // The node is a box around a button: React Flow's own tab stop in front of it carries
+          // no name and would put two stops in the way of every module.
+          nodesFocusable={false}
+        >
+          <Background />
+          {/* Tidy and Fit are this canvas's controls, named above it. React Flow's lock would
+              write dragging and connecting back into its own store, past the props here, and
+              its fit-view icon is Fit again without a name worth reading. */}
+          <Controls showInteractive={false} showFitView={false} />
+        </ReactFlow>
+      </section>
+    </>
   );
-}
-
-/** Every module, where the layout puts it, with what its node has to draw. */
-function nodesOf(
-  graph: GraphReply,
-  project: string,
-  onOpen: (path: string) => void,
-): ModuleNodeType[] {
-  const placed = new Map(
-    laidOut(graph.modules, graph.flows, savedPositions(project)).map((at) => [at.path, at]),
-  );
-  return graph.modules.map((module) => {
-    // laidOut places every module it is given; the fallback is only here to satisfy the type.
-    const at = placed.get(module.path) ?? { x: 0, y: 0 };
-    return {
-      id: module.path,
-      type: "module",
-      position: { x: at.x, y: at.y },
-      data: {
-        name: module.name,
-        loaded: module.loaded,
-        errors: module.findings.error,
-        warnings: module.findings.warning,
-        onOpen,
-        faded: false,
-      },
-    };
-  });
-}
-
-/** Every flow as an arrow, carrying the two modules' names rather than their paths. */
-function edgesOf(graph: GraphReply): FlowEdgeType[] {
-  const names = new Map(graph.modules.map((module) => [module.path, module.name]));
-  return graph.flows.map((flow) => {
-    const stroke = STROKE[stateOf(flow.severity)];
-    return {
-      id: `${flow.from} -> ${flow.to}`,
-      source: flow.from,
-      target: flow.to,
-      type: "flow",
-      markerEnd: { type: MarkerType.ArrowClosed, color: stroke, width: 18, height: 18 },
-      // React Flow would otherwise announce the arrow by the two file paths, which this screen
-      // never shows; the label carries the whole sentence a reader needs.
-      domAttributes: { "aria-hidden": true },
-      data: {
-        source: names.get(flow.from) ?? flow.from,
-        target: names.get(flow.to) ?? flow.to,
-        objects: flow.objects,
-        severity: flow.severity,
-        disagreements: flow.disagreements,
-        faded: false,
-      },
-    };
-  });
 }

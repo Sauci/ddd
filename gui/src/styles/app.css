@@ -168,6 +168,42 @@ input.unit {
   color: var(--ink);
   font-weight: 600;
 }
+/* The canvas's own controls, above it: find a module by name, lay the modules out again, and
+   bring the whole project back into view. */
+.canvas-tools {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.canvas-tools input {
+  font: inherit;
+  flex: 1;
+  max-width: 22em;
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+.canvas-tools button {
+  padding: var(--space-1) var(--space-3);
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.canvas-tools button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* What a hover or a search pushes back: dimmed rather than hidden, so the shape of the whole
+   project is still there behind what the reader asked about. */
+.module[data-faded="true"],
+.flow-label[data-faded="true"],
+.react-flow__edge-path.faded {
+  opacity: 0.2;
+}
 /* React Flow draws into whatever room it is given, so the canvas states its own. */
 .canvas {
   height: 70vh;
@@ -228,6 +264,8 @@ input.unit {
 }
 .flow-label {
   position: absolute;
+  /* The label sits on the middle of its own curve, which is where a reader aims to hover it, so
+     it takes the pointer and opens the same tooltip the arrow under it would have. */
   pointer-events: all;
   padding: 0 var(--space-1);
   background: var(--surface);
@@ -242,5 +280,45 @@ input.unit {
 }
 .flow-label.warning {
   border-color: var(--warning);
+  color: var(--warning);
+}
+/* What the arrow carries, while the reader is on it. Above its own label, and never under the
+   pointer: a tooltip that took the pointer would leave the arrow and so close itself. */
+.flow-tooltip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1;
+  max-width: 30em;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgb(29 42 47 / 18%);
+  font-size: var(--text-small);
+  text-align: left;
+}
+.flow-tooltip.error {
+  border-color: var(--error);
+}
+.flow-tooltip.warning {
+  border-color: var(--warning);
+}
+.flow-tooltip .objects {
+  margin: 0;
+  font-weight: 600;
+}
+.flow-tooltip ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+}
+/* Its own name rather than the .check the findings list uses: one class, styled once, so the
+   two never have to be told apart by how deep their selector is. */
+.flow-check {
+  font-family: var(--mono);
+}
+.flow-tooltip.error .flow-check {
+  color: var(--error);
+}
+.flow-tooltip.warning .flow-check {
   color: var(--warning);
 }

@@ -18,7 +18,7 @@ const graphFlow = (from: string, to: string): GraphFlow => ({
 });
 
 function positionOf(placed: readonly Placed[], path: string): Placed {
-  const found = placed.find((p) => p.path === path);
+  const found = placed.find((p) => p.module.path === path);
   if (found === undefined) throw new Error(`${path} was not placed`);
   return found;
 }
@@ -51,7 +51,7 @@ test("a saved position wins for its module, and leaves the others at dagre's lay
   const flows = [graphFlow(a.path, b.path), graphFlow(b.path, c.path)];
   const unmoved = laidOut([a, b, c], flows, {});
   const moved = laidOut([a, b, c], flows, { [b.path]: { x: 999, y: 111 } });
-  expect(positionOf(moved, b.path)).toEqual({ path: b.path, x: 999, y: 111 });
+  expect(positionOf(moved, b.path)).toEqual({ module: b, x: 999, y: 111 });
   expect(positionOf(moved, a.path)).toEqual(positionOf(unmoved, a.path));
   expect(positionOf(moved, c.path)).toEqual(positionOf(unmoved, c.path));
 });
@@ -60,7 +60,7 @@ test("a saved position for a module that no longer exists is ignored, not return
   const a = graphModule("/a.ddd.json");
   const placed = laidOut([a], [], { "/gone.ddd.json": { x: 5, y: 5 } });
   expect(placed).toHaveLength(1);
-  expect(placed.find((p) => p.path === "/gone.ddd.json")).toBeUndefined();
+  expect(placed.find((p) => p.module.path === "/gone.ddd.json")).toBeUndefined();
 });
 
 test("laying out the same input twice gives the same output", () => {

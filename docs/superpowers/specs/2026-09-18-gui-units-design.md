@@ -114,8 +114,9 @@ change.
 ### 4.2 The revision keeps the index
 
 `lsp.diagnostics.Run` also keeps the navigation index built from the workspace its analysis
-loaded, `None` when the workspace did not load, and the session's `Revision` keeps the index of the
-run it takes its dictionary from. The endpoints below read a revision the session has already
+loaded, `None` when the workspace did not load, and the session's `Revision` keeps the first index
+its runs built: every run of one project reads the same files, and a project that resolved no
+dictionary still has declarations to show. The endpoints below read a revision the session has already
 published, so none of them analyses anything.
 
 ### 4.3 The endpoints
@@ -180,34 +181,31 @@ picker offers it itself.
 ```json
 {
   "revision": 7,
-  "edit": {
-    "changes": [
-      {
-        "file": "C:/work/demo/components/controller.ddd.json",
-        "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-        "operations": [
-          {"op": "set", "pointer": "component.interface[0].definition.unit", "raw": "\"%\""}
-        ]
-      }
-    ]
-  },
-  "files": [
+  "changes": [
     {
-      "path": "C:/work/demo/components/controller.ddd.json",
+      "file": "C:/work/demo/components/controller.ddd.json",
+      "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "operations": [
+        {"op": "set", "pointer": "component.interface[0].definition.unit", "raw": "\"%\""}
+      ],
       "hunks": [{"line": 14, "before": ["          \"unit\": \"rpm\","], "after": ["          \"unit\": \"%\","]}]
     }
   ]
 }
 ```
 
-- `edit` is exactly the body `POST /api/edit` takes, each file with the fingerprint the revision
-  read it at, so a file saved since is refused as `stale` when the page applies it.
-- `files` gives each file's changed lines before and after, numbered as the file stands, for
-  **Show changes**. It is computed by applying the operations in memory with the edit engine,
+- Each change's `file`, `fingerprint` and `operations` are exactly one entry of the body
+  `POST /api/edit` takes, the fingerprint the one the revision read the file at, so a file saved
+  since is refused as `stale` when the page applies it. The page drops `hunks` and posts the
+  rest. The answer does not embed the request's own model: a request model inside a response
+  makes pydantic publish it twice, as `Changes-Input` and `Changes-Output`, and the page's
+  `Changes` type would go with it.
+- `hunks` gives the file's changed lines before and after, numbered as the file stands, for
+  **Show changes**. They are computed by applying the operations in memory with the edit engine,
   never by writing.
 - Without `raw`, the preview removes the key: no unit.
-- A declaration that already agrees contributes nothing; when every one agrees, `changes` and
-  `files` are empty.
+- A declaration that already agrees contributes nothing; when every one agrees, `changes` is
+  empty.
 - `settle`'s refusals answer `409` with their code and a message naming the declaration. A `key`
   settle may not write, or a `raw` that is not one JSON value, answers `400` `bad-request`, and a
   name no declaration has `404` `not-found`.
@@ -232,10 +230,14 @@ page holds a colour or a size:
 | popover shadow | `0 8px 24px rgba(20, 30, 35, .14)` |
 
 React Aria Components is pinned exactly, like every dependency of the page, and its licence and
-those of its own dependencies are checked by the build like every bundled licence. It is wrapped
-once in `gui/src/ui/` - Button, ComboBox, Table, Popover, Tooltip, Tabs, Chip, Banner and Panel -
-styled with the page's CSS, and the screens import widgets from `ui/` alone. The canvas's module
-and arrow colours come from the same tokens.
+those of its own dependencies are checked by the build like every bundled licence. One of them,
+`tslib`, is under the zero-clause BSD licence (0BSD), which asks less than the BSD licences the
+web GUI's design allows and joins the build's list with them. The widgets are wrapped once in
+`gui/src/ui/` - Button, ComboBox, Table, Tabs (the project screen's tabs, which are addresses),
+Chip, Banner and Panel - styled with the page's CSS, and the screens import widgets from `ui/`
+alone. Popover and Tooltip wait for the part that uses one on its own: the combobox styles its
+own popover, and the canvas keeps its tooltip. The canvas's module and arrow colours come from the
+same tokens.
 
 ### 5.2 The component page
 
@@ -295,7 +297,12 @@ its own panel. The address carries it as it does on the component page.
 
 - `npm run ladle` serves every story with hot reloading; `npm run ladle:build` builds them into
   static files. Stories live beside what they show, as `*.stories.tsx`, on mock data typed from the
-  generated API types. Biome and the type check cover them like any other source.
+  generated API types. Biome and the type check cover them like any other source, which is why a
+  story imports nothing from Ladle itself: Ladle ships `.tsx` sources that fail this project's type
+  check, and `skipLibCheck` does not skip a `.tsx`. A story is a plain function component.
+- A screenshot is taken once the network has settled and Ladle's spinner is gone. Ladle marks the
+  page loaded before a story's own code has arrived, and a screenshot taken on that mark alone
+  photographs the spinner.
 - Every widget of `ui/` has a story, and the panel has one per state: the units agree; they
   disagree; a unit a type fixes; a project with a vocabulary, and a unit typed outside it; the
   picker open; Show changes open; an Apply refused as stale.

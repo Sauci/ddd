@@ -918,7 +918,10 @@ docker compose run --rm ddd ddd list examples/demo/demo.ddd.json
 
 The image serves `ddd gui` too: a stage of its own compiles the pages, and only the pages
 reach the image, installed with DDD - no Node.js.  The services run the working tree, though,
-pages included, so there `ddd gui` serves what the checkout compiled.
+pages included, so there `ddd gui` serves what the checkout compiled - except `gui`, which
+clears `PYTHONPATH` to serve the image's own pages, listens beyond the container's loopback,
+and publishes the same port on the host's loopback: `docker compose up gui`, then the address
+it prints in a browser on the host.
 
 `compile` runs [docker/compile.sh](https://github.com/Sauci/ddd/blob/master/docker/compile.sh), which
 

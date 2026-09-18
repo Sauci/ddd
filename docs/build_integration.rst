@@ -663,8 +663,15 @@ a ``shell`` service, which is the same container with an interactive bash in it.
 The pages of ``ddd gui`` are shadowed with the rest: a service serves the ones compiled in the
 working tree, which git ignores, so over a checkout that never compiled them ``ddd gui`` refuses
 to start there, and the pages the image carries are what a container run without that
-``PYTHONPATH`` serves. Either way it answers on the loopback address of the container, which a
-browser outside the container reaches only if the container shares the host's network.
+``PYTHONPATH`` serves. Either way it answers on the loopback address of the container by default,
+which a browser outside the container reaches only if the container shares the host's network.
+
+The ``gui`` service is the exception: it clears ``PYTHONPATH``, so it serves the pages the image
+carries rather than the working tree's, and it passes ``--host 0.0.0.0`` so it answers beyond its
+own loopback. ``docker compose up gui`` starts it, publishing the same port on the host's loopback
+alone, ``-p 127.0.0.1:8123:8123`` - beyond the container's loopback the token in the address it
+prints is the only guard, which is why nothing wider is published. Opening that address in a
+browser on the host is ``ddd gui`` serving the demo project from the image.
 
 What the compile service proves
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

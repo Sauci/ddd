@@ -174,7 +174,7 @@ Nothing else is editable yet, and the screens are plain: their look is milestone
 ### 6.2 The command
 
 ```text
-ddd gui [PROJECT] [-b DIR]... [--port N] [--no-browser]
+ddd gui [PROJECT] [-b DIR]... [--host ADDRESS] [--port N] [--no-browser]
 ```
 
 - `PROJECT` is a project description. Without it, the start page lists the projects of the build
@@ -183,12 +183,17 @@ ddd gui [PROJECT] [-b DIR]... [--port N] [--no-browser]
   directories deep, skipping hidden directories, `node_modules` and the build directory names
   `ddd lsp` searches.
 - `-b DIR` names a build directory, repeatable, exactly as for `ddd lsp`.
-- `--port N` fixes the port. The default, 0, lets the system pick a free one.
+- `--host ADDRESS` binds another address than the default, `127.0.0.1` - `0.0.0.0` in a
+  container. See 6.3 for what answering beyond loopback changes.
+- `--port N` fixes the port. The default, 0, lets the system pick a free one, which is refused
+  together with a `--host` beyond loopback: a port a container's own system picks cannot be
+  published on the host in advance.
 - `--no-browser` prints the address without opening it.
 
 The command prints one line, `ddd gui (preview) serving <address>`, and runs until it is
 interrupted, which exits 0. It exits 2 when the project is not a project description, when a
-fixed port is taken, or when the installation has no compiled pages (section 6.8).
+fixed port is taken or the given `--host` cannot be bound, when `--port 0` is combined with a
+`--host` beyond loopback, or when the installation has no compiled pages (section 6.8).
 
 The findings of an open project are those of every build record that names it, merged the way
 the language server merges them. With no record naming it, the project is analysed with the
@@ -197,8 +202,16 @@ for.
 
 ### 6.3 The server
 
-The server is `http.server.ThreadingHTTPServer` bound to `127.0.0.1`, not `localhost`, which
-resolves to an IPv6 address on some machines.
+The server is `http.server.ThreadingHTTPServer` bound to `127.0.0.1` by default, not
+`localhost`, which resolves to an IPv6 address on some machines. `--host` binds another address
+instead, for a container: `0.0.0.0`, with `docker compose` publishing the same port on the
+host's loopback alone, `-p 127.0.0.1:8123:8123`. The address the command prints still says
+`127.0.0.1`, so it pastes into a browser on the host as is, and the Host and Origin allow-lists
+below are unchanged - refusing what they always refused, whatever address the server is reached
+through. Beyond loopback that leaves the token in the printed address as the only barrier, since
+a client that merely reaches the port can forge a `Host` or `Origin` header; `ddd gui` prints one
+warning there, naming the port to publish, and does not open a browser - there is none in a
+container.
 
 Any web page open in the same browser can send requests to a local server, so the server trusts
 nothing it did not hand out itself:

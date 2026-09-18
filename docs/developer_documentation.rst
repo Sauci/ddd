@@ -378,7 +378,10 @@ containers:
 
 The image serves ``ddd gui`` too: an earlier stage of ``docker/Dockerfile`` compiles the pages,
 and only the pages reach the image, installed with the package - no node. A service runs the
-working tree, though, and with it the pages compiled there, if any.
+working tree, though, and with it the pages compiled there, if any - except ``gui``, which clears
+``PYTHONPATH`` to serve the image's own pages instead. ``docker compose up gui`` starts it
+listening beyond the container's loopback and publishes the same port on the host's loopback,
+``-p 127.0.0.1:8123:8123``, so the address it prints opens in a browser there.
 
 The ``compile`` service is the one that keeps the c backend honest. It generates the demo
 project, writes one translation unit per generated header that includes it twice - which

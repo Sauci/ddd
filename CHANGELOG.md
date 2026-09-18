@@ -24,7 +24,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   file, the rest of its layout kept, and checked the way `ddd check` checks it.  It is the
   first step of a GUI for developers who would rather not edit JSON, and its options are not
   yet part of the public interface.  Installing it needs no Node.js: a release carries the
-  compiled pages, and so does the wheel ci builds for every branch.
+  compiled pages, and so does the wheel ci builds for every branch.  `--host` can also serve
+  it from a container: published on the host's loopback alone, with the token in the address
+  as the only guard beyond it.
 
 ## 0.10.0
 

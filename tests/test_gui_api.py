@@ -10,7 +10,7 @@ from typing import Final
 
 import pytest
 
-from conftest import EXAMPLES, component, declare, project, write_tree
+from conftest import EXAMPLES, component, declare, project, scalar_type, types, write_tree
 from ddd import __version__
 from ddd.diagnostics import CHECKS
 from ddd.editing import UNVERIFIED, UNWRITABLE, EditError, fingerprint
@@ -18,6 +18,32 @@ from ddd.gui.api import Api, Reply
 from ddd.gui.session import Session
 
 UNIT = "component.interface[0].definition.unit"
+
+TYPED = {
+    "p.ddd.json": project("P", "types.ddd.json", "a.ddd.json", "b.ddd.json"),
+    "types.ddd.json": types(scalar_type("Speed_t", unit="rpm")),
+    "a.ddd.json": component("A", declare("output", "Speed", typename="Speed_t")),
+    "b.ddd.json": component("B", declare("input", "Speed", "uint16", unit="%")),
+}
+
+
+def opened(tmp_path: Path, files: dict[str, object]) -> Api:
+    write_tree(tmp_path, files)
+    session = Session(tmp_path)
+    session.open(tmp_path / "p.ddd.json")
+    return Api(session, tmp_path / "p.ddd.json", wait_seconds=0.05)
+
+
+def unloaded(tmp_path: Path) -> Api:
+    """A project the analysis could not read at all, so its revision has no index."""
+    api = opened(tmp_path, {"p.ddd.json": {"project": {"name": "P", "includes": 3}}})
+    assert api.session.revision is not None
+    assert api.session.revision.index is None
+    return api
+
+
+def posix(root: Path, name: str) -> str:
+    return (root / name).resolve().as_posix()
 
 
 @pytest.fixture
@@ -590,3 +616,191 @@ class TestEdit:
         assert post(api, "/api/edit", edit).status == 200
         includes = json.loads(target.read_text(encoding="utf-8"))["project"]["includes"]
         assert includes == ["b.ddd.json", "a.ddd.json"]
+
+
+class TestVariable:
+    def test_every_declaration_of_a_variable_is_described(self, api: Api, root: Path) -> None:
+        reply = get(api, "/api/variable", name="Speed")
+        assert reply.status == 200
+        # `a.ddd.json` produces `Speed` and states no `id`, so `missing-id` is filed on it too -
+        # the same info finding `TestState.test_the_state_lists_every_file_and_finding` already
+        # counts for this fixture; asserted by its check alone, the declarations below are what
+        # this test is about.
+        assert (reply.body["revision"], reply.body["name"]) == (1, "Speed")
+        assert {f["check"] for f in reply.body["findings"]} == {"missing-id"}
+        assert [
+            (d["path"], d["pointer"], d["component"], d["role"], d["stated"]["unit"], d["type"])
+            for d in reply.body["declarations"]
+        ] == [
+            (
+                posix(root, "a.ddd.json"),
+                "component.interface[0].definition",
+                "A",
+                "produces",
+                '"rpm"',
+                None,
+            ),
+            (
+                posix(root, "b.ddd.json"),
+                "component.interface[0].definition",
+                "B",
+                "reads",
+                '"rpm"',
+                None,
+            ),
+        ]
+
+    def test_a_disagreement_is_among_its_findings_on_both_sides(self, api: Api, root: Path) -> None:
+        assert post(api, "/api/edit", unit_edit(api, root, "%")).status == 200
+        findings = get(api, "/api/variable", name="Speed").body["findings"]
+        # Filtered to the check this test is about: `a.ddd.json` also carries its standing
+        # `missing-id` info finding (see the note above), which is not what "among" means here.
+        mismatches = [f for f in findings if f["check"] == "definition-mismatch"]
+        assert sorted((f["file"], f["check"]) for f in mismatches) == [
+            (posix(root, "a.ddd.json"), "definition-mismatch"),
+            (posix(root, "b.ddd.json"), "definition-mismatch"),
+        ]
+
+    def test_a_declaration_naming_a_type_says_what_the_type_fixes(self, tmp_path: Path) -> None:
+        declarations = get(opened(tmp_path, TYPED), "/api/variable", name="Speed").body[
+            "declarations"
+        ]
+        assert (declarations[0]["type"], declarations[0]["fixed"]["unit"]) == ("Speed_t", '"rpm"')
+        assert "unit" not in declarations[0]["stated"]
+
+    def test_a_variable_is_asked_for_by_name(self, api: Api) -> None:
+        assert get(api, "/api/variable").status == 400
+
+    def test_a_name_nothing_declares_is_not_found(self, api: Api) -> None:
+        assert get(api, "/api/variable", name="Torque").status == 404
+
+    def test_a_project_the_analysis_could_not_read_declares_nothing(self, tmp_path: Path) -> None:
+        assert get(unloaded(tmp_path), "/api/variable", name="Speed").status == 404
+
+    def test_a_variable_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root)), "/api/variable", name="Speed")
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+
+class TestUnits:
+    def test_without_a_vocabulary_the_units_in_use_are_answered(self, api: Api) -> None:
+        assert get(api, "/api/units").body == {
+            "revision": 1,
+            "vocabulary": None,
+            "used": [{"unit": "rpm", "variables": 1}],
+        }
+
+    def test_a_vocabulary_is_answered_with_its_descriptions(self, tmp_path: Path) -> None:
+        files = {
+            "p.ddd.json": project("P", "units.ddd.json", "a.ddd.json"),
+            "units.ddd.json": {"units": ["rpm", {"unit": "Nm", "description": "torque"}]},
+            "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+        }
+        assert get(opened(tmp_path, files), "/api/units").body["vocabulary"] == [
+            {"unit": "rpm", "description": None},
+            {"unit": "Nm", "description": "torque"},
+        ]
+
+    def test_a_project_the_analysis_could_not_read_uses_no_units(self, tmp_path: Path) -> None:
+        assert get(unloaded(tmp_path), "/api/units").body["used"] == []
+
+    def test_units_need_an_open_project(self, root: Path) -> None:
+        assert get(Api(Session(root)), "/api/units").status == 409
+
+
+class TestSettle:
+    def test_a_preview_is_the_edit_and_the_lines_it_changes(self, api: Api, root: Path) -> None:
+        before = {name: (root / name).read_bytes() for name in ("a.ddd.json", "b.ddd.json")}
+        reply = get(api, "/api/settle", name="Speed", key="unit", raw='"%"')
+        assert reply.status == 200
+        assert [change["file"] for change in reply.body["changes"]] == [
+            posix(root, "a.ddd.json"),
+            posix(root, "b.ddd.json"),
+        ]
+        for change in reply.body["changes"]:
+            name = Path(change["file"]).name
+            lines = before[name].decode("utf-8").splitlines()
+            line = next(n for n, text in enumerate(lines, 1) if '"unit": "rpm"' in text)
+            assert change["fingerprint"] == fingerprint(before[name])
+            assert change["operations"] == [{"op": "set", "pointer": UNIT, "raw": '"%"'}]
+            assert change["hunks"] == [
+                {
+                    "line": line,
+                    "before": [lines[line - 1]],
+                    "after": [lines[line - 1].replace('"rpm"', '"%"')],
+                }
+            ]
+        assert {name: (root / name).read_bytes() for name in before} == before
+
+    def test_posting_a_preview_makes_every_declaration_agree(self, api: Api, root: Path) -> None:
+        before = {name: (root / name).read_bytes() for name in ("a.ddd.json", "b.ddd.json")}
+        preview = get(api, "/api/settle", name="Speed", key="unit", raw='"%"').body
+        edit = {
+            "changes": [
+                {key: change[key] for key in ("file", "fingerprint", "operations")}
+                for change in preview["changes"]
+            ]
+        }
+        assert post(api, "/api/edit", edit).status == 200
+        for name, bytes_before in before.items():
+            expected = bytes_before.decode("utf-8").replace('"unit": "rpm"', '"unit": "%"')
+            assert (root / name).read_bytes() == expected.encode("utf-8")
+        declarations = get(api, "/api/variable", name="Speed").body["declarations"]
+        assert {d["stated"]["unit"] for d in declarations} == {'"%"'}
+
+    def test_when_every_declaration_agrees_there_is_nothing_to_change(self, api: Api) -> None:
+        reply = get(api, "/api/settle", name="Speed", key="unit", raw='"rpm"')
+        assert reply.body == {"revision": 1, "changes": []}
+
+    def test_without_a_value_the_key_is_taken_out(self, api: Api) -> None:
+        changes = get(api, "/api/settle", name="Speed", key="unit").body["changes"]
+        assert [change["operations"] for change in changes] == [
+            [{"op": "remove", "pointer": UNIT, "raw": None}],
+            [{"op": "remove", "pointer": UNIT, "raw": None}],
+        ]
+
+    def test_a_unit_a_type_fixes_to_another_value_is_refused(self, tmp_path: Path) -> None:
+        reply = get(opened(tmp_path, TYPED), "/api/settle", name="Speed", key="unit", raw='"%"')
+        assert (reply.status, reply.body["error"]) == (409, "fixed-by-type")
+        assert "Speed_t" in reply.body["message"]
+
+    def test_a_declaration_moved_since_the_analysis_is_unreadable(
+        self, api: Api, root: Path
+    ) -> None:
+        write_tree(root, {"b.ddd.json": component("B", declare("input", "Torque"))})
+        reply = get(api, "/api/settle", name="Speed", key="unit", raw='"%"')
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_a_preview_the_engine_refuses_is_a_refusal_the_page_can_act_on(
+        self, api: Api, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def refuse(*_: object) -> None:
+            raise EditError(UNVERIFIED, "does not read back")
+
+        monkeypatch.setattr("ddd.gui.api.preview", refuse)
+        reply = get(api, "/api/settle", name="Speed", key="unit", raw='"%"')
+        assert (reply.status, reply.body["error"]) == (409, "unverified")
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            {"key": "unit", "raw": '"%"'},
+            {"name": "Speed", "raw": '"%"'},
+            {"name": "Speed", "key": "name", "raw": '"B"'},
+            {"name": "Speed", "key": "unit", "raw": "not json"},
+        ],
+    )
+    def test_a_malformed_request_is_bad(self, api: Api, query: dict[str, str]) -> None:
+        reply = get(api, "/api/settle", **query)
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+
+    def test_a_name_nothing_declares_is_not_found(self, api: Api) -> None:
+        assert get(api, "/api/settle", name="Torque", key="unit", raw='"%"').status == 404
+
+    def test_a_project_the_analysis_could_not_read_settles_nothing(self, tmp_path: Path) -> None:
+        reply = get(unloaded(tmp_path), "/api/settle", name="Speed", key="unit", raw='"%"')
+        assert reply.status == 404
+
+    def test_settling_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root)), "/api/settle", name="Speed", key="unit", raw='"%"')
+        assert reply.status == 409

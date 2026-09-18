@@ -555,7 +555,7 @@ class TestRunning:
         message = capsys.readouterr().err
         looked = message.index(f"no compiled pages for ddd gui in {tmp_path};")
         released = message.index("a released ddd-tool carries them")
-        wheel = message.index("the wheel ci builds for every branch")
+        wheel = message.index("the wheel ci builds for every branch it runs on")
         built = message.index("with 'npm ci' and 'npm run build' in its gui directory")
         assert looked < released < wheel < built
         assert not set("*`|") & set(message), "markup in a message printed to a terminal"

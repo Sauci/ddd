@@ -23,12 +23,16 @@ FROM node:24-bookworm-slim AS node
 # one, and thrown away with everything else this stage holds - node, npm and node_modules - so
 # that the image serves `ddd gui` with none of them in it.
 #
-# python rather than node as the base, because the pages are compiled against types generated
-# from the package, so it is installed here as well. Only node, npm and node's headers are taken
-# from node's image, never the whole of /usr/local: that is where this image keeps python, and a
-# copy of node's would write whatever node's image keeps there over it. A node from 25 on also
-# needs libatomic1, which node's image installs and this one does not.
+# python rather than node as the base, because the pages are type checked against types
+# generated from the package, so it is installed here as well. Only node, npm and node's headers
+# are taken from node's image, never the whole of /usr/local: that is where this image keeps
+# python, and a copy of node's would write whatever node's image keeps there over it. A node from
+# 25 on also needs libatomic1, which node's image installs and this one does not - so this one
+# installs it too, and the tag above moving on is not the day this stage stops building.
 FROM python:3.12-slim-bookworm AS pages
+RUN apt-get update \
+    && apt-get install --no-install-recommends --yes libatomic1 \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
 COPY --from=node /usr/local/include/node /usr/local/include/node
@@ -51,7 +55,10 @@ RUN pip install --no-cache-dir .
 
 COPY gui ./gui
 WORKDIR /opt/ddd/gui
-RUN npm run schemas && npm run build
+# `npm run build` strips the types without checking them, so without the check the types
+# generated first would be generated for nothing; and an image is built from whatever tree it is
+# handed, one ci may never have seen. The release build checks them for the same reason.
+RUN npm run schemas && npm run typecheck && npm run build
 
 FROM python:3.12-slim-bookworm
 
@@ -67,7 +74,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # a headless jre with it, which is most of what these two add to the image.
 #
 # No node here, deliberately. The VS Code extension under editors/vscode is built and tested by
-# ci, which can put python and node 20 side by side with two setup actions; carrying a second
+# ci, which can put python and node 24 side by side with two setup actions; carrying a second
 # toolchain in this image would cost everyone who only wants to compile c or build the
 # documentation, to save a contributor changing typescript from installing node. The pages of
 # `ddd gui` are compiled with node all the same, in the stage above: only the pages reach this

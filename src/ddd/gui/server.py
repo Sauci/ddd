@@ -306,8 +306,8 @@ def run(
     if not (pages / "index.html").is_file():
         print(
             f"ddd: this installation has no compiled pages for ddd gui in {pages}; a released "
-            "ddd-tool carries them, and so does the wheel ci builds for every branch; a source "
-            "checkout builds them with 'npm ci' and 'npm run build' in its gui directory",
+            "ddd-tool carries them, and so does the wheel ci builds for every branch it runs on; "
+            "a source checkout builds them with 'npm ci' and 'npm run build' in its gui directory",
             file=sys.stderr,
         )
         return EXIT_USAGE

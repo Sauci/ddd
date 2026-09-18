@@ -417,10 +417,11 @@ still compiles the pages again, into the wheel it publishes - an artifact expire
 GitHub account to reach.
 
 ``container`` builds the image behind ``docker compose``, checks that the package installed in
-it carries the pages of ``ddd gui``, and runs the ``generate`` service in it. Nothing built the
-image for a long time, and it is the local equivalent of every other job here: a ``COPY`` of a
-directory removed three releases earlier failed the build on its first line, and every service
-with it, while ci stayed green - ci installs the package itself and never came near the image.
+it carries the pages of ``ddd gui`` and that neither node nor npm reached it, and runs the
+``generate`` service in it. Nothing built the image for a long time, and it is the local
+equivalent of every other job here: a ``COPY`` of a directory removed three releases earlier
+failed the build on its first line, and every service with it, while ci stayed green - ci
+installs the package itself and never came near the image.
 The service run after it is the other half of what broke then: the image built, and the
 service exited with a usage error from an option set two releases old. The five other services
 are not run here; what they exercise is either covered by a job above or, for ``compile``, the

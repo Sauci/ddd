@@ -31,8 +31,9 @@ updates:
     schedule:
       interval: weekly
 
-  # The browser interface, whose package-lock.json is what `npm ci` installs from in the gui job
-  # and in the release build that compiles the pages into the wheel.
+  # The browser interface, whose package-lock.json is what `npm ci` installs from in the gui job,
+  # in the release build that compiles the pages into the wheel, and in the stage of the image
+  # that compiles them for it.
   - package-ecosystem: npm
     directory: /gui
     schedule:

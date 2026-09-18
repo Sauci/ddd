@@ -1838,17 +1838,29 @@ class TestPackagedResources:
         assert "/src/ddd/gui/static" in targets["sdist"]["artifacts"]
         assert "/gui" in targets["sdist"]["include"]
 
-    def test_a_release_type_checks_the_pages_it_compiles(self) -> None:
+    @pytest.mark.parametrize(
+        ("source", "start"),
+        [
+            (".github/workflows/publish.yml", "\n  build:\n"),
+            ("docker/Dockerfile", " AS pages\n"),
+        ],
+        ids=["the release build", "the image"],
+    )
+    def test_every_build_that_packages_the_pages_type_checks_them(
+        self, source: str, start: str
+    ) -> None:
         """``npm run build`` is ``vite build``, which strips the types without checking them, so
         a file format the pages have not caught up with fails a build only where the type check
-        runs - and a release can be cut from a commit ci never saw."""
-        build = PUBLISH_WORKFLOW.split("\n  build:\n", 1)[1]
-        step = next(
+        runs. A release can be cut from a commit ci never saw, and an image built from a tree
+        it never saw; without the check the types generated before the build are generated for
+        nothing."""
+        section = (ROOT / source).read_text(encoding="utf-8").split(start, 1)[1]
+        command = next(
             line
-            for line in build.splitlines()
-            if line.strip().startswith("- run:") and "npm run build" in line
+            for line in section.splitlines()
+            if "npm run build" in line and not line.lstrip().startswith("#")
         )
-        assert "npm run schemas && npm run typecheck && npm run build" in step, step.strip()
+        assert "npm run schemas && npm run typecheck && npm run build" in command, command.strip()
 
     def test_the_developer_page_names_the_licences_the_pages_may_bundle(self) -> None:
         """Exactly the ones the build accepts: "BSD" named a family whose members other than

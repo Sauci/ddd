@@ -81,22 +81,27 @@ jobs:
       # The pages of `ddd gui` come from a stage of the image's own, and an image that stopped
       # copying them would still build and run every service - a service runs the working tree,
       # PYTHONPATH first. -I leaves the working tree out, so what answers is the package
-      # installed in the image.
-      - name: Check the image carries the compiled pages
+      # installed in the image. That stage exists so that node stays out of the image, which a
+      # copy of the wrong directory from it would undo just as quietly, so both are asked.
+      - name: Check the image carries the compiled pages and no node
         run: |
           docker compose run --rm ddd python -I -c '
-          import sys
+          import shutil, sys
           from ddd.gui.server import static_directory
           if not (static_directory() / "index.html").is_file():
               sys.exit(f"the image has no {static_directory()}/index.html: ddd gui would have nothing to serve")
+          node, npm = shutil.which("node"), shutil.which("npm")
+          if not (node is None and npm is None):
+              sys.exit(f"the image has node or npm on its path (node: {node}, npm: {npm}): only the pages were to reach it")
           '
       - run: docker compose run --rm generate
 
   extension:
     # The VS Code extension is a launcher for the language server, so what is worth testing is
     # that the command it builds really starts one - which needs both toolchains here, and is
-    # why the tests install the package rather than only compiling typescript. Node 20 rather
-    # than the distribution's, because the packaging step below needs it.
+    # why the tests install the package rather than only compiling typescript. Node 24 rather
+    # than the distribution's, because the packaging step below needs a recent one; it was 20
+    # until that line stopped taking security fixes.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -125,6 +130,7 @@ jobs:
         with:
           name: ddd-vscode-extension
           path: editors/vscode/*.vsix
+          overwrite: true # a name is unique within a run, and re-running the run uploads it again
 
   gui:
     # The browser interface: its types generated from the schemas, its lint and type check, its
@@ -190,8 +196,10 @@ jobs:
         with:
           name: ddd-tool-${{ github.sha }}
           path: dist/
+          overwrite: true # a name is unique within a run, and re-running the run uploads it again
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ matrix.os }}
           path: gui/playwright-report
+          overwrite: true # a name is unique within a run, and re-running the run uploads it again

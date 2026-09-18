@@ -25,12 +25,15 @@ coverage.json
 docs/_build/
 docs/superpowers/*.pdf
 # What npm leaves in the tree, which the image makes for itself: its pages stage installs the
-# packages of gui/, generates the page types and compiles the pages, and the final stage takes
-# the pages from it. `COPY src` and `COPY gui` take whatever the context holds, so the host's
-# would be laid over the image's own - a stale build's pages installed beside the fresh ones,
-# types generated from whatever package the host had, packages npm installed for another
-# system. **/ because a bare node_modules/ matches at the root only, where there is none: the
-# extension's and the browser interface's are further down.
+# packages of gui/, generates the page types, checks the pages against them and compiles them,
+# and the final stage takes the pages from it. `COPY src` and `COPY gui` take whatever the
+# context holds. The host's packages would land on the ones `npm ci` installed before them -
+# packages npm installed for another system. The host's pages and types would land first, and
+# the image's own would be written over them file by file, leaving whatever the host had that
+# the image does not write: a stale build's pages installed beside the fresh ones, the types of
+# a file format the package no longer has, checked with the rest. **/ because a bare
+# node_modules/ matches at the root only, where there is none: the extension's and the browser
+# interface's are further down.
 **/node_modules/
 src/ddd/gui/static/
 gui/src/generated/

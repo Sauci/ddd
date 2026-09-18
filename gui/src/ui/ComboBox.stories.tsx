@@ -15,17 +15,23 @@ const SECTIONS: ComboSection[] = [
   { id: "none", title: "No unit", choices: [{ id: "none:", label: "no unit", detail: "" }] },
 ];
 
+/** The field over a caller whose own value is `%`: what is typed is dropped when the list
+ * closes, as ComboBox's contract asks of every caller. */
 function Field({ open = false, note }: { open?: boolean; note?: string }) {
-  const [value, setValue] = useState("%");
+  const [typed, setTyped] = useState<string | undefined>(undefined);
   return (
     <ComboBox
       label="Unit of ValueA"
-      inputValue={value}
-      onInputChange={setValue}
+      inputValue={typed ?? "%"}
+      onInputChange={setTyped}
       sections={SECTIONS}
       onPick={() => undefined}
+      onEnter={() => undefined}
+      onClose={() => setTyped(undefined)}
       note={note}
       autoFocus={open ? 1 : null}
+      // The list only opens on focus when asked to, which is what photographs it open.
+      menuTrigger={open ? "focus" : "input"}
     />
   );
 }

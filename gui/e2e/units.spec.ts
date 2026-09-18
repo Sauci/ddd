@@ -16,10 +16,6 @@ test("a disagreement written from outside is resolved from the component page", 
   const panel = page.getByRole("complementary", { name: "ValueA" });
   const picker = panel.getByRole("combobox", { name: "Unit of ValueA" });
   await expect(picker).toHaveValue("%");
-  // Focusing the unit cell's button opened the picker's own list over what is below it in the
-  // panel; accepting the producer's unit as it stands, with nothing chosen from that list,
-  // closes it the way a reader leaving the field does, without changing what it holds.
-  await picker.press("Escape");
   await expect(panel.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
   await panel.getByRole("button", { name: "Show changes" }).click();
   await expect(panel.getByText('"unit": "rpm"')).toBeVisible();
@@ -32,6 +28,77 @@ test("a disagreement written from outside is resolved from the component page", 
   await expect(page.getByLabel("SensorHub to Controller: 2 variables, agreed")).toBeVisible();
 });
 
+test("a unit typed and confirmed with Enter is the unit chosen, listed or not", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  const picker = panel.getByRole("combobox", { name: "Unit of ValueA" });
+  const added = panel.locator(".hunk .added");
+  await expect(panel.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
+
+  // Listed: since the drift, Controller's own reading of ValueA states rpm.
+  await picker.fill("rpm");
+  await picker.press("Enter");
+  await expect(picker).toHaveValue("rpm");
+  await expect(panel.getByText("Changes 1 file: sensor_hub.ddd.json")).toBeVisible();
+  await panel.getByRole("button", { name: "Show changes" }).click();
+  await expect(added).toHaveText(['+ "unit": "rpm",']);
+
+  // In no list at all: taken exactly as typed.
+  await picker.fill("kPa");
+  await picker.press("Enter");
+  await expect(picker).toHaveValue("kPa");
+  await expect(
+    panel.getByText("Changes 2 files: controller.ddd.json, sensor_hub.ddd.json"),
+  ).toBeVisible();
+  await expect(added).toHaveText(['+ "unit": "kPa",', '+ "unit": "kPa",']);
+
+  // An entry reached with ArrowDown is the one Enter takes, not the text that narrowed the list.
+  await picker.fill("r");
+  await picker.press("ArrowDown");
+  await picker.press("Enter");
+  await expect(picker).toHaveValue("rpm");
+  await expect(panel.getByText("Changes 1 file: sensor_hub.ddd.json")).toBeVisible();
+});
+
+test("text left without Enter chooses nothing, and the field reads the chosen unit again", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  const picker = panel.getByRole("combobox", { name: "Unit of ValueA" });
+  // The unit cell hands the reader the field, not the list over what is below it.
+  await expect(picker).toBeFocused();
+  await expect(picker).toHaveAttribute("aria-expanded", "false");
+  await expect(panel.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
+
+  await picker.fill("r");
+  await expect(picker).toHaveAttribute("aria-expanded", "true");
+  await picker.press("Escape");
+  await expect(picker).toHaveValue("%");
+  await expect(picker).toHaveAttribute("aria-expanded", "false");
+
+  await picker.fill("");
+  await picker.press("Enter");
+  await expect(picker).toHaveValue("%");
+  await expect(picker).toHaveAttribute("aria-expanded", "false");
+
+  await picker.fill("r");
+  await picker.press("Tab");
+  await expect(picker).not.toBeFocused();
+  await expect(picker).toHaveValue("%");
+  await expect(panel.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
+});
+
 test("the picker lists the variable's units, then the project's, narrowed by what is typed", async ({
   page,
   gui,
@@ -40,8 +107,13 @@ test("the picker lists the variable's units, then the project's, narrowed by wha
   await page.getByRole("button", { name: "Controller", exact: true }).click();
   await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
   const picker = page.getByRole("combobox", { name: "Unit of ValueA" });
+  await page.getByRole("button", { name: /^Show the choices for Unit of ValueA/ }).click();
   await expect(page.getByRole("option", { name: "%", exact: true })).toBeVisible();
   await expect(page.getByRole("option", { name: "Hz", exact: true })).toBeVisible();
+  // The list spans the field it belongs to, edge to edge.
+  const field = await page.locator(".combo-field").boundingBox();
+  const list = await page.locator(".combo-popover").boundingBox();
+  expect([list?.x, list?.width]).toEqual([field?.x, field?.width]);
   await picker.fill("h");
   await expect(page.getByRole("option", { name: "Hz", exact: true })).toBeVisible();
   await expect(page.getByRole("option", { name: "%", exact: true })).toHaveCount(0);
@@ -57,9 +129,6 @@ test("a unit cell pressed again, once focus has moved elsewhere, moves it back t
   const picker = page.getByRole("combobox", { name: "Unit of ValueA" });
   await cell.click();
   await expect(picker).toBeFocused();
-  // Open, the picker's own list hides the rest of the page from the accessibility tree (as the
-  // CSP journey's neighbour above already works around); close it before reaching the masthead.
-  await picker.press("Escape");
   await page.getByRole("button", { name: "DemoDevice" }).focus();
   await expect(picker).not.toBeFocused();
   await cell.click();
@@ -100,6 +169,7 @@ test("no page reports a violation of its content security policy", async ({ page
   await page.getByRole("link", { name: "Table" }).click();
   await page.getByRole("button", { name: "Controller", exact: true }).click();
   await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
+  await page.getByRole("combobox", { name: "Unit of ValueA" }).press("ArrowDown");
   await expect(page.getByRole("option", { name: "%", exact: true })).toBeVisible();
   expect(
     await page.evaluate(() => (window as unknown as { violations: string[] }).violations),

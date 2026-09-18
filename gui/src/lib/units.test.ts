@@ -5,12 +5,14 @@ import {
   consequence,
   describe,
   editOf,
+  enteredUnit,
   hunkLines,
   outsideVocabulary,
   pickerSections,
   rawOf,
   startingUnit,
   textOf,
+  unitLabel,
   unitOfDeclaration,
   willChange,
 } from "./units";
@@ -200,6 +202,57 @@ group("what the picker lists", () => {
     expect(outsideVocabulary(VOCABULARY, "rpm")).toBe(false);
     expect(outsideVocabulary(VOCABULARY, null)).toBe(false);
     expect(outsideVocabulary(FREE, "RPM")).toBe(false);
+  });
+
+  test("the field reads a unit as it is spelled, and no unit as its entry's label", () => {
+    expect(unitLabel("rpm")).toBe("rpm");
+    expect(unitLabel(null)).toBe("no unit");
+    expect(unitLabel(null)).toBe(
+      pickerSections("ValueA", VALUE_A, FREE, "").at(-1)?.choices[0]?.label,
+    );
+  });
+});
+
+group("what Enter chooses with no entry of the list focused", () => {
+  /** The picker as it stands while `text` is typed into it, and what Enter makes of that text. */
+  const entered = (text: string, units: UnitsReply = FREE) =>
+    enteredUnit(pickerSections("ValueA", VALUE_A, units, text), text);
+
+  test("a unit an entry states exactly is that entry's unit", () => {
+    expect(entered("rpm")).toBe("rpm");
+    expect(entered("Hz")).toBe("Hz");
+    expect(entered("Nm", VOCABULARY)).toBe("Nm");
+  });
+
+  test("the no-unit entry's label is no unit", () => {
+    expect(entered("no unit")).toBeNull();
+  });
+
+  test("a unit an entry states wins over the no-unit label, when a project spells one so", () => {
+    const spelled: UnitsReply = { ...FREE, used: [{ unit: "no unit", variables: 1 }] };
+    expect(entered("no unit", spelled)).toBe("no unit");
+  });
+
+  test("anything else is the text as typed, exactly as its As typed entry would take it", () => {
+    expect(entered("RPM")).toBe("RPM");
+    expect(entered("kPa", VOCABULARY)).toBe("kPa");
+    expect(entered(" rpm")).toBe(" rpm");
+    expect(entered("No Unit")).toBe("No Unit");
+    const typed = pickerSections("ValueA", VALUE_A, FREE, "RPM").at(-1)?.choices[0];
+    expect(entered("RPM")).toBe(typed?.unit);
+  });
+
+  test("an empty field, or one holding only spaces, chooses nothing", () => {
+    expect(entered("")).toBeUndefined();
+    expect(entered("   ")).toBeUndefined();
+  });
+
+  test("the text is read against the entries, not against what they were narrowed by", () => {
+    // Before anything is typed, the field shows the chosen unit and the list is not narrowed.
+    const unnarrowed = pickerSections("ValueA", VALUE_A, FREE, "");
+    expect(enteredUnit(unnarrowed, "%")).toBe("%");
+    expect(enteredUnit(unnarrowed, "no unit")).toBeNull();
+    expect(enteredUnit(unnarrowed, "kPa")).toBe("kPa");
   });
 });
 

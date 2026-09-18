@@ -17,17 +17,19 @@ import { UnitPicker } from "./UnitPicker";
 export interface VariablePanelViewProps {
   variable: VariableReply;
   units: UnitsReply;
+  /** What the picker's field reads: what is being typed, else the label of the unit settled on. */
   typed: string;
   /**
-   * What narrows the picker's sections: "" until the reader has actually typed or chosen a
-   * unit, even though `typed` already shows the unit the panel would settle on - opening the
-   * picker must still list everything ("the picker lists the variable's units, then the
-   * project's, narrowed by what is typed"), not just what happens to match the pre-filled
-   * value it starts on.
+   * What narrows the picker's sections: "" unless the reader is typing, even though `typed`
+   * shows the unit the panel would settle on - opening the picker must still list everything
+   * ("the picker lists the variable's units, then the project's, narrowed by what is typed"),
+   * not just what happens to match the unit it shows.
    */
   narrow: string;
   onTyped: (text: string) => void;
   onChosen: (unit: string | null) => void;
+  /** The picker's list closed or its field was left: what was typed there is dropped. */
+  onPickerClosed: () => void;
   note: string | undefined;
   preview: SettleReply | null;
   /** Why the chosen unit cannot be applied, or why applying it was refused. */
@@ -38,6 +40,8 @@ export interface VariablePanelViewProps {
   busy: boolean;
   /** A new value on every request to focus the picker; `null` asks for no focus. */
   focusPicker: number | null;
+  /** "focus" opens the picker's list as it takes the focus, for a story to photograph it open. */
+  pickerTrigger?: "input" | "focus" | undefined;
   onClose: () => void;
 }
 
@@ -94,9 +98,11 @@ export function VariablePanelView(props: VariablePanelViewProps) {
         typed={props.typed}
         onTyped={props.onTyped}
         onPick={props.onChosen}
+        onClose={props.onPickerClosed}
         note={props.note}
         isDisabled={props.busy}
         autoFocus={props.focusPicker}
+        menuTrigger={props.pickerTrigger}
       />
       {refusal !== null ? (
         <p className="panel-refusal" role="status">

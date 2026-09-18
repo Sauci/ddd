@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, getSettle, getUnits, getVariable, postEdit } from "../api/client";
 import { VariablePanelView } from "../components/VariablePanelView";
-import { editOf, outsideVocabulary, rawOf, startingUnit } from "../lib/units";
+import { editOf, outsideVocabulary, rawOf, startingUnit, unitLabel } from "../lib/units";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
 
@@ -34,6 +34,9 @@ export function VariablePanel({ name, revision, stopped, focusPicker, onClose }:
   // `undefined` until the reader chooses: the panel then settles on the owner's unit, the
   // direction the tool's own rule reads in, and says what that would change.
   const [chosen, setChosen] = useState<string | null | undefined>(undefined);
+  // What the reader is typing into the picker, `undefined` whenever its list is closed: the field
+  // then reads the unit settled on, so the field, the consequence line and Show changes always
+  // speak of the same unit.
   const [typed, setTyped] = useState<string | undefined>(undefined);
   const [changesShown, setChangesShown] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
@@ -82,16 +85,17 @@ export function VariablePanel({ name, revision, stopped, focusPicker, onClose }:
     <VariablePanelView
       variable={variable.data}
       units={units.data}
-      typed={typed ?? target ?? ""}
+      typed={typed ?? unitLabel(target)}
       // Never the target: opening the picker on the owner's unit must still list everything,
       // not just the entries that happen to contain it (the picker's own journey, and spec 5.3).
       narrow={typed ?? ""}
       onTyped={setTyped}
       onChosen={(unit) => {
         setChosen(unit);
-        setTyped(unit ?? "");
+        setTyped(undefined);
         setRefused(null);
       }}
+      onPickerClosed={() => setTyped(undefined)}
       note={outsideVocabulary(units.data, target) ? "Not one of this project's units" : undefined}
       preview={preview.data ?? null}
       refusal={refused ?? (preview.error === null ? null : preview.error.message)}

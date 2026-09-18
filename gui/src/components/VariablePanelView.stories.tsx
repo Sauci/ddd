@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { SettleReply, UnitsReply, VariableReply } from "../api/types";
-import { outsideVocabulary, startingUnit } from "../lib/units";
+import { outsideVocabulary, startingUnit, unitLabel } from "../lib/units";
 import {
   AGREEING,
   DISAGREEING,
@@ -19,46 +19,51 @@ interface Props {
   units: UnitsReply;
   preview: SettleReply | null;
   refusal?: string;
-  typed?: string;
-  note?: string | undefined;
+  /** The unit the reader chose; the owner's is settled on until they do. */
+  chosen?: string | null;
   changesShown?: boolean;
-  focusPicker?: boolean;
+  pickerOpen?: boolean;
 }
 
-/** The panel over one scenario's fixtures, with its own draft and Show changes state.
+/** The panel over one scenario's fixtures, with its own choice, draft and Show changes state.
  *
- * `typed` stays `undefined` until the story's `typed` prop seeds it or the reader edits the
- * field, exactly as VariablePanel.tsx's own state does: the field still shows the target unit
- * (`startingUnit`), but the picker's sections are narrowed only once something was actually
- * typed, never by the pre-filled value alone. */
+ * As in VariablePanel.tsx: `typed` is `undefined` unless the reader is typing, so the field shows
+ * the label of the unit settled on (the owner's, `startingUnit`, until one is chosen), and the
+ * picker's sections are narrowed only by what is actually typed, never by the unit shown. */
 function View({
   variable,
   units,
   preview,
   refusal,
-  typed: initialTyped,
-  note,
+  chosen: initialChosen,
   changesShown: initialChangesShown = false,
-  focusPicker = false,
+  pickerOpen = false,
 }: Props) {
-  const [typed, setTyped] = useState<string | undefined>(initialTyped);
+  const [chosen, setChosen] = useState<string | null | undefined>(initialChosen);
+  const [typed, setTyped] = useState<string | undefined>(undefined);
   const [changesShown, setChangesShown] = useState(initialChangesShown);
+  const target = chosen === undefined ? startingUnit(variable.declarations) : chosen;
   return (
     <VariablePanelView
       variable={variable}
       units={units}
-      typed={typed ?? startingUnit(variable.declarations) ?? ""}
+      typed={typed ?? unitLabel(target)}
       narrow={typed ?? ""}
       onTyped={setTyped}
-      onChosen={() => undefined}
-      note={note}
+      onChosen={(unit) => {
+        setChosen(unit);
+        setTyped(undefined);
+      }}
+      onPickerClosed={() => setTyped(undefined)}
+      note={outsideVocabulary(units, target) ? "Not one of this project's units" : undefined}
       preview={preview}
       refusal={refusal ?? null}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => undefined}
       busy={false}
-      focusPicker={focusPicker ? 1 : null}
+      focusPicker={pickerOpen ? 1 : null}
+      pickerTrigger={pickerOpen ? "focus" : "input"}
       onClose={() => undefined}
     />
   );
@@ -73,17 +78,11 @@ export const ChangesShown = () => (
 );
 
 export const PickerOpen = () => (
-  <View variable={DISAGREEING} units={FREE_UNITS} preview={ONE_FILE} focusPicker />
+  <View variable={DISAGREEING} units={FREE_UNITS} preview={ONE_FILE} pickerOpen />
 );
 
 export const TypedOutsideVocabulary = () => (
-  <View
-    variable={DISAGREEING}
-    units={VOCABULARY}
-    preview={null}
-    typed="RPM"
-    note={outsideVocabulary(VOCABULARY, "RPM") ? "Not one of this project's units" : undefined}
-  />
+  <View variable={DISAGREEING} units={VOCABULARY} preview={null} chosen="RPM" />
 );
 
 export const FixedByType = () => (

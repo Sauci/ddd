@@ -78,17 +78,17 @@ test("a change saved by another editor reaches the page, and a unit being typed 
   await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
   const picker = page.getByRole("combobox", { name: "Unit of ValueA" });
   await picker.fill("rp");
-  // React Aria's popover is a dialog by default: open, it hides the rest of the page from the
-  // accessibility tree, which would hide ValueB's own button below. Escape closes it without
-  // losing the draft the reader typed, exactly as leaving the field for the row below would.
-  await picker.press("Escape");
   writeFileSync(file, readFileSync(file, "utf8").replace('"unit": "V"', '"unit": "mV"'));
-  await expect(page.getByRole("button", { name: "Set the unit of ValueB" })).toHaveText("mV", {
-    timeout: 5_000,
-  });
+  // The reader is still typing, so the picker's list is still open, and while it is React Aria
+  // hides the rest of the page from assistive technology: ValueB's button is looked for there
+  // all the same.
+  await expect(
+    page.getByRole("button", { name: "Set the unit of ValueB", includeHidden: true }),
+  ).toHaveText("mV", { timeout: 5_000 });
   // The table and the panel stay while the file is read again for the new revision, so the
   // picker does too: swapped for a loading line, it lost what the reader was typing.
   await expect(picker).toHaveValue("rp");
+  await expect(picker).toHaveAttribute("aria-expanded", "true");
 });
 
 test("an edit made from a page that is out of date is refused, and the file reloaded", async ({

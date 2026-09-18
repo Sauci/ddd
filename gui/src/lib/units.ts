@@ -136,6 +136,33 @@ export function pickerSections(
   return sections;
 }
 
+/** What the picker's field reads for a unit while nothing is being typed: the No unit entry's
+ * label for no unit, so that the field always names what the consequence line is about. */
+export function unitLabel(unit: string | null): string {
+  return unit ?? NO_UNIT;
+}
+
+/**
+ * What Enter chooses when no entry of the list is focused, from the text in the field: the unit
+ * of an entry spelling the text exactly; else no unit (`null`), when the text is the No unit
+ * entry's label; else the text exactly as typed, as its As typed entry would take it - so a
+ * unit someone did spell "no unit" is still that unit. `undefined` for a field left empty or
+ * blank, which chooses nothing.
+ *
+ * `sections` is the list the text was typed over, narrowed by that text or not narrowed at all:
+ * either way it holds every entry spelling the text, which is all this reads it for.
+ */
+export function enteredUnit(
+  sections: readonly UnitSection[],
+  text: string,
+): string | null | undefined {
+  if (text.trim() === "") return undefined;
+  if (sections.some((section) => section.choices.some((entry) => entry.unit === text))) {
+    return text;
+  }
+  return text === NO_UNIT ? null : text;
+}
+
 /** Whether a project that declares a vocabulary leaves this unit out of it. */
 export function outsideVocabulary(units: UnitsReply, unit: string | null): boolean {
   return (
@@ -218,7 +245,7 @@ function declaredUnits(declarations: readonly VariableDeclaration[]): Map<string
 }
 
 function choice(section: UnitSection["id"], unit: string | null, detail: string): UnitChoice {
-  return { id: `${section}:${unit ?? ""}`, unit, label: unit ?? NO_UNIT, detail };
+  return { id: `${section}:${unit ?? ""}`, unit, label: unitLabel(unit), detail };
 }
 
 function variables(count: number): string {

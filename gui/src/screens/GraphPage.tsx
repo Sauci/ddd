@@ -172,11 +172,15 @@ function Canvas({
   // An arrow in disagreement about several variables asks which one; one about a single
   // variable opens it straight away, and an arrow whose ends agree opens nothing.
   const [chooser, setChooser] = useState<{ title: string; objects: string[] } | null>(null);
+  // The variable whose panel closed because no file declares it any longer (spec 5.5), named
+  // above the canvas until another variable is opened or the reader leaves the canvas.
+  const [undeclared, setUndeclared] = useState<string | null>(null);
   const onOpen = useCallback(
     (id: string) => {
       const objects = objectsInDisagreement(graph, id);
       if (objects.length === 1) {
         setChooser(null);
+        setUndeclared(null);
         onVariable(objects[0]);
       } else if (objects.length > 1) {
         onVariable(undefined);
@@ -196,6 +200,9 @@ function Canvas({
   return (
     <div className={variable !== undefined || chooser !== null ? "with-panel" : undefined}>
       <div>
+        {undeclared !== null && (
+          <Banner tone="warning">{undeclared} is no longer declared in the open project.</Banner>
+        )}
         <div className="canvas-tools">
           <input
             // A textbox, not a search box: the journeys look for the role an <input type="text">
@@ -246,6 +253,10 @@ function Canvas({
           stopped={stopped}
           focusPicker={null}
           onClose={() => onVariable(undefined)}
+          onUndeclared={() => {
+            setUndeclared(variable);
+            onVariable(undefined);
+          }}
         />
       ) : (
         chooser !== null && (
@@ -257,6 +268,7 @@ function Canvas({
                     variant="link"
                     onPress={() => {
                       setChooser(null);
+                      setUndeclared(null);
                       onVariable(object);
                     }}
                   >

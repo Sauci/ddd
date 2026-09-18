@@ -50,12 +50,12 @@ export function FlowEdge({
           // lib/canvas.ts); this is the picture of it, and saying it twice helps nobody.
           aria-hidden="true"
           // It sits on the middle of the curve, over the very stroke a reader aims at: it opens
-          // the same tooltip rather than being a hole in the arrow, and the same panel on click -
-          // the keyboard reaches that through the arrow's own group instead, which already
-          // handles Enter and Space, so the label itself is left out of the tab order rather
-          // than given a click handler of its own to reach by keyboard, which would be a second
-          // stop on every arrow.
-          onClick={() => data.onOpen(id)}
+          // the same tooltip rather than being a hole in the arrow, and the same panel on click.
+          // That click needs no handler here: portalled out of the arrow's svg as the label is,
+          // React still bubbles it through its own tree to the arrow's group, whose click opens
+          // the panel - a handler here as well opened it twice. The keyboard reaches the panel
+          // through that group too, which handles Enter and Space, so the label is left out of
+          // the tab order rather than being a second stop on every arrow.
           onMouseEnter={() => data.onReached(id)}
           onMouseLeave={() => data.onReached(null)}
           style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}

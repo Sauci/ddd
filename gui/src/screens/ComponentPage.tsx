@@ -25,6 +25,11 @@ export function ComponentPage({ file, variable, state, stopped, onVariable }: Pr
   // A new number on every unit cell press, even a second press of the same cell, so the
   // picker's focus request always changes; null when a row selects its variable without one.
   const [focusPicker, setFocusPicker] = useState<number | null>(null);
+  // The variable whose panel closed because no file declares it any longer (spec 5.5), named
+  // above the table until another variable is selected or the reader leaves this page - for
+  // another component's page as well.
+  const [undeclared, setUndeclared] = useState<{ file: string; name: string } | null>(null);
+  if (undeclared !== null && undeclared.file !== file) setUndeclared(null);
   const content = useQuery({
     queryKey: ["file", file, state?.revision],
     queryFn: () => getFile(file),
@@ -65,6 +70,11 @@ export function ComponentPage({ file, variable, state, stopped, onVariable }: Pr
     <section className={variable === undefined ? undefined : "with-panel"}>
       <div>
         <h1>{name}</h1>
+        {undeclared !== null && (
+          <Banner tone="warning">
+            {undeclared.name} is no longer declared in the open project.
+          </Banner>
+        )}
         <Table
           aria-label={`Declarations of ${name}`}
           selectionMode="single"
@@ -72,6 +82,7 @@ export function ComponentPage({ file, variable, state, stopped, onVariable }: Pr
           onSelectionChange={(keys) => {
             const key = keys === "all" ? undefined : [...keys][0];
             setFocusPicker(null);
+            setUndeclared(null);
             onVariable(rows.find((row) => row.id === key)?.name);
           }}
         >
@@ -104,6 +115,7 @@ export function ComponentPage({ file, variable, state, stopped, onVariable }: Pr
                     isDisabled={stopped}
                     onPress={() => {
                       setFocusPicker((request) => (request ?? 0) + 1);
+                      setUndeclared(null);
                       onVariable(row.name);
                     }}
                   >
@@ -143,6 +155,10 @@ export function ComponentPage({ file, variable, state, stopped, onVariable }: Pr
           stopped={stopped}
           focusPicker={focusPicker}
           onClose={() => onVariable(undefined)}
+          onUndeclared={() => {
+            setUndeclared({ file, name: variable });
+            onVariable(undefined);
+          }}
         />
       )}
     </section>

@@ -36,9 +36,9 @@ export interface ModuleData extends Record<string, unknown> {
  * `source` and `target` are the two modules' names, not their paths: they are what the arrow
  * says out loud, and a path is never shown. `disagreements` rides along for the tooltip, which
  * is open while `active` and carries `tooltip` as its id, the one the arrow points at with
- * `aria-describedby`. `onReached` and `onOpen` are the same callbacks the arrow's own group
- * calls, so that the label sitting on the middle of the curve opens the tooltip, or the panel,
- * exactly as the curve itself does.
+ * `aria-describedby`. `onReached` is the same callback the arrow's own group calls, so that the
+ * label sitting on the middle of the curve opens the tooltip exactly as the curve itself does;
+ * a click on the label reaches the group's own click through React's tree, and opens the panel.
  */
 export interface FlowData extends Record<string, unknown> {
   source: string;
@@ -48,7 +48,6 @@ export interface FlowData extends Record<string, unknown> {
   disagreements: readonly GraphDisagreement[];
   tooltip: string;
   onReached: (id: string | null) => void;
-  onOpen: (id: string) => void;
   faded: boolean;
   active: boolean;
 }
@@ -159,7 +158,6 @@ export function edgesOf(
           disagreements: flow.disagreements,
           tooltip,
           onReached,
-          onOpen,
           faded: false,
           active: false,
         },

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ApiError, getSettle, getUnits, getVariable, postEdit } from "../api/client";
 import { VariablePanelView } from "../components/VariablePanelView";
 import { editOf, outsideVocabulary, rawOf, startingUnit, unitLabel } from "../lib/units";
@@ -13,19 +13,35 @@ interface Props {
   /** A new value on every request to focus the picker; `null` asks for no focus. */
   focusPicker: number | null;
   onClose: () => void;
+  /** No file of the open project declares the variable: the page closes the panel, saying why. */
+  onUndeclared: () => void;
 }
 
 const STALE =
   "A file changed on disk, so nothing was written. The panel now shows the files as they are.";
 
 /** One variable's panel: its declarations, the unit they state, and a unit to settle on. */
-export function VariablePanel({ name, revision, stopped, focusPicker, onClose }: Props) {
+export function VariablePanel({
+  name,
+  revision,
+  stopped,
+  focusPicker,
+  onClose,
+  onUndeclared,
+}: Props) {
   const queries = useQueryClient();
   const variable = useQuery({
     queryKey: ["variable", name, revision],
     queryFn: () => getVariable(name),
     placeholderData: (previous) => previous,
   });
+  // Spec 5.5: a variable renamed or removed on disk - or named by an address no file declares,
+  // such as an old bookmark - is not declared any longer, and its panel closes. It says why on
+  // the page it was beside rather than in a panel of its own, which is about to go.
+  const undeclared = variable.error instanceof ApiError && variable.error.code === "not-found";
+  useEffect(() => {
+    if (undeclared) onUndeclared();
+  }, [undeclared, onUndeclared]);
   const units = useQuery({
     queryKey: ["units", revision],
     queryFn: () => getUnits(),
@@ -52,8 +68,10 @@ export function VariablePanel({ name, revision, stopped, focusPicker, onClose }:
       if (edit === null) throw new Error("there is nothing to change");
       return postEdit(edit);
     },
+    // The unit chosen stays chosen: the panel then says there is nothing left to change. Let go,
+    // it fell back on the owner's unit in the declarations still on screen, which are the ones
+    // the edit has just changed, and previewed undoing it.
     onSuccess: () => {
-      setChosen(undefined);
       setTyped(undefined);
       setChangesShown(false);
       setRefused(null);
@@ -64,9 +82,19 @@ export function VariablePanel({ name, revision, stopped, focusPicker, onClose }:
           ? STALE
           : `The change was refused: ${error.message}`,
       ),
-    onSettled: () => queries.invalidateQueries(),
+    // An Apply changes this variable's declarations, the units the project uses and the preview
+    // it was made from, whose fingerprints the edit spent: those are asked for again, and Apply
+    // stays unavailable until they answer. Everything else - the component's file, the canvas -
+    // is keyed by revision, and moves on with the state the edit made.
+    onSettled: () =>
+      Promise.all([
+        queries.invalidateQueries({ queryKey: ["variable", name] }),
+        queries.invalidateQueries({ queryKey: ["units"] }),
+        queries.invalidateQueries({ queryKey: ["settle", name] }),
+      ]),
   });
 
+  if (undeclared) return null;
   if (variable.isError) {
     return (
       <Panel title={name} onClose={onClose}>

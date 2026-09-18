@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONTROLLER, drift } from "./demo";
+import { CONTROLLER, chooseUnit, drift, renameValueA } from "./demo";
 import { expect, test } from "./fixtures";
 
 test("a disagreement written from outside is resolved from the component page", async ({
@@ -99,6 +99,35 @@ test("text left without Enter chooses nothing, and the field reads the chosen un
   await expect(panel.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
 });
 
+test("after Apply the panel stays on the unit applied, and asks again only what Apply changed", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  await chooseUnit(page, "rpm");
+  await expect(
+    panel.getByText("Changes 2 files: controller.ddd.json, sensor_hub.ddd.json"),
+  ).toBeVisible();
+
+  const asked: string[] = [];
+  page.on("request", (request) => {
+    const { pathname, searchParams } = new URL(request.url());
+    if (pathname === "/api/settle") asked.push(`settle ${searchParams.get("raw")}`);
+    if (pathname === "/api/session") asked.push("session");
+  });
+  await panel.getByRole("button", { name: "Apply to 2 files" }).click();
+  // The new revision's declarations, both stating the unit applied...
+  await expect(panel.getByRole("cell", { name: "rpm", exact: true })).toHaveCount(2);
+  // ...and the panel still on that unit with nothing left to change, never a preview of undoing
+  // it; nor was anything asked for again that an Apply cannot change, such as the session.
+  await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toHaveValue("rpm");
+  await expect(panel.getByText("Nothing to change")).toBeVisible();
+  expect(asked.filter((entry) => entry !== 'settle "rpm"')).toEqual([]);
+});
+
 test("the picker lists the variable's units, then the project's, narrowed by what is typed", async ({
   page,
   gui,
@@ -144,6 +173,43 @@ test("the address keeps the panel open across a reload", async ({ page, gui }) =
   await expect(page.getByRole("complementary", { name: "ValueB" })).toBeVisible();
 });
 
+test("a variable no longer declared closes its panel, and the page says so", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  await expect(panel).toBeVisible();
+  await expect(page).toHaveURL(/variable=ValueA/);
+  const bookmark = page.url();
+
+  renameValueA(gui.directory, "ValueZ");
+  const gone = page
+    .getByRole("status")
+    .filter({ hasText: "ValueA is no longer declared in the open project." });
+  await expect(gone).toBeVisible();
+  await expect(panel).toHaveCount(0);
+  await expect(page).not.toHaveURL(/variable=/);
+
+  // Another variable selected, the banner has said what it had to.
+  await page.getByRole("row", { name: /ValueB/ }).click();
+  await expect(page.getByRole("complementary", { name: "ValueB" })).toBeVisible();
+  await expect(gone).toHaveCount(0);
+
+  // An address naming it from before the rename - a bookmark - is answered the same way, on the
+  // component page as on the canvas.
+  await page.goto(bookmark);
+  await expect(gone).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "ValueA" })).toHaveCount(0);
+  await expect(page).not.toHaveURL(/variable=/);
+  await page.goto(new URL("/project?variable=ValueA", page.url()).href);
+  await expect(gone).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "ValueA" })).toHaveCount(0);
+  await expect(page).toHaveURL(/\/project$/);
+});
+
 test("the same disagreement is resolved from its arrow on the canvas", async ({ page, gui }) => {
   const before = drift(gui.directory);
   await page.goto(gui.address);
@@ -156,7 +222,34 @@ test("the same disagreement is resolved from its arrow on the canvas", async ({ 
   await expect(page.getByLabel("SensorHub to Controller: 2 variables, agreed")).toBeVisible();
 });
 
+test("an arrow in disagreement about two variables asks which, from the keyboard too", async ({
+  page,
+  gui,
+}) => {
+  // Both flow from SensorHub to Controller in the demo, and Controller reads each in another unit.
+  drift(gui.directory, "ValueA", "rpm");
+  drift(gui.directory, "ValueB", "mV");
+  await page.goto(gui.address);
+  const arrow = page.getByRole("button", { name: "SensorHub to Controller: 2 variables, error" });
+  await expect(arrow).toBeVisible();
+  // Reached the way a keyboard reaches it, one Tab at a time.
+  for (let stop = 0; stop < 50; stop += 1) {
+    if (await arrow.evaluate((element) => element === document.activeElement)) break;
+    await page.keyboard.press("Tab");
+  }
+  await expect(arrow).toBeFocused();
+  await page.keyboard.press("Enter");
+
+  const chooser = page.getByRole("complementary", { name: "SensorHub to Controller" });
+  await expect(chooser.getByRole("listitem")).toHaveText(["ValueA", "ValueB"]);
+  await chooser.getByRole("button", { name: "ValueB", exact: true }).click();
+  await expect(page.getByRole("complementary", { name: "ValueB" })).toBeVisible();
+  await expect(page).toHaveURL(/\/project\?variable=ValueB$/);
+});
+
 test("no page reports a violation of its content security policy", async ({ page, gui }) => {
+  // A disagreement, so that an arrow opens a panel and the panel has changes to show.
+  drift(gui.directory);
   await page.addInitScript(() => {
     const seen: string[] = [];
     Object.assign(window, { violations: seen });
@@ -166,10 +259,20 @@ test("no page reports a violation of its content security policy", async ({ page
   });
   await page.goto(gui.address);
   await expect(page.getByRole("region", { name: "Modules" })).toBeVisible();
+  await page.locator(".flow-label.error").click();
+  await expect(page.getByRole("complementary", { name: "ValueA" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Projects" }).click();
+  await expect(page.getByRole("heading", { name: "Open a project" })).toBeVisible();
+  await page.getByRole("button", { name: "DemoDevice", exact: true }).click();
+
   await page.getByRole("link", { name: "Table" }).click();
   await page.getByRole("button", { name: "Controller", exact: true }).click();
   await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
-  await page.getByRole("combobox", { name: "Unit of ValueA" }).press("ArrowDown");
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  await panel.getByRole("button", { name: "Show changes" }).click();
+  await expect(panel.locator(".hunk")).toBeVisible();
+  await panel.getByRole("combobox", { name: "Unit of ValueA" }).press("ArrowDown");
   await expect(page.getByRole("option", { name: "%", exact: true })).toBeVisible();
   expect(
     await page.evaluate(() => (window as unknown as { violations: string[] }).violations),

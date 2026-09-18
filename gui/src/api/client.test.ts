@@ -77,7 +77,10 @@ describe("requests to the server", () => {
     await getState(null, undefined, fetchImpl);
     await getState(3, signal, fetchImpl);
     await getFile("C:/p/a b.ddd.json", fetchImpl);
-    await postEdit({ changes: [] }, fetchImpl);
+    await postEdit(
+      { changes: [{ file: "a", fingerprint: "x", operations: [{ op: "remove", pointer: "a" }] }] },
+      fetchImpl,
+    );
     expect(fetchImpl.mock.calls).toEqual([
       ["/api/session", { credentials: "same-origin" }],
       ["/api/projects", { credentials: "same-origin" }],
@@ -99,7 +102,7 @@ describe("requests to the server", () => {
           credentials: "same-origin",
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: '{"changes":[]}',
+          body: '{"changes":[{"file":"a","fingerprint":"x","operations":[{"op":"remove","pointer":"a"}]}]}',
         },
       ],
     ]);

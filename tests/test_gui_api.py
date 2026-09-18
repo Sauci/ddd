@@ -158,7 +158,7 @@ class TestProjects:
         reply = post(Api(Session(root)), "/api/open", {"path": (root / "a.ddd.json").as_posix()})
         assert (reply.status, reply.body["error"]) == (409, "not-a-project")
 
-    @pytest.mark.parametrize("body", [b"not json", b"[]", {"path": 7}, {}])
+    @pytest.mark.parametrize("body", [b"not json", b"[]", {"path": 7}, {}, {"path": "a", "x": 1}])
     def test_an_open_request_without_a_path_is_bad(self, api: Api, body: object) -> None:
         reply = post(api, "/api/open", body)
         assert (reply.status, reply.body["error"]) == (400, "bad-request")
@@ -308,6 +308,24 @@ class TestEdit:
         ]
         assert '"unit": "Hz"' in target.read_text(encoding="utf-8")
 
+    def test_an_edit_whose_raw_value_is_a_fractional_number_is_written_as_typed(
+        self, api: Api, root: Path
+    ) -> None:
+        """``1.0`` must not become ``1``: contract.Operation.raw is a str pydantic never parses,
+        and the value it carries reaches the file exactly as it was sent, decimal point kept."""
+        target = root / "b.ddd.json"
+        edit = {
+            "changes": [
+                {
+                    "file": target.as_posix(),
+                    "fingerprint": fingerprint(target.read_bytes()),
+                    "operations": [{"op": "set", "pointer": UNIT, "raw": "1.0"}],
+                }
+            ]
+        }
+        assert post(api, "/api/edit", edit).status == 200
+        assert '"unit": 1.0' in target.read_text(encoding="utf-8")
+
     def test_a_stale_edit_is_a_refusal_the_page_can_act_on(self, api: Api, root: Path) -> None:
         edit = unit_edit(api, root, "Hz")
         (root / "b.ddd.json").write_text("{}", encoding="utf-8")
@@ -400,6 +418,15 @@ class TestEdit:
                         "file": "a",
                         "fingerprint": "x",
                         "operations": [{"op": "move", "pointer": "a[0]", "to": True}],
+                    }
+                ]
+            },
+            {
+                "changes": [
+                    {
+                        "file": "a",
+                        "fingerprint": "x",
+                        "operations": [{"op": "set", "pointer": "a", "raw": "1", "unknown": True}],
                     }
                 ]
             },

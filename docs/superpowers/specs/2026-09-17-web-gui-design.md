@@ -255,6 +255,19 @@ revision does not hold it.
 The API is internal. The page and the server ship in one wheel, so the API changes with the
 package and is not part of the public interface.
 
+The contract behind it is declared once, as pydantic models in `src/ddd/gui/contract.py`: one
+model per request and per response of the table below. `api.py` reads a request with
+`model_validate_json` - closed to a key the model does not declare and strict about the type of
+every value it does, so a string never becomes an index and an edit's `raw` is never parsed as
+the json it holds - and answers with a response model's own `model_dump(mode="json")`, never a
+hand-built `dict`. `contract.api_schema()` turns every one of those models into one json schema,
+every model under its own name in `$defs`, which `gui/scripts/schemas.mjs` reads to write
+`gui/src/generated/api.ts`. A model the eight endpoints never reach would be missing there, which
+a test of `contract.py` itself refuses to let past - a model added to the contract without a page
+type of its own fails that suite, not a frontend silently left behind what the server sends. Not
+part of `ddd schema`: that command publishes the file formats a project's own files are checked
+against, and the api answers no file.
+
 | Request | Answer |
 | --- | --- |
 | `GET /api/session` | the DDD version, `preview: true`, the open project (path and name) or none, and the build records applied |
@@ -266,7 +279,9 @@ package and is not part of the public interface.
 | `GET /api/checks` | the checks, as `ddd checks --format json` lists them, with the open project's plugin checks |
 | `POST /api/edit` | see below |
 
-An error answers with a status code and `{"error": <code>, "message": <sentence>}`.
+An error answers with a status code and `{"error": <code>, "message": <sentence>}`. A request
+that does not read as its model - `POST /api/open`'s or `POST /api/edit`'s - answers `400` as
+`bad-request`, its message the first problem the model found, trimmed to one sentence.
 
 An edit names every file it changes, the fingerprint each was read at, and the operations to
 apply to it in order:
@@ -359,7 +374,10 @@ the page fetched from the server and invalidating it when a new revision arrives
 
 - **Types** for the description files and the dictionary are generated from `ddd schema all` at
   build time (`json-schema-to-typescript`), so a file-format change that the page has not caught
-  up with fails the build.
+  up with fails the build. The api's own types are generated the same way, from
+  `ddd.gui.contract.api_schema()` rather than a file on disk (section 6.5); `gui/src/api/types.ts`
+  re-exports them under the names the screens import, so a screen imports one contract whichever
+  of the two it came from.
 - **Pointers** are parsed and built by a TypeScript twin of `ddd.lsp.ranges.segments`, tested
   against the same spellings, escaped keys included.
 - **Screens:** the start page (the projects found), the project (its components and finding

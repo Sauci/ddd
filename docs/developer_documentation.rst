@@ -376,6 +376,10 @@ containers:
    docker compose run --rm cmake       # build examples/cmake through cmake/Ddd.cmake
    docker compose run --rm docs        # build this documentation
 
+The image serves ``ddd gui`` too: a first stage of ``docker/Dockerfile`` compiles the pages,
+and only the pages reach the image, installed with the package - no node. A service runs the
+working tree, though, and with it the pages compiled there, if any.
+
 The ``compile`` service is the one that keeps the c backend honest. It generates the demo
 project, writes one translation unit per generated header that includes it twice - which
 proves that every header is self contained and that its include guard works - compiles
@@ -403,17 +407,23 @@ the artefact a customer is handed can be produced at all.
 ``gui`` builds and tests the browser interface on ubuntu and windows: it installs the package and
 node, generates the TypeScript types from ``ddd schema``, runs Biome, the type check and Vitest
 with its coverage gate, compiles the pages, and drives them in Chromium against a real
-``ddd gui`` with Playwright. The pages it compiles are thrown away; the release build compiles
-them again, into the wheel.
+``ddd gui`` with Playwright. On ubuntu it then builds the wheel and the sdist with the pages it
+compiled, checks that the wheel carries them the way the release build checks its own, and
+uploads both as ``ddd-tool-<commit>``: what installs a branch without node. The release build
+still compiles the pages again, into the wheel it publishes - an artifact expires, and needs a
+GitHub account to reach.
 
-``container`` builds the image behind ``docker compose`` and runs the ``generate`` service in
-it. Nothing built the image for a long time, and it is the local equivalent of every other
-job here: a ``COPY`` of a directory removed three releases earlier failed the build on its
-first line, and every service with it, while ci stayed green - ci installs the package itself
-and never came near the image. The service run after it is the other half of what broke then:
-the image built, and the service exited with a usage error from an option set two releases
-old. The five other services are not run here; what they exercise is either covered by a job
-above or, for ``compile``, the run a contributor does locally.
+``container`` builds the image behind ``docker compose``, checks that the package installed in
+it carries the pages of ``ddd gui``, and runs the ``generate`` service in it. Nothing built the
+image for a long time, and it is the local equivalent of every other job here: a ``COPY`` of a
+directory removed three releases earlier failed the build on its first line, and every service
+with it, while ci stayed green - ci installs the package itself and never came near the image.
+The service run after it is the other half of what broke then: the image built, and the
+service exited with a usage error from an option set two releases old. The five other services
+are not run here; what they exercise is either covered by a job above or, for ``compile``, the
+run a contributor does locally. The pages are asked for with ``python -I``, which leaves out
+the working tree a service puts first on the path: a clean checkout has no compiled pages, so
+without it the check would read the checkout rather than the image.
 
 The suite runs across a matrix of ubuntu and windows on python 3.12, 3.13 and 3.14, which is
 the six combinations the classifiers in ``pyproject.toml`` advertise. That is not thoroughness
@@ -678,9 +688,13 @@ The browser interface
 ---------------------
 
 ``ddd gui`` serves pages compiled from ``gui/``, a Vite project in TypeScript and React, into
-``src/ddd/gui/static/``. git ignores the compiled pages; the release build compiles them before
-it builds the wheel, which then carries them. A source checkout needs Node.js 24 to build them,
-with the package installed so that its types can be generated:
+``src/ddd/gui/static/``. git ignores the compiled pages, and Node.js is needed where they are
+compiled, never where ddd is installed. The release build compiles them before it builds the
+wheel, which then carries them. The ``gui`` job of ci does the same and uploads the wheel as
+``ddd-tool-<commit>``, so every branch ci runs on installs without Node.js as well. The image
+behind ``docker compose`` compiles them in a build stage of its own, thrown away with its
+Node.js: the image carries the pages and no Node.js. A source checkout needs Node.js 24 to build
+them, with the package installed so that its types can be generated:
 
 .. code-block:: text
 

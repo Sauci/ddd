@@ -916,6 +916,10 @@ docker compose run --rm shell            # an interactive shell in the image
 docker compose run --rm ddd ddd list examples/demo/demo.ddd.json
 ```
 
+The image serves `ddd gui` too: a stage of its own compiles the pages, and only the pages
+reach the image, installed with DDD - no Node.js.  The services run the working tree, though,
+pages included, so there `ddd gui` serves what the checkout compiled.
+
 `compile` runs [docker/compile.sh](https://github.com/Sauci/ddd/blob/master/docker/compile.sh), which
 
 1. generates the demo project into `build/gen`,

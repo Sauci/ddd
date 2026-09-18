@@ -23,7 +23,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   away, with a declaration's unit changed in place - nothing but the unit changing in the
   file, the rest of its layout kept, and checked the way `ddd check` checks it.  It is the
   first step of a GUI for developers who would rather not edit JSON, and its options are not
-  yet part of the public interface.
+  yet part of the public interface.  Installing it needs no Node.js: a release carries the
+  compiled pages, and so does the wheel ci builds for every branch.
 
 ## 0.10.0
 

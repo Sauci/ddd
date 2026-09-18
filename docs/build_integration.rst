@@ -626,7 +626,9 @@ compile the generated sources, and binutils for the ``nm`` that inspects them af
 itself is installed with its development extra, which is also where the cmake and the ninja
 that build the cmake example come from: both are wheels from pypi rather than debian packages,
 because debian bookworm still ships cmake 3.25 and the module needs 3.30. ``docker/compile.sh``
-is installed as the command ``ddd-compile``.
+is installed as the command ``ddd-compile``. The image serves ``ddd gui`` too: its pages are
+compiled in a first stage of the same file, the only one with Node.js in it, and only the pages
+reach the image, installed with DDD.
 
 .. note::
    The image is a linux image, so on a Windows host run docker from a WSL shell, where docker
@@ -657,6 +659,12 @@ anything. The ``docs`` service installs the documentation extra into that mount 
 ``sphinx-build`` with ``-W``, so a warning - a broken cross reference, a directive that does
 not render - fails the build rather than producing a page nobody looks at twice. There is also
 a ``shell`` service, which is the same container with an interactive bash in it.
+
+The pages of ``ddd gui`` are shadowed with the rest: a service serves the ones compiled in the
+working tree, which git ignores, so over a checkout that never compiled them ``ddd gui`` refuses
+to start there, and the pages the image carries are what a container run without that
+``PYTHONPATH`` serves. Either way it answers on the loopback address of the container, which a
+browser outside the container reaches only if the container shares the host's network.
 
 What the compile service proves
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -711,8 +719,9 @@ templates cannot answer on its behalf.
 
 .. warning::
    The container runs as root, so files it writes under ``build/`` belong to root when the
-   mount is a real linux filesystem. The base image is also still referenced by tag: pin it to
-   a digest before a result from it is used to release something, as the comment at the top of
+   mount is a real linux filesystem. The base images are also still referenced by tag -
+   python's, and node's for the stage that compiles the pages: pin them to digests before a
+   result from the image is used to release something, as the comment at the top of
    ``docker/Dockerfile`` describes.
 
 pre-commit

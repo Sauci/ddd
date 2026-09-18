@@ -918,17 +918,26 @@ docker compose run --rm lint             # ruff + mypy
 docker compose run --rm docs             # the html documentation, into build/docs/html
 docker compose run --rm shell            # an interactive shell in the image
 docker compose run --rm ddd ddd list examples/demo/demo.ddd.json
+docker compose up gui                    # ddd gui on the demo: open the address it prints
 ```
 
-The image serves `ddd gui` too: a stage of its own compiles the pages, and only the pages
-reach the image, installed with DDD - no Node.js.  The services run the working tree, though,
-pages included, so there `ddd gui` serves what the checkout compiled - except `gui`, which
-clears `PYTHONPATH` to run the image's own code and pages instead, over the checkout's project
-files still: an edit made in the browser writes back into the working tree, root-owned
-afterwards on a native Linux engine, since the service runs as root like every other.  It
-listens beyond the container's loopback and publishes the same port number on the host's
-loopback - a different one would misdirect the Host header `ddd gui` checks: `docker compose up
-gui`, then the address it prints in a browser on the host.
+The image serves `ddd gui` too. A stage of its own compiles the pages, so the image carries
+them and holds no Node.js.
+
+`docker compose up gui` serves the demo project; open the address it prints in a browser on the
+host. With the engine inside WSL, Windows reaches it through WSL's localhost forwarding, which
+is on by default. `up` rather than `run --rm`, because `run` does not publish the port.
+
+The `gui` service runs the image's own code and pages, but the project files it serves are the
+working tree's: an edit made in the browser is written into your checkout, and on a native
+Linux engine the edited file comes back owned by root, since every service runs as root.
+
+It listens on every interface of the container and publishes port 8123 on the host's loopback
+only, with the same number on both sides: `ddd gui` checks that each request names the port it
+listens on, and refuses any other.
+
+The other services run the working tree rather than the image's install, so `ddd gui` started
+from one of them serves whatever pages the checkout itself compiled.
 
 `compile` runs [docker/compile.sh](https://github.com/Sauci/ddd/blob/master/docker/compile.sh), which
 

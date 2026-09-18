@@ -354,6 +354,15 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
         ),
     )
     gui.add_argument(
+        "--host",
+        default="127.0.0.1",
+        metavar="ADDRESS",
+        help=(
+            "address to listen on; the default answers this computer alone, and 0.0.0.0 is "
+            "what a container gives its host once the same port is published"
+        ),
+    )
+    gui.add_argument(
         "--port",
         type=_port,
         default=0,
@@ -1355,7 +1364,15 @@ def _command_gui(args: argparse.Namespace) -> int:
     # and the edit engine, which no other command should pay for.
     from ddd.gui.server import run
 
-    return int(run(args.project, args.build_directory, args.port, open_browser=not args.no_browser))
+    return int(
+        run(
+            args.project,
+            args.build_directory,
+            args.port,
+            host=args.host,
+            open_browser=not args.no_browser,
+        )
+    )
 
 
 def _port(text: str) -> int:

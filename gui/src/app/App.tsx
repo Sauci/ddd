@@ -1,8 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { type ReactNode, useCallback } from "react";
 import { getSession } from "../api/client";
 import { Banner } from "../components/Banner";
+import { hrefOf, type ProjectView } from "../lib/route";
 import { ComponentPage } from "../screens/ComponentPage";
+import { GraphPage } from "../screens/GraphPage";
 import { ProjectPage } from "../screens/ProjectPage";
 import { StartPage } from "../screens/StartPage";
 import { useProjectState } from "./useProjectState";
@@ -14,6 +16,12 @@ export function App() {
   const session = useQuery({ queryKey: ["session"], queryFn: () => getSession() });
   const opened = session.data?.project ?? null;
   const { state, stopped, failure } = useProjectState(opened !== null);
+  // One identity for the whole life of the page: the canvas hands this to every module it draws,
+  // and a new function each render would lay the canvas out again each render.
+  const openComponent = useCallback(
+    (file: string) => navigate({ page: "component", file }),
+    [navigate],
+  );
 
   let page: ReactNode;
   if (session.isPending) {
@@ -25,17 +33,28 @@ export function App() {
       <StartPage
         onOpened={() => {
           void queries.invalidateQueries({ queryKey: ["session"] });
-          navigate({ page: "project" });
+          navigate({ page: "project", view: "graph" });
         }}
       />
     );
   } else if (route.page === "project") {
     page = (
-      <ProjectPage
-        name={opened.name ?? opened.path}
-        state={state}
-        onComponent={(file) => navigate({ page: "component", file })}
-      />
+      <section>
+        <h1>{opened.name ?? opened.path}</h1>
+        <nav className="tabs" aria-label="Project views">
+          <Tab view="graph" open={route.view} navigate={navigate}>
+            Graph
+          </Tab>
+          <Tab view="table" open={route.view} navigate={navigate}>
+            Table
+          </Tab>
+        </nav>
+        {route.view === "graph" ? (
+          <GraphPage project={opened.path} state={state} onComponent={openComponent} />
+        ) : (
+          <ProjectPage state={state} onComponent={openComponent} />
+        )}
+      </section>
     );
   } else {
     page = <ComponentPage file={route.file} state={state} disabled={stopped} />;
@@ -51,7 +70,11 @@ export function App() {
             Projects
           </button>
           {opened !== null && (
-            <button type="button" className="link" onClick={() => navigate({ page: "project" })}>
+            <button
+              type="button"
+              className="link"
+              onClick={() => navigate({ page: "project", view: "graph" })}
+            >
               {opened.name ?? opened.path}
             </button>
           )}
@@ -65,5 +88,31 @@ export function App() {
       {failure !== null && <Banner tone="error">{failure}</Banner>}
       <main>{page}</main>
     </div>
+  );
+}
+
+/** One of the project screen's tabs: a real address, so a reload and the back button keep it. */
+function Tab({
+  view,
+  open,
+  navigate,
+  children,
+}: {
+  view: ProjectView;
+  open: ProjectView;
+  navigate: (route: { page: "project"; view: ProjectView }) => void;
+  children: ReactNode;
+}) {
+  return (
+    <a
+      href={hrefOf({ page: "project", view })}
+      aria-current={view === open ? "page" : undefined}
+      onClick={(event) => {
+        event.preventDefault();
+        navigate({ page: "project", view });
+      }}
+    >
+      {children}
+    </a>
   );
 }

@@ -150,3 +150,97 @@ input.unit {
   background: var(--warning-ground);
   color: var(--warning);
 }
+.tabs {
+  display: flex;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--rule);
+}
+.tabs a {
+  margin-bottom: -1px;
+  padding: var(--space-2) 0;
+  border-bottom: 2px solid transparent;
+  color: var(--accent);
+  text-decoration: none;
+}
+.tabs a[aria-current="page"] {
+  border-bottom-color: var(--accent);
+  color: var(--ink);
+  font-weight: 600;
+}
+/* React Flow draws into whatever room it is given, so the canvas states its own. */
+.canvas {
+  height: 70vh;
+  min-height: 420px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--canvas);
+}
+/* 180 by 48 is the box the layout reserves for a module (src/lib/layout.ts), so what dagre
+   spaced out and what the reader sees are the same size. */
+.module {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 180px;
+  height: 48px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+.module .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  text-align: left;
+}
+.module .name:hover {
+  text-decoration: underline;
+}
+.module .badge {
+  margin-right: 0;
+}
+.module.unloaded {
+  background: var(--ground);
+  border-style: dashed;
+}
+/* Still a link to its page: what the loader could not read of it is said there. Its two words
+   are what tell the reader why it is empty, so they wrap rather than being cut off. */
+.module.unloaded .name {
+  color: var(--ink-quiet);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: var(--text-small);
+  line-height: 1.2;
+}
+.module .react-flow__handle {
+  background: var(--rule);
+  border-color: var(--surface);
+}
+.flow-label {
+  position: absolute;
+  pointer-events: all;
+  padding: 0 var(--space-1);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
+.flow-label.error {
+  border-color: var(--error);
+  color: var(--error);
+}
+.flow-label.warning {
+  border-color: var(--warning);
+  color: var(--warning);
+}

@@ -1,4 +1,12 @@
-import type { Changes, EditReply, FileContent, Found, SessionInfo, State } from "./types";
+import type {
+  Changes,
+  EditReply,
+  FileContent,
+  Found,
+  GraphReply,
+  SessionInfo,
+  State,
+} from "./types";
 
 type Fetch = (path: string, init?: RequestInit) => Promise<Response>;
 
@@ -76,6 +84,9 @@ export const getState = (after: number | null, signal?: AbortSignal, fetchImpl: 
 
 export const getFile = (path: string, fetchImpl: Fetch = fetch) =>
   request<FileContent>(`/api/file?path=${encodeURIComponent(path)}`, {}, fetchImpl);
+
+export const getGraph = (fetchImpl: Fetch = fetch) =>
+  request<GraphReply>("/api/graph", {}, fetchImpl);
 
 export const postEdit = (changes: Changes, fetchImpl: Fetch = fetch) =>
   request<EditReply>("/api/edit", post(changes), fetchImpl);

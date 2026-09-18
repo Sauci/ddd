@@ -91,8 +91,8 @@ On the developer's PC
 - **The frontend** (`gui/`) is a React application in TypeScript. It is compiled once, in CI,
   into static files shipped inside the wheel; nothing is fetched from the network at run time.
 - **The server** (`src/ddd/gui/`) is Python's standard-library HTTP server, bound to the
-  loopback address. It serves the compiled pages and a JSON API, and adds no runtime dependency
-  to the package: like `ddd lsp`, it runs on what Python already has.
+  loopback address by default. It serves the compiled pages and a JSON API, and adds no runtime
+  dependency to the package: like `ddd lsp`, it runs on what Python already has.
 - **The session** holds the one open project and the result of its last analysis, numbered as
   a revision.
 - **The edit engine** (`src/ddd/editing.py`) turns an operation at a pointer into a text edit in
@@ -174,7 +174,7 @@ Nothing else is editable yet, and the screens are plain: their look is milestone
 ### 6.2 The command
 
 ```text
-ddd gui [PROJECT] [-b DIR]... [--port N] [--no-browser]
+ddd gui [PROJECT] [-b DIR]... [--host ADDRESS] [--port N] [--no-browser]
 ```
 
 - `PROJECT` is a project description. Without it, the start page lists the projects of the build
@@ -183,12 +183,19 @@ ddd gui [PROJECT] [-b DIR]... [--port N] [--no-browser]
   directories deep, skipping hidden directories, `node_modules` and the build directory names
   `ddd lsp` searches.
 - `-b DIR` names a build directory, repeatable, exactly as for `ddd lsp`.
-- `--port N` fixes the port. The default, 0, lets the system pick a free one.
+- `--host ADDRESS` binds another address than the default, `127.0.0.1` - `0.0.0.0` in a
+  container. See 6.3 for what answering beyond loopback changes.
+- `--port N` fixes the port. The default, 0, lets the system pick a free one, which is refused
+  together with a `--host` beyond loopback: a port a container's own system picks cannot be
+  published on the host in advance.
 - `--no-browser` prints the address without opening it.
 
-The command prints one line, `ddd gui (preview) serving <address>`, and runs until it is
-interrupted, which exits 0. It exits 2 when the project is not a project description, when a
-fixed port is taken, or when the installation has no compiled pages (section 6.8).
+The command prints one line to stdout, `ddd gui (preview) serving <address>`, and, beyond
+loopback, one more to stderr warning about it (6.3); it runs until it is interrupted, which
+exits 0. It exits 2 when the project is not a project description, when `--host` cannot be
+resolved to an address, when the address it resolves to cannot be bound or a fixed port is
+taken, when `--port 0` is combined with a `--host` beyond loopback, or when the installation
+has no compiled pages (section 6.8).
 
 The findings of an open project are those of every build record that names it, merged the way
 the language server merges them. With no record naming it, the project is analysed with the
@@ -197,8 +204,22 @@ for.
 
 ### 6.3 The server
 
-The server is `http.server.ThreadingHTTPServer` bound to `127.0.0.1`, not `localhost`, which
-resolves to an IPv6 address on some machines.
+The server is `http.server.ThreadingHTTPServer`, bound to `127.0.0.1` by default, not
+`localhost`, which resolves to an IPv6 address on some machines. `--host` names another address
+instead, resolved once with `socket.getaddrinfo` (the server is IPv4 only) before anything else
+is decided from it, so a hosts file that redefines `localhost` is judged by what it resolves to
+and not by its spelling - in both directions - and the numeric result is what is actually
+bound. For a container that address is `0.0.0.0`, with `docker compose` publishing the same
+port number on the host's loopback alone, `-p 127.0.0.1:8123:8123`: a different number there
+would have the Host header `ddd gui` sees name a port it does not listen on, answered `421
+misdirected request`, since the Host check below names this server's own port.
+
+The address the command prints still says `127.0.0.1`, so it pastes into a browser on the host
+as is, and the Host and Origin allow-lists below are unchanged - refusing what they always
+refused, whatever address is actually bound. Beyond loopback that leaves the token in the
+printed address as the only barrier, since a client that merely reaches the port can forge a
+`Host` or `Origin` header; `ddd gui` prints one warning there, naming the port to publish, and
+does not open a browser - there is none in a container.
 
 Any web page open in the same browser can send requests to a local server, so the server trusts
 nothing it did not hand out itself:
@@ -255,6 +276,19 @@ revision does not hold it.
 The API is internal. The page and the server ship in one wheel, so the API changes with the
 package and is not part of the public interface.
 
+The contract behind it is declared once, as pydantic models in `src/ddd/gui/contract.py`: one
+model per request and per response of the table below. `api.py` reads a request with
+`model_validate_json` - closed to a key the model does not declare and strict about the type of
+every value it does, so a string never becomes an index and an edit's `raw` is never parsed as
+the json it holds - and answers with a response model's own `model_dump(mode="json")`, never a
+hand-built `dict`. `contract.api_schema()` turns every one of those models into one json schema,
+every model under its own name in `$defs`, which `gui/scripts/schemas.mjs` reads to write
+`gui/src/generated/api.ts`. A model the eight endpoints never reach would be missing there, which
+a test of `contract.py` itself refuses to let past - a model added to the contract without a page
+type of its own fails that suite, not a frontend silently left behind what the server sends. Not
+part of `ddd schema`: that command publishes the file formats a project's own files are checked
+against, and the api answers no file.
+
 | Request | Answer |
 | --- | --- |
 | `GET /api/session` | the DDD version, `preview: true`, the open project (path and name) or none, and the build records applied |
@@ -266,7 +300,9 @@ package and is not part of the public interface.
 | `GET /api/checks` | the checks, as `ddd checks --format json` lists them, with the open project's plugin checks |
 | `POST /api/edit` | see below |
 
-An error answers with a status code and `{"error": <code>, "message": <sentence>}`.
+An error answers with a status code and `{"error": <code>, "message": <sentence>}`. A request
+that does not read as its model - `POST /api/open`'s or `POST /api/edit`'s - answers `400` as
+`bad-request`, its message the first problem the model found, trimmed to one sentence.
 
 An edit names every file it changes, the fingerprint each was read at, and the operations to
 apply to it in order:
@@ -359,7 +395,10 @@ the page fetched from the server and invalidating it when a new revision arrives
 
 - **Types** for the description files and the dictionary are generated from `ddd schema all` at
   build time (`json-schema-to-typescript`), so a file-format change that the page has not caught
-  up with fails the build.
+  up with fails the build. The api's own types are generated the same way, from
+  `ddd.gui.contract.api_schema()` rather than a file on disk (section 6.5); `gui/src/api/types.ts`
+  re-exports them under the names the screens import, so a screen imports one contract whichever
+  of the two it came from.
 - **Pointers** are parsed and built by a TypeScript twin of `ddd.lsp.ranges.segments`, tested
   against the same spellings, escaped keys included.
 - **Screens:** the start page (the projects found), the project (its components and finding

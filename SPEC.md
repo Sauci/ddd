@@ -2065,8 +2065,9 @@ build is configured to run DDD (`ddd build-info`,
 [section 3.6](#36-build-record)), so that a tool outside the build can apply the same
 project and the same severities; serving the checks to an editor over the Language Server
 Protocol (`ddd lsp`, [section 7.2](#72-editor-integration)); editing a project's description
-files in a browser on the developer's own computer (`ddd gui`, a preview whose options are not
-yet part of this interface); listing the available checks
+files in a browser on the developer's own computer, or, from a container, on its host once a
+fixed port is published there (`ddd gui`, a preview whose options are not yet part of this
+interface); listing the available checks
 (`ddd checks`, each with its default severity, the unrelaxable ones marked, the ones that
 need every component of a project marked `(project)` and the ones that grade a delivery
 comparison marked `(comparison)`; in JSON a list rather than an object, one entry per check

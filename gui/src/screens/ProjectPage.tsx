@@ -1,20 +1,21 @@
 import type { State } from "../api/types";
 
 interface Props {
-  name: string;
   state: State | null;
   onComponent: (file: string) => void;
 }
 
-/** The open project: its components and how many findings each has. */
-export function ProjectPage({ name, state, onComponent }: Props) {
+/**
+ * The open project's `Table` tab: its components and how many findings each has. The project's
+ * name is the heading above the tabs, so this screen and the canvas share it.
+ */
+export function ProjectPage({ state, onComponent }: Props) {
   if (state === null) return <p className="quiet">Checking the project…</p>;
   const components = state.files.filter((file) => file.kind === "component");
   const total = (severity: "error" | "warning") =>
     state.findings.filter((finding) => finding.severity === severity).length;
   return (
-    <section>
-      <h1>{name}</h1>
+    <>
       <p className="summary">
         {total("error")} errors, {total("warning")} warnings
       </p>
@@ -42,6 +43,6 @@ export function ProjectPage({ name, state, onComponent }: Props) {
           ))}
         </tbody>
       </table>
-    </section>
+    </>
   );
 }

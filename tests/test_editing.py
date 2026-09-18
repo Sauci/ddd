@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import codecs
+import stat
 from pathlib import Path
 
 import pytest
@@ -508,6 +509,48 @@ class TestWritingFiles:
         assert b.read_bytes() == b'{"unit": "A"}'
         assert written == {a: fingerprint(b'{"unit": "V"}'), b: fingerprint(b'{"unit": "A"}')}
         assert not list(tmp_path.glob(f"*{STAGING_SUFFIX}"))
+
+    def test_an_edited_file_keeps_its_permissions(self, tmp_path):
+        """A file written afresh takes this process's umask rather than the file's own mode: a
+        file kept group-writable came back without it after one edit."""
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"a": 1}')
+        path.chmod(0o640)
+        before = stat.S_IMODE(path.stat().st_mode)
+        apply_changes([change(path, Operation("set", "a", "2"))])
+        assert stat.S_IMODE(path.stat().st_mode) == before
+
+    def test_an_edited_file_is_given_back_to_its_owner(self, tmp_path, monkeypatch):
+        """An edit made as another user - root, in a container over a checkout mounted from the
+        host - left the file to that user, and its owner could no longer save it."""
+        given = []
+        monkeypatch.setattr(
+            editing.os, "chown", lambda _, uid, gid: given.append((uid, gid)), raising=False
+        )
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"a": 1}')
+        owner = path.stat()
+        apply_changes([change(path, Operation("set", "a", "2"))])
+        assert given == [(owner.st_uid, owner.st_gid)]
+
+    def test_an_owner_this_process_may_not_give_it_to_leaves_the_file_written(
+        self, tmp_path, monkeypatch
+    ):
+        def refuse(*_):
+            raise PermissionError("only root gives a file away")
+
+        monkeypatch.setattr(editing.os, "chown", refuse, raising=False)
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"a": 1}')
+        apply_changes([change(path, Operation("set", "a", "2"))])
+        assert path.read_bytes() == b'{"a": 2}'
+
+    def test_a_system_without_owners_writes_the_file_all_the_same(self, tmp_path, monkeypatch):
+        monkeypatch.delattr(editing.os, "chown", raising=False)
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"a": 1}')
+        apply_changes([change(path, Operation("set", "a", "2"))])
+        assert path.read_bytes() == b'{"a": 2}'
 
     def test_a_byte_order_mark_and_crlf_line_endings_survive(self, tmp_path):
         path = tmp_path / "a.ddd.json"

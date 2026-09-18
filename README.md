@@ -58,7 +58,11 @@ ddd --version
 ```
 
 The distribution is called `ddd-tool` because `ddd` was taken; the command, the importable
-package and the `*.ddd.json` files are all still `ddd`.
+package and the `*.ddd.json` files are all still `ddd`.  Before it is released, the last
+commit of a push to `master`, or to a pull request from a branch of this repository, installs
+from TestPyPI as the development build ci publishes of it once its checks pass:
+[the developer documentation](https://sauci.github.io/ddd/latest/developer_documentation.html#development-builds)
+gives the two commands.
 
 **Platform support**: Python 3.12 or newer, on Windows and Linux - both are exercised by the
 ci on every change.  The [CMake integration](#cmake-integration) needs CMake 3.20 when a
@@ -771,7 +775,7 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | `ddd artefacts [FILE]` | list the artefacts `generate` accepts: `c`, `a2l`, and each plugin of the project that provides one |
 | `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for the language server and `ddd gui` |
 | `ddd lsp` | run the language server, reporting the checks in the editor while a file is written |
-| `ddd gui [PROJECT]` | preview: a browser interface over one project's description files, on this computer only; a change is written into the files in their own layout and checked the way `ddd check` checks it |
+| `ddd gui [PROJECT]` | preview: a browser interface over one project's description files, on this computer by default; a change is written into the files in their own layout and checked the way `ddd check` checks it |
 | `ddd checks` | list the checks and their default severity, marking the ones that cannot be relaxed `(fixed)`, need every component of a project `(project)` or grade a delivery comparison `(comparison)`; `--plugin` lists a plugin's checks after the built-in ones |
 | `ddd cmake-dir` | print the directory holding the cmake integration module |
 | `ddd templates-dir` | print the directory holding the example c templates, to copy into a project |
@@ -914,7 +918,28 @@ docker compose run --rm lint             # ruff + mypy
 docker compose run --rm docs             # the html documentation, into build/docs/html
 docker compose run --rm shell            # an interactive shell in the image
 docker compose run --rm ddd ddd list examples/demo/demo.ddd.json
+docker compose up gui                    # ddd gui on the demo: open the address it prints
 ```
+
+The image serves `ddd gui` too. A stage of its own compiles the pages, so the image carries
+them and holds no Node.js.
+
+`docker compose up gui` serves the demo project; open the address it prints in a browser on the
+host. With the engine inside WSL, Windows reaches it through WSL's localhost forwarding, which
+is on by default. `up` rather than `run --rm`, because `run` does not publish the port.
+
+The `gui` service runs the image's own code and pages, so `up` builds the image first, from
+the cache when nothing changed: an image built earlier would serve what it was built from. The
+project files it serves are the working tree's, though: an edit made in the browser is
+written into your checkout, and the file keeps its owner and permissions although every
+service runs as root.
+
+It listens on every interface of the container and publishes port 8123 on the host's loopback
+only, with the same number on both sides: `ddd gui` checks that each request names the port it
+listens on, and refuses any other.
+
+The other services run the working tree rather than the image's install, so `ddd gui` started
+from one of them serves whatever pages the checkout itself compiled.
 
 `compile` runs [docker/compile.sh](https://github.com/Sauci/ddd/blob/master/docker/compile.sh), which
 

@@ -626,7 +626,9 @@ compile the generated sources, and binutils for the ``nm`` that inspects them af
 itself is installed with its development extra, which is also where the cmake and the ninja
 that build the cmake example come from: both are wheels from pypi rather than debian packages,
 because debian bookworm still ships cmake 3.25 and the module needs 3.30. ``docker/compile.sh``
-is installed as the command ``ddd-compile``.
+is installed as the command ``ddd-compile``. The image serves ``ddd gui`` too: its pages are
+compiled in an earlier stage of the same file, which has Node.js and is thrown away, and only
+the pages reach the image, installed with DDD.
 
 .. note::
    The image is a linux image, so on a Windows host run docker from a WSL shell, where docker
@@ -653,10 +655,31 @@ is installed as the command ``ddd-compile``.
 
 The working tree is bind mounted at ``/work`` and ``PYTHONPATH=/work/src`` makes it shadow the
 copy installed into the image, so a change to the sources takes effect without rebuilding
-anything. The ``docs`` service installs the documentation extra into that mount and runs
-``sphinx-build`` with ``-W``, so a warning - a broken cross reference, a directive that does
-not render - fails the build rather than producing a page nobody looks at twice. There is also
-a ``shell`` service, which is the same container with an interactive bash in it.
+anything. The ``docs`` service runs ``sphinx-build`` with ``-W`` on the documentation
+requirements the image carries, installing nothing, so a warning - a broken cross reference, a
+directive that does not render - fails the build rather than producing a page nobody looks at
+twice. There is also a ``shell`` service, which is the same container with an interactive bash
+in it.
+
+The pages of ``ddd gui`` are shadowed with the rest: a service serves the ones compiled in the
+working tree, which git ignores, so over a checkout that never compiled them ``ddd gui`` refuses
+to start there, and the pages the image carries are what a container run without that
+``PYTHONPATH`` serves. Either way it answers on the loopback address of the container by default,
+which a browser outside the container reaches only if the container shares the host's network.
+
+The ``gui`` service is the exception: it clears ``PYTHONPATH``, so it runs the image's own code
+and serves the pages it carries rather than the working tree's, and it passes ``--host 0.0.0.0``
+so it answers beyond its own loopback. The project it opens is still the checkout's, though:
+``examples/demo`` is bind mounted under ``/work`` like every service's sources, so an edit made
+in the browser is written into the developer's own checkout there, the file keeping its owner and
+permissions although this service runs as root, as every service does. ``docker compose up
+gui`` builds the image first - the code it runs is the image's, so an image built before a
+change would serve what it was built from - and starts it, publishing the same port number on the host's loopback
+alone, ``-p 127.0.0.1:8123:8123`` - a different number outside would have the Host header
+``ddd gui`` sees name a port it is not listening on, answered ``421 misdirected request``, and
+beyond the container's loopback the token in the address it prints is the only guard, which is
+why nothing wider is published. Opening that address in a browser on the host is the image's own
+``ddd gui`` serving the checkout's demo project.
 
 What the compile service proves
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -711,8 +734,9 @@ templates cannot answer on its behalf.
 
 .. warning::
    The container runs as root, so files it writes under ``build/`` belong to root when the
-   mount is a real linux filesystem. The base image is also still referenced by tag: pin it to
-   a digest before a result from it is used to release something, as the comment at the top of
+   mount is a real linux filesystem. The base images are also still referenced by tag -
+   python's, and node's for the stage that compiles the pages: pin them to digests before a
+   result from the image is used to release something, as the comment at the top of
    ``docker/Dockerfile`` describes.
 
 pre-commit

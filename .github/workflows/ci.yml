@@ -7,6 +7,10 @@ name: CI
 # The release pipeline in publish.yml runs the suite again before it builds. That is not
 # redundant - a release can be cut from a commit, or with a version bump, that this workflow
 # never saw, and an upload to an index cannot be taken back.
+#
+# One pair of jobs here publishes, all the same: dev-build and dev-publish put a development
+# build of the last commit of every push to master, and of every push to this repository's own
+# pull requests, on TestPyPI, once every other job of the run has passed.
 on:
   push:
     branches: [master]
@@ -78,13 +82,30 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: docker compose build ddd
+      # The pages of `ddd gui` come from a stage of the image's own, and an image that stopped
+      # copying them would still build and run every service - a service runs the working tree,
+      # PYTHONPATH first. -I leaves the working tree out, so what answers is the package
+      # installed in the image. That stage exists so that node stays out of the image, which a
+      # copy of the wrong directory from it would undo just as quietly, so both are asked.
+      - name: Check the image carries the compiled pages and no node
+        run: |
+          docker compose run --rm ddd python -I -c '
+          import shutil, sys
+          from ddd.gui.server import static_directory
+          if not (static_directory() / "index.html").is_file():
+              sys.exit(f"the image has no {static_directory()}/index.html: ddd gui would have nothing to serve")
+          node, npm = shutil.which("node"), shutil.which("npm")
+          if not (node is None and npm is None):
+              sys.exit(f"the image has node or npm on its path (node: {node}, npm: {npm}): only the pages were to reach it")
+          '
       - run: docker compose run --rm generate
 
   extension:
     # The VS Code extension is a launcher for the language server, so what is worth testing is
     # that the command it builds really starts one - which needs both toolchains here, and is
-    # why the tests install the package rather than only compiling typescript. Node 20 rather
-    # than the distribution's, because the packaging step below needs it.
+    # why the tests install the package rather than only compiling typescript. Node 24 rather
+    # than the distribution's, because the packaging step below needs a recent one; it was 20
+    # until that line stopped taking security fixes.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -113,6 +134,7 @@ jobs:
         with:
           name: ddd-vscode-extension
           path: editors/vscode/*.vsix
+          overwrite: true # a name is unique within a run, and re-running the run uploads it again
 
   gui:
     # The browser interface: its types generated from the schemas, its lint and type check, its
@@ -120,6 +142,12 @@ jobs:
     # against the real `ddd gui` - on both systems the package claims to run on. Node 24, as the
     # extension job has it; the python package is installed because the types and the server
     # both come from it.
+    #
+    # On ubuntu the pages it compiled then go into a wheel and an sdist, uploaded as
+    # ddd-tool-<commit>: a branch installed from them needs no node, as a release needs none -
+    # on a machine or in a container that only runs ddd, where node has no business. A release
+    # is still what anyone outside this repository installs, or the development build below for
+    # a commit not released yet: an artifact expires, and needs a GitHub account to reach.
     strategy:
       fail-fast: false
       matrix:
@@ -149,8 +177,234 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run e2e
+      # Built at the root, where pyproject.toml is, once the pages have passed in the browser,
+      # and checked the way the release checks its own. One system is enough: the wheel is pure
+      # python, the same wherever it is built.
+      - if: runner.os == 'Linux'
+        working-directory: .
+        run: |
+          python -m pip install build
+          python -m build --outdir dist
+      - if: runner.os == 'Linux'
+        name: Check the wheel carries the compiled pages
+        working-directory: .
+        run: |
+          python - <<'EOF'
+          import glob, sys, zipfile
+          names = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
+          if "ddd/gui/static/index.html" not in names:
+              sys.exit("the wheel has no ddd/gui/static/index.html: ddd gui would have nothing to serve")
+          EOF
+      - if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ddd-tool-${{ github.sha }}
+          path: dist/
+          overwrite: true # a name is unique within a run, and re-running the run uploads it again
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ matrix.os }}
           path: gui/playwright-report
+          overwrite: true # a name is unique within a run, and re-running the run uploads it again
+
+  # A development build of the last commit of every push to master, and of every push to this
+  # repository's own pull requests, on TestPyPI: such a commit then installs with pip, pages
+  # included and no node anywhere, for anybody - without the GitHub account an artifact needs,
+  # and after one has expired. A run in which any other job fails publishes nothing, and neither
+  # does one that a newer push cancels before its upload has begun; a dev-publish that fails
+  # once its upload has begun leaves on TestPyPI whatever it had uploaded. tools/dev_version.py
+  # numbers the build, <next patch>.dev<run number>, and says why the commit cannot be part of
+  # the number; the build's metadata and the run's summary carry it.
+  #
+  # Two jobs, the way publish.yml builds a release and then uploads it. `npm ci` runs the install
+  # scripts of every package the pages depend on, and a build runs whatever its backend is, so
+  # none of that runs where a token that publishes can be asked for - which is also how the
+  # publishing action's own documentation asks for it to be done. The job holding the token
+  # checks nothing out, takes nothing it is handed on trust, and writes the summary itself.
+  dev-build:
+    # Once every other job of the run has passed: a commit any of them fails is no build to point
+    # anybody at. A job added to this file joins the list, or a test says so.
+    needs: [test, lint, container, extension, gui]
+    # This repository's own runs alone. A pull request from a fork is given no token to publish
+    # with, and a fork's own push to its master has no publisher on TestPyPI, so both skip here
+    # rather than failing at the upload; dev-publish needs this job, and skips with it. A
+    # dispatch is a run of any branch at all, and publishes nothing either.
+    if: >-
+      github.repository == 'Sauci/ddd' && (
+        (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+        (github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.stamp.outputs.version }}
+    env:
+      # The commit the build is of and says it is of: a pull request's own head, rather than the
+      # merge ci tests it as - a commit nobody pushed, remade with every push to either side.
+      COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.COMMIT }}
+      # That head is the branch's own, so a branch cut before development builds existed has no
+      # stamping script at it, and python would say only that it cannot open the file.
+      - name: Check the commit carries the stamping script
+        run: |
+          if [ ! -f tools/dev_version.py ]; then
+            echo "::error::$COMMIT has no tools/dev_version.py: its branch was cut before development builds existed. Merge master into it and push again."
+            exit 1
+          fi
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
+      # Into this job's checkout, and before anything reads the version: the package installed
+      # below for the schemas, and the build. Nothing it rewrites is committed.
+      - name: Stamp the development version
+        id: stamp
+        run: |
+          version=$(python tools/dev_version.py stamp "$GITHUB_RUN_NUMBER" "$COMMIT")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "ddd-tool $version is built from $COMMIT"
+      # As the release build compiles them, and for its reasons: the package installed first for
+      # the types generated from it, and the types checked, which `npm run build` does not do.
+      - run: pip install -e .
+      - run: npm ci && npm run schemas && npm run typecheck && npm run build
+        working-directory: gui
+      - run: |
+          python -m pip install build
+          python -m build
+      - name: Check the wheel carries the compiled pages
+        run: |
+          python - <<'EOF'
+          import glob, sys, zipfile
+          names = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
+          if "ddd/gui/static/index.html" not in names:
+              sys.exit("the wheel has no ddd/gui/static/index.html: ddd gui would have nothing to serve")
+          EOF
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ddd-tool-${{ steps.stamp.outputs.version }}
+          path: dist/
+          overwrite: true # a name is unique within a run, and re-running the run uploads it again
+
+  dev-publish:
+    needs: dev-build
+    runs-on: ubuntu-latest
+    # The trusted publisher registered on test.pypi.org names this workflow and this
+    # environment; the developer documentation's page on continuous integration lists what to
+    # register. The environment's url is the page of the version being published.
+    environment:
+      name: testpypi-dev
+      url: https://test.pypi.org/project/ddd-tool/${{ needs.dev-build.outputs.version }}/
+    permissions:
+      id-token: write # trusted publishing (OIDC), no API token stored in the repo
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: ddd-tool-${{ needs.dev-build.outputs.version }}
+          path: dist/
+      # Everything dev-build hands over was made where the pages' packages ran their install
+      # scripts, so nothing of it is taken on trust here. The version has to be this run's, and
+      # dist/ has to hold its wheel and its sdist and nothing else: a file left there for a later
+      # run's version would be uploaded under it, and that run's own upload refused. What is
+      # printed of either is stripped to characters that cannot start a line of their own.
+      - name: Check what is about to be published
+        env:
+          VERSION: ${{ needs.dev-build.outputs.version }}
+        run: |
+          shopt -s nullglob dotglob
+          pattern="^[0-9]+(\.[0-9]+)*\.dev${GITHUB_RUN_NUMBER}\$"
+          if [[ ! $VERSION =~ $pattern ]]; then
+            echo "::error::run $GITHUB_RUN_NUMBER publishes <next patch>.dev$GITHUB_RUN_NUMBER, and dev-build handed over ${VERSION//[^0-9A-Za-z.+-]/?}"
+            exit 1
+          fi
+          wheel="ddd_tool-$VERSION-py3-none-any.whl"
+          sdist="ddd_tool-$VERSION.tar.gz"
+          found=(dist/*)
+          if [ "${#found[@]}" -ne 2 ] || [ ! -f "dist/$wheel" ] || [ ! -f "dist/$sdist" ]; then
+            listed="${found[*]#dist/}"
+            echo "::error::dist/ is to hold $wheel and $sdist alone, and holds ${listed//[^0-9A-Za-z._+ -]/?}"
+            exit 1
+          fi
+          echo "publishing $wheel and $sdist"
+      # The dependency line of the summary is read here, off the wheel just checked, and not taken
+      # from dev-build: an output of a job can span lines, and whatever ran there could hand over
+      # one that closes the summary's code fence and prints an install line of its own. The
+      # wheel's metadata was written there too, so the line is held to quoted requirements of
+      # letters, digits and the signs a specifier needs, and a wheel naming another commit than
+      # this run's is refused - before anything is uploaded. The python is the runner's own, and
+      # its program is the lines below: this parses data, and runs nothing of the repository.
+      - name: Read the requirements off the checked wheel
+        id: requirements
+        env:
+          VERSION: ${{ needs.dev-build.outputs.version }}
+          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          wheel="dist/ddd_tool-$VERSION-py3-none-any.whl"
+          commit="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$COMMIT"
+          if ! line=$(python3 -I - "$wheel" "$commit" <<'EOF'
+          import email, re, sys, zipfile
+          wheel, commit = sys.argv[1:]
+          with zipfile.ZipFile(wheel) as archive:
+              (name,) = [n for n in archive.namelist() if re.fullmatch(r"[^/]+\.dist-info/METADATA", n)]
+              metadata = email.message_from_bytes(archive.read(name))
+          if f"Commit, {commit}" not in metadata.get_all("Project-URL", []):
+              sys.exit(f"the wheel does not name {commit} as its commit")
+          runtime = [
+              requirement
+              for requirement in metadata.get_all("Requires-Dist", [])
+              if not re.search(r"\bextra\b", requirement.partition(";")[2])
+          ]
+          oversized = [requirement for requirement in runtime if len(requirement) > 200]
+          if oversized:
+              sys.exit(f"{len(oversized)} requirement(s) over 200 characters long")
+          line = "pip install " + " ".join(f'"{requirement}"' for requirement in runtime)
+          if not re.fullmatch(r'pip install( "[A-Za-z0-9][A-Za-z0-9.\-_\[\],<>=!~; ]*")+', line):
+              sys.exit(f"{len(runtime)} requirement(s) no install line may print as they are")
+          print(line)
+          EOF
+          ); then
+            echo "::error::the wheel does not name this run's commit, or declares requirements no install line may print as they are; the lines above say which"
+            exit 1
+          fi
+          echo "line=$line" >> "$GITHUB_OUTPUT"
+          echo "$line"
+      # A re-run keeps its run number, and so its version, and an index accepts a file name once:
+      # on a re-run, skip-existing passes over what an earlier attempt uploaded. On a first
+      # attempt a file already there came from another run - planted by one, or published before
+      # a rename of this file restarted its numbers - and the upload fails on it rather than
+      # passing over it in silence, with a summary naming somebody else's build.
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: ${{ github.run_attempt != '1' }}
+      # Every line of it written here, from what the steps above checked: the version, the line
+      # read off the checked wheel, and the commit from this run's own context.
+      - name: Say what was published, and how it installs
+        env:
+          VERSION: ${{ needs.dev-build.outputs.version }}
+          DEPENDENCIES: ${{ steps.requirements.outputs.line }}
+          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          {
+            echo "### ddd-tool $VERSION"
+            echo
+            echo "Built from commit [\`${COMMIT:0:12}\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$COMMIT)"
+            echo "and published to [TestPyPI](https://test.pypi.org/project/ddd-tool/$VERSION/). Its"
+            echo "runtime dependencies come from PyPI, and ddd-tool alone from TestPyPI:"
+            echo
+            echo '```shell'
+            printf '%s\n' "$DEPENDENCIES"
+            echo "pip install --no-deps --index-url https://test.pypi.org/simple/ ddd-tool==$VERSION"
+            echo '```'
+            echo
+            echo "Two commands on purpose: given both indexes at once, pip takes each name's highest"
+            echo "version from either, and anybody can upload a lookalike to TestPyPI."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -22,7 +22,7 @@ from ddd.editing import fingerprint
 from ddd.gui import api as api_module
 from ddd.gui import server as module
 from ddd.gui.api import Api, Reply
-from ddd.gui.server import MAX_BODY, GuiServer, run, static_directory
+from ddd.gui.server import MAX_BODY, GuiServer, is_loopback, run, static_directory
 from ddd.gui.session import Session
 
 FOREIGN_COOKIES = ('prefs={"lang":"en"}', "arr[0]=1", "user@site=1", "lonely")
@@ -530,6 +530,21 @@ class TestAProjectWithAFileThatDoesNotParse:
         assert body["error"].startswith(f"{target} is not json: ")
 
 
+class TestLoopback:
+    """The default that keeps ``ddd gui`` answering only this computer, and what widens it."""
+
+    @pytest.mark.parametrize("host", ["127.0.0.1", "127.0.0.2", "::1", "localhost"])
+    def test_an_address_or_name_of_this_computer_alone_is_loopback(self, host: str) -> None:
+        assert is_loopback(host) is True
+
+    @pytest.mark.parametrize("host", ["0.0.0.0", "::", "192.168.1.10", "example.com"])
+    def test_an_address_or_name_reaching_beyond_it_is_not(self, host: str) -> None:
+        assert is_loopback(host) is False
+
+    def test_a_malformed_address_is_answered_false_rather_than_raised(self) -> None:
+        assert is_loopback("300.300.300.300") is False
+
+
 class TestRunning:
     def test_an_installation_without_compiled_pages_is_a_usage_error(
         self, tmp_path, capsys
@@ -559,6 +574,78 @@ class TestRunning:
             port = taken.getsockname()[1]
             assert run(None, [], port, open_browser=False, static=pages) == EXIT_USAGE
         assert f"cannot serve on port {port}" in capsys.readouterr().err
+
+    def test_a_fixed_port_is_required_beyond_loopback(self, pages, capsys) -> None:
+        """``--port 0`` lets the system pick one, which a container cannot publish in advance."""
+        result = run(None, [], 0, open_browser=False, static=pages, host="0.0.0.0")
+        assert result == EXIT_USAGE
+        assert capsys.readouterr().err == (
+            "ddd: --port 0 lets the system pick a free port, which cannot be published in "
+            "advance; give a fixed --port when --host 0.0.0.0 listens beyond this computer's "
+            "loopback\n"
+        )
+
+    def test_an_unbindable_address_is_a_usage_error_like_a_taken_port(
+        self, pages, capsys, monkeypatch
+    ) -> None:
+        """Not an address of this machine, or malformed: refused the way a taken port is.
+
+        203.0.113.5 is a documentation-only address (RFC 5737): never assigned to a real
+        machine, so it stands for one this computer cannot bind, but asking a real socket to
+        try could still hang or answer differently depending on the network this test runs
+        on. The construction is patched instead, standing in for whatever the platform's
+        socket would have refused.
+        """
+        real_init = GuiServer.__init__
+
+        def refuses_the_address(self, api, static, port=0, host="127.0.0.1"):
+            if host == "127.0.0.1":
+                real_init(self, api, static, port, host)
+            else:
+                raise OSError("Cannot assign requested address")
+
+        monkeypatch.setattr(GuiServer, "__init__", refuses_the_address)
+        result = run(None, [], 8123, open_browser=False, static=pages, host="203.0.113.5")
+        assert result == EXIT_USAGE
+        message = capsys.readouterr().err
+        assert "cannot serve on port 8123: Cannot assign requested address" in message
+
+    def test_beyond_loopback_it_warns_once_and_opens_no_browser(
+        self, pages, monkeypatch, capsys
+    ) -> None:
+        """The Host and Origin allow-lists still admit only 127.0.0.1 and localhost, so beyond
+        loopback the token in the printed address is the only thing keeping another client
+        out - and there is no browser to open in a container anyway."""
+        real_init = GuiServer.__init__
+        created: list[GuiServer] = []
+
+        def binds_loopback_for_real(self, api, static, port=0, host="127.0.0.1"):
+            # A real bind of 0.0.0.0 can raise a firewall dialog on Windows and block the
+            # run; this is about what run() does with the host it was given, not about
+            # asking a real socket to answer on every interface.
+            real_init(self, api, static, 0)
+            created.append(self)
+
+        monkeypatch.setattr(GuiServer, "__init__", binds_loopback_for_real)
+        monkeypatch.setattr(Session, "start_polling", lambda self: None)
+        monkeypatch.setattr(Session, "stop", lambda self: None)
+        monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
+        opened: list[str] = []
+        monkeypatch.setattr(module.webbrowser, "open", opened.append)
+
+        result = run(None, [], 8123, open_browser=True, static=pages, host="0.0.0.0")
+
+        assert result == EXIT_OK
+        (server,) = created
+        captured = capsys.readouterr()
+        (line,) = captured.out.splitlines()
+        assert line == f"ddd gui (preview) serving {server.address}"
+        assert captured.err == (
+            f"ddd gui: listening on 0.0.0.0:{server.port}, beyond this computer's loopback; "
+            f"publish it on the host's loopback only, -p 127.0.0.1:{server.port}:{server.port}, "
+            "since the token in the address is what keeps others out\n"
+        )
+        assert opened == []
 
     @pytest.mark.parametrize("open_browser", [True, False])
     def test_it_prints_its_address_serves_and_exits_cleanly_when_interrupted(

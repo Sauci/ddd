@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import contextlib
 import hmac
+import ipaddress
 import json
 import secrets
 import sys
@@ -77,6 +78,27 @@ def static_directory() -> Path:
     return Path(str(resources.files("ddd.gui").joinpath("static")))
 
 
+def is_loopback(host: str) -> bool:
+    """Whether ``host`` can only mean this computer: a loopback address, or ``localhost``.
+
+    ``run`` below reads this to decide what a ``--host`` beyond the default, ``127.0.0.1``,
+    changes: whether a browser is opened, and what the one warning it prints says. 127.0.0.0/8
+    and ``::1`` are the ranges a platform routes back to itself without ever touching a
+    network, and ``localhost`` is the name every resolver is supposed to answer with one of
+    them - taken as its own case rather than resolved, since nothing here needs a lookup that
+    can fail or be re-pointed. Anything ``ipaddress`` cannot parse - a host name such as
+    ``example.com``, or an address malformed enough that no interface could carry it - answers
+    ``False`` rather than raising: it is certainly not this computer alone, and whether it can
+    be bound at all is for the socket that tries to decide.
+    """
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 class GuiServer(ThreadingHTTPServer):
     """The server one run of ``ddd gui`` answers on."""
 
@@ -86,8 +108,8 @@ class GuiServer(ThreadingHTTPServer):
     """Not on Windows, where the socket option lets a second server bind a port the first still
     listens on, so a taken ``--port`` would be shared instead of refused."""
 
-    def __init__(self, api: Api, static: Path, port: int = 0) -> None:
-        super().__init__(("127.0.0.1", port), _Handler)
+    def __init__(self, api: Api, static: Path, port: int = 0, host: str = "127.0.0.1") -> None:
+        super().__init__((host, port), _Handler)
         self.api = api
         self.static = static.resolve()
         self.token = secrets.token_urlsafe(32)
@@ -98,7 +120,12 @@ class GuiServer(ThreadingHTTPServer):
 
     @property
     def address(self) -> str:
-        """The address to open; the token in it is what the cookie is given for."""
+        """The address to open; the token in it is what the cookie is given for.
+
+        Always ``127.0.0.1``, whatever ``host`` this server was built with: a browser that
+        pastes it in is on the host that address means, never inside the container a wider
+        ``host`` is for, and the loopback address it names always reaches this process.
+        """
         return f"http://127.0.0.1:{self.port}/open?token={self.token}"
 
     @property
@@ -262,10 +289,19 @@ def run(
     build_directories: Sequence[Path],
     port: int,
     *,
+    host: str = "127.0.0.1",
     open_browser: bool,
     static: Path | None = None,
 ) -> int:
     """Serve until interrupted; the exit code of ``ddd gui``."""
+    if port == 0 and not is_loopback(host):
+        print(
+            "ddd: --port 0 lets the system pick a free port, which cannot be published in "
+            f"advance; give a fixed --port when --host {host} listens beyond this computer's "
+            "loopback",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
     pages = static_directory() if static is None else static
     if not (pages / "index.html").is_file():
         print(
@@ -283,12 +319,24 @@ def run(
             print(f"ddd: {error}", file=sys.stderr)
             return EXIT_USAGE
     try:
-        server = GuiServer(Api(session, project), pages, port)
+        server = GuiServer(Api(session, project), pages, port, host)
     except OSError as error:
         print(f"ddd: cannot serve on port {port}: {error}", file=sys.stderr)
         return EXIT_USAGE
     print(f"ddd gui (preview) serving {server.address}", flush=True)
-    if open_browser:
+    if not is_loopback(host):
+        # No browser to open in a container, and nothing left to protect this with either:
+        # the Host and Origin allow-lists above still only admit 127.0.0.1 and localhost, so
+        # a client that merely reaches the port could forge both. The token in the address
+        # this just printed is what is left, hence publishing the port on the host's loopback
+        # alone rather than trusting the network between here and there.
+        print(
+            f"ddd gui: listening on {host}:{server.port}, beyond this computer's loopback; "
+            f"publish it on the host's loopback only, -p 127.0.0.1:{server.port}:{server.port}, "
+            "since the token in the address is what keeps others out",
+            file=sys.stderr,
+        )
+    elif open_browser:
         webbrowser.open(server.address)
     session.start_polling()
     try:

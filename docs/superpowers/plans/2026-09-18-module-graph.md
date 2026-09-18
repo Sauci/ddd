@@ -662,6 +662,9 @@ Nothing below blocks the branch; each says where it belongs.
   over HTTP even with a long poll open - but the canvas takes about 6.5 s to appear in headless
   Edge. The cost is the page drawing 200 nodes and 600 arrows, each arrow's label portalled on its
   own, not the server. Fewer DOM nodes per arrow, or virtualising what is off screen, is the fix.
+- At 200 modules the canvas also opens unframed: the screenshot taken when the first node became
+  visible shows mostly empty grid with a few arrows crossing it, so the initial `fitView` either had
+  not settled or does not frame a graph that size. Whoever takes the rendering also takes this.
 - A failed first read of a *new* revision still replaces the canvas with a banner: TanStack drops
   its placeholder once a new key settles to error. "The server stopped" is covered, because the
   revision does not advance then. What to draw while a new revision's first read is failing is a

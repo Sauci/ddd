@@ -150,24 +150,6 @@ input.unit {
   background: var(--warning-ground);
   color: var(--warning);
 }
-.tabs {
-  display: flex;
-  gap: var(--space-4);
-  margin-bottom: var(--space-3);
-  border-bottom: 1px solid var(--rule);
-}
-.tabs a {
-  margin-bottom: -1px;
-  padding: var(--space-2) 0;
-  border-bottom: 2px solid transparent;
-  color: var(--accent);
-  text-decoration: none;
-}
-.tabs a[aria-current="page"] {
-  border-bottom-color: var(--accent);
-  color: var(--ink);
-  font-weight: 600;
-}
 /* The canvas's own controls, above it: find a module by name, lay the modules out again, and
    bring the whole project back into view. */
 .canvas-tools {

@@ -37,7 +37,9 @@ docs/superpowers/*.pdf
 **/node_modules/
 src/ddd/gui/static/
 gui/src/generated/
-# What running the browser tests leaves, Playwright's traces and its report: nothing the image
-# uses, and copied into its pages stage by `COPY gui` otherwise.
+# What running the browser tests and building the widget workbench leave, Playwright's traces
+# and report and Ladle's static build: nothing the image uses, and copied into its pages stage
+# by `COPY gui` otherwise.
 gui/test-results/
 gui/playwright-report/
+gui/ladle-build/

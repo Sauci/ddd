@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": ["**", "!src/generated", "!test-results", "!playwright-report"]
+    "includes": ["**", "!src/generated", "!test-results", "!playwright-report", "!ladle-build"]
   },
   "formatter": {
     "enabled": true,

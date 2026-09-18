@@ -1,12 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useCallback } from "react";
 import { getSession } from "../api/client";
-import { Banner } from "../components/Banner";
 import { hrefOf, type ProjectView } from "../lib/route";
 import { ComponentPage } from "../screens/ComponentPage";
 import { GraphPage } from "../screens/GraphPage";
 import { ProjectPage } from "../screens/ProjectPage";
 import { StartPage } from "../screens/StartPage";
+import { Banner } from "../ui/Banner";
 import { useProjectState } from "./useProjectState";
 import { useRoute } from "./useRoute";
 

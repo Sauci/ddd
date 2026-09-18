@@ -2,13 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, getFile, postEdit } from "../api/client";
 import type { State } from "../api/types";
-import { Banner } from "../components/Banner";
 import { UnitEditor } from "../components/UnitEditor";
 import { jsonText, setValue } from "../lib/edits";
 import { keyedFindings } from "../lib/findings";
 import type { ComponentFile } from "../lib/formats";
 import { valueAt, within } from "../lib/pointer";
 import { asList, asText } from "../lib/values";
+import { Banner } from "../ui/Banner";
 
 interface Props {
   file: string;

@@ -1,0 +1,254 @@
+/* The widgets of gui/src/ui/, styled from tokens.css alone (docs/superpowers/specs/2026-09-18-
+   gui-units-design.md, 5.1) after the chosen mockup (docs/superpowers/specs/2026-09-18-gui-units/
+   chosen-design.html). React Aria marks its elements with data attributes (data-hovered,
+   data-pressed, data-focus-visible, data-disabled, data-selected, data-focused) and, where a
+   widget does not give its own className, its default class names (react-aria-Table, react-aria-
+   Row, …): both are what this file selects on. */
+
+/* Button: the one action of a view (primary), any other (secondary), or a link (link). Its own
+   focus ring replaces the browser's outline, which would otherwise double up on a <button>. */
+.button {
+  font: inherit;
+  font-size: var(--text-small);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.button:focus-visible {
+  outline: none;
+}
+.button[data-focus-visible] {
+  box-shadow: 0 0 0 3px var(--focus);
+}
+.button[data-disabled] {
+  cursor: default;
+  opacity: 0.5;
+}
+.button.primary {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--surface);
+}
+.button.primary[data-hovered],
+.button.primary[data-pressed] {
+  filter: brightness(0.92);
+}
+.button.secondary {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  color: var(--ink);
+}
+.button.secondary[data-hovered] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.button.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  text-align: left;
+}
+.button.link[data-hovered] {
+  text-decoration: underline;
+}
+
+/* Chip: a short label on a tinted ground, in one of the page's three tones. */
+.chip {
+  display: inline-block;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-chip);
+  font-size: var(--text-small);
+  line-height: 1.7;
+}
+.chip.error {
+  background: var(--error-ground);
+  color: var(--error);
+}
+.chip.warning {
+  background: var(--warning-ground);
+  color: var(--warning);
+}
+.chip.neutral {
+  background: var(--canvas);
+  color: var(--ink-quiet);
+}
+
+/* Panel: a framed aside beside the page's main view, and the grid that puts the two side by
+   side - one column once the viewport is too narrow for both. The grid's gap is spec 5.1's
+   14px ("spacing: … gaps | … 14 px and 8 px"), which names a bare pixel value rather than a
+   token, as the chosen mockup's own .split { gap: 14px } does. */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-frame);
+  padding: var(--panel-pad);
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.panel-header h2 {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+.panel-meta {
+  margin: 0 0 var(--space-2);
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
+.with-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 899.98px) {
+  .with-panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ComboBox: a labelled field that opens a popover of sectioned choices, and takes any typed
+   text. The popover's width tracks the field's through React Aria's own --trigger-width. */
+.combo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.combo .react-aria-Label {
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
+.combo-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--cell);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+.combo-field .react-aria-Input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--ink);
+}
+.combo-field .react-aria-Input,
+.combo-field .react-aria-Button {
+  outline: none;
+}
+.combo-field .react-aria-Button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink-quiet);
+  font-size: inherit;
+  cursor: pointer;
+}
+.combo[data-focused] .combo-field {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus);
+}
+.combo[data-disabled] .combo-field {
+  background: var(--ground);
+}
+.combo-note {
+  margin-top: var(--space-1);
+  color: var(--warning);
+  font-size: var(--text-small);
+}
+.combo-popover {
+  width: var(--trigger-width);
+  margin-top: var(--space-1);
+  padding: var(--space-1) 0;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-popover);
+}
+.combo-list {
+  outline: none;
+}
+.combo-list .react-aria-Header {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
+.combo-choice {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+.combo-choice[data-focused] {
+  background: var(--accent-ground);
+}
+.combo-detail {
+  color: var(--ink-quiet);
+  text-align: right;
+}
+
+/* Table: React Aria's, under the names it gives its own parts when a screen takes it as it
+   comes (ui/Table.tsx re-exports it with no className of its own). */
+.react-aria-Table {
+  width: 100%;
+  background: var(--surface);
+  border-collapse: collapse;
+}
+.react-aria-Column,
+.react-aria-Cell {
+  padding: var(--cell);
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: top;
+}
+.react-aria-Column {
+  font-size: var(--text-small);
+  font-weight: 600;
+}
+.react-aria-Row[data-selected] .react-aria-Cell {
+  background: var(--accent-ground);
+}
+/* Milestone 1's red inset on a row's first cell, kept exactly (app.css's tr.has-error). */
+.react-aria-Row.has-error .react-aria-Cell:first-child {
+  box-shadow: inset 3px 0 var(--error);
+}
+
+/* The project screen's tabs, moved out of app.css unchanged. */
+.tabs {
+  display: flex;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--rule);
+}
+.tabs a {
+  margin-bottom: -1px;
+  padding: var(--space-2) 0;
+  border-bottom: 2px solid transparent;
+  color: var(--accent);
+  text-decoration: none;
+}
+.tabs a[aria-current="page"] {
+  border-bottom-color: var(--accent);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Ladle only: a row of widgets with a gap, for a story that shows several at once. */
+.story-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}

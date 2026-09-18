@@ -13,7 +13,6 @@ import {
 import { type KeyboardEvent, useCallback, useMemo, useState } from "react";
 import { getGraph } from "../api/client";
 import type { GraphReply, State } from "../api/types";
-import { Banner } from "../components/Banner";
 import { FlowEdge } from "../components/FlowEdge";
 import { ModuleNode } from "../components/ModuleNode";
 import {
@@ -26,6 +25,7 @@ import {
   shownEdges,
 } from "../lib/canvas";
 import { forgetPositions, rememberPosition, savedPositions } from "../state/positions";
+import { Banner } from "../ui/Banner";
 
 // Outside the component on purpose: a fresh object here makes React Flow rebuild every node and
 // every edge on each render, which it says so itself in the console.

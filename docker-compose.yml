@@ -98,3 +98,27 @@ services:
     command: ["bash"]
     stdin_open: true
     tty: true
+
+  # docker compose up gui, then the printed address in a browser on the host: the demo project,
+  # served from the image rather than the working tree. PYTHONPATH is left out of the
+  # environment below, unlike every service above, because it would shadow the image's compiled
+  # pages with the working tree's, which usually has none - git does not track them. --host
+  # 0.0.0.0 is what lets the container answer its host at all, and publishing the same port on
+  # the host's loopback alone, rather than every interface, is what a browser there needs and
+  # nothing else does: beyond the container's own loopback, the token in the printed address is
+  # the only thing keeping another client out.
+  gui:
+    <<: *ddd
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+    ports:
+      - "127.0.0.1:8123:8123"
+    command:
+      - ddd
+      - gui
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8123"
+      - --no-browser
+      - examples/demo/demo.ddd.json

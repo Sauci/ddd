@@ -476,23 +476,28 @@ pull requests, is published to `TestPyPI <https://test.pypi.org/project/ddd-tool
 development build, so that such a commit installs with ``pip install`` - its compiled pages
 included, and no Node.js anywhere - without the GitHub account an artifact needs, and after the
 artifact has expired; TestPyPI is itself pruned now and then, though, so a development build is
-no archive. A commit that was not the last of its push has no build of its own, and a run that
-fails, or that a newer push cancels before its upload has begun, publishes nothing.
+no archive. A commit that was not the last of its push has no build of its own. A run in which
+any other job fails publishes nothing, and neither does one that a newer push cancels before its
+upload has begun; a ``dev-publish`` that fails once its upload has begun leaves on TestPyPI
+whatever it had uploaded.
 
-``dev-build`` waits for ``test``, ``lint`` and ``gui``, so that a commit whose suite, lint or
-pages fail is never a build anybody is pointed at. It checks the commit out - a pull request's
-own head, not the merge ``gui`` tests it as - and fails at once, with an error saying to merge
-``master`` into the branch, when that head has no ``tools/dev_version.py``: a pull request whose
-branch was cut before development builds existed. It then stamps the development version into
-the checkout, compiles the pages and builds the wheel and the sdist as the release build does,
-type check included, and checks that the wheel carries the pages. ``dev-publish`` uploads what
-it built. They are two jobs for the reason ``publish.yml`` builds a release in one job and
+``dev-build`` waits for every other job of the run - ``test``, ``lint``, ``container``,
+``extension`` and ``gui`` - so that a commit any of them fails is never a build anybody is
+pointed at; a test holds a job added to ``ci.yml`` to joining the list. It checks the commit
+out - a pull request's own head, not the merge ``gui`` tests it as - and fails at once, with an
+error saying to merge ``master`` into the branch, when that head has no
+``tools/dev_version.py``: a pull request whose branch was cut before development builds
+existed. It then stamps the development version into the checkout, compiles the pages and
+builds the wheel and the sdist as the release build does, type check included, and checks that
+the wheel carries the pages. ``dev-publish`` uploads what it built, and writes the run's
+summary. They are two jobs for the reason ``publish.yml`` builds a release in one job and
 uploads it in another: ``npm ci`` runs the install scripts of every package the pages depend on,
 and a build runs whatever its backend is, so none of that runs in the job that can ask for a
 token to publish with. That job checks nothing out, and takes nothing it is handed on trust:
-the version has to be this run's, and ``dist/`` has to hold that version's wheel and sdist and
+the version has to be this run's; ``dist/`` has to hold that version's wheel and sdist and
 nothing else - a file left there for a later run's version would otherwise be uploaded under it,
-and that run's own upload refused.
+and that run's own upload refused; and the wheel has to name this run's commit and declare
+requirements an install line can print as they are. All of it is checked before the upload.
 
 **The version is the next patch, as a development release numbered by the run.** After 0.10.0,
 run 57 publishes ``0.10.1.dev57``. The commit cannot be part of the version: PEP 440 refuses
@@ -503,9 +508,13 @@ before 0.10.0 itself, beneath the release every such commit came after. The run 
 across every branch, so every run publishes a version of its own; a re-run keeps its number,
 and the upload skips the files an earlier attempt made. A first attempt skips nothing: a file
 already on TestPyPI under its version came from another run, and the upload fails on it rather
-than passing over it with a summary naming somebody else's build. Renaming ``ci.yml`` restarts
-its run numbers - and its registration below names the file - so its uploads are refused until
-the numbers, or the next release, move past the versions already published.
+than passing over it with a summary naming somebody else's build. So a first attempt refused
+that way must not be re-run - not with *Re-run failed jobs*, nor with *Re-run all jobs*: either
+is a second attempt, which would pass over the file and write a summary naming it as its own
+build. Find out why the number was reused instead.
+Renaming ``ci.yml`` is one way: it restarts the run numbers - and its registration below names
+the file - so its uploads are refused until the numbers, or the next release, move past the
+versions already published.
 
 ``tools/dev_version.py`` writes that version into the job's own checkout, and nothing it
 rewrites is committed. It writes it into the three places the installed package compares at
@@ -516,9 +525,10 @@ any other release. Nothing compares the other spellings, listed under
 :ref:`publishing-a-release`, at run time: the extension's manifest and lock file reach no
 installed package, and the rest is prose - the README's included, which the wheel carries as
 its description. The script refuses a version with no next patch, and a release candidate is
-one: while ``__version__`` states a candidate, every run's ``dev-build`` fails - master's
-included - until the release replaces it. ``tests/test_documentation.py`` holds the script to
-all of this, and runs the two checks ``dev-publish`` makes.
+one: a run whose commit states a candidate in ``__version__`` fails ``dev-build`` - every run of
+``master`` for as long as the candidate stands there - while a pull request branched before it
+still builds. ``tests/test_documentation.py`` holds the script to all of this, and runs the
+checks ``dev-publish`` makes.
 
 The run's summary gives the two commands that install the build, for instance:
 
@@ -527,11 +537,16 @@ The run's summary gives the two commands that install the build, for instance:
    pip install "jinja2<4,>=3.1" "pydantic<3,>=2.7"
    pip install --no-deps --index-url https://test.pypi.org/simple/ ddd-tool==0.10.1.dev57
 
-The first installs the runtime dependencies from PyPI, read off the wheel by ``dev-build`` so
-that they are exactly its own; the second installs ddd-tool alone, from TestPyPI, and
-``dev-publish`` writes it from the version it checked. They are two on purpose: given both
-indexes at once, pip takes each name's highest version from either, and anybody can upload a
-lookalike to TestPyPI.
+The first installs the runtime dependencies from PyPI; the second installs ddd-tool alone,
+from TestPyPI. They are two on purpose: given both indexes at once, pip takes each name's
+highest version from either, and anybody can upload a lookalike to TestPyPI. ``dev-publish``
+writes both, and nothing of the summary comes from ``dev-build``: an output of a job can span
+lines, and the build could have handed over one that closes the code fence and prints an
+install line of its own. The first line is read off the ``Requires-Dist`` of the checked
+wheel, by the runner's own python reading the workflow's own lines, and held to quoted
+requirements of letters, digits and the signs a specifier needs - so a runtime requirement with
+an environment marker, whose strings need quotes, would be refused until the pattern is widened
+for it. The second is written from the version the job checked.
 
 **The publisher is a third registration.** The upload authenticates with trusted publishing,
 as a release does, so TestPyPI has to know this workflow as well as ``publish.yml``. Register,
@@ -545,8 +560,8 @@ run publishes it, as it does for a release.
 Only this repository's runs publish. A pull request from a fork is given no token to publish
 with, and a fork's own push to its ``master`` has no publisher, so both skip the two jobs rather
 than failing at the upload; a dispatch publishes nothing either. Within the repository,
-``testpypi-dev`` is anybody's who can push a branch, as :ref:`publishing-a-release` says of the
-environments.
+``testpypi-dev`` is anybody's who can push a branch, as every environment here is:
+:ref:`publishing-a-release` says what that means for pypi.org, and what closes it.
 
 Building this documentation
 ---------------------------
@@ -738,21 +753,24 @@ commit.
 The publishing jobs name a deployment environment - ``pypi`` and ``testpypi`` in
 ``publish.yml``, ``testpypi-dev`` in ``ci.yml``. As this repository stands, none carries a
 deployment branch policy and none has a protection rule, so nothing in the settings decides
-which ref may publish: what does is the workflow itself, where ``publish-pypi`` runs for a
-release or for a dispatch from a ``v*`` tag and for nothing else. ``testpypi-dev`` is the
-exception, because the workflow deciding is not always ``master``'s: a pull request from one of
-this repository's branches runs that branch's own ``ci.yml``, so anybody who can push a branch
-here can publish to TestPyPI through it, whatever ``master`` says. That is the price of a
-development build for every such pull request, and it stops at TestPyPI: the publisher on
-``pypi.org`` names ``publish.yml`` and ``pypi`` alone.
+which ref may publish: the workflow does, and a workflow is whatever the ref it runs from says.
+A pull request from one of this repository's branches runs that branch's own ``ci.yml``, and a
+dispatch runs the dispatched branch's own ``publish.yml`` - where the condition keeping
+``publish-pypi`` to a release or a ``v*`` tag lives, so a branch that edits it out publishes to
+pypi.org. Anybody who can push a branch here can therefore publish to TestPyPI through
+``testpypi-dev`` or ``testpypi``, and to pypi.org through ``pypi``. The development builds add no
+route to pypi.org: the token ``ci.yml`` is given names ``ci.yml``, and the publisher on
+``pypi.org`` names ``publish.yml`` and ``pypi`` alone. What stands between a pushed branch and
+pypi.org is the ``pypi`` environment's protection, and today there is none.
 
-An environment *can* be created with its deployments restricted to the default branch, which
-is the whole of what a release is not: the run is triggered by a tag. One left at that
-setting rejects the release after a green build, with *not allowed to deploy ... due to
-environment protection rules*, and the fix is in *Settings* → *Environments*: choose
-*Selected branches and tags* and add a tag rule for ``v*``. That is worth doing here as a
-second lock rather than as a repair - a setting saying the same thing as the workflow's
-condition, in the place an audit looks first.
+That protection is the maintainer's to set, in *Settings* → *Environments* → ``pypi``: a
+required reviewer, who approves every deployment to it, or a deployment rule limited to ``v*``
+tags, under *Selected branches and tags*. Against somebody who can push a branch it is the only
+lock, not a second one - the workflow's condition is theirs to edit. A tag rule stops a branch
+but not a pushed tag, unless a tag ruleset also restricts who may create ``v*`` tags; a required
+reviewer stops both. An environment restricted to the default branch instead is the whole of
+what a release is not - a release runs from its tag - and rejects the release after a green
+build, with *not allowed to deploy ... due to environment protection rules*.
 
 Delivering the editor extension
 -------------------------------

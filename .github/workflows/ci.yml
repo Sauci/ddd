@@ -10,7 +10,7 @@ name: CI
 #
 # One pair of jobs here publishes, all the same: dev-build and dev-publish put a development
 # build of the last commit of every push to master, and of every push to this repository's own
-# pull requests, on TestPyPI, once the suite, the lint and the pages have passed.
+# pull requests, on TestPyPI, once every other job of the run has passed.
 on:
   push:
     branches: [master]
@@ -211,20 +211,21 @@ jobs:
   # A development build of the last commit of every push to master, and of every push to this
   # repository's own pull requests, on TestPyPI: such a commit then installs with pip, pages
   # included and no node anywhere, for anybody - without the GitHub account an artifact needs,
-  # and after one has expired. A run that fails, or that a newer push cancels before its upload
-  # has begun, publishes nothing. tools/dev_version.py numbers the build, <next patch>.dev<run
-  # number>, and says why the commit cannot be part of the number; the build's metadata and the
-  # run's summary carry it.
+  # and after one has expired. A run in which any other job fails publishes nothing, and neither
+  # does one that a newer push cancels before its upload has begun; a dev-publish that fails
+  # once its upload has begun leaves on TestPyPI whatever it had uploaded. tools/dev_version.py
+  # numbers the build, <next patch>.dev<run number>, and says why the commit cannot be part of
+  # the number; the build's metadata and the run's summary carry it.
   #
   # Two jobs, the way publish.yml builds a release and then uploads it. `npm ci` runs the install
   # scripts of every package the pages depend on, and a build runs whatever its backend is, so
   # none of that runs where a token that publishes can be asked for - which is also how the
   # publishing action's own documentation asks for it to be done. The job holding the token
-  # checks nothing out, and takes nothing it is handed on trust.
+  # checks nothing out, takes nothing it is handed on trust, and writes the summary itself.
   dev-build:
-    # Once the suite, the lint and the pages in the browser have all passed: a commit any of them
-    # fails is no build to point anybody at.
-    needs: [test, lint, gui]
+    # Once every other job of the run has passed: a commit any of them fails is no build to point
+    # anybody at. A job added to this file joins the list, or a test says so.
+    needs: [test, lint, container, extension, gui]
     # This repository's own runs alone. A pull request from a fork is given no token to publish
     # with, and a fork's own push to its master has no publisher on TestPyPI, so both skip here
     # rather than failing at the upload; dev-publish needs this job, and skips with it. A
@@ -237,7 +238,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.stamp.outputs.version }}
-      dependencies: ${{ steps.dependencies.outputs.line }}
     env:
       # The commit the build is of and says it is of: a pull request's own head, rather than the
       # merge ci tests it as - a commit nobody pushed, remade with every push to either side.
@@ -288,13 +288,6 @@ jobs:
           if "ddd/gui/static/index.html" not in names:
               sys.exit("the wheel has no ddd/gui/static/index.html: ddd gui would have nothing to serve")
           EOF
-      # The one line of the run's summary written here: the runtime dependencies, read off the
-      # wheel so that they are exactly its own. dev-publish writes the rest, from what it checks.
-      - name: Read the runtime dependencies off the wheel
-        id: dependencies
-        run: |
-          line=$(python tools/dev_version.py dependencies dist/*.whl)
-          echo "line=$line" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
           name: ddd-tool-${{ steps.stamp.outputs.version }}
@@ -341,6 +334,45 @@ jobs:
             exit 1
           fi
           echo "publishing $wheel and $sdist"
+      # The dependency line of the summary is read here, off the wheel just checked, and not taken
+      # from dev-build: an output of a job can span lines, and whatever ran there could hand over
+      # one that closes the summary's code fence and prints an install line of its own. The
+      # wheel's metadata was written there too, so the line is held to quoted requirements of
+      # letters, digits and the signs a specifier needs, and a wheel naming another commit than
+      # this run's is refused - before anything is uploaded. The python is the runner's own, and
+      # its program is the lines below: this parses data, and runs nothing of the repository.
+      - name: Read the requirements off the checked wheel
+        id: requirements
+        env:
+          VERSION: ${{ needs.dev-build.outputs.version }}
+          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          wheel="dist/ddd_tool-$VERSION-py3-none-any.whl"
+          commit="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$COMMIT"
+          if ! line=$(python3 - "$wheel" "$commit" <<'EOF'
+          import email, re, sys, zipfile
+          wheel, commit = sys.argv[1:]
+          with zipfile.ZipFile(wheel) as archive:
+              (name,) = [n for n in archive.namelist() if re.fullmatch(r"[^/]+\.dist-info/METADATA", n)]
+              metadata = email.message_from_bytes(archive.read(name))
+          if f"Commit, {commit}" not in metadata.get_all("Project-URL", []):
+              sys.exit(f"the wheel does not name {commit} as its commit")
+          runtime = [
+              requirement
+              for requirement in metadata.get_all("Requires-Dist", [])
+              if not re.search(r"\bextra\b", requirement.partition(";")[2])
+          ]
+          line = "pip install " + " ".join(f'"{requirement}"' for requirement in runtime)
+          if not re.fullmatch(r'pip install( "[A-Za-z0-9][A-Za-z0-9.\-_\[\],<>=!~; ]*")+', line):
+              sys.exit(f"requirements no install line may print as they are: {runtime!r}")
+          print(line)
+          EOF
+          ); then
+            echo "::error::the wheel does not name this run's commit, or declares requirements no install line may print as they are; the lines above say which"
+            exit 1
+          fi
+          echo "line=$line" >> "$GITHUB_OUTPUT"
+          echo "$line"
       # A re-run keeps its run number, and so its version, and an index accepts a file name once:
       # on a re-run, skip-existing passes over what an earlier attempt uploaded. On a first
       # attempt a file already there came from another run - planted by one, or published before
@@ -350,13 +382,12 @@ jobs:
         with:
           repository-url: https://test.pypi.org/legacy/
           skip-existing: ${{ github.run_attempt != '1' }}
-      # The line installing ddd-tool is written here, from the version checked above, and the
-      # commit from this run's own context; the dependency line is the one dev-build read off
-      # the wheel.
+      # Every line of it written here, from what the steps above checked: the version, the line
+      # read off the checked wheel, and the commit from this run's own context.
       - name: Say what was published, and how it installs
         env:
           VERSION: ${{ needs.dev-build.outputs.version }}
-          DEPENDENCIES: ${{ needs.dev-build.outputs.dependencies }}
+          DEPENDENCIES: ${{ steps.requirements.outputs.line }}
           COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           {

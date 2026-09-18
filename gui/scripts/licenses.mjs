@@ -11,6 +11,9 @@ const tree = JSON.parse(execSync("npm ls --omit=dev --all --long --json", { enco
 const packages = new Map();
 const visit = (dependencies) => {
   for (const [name, entry] of Object.entries(dependencies ?? {})) {
+    // An unmet optional peer dependency (zustand's `immer`, unused by @xyflow/react) is listed
+    // by `npm ls --all` as a pathless stub: nothing is installed there, so nothing is bundled.
+    if (entry.path === undefined) continue;
     const key = `${name}@${entry.version}`;
     if (!packages.has(key)) {
       packages.set(key, { name, version: entry.version, path: entry.path });

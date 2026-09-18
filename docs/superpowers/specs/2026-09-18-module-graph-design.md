@@ -118,6 +118,7 @@ that something is.
 ```json
 {
   "revision": 7,
+  "dictionary": true,
   "modules": [
     {
       "path": "C:/work/demo/components/controller.ddd.json",
@@ -145,7 +146,9 @@ that something is.
 }
 ```
 
-`severity` is `null` when a flow has no disagreement, and `disagreements` is then empty. Without an
+`severity` is `null` when a flow has no disagreement, and `disagreements` is then empty.
+`dictionary` says whether the revision resolved one, so that the page states what it knows rather
+than inferring it from an absence of flows, which a project of independent components also has. Without an
 open project the endpoint answers `409` with the code `no-project`, as the other endpoints do. When
 the analysis produced no dictionary - a plugin raised, which spec 6.10 of milestone 1 already
 describes - `modules` is still the revision's components and `flows` is empty; the page says the

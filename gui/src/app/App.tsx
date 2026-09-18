@@ -1,12 +1,14 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useCallback } from "react";
 import { getSession } from "../api/client";
-import { hrefOf, type ProjectView } from "../lib/route";
+import { hrefOf } from "../lib/route";
 import { ComponentPage } from "../screens/ComponentPage";
 import { GraphPage } from "../screens/GraphPage";
 import { ProjectPage } from "../screens/ProjectPage";
 import { StartPage } from "../screens/StartPage";
 import { Banner } from "../ui/Banner";
+import { Button } from "../ui/Button";
+import { LinkTabs } from "../ui/LinkTabs";
 import { useProjectState } from "./useProjectState";
 import { useRoute } from "./useRoute";
 
@@ -41,14 +43,15 @@ export function App() {
     page = (
       <section>
         <h1>{opened.name ?? opened.path}</h1>
-        <nav className="tabs" aria-label="Project views">
-          <Tab view="graph" open={route.view} navigate={navigate}>
-            Graph
-          </Tab>
-          <Tab view="table" open={route.view} navigate={navigate}>
-            Table
-          </Tab>
-        </nav>
+        <LinkTabs
+          label="Project views"
+          tabs={(["graph", "table"] as const).map((view) => ({
+            href: hrefOf({ page: "project", view }),
+            label: view === "graph" ? "Graph" : "Table",
+            current: route.view === view,
+            onFollow: () => navigate({ page: "project", view }),
+          }))}
+        />
         {route.view === "graph" ? (
           <GraphPage project={opened.path} state={state} onComponent={openComponent} />
         ) : (
@@ -66,17 +69,13 @@ export function App() {
         <span className="brand">ddd gui</span>
         <span className="preview">preview</span>
         <nav>
-          <button type="button" className="link" onClick={() => navigate({ page: "start" })}>
+          <Button variant="link" onPress={() => navigate({ page: "start" })}>
             Projects
-          </button>
+          </Button>
           {opened !== null && (
-            <button
-              type="button"
-              className="link"
-              onClick={() => navigate({ page: "project", view: "graph" })}
-            >
+            <Button variant="link" onPress={() => navigate({ page: "project", view: "graph" })}>
               {opened.name ?? opened.path}
-            </button>
+            </Button>
           )}
         </nav>
       </header>
@@ -88,35 +87,5 @@ export function App() {
       {failure !== null && <Banner tone="error">{failure}</Banner>}
       <main>{page}</main>
     </div>
-  );
-}
-
-/** One of the project screen's tabs: a real address, so a reload and the back button keep it. */
-function Tab({
-  view,
-  open,
-  navigate,
-  children,
-}: {
-  view: ProjectView;
-  open: ProjectView;
-  navigate: (route: { page: "project"; view: ProjectView }) => void;
-  children: ReactNode;
-}) {
-  return (
-    <a
-      href={hrefOf({ page: "project", view })}
-      aria-current={view === open ? "page" : undefined}
-      onClick={(event) => {
-        // A modified or secondary click is the reader asking the browser for a new tab or a new
-        // window: it is a real address, so let the browser have it rather than swallowing it.
-        const modified = event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
-        if (modified || event.button !== 0) return;
-        event.preventDefault();
-        navigate({ page: "project", view });
-      }}
-    >
-      {children}
-    </a>
   );
 }

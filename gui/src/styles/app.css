@@ -59,9 +59,12 @@ table {
 th,
 td {
   text-align: left;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--cell);
   border-bottom: 1px solid var(--rule);
   vertical-align: top;
+}
+th {
+  font-weight: 600;
 }
 tr.has-error td:first-child {
   box-shadow: inset 3px 0 var(--error);
@@ -69,7 +72,6 @@ tr.has-error td:first-child {
 button {
   font: inherit;
 }
-button.link,
 button.value {
   background: none;
   border: none;
@@ -78,7 +80,6 @@ button.value {
   cursor: pointer;
   text-align: left;
 }
-button.link:hover,
 button.value:hover {
   text-decoration: underline;
 }
@@ -105,7 +106,7 @@ input.unit {
   padding: var(--space-3);
   background: var(--surface);
   border: 1px solid var(--rule);
-  border-radius: 6px;
+  border-radius: var(--radius);
   cursor: pointer;
 }
 .projects .name {
@@ -115,7 +116,7 @@ input.unit {
   display: inline-block;
   margin-right: var(--space-1);
   padding: 0 var(--space-2);
-  border-radius: 10px;
+  border-radius: var(--radius-chip);
   font-size: var(--text-small);
 }
 .badge.error {
@@ -140,7 +141,7 @@ input.unit {
 .banner {
   margin-block: var(--space-3);
   padding: var(--space-3);
-  border-radius: 6px;
+  border-radius: var(--radius);
 }
 .banner.error {
   background: var(--error-ground);
@@ -161,23 +162,11 @@ input.unit {
   font: inherit;
   flex: 1;
   max-width: 22em;
-  padding: var(--space-1) var(--space-2);
+  padding: var(--cell);
   background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--rule);
-  border-radius: 6px;
-}
-.canvas-tools button {
-  padding: var(--space-1) var(--space-3);
-  background: var(--surface);
-  color: var(--ink);
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  cursor: pointer;
-}
-.canvas-tools button:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-radius: var(--radius);
 }
 /* What a hover or a search pushes back: dimmed rather than hidden, so the shape of the whole
    project is still there behind what the reader asked about. */
@@ -191,7 +180,7 @@ input.unit {
   height: 70vh;
   min-height: 420px;
   border: 1px solid var(--rule);
-  border-radius: 6px;
+  border-radius: var(--radius);
   overflow: hidden;
   background: var(--canvas);
 }
@@ -206,7 +195,7 @@ input.unit {
   padding: var(--space-2) var(--space-3);
   background: var(--surface);
   border: 1px solid var(--rule);
-  border-radius: 6px;
+  border-radius: var(--radius);
 }
 .module .name {
   flex: 1;
@@ -252,7 +241,7 @@ input.unit {
   padding: 0 var(--space-1);
   background: var(--surface);
   border: 1px solid var(--rule);
-  border-radius: 8px;
+  border-radius: var(--radius-chip);
   color: var(--ink-quiet);
   font-size: var(--text-small);
 }
@@ -274,8 +263,8 @@ input.unit {
   padding: var(--space-2) var(--space-3);
   background: var(--surface);
   border: 1px solid var(--rule);
-  border-radius: 6px;
-  box-shadow: 0 2px 8px rgb(29 42 47 / 18%);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-popover);
   font-size: var(--text-small);
   text-align: left;
 }

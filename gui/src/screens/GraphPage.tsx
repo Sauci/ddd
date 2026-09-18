@@ -26,6 +26,7 @@ import {
 } from "../lib/canvas";
 import { forgetPositions, rememberPosition, savedPositions } from "../state/positions";
 import { Banner } from "../ui/Banner";
+import { Button } from "../ui/Button";
 
 // Outside the component on purpose: a fresh object here makes React Flow rebuild every node and
 // every edge on each render, which it says so itself in the console.
@@ -166,12 +167,8 @@ function Canvas({
           onChange={(event) => setSearch(event.target.value)}
           onKeyDown={onSearchKey}
         />
-        <button type="button" onClick={onTidy}>
-          Tidy
-        </button>
-        <button type="button" onClick={onFit}>
-          Fit
-        </button>
+        <Button onPress={onTidy}>Tidy</Button>
+        <Button onPress={onFit}>Fit</Button>
       </div>
       <section className="canvas" aria-label="Modules">
         <ReactFlow

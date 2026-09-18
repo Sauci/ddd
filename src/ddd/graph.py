@@ -77,6 +77,8 @@ def graph_of(
     if dictionary is None:
         return Graph(sorted_modules, ())
 
+    # Assumes distinct names among loaded modules; two sharing one would collapse here, the
+    # later one in path order silently winning.
     paths_by_component = {module.name: module.path for module in sorted_modules if module.loaded}
     objects_by_pair = _objects_by_pair(dictionary.objects, paths_by_component)
     components_by_name = {component.name: component for component in dictionary.components}
@@ -101,12 +103,17 @@ def _objects_by_pair(
 ) -> dict[_ModulePair, set[str]]:
     """Every producing-consuming pair one of ``objects`` puts a flow between, and their names.
 
-    An object with no owner, an owner or a consumer no module has, or a consumer that is its
-    own owner, contributes nothing to that pair. A local object needs no rule of its own here:
-    it has no consumers to begin with, exactly like one nobody happens to read.
+    A local object contributes to no pair whatever its own ``consumers`` says: a component
+    declaring a local object as ``input`` is the ``local-conflict`` the analysis reports for
+    it, and that finding does not drop the declaration - it stays in ``consumers`` beside
+    ``local=True``, so this is checked on its own rather than assumed from ``consumers`` being
+    empty. An object with no owner, an owner or a consumer no module has, or a consumer that
+    is its own owner, likewise contributes nothing to that pair.
     """
     pairs: dict[_ModulePair, set[str]] = {}
     for data_object in objects:
+        if data_object.local:
+            continue
         if data_object.owner is None:
             continue
         source = paths_by_component.get(data_object.owner)
@@ -132,6 +139,8 @@ def _disagreements_by_pair(
     component_of = {path: name for name, path in paths_by_component.items()}
     found: dict[_ModulePair, list[Disagreement]] = {}
     for file, diagnostic in findings:
+        # Assumes at most one of a diagnostic's notes locates another module; several would
+        # each add their own disagreement, since no check today files more than one.
         for _, note in diagnostic.notes:
             if note is None:
                 continue
@@ -154,15 +163,18 @@ def _declared_object(
 ) -> str | None:
     """The object ``location``'s ``component.interface[<index>]...`` pointer names.
 
-    ``None`` when the pointer does not have that shape, or names an index the component's
-    declarations do not have: the disagreement is still built, only unable to say which
-    object of the flow it is about.
+    ``None`` when the pointer does not have that shape, when it names an index the component's
+    declarations do not have, or when the dictionary carries no component of that name at all:
+    the disagreement is still built, only unable to say which object of the flow it is about.
     """
     parts = segments(location.pointer if location is not None else "")
     index = parts[2] if len(parts) >= 3 and parts[:2] == ["component", "interface"] else None
     if not isinstance(index, int):
         return None
-    declarations = components_by_name[component].declarations
+    found = components_by_name.get(component)
+    if found is None:
+        return None
+    declarations = found.declarations
     return declarations[index].name if 0 <= index < len(declarations) else None
 
 

@@ -111,6 +111,15 @@ class TestFlows:
         graph = graph_of(dictionary, [a, b], [])
         assert graph.flows == ()
 
+    def test_a_local_object_with_a_consumer_still_makes_no_flow(self) -> None:
+        """``local=True`` does not imply empty ``consumers``: a component declaring a local
+        object as ``input`` is exactly the ``local-conflict`` the analysis reports, and that
+        finding leaves the declaration - and so the consumer - in place."""
+        a, b = a_module("a.ddd.json", "A"), a_module("b.ddd.json", "B")
+        dictionary = a_dictionary(objects=(an_object("Internal", "A", "B", local=True),))
+        graph = graph_of(dictionary, [a, b], [])
+        assert graph.flows == ()
+
     def test_an_unread_object_makes_no_flow(self) -> None:
         a, b = a_module("a.ddd.json", "A"), a_module("b.ddd.json", "B")
         dictionary = a_dictionary(objects=(an_object("Unread", "A"),))
@@ -286,6 +295,24 @@ class TestDisagreements:
             objects=(an_object("Speed", "A", "B"),),
         )
         findings = [a_finding("b.ddd.json", "", notes=(a_note_at("a.ddd.json"),))]
+        graph = graph_of(dictionary, [a, b], findings)
+        disagreement = graph.flows[0].disagreements[0]
+        assert disagreement.object is None
+
+    def test_a_module_with_no_matching_component_still_colours_with_no_object(self) -> None:
+        """A loaded module's name reaches a flow through an object's ``owner``/``consumers``,
+        which is a separate list from the dictionary's ``components`` - so a name with no
+        entry there must not crash the lookup, only leave the object unnamed."""
+        a, b = a_module("a.ddd.json", "A"), a_module("b.ddd.json", "B")
+        dictionary = a_dictionary(
+            components=(a_component("B", declared("Speed", "input")),),
+            objects=(an_object("Speed", "A", "B"),),
+        )
+        findings = [
+            a_finding(
+                "a.ddd.json", "component.interface[0].definition", notes=(a_note_at("b.ddd.json"),)
+            )
+        ]
         graph = graph_of(dictionary, [a, b], findings)
         disagreement = graph.flows[0].disagreements[0]
         assert disagreement.object is None

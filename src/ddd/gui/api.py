@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
 from pydantic import BaseModel, ValidationError
@@ -24,6 +24,7 @@ from pydantic import BaseModel, ValidationError
 from ddd import __version__
 from ddd.diagnostics import CHECKS, CheckInfo
 from ddd.editing import INVALID, STALE, UNREADABLE, UNVERIFIED, EditError, FileChange, Operation
+from ddd.graph import Disagreement, Flow, Module, graph_of
 from ddd.gui import contract
 from ddd.gui.session import (
     Filed,
@@ -155,6 +156,22 @@ class Api:
             ).model_dump(mode="json"),
         )
 
+    def _graph(self, query: Query, body: bytes | None) -> Reply:
+        revision = self.session.revision
+        if revision is None:
+            raise NoProjectError("no project is open")
+        modules = [_module(file) for file in revision.files if file.kind == "component"]
+        findings = [(PurePosixPath(f.file.as_posix()), f.diagnostic) for f in revision.findings]
+        built = graph_of(revision.dictionary, modules, findings)
+        return Reply(
+            200,
+            contract.GraphReply(
+                revision=revision.number,
+                modules=[_graph_module(module) for module in built.modules],
+                flows=[_graph_flow(flow) for flow in built.flows],
+            ).model_dump(mode="json", by_alias=True),
+        )
+
     def _checks(self, query: Query, body: bytes | None) -> Reply:
         revision = self.session.revision
         plugins = () if revision is None else revision.checks
@@ -209,6 +226,7 @@ _ROUTES: Final[dict[str, tuple[str, Answer]]] = {
     "/api/state": ("GET", Api._state),
     "/api/file": ("GET", Api._file),
     "/api/dictionary": ("GET", Api._dictionary),
+    "/api/graph": ("GET", Api._graph),
     "/api/checks": ("GET", Api._checks),
     "/api/edit": ("POST", Api._edit),
 }
@@ -261,6 +279,48 @@ def _check(info: CheckInfo) -> dict[str, Any]:
         overridable=info.overridable,
         needs_every_component=info.needs_every_component,
         comparison=info.comparison,
+    ).model_dump(mode="json")
+
+
+def _module(file: SourceFile) -> Module:
+    """A file of the revision, as the graph wants it: named by its component, or by the file's
+    own stem when it did not load that far."""
+    stem = file.path.name.removesuffix(".ddd.json")
+    return Module(
+        PurePosixPath(file.path.as_posix()),
+        file.name if file.loaded and file.name else stem,
+        file.loaded,
+        file.errors,
+        file.warnings,
+        file.infos,
+    )
+
+
+def _graph_module(module: Module) -> dict[str, Any]:
+    return contract.GraphModule(
+        path=module.path.as_posix(),
+        name=module.name,
+        loaded=module.loaded,
+        findings={"error": module.errors, "warning": module.warnings, "info": module.infos},
+    ).model_dump(mode="json")
+
+
+def _graph_flow(flow: Flow) -> dict[str, Any]:
+    return contract.GraphFlow(
+        source=flow.source.as_posix(),
+        to=flow.target.as_posix(),
+        objects=flow.objects,
+        severity=flow.severity,
+        disagreements=[_disagreement(d) for d in flow.disagreements],
+    ).model_dump(mode="json")
+
+
+def _disagreement(disagreement: Disagreement) -> dict[str, Any]:
+    return contract.GraphDisagreement(
+        object=disagreement.object,
+        check=disagreement.check,
+        severity=disagreement.severity,
+        message=disagreement.message,
     ).model_dump(mode="json")
 
 

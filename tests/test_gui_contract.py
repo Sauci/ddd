@@ -22,7 +22,7 @@ def _public_models() -> list[type[BaseModel]]:
 
 class TestApiSchema:
     def test_every_model_declared_here_has_a_defs_entry(self) -> None:
-        """A model reachable from none of the eight endpoints would have no entry here, which
+        """A model reachable from none of the nine endpoints would have no entry here, which
         is what turns a model added without a page type into a failure of this suite instead
         of a frontend silently left behind the contract it was supposed to describe."""
         schema = contract.api_schema()

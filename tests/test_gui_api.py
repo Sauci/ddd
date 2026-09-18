@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import shutil
 import threading
 from pathlib import Path
+from typing import Final
 
 import pytest
 
-from conftest import component, declare, project, write_tree
+from conftest import EXAMPLES, component, declare, project, write_tree
 from ddd import __version__
 from ddd.diagnostics import CHECKS
 from ddd.editing import UNVERIFIED, UNWRITABLE, EditError, fingerprint
@@ -295,6 +297,103 @@ class TestDictionaryAndChecks:
         extra = CheckInfo("demo/tagged", Severity.WARNING, "a demonstration check")
         monkeypatch.setattr(api.session, "_revision", replace(revision, checks=(extra,)))
         assert get(api, "/api/checks").body["checks"][-1]["check"] == "demo/tagged"
+
+
+class TestGraph:
+    COMPONENTS: Final = {
+        "components/controller.ddd.json": "Controller",
+        "components/sensor_hub.ddd.json": "SensorHub",
+        "components/user_interface.ddd.json": "UserInterface",
+        "subsystems/logging/event_logger.ddd.json": "EventLogger",
+    }
+    """Every component of examples/demo, by its path relative to the project."""
+
+    FLOWS: Final = {
+        ("components/controller.ddd.json", "components/user_interface.ddd.json"),
+        ("components/controller.ddd.json", "subsystems/logging/event_logger.ddd.json"),
+        ("components/sensor_hub.ddd.json", "components/controller.ddd.json"),
+        ("components/sensor_hub.ddd.json", "components/user_interface.ddd.json"),
+        ("components/sensor_hub.ddd.json", "subsystems/logging/event_logger.ddd.json"),
+        ("components/user_interface.ddd.json", "subsystems/logging/event_logger.ddd.json"),
+        ("subsystems/logging/event_logger.ddd.json", "components/user_interface.ddd.json"),
+    }
+    """Every producing-consuming pair examples/demo's dictionary puts a flow between."""
+
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> tuple[Api, Path]:
+        """``ddd gui``'s api over a copy of examples/demo, and where the copy is."""
+        root = tmp_path / "demo"
+        shutil.copytree(EXAMPLES / "demo", root)
+        session = Session(root)
+        session.open(root / "demo.ddd.json")
+        return Api(session, root / "demo.ddd.json"), root.resolve()
+
+    def test_the_demo_lists_its_modules_and_the_flows_between_them(
+        self, demo: tuple[Api, Path]
+    ) -> None:
+        api, root = demo
+        body = get(api, "/api/graph").body
+        assert body["revision"] == 1
+        modules = {m["path"]: m for m in body["modules"]}
+        assert set(modules) == {(root / suffix).as_posix() for suffix in self.COMPONENTS}
+        for suffix, name in self.COMPONENTS.items():
+            module = modules[(root / suffix).as_posix()]
+            assert (module["name"], module["loaded"]) == (name, True)
+            assert module["findings"] == {"error": 0, "warning": 0, "info": 0}
+        pairs = {(f["from"], f["to"]) for f in body["flows"]}
+        assert pairs == {
+            ((root / source).as_posix(), (root / target).as_posix())
+            for source, target in self.FLOWS
+        }
+        assert all(f["severity"] is None and f["disagreements"] == [] for f in body["flows"])
+
+    def test_a_disagreement_with_the_producer_colours_the_flow(
+        self, demo: tuple[Api, Path]
+    ) -> None:
+        api, root = demo
+        controller = root / "components" / "controller.ddd.json"
+        edit = {
+            "changes": [
+                {
+                    "file": controller.as_posix(),
+                    "fingerprint": fingerprint(controller.read_bytes()),
+                    "operations": [{"op": "set", "pointer": UNIT, "raw": json.dumps("rpm")}],
+                }
+            ]
+        }
+        assert post(api, "/api/edit", edit).status == 200
+        body = get(api, "/api/graph").body
+        sensor_hub = (root / "components" / "sensor_hub.ddd.json").as_posix()
+        flow = next(
+            f for f in body["flows"] if (f["from"], f["to"]) == (sensor_hub, controller.as_posix())
+        )
+        assert flow["severity"] == "error"
+        assert any(
+            (d["check"], d["object"], d["severity"]) == ("definition-mismatch", "ValueA", "error")
+            for d in flow["disagreements"]
+        )
+        assert all(f["severity"] is None for f in body["flows"] if f is not flow)
+
+    def test_the_graph_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root)), "/api/graph")
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+    def test_a_component_that_does_not_load_is_a_module_with_no_flow(self, tmp_path: Path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": '{"component": {}}',
+            },
+        )
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        body = get(Api(session), "/api/graph").body
+        modules = {m["path"]: m for m in body["modules"]}
+        broken = (tmp_path / "b.ddd.json").resolve().as_posix()
+        assert (modules[broken]["loaded"], modules[broken]["name"]) == (False, "b")
+        assert body["flows"] == []
 
 
 class TestEdit:

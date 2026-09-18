@@ -2802,18 +2802,30 @@ class TestTheDevelopmentBuild:
             "--index-url=evil.example",
             "evil @ https://evil.example/evil-1.0-py3-none-any.whl",
             'tomli>=2; python_version < "3.13"',
+            "a" * 300,
         ],
-        ids=["a backtick", "a dollar", "a quote", "a line break", "an option", "a url", "a marker"],
+        ids=[
+            "a backtick",
+            "a dollar",
+            "a quote",
+            "a line break",
+            "an option",
+            "a url",
+            "a marker",
+            "an oversized requirement",
+        ],
     )
     def test_a_requirement_no_install_line_may_print_is_refused_before_the_upload(
         self, tmp_path: Path, requirement: str
     ) -> None:
         """The wheel was built where the pages' packages ran their install scripts, so what it
         declares is held to quoted requirements of letters, digits and the signs a specifier
-        needs. A line break, a backtick or a quote would let a planted requirement close the
-        summary's code fence, or the quoted argument, and print an install line of its own; an
-        option or a url would name another index. A marker's strings need quotes too, so a
-        runtime requirement with one is refused as well, until the day one is needed."""
+        needs, and to 200 characters. A line break, a backtick or a quote would let a planted
+        requirement close the summary's code fence, or the quoted argument, and print an install
+        line of its own; an option or a url would name another index. A marker's strings need
+        quotes too, so a runtime requirement with one is refused as well, until the day one is
+        needed. Length is checked on its own: a requirement of only allowed characters still
+        matches the pattern however long it is - one tried against it was 32 MiB."""
         cwd = self.wheel(
             tmp_path, f"Project-URL: Commit, {COMMIT_URL}", f"Requires-Dist: {requirement}"
         )
@@ -2926,7 +2938,7 @@ class TestTheDevelopmentBuild:
     def test_the_install_lines_are_written_from_what_was_checked(self, tmp_path: Path) -> None:
         """Both lines users copy are written by the job that checked what they name: the
         version it checked, and the requirements it read off the checked wheel and held to a
-        pattern. Nothing of the summary comes from ``dev-build``."""
+        pattern. Nothing of it is taken from ``dev-build`` unchecked."""
         publish = job(CI_WORKFLOW, "dev-publish")
         summary = step(publish, "Say what was published, and how it installs")
         wrote = run_step(
@@ -2995,7 +3007,7 @@ class TestTheDevelopmentBuild:
         assert not re.search(r"^\s*(?:- )?(?:run: )?pip ", publish, re.M), "dev-publish runs pip"
         pythons = [publish[found.start() :] for found in re.finditer(r"\bpython", publish)]
         assert pythons, "no python is recognised in dev-publish, so this weighs nothing"
-        assert all(python.startswith("python3 - ") for python in pythons), (
+        assert all(python.startswith(("python3 - ", "python3 -I - ")) for python in pythons), (
             "dev-publish runs a python program other than the lines the workflow hands it"
         )
 

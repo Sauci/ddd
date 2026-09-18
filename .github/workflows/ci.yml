@@ -349,7 +349,7 @@ jobs:
         run: |
           wheel="dist/ddd_tool-$VERSION-py3-none-any.whl"
           commit="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$COMMIT"
-          if ! line=$(python3 - "$wheel" "$commit" <<'EOF'
+          if ! line=$(python3 -I - "$wheel" "$commit" <<'EOF'
           import email, re, sys, zipfile
           wheel, commit = sys.argv[1:]
           with zipfile.ZipFile(wheel) as archive:
@@ -362,9 +362,12 @@ jobs:
               for requirement in metadata.get_all("Requires-Dist", [])
               if not re.search(r"\bextra\b", requirement.partition(";")[2])
           ]
+          oversized = [requirement for requirement in runtime if len(requirement) > 200]
+          if oversized:
+              sys.exit(f"{len(oversized)} requirement(s) over 200 characters long")
           line = "pip install " + " ".join(f'"{requirement}"' for requirement in runtime)
           if not re.fullmatch(r'pip install( "[A-Za-z0-9][A-Za-z0-9.\-_\[\],<>=!~; ]*")+', line):
-              sys.exit(f"requirements no install line may print as they are: {runtime!r}")
+              sys.exit(f"{len(runtime)} requirement(s) no install line may print as they are")
           print(line)
           EOF
           ); then

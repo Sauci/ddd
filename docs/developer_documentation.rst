@@ -506,12 +506,17 @@ build's metadata carries it instead, as the ``Commit`` link of the project, and 
 summary maps the version to it. The base is the next patch because ``0.10.0.dev57`` would sort
 before 0.10.0 itself, beneath the release every such commit came after. The run number grows
 across every branch, so every run publishes a version of its own; a re-run keeps its number,
-and the upload skips the files an earlier attempt made. A first attempt skips nothing: a file
+and turns ``skip-existing`` on. That is on for any second attempt, not only one where
+``dev-publish`` itself had already failed: a first attempt that fails in a job ``dev-build``
+waits for never reaches ``dev-publish`` at all, and the re-run that finally does reach it is on
+``skip-existing`` as well - so it passes over a file already there under that version even
+though it is trying to upload it for the first time. A first attempt skips nothing: a file
 already on TestPyPI under its version came from another run, and the upload fails on it rather
-than passing over it with a summary naming somebody else's build. So a first attempt refused
-that way must not be re-run - not with *Re-run failed jobs*, nor with *Re-run all jobs*: either
-is a second attempt, which would pass over the file and write a summary naming it as its own
-build. Find out why the number was reused instead.
+than passing over it with a summary naming somebody else's build. So a first attempt whose
+upload is refused because the file exists means investigate before re-running - not with
+*Re-run failed jobs*, not with *Re-run all jobs*, and not by re-running ``dev-publish`` alone:
+any second attempt would pass over the file and write a summary naming it as its own build.
+Find out why the number was reused instead.
 Renaming ``ci.yml`` is one way: it restarts the run numbers - and its registration below names
 the file - so its uploads are refused until the numbers, or the next release, move past the
 versions already published.
@@ -540,7 +545,7 @@ The run's summary gives the two commands that install the build, for instance:
 The first installs the runtime dependencies from PyPI; the second installs ddd-tool alone,
 from TestPyPI. They are two on purpose: given both indexes at once, pip takes each name's
 highest version from either, and anybody can upload a lookalike to TestPyPI. ``dev-publish``
-writes both, and nothing of the summary comes from ``dev-build``: an output of a job can span
+writes both, and nothing of it is taken from ``dev-build`` unchecked: an output of a job can span
 lines, and the build could have handed over one that closes the code fence and prints an
 install line of its own. The first line is read off the ``Requires-Dist`` of the checked
 wheel, by the runner's own python reading the workflow's own lines, and held to quoted

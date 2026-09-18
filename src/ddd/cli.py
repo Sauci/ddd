@@ -322,11 +322,14 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
 
     gui = subparsers.add_parser(
         "gui",
-        help="preview: edit a project's description files in a browser, on this computer only",
+        help=(
+            "preview: edit a project's description files in a browser, on this computer by default"
+        ),
         description=(
-            "Preview. Serves a browser interface over one project's description files on the "
-            "loopback address of this computer, and opens the browser on it. Every change is "
-            "written into the description files in their own layout and checked with the same "
+            "Preview. Serves a browser interface over one project's description files, and "
+            "opens the browser on it. The server binds the loopback address of this computer "
+            "alone by default; --host widens that, for a container. Every change is written "
+            "into the description files in their own layout and checked with the same "
             "analysis as ddd check. It runs until it is interrupted, and its options are not "
             "yet part of the stable interface."
         ),
@@ -354,11 +357,24 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
         ),
     )
     gui.add_argument(
+        "--host",
+        default="127.0.0.1",
+        metavar="ADDRESS",
+        help=(
+            "IPv4 address to listen on, or a name that resolves to one; the default answers "
+            "this computer alone, and 0.0.0.0 is what a container gives its host once the "
+            "same port is published"
+        ),
+    )
+    gui.add_argument(
         "--port",
         type=_port,
         default=0,
         metavar="N",
-        help="port to serve on; the default, 0, lets the system pick a free one",
+        help=(
+            "port to serve on; the default, 0, lets the system pick a free one, refused "
+            "when --host answers beyond this computer's loopback"
+        ),
     )
     gui.add_argument(
         "--no-browser",
@@ -1355,7 +1371,15 @@ def _command_gui(args: argparse.Namespace) -> int:
     # and the edit engine, which no other command should pay for.
     from ddd.gui.server import run
 
-    return int(run(args.project, args.build_directory, args.port, open_browser=not args.no_browser))
+    return int(
+        run(
+            args.project,
+            args.build_directory,
+            args.port,
+            host=args.host,
+            open_browser=not args.no_browser,
+        )
+    )
 
 
 def _port(text: str) -> int:

@@ -98,3 +98,35 @@ services:
     command: ["bash"]
     stdin_open: true
     tty: true
+
+  # docker compose up gui, then the printed address in a browser on the host: ddd gui, running
+  # the image's own code and serving its own compiled pages rather than the working tree's.
+  # PYTHONPATH is left out of the environment below, unlike every service above, because it
+  # would shadow those with the working tree's, which usually has no compiled pages at all -
+  # git does not track them. The project it opens is still the checkout's, though:
+  # examples/demo is read, and an edit made in the browser writes it back, under /work, the
+  # same bind mount as every service above - so an edit lands in the developer's own checkout,
+  # and, on a native Linux engine, comes back owned by root, since this service runs as root
+  # exactly as every service above does. --host 0.0.0.0 is what lets the container answer its
+  # host at all, and publishing the same port number on the host's loopback alone, rather than
+  # every interface, is what a browser there needs: a different number outside would have the
+  # Host header ddd gui sees name a port it does not listen on, answered 421, and beyond the
+  # container's own loopback the token in the printed address is the only thing keeping
+  # another client out. stop_signal is SIGINT, what ddd gui catches for a clean exit, so
+  # docker compose stop does not wait out its grace period on SIGTERM first.
+  gui:
+    <<: *ddd
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+    ports:
+      - "127.0.0.1:8123:8123"
+    stop_signal: SIGINT
+    command:
+      - ddd
+      - gui
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8123"
+      - --no-browser
+      - examples/demo/demo.ddd.json

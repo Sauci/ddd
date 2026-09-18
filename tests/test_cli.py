@@ -3756,11 +3756,12 @@ class TestGui:
     def recorder(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
         seen: dict[str, object] = {}
 
-        def run(project, build_directories, port, *, open_browser, static=None):
+        def run(project, build_directories, port, *, host, open_browser, static=None):
             seen.update(
                 project=project,
                 build_directories=build_directories,
                 port=port,
+                host=host,
                 open_browser=open_browser,
             )
             return EXIT_OK
@@ -3770,12 +3771,23 @@ class TestGui:
 
     def test_the_options_reach_the_server(self, monkeypatch: pytest.MonkeyPatch) -> None:
         seen = self.recorder(monkeypatch)
-        arguments = ["gui", "p.ddd.json", "-b", "build", "--port", "8123", "--no-browser"]
+        arguments = [
+            "gui",
+            "p.ddd.json",
+            "-b",
+            "build",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "8123",
+            "--no-browser",
+        ]
         assert main(arguments) == EXIT_OK
         assert seen == {
             "project": Path("p.ddd.json"),
             "build_directories": [Path("build")],
             "port": 8123,
+            "host": "0.0.0.0",
             "open_browser": False,
         }
 
@@ -3784,7 +3796,13 @@ class TestGui:
     ) -> None:
         seen = self.recorder(monkeypatch)
         assert main(["gui"]) == EXIT_OK
-        assert seen == {"project": None, "build_directories": [], "port": 0, "open_browser": True}
+        assert seen == {
+            "project": None,
+            "build_directories": [],
+            "port": 0,
+            "host": "127.0.0.1",
+            "open_browser": True,
+        }
 
     @pytest.mark.parametrize("port", ["-1", "65536", "http", "٣"])
     def test_a_port_that_is_not_one_is_a_usage_error(

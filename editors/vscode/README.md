@@ -114,7 +114,7 @@ on its own, for what one file can decide.
 ## Building it
 
 CI builds and tests this on every push, and on every release packages it and attaches it to
-the release, so nobody has to build one to use it. To work on it you need node 20 and DDD
+the release, so nobody has to build one to use it. To work on it you need node 24 and DDD
 installed:
 
 ```bash

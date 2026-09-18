@@ -18,10 +18,12 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 
 * **A browser interface, as a preview.**  `ddd gui` serves a browser interface over one
   project's description files on the developer's own computer and opens the browser on it:
-  the project's components, the findings of each, and a declaration's unit changed in place -
-  nothing but the unit changing in the file, the rest of its layout kept, and checked the way
-  `ddd check` checks it.  It is the first step of a GUI for developers who would rather not
-  edit JSON, and its options are not yet part of the public interface.
+  the project opens on a canvas of its modules, an arrow per producing-consuming pair
+  coloured by the worst disagreement between its ends, and the component table one tab
+  away, with a declaration's unit changed in place - nothing but the unit changing in the
+  file, the rest of its layout kept, and checked the way `ddd check` checks it.  It is the
+  first step of a GUI for developers who would rather not edit JSON, and its options are not
+  yet part of the public interface.
 
 ## 0.10.0
 

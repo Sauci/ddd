@@ -696,4 +696,5 @@ runs Vitest with a 100 % gate over the modules that hold logic - ``src/api``, ``
 over a copy of ``examples/demo``, started with the interpreter ``DDD_PYTHON`` names, and
 ``PLAYWRIGHT_CHANNEL=msedge`` drives the installed Edge on a machine without Playwright's own
 Chromium. The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0,
-BSD-2-Clause or BSD-3-Clause.
+BSD-2-Clause or BSD-3-Clause. The project screen's canvas is drawn with ``@xyflow/react`` and
+laid out with ``@dagrejs/dagre``, both MIT like every other bundled package.

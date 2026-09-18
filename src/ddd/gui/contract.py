@@ -48,6 +48,10 @@ __all__ = [
     "FindingCounts",
     "Found",
     "FoundProject",
+    "GraphDisagreement",
+    "GraphFlow",
+    "GraphModule",
+    "GraphReply",
     "Note",
     "OpenProject",
     "OpenRequest",
@@ -295,6 +299,88 @@ class DictionaryReply(_Frozen):
     contract exists to remove."""
 
 
+# --- GET /api/graph ------------------------------------------------------------------------
+
+
+class GraphModule(_Frozen):
+    """One module of the project graph: a component, as the canvas draws it."""
+
+    path: str
+    """Absolute, posix-separated path of the component's description file."""
+
+    name: str
+    """The component's name, or the file's stem when it did not load that far."""
+
+    loaded: bool
+    """Whether the file parsed and matched the shape its kind requires."""
+
+    findings: FindingCounts
+    """How many findings of each severity are filed on this module."""
+
+
+class GraphDisagreement(_Frozen):
+    """One finding that says the two modules of a flow describe an object differently."""
+
+    object: str | None
+    """Name of the object this is about, or ``None`` when it could not be resolved."""
+
+    check: str
+    """The check that filed this finding."""
+
+    severity: Severity
+    """How this disagreement is reported."""
+
+    message: str
+    """What the disagreement says."""
+
+
+class GraphFlow(_Frozen):
+    """Everything one module produces for another."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    source: str = Field(alias="from")
+    """Absolute, posix-separated path of the module that owns the objects that flow.
+
+    Named ``source`` here - ``from`` is a python keyword - and carried under its alias, so
+    that the json this answers with spells the key the way spec section 4.5 does.
+    """
+
+    to: str
+    """Absolute, posix-separated path of the module that reads them."""
+
+    objects: tuple[str, ...]
+    """Names of the objects that flow from the source to the target, sorted."""
+
+    severity: Severity | None
+    """The worst of the flow's disagreements, or ``None`` when the two modules agree."""
+
+    disagreements: tuple[GraphDisagreement, ...]
+    """Every disagreement between the two modules; empty when they agree."""
+
+
+class GraphReply(_Frozen):
+    """What ``GET /api/graph`` answers: one revision's modules and the flows between them."""
+
+    revision: int
+    """The revision this graph was built from."""
+
+    dictionary: bool
+    """Whether the revision resolved a dictionary.
+
+    ``False`` is a plugin that raised or a file that did not parse, and it is the only thing
+    that tells that apart from a project whose modules genuinely share nothing: both answer
+    their modules and no flows, and spec section 5.6 asks the page to say so only for the
+    first.
+    """
+
+    modules: tuple[GraphModule, ...]
+    """Every component of the project, sorted by path."""
+
+    flows: tuple[GraphFlow, ...]
+    """Every flow between two modules, sorted by source then target."""
+
+
 # --- GET /api/checks -----------------------------------------------------------------------
 
 
@@ -432,6 +518,7 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (State, "serialization"),
     (FileContent, "serialization"),
     (DictionaryReply, "serialization"),
+    (GraphReply, "serialization"),
     (ChecksReply, "serialization"),
     (Changes, "validation"),
     (EditReply, "serialization"),

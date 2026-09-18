@@ -22,7 +22,7 @@ def _public_models() -> list[type[BaseModel]]:
 
 class TestApiSchema:
     def test_every_model_declared_here_has_a_defs_entry(self) -> None:
-        """A model reachable from none of the eight endpoints would have no entry here, which
+        """A model reachable from none of the nine endpoints would have no entry here, which
         is what turns a model added without a page type into a failure of this suite instead
         of a frontend silently left behind the contract it was supposed to describe."""
         schema = contract.api_schema()
@@ -38,13 +38,12 @@ class TestApiSchema:
     def test_the_dictionary_field_does_not_repeat_the_file_formats_definitions(self) -> None:
         """Review finding: ``dictionary`` used to be typed as :class:`ddd.ir.DataDictionary`,
         pulling that model and its 22 nested ones into ``$defs`` a second time, beside the shape
-        ``dictionary.ts`` already generates from ``ddd schema dictionary``. Pinned at 22 defs
-        total, so a $def creeping back in because some future field is typed as a file-format
-        model fails this test rather than silently doubling the generated page types again."""
+        ``dictionary.ts`` already generates from ``ddd schema dictionary``. Pinned by the tree's
+        absence and by the field's own schema, rather than by a count of ``$defs`` that every
+        model the api adds would have to bump."""
         schema = contract.api_schema()
         assert "DataDictionary" not in schema["$defs"]
         assert "$ref" not in schema["$defs"]["DictionaryReply"]["properties"]["dictionary"]
-        assert len(schema["$defs"]) == 22
 
 
 class TestRequestsAreStrict:

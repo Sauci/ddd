@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import {
   ApiError,
   getFile,
+  getGraph,
   getProjects,
   getSession,
   getState,
@@ -77,6 +78,7 @@ describe("requests to the server", () => {
     await getState(null, undefined, fetchImpl);
     await getState(3, signal, fetchImpl);
     await getFile("C:/p/a b.ddd.json", fetchImpl);
+    await getGraph(fetchImpl);
     await postEdit(
       { changes: [{ file: "a", fingerprint: "x", operations: [{ op: "remove", pointer: "a" }] }] },
       fetchImpl,
@@ -96,6 +98,7 @@ describe("requests to the server", () => {
       ["/api/state", { credentials: "same-origin" }],
       ["/api/state?after=3", { credentials: "same-origin", signal }],
       ["/api/file?path=C%3A%2Fp%2Fa%20b.ddd.json", { credentials: "same-origin" }],
+      ["/api/graph", { credentials: "same-origin" }],
       [
         "/api/edit",
         {

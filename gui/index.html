@@ -4,6 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ddd gui</title>
+    <!-- This id is also react-aria's own guard (public/pressable.css): present already, it skips
+         inserting the equivalent inline stylesheet the page's Content-Security-Policy blocks. -->
+    <link id="react-aria-pressable-style" rel="stylesheet" href="/pressable.css" />
   </head>
   <body>
     <div id="root"></div>

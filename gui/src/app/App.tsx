@@ -60,7 +60,22 @@ export function App() {
       </section>
     );
   } else {
-    page = <ComponentPage file={route.file} state={state} disabled={stopped} />;
+    page = (
+      <ComponentPage
+        file={route.file}
+        variable={route.variable}
+        state={state}
+        stopped={stopped}
+        onVariable={(variable) =>
+          navigate(
+            variable === undefined
+              ? { page: "component", file: route.file }
+              : { page: "component", file: route.file, variable },
+            { replace: true },
+          )
+        }
+      />
+    );
   }
 
   return (

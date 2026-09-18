@@ -1,0 +1,14 @@
+/* React Aria's own rule for every element `usePress` marks, delivered as this external, same-
+   origin file instead of the inline <style id="react-aria-pressable-style"> it otherwise injects
+   at runtime (node_modules/react-aria/dist/private/interactions/usePress.mjs): the page's
+   Content-Security-Policy is `default-src 'self'` with no `'unsafe-inline'`, which blocks that
+   inline element and reports a `style-src-elem` violation (`gui/e2e/units.spec.ts`, "no page
+   reports a violation of its content security policy"). `usePress` first checks
+   `document.getElementById("react-aria-pressable-style")` and skips its own injection when an
+   element with that id already exists, whatever it is - index.html links this file under that
+   id, so the rule still applies, from a source the policy allows. */
+@layer {
+  [data-react-aria-pressable] {
+    touch-action: pan-x pan-y pinch-zoom;
+  }
+}

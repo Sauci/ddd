@@ -72,26 +72,10 @@ tr.has-error td:first-child {
 button {
   font: inherit;
 }
-button.value {
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--accent);
-  cursor: pointer;
-  text-align: left;
-}
-button.value:hover {
-  text-decoration: underline;
-}
 button:focus-visible,
 input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-}
-input.unit {
-  font: inherit;
-  width: 8em;
-  padding: 2px var(--space-1);
 }
 .projects {
   list-style: none;

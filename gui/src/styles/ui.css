@@ -112,6 +112,81 @@
   }
 }
 
+/* VariablePanelView: the panel's own table of declarations, styled like the page's other
+   tables; a declaration a chosen unit would change, marked and tagged; the refusal or the
+   consequence line under the picker; the Show changes / Apply row; and a hunk's lines. */
+.panel-declarations {
+  width: 100%;
+  margin-top: var(--space-2);
+  border-collapse: collapse;
+  background: var(--surface);
+}
+.panel-declarations th,
+.panel-declarations td {
+  padding: var(--cell);
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: top;
+}
+.panel-declarations th {
+  font-weight: 600;
+}
+tr.changing td {
+  background: var(--warning-ground);
+}
+.tag {
+  margin-left: var(--space-1);
+  color: var(--warning);
+  font-size: var(--text-small);
+}
+.panel-findings {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.panel-refusal {
+  margin: var(--space-2) 0 0;
+  color: var(--warning);
+  font-size: var(--text-small);
+}
+.consequence {
+  margin: var(--space-2) 0 0;
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
+.panel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.hunk {
+  display: block;
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--ground);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: var(--text-small);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.hunk span {
+  display: block;
+}
+.hunk .where {
+  font-family: var(--font);
+  color: var(--ink-quiet);
+}
+.hunk .removed {
+  color: var(--error);
+}
+.hunk .added {
+  color: var(--ok);
+}
+
 /* ComboBox: a labelled field that opens a popover of sectioned choices, and takes any typed
    text. The popover's width tracks the field's through React Aria's own --trigger-width. */
 .combo {

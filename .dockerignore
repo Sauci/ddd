@@ -13,10 +13,9 @@ venv/
 # Build output and caches that .gitignore already keeps out of the repository. They are not
 # in the image either way - nothing copies them - but everything here is uploaded to the
 # daemon as the build context before the first instruction runs, and these are the large
-# ones: node_modules/ and editors/vscode/out/ from working on the extension, htmlcov/ and
-# .coverage from a coverage run, the packaged extension, the built documentation, and the
-# two ASAP2 specification pdfs under the design records.
-node_modules/
+# ones: editors/vscode/out/ from working on the extension, htmlcov/ and .coverage from a
+# coverage run, the packaged extension, the built documentation, and the two ASAP2
+# specification pdfs under the design records.
 editors/vscode/out/
 *.vsix
 htmlcov/
@@ -25,3 +24,17 @@ coverage.xml
 coverage.json
 docs/_build/
 docs/superpowers/*.pdf
+# What npm leaves in the tree, which the image makes for itself: its first stage installs the
+# packages of gui/, generates the page types and compiles the pages, and the final stage takes
+# the pages from it. `COPY src` and `COPY gui` take whatever the context holds, so the host's
+# would be laid over the image's own - a stale build's pages installed beside the fresh ones,
+# types generated from whatever package the host had, packages npm installed for another
+# system. **/ because a bare node_modules/ matches at the root only, where there is none: the
+# extension's and the browser interface's are further down.
+**/node_modules/
+src/ddd/gui/static/
+gui/src/generated/
+# What running the browser tests leaves, Playwright's traces and its report: nothing the image
+# uses, and copied into its first stage by `COPY gui` otherwise.
+gui/test-results/
+gui/playwright-report/

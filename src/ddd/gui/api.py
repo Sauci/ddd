@@ -24,7 +24,7 @@ from pydantic import BaseModel, ValidationError
 from ddd import __version__
 from ddd.diagnostics import CHECKS
 from ddd.editing import INVALID, STALE, UNREADABLE, UNVERIFIED, EditError, FileChange, Operation
-from ddd.graph import Disagreement, Flow, Module, graph_of
+from ddd.graph import Module, graph_of
 from ddd.gui import contract
 from ddd.gui.session import (
     Filed,
@@ -186,8 +186,37 @@ class Api:
             contract.GraphReply(
                 revision=revision.number,
                 dictionary=revision.dictionary is not None,
-                modules=[_graph_module(module) for module in built.modules],
-                flows=[_graph_flow(flow) for flow in built.flows],
+                modules=[
+                    {
+                        "path": module.path.as_posix(),
+                        "name": module.name,
+                        "loaded": module.loaded,
+                        "findings": {
+                            "error": module.errors,
+                            "warning": module.warnings,
+                            "info": module.infos,
+                        },
+                    }
+                    for module in built.modules
+                ],
+                flows=[
+                    {
+                        "source": flow.source.as_posix(),
+                        "to": flow.target.as_posix(),
+                        "objects": flow.objects,
+                        "severity": flow.severity,
+                        "disagreements": [
+                            {
+                                "object": disagreement.object,
+                                "check": disagreement.check,
+                                "severity": disagreement.severity,
+                                "message": disagreement.message,
+                            }
+                            for disagreement in flow.disagreements
+                        ],
+                    }
+                    for flow in built.flows
+                ],
             ).model_dump(mode="json", by_alias=True),
         )
 
@@ -303,34 +332,6 @@ def _module(file: SourceFile) -> Module:
         file.warnings,
         file.infos,
     )
-
-
-def _graph_module(module: Module) -> dict[str, Any]:
-    return contract.GraphModule(
-        path=module.path.as_posix(),
-        name=module.name,
-        loaded=module.loaded,
-        findings={"error": module.errors, "warning": module.warnings, "info": module.infos},
-    ).model_dump(mode="json")
-
-
-def _graph_flow(flow: Flow) -> dict[str, Any]:
-    return contract.GraphFlow(
-        source=flow.source.as_posix(),
-        to=flow.target.as_posix(),
-        objects=flow.objects,
-        severity=flow.severity,
-        disagreements=[_disagreement(d) for d in flow.disagreements],
-    ).model_dump(mode="json")
-
-
-def _disagreement(disagreement: Disagreement) -> dict[str, Any]:
-    return contract.GraphDisagreement(
-        object=disagreement.object,
-        check=disagreement.check,
-        severity=disagreement.severity,
-        message=disagreement.message,
-    ).model_dump(mode="json")
 
 
 def _single(values: Sequence[str] | None) -> str | None:

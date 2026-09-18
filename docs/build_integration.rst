@@ -627,8 +627,8 @@ itself is installed with its development extra, which is also where the cmake an
 that build the cmake example come from: both are wheels from pypi rather than debian packages,
 because debian bookworm still ships cmake 3.25 and the module needs 3.30. ``docker/compile.sh``
 is installed as the command ``ddd-compile``. The image serves ``ddd gui`` too: its pages are
-compiled in a first stage of the same file, the only one with Node.js in it, and only the pages
-reach the image, installed with DDD.
+compiled in an earlier stage of the same file, which has Node.js and is thrown away, and only
+the pages reach the image, installed with DDD.
 
 .. note::
    The image is a linux image, so on a Windows host run docker from a WSL shell, where docker

@@ -376,7 +376,7 @@ containers:
    docker compose run --rm cmake       # build examples/cmake through cmake/Ddd.cmake
    docker compose run --rm docs        # build this documentation
 
-The image serves ``ddd gui`` too: a first stage of ``docker/Dockerfile`` compiles the pages,
+The image serves ``ddd gui`` too: an earlier stage of ``docker/Dockerfile`` compiles the pages,
 and only the pages reach the image, installed with the package - no node. A service runs the
 working tree, though, and with it the pages compiled there, if any.
 

@@ -252,7 +252,7 @@ and the unit, a unit its type fixes reading "rpm, from Speed_t"; the variable's 
 picker; what the chosen unit would change - "Changes 1 file: controller.ddd.json", or "Nothing to
 change"; **Show changes**; and **Apply to N files**. Choosing a unit fetches its preview and marks
 each declaration it would change "will change". Apply posts the preview's `edit`, and the panel
-then follows the revision the edit answered with.
+then shows the revision the edit made.
 
 ### 5.3 The unit picker
 
@@ -286,8 +286,8 @@ its own panel. The address carries it as it does on the component page.
 - **The preview is refused** - a type fixes the unit, or a file does not read. The panel says why
   and names the file; there is nothing to apply.
 - **The file changed on disk** between the preview and Apply. The edit is refused as `stale`, and
-  milestone 1's banner says so; the panel shows the new revision's declarations and the reader
-  chooses again.
+  the panel says so, next to the Apply that was refused; the panel shows the new revision's
+  declarations and the reader chooses again.
 - **The variable is no longer declared**, renamed or removed on disk. The panel says so and closes
   back to the table.
 - **The server stopped.** Milestone 1's banner appears, and the panel keeps what it shows but offers
@@ -308,10 +308,10 @@ its own panel. The address carries it as it does on the component page.
   picker open; Show changes open; an Apply refused as stale.
 - A Playwright project, `screenshots`, visits every story of the static build and compares it with
   its reference image, committed under `gui/`. The references are made and checked in Playwright's
-  Linux Docker image, pinned to the version the page's Playwright is: in CI, in the `gui` job on
-  Ubuntu, and on a developer's Linux machine through a `gui-screenshots` compose service, which
-  also refreshes the references on request. Files the service writes into the checkout belong to
-  the user who ran it, not to root.
+  Linux Docker image, pinned to the version the page's Playwright is: in CI, in a job of their own,
+  `gui-screenshots`, which runs in that image, and on a developer's Linux machine through a
+  `gui-screenshots` compose service, which also refreshes the references on request. Files the
+  service writes into the checkout belong to the user who ran it, not to root.
 
 ## 7 Testing
 

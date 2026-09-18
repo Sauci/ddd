@@ -193,8 +193,9 @@ ddd gui [PROJECT] [-b DIR]... [--host ADDRESS] [--port N] [--no-browser]
 The command prints one line to stdout, `ddd gui (preview) serving <address>`, and, beyond
 loopback, one more to stderr warning about it (6.3); it runs until it is interrupted, which
 exits 0. It exits 2 when the project is not a project description, when `--host` cannot be
-resolved to an address or a fixed port is taken, when `--port 0` is combined with a `--host`
-beyond loopback, or when the installation has no compiled pages (section 6.8).
+resolved to an address, when the address it resolves to cannot be bound or a fixed port is
+taken, when `--port 0` is combined with a `--host` beyond loopback, or when the installation
+has no compiled pages (section 6.8).
 
 The findings of an open project are those of every build record that names it, merged the way
 the language server merges them. With no record naming it, the project is analysed with the

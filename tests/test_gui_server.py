@@ -627,6 +627,23 @@ class TestRunning:
         message = capsys.readouterr().err
         assert message.startswith("ddd: cannot serve é..x on port 8123:")
 
+    def test_an_address_that_cannot_be_resolved_at_all_is_a_usage_error_not_a_crash(
+        self, pages, monkeypatch, capsys
+    ) -> None:
+        """--host ::1 has no AF_INET address at all, so getaddrinfo raises gaierror - an
+        OSError, not the ValueError a malformed or non-ASCII host raises. Both have to be
+        caught here: narrowed to ValueError alone, this would propagate uncaught, past
+        run() and past main()'s own usage-error handling, naming neither the host nor the
+        port anywhere."""
+
+        def getaddrinfo(host, port, family, kind):
+            raise socket.gaierror("getaddrinfo failed")
+
+        monkeypatch.setattr(module.socket, "getaddrinfo", getaddrinfo)
+        result = run(None, [], 8123, open_browser=False, static=pages, host="::1")
+        assert result == EXIT_USAGE
+        assert capsys.readouterr().err == "ddd: cannot serve ::1 on port 8123: getaddrinfo failed\n"
+
     def test_beyond_loopback_it_warns_once_and_opens_no_browser(
         self, pages, monkeypatch, capsys
     ) -> None:
@@ -745,8 +762,10 @@ class TestRunning:
             return [(family, kind, 0, "", ("192.168.1.50", port))]
 
         real_init = GuiServer.__init__
+        received: list[tuple[str, int]] = []
 
         def binds_loopback_for_real(self, api, static, port=0, host="127.0.0.1"):
+            received.append((host, port))
             # Never 192.168.1.50 for real, for the same reason as every such fake in this
             # file: this is about what run() decides from the address, not about a real
             # socket answering on a LAN interface in a test.
@@ -763,6 +782,7 @@ class TestRunning:
         result = run(None, [], 8123, open_browser=True, static=pages, host="localhost")
 
         assert result == EXIT_OK
+        assert received == [("192.168.1.50", 8123)]
         assert "listening on 192.168.1.50:" in capsys.readouterr().err
         assert opened == []
 

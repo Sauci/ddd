@@ -35,6 +35,16 @@ class TestApiSchema:
         assert schema["title"] == "ddd gui API"
         assert "preview command" in schema["description"]
 
+    def test_the_dictionary_field_does_not_repeat_the_file_formats_definitions(self) -> None:
+        """Review finding: ``dictionary`` used to be typed as :class:`ddd.ir.DataDictionary`,
+        pulling that model and its 22 nested ones into ``$defs`` a second time, beside the shape
+        ``dictionary.ts`` already generates from ``ddd schema dictionary``. Pinned by the tree's
+        absence and by the field's own schema, rather than by a count of ``$defs`` that every
+        model the api adds would have to bump."""
+        schema = contract.api_schema()
+        assert "DataDictionary" not in schema["$defs"]
+        assert "$ref" not in schema["$defs"]["DictionaryReply"]["properties"]["dictionary"]
+
 
 class TestRequestsAreStrict:
     """``extra="forbid", strict=True``: what the hand-written ``_changes``/``_operation``/

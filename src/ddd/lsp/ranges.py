@@ -24,9 +24,10 @@ from __future__ import annotations
 
 import bisect
 import json
-import re
 from pathlib import Path
 from typing import Any, Final
+
+from ddd.pointers import parent_pointer, segments
 
 _WHITESPACE: Final = " \t\n\r"
 _LITERAL_END: Final = ",}] \t\n\r"
@@ -75,7 +76,7 @@ class Document:
             # edit. The finding belongs to the file, so it goes at the top of it.
             return _range(_POSITION_ZERO, _POSITION_ZERO)
         start, end = span
-        return _range(self._position(start), self._position(end))
+        return _range(self.position(start), self.position(end))
 
     def pointer_at(self, position: dict[str, int]) -> str:
         """Which value the cursor is in, as the pointer DDD would name it.
@@ -109,16 +110,6 @@ class Document:
             return None
         return value
 
-    def line_at(self, line: int) -> str:
-        """The text of one line, counted the way every position in here counts them.
-
-        ``str.splitlines()`` is the obvious way to ask and the wrong one: it breaks on a dozen
-        characters a newline is not - a form feed, a NEL, U+2028 - and one of those inside a
-        description puts its index out of step with every line number this module hands out.
-        A quick fix then copied its indentation from a neighbouring line.
-        """
-        return self.text[self._line_starts[line] :].partition("\n")[0]
-
     def _offset(self, position: dict[str, int]) -> int:
         """Where a protocol position lands in the text, counting as the protocol counts."""
         line = min(position["line"], len(self._line_starts) - 1)
@@ -138,7 +129,7 @@ class Document:
         span = self._texts.get(pointer)
         if span is None:
             return None
-        return _range(self._position(span[0]), self._position(span[1]))
+        return _range(self.position(span[0]), self.position(span[1]))
 
     def raw_at(self, pointer: str) -> str | None:
         """The source text of a value, exactly as the author wrote it.
@@ -155,7 +146,7 @@ class Document:
         span = self._values.get(pointer)
         if span is None:
             return None
-        return _range(self._position(span[0]), self._position(span[1]))
+        return _range(self.position(span[0]), self.position(span[1]))
 
     def value_span_of(self, pointer: str) -> tuple[int, int] | None:
         """Where a value's characters sit in the text, as offsets into it.
@@ -167,6 +158,16 @@ class Document:
         """
         return self._values.get(pointer)
 
+    def span_of(self, pointer: str) -> tuple[int, int] | None:
+        """Where an entry sits in the text, as offsets: a member's key and value together, or an
+        element's value.
+
+        What an edit that removes or moves an entry cuts along. :meth:`value_span_of` leaves a
+        member's key out, which is right for replacing its value and wrong for taking the member
+        away.
+        """
+        return self._spans.get(pointer)
+
     def _resolve(self, pointer: str) -> tuple[int, int] | None:
         """The span of the pointer, of its nearest documented ancestor, or nothing."""
         current = pointer
@@ -176,9 +177,15 @@ class Document:
                 return found
             if not current:
                 return None
-            current = _parent(current)
+            current = parent_pointer(current)
 
-    def _position(self, offset: int) -> dict[str, int]:
+    def position(self, offset: int) -> dict[str, int]:
+        """Where an offset into the text is, as the protocol counts: a line, and a character
+        counted in utf-16 code units.
+
+        Public for the quick fixes, which compute their edits as offsets through
+        :mod:`ddd.editing` and send them as ranges.
+        """
         line = bisect.bisect_right(self._line_starts, offset) - 1
         # Characters are counted in utf-16 code units, which is what the protocol means by
         # "character" unless a client negotiates otherwise. A degree sign in a unit costs one
@@ -195,27 +202,10 @@ def _range(start: dict[str, int], end: dict[str, int]) -> dict[str, Any]:
     return {"start": start, "end": end}
 
 
-def _parent(pointer: str) -> str:
-    """``a.b[2].c`` -> ``a.b[2]`` -> ``a.b`` -> ``a`` -> ``''``."""
-    cut = max(pointer.rfind("."), pointer.rfind("["))
-    return pointer[:cut] if cut > 0 else ""
-
-
 def _line_starts(text: str) -> list[int]:
     starts = [0]
     starts.extend(index + 1 for index, character in enumerate(text) if character == "\n")
     return starts
-
-
-_SEGMENT: Final = re.compile(r"\[(\d+)\]|([^.\[\]]+)")
-
-
-def segments(pointer: str) -> list[str | int]:
-    """``a.b[2].c`` -> ``['a', 'b', 2, 'c']``, the way into a parsed document."""
-    return [
-        int(index) if index is not None else key
-        for index, key in (match.group(1, 2) for match in _SEGMENT.finditer(pointer))
-    ]
 
 
 def read(path: Path, cache: dict[Path, Document]) -> Document:

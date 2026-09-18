@@ -320,15 +320,62 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
     )
     lsp.set_defaults(handler=_command_lsp)
 
+    gui = subparsers.add_parser(
+        "gui",
+        help="preview: edit a project's description files in a browser, on this computer only",
+        description=(
+            "Preview. Serves a browser interface over one project's description files on the "
+            "loopback address of this computer, and opens the browser on it. Every change is "
+            "written into the description files in their own layout and checked with the same "
+            "analysis as ddd check. It runs until it is interrupted, and its options are not "
+            "yet part of the stable interface."
+        ),
+    )
+    gui.add_argument(
+        "project",
+        nargs="?",
+        type=Path,
+        metavar="PROJECT",
+        help=(
+            "the project description to open; without it the start page lists the projects "
+            "found under the current directory"
+        ),
+    )
+    gui.add_argument(
+        "-b",
+        "--build-directory",
+        type=Path,
+        action="append",
+        default=[],
+        metavar="DIR",
+        help=(
+            "directory holding a build of the project, whose severities apply; repeatable. "
+            "Without it the usual build directory names are searched"
+        ),
+    )
+    gui.add_argument(
+        "--port",
+        type=_port,
+        default=0,
+        metavar="N",
+        help="port to serve on; the default, 0, lets the system pick a free one",
+    )
+    gui.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="print the address without opening a browser on it",
+    )
+    gui.set_defaults(handler=_command_gui)
+
     build_info = subparsers.add_parser(
         "build-info",
-        help="record how a build configured DDD, for an editor to pick up",
+        help="record how a build configured DDD, for the language server and ddd gui to pick up",
         description=(
             "Writes the project description a build runs DDD on, and the severity policy it "
             "applies, into a small json file. A build system calls this at configure time so "
-            "that an editor can report what the build reports. The project description is "
-            "recorded rather than read: with CMake it is often generated later in the same "
-            "configure run, out of the link graph."
+            "that the language server and ddd gui can report what the build reports. The "
+            "project description is recorded rather than read: with CMake it is often "
+            "generated later in the same configure run, out of the link graph."
         ),
     )
     build_info.add_argument("project", type=Path, help="project or component description file")
@@ -1301,6 +1348,21 @@ def _command_lsp(args: argparse.Namespace) -> int:
     from ddd.lsp.server import serve
 
     return serve(args.build_directory)
+
+
+def _command_gui(args: argparse.Namespace) -> int:
+    # Imported here, like the language server: the server brings up the loader, the analysis
+    # and the edit engine, which no other command should pay for.
+    from ddd.gui.server import run
+
+    return int(run(args.project, args.build_directory, args.port, open_browser=not args.no_browser))
+
+
+def _port(text: str) -> int:
+    """A port to serve on: a number from 0, which lets the system pick one, to 65535."""
+    if not (text.isascii() and text.isdecimal()) or int(text) > 65535:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a port number from 0 to 65535")
+    return int(text)
 
 
 def _command_build_info(args: argparse.Namespace) -> int:

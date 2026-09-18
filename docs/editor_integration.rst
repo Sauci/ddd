@@ -133,12 +133,14 @@ three stages:
   and the answer to which one the reader cares about is both. Each record is counted under
   the path it resolves to, so a link inside a build tree does not turn one record into a
   record per way of spelling it.
-  The records a search discovers are announced as log messages, and a record that cannot be
-  read, or that names a check this version of DDD has not got, is skipped and the reason
+  The records a search discovers are announced as log messages, and a record written by a
+  newer DDD, or that names a check this version of DDD has not got, is skipped and the reason
   announced with it - skipped in silence, a record nothing can use looks exactly like a
-  workspace nobody ever configured a build in. A record whose severities name a *plugin's*
-  check that no plugin of the project registers is reported as a ``plugin-invalid`` finding
-  on the project file, which is what ``ddd check`` refuses the same ``-W`` for.
+  workspace nobody ever configured a build in. A file that is not a build record at all is
+  skipped without a word: a build wrote it, and nobody fixes it in an editor. A record whose
+  severities name a *plugin's* check that no plugin of the project registers is reported as a
+  ``plugin-invalid`` finding on the project file, which is what ``ddd check`` refuses the
+  same ``-W`` for.
 * **A containing project.** A file no build record claims is looked for in a containing
   project instead: the server walks from the file's directory up to the workspace root and
   checks the file under the project descriptions of the nearest directory that include it.

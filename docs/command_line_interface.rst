@@ -5,9 +5,11 @@ DDD is a plain command line tool: it reads json files, writes files or a report,
 and everything a build or a delivery needs from it happens in one such run. That is what
 makes it usable from wherever the build already lives - a makefile, a cmake project (see
 :doc:`build_integration`), a batch file on an engineer's machine, or a ci job that never sees
-a terminal. The one command that does not exit is ``ddd lsp``, the language server an editor
-keeps running (see :doc:`editor_integration`), and the one file the tool leaves behind for
-its own use is the ``ddd-build.json`` that ``ddd build-info`` writes for that server.
+a terminal. Two commands do not exit: ``ddd lsp``, the language server an editor keeps running
+(see :doc:`editor_integration`), and ``ddd gui``, the preview of a browser interface, which
+serves until it is interrupted. The one file the tool leaves behind for its own use is the
+``ddd-build.json`` that ``ddd build-info`` writes for the language server and for ``ddd gui``,
+which both apply the severities of the build that names a project.
 
 The same discipline governs the output. The findings - everything the tool has to say about
 a project - are written to standard error, one line per finding followed by a summary, while
@@ -19,11 +21,11 @@ say about it.
 
 For a job that files findings rather than reads them, eight commands understand
 ``--format json``: ``check``, ``compare``, ``generate``, ``list``, ``dump``, ``sources``,
-``artefacts`` and ``checks``. That leaves out ``schema`` and ``build-info``, whose output is json already,
-``lsp``, which speaks json-rpc, ``cmake-dir`` and ``templates-dir``, which print one path, and
-``id``, which reports the files it skipped and one total rather than findings. In json the
-diagnostics become part of the document the command prints, next to whatever else it has to
-report:
+``artefacts`` and ``checks``. That leaves out ``schema`` and ``build-info``, whose output is
+json already, ``lsp``, which speaks json-rpc, ``gui``, which serves pages to a browser,
+``cmake-dir`` and ``templates-dir``, which print one path, and ``id``, which reports the files
+it skipped and one total rather than findings. In json the diagnostics become part of the
+document the command prints, next to whatever else it has to report:
 
 .. code-block:: text
 
@@ -283,10 +285,18 @@ The commands
      - run the language server, speaking the Language Server Protocol on stdin and stdout,
        so an editor reports the checks while a description file is being written; see
        :doc:`editor_integration`.
+   * - ``ddd gui [PROJECT]``
+     - preview: serve a browser interface over one project's description files, on this
+       computer only, and open the browser on it. Every change is written into the files in
+       their own layout and checked the way ``ddd check`` checks them. ``-b DIR`` names a build
+       directory as for ``ddd lsp``, ``--port N`` fixes the port and ``--no-browser`` only
+       prints the address. It serves until interrupted, and its options are not yet part of
+       the stable interface.
    * - ``ddd build-info FILE -o FILE``
      - record which project description a build runs DDD on and under which severity policy,
-       the ``ddd-build.json`` an editor reads; ``ddd_generate()`` calls it at configure
-       time, so a hand-rolled build is the only caller that needs it directly.
+       the ``ddd-build.json`` the language server and ``ddd gui`` read; ``ddd_generate()``
+       calls it at configure time, so a hand-rolled build is the only caller that needs it
+       directly.
    * - ``ddd checks``
      - list every check with its identifier, its default severity, whether it can be relaxed
        (``(fixed)`` if not), whether it needs every component of a project (``(project)``)

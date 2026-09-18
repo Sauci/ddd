@@ -1,0 +1,37 @@
+{
+  "name": "ddd-gui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "scripts": {
+    "schemas": "node scripts/schemas.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "vitest run --coverage",
+    "build": "vite build && node scripts/licenses.mjs",
+    "watch": "vite build --watch",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.103.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@playwright/test": "1.63.0",
+    "@types/node": "24.13.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "@vitest/coverage-v8": "5.0.1",
+    "json-schema-to-typescript": "16.0.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.0",
+    "vitest": "5.0.1"
+  }
+}

@@ -17,6 +17,8 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Final
 
+from pydantic import BaseModel, ConfigDict
+
 from ddd.build_info import BUILD_INFO_FILENAME, BUILD_INFO_FORMAT, BuildInfo
 from ddd.diagnostics import SeverityPolicy, UnknownCheckError
 
@@ -50,33 +52,58 @@ def build_files(root: Path, configured: Sequence[Path] = ()) -> list[Path]:
     return sorted(found)
 
 
+class _Stamp(BaseModel):
+    """The format a build record says it is in, read without the rest of it.
+
+    Read the way :class:`ddd.build_info.BuildInfo` reads it, so a record is refused as newer by
+    exactly the format it would otherwise have been validated as.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    format: int = BUILD_INFO_FORMAT
+
+
 def load_builds(paths: Iterable[Path], refused: dict[Path, str] | None = None) -> list[BuildInfo]:
-    """Read the records, skipping any this version cannot make sense of.
+    """Read the records, skipping any this version cannot use.
 
-    Skipped rather than reported: these files are written by a build, not by a person, so a
-    malformed one is not a mistake somebody can fix in the editor that would be showing the
-    complaint. A record from a newer DDD is the same story - it carries keys this version does
-    not know, which is exactly what the format stamp is there to tell us.
+    A malformed record is skipped in silence: these files are written by a build, not by a
+    person, so a broken one is not a mistake somebody can fix in the editor that would be
+    showing the complaint.
 
-    A record whose severities name a check this version has not got is the third shape of the
-    same story, and the one that used to be fatal: the keys all validate, the stamp says
-    nothing, and building the policy raised out of the first refresh that reached it - so a
-    record written by a newer ``ddd`` in the build tree ended the editor's server on the first
-    document opened. The record is skipped like the others and why is written into ``refused``,
-    for a caller that has somewhere to say it: skipped in silence, a record that cannot be used
-    looks exactly like a workspace nobody ever configured a build in.
+    A record this version cannot use although nothing is wrong with it is skipped with the
+    reason written into ``refused``, for a caller that has somewhere to say it - the language
+    server's log, the start page of ``ddd gui``. Skipped in silence, such a record looks exactly
+    like a workspace nobody ever configured a build in, and its project is analysed under the
+    default severities with nothing to say why. Both shapes of it are what a team meets while
+    its builds and its editors run different versions of DDD:
+
+    * a record written by a newer DDD, in a format higher than this version reads. The stamp is
+      read on its own, before the record is validated: a newer record is exactly one that may
+      carry keys this version does not know, and the record's objects being closed, those keys
+      fail its validation before the stamp could say why;
+    * a record whose severities name a check this version has not got: the keys all validate
+      and the stamp says nothing. It used to be fatal - building the policy raised out of the
+      first refresh that reached it, so a record written by a newer ``ddd`` in the build tree
+      ended the editor's server on the first document opened.
     """
     reasons = {} if refused is None else refused
     builds = []
     for path in paths:
         try:
-            info = BuildInfo.model_validate_json(path.read_text(encoding="utf-8"))
+            text = path.read_text(encoding="utf-8")
+            stamp = _Stamp.model_validate_json(text).format
         except (OSError, UnicodeDecodeError, ValueError):
             continue
-        # A record carrying keys this version does not know is already refused above, the
-        # objects being closed. This catches the other shape of "newer": the same keys with a
-        # meaning that has moved on, which only the stamp can say.
-        if info.format > BUILD_INFO_FORMAT:
+        if stamp > BUILD_INFO_FORMAT:
+            reasons[path] = (
+                f"written in format {stamp} by a newer DDD, and this one understands up to "
+                f"format {BUILD_INFO_FORMAT}"
+            )
+            continue
+        try:
+            info = BuildInfo.model_validate_json(text)
+        except ValueError:
             continue
         try:
             SeverityPolicy.from_strings(list(info.severity), strict=info.strict)

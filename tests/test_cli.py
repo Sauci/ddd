@@ -3747,3 +3747,50 @@ class TestTheNamesTheParserIsBuiltFrom:
 
         assert tuple(order.value for order in ByteOrder) == BYTE_ORDERS
         assert ByteOrder(BYTE_ORDERS[0]) is ByteOrder.LITTLE  # the default the help names
+
+
+class TestGui:
+    """The command only hands its options to the server; tests/test_gui_server.py runs it."""
+
+    @staticmethod
+    def recorder(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+        seen: dict[str, object] = {}
+
+        def run(project, build_directories, port, *, open_browser, static=None):
+            seen.update(
+                project=project,
+                build_directories=build_directories,
+                port=port,
+                open_browser=open_browser,
+            )
+            return EXIT_OK
+
+        monkeypatch.setattr("ddd.gui.server.run", run)
+        return seen
+
+    def test_the_options_reach_the_server(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        seen = self.recorder(monkeypatch)
+        arguments = ["gui", "p.ddd.json", "-b", "build", "--port", "8123", "--no-browser"]
+        assert main(arguments) == EXIT_OK
+        assert seen == {
+            "project": Path("p.ddd.json"),
+            "build_directories": [Path("build")],
+            "port": 8123,
+            "open_browser": False,
+        }
+
+    def test_by_default_the_system_picks_the_port_and_the_browser_is_opened(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen = self.recorder(monkeypatch)
+        assert main(["gui"]) == EXIT_OK
+        assert seen == {"project": None, "build_directories": [], "port": 0, "open_browser": True}
+
+    @pytest.mark.parametrize("port", ["-1", "65536", "http", "٣"])
+    def test_a_port_that_is_not_one_is_a_usage_error(
+        self, port: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with pytest.raises(SystemExit) as exited:
+            main(["gui", "--port", port])
+        assert exited.value.code == EXIT_USAGE
+        assert "is not a port number from 0 to 65535" in capsys.readouterr().err

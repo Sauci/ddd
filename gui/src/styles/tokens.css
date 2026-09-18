@@ -1,0 +1,23 @@
+/* The skeleton's few tokens. Milestone 2 replaces them with the visual style it chooses. */
+:root {
+  --ink: #1d2a2f;
+  --ink-quiet: #5b6b71;
+  --ground: #f7f9f9;
+  --surface: #ffffff;
+  --rule: #d9e2e5;
+  --accent: #0e6b7c;
+  --error: #b3261e;
+  --error-ground: #fdecea;
+  --warning: #7a4f00;
+  --warning-ground: #fff4dc;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --text-small: 13px;
+  --text-body: 15px;
+  --text-title: 22px;
+  --font: "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", Consolas, monospace;
+}

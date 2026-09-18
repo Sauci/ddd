@@ -769,8 +769,9 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | `ddd schema component\|constants\|dictionary\|project\|rasters\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory; `--plugin` closes the extension blocks over the named plugins' models |
 | `ddd sources FILE` | list every file the project is built out of - the descriptions and the plugin modules - for a build system |
 | `ddd artefacts [FILE]` | list the artefacts `generate` accepts: `c`, `a2l`, and each plugin of the project that provides one |
-| `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for an editor |
+| `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for the language server and `ddd gui` |
 | `ddd lsp` | run the language server, reporting the checks in the editor while a file is written |
+| `ddd gui [PROJECT]` | preview: a browser interface over one project's description files, on this computer only; a change is written into the files in their own layout and checked the way `ddd check` checks it |
 | `ddd checks` | list the checks and their default severity, marking the ones that cannot be relaxed `(fixed)`, need every component of a project `(project)` or grade a delivery comparison `(comparison)`; `--plugin` lists a plugin's checks after the built-in ones |
 | `ddd cmake-dir` | print the directory holding the cmake integration module |
 | `ddd templates-dir` | print the directory holding the example c templates, to copy into a project |
@@ -862,8 +863,8 @@ A `ddd-build.json` is written into the output directory at configure time as wel
 the project description this image is generated from and the severity policy it is generated
 under - the two things no `*.ddd.json` records, since without `PROJECT` the project
 description is collected out of the link graph and does not exist in the source tree at all.
-Nothing in the build reads it; it is there so that an editor can report what the build
-reports.
+Nothing in the build reads it; it is there so that the language server and `ddd gui` can
+report what the build reports.
 
 Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DIRECTORY`,
 `PLUGINS` (the collected project's plugins, written into the generated description and closing

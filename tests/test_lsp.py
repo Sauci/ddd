@@ -18,10 +18,12 @@ from typing import Any
 import pytest
 
 from conftest import (
+    DEMO,
     EXAMPLES,
     INCONSISTENT,
     answered,
     build_record,
+    checks,
     component,
     declare,
     directory_link,
@@ -31,7 +33,7 @@ from conftest import (
     session,
     write_tree,
 )
-from ddd.build_info import BUILD_INFO_FILENAME
+from ddd.build_info import BUILD_INFO_FILENAME, BUILD_INFO_FORMAT, BuildInfo
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
 from ddd.loading import load_workspace
 from ddd.lsp import diagnostics as service
@@ -323,16 +325,32 @@ class TestDiscovery:
         assert found.image == "firmware.elf"
         assert found.project == (tmp_path / "p.ddd.json").as_posix()
 
-    @pytest.mark.parametrize("content", ["not json at all", '{"project": 7}', "{}"])
-    def test_a_record_that_makes_no_sense_is_skipped(self, tmp_path: Path, content: str) -> None:
+    @pytest.mark.parametrize(
+        "content", ["not json at all", '{"project": 7}', "{}", '{"format": "newer"}', "[2]"]
+    )
+    def test_a_record_that_makes_no_sense_is_skipped_in_silence(
+        self, tmp_path: Path, content: str
+    ) -> None:
         """Written by a build rather than by a person, so there is nobody to report it to."""
         path = tmp_path / BUILD_INFO_FILENAME
         path.write_text(content, encoding="utf-8")
-        assert load_builds([path]) == []
+        refused: dict[Path, str] = {}
+        assert load_builds([path], refused) == []
+        assert refused == {}
 
-    def test_a_record_from_a_newer_ddd_is_skipped(self, tmp_path: Path) -> None:
-        path = build_record(tmp_path, tmp_path / "p.ddd.json", format=99)
-        assert load_builds([path]) == []
+    @pytest.mark.parametrize("extra", [{}, {"colour": "blue"}])
+    def test_a_record_from_a_newer_ddd_is_skipped_with_both_formats_named(
+        self, tmp_path: Path, extra: dict[str, str]
+    ) -> None:
+        """Whether or not its keys are ones this version knows, since a newer record is exactly
+        one that may carry keys it does not. Skipped in silence, its project was analysed under
+        the default severities with nothing to say why - which is most likely to happen while a
+        team is upgrading DDD."""
+        newer = BUILD_INFO_FORMAT + 1
+        path = build_record(tmp_path, tmp_path / "p.ddd.json", format=newer, **extra)
+        refused: dict[Path, str] = {}
+        assert load_builds([path], refused) == []
+        assert refused == {path: NEWER_RECORD}
 
     def test_a_record_that_cannot_be_read_is_skipped(self, tmp_path: Path) -> None:
         assert load_builds([tmp_path / "absent.json"]) == []
@@ -385,6 +403,30 @@ class TestDiscovery:
         # project above it, which is what it does for any file no usable record claims
         drawn = published(writer)[(tmp_path / "a.ddd.json").as_uri()]
         assert [entry["code"] for entry in drawn] == ["missing-producer"]
+
+    def test_a_record_from_a_newer_ddd_is_said_out_loud(self, tmp_path: Path) -> None:
+        write_tree(tmp_path, {"p.ddd.json": project("P")})
+        record = build_record(
+            tmp_path, tmp_path / "p.ddd.json", format=BUILD_INFO_FORMAT + 1, colour="blue"
+        )
+        writer = io.BytesIO()
+        Server(io.BytesIO(), writer, root=tmp_path).refresh(tmp_path / "p.ddd.json")
+        said = [
+            message["params"]["message"]
+            for message in sent(writer)
+            if message.get("method") == "window/logMessage"
+        ]
+        assert said == [
+            f"{record}: {NEWER_RECORD}; this record is ignored, so the project it names is not "
+            "analysed"
+        ]
+
+
+NEWER_RECORD = (
+    f"written in format {BUILD_INFO_FORMAT + 1} by a newer DDD, and this one understands up to "
+    f"format {BUILD_INFO_FORMAT}"
+)
+"""Why a build record one format newer than this version reads is refused."""
 
 
 EXITING_CHECK_PLUGIN = """
@@ -705,7 +747,7 @@ class TestDiagnostics:
         bag = DiagnosticBag()
         bag.add("include-empty", "matched nothing")
         grouped: dict[Path, list[Diagnostic]] = {}
-        service._group(bag, tmp_path / "root.ddd.json", grouped)
+        service.group_findings(bag, tmp_path / "root.ddd.json", grouped)
         assert list(grouped) == [tmp_path / "root.ddd.json"]
 
     def test_a_note_with_nowhere_to_point_lands_on_the_file_of_its_finding(
@@ -834,6 +876,64 @@ class TestDiagnostics:
         assert [entry["code"] for entry in reports[tmp_path / "project.ddd.json"]] == [
             "plugin-invalid"
         ]
+
+
+class TestRuns:
+    """What the GUI reads from an analysis: the findings, the files, and the dictionary."""
+
+    def test_a_project_run_keeps_the_dictionary_it_resolved(self) -> None:
+        run = service.run_project(DEMO)
+        assert run.dictionary is not None
+        assert run.dictionary.name == "DemoDevice"
+        assert DEMO.resolve() in run.covered
+        assert not run.bag.has_errors
+
+    def test_a_read_that_reported_an_error_resolves_nothing(self, tmp_path: Path) -> None:
+        write_tree(tmp_path, {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": "{"})
+        run = service.run_project(tmp_path / "p.ddd.json")
+        assert run.dictionary is None
+        assert "json-syntax" in checks(run.bag)
+
+    def test_a_root_that_cannot_be_read_covers_itself_alone(self, tmp_path: Path) -> None:
+        absent = tmp_path / "absent.ddd.json"
+        run = service.run_project(absent)
+        assert run.dictionary is None
+        assert run.covered == frozenset({absent})
+
+    def test_a_build_run_applies_the_builds_severities(self, tmp_path: Path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Unread")),
+            },
+        )
+        info = BuildInfo(
+            project=(tmp_path / "p.ddd.json").as_posix(), severity=("unused-output=error",)
+        )
+        run = service.run_build(info)
+        assert run.dictionary is not None
+        assert [d.severity for d in run.bag if d.check == "unused-output"] == [Severity.ERROR]
+
+    def test_a_plugin_that_raises_during_the_analysis_leaves_no_dictionary(
+        self, tmp_path: Path
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_CHECK_PLUGIN,
+                "p.ddd.json": project("P", "a.ddd.json", plugins=["tools/exiting_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        run = service.run_project(tmp_path / "p.ddd.json")
+        assert run.dictionary is None
+        assert "plugin-invalid" in checks(run.bag)
+
+    def test_the_old_answers_are_the_runs_answers(self) -> None:
+        bag, covered = service.analyse(BuildInfo(project=DEMO.as_posix()))
+        assert covered == service.run_project(DEMO).covered
+        assert not bag.has_errors
 
 
 class TestTheProjectIsReadOnce:
@@ -3093,6 +3193,14 @@ class TestPositions:
         document = Document(text)
         start = document.range_of("after")["start"]
         assert document.pointer_at(start) == "after"
+
+    def test_an_offset_becomes_the_position_the_protocol_counts(self) -> None:
+        """Public because the edit engine hands out offsets and the quick fixes send positions."""
+        document = Document('{\n  "unit": "°C 😀",\n  "a": 1\n}')
+        offset = document.text.index('"a"')
+        assert document.position(offset) == {"line": 2, "character": 2}
+        after_emoji = document.text.index('",\n  "a"')
+        assert document.position(after_emoji)["character"] == len('  "unit": "°C 😀') + 1
 
 
 class TestServer:

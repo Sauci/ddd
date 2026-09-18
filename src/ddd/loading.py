@@ -99,6 +99,29 @@ def _reject_constant(name: str) -> float:
     raise ValueError(msg)
 
 
+def parse_json_text(text: str) -> Any:
+    """The value a json text holds, read the way DDD reads every document.
+
+    Stricter than python's own reader twice over: ``NaN`` and ``Infinity`` are refused, and so
+    is an object spelling one key twice (its two hooks say why). Public so that whatever else
+    reads a description file - ``ddd gui`` showing one, its engine editing one - reads it by the
+    same rule, and a file ``ddd check`` refuses is never shown as data or edited as json.
+
+    Every refusal is a ``ValueError``: a ``json.JSONDecodeError``, which carries the line and
+    column, for text that is not json at all, and a plain one saying why for the rest.
+    """
+    try:
+        return json.loads(
+            text,
+            parse_constant=_reject_constant,
+            object_pairs_hook=_reject_duplicate_keys,
+        )
+    except RecursionError:
+        # A document nested thousands of levels deep. Python gives up on it, and it has to
+        # give up as a refusal like any other rather than as a traceback.
+        raise ValueError("the json is nested too deeply to read") from None
+
+
 def _parse_json(text: str, path: Path, bag: DiagnosticBag) -> dict[str, Any] | None:
     """One json object out of one file's text, or a finding saying why there is none.
 
@@ -108,18 +131,9 @@ def _parse_json(text: str, path: Path, bag: DiagnosticBag) -> dict[str, Any] | N
     the same duplicated key is a finding in one and the last spelling wins in the other.
     """
     try:
-        data = json.loads(
-            text,
-            parse_constant=_reject_constant,
-            object_pairs_hook=_reject_duplicate_keys,
-        )
+        data = parse_json_text(text)
     except json.JSONDecodeError as error:
         bag.add("json-syntax", error.msg, Location(path, line=error.lineno, column=error.colno))
-        return None
-    except RecursionError:
-        # A document nested thousands of levels deep. Python gives up on it, and it has
-        # to give up as a finding rather than as a traceback.
-        bag.add("json-syntax", "the json is nested too deeply to read", Location(path))
         return None
     except ValueError as error:
         bag.add("json-syntax", str(error), Location(path))

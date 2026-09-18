@@ -775,7 +775,8 @@ source tree: it is assembled in the build directory out of the C link closure, s
 components belong together is a property of the build rather than of any authored file. A build **shall** therefore write a record of how it runs DDD (`ddd build-info`), so
 that a tool outside the build can check exactly what the build checks instead of
 re-deriving a project from the file tree and guessing at the severities. The language
-server of [section 7.2](#72-editor-integration) is the reader this record exists for.
+server of [section 7.2](#72-editor-integration) is the reader this record exists for, and
+the browser interface (`ddd gui`, section 7) reads it the same way.
 
 The file is named `ddd-build.json` and lives beside the artefacts of the target that wrote
 it. `ddd build-info` writes wherever its `-o` argument points; `ddd-build.json` is the
@@ -2063,7 +2064,9 @@ how a
 build is configured to run DDD (`ddd build-info`,
 [section 3.6](#36-build-record)), so that a tool outside the build can apply the same
 project and the same severities; serving the checks to an editor over the Language Server
-Protocol (`ddd lsp`, [section 7.2](#72-editor-integration)); listing the available checks
+Protocol (`ddd lsp`, [section 7.2](#72-editor-integration)); editing a project's description
+files in a browser on the developer's own computer (`ddd gui`, a preview whose options are not
+yet part of this interface); listing the available checks
 (`ddd checks`, each with its default severity, the unrelaxable ones marked, the ones that
 need every component of a project marked `(project)` and the ones that grade a delivery
 comparison marked `(comparison)`; in JSON a list rather than an object, one entry per check
@@ -2339,9 +2342,12 @@ an edit lands where the editor shows it; a client that takes versioned edits is 
 version of each document an edit was computed for. Each finding is also published at the
 locations of its notes - a note stating no place of its own being published at the first line
 of the file its finding is on, the protocol having no way to say "here". The build records a
-search discovers are announced as log messages, and a record that cannot be read, or that
-names a check this version has not got, is skipped and the reason announced with them. A
-record whose severities name a plugin's check that no plugin of the project registers is
+search discovers are announced as log messages, and a record written by a newer DDD - its
+`format` higher than this version reads, whether or not its keys are ones this version knows -
+or naming a check this version has not got is skipped and the reason announced with them. A
+record that is not a build record at all is skipped without one: a build wrote it, and nobody
+fixes it in an editor. A record whose severities name a plugin's check that no plugin of the
+project registers is
 reported as a `plugin-invalid` finding at the project file, which is the editor's answer to
 what `ddd check` refuses a `-W` for: silently accepted, a build silencing a check by a name
 nothing registers looks exactly like a build silencing one that exists.

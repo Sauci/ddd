@@ -391,6 +391,7 @@ class TestCommands:
             "schema",
             "build-info",
             "lsp",
+            "gui",
             "checks",
             "cmake-dir",
             "templates-dir",
@@ -1452,33 +1453,28 @@ REVIEW_PHRASE = "a review of the whole tool"
 class TestTheReleaseNote:
     """The unreleased entries are held to the tree they describe.
 
-    They are written one area at a time and read in one go, so a number one entry states can
-    be made wrong by another: the set of checks that need every component lost a member in the
-    same release that the editor entry counted it in, and said ten where the tool has nine.
+    A note is held to every claim it makes rather than required to make it: the note after a
+    release starts with whatever its first change says.
     """
 
     def test_it_counts_the_checks_needing_every_component_as_the_registry_does(self) -> None:
-        counted = project_wide_counts(UNRELEASED)
-        assert counted, "the release note no longer says how many checks need every component"
-        for word in counted:
+        for word in project_wide_counts(UNRELEASED):
             assert NUMBER_WORDS[word.lower()] == len(project_wide_checks()), (
                 f"the release note says {word} checks need every component of a project, and "
                 f"{len(project_wide_checks())} do"
             )
 
     def test_it_counts_the_entries_the_review_of_the_whole_tool_wrote(self) -> None:
-        """The opening paragraph counts them, and they were written one branch at a time.
-
-        The count is the reader's map of the release: it says how much of what follows is the
-        answer to one review rather than a feature, and an eighth entry added without touching
-        the paragraph would leave it describing the release before this one.
-        """
         entries = [line for line in UNRELEASED.splitlines() if line.startswith("* **")]
         found = sum(1 for entry in UNRELEASED.split("\n* **")[1:] if REVIEW_PHRASE in entry)
         stated = re.search(
             r"the (\w+) entries that follow are what that review found", flattened(UNRELEASED)
         )
-        assert stated is not None, "the release note no longer counts the review's entries"
+        if stated is None:
+            assert found == 0, (
+                "entries say they answer the review, and the note does not count them"
+            )
+            return
         assert NUMBER_WORDS[stated.group(1)] == found, (
             f"the release note says {stated.group(1)} of its {len(entries)} entries come from "
             f"the review, and {found} of them say so"
@@ -1491,8 +1487,7 @@ class TestTheReleaseNote:
         stated = re.findall(
             r"(?:dictionary (?:is|stays)|still) format (\d+)", flattened(UNRELEASED)
         )
-        assert stated, "the release note no longer says which dictionary format it ships"
-        assert {int(number) for number in stated} == {DICTIONARY_FORMAT}, (
+        assert {int(number) for number in stated} <= {DICTIONARY_FORMAT}, (
             f"the release note announces dictionary format {sorted(set(stated))}, and the "
             f"tool writes {DICTIONARY_FORMAT}"
         )
@@ -1834,6 +1829,40 @@ class TestPackagedResources:
         assert "ddd/templates" in destinations, "ddd templates-dir would find nothing installed"
         assert "ddd/cmake/Ddd.cmake" in destinations, "ddd cmake-dir would find nothing installed"
 
+    def test_the_archives_carry_the_compiled_gui_pages(self) -> None:
+        """git ignores the pages npm compiles, and only an artifact pattern puts a file git
+        ignores into an archive - without it the wheel installs a ddd gui with nothing to serve."""
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        targets = metadata["tool"]["hatch"]["build"]["targets"]
+        assert "/src/ddd/gui/static" in targets["wheel"]["artifacts"]
+        assert "/src/ddd/gui/static" in targets["sdist"]["artifacts"]
+        assert "/gui" in targets["sdist"]["include"]
+
+    def test_a_release_type_checks_the_pages_it_compiles(self) -> None:
+        """``npm run build`` is ``vite build``, which strips the types without checking them, so
+        a file format the pages have not caught up with fails a build only where the type check
+        runs - and a release can be cut from a commit ci never saw."""
+        build = PUBLISH_WORKFLOW.split("\n  build:\n", 1)[1]
+        step = next(
+            line
+            for line in build.splitlines()
+            if line.strip().startswith("- run:") and "npm run build" in line
+        )
+        assert "npm run schemas && npm run typecheck && npm run build" in step, step.strip()
+
+    def test_the_developer_page_names_the_licences_the_pages_may_bundle(self) -> None:
+        """Exactly the ones the build accepts: "BSD" named a family whose members other than
+        the two listed the build turns away."""
+        script = (ROOT / "gui" / "scripts" / "licenses.mjs").read_text(encoding="utf-8")
+        listed = re.search(r"const ALLOWED = new Set\(\[(.*?)\]\)", script)
+        assert listed is not None, "gui/scripts/licenses.mjs no longer lists what it accepts"
+        named = re.search(
+            r"refuses a bundled package whose licence is not (.+?)\.(?:\s|$)",
+            flattened(PAGES["docs/developer_documentation.rst"]),
+        )
+        assert named is not None, "the developer page no longer says which licences are accepted"
+        assert re.split(r", | or ", named.group(1)) == re.findall(r'"([^"]+)"', listed.group(1))
+
 
 class TestTheCompileService:
     """The container that compiles what the c backend generates, and the README's account of it.
@@ -1951,8 +1980,8 @@ def workflow_actions() -> dict[str, set[str]]:
     return used
 
 
-def dependabot() -> dict[str, str]:
-    """Each ecosystem dependabot watches, to the directory it watches it in.
+def dependabot() -> dict[str, list[str]]:
+    """Each ecosystem dependabot watches, to the directories it watches it in.
 
     Read with a regex rather than a yaml parser, as the pre-commit hook definition is: the
     file is a handful of ``key: value`` lines, and a yaml dependency in the test requirements
@@ -1965,16 +1994,20 @@ def dependabot() -> dict[str, str]:
     assert len(entries) == text.count("package-ecosystem:"), (
         "an entry of dependabot.yml names no directory"
     )
-    return dict(entries)
+    watched: dict[str, list[str]] = {}
+    for ecosystem, directory in entries:
+        watched.setdefault(ecosystem, []).append(directory)
+    return watched
 
 
 class TestWhatKeepsTheToolchainMoving:
     """Everything this repository pins, and the one thing that proposes moving it.
 
     Nothing here moves on its own - the actions are pinned by major tag, the two tools that
-    are gates are capped to a minor, the extension's lock file pins exactly - which is what
-    makes a build reproducible and, without something proposing the updates, what makes a
-    release the moment somebody discovers the toolchain has moved on without them.
+    are gates are capped to a minor, the extension's and the browser interface's lock files
+    pin exactly - which is what makes a build reproducible and, without something proposing
+    the updates, what makes a release the moment somebody discovers the toolchain has moved
+    on without them.
     """
 
     @pytest.mark.parametrize("ecosystem", ["github-actions", "pip", "npm"])
@@ -1984,15 +2017,19 @@ class TestWhatKeepsTheToolchainMoving:
             f"nothing proposes an update for {ecosystem}, so those pins move only when a "
             f"release is already blocked by one of them"
         )
-        directory = (ROOT / watched[ecosystem].lstrip("/")).resolve()
-        assert directory.is_dir(), f"{ecosystem} is watched in {watched[ecosystem]}, which is not"
+        for directory in watched[ecosystem]:
+            assert (ROOT / directory.lstrip("/")).resolve().is_dir(), (
+                f"{ecosystem} is watched in {directory}, which is not a directory"
+            )
 
-    def test_the_node_manifest_is_watched_where_it_lives(self) -> None:
+    def test_the_node_manifests_are_watched_where_they_live(self) -> None:
         """A directory that does not hold the manifest is watched in silence: dependabot
         reports "no dependencies found" on its own page and nothing else."""
-        watched = Path(dependabot()["npm"].lstrip("/"))
-        assert (ROOT / watched / "package.json").is_file()
-        assert (ROOT / watched / "package-lock.json").is_file()
+        watched = {Path(directory.lstrip("/")) for directory in dependabot()["npm"]}
+        assert watched == {Path("editors/vscode"), Path("gui")}
+        for directory in watched:
+            assert (ROOT / directory / "package.json").is_file()
+            assert (ROOT / directory / "package-lock.json").is_file()
 
     @pytest.mark.parametrize("tool", ["ruff", "mypy"])
     def test_the_two_tools_that_are_gates_are_capped(self, tool: str) -> None:

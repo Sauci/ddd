@@ -29,8 +29,10 @@ from conftest import (
     directory_link,
     framed,
     project,
+    scalar_type,
     sent,
     session,
+    types,
     write_tree,
 )
 from ddd.build_info import BUILD_INFO_FILENAME, BUILD_INFO_FORMAT, BuildInfo
@@ -3159,12 +3161,46 @@ class TestPropagating:
             is None
         )
 
+    def test_assigning_the_value_already_stated_changes_nothing(self) -> None:
+        """`_assign`'s own guarantee, kept for its own sake now that every caller happens to
+        check it first: `_adopt` only calls where the target states nothing, `_from_producer`
+        only where the two values differ, and `_propagate` only for a site `settle` already
+        found to disagree. Asked to write what a declaration already states, there is still
+        nothing for `_assign` itself to do."""
+        from ddd.lsp.edits import _assign
+
+        document = Document(
+            '{"component": {"interface": [{"definition": '
+            '{"name": "S", "kind": "measurement", "unit": "rpm"}}]}}'
+        )
+        assert _assign(document, "component.interface[0].definition", "unit", '"rpm"') is None
+
     def test_a_definition_that_is_not_an_object_is_left_alone(self, tmp_path: Path) -> None:
         """Belt and braces around the insertion: there is nowhere to insert into."""
         from ddd.lsp.edits import _insert
 
         document = Document('{"component": {"interface": [{"definition": 7}]}}')
         assert _insert(document, "component.interface[0].definition", "unit", '"rpm"') is None
+
+    def test_a_declaration_naming_a_type_is_offered_no_unit(self, tmp_path: Path) -> None:
+        """The type fixes the unit of every declaration naming it, and the loader refuses one
+        stated beside it: the producer's unit is not offered to such a declaration."""
+        offered, _ = self.offer(
+            tmp_path,
+            "b.ddd.json",
+            "component.interface[0].definition",
+            **{
+                "types.ddd.json": types(scalar_type("Speed_t", unit="1/min")),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", typename="Speed_t")),
+            },
+        )
+        mine = (tmp_path / "b.ddd.json").as_uri()
+        assert [
+            action["title"]
+            for action in offered
+            if "unit" in action["title"] and mine in action["edit"]["changes"]
+        ] == []
 
 
 class TestPositions:

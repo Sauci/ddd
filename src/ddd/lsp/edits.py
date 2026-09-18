@@ -38,14 +38,16 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from ddd.editing import TextEdit, member_addition, removal
 from ddd.identity import insertions
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document, read
 from ddd.models import definition_keys
+from ddd.models.objects import MEANING_KEYS
 
 PROPAGATED_KEYS: Final = frozenset(
     {
@@ -257,6 +259,84 @@ def interface_keys(members: Any) -> list[str]:
     if not isinstance(members, dict):
         return []
     return [key for key in members if key in PROPAGATED_KEYS]
+
+
+@dataclass(frozen=True, slots=True)
+class Settled:
+    """One declaration a settlement changes, and what it states from then on."""
+
+    site: Site
+    raw: str | None
+    """The json text the declaration is to state, or ``None`` to stop stating the key at all."""
+
+
+@dataclass(frozen=True, slots=True)
+class Unsettled:
+    """One declaration a settlement cannot change, and why not."""
+
+    site: Site
+    reason: Literal["unreachable", "kind", "type"]
+    """``unreachable``: its file no longer names the variable at that pointer, or no longer
+    reads as json. ``kind``: its kind has no such key, or requires the one being taken out.
+    ``type``: it names a declared type that fixes the key to another value."""
+
+    type_name: str | None = None
+    """The declared type that fixes the key, when ``reason`` is ``type``."""
+
+
+@dataclass(frozen=True, slots=True)
+class Settlement:
+    """What making every declaration of one variable state one value for one key takes."""
+
+    changes: tuple[Settled, ...]
+    unsettled: tuple[Unsettled, ...]
+
+
+def settle(
+    built: Index, name: str, key: str, raw: str | None, cache: dict[Path, Document]
+) -> Settlement:
+    """Which declarations of ``name`` change for every one of them to state ``raw`` as ``key``,
+    and which of them cannot.
+
+    One rule for two callers. The language server's "Apply this unit to N other declarations"
+    leaves out what cannot change and offers the rest; ``ddd gui`` refuses the whole change
+    instead, because its reader chose a value for the variable and a change that reaches only
+    some of its declarations is not the one they chose. Deciding here, once, is what keeps the
+    editor and the page from disagreeing about what a change touches.
+
+    A declaration that already states ``raw`` is left as it is, and so is one leaving a deferred
+    key to whoever states it. A declaration naming a declared type takes none of the keys the
+    type fixes: it agrees when the type states ``raw``, and refuses otherwise - stating the key
+    beside the type is an error the loader reports, not an override.
+    """
+    changes: list[Settled] = []
+    unsettled: list[Unsettled] = []
+    for site in built.declarations.get(name, ()):
+        document = _at_site(site, name, cache)
+        if document is None:
+            unsettled.append(Unsettled(site, "unreachable"))
+            continue
+        typename = document.value_at(f"{site.pointer}.typename")
+        if key in MEANING_KEYS and isinstance(typename, str):
+            if _fixed_by(built, typename, key, cache) != raw:
+                unsettled.append(Unsettled(site, "type", typename))
+            continue
+        stated = document.raw_at(f"{site.pointer}.{key}")
+        if stated == raw or (key in DEFERRED_KEYS and stated is None):
+            continue
+        accepted, required = _keys_of(document, site.pointer)
+        if (raw is None and key in required) or (raw is not None and key not in accepted):
+            unsettled.append(Unsettled(site, "kind"))
+            continue
+        changes.append(Settled(site, raw))
+    return Settlement(tuple(changes), tuple(unsettled))
+
+
+def _fixed_by(built: Index, typename: str, key: str, cache: dict[Path, Document]) -> str | None:
+    """The json text a declared type states for ``key``, or ``None`` when it states none - a
+    structure, which has no room for a unit, or a name no type of the project declares."""
+    site = built.types.get(typename)
+    return None if site is None else read(site.path, cache).raw_at(f"{site.pointer}.{key}")
 
 
 def _at_site(site: Site, name: str, cache: dict[Path, Document]) -> Document | None:
@@ -486,22 +566,25 @@ def _erase(document: Document, definition: str, key: str) -> dict[str, Any] | No
 def _propagate(
     built: Index, here: Site, document: Document, name: str, key: str, cache: dict[Path, Document]
 ) -> dict[str, Any] | None:
-    """One action, or nothing when every other declaration already says the same."""
+    """One action, or nothing when every other declaration already says the same.
+
+    Which declarations it reaches is :func:`settle`'s to say, as it is for ``ddd gui``. One that
+    cannot take the value is left out of the action rather than refusing it: the others can
+    still be reconciled from here, and an editor offers what it can.
+    """
     raw = document.raw_at(f"{here.pointer}.{key}")
     if raw is None:
         return None
     changes: dict[str, list[dict[str, Any]]] = {}
-    for site in built.declarations.get(name, ()):
-        if site == here:
-            continue
-        target = _at_site(site, name, cache)
-        if target is None:
-            continue
-        if key in DEFERRED_KEYS and target.raw_at(f"{site.pointer}.{key}") is None:
-            continue  # it deferred to us; there is nothing to reconcile
-        edit = _assign(target, site.pointer, key, raw)
-        if edit is not None:
-            changes.setdefault(site.path.as_uri(), []).append(edit)
+    for change in settle(built, name, key, raw, cache).changes:
+        edit = _assign(read(change.site.path, cache), change.site.pointer, key, raw)
+        # `settle` already ran every check `_assign` makes - kind, meaning key fixed by a type,
+        # already agrees - before it put this site in `changes`, so there is always an edit
+        # here. Asserted rather than guarded, the way `_give_an_identity` narrows a span it
+        # already knows is there: a branch that cannot be taken is a branch no test can cover
+        # and no reader can trust.
+        assert edit is not None
+        changes.setdefault(change.site.path.as_uri(), []).append(edit)
     if not changes:
         return None
     elsewhere = sum(len(edits) for edits in changes.values())
@@ -520,8 +603,15 @@ def _assign(document: Document, definition: str, key: str, raw: str) -> dict[str
     disagreeing about ``kind`` is a finding of its own, and while it stands, writing a curve's
     ``axis`` into the measurement somebody else declared would only add a file that no longer
     loads to a project that already has something to fix.
+
+    Refused as well for a meaning key a named type fixes, for the same reason: the declaration
+    already gets this key from its ``typename``, and stating it again beside that is an error
+    the loader reports, not an override.
     """
     if key not in _keys_of(document, definition)[0]:
+        return None
+    if key in MEANING_KEYS and document.raw_at(f"{definition}.typename") is not None:
+        # The type it names fixes this key; stated beside it, the loader refuses the file.
         return None
     existing = document.raw_at(f"{definition}.{key}")
     if existing is not None:

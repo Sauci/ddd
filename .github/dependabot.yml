@@ -10,8 +10,8 @@ version: 2
 # Weekly rather than daily: a pull request per dependency per day is noise on a repository
 # with one maintainer, and none of these is a runtime dependency of what customers install.
 updates:
-  # The actions of ci.yml, docs.yml and publish.yml. Two of those jobs hold an OIDC token
-  # that can publish to the package index, which is the reason to know when one moves.
+  # The actions of ci.yml, docs.yml and publish.yml. Three of those jobs hold an OIDC token
+  # that can publish to a package index, which is the reason to know when one moves.
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -32,8 +32,8 @@ updates:
       interval: weekly
 
   # The browser interface, whose package-lock.json is what `npm ci` installs from in the gui job,
-  # in the release build that compiles the pages into the wheel, and in the stage of the image
-  # that compiles them for it.
+  # in the release build and the development build that compile the pages into a wheel, and in
+  # the stage of the image that compiles them for it.
   - package-ecosystem: npm
     directory: /gui
     schedule:

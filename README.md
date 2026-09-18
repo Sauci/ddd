@@ -58,7 +58,11 @@ ddd --version
 ```
 
 The distribution is called `ddd-tool` because `ddd` was taken; the command, the importable
-package and the `*.ddd.json` files are all still `ddd`.
+package and the `*.ddd.json` files are all still `ddd`.  An unreleased commit of `master`, or
+of a pull request from a branch of this repository, installs from TestPyPI as the development
+build ci publishes of it:
+[the developer documentation](https://sauci.github.io/ddd/latest/developer_documentation.html#development-builds)
+gives the two commands.
 
 **Platform support**: Python 3.12 or newer, on Windows and Linux - both are exercised by the
 ci on every change.  The [CMake integration](#cmake-integration) needs CMake 3.20 when a

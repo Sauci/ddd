@@ -124,6 +124,9 @@ Acronyms and abbreviations
      - OpenID Connect, the protocol behind trusted publishing: GitHub mints a short lived
        token for the publishing job and the package index decides whether the claims in it
        match a publisher somebody registered, so no API token is stored in the repository.
+   * - PEP
+     - Python Enhancement Proposal. PEP 440 says what a version of a python package may be,
+       which is why the development builds on TestPyPI cannot carry their commit in theirs.
    * - RAM
      - Random access memory, the volatile storage a measurement normally lives in. Named in
        the :doc:`checks <consistency_checks>` for what a section usually stands for.

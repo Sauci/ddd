@@ -401,7 +401,7 @@ Continuous integration
 
 ``.github/workflows/ci.yml`` runs the commands above - the suite with its coverage gate,
 ``ruff`` twice and ``mypy`` - on every push to ``master`` and every pull request, in two jobs,
-and three more the commands above do not cover. ``extension`` installs node and the package,
+and five more the commands above do not cover. ``extension`` installs node and the package,
 runs ``npm ci``, ``npm test`` and ``npm run package`` in ``editors/vscode``, and uploads the
 ``.vsix`` it produced. Its tests start a real language server, which is why it installs the
 python package as well as compiling typescript, and packaging the extension there proves that
@@ -428,6 +428,10 @@ are not run here; what they exercise is either covered by a job above or, for ``
 run a contributor does locally. The pages are asked for with ``python -I``, which leaves out
 the working tree a service puts first on the path: a clean checkout has no compiled pages, so
 without it the check would read the checkout rather than the image.
+
+``dev-build`` and ``dev-publish`` put a development build of every push to ``master``, and of
+every commit of this repository's own pull requests, on TestPyPI, as
+:ref:`development-builds` below describes.
 
 The suite runs across a matrix of ubuntu and windows on python 3.12, 3.13 and 3.14, which is
 the six combinations the classifiers in ``pyproject.toml`` advertise. That is not thoroughness
@@ -458,6 +462,71 @@ the browser interface: a bump then arrives as a pull request that ci has already
 the difference between upgrading a tool and discovering on a release day that one has moved on
 without you. A test holds every action to one version across the three workflows, and both
 caps to being caps.
+
+.. _development-builds:
+
+Development builds
+~~~~~~~~~~~~~~~~~~
+
+Every push to ``master``, and every commit of this repository's own pull requests, is published
+to `TestPyPI <https://test.pypi.org/project/ddd-tool/>`_ as a development build, so that any
+commit installs with ``pip install`` - its compiled pages included, and no Node.js anywhere -
+without the GitHub account an artifact needs, and after the artifact has expired; TestPyPI is
+itself pruned now and then, though, so a development build is no archive.
+``dev-build`` waits for ``gui``, so that a run whose pages fail in the browser publishes
+nothing. It checks the commit out - a pull request's own head, not the merge ``gui`` tests it
+as - stamps the development version into it, compiles the pages and builds the wheel and the
+sdist as the release build does, type check included, and checks that the wheel carries the
+pages. ``dev-publish`` uploads what it built. They are two jobs for the reason ``publish.yml``
+builds a release in one job and uploads it in another: ``npm ci`` runs the install scripts of
+every package the pages depend on, and a build runs whatever its backend is, so none of that
+runs in the job that can ask for a token to publish with.
+
+**The version is the next patch, as a development release numbered by the run.** After 0.10.0,
+run 57 publishes ``0.10.1.dev57``. The commit cannot be part of the version: PEP 440 refuses
+``0.10.0-<sha>``, and PyPI and TestPyPI both refuse a local label such as ``0.10.0+g<sha>``. The
+build's metadata carries it instead, as the ``Commit`` link of the project, and the run's
+summary maps the version to it. The base is the next patch because ``0.10.0.dev57`` would sort
+before 0.10.0 itself, beneath the release every such commit came after. The run number grows
+across every branch, so every run publishes a version of its own; a re-run keeps its number,
+and the upload skips the files its first attempt made.
+
+``tools/dev_version.py`` writes that version into the job's own checkout, and nothing it
+rewrites is committed. It writes it into the three places the installed package compares at
+run time: ``pyproject.toml``; ``src/ddd/__init__.py``, so that ``ddd --version`` prints ``ddd
+0.10.1.dev57``, in the format it always has; and ``cmake/Ddd.cmake``, whose
+``DDD_MODULE_VERSION`` the module compares with that output by exact string, refusing a tool of
+any other release. Nothing compares the other spellings, listed under
+:ref:`publishing-a-release`, at run time: the extension's manifest and lock file reach no
+installed package, and the rest is prose - the README's included, which the wheel carries as
+its description. The script refuses a version with no next patch - a release candidate is
+one - and ``tests/test_documentation.py`` holds it to all of this.
+
+The run's summary gives the two commands that install the build, for instance:
+
+.. code-block:: text
+
+   pip install "jinja2<4,>=3.1" "pydantic<3,>=2.7"
+   pip install --no-deps --index-url https://test.pypi.org/simple/ ddd-tool==0.10.1.dev57
+
+The first installs the runtime dependencies from PyPI, read off the wheel so that they are
+exactly its own; the second installs ddd-tool alone, from TestPyPI. They are two on purpose:
+given both indexes at once, pip takes each name's highest version from either, and anybody can
+upload a lookalike to TestPyPI.
+
+**The publisher is a third registration.** The upload authenticates with trusted publishing,
+as a release does, so TestPyPI has to know this workflow as well as ``publish.yml``. Register,
+on ``test.pypi.org``, project ``ddd-tool``, owner ``Sauci``, repository ``ddd``, workflow
+``ci.yml`` and environment ``testpypi-dev``, which GitHub creates the first time the job names
+it. Leave that environment without a deployment branch policy, since a pull request's run
+publishes from it as well as a push to ``master``. Until the registration exists the upload
+fails with ``invalid-publisher`` and every job before it passes; once it does, re-running the
+run publishes it, as it does for a release.
+
+Only this repository's runs publish. A pull request from a fork is given no token to publish
+with, and a fork's own push to its ``master`` has no publisher, so both skip the two jobs rather
+than failing at the upload; a dispatch publishes nothing either. A run that a newer push to the
+same branch cancels publishes nothing, unless its upload had already begun.
 
 Building this documentation
 ---------------------------
@@ -559,6 +628,8 @@ There is nothing to change in the repository to fix it: correct the setting and 
 event it publishes, rather than resting on the event alone, because a pull request from a
 fork proposes arbitrary content: without that condition, opening one would be enough to
 publish somebody else's revision as the product's documentation.
+
+.. _publishing-a-release:
 
 Publishing a release
 --------------------
@@ -695,7 +766,9 @@ The browser interface
 ``src/ddd/gui/static/``. git ignores the compiled pages, and Node.js is needed where they are
 compiled, never where ddd is installed. The release build compiles them before it builds the
 wheel, which then carries them. The ``gui`` job of ci does the same and uploads the wheel as
-``ddd-tool-<commit>``, so every branch ci runs on installs without Node.js as well. The image
+``ddd-tool-<commit>``, so every branch ci runs on installs without Node.js as well, and
+``dev-build`` does it again for the :ref:`development build <development-builds>` of a commit of
+``master`` or of a pull request, which TestPyPI serves to anybody. The image
 behind ``docker compose`` compiles them in a build stage of its own, thrown away with its
 Node.js: the image carries the pages and no Node.js. A source checkout needs Node.js 24 to build
 them, with the package installed so that its types can be generated:

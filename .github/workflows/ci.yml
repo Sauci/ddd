@@ -7,6 +7,10 @@ name: CI
 # The release pipeline in publish.yml runs the suite again before it builds. That is not
 # redundant - a release can be cut from a commit, or with a version bump, that this workflow
 # never saw, and an upload to an index cannot be taken back.
+#
+# One pair of jobs here publishes, all the same: dev-build and dev-publish put a development
+# build of every push to master, and of every commit of this repository's own pull requests,
+# on TestPyPI.
 on:
   push:
     branches: [master]
@@ -142,8 +146,8 @@ jobs:
     # On ubuntu the pages it compiled then go into a wheel and an sdist, uploaded as
     # ddd-tool-<commit>: a branch installed from them needs no node, as a release needs none -
     # on a machine or in a container that only runs ddd, where node has no business. A release
-    # is still what anyone outside this repository installs: an artifact expires, and needs a
-    # GitHub account to reach.
+    # is still what anyone outside this repository installs, or the development build below for
+    # a commit not released yet: an artifact expires, and needs a GitHub account to reach.
     strategy:
       fail-fast: false
       matrix:
@@ -203,3 +207,117 @@ jobs:
           name: playwright-report-${{ matrix.os }}
           path: gui/playwright-report
           overwrite: true # a name is unique within a run, and re-running the run uploads it again
+
+  # A development build of every push to master and of every commit of this repository's own
+  # pull requests, on TestPyPI: any commit then installs with pip, pages included and no node
+  # anywhere, for anybody - without the GitHub account an artifact needs, and after one has
+  # expired. tools/dev_version.py numbers it, <next patch>.dev<run number>, and says why the
+  # commit cannot be part of the number; the build's metadata and the run's summary carry it.
+  #
+  # Two jobs, the way publish.yml builds a release and then uploads it. `npm ci` runs the install
+  # scripts of every package the pages depend on, and a build runs whatever its backend is, so
+  # none of that runs where a token that publishes can be asked for - which is also how the
+  # publishing action's own documentation asks for it to be done.
+  dev-build:
+    # After the pages have passed in the browser: a run whose gui job fails publishes nothing.
+    needs: gui
+    # This repository's own runs alone. A pull request from a fork is given no token to publish
+    # with, and a fork's own push to its master has no publisher on TestPyPI, so both skip here
+    # rather than failing at the upload; dev-publish needs this job, and skips with it. A
+    # dispatch is a run of any branch at all, and publishes nothing either.
+    if: >-
+      github.repository == 'Sauci/ddd' && (
+        (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+        (github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.stamp.outputs.version }}
+      summary: ${{ steps.summary.outputs.text }}
+    env:
+      # The commit the build is of and says it is of: a pull request's own head, rather than the
+      # merge ci tests it as - a commit nobody pushed, remade with every push to either side. A
+      # branch made before this job existed has no tools/dev_version.py at its head, and fails
+      # the stamp until it merges master.
+      COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.COMMIT }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
+      # Into this job's checkout, and before anything reads the version: the package installed
+      # below for the schemas, and the build. Nothing it rewrites is committed.
+      - name: Stamp the development version
+        id: stamp
+        run: |
+          version=$(python tools/dev_version.py stamp "$GITHUB_RUN_NUMBER" "$COMMIT")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "ddd-tool $version is built from $COMMIT"
+      # As the release build compiles them, and for its reasons: the package installed first for
+      # the types generated from it, and the types checked, which `npm run build` does not do.
+      - run: pip install -e .
+      - run: npm ci && npm run schemas && npm run typecheck && npm run build
+        working-directory: gui
+      - run: |
+          python -m pip install build
+          python -m build
+      - name: Check the wheel carries the compiled pages
+        run: |
+          python - <<'EOF'
+          import glob, sys, zipfile
+          names = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
+          if "ddd/gui/static/index.html" not in names:
+              sys.exit("the wheel has no ddd/gui/static/index.html: ddd gui would have nothing to serve")
+          EOF
+      # Read out of the wheel dev-publish uploads, and written to the run's summary by that job
+      # once the upload has succeeded: the version, the commit, and the two commands that
+      # install it.
+      - name: Say what is published, and how it installs
+        id: summary
+        run: |
+          {
+            echo "text<<END_OF_SUMMARY"
+            python tools/dev_version.py summary dist/*.whl
+            echo "END_OF_SUMMARY"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ddd-tool-${{ steps.stamp.outputs.version }}
+          path: dist/
+          overwrite: true # a name is unique within a run, and re-running the run uploads it again
+
+  dev-publish:
+    needs: dev-build
+    runs-on: ubuntu-latest
+    # The trusted publisher registered on test.pypi.org names this workflow and this
+    # environment; the developer documentation's page on continuous integration lists what to
+    # register. The environment's url is the page of the version being published.
+    environment:
+      name: testpypi-dev
+      url: https://test.pypi.org/project/ddd-tool/${{ needs.dev-build.outputs.version }}/
+    permissions:
+      id-token: write # trusted publishing (OIDC), no API token stored in the repo
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: ddd-tool-${{ needs.dev-build.outputs.version }}
+          path: dist/
+      # A re-run keeps its run number, and so its version, and an index accepts a file name
+      # once: skip-existing passes over what the first attempt uploaded rather than failing.
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+      - name: Say what was published, and how it installs
+        env:
+          SUMMARY: ${{ needs.dev-build.outputs.summary }}
+        run: printf '%s\n' "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"

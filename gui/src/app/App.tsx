@@ -108,6 +108,10 @@ function Tab({
       href={hrefOf({ page: "project", view })}
       aria-current={view === open ? "page" : undefined}
       onClick={(event) => {
+        // A modified or secondary click is the reader asking the browser for a new tab or a new
+        // window: it is a real address, so let the browser have it rather than swallowing it.
+        const modified = event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
+        if (modified || event.button !== 0) return;
         event.preventDefault();
         navigate({ page: "project", view });
       }}

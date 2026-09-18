@@ -359,6 +359,15 @@ class GraphReply(_Frozen):
     revision: int
     """The revision this graph was built from."""
 
+    dictionary: bool
+    """Whether the revision resolved a dictionary.
+
+    ``False`` is a plugin that raised or a file that did not parse, and it is the only thing
+    that tells that apart from a project whose modules genuinely share nothing: both answer
+    their modules and no flows, and spec section 5.6 asks the page to say so only for the
+    first.
+    """
+
     modules: tuple[GraphModule, ...]
     """Every component of the project, sorted by path."""
 

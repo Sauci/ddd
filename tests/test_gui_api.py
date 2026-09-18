@@ -347,6 +347,23 @@ class TestGraph:
         }
         assert all(f["severity"] is None and f["disagreements"] == [] for f in body["flows"])
 
+    def test_a_revision_that_resolved_a_dictionary_says_so(self, demo: tuple[Api, Path]) -> None:
+        api, _ = demo
+        assert get(api, "/api/graph").body["dictionary"] is True
+
+    def test_a_revision_with_no_dictionary_says_so_and_answers_the_modules_alone(
+        self, root: Path
+    ) -> None:
+        """What the page shows its "no dictionary" banner for: it is told, rather than guessing
+        it from an answer a project whose modules share nothing gives just as well."""
+        (root / "b.ddd.json").write_text('{"component": {}}', encoding="utf-8")
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        body = get(Api(session), "/api/graph").body
+        assert body["dictionary"] is False
+        assert [module["name"] for module in body["modules"]] == ["A", "b"]
+        assert body["flows"] == []
+
     def test_a_disagreement_with_the_producer_colours_the_flow(
         self, demo: tuple[Api, Path]
     ) -> None:

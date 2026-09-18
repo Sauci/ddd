@@ -455,8 +455,9 @@ class TestEveryEndpointOnTheDemo:
     def test_the_graph_lists_the_demos_modules_and_flows(self, demo) -> None:
         server, _ = demo
         body = answered(server, "GET", "/api/graph")
-        assert set(body) == {"revision", "modules", "flows"}
+        assert set(body) == {"revision", "dictionary", "modules", "flows"}
         assert {m["name"] for m in body["modules"]} == self.COMPONENTS
+        assert body["dictionary"] is True
         assert body["flows"]
 
     def test_an_edit_changes_the_units_value_alone_and_both_sides_disagree(self, demo) -> None:

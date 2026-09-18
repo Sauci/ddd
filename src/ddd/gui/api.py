@@ -167,6 +167,7 @@ class Api:
             200,
             contract.GraphReply(
                 revision=revision.number,
+                dictionary=revision.dictionary is not None,
                 modules=[_graph_module(module) for module in built.modules],
                 flows=[_graph_flow(flow) for flow in built.flows],
             ).model_dump(mode="json", by_alias=True),

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import threading
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import pytest
 
@@ -804,3 +805,189 @@ class TestSettle:
     def test_settling_needs_an_open_project(self, root: Path) -> None:
         reply = get(Api(Session(root)), "/api/settle", name="Speed", key="unit", raw='"%"')
         assert reply.status == 409
+
+
+def copied(tmp_path: Path, example: str, project_file: str) -> tuple[Api, Path]:
+    """``ddd gui``'s api over a copy of one of the examples, and where the copy is: the example
+    itself is never written to."""
+    root = tmp_path / example
+    shutil.copytree(EXAMPLES / example, root)
+    session = Session(root)
+    session.open(root / project_file)
+    return Api(session, root / project_file), root
+
+
+def contents(root: Path) -> dict[str, bytes]:
+    """Every file under ``root``, by its path relative to it: what an edit may have changed."""
+    return {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+
+
+def applied(api: Api, preview: dict[str, Any]) -> Reply:
+    """A preview's edit posted exactly as the page posts it: each change without its hunks."""
+    changes = [
+        {key: change[key] for key in ("file", "fingerprint", "operations")}
+        for change in preview["changes"]
+    ]
+    return post(api, "/api/edit", {"changes": changes})
+
+
+def with_unit(data: bytes, name: str, unit: str | None) -> bytes:
+    """A file's bytes with the unit of the definition named ``name`` replaced by ``unit``, or
+    taken out with its line for ``None``, and nothing else touched: the first ``"unit"`` member
+    after that name, which in the examples is always followed by another member."""
+    text = data.decode("utf-8")
+    if unit is None:
+        member = re.compile(rf'("name": "{name}"[\s\S]*?)\n *"unit": "[^"]*",')
+        changed = member.sub(lambda found: found[1], text, count=1)
+    else:
+        value = re.compile(rf'("name": "{name}"[\s\S]*?"unit": )"[^"]*"')
+        changed = value.sub(lambda found: found[1] + json.dumps(unit), text, count=1)
+    assert changed != text
+    return changed.encode("utf-8")
+
+
+class TestTheDemo:
+    """The three endpoints over a copy of examples/demo, and what applying a preview writes."""
+
+    CONTROLLER: Final = "components/controller.ddd.json"
+    SENSOR_HUB: Final = "components/sensor_hub.ddd.json"
+
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> tuple[Api, Path]:
+        return copied(tmp_path, "demo", "demo.ddd.json")
+
+    def test_a_variable_is_answered_with_each_file_declaring_it(
+        self, demo: tuple[Api, Path]
+    ) -> None:
+        api, root = demo
+        reply = get(api, "/api/variable", name="ValueA")
+        assert reply.status == 200
+        assert [
+            (d["path"], d["component"], d["role"], d["stated"]["unit"], d["type"])
+            for d in reply.body["declarations"]
+        ] == [
+            (posix(root, self.CONTROLLER), "Controller", "reads", '"%"', None),
+            (posix(root, self.SENSOR_HUB), "SensorHub", "produces", '"%"', None),
+        ]
+        assert reply.body["findings"] == []
+
+    def test_without_a_vocabulary_the_units_in_use_are_answered_most_used_first(
+        self, demo: tuple[Api, Path]
+    ) -> None:
+        api, _ = demo
+        assert get(api, "/api/units").body == {
+            "revision": 1,
+            "vocabulary": None,
+            "used": [
+                {"unit": "%", "variables": 5},
+                {"unit": "Hz", "variables": 3},
+                {"unit": "V", "variables": 2},
+                {"unit": "degC", "variables": 2},
+                {"unit": "ms", "variables": 1},
+            ],
+        }
+
+    def test_a_preview_writes_nothing_and_its_edit_changes_exactly_the_units(
+        self, demo: tuple[Api, Path]
+    ) -> None:
+        api, root = demo
+        before = contents(root)
+        preview = get(api, "/api/settle", name="ValueA", key="unit", raw='"rpm"').body
+        assert contents(root) == before
+        assert [change["file"] for change in preview["changes"]] == [
+            posix(root, self.CONTROLLER),
+            posix(root, self.SENSOR_HUB),
+        ]
+        assert applied(api, preview).status == 200
+        assert contents(root) == {
+            **before,
+            self.CONTROLLER: with_unit(before[self.CONTROLLER], "ValueA", "rpm"),
+            self.SENSOR_HUB: with_unit(before[self.SENSOR_HUB], "ValueA", "rpm"),
+        }
+
+    def test_no_unit_takes_the_unit_out_of_every_declaration_and_nothing_else(
+        self, demo: tuple[Api, Path]
+    ) -> None:
+        api, root = demo
+        before = contents(root)
+        preview = get(api, "/api/settle", name="ValueA", key="unit").body
+        assert contents(root) == before
+        assert [change["operations"] for change in preview["changes"]] == [
+            [{"op": "remove", "pointer": "component.interface[0].definition.unit", "raw": None}],
+            [{"op": "remove", "pointer": "component.interface[0].definition.unit", "raw": None}],
+        ]
+        assert applied(api, preview).status == 200
+        assert contents(root) == {
+            **before,
+            self.CONTROLLER: with_unit(before[self.CONTROLLER], "ValueA", None),
+            self.SENSOR_HUB: with_unit(before[self.SENSOR_HUB], "ValueA", None),
+        }
+        declarations = get(api, "/api/variable", name="ValueA").body["declarations"]
+        assert [declaration["stated"].get("unit") for declaration in declarations] == [None, None]
+
+
+class TestTheVocabulary:
+    """The three endpoints over a copy of examples/vocabulary, a project that pins its units."""
+
+    PUMP: Final = "pump.ddd.json"
+
+    @pytest.fixture
+    def vocabulary(self, tmp_path: Path) -> tuple[Api, Path]:
+        return copied(tmp_path, "vocabulary", "project.ddd.json")
+
+    def test_the_vocabulary_is_answered_described_beside_the_units_in_use(
+        self, vocabulary: tuple[Api, Path]
+    ) -> None:
+        api, _ = vocabulary
+        assert get(api, "/api/units").body == {
+            "revision": 1,
+            "vocabulary": [
+                {"unit": "rpm", "description": "rotational speed, revolutions per minute"},
+                {"unit": "Nm", "description": "torque, newton metre"},
+                {"unit": "degC", "description": "temperature"},
+                {"unit": "kPa", "description": "pressure"},
+            ],
+            "used": [{"unit": "kPa", "variables": 2}, {"unit": "rpm", "variables": 1}],
+        }
+
+    def test_a_local_variable_is_answered_with_its_one_declaration(
+        self, vocabulary: tuple[Api, Path]
+    ) -> None:
+        api, root = vocabulary
+        declarations = get(api, "/api/variable", name="PumpSpeed").body["declarations"]
+        assert [
+            (d["path"], d["component"], d["role"], d["stated"]["unit"]) for d in declarations
+        ] == [(posix(root, self.PUMP), "Pump", "local", '"rpm"')]
+
+    def test_a_preview_writes_nothing_and_its_edit_changes_exactly_the_unit(
+        self, vocabulary: tuple[Api, Path]
+    ) -> None:
+        api, root = vocabulary
+        before = contents(root)
+        preview = get(api, "/api/settle", name="PumpSpeed", key="unit", raw='"kPa"').body
+        assert contents(root) == before
+        assert [change["file"] for change in preview["changes"]] == [posix(root, self.PUMP)]
+        assert applied(api, preview).status == 200
+        assert contents(root) == {
+            **before,
+            self.PUMP: with_unit(before[self.PUMP], "PumpSpeed", "kPa"),
+        }
+
+    def test_a_unit_the_declared_type_fixes_is_left_to_the_type(
+        self, vocabulary: tuple[Api, Path]
+    ) -> None:
+        api, root = vocabulary
+        before = contents(root)
+        declaration = get(api, "/api/variable", name="TorqueLimit").body["declarations"][0]
+        assert (declaration["type"], declaration["fixed"]["unit"]) == ("Torque_t", '"Nm"')
+        assert "unit" not in declaration["stated"]
+        agreed = get(api, "/api/settle", name="TorqueLimit", key="unit", raw='"Nm"')
+        assert (agreed.status, agreed.body["changes"]) == (200, [])
+        refused = get(api, "/api/settle", name="TorqueLimit", key="unit", raw='"rpm"')
+        assert (refused.status, refused.body["error"]) == (409, "fixed-by-type")
+        assert "Torque_t" in refused.body["message"]
+        assert contents(root) == before

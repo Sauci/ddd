@@ -85,6 +85,29 @@ class TestWhatChanges:
         )
         assert settled(idx, "unit", '"rpm"') == Settlement((), ())
 
+    def test_a_local_variable_is_given_the_value_where_it_is_kept(self, tmp_path: Path) -> None:
+        """One component keeps it to itself, so its one declaration is the whole variable."""
+        idx = built(
+            tmp_path, **{"a.ddd.json": component("A", declare("local", "Speed", unit="rpm"))}
+        )
+        assert settled(idx, "unit", '"%"') == Settlement(
+            (Settled(site_in(idx, "a.ddd.json"), '"%"'),), ()
+        )
+
+    def test_a_variable_no_one_produces_is_settled_among_its_readers(self, tmp_path: Path) -> None:
+        """Settling asks nothing of a producer: without one, the readers are every declaration
+        there is, and each that states another value is given this one."""
+        idx = built(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("input", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
+            },
+        )
+        assert settled(idx, "unit", '"rpm"') == Settlement(
+            (Settled(site_in(idx, "b.ddd.json"), '"rpm"'),), ()
+        )
+
     def test_a_name_nothing_declares_settles_nothing(self, tmp_path: Path) -> None:
         idx = built(
             tmp_path, **{"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}

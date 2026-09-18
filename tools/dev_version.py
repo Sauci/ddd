@@ -1,11 +1,11 @@
-"""Stamp a development version into the checkout ci builds, and say how to install the build.
+"""Stamp a development version into the checkout ci builds, and read what the build depends on.
 
-``.github/workflows/ci.yml`` publishes a development build of every push to master and of every
-commit of this repository's own pull requests to TestPyPI, so that any commit installs with
-``pip install`` - its compiled pages included, and no node anywhere.  Its ``dev-build`` job runs
-``stamp`` in its own checkout before it builds, and ``summary`` over the wheel it built, which
-``dev-publish`` writes into the run's summary once it has uploaded that wheel.  Nothing this
-rewrites is ever committed.
+``.github/workflows/ci.yml`` publishes a development build of the last commit of every push to
+master, and of every push to this repository's own pull requests, to TestPyPI, so that such a
+commit installs with ``pip install`` - its compiled pages included, and no node anywhere.  Its
+``dev-build`` job runs ``stamp`` in its own checkout before it builds, and ``dependencies`` over
+the wheel it built, for the one line of the run's summary written there; ``dev-publish`` checks
+what it is handed and writes the rest.  Nothing this rewrites is ever committed.
 
 The version is ``<next patch>.dev<run number>``: after 0.10.0, run 57 builds ``0.10.1.dev57``.
 The commit cannot be part of it - PEP 440 refuses ``0.10.0-<sha>``, and PyPI and TestPyPI both
@@ -51,9 +51,6 @@ COMMIT = re.compile(r"[0-9a-f]{40}")
 
 METADATA = re.compile(r"[^/]+\.dist-info/METADATA")
 """Where a wheel keeps its core metadata."""
-
-TESTPYPI = "https://test.pypi.org"
-"""The index a development build is published to and installed from."""
 
 
 def next_development(version: str, run: int) -> str:
@@ -138,67 +135,47 @@ def stamp(root: Path, run: str, commit: str) -> str:
     return version
 
 
-def summary(wheel: Path) -> str:
-    """The summary of the run that publishes ``wheel``: its version, its commit, its install.
+def dependencies(wheel: Path) -> str:
+    """The command that installs the runtime dependencies of ``wheel`` from PyPI.
 
-    Read out of the wheel rather than out of the checkout, so that it states what is uploaded.
-    The runtime dependencies are its ``Requires-Dist`` less those an extra asks for, so they
-    are exactly the ones pip would resolve, and they come from PyPI; ddd-tool alone comes from
-    TestPyPI.  Two commands on purpose: given both indexes at once, pip takes each name's
-    highest version from either, and anybody can upload a lookalike to TestPyPI.  Each
-    requirement is put in double quotes, which cmd, PowerShell and bash all read the same way,
-    and so a marker's own strings go into single ones.
+    The one line of the run's summary written where the build ran: ``dev-publish`` writes the
+    rest, the line installing ddd-tool itself from TestPyPI included, from the version it has
+    checked.  Two commands on purpose: given both indexes at once, pip takes each name's highest
+    version from either, and anybody can upload a lookalike to TestPyPI.
+
+    Read out of the wheel rather than out of the checkout, so that they are what is uploaded:
+    its ``Requires-Dist`` less those an extra asks for, which are exactly the ones pip would
+    resolve.  Each is put in double quotes, which cmd, PowerShell and bash all read the same
+    way, and so a marker's own strings go into single ones.  A wheel naming no commit is
+    refused: the version cannot carry one, so its metadata is the only place that does.
     """
     with zipfile.ZipFile(wheel) as archive:
         (name,) = [entry for entry in archive.namelist() if METADATA.fullmatch(entry)]
         metadata = email.message_from_bytes(archive.read(name))
-    distribution, version = metadata["Name"], metadata["Version"]
-    urls = {
-        label: url
-        for label, _, url in (
-            entry.partition(", ") for entry in metadata.get_all("Project-URL", [])
-        )
-    }
-    if "Commit" not in urls:
+    labels = {entry.partition(", ")[0] for entry in metadata.get_all("Project-URL", [])}
+    if "Commit" not in labels:
         raise ValueError(f"{wheel.name} names no commit: it was not built from a stamped checkout")
-    commit = urls["Commit"]
     runtime = [
         requirement.replace('"', "'")
         for requirement in metadata.get_all("Requires-Dist", [])
         if not re.search(r"\bextra\b", requirement.partition(";")[2])
     ]
-    return "\n".join(
-        [
-            f"### {distribution} {version}",
-            "",
-            f"Built from commit [`{commit.rsplit('/', 1)[1][:12]}`]({commit}) and published to "
-            f"[TestPyPI]({TESTPYPI}/project/{distribution}/{version}/). Its runtime dependencies "
-            f"come from PyPI, and {distribution} alone from TestPyPI:",
-            "",
-            "```shell",
-            "pip install " + " ".join(f'"{requirement}"' for requirement in runtime),
-            f"pip install --no-deps --index-url {TESTPYPI}/simple/ {distribution}=={version}",
-            "```",
-            "",
-            "Two commands on purpose: given both indexes at once, pip takes each name's highest "
-            "version from either, and anybody can upload a lookalike to TestPyPI.",
-        ]
-    )
+    return "pip install " + " ".join(f'"{requirement}"' for requirement in runtime)
 
 
 def main(argv: Sequence[str] | None = None, root: Path = ROOT) -> int:
-    """``stamp <run number> <commit>``, or ``summary <wheel>``; the exit code."""
+    """``stamp <run number> <commit>``, or ``dependencies <wheel>``; the exit code."""
     arguments = list(sys.argv[1:] if argv is None else argv)
     try:
         match arguments:
             case ["stamp", run, commit]:
                 print(stamp(root, run, commit))
-            case ["summary", wheel]:
-                print(summary(Path(wheel)))
+            case ["dependencies", wheel]:
+                print(dependencies(Path(wheel)))
             case _:
                 script = Path(__file__).name
                 print(f"usage: {script} stamp <run number> <commit>", file=sys.stderr)
-                print(f"       {script} summary <wheel>", file=sys.stderr)
+                print(f"       {script} dependencies <wheel>", file=sys.stderr)
                 return 2
     except ValueError as error:
         print(f"{Path(__file__).name}: {error}", file=sys.stderr)

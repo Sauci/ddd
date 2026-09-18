@@ -58,9 +58,9 @@ ddd --version
 ```
 
 The distribution is called `ddd-tool` because `ddd` was taken; the command, the importable
-package and the `*.ddd.json` files are all still `ddd`.  An unreleased commit of `master`, or
-of a pull request from a branch of this repository, installs from TestPyPI as the development
-build ci publishes of it:
+package and the `*.ddd.json` files are all still `ddd`.  Before it is released, the last
+commit of a push to `master`, or to a pull request from a branch of this repository, installs
+from TestPyPI as the development build ci publishes of it once its checks pass:
 [the developer documentation](https://sauci.github.io/ddd/latest/developer_documentation.html#development-builds)
 gives the two commands.
 

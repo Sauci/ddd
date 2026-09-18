@@ -38,9 +38,10 @@ was built from, and that release is what the header of every generated file ment
    $ ddd --version
    ddd 0.10.0
 
-An unreleased commit of ``master``, or of a pull request from a branch of this repository,
-installs from TestPyPI instead, as the development build ci publishes of it: :ref:`the
-developer documentation <development-builds>` gives the two commands.
+Before it is released, the last commit of a push to ``master``, or to a pull request from a
+branch of this repository, installs from TestPyPI instead, as the development build ci publishes
+of it once its checks pass: :ref:`the developer documentation <development-builds>` gives the
+two commands.
 
 .. note::
    The distribution is called ``ddd-tool`` because the name ``ddd`` was already taken on the

@@ -655,10 +655,11 @@ the pages reach the image, installed with DDD.
 
 The working tree is bind mounted at ``/work`` and ``PYTHONPATH=/work/src`` makes it shadow the
 copy installed into the image, so a change to the sources takes effect without rebuilding
-anything. The ``docs`` service installs the documentation extra into that mount and runs
-``sphinx-build`` with ``-W``, so a warning - a broken cross reference, a directive that does
-not render - fails the build rather than producing a page nobody looks at twice. There is also
-a ``shell`` service, which is the same container with an interactive bash in it.
+anything. The ``docs`` service runs ``sphinx-build`` with ``-W`` on the documentation
+requirements the image carries, installing nothing, so a warning - a broken cross reference, a
+directive that does not render - fails the build rather than producing a page nobody looks at
+twice. There is also a ``shell`` service, which is the same container with an interactive bash
+in it.
 
 The pages of ``ddd gui`` are shadowed with the rest: a service serves the ones compiled in the
 working tree, which git ignores, so over a checkout that never compiled them ``ddd gui`` refuses

@@ -432,8 +432,8 @@ run a contributor does locally. The pages are asked for with ``python -I``, whic
 the working tree a service puts first on the path: a clean checkout has no compiled pages, so
 without it the check would read the checkout rather than the image.
 
-``dev-build`` and ``dev-publish`` put a development build of every push to ``master``, and of
-every commit of this repository's own pull requests, on TestPyPI, as
+``dev-build`` and ``dev-publish`` put a development build of the last commit of every push to
+``master``, and of every push to this repository's own pull requests, on TestPyPI, as
 :ref:`development-builds` below describes.
 
 The suite runs across a matrix of ubuntu and windows on python 3.12, 3.13 and 3.14, which is
@@ -471,19 +471,28 @@ caps to being caps.
 Development builds
 ~~~~~~~~~~~~~~~~~~
 
-Every push to ``master``, and every commit of this repository's own pull requests, is published
-to `TestPyPI <https://test.pypi.org/project/ddd-tool/>`_ as a development build, so that any
-commit installs with ``pip install`` - its compiled pages included, and no Node.js anywhere -
-without the GitHub account an artifact needs, and after the artifact has expired; TestPyPI is
-itself pruned now and then, though, so a development build is no archive.
-``dev-build`` waits for ``gui``, so that a run whose pages fail in the browser publishes
-nothing. It checks the commit out - a pull request's own head, not the merge ``gui`` tests it
-as - stamps the development version into it, compiles the pages and builds the wheel and the
-sdist as the release build does, type check included, and checks that the wheel carries the
-pages. ``dev-publish`` uploads what it built. They are two jobs for the reason ``publish.yml``
-builds a release in one job and uploads it in another: ``npm ci`` runs the install scripts of
-every package the pages depend on, and a build runs whatever its backend is, so none of that
-runs in the job that can ask for a token to publish with.
+The last commit of every push to ``master``, and of every push to one of this repository's own
+pull requests, is published to `TestPyPI <https://test.pypi.org/project/ddd-tool/>`_ as a
+development build, so that such a commit installs with ``pip install`` - its compiled pages
+included, and no Node.js anywhere - without the GitHub account an artifact needs, and after the
+artifact has expired; TestPyPI is itself pruned now and then, though, so a development build is
+no archive. A commit that was not the last of its push has no build of its own, and a run that
+fails, or that a newer push cancels before its upload has begun, publishes nothing.
+
+``dev-build`` waits for ``test``, ``lint`` and ``gui``, so that a commit whose suite, lint or
+pages fail is never a build anybody is pointed at. It checks the commit out - a pull request's
+own head, not the merge ``gui`` tests it as - and fails at once, with an error saying to merge
+``master`` into the branch, when that head has no ``tools/dev_version.py``: a pull request whose
+branch was cut before development builds existed. It then stamps the development version into
+the checkout, compiles the pages and builds the wheel and the sdist as the release build does,
+type check included, and checks that the wheel carries the pages. ``dev-publish`` uploads what
+it built. They are two jobs for the reason ``publish.yml`` builds a release in one job and
+uploads it in another: ``npm ci`` runs the install scripts of every package the pages depend on,
+and a build runs whatever its backend is, so none of that runs in the job that can ask for a
+token to publish with. That job checks nothing out, and takes nothing it is handed on trust:
+the version has to be this run's, and ``dist/`` has to hold that version's wheel and sdist and
+nothing else - a file left there for a later run's version would otherwise be uploaded under it,
+and that run's own upload refused.
 
 **The version is the next patch, as a development release numbered by the run.** After 0.10.0,
 run 57 publishes ``0.10.1.dev57``. The commit cannot be part of the version: PEP 440 refuses
@@ -492,7 +501,11 @@ build's metadata carries it instead, as the ``Commit`` link of the project, and 
 summary maps the version to it. The base is the next patch because ``0.10.0.dev57`` would sort
 before 0.10.0 itself, beneath the release every such commit came after. The run number grows
 across every branch, so every run publishes a version of its own; a re-run keeps its number,
-and the upload skips the files its first attempt made.
+and the upload skips the files an earlier attempt made. A first attempt skips nothing: a file
+already on TestPyPI under its version came from another run, and the upload fails on it rather
+than passing over it with a summary naming somebody else's build. Renaming ``ci.yml`` restarts
+its run numbers - and its registration below names the file - so its uploads are refused until
+the numbers, or the next release, move past the versions already published.
 
 ``tools/dev_version.py`` writes that version into the job's own checkout, and nothing it
 rewrites is committed. It writes it into the three places the installed package compares at
@@ -502,8 +515,10 @@ run time: ``pyproject.toml``; ``src/ddd/__init__.py``, so that ``ddd --version``
 any other release. Nothing compares the other spellings, listed under
 :ref:`publishing-a-release`, at run time: the extension's manifest and lock file reach no
 installed package, and the rest is prose - the README's included, which the wheel carries as
-its description. The script refuses a version with no next patch - a release candidate is
-one - and ``tests/test_documentation.py`` holds it to all of this.
+its description. The script refuses a version with no next patch, and a release candidate is
+one: while ``__version__`` states a candidate, every run's ``dev-build`` fails - master's
+included - until the release replaces it. ``tests/test_documentation.py`` holds the script to
+all of this, and runs the two checks ``dev-publish`` makes.
 
 The run's summary gives the two commands that install the build, for instance:
 
@@ -512,10 +527,11 @@ The run's summary gives the two commands that install the build, for instance:
    pip install "jinja2<4,>=3.1" "pydantic<3,>=2.7"
    pip install --no-deps --index-url https://test.pypi.org/simple/ ddd-tool==0.10.1.dev57
 
-The first installs the runtime dependencies from PyPI, read off the wheel so that they are
-exactly its own; the second installs ddd-tool alone, from TestPyPI. They are two on purpose:
-given both indexes at once, pip takes each name's highest version from either, and anybody can
-upload a lookalike to TestPyPI.
+The first installs the runtime dependencies from PyPI, read off the wheel by ``dev-build`` so
+that they are exactly its own; the second installs ddd-tool alone, from TestPyPI, and
+``dev-publish`` writes it from the version it checked. They are two on purpose: given both
+indexes at once, pip takes each name's highest version from either, and anybody can upload a
+lookalike to TestPyPI.
 
 **The publisher is a third registration.** The upload authenticates with trusted publishing,
 as a release does, so TestPyPI has to know this workflow as well as ``publish.yml``. Register,
@@ -528,8 +544,9 @@ run publishes it, as it does for a release.
 
 Only this repository's runs publish. A pull request from a fork is given no token to publish
 with, and a fork's own push to its ``master`` has no publisher, so both skip the two jobs rather
-than failing at the upload; a dispatch publishes nothing either. A run that a newer push to the
-same branch cancels publishes nothing, unless its upload had already begun.
+than failing at the upload; a dispatch publishes nothing either. Within the repository,
+``testpypi-dev`` is anybody's who can push a branch, as :ref:`publishing-a-release` says of the
+environments.
 
 Building this documentation
 ---------------------------
@@ -718,11 +735,16 @@ generated file quoted in :doc:`getting_started`, :doc:`generated_artefacts`,
 :doc:`faq` and :doc:`templates`. Bumping the version means walking all ten in the release
 commit.
 
-The publishing jobs name a deployment environment - ``pypi``, ``testpypi``. As this
-repository stands, neither carries a deployment branch policy and neither has a protection
-rule, so nothing in the settings decides which ref may publish: what does is the workflow
-itself, where ``publish-pypi`` runs for a release or for a dispatch from a ``v*`` tag and for
-nothing else.
+The publishing jobs name a deployment environment - ``pypi`` and ``testpypi`` in
+``publish.yml``, ``testpypi-dev`` in ``ci.yml``. As this repository stands, none carries a
+deployment branch policy and none has a protection rule, so nothing in the settings decides
+which ref may publish: what does is the workflow itself, where ``publish-pypi`` runs for a
+release or for a dispatch from a ``v*`` tag and for nothing else. ``testpypi-dev`` is the
+exception, because the workflow deciding is not always ``master``'s: a pull request from one of
+this repository's branches runs that branch's own ``ci.yml``, so anybody who can push a branch
+here can publish to TestPyPI through it, whatever ``master`` says. That is the price of a
+development build for every such pull request, and it stops at TestPyPI: the publisher on
+``pypi.org`` names ``publish.yml`` and ``pypi`` alone.
 
 An environment *can* be created with its deployments restricted to the default branch, which
 is the whole of what a release is not: the run is triggered by a tag. One left at that
@@ -770,8 +792,8 @@ The browser interface
 compiled, never where ddd is installed. The release build compiles them before it builds the
 wheel, which then carries them. The ``gui`` job of ci does the same and uploads the wheel as
 ``ddd-tool-<commit>``, so every branch ci runs on installs without Node.js as well, and
-``dev-build`` does it again for the :ref:`development build <development-builds>` of a commit of
-``master`` or of a pull request, which TestPyPI serves to anybody. The image
+``dev-build`` does it again for the :ref:`development build <development-builds>` of the last
+commit of a push to ``master`` or to a pull request, which TestPyPI serves to anybody. The image
 behind ``docker compose`` compiles them in a build stage of its own, thrown away with its
 Node.js: the image carries the pages and no Node.js. A source checkout needs Node.js 24 to build
 them, with the package installed so that its types can be generated:

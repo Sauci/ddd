@@ -25,10 +25,11 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   first step of a GUI for developers who would rather not edit JSON, and its options are not
   yet part of the public interface.  Installing it needs no Node.js: a release carries the
   compiled pages, and so do the wheel ci builds for every branch it runs on and the
-  development build it publishes to TestPyPI of every commit of `master` and of this
-  repository's pull requests - `0.10.1.dev57` for run 57, the commit it was built from named
-  in its metadata.  `--host` can also serve it from a container: published on the host's
-  loopback alone, with the token in the address as the only guard beyond it.
+  development build it publishes to TestPyPI of the last commit of every push to `master` and
+  to this repository's pull requests, once its checks pass - `0.10.1.dev57` for run 57, the
+  commit it was built from named in its metadata.  `--host` can also serve it from a
+  container: published on the host's loopback alone, with the token in the address as the
+  only guard beyond it.
 
 ## 0.10.0
 

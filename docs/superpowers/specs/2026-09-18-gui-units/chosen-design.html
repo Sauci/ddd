@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Units panel, chosen design</title>
+<style>
+:root {
+  --ink: #1d2a2f; --quiet: #5b6b71; --ground: #f7f9f9; --surface: #ffffff; --rule: #d9e2e5;
+  --accent: #0e6b7c; --focus: rgba(14, 107, 124, .16); --sel: #e3f1f3;
+  --error: #b3261e; --error-ground: #fdecea; --warning: #7a4f00; --warning-ground: #fff4dc;
+  --ok: #1e6b35; --ok-ground: #e6f4ea;
+  --font: "Segoe UI", system-ui, sans-serif; --mono: "Cascadia Mono", Consolas, monospace;
+  --r: 6px; --r-chip: 10px; --cell: 6px 10px; --shadow: 0 8px 24px rgba(20, 30, 35, .14);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 13.5px/1.5 var(--font); }
+.bar { display: flex; justify-content: space-between; align-items: center; padding: 9px 16px; border-bottom: 1px solid var(--rule); font-size: 12.5px; }
+.bar b { font-weight: 600; } .bar .pv { color: var(--quiet); letter-spacing: .05em; margin-left: 6px; font-size: 10.5px; }
+.bar a { color: var(--accent); margin-left: 14px; text-decoration: none; }
+.page { padding: 14px 16px 18px; }
+.title { display: flex; align-items: baseline; gap: 12px; margin: 0 0 12px; }
+.title h1 { font-size: 20px; font-weight: 600; margin: 0; }
+.title span { color: var(--quiet); font-size: 12.5px; }
+.tabs { display: flex; gap: 18px; border-bottom: 1px solid var(--rule); margin: 0 0 12px; font-size: 13px; }
+.tabs span { padding: 0 0 6px; color: var(--accent); }
+.tabs span.on { color: var(--ink); border-bottom: 2px solid var(--accent); font-weight: 600; }
+.split { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+table { width: 100%; border-collapse: collapse; background: var(--surface); }
+th, td { text-align: left; padding: var(--cell); border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th { font-weight: 600; font-size: 12.5px; }
+.box { border: 1px solid var(--rule); border-radius: var(--r); overflow: hidden; background: var(--surface); }
+.bad { color: var(--error); font-weight: 600; }
+.quiet { color: var(--quiet); }
+.chip { display: inline-block; font-size: 11.5px; padding: 0 8px; border-radius: var(--r-chip); background: var(--error-ground); color: var(--error); line-height: 1.7; }
+.unitbtn { border-bottom: 1px dashed transparent; }
+tr.sel td { background: var(--sel); }
+tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--error); }
+tr.sel.fine td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.panel { padding: 12px 14px; }
+.panel h2 { margin: 0; font-size: 14.5px; font-weight: 600; }
+.meta { color: var(--quiet); font-size: 12.5px; margin: 0 0 8px; }
+tr.chg td { background: var(--warning-ground); }
+.tag { font-size: 10.5px; color: var(--warning); margin-left: 6px; }
+.findings { margin: 10px 0 0; font-size: 12.5px; }
+.findings .msg { color: var(--quiet); margin-left: 6px; }
+.field { margin: 12px 0 4px; }
+.field label { display: block; font-size: 12.5px; color: var(--quiet); margin: 0 0 4px; }
+.combo { display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--rule); border-radius: var(--r); padding: 5px 10px; background: var(--surface); }
+.combo.open { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+.combo .caret { color: var(--quiet); font-size: 11px; }
+.warn { color: var(--warning); font-size: 12px; margin-top: 4px; }
+.list { margin-top: 4px; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); box-shadow: var(--shadow); padding: 4px 0; }
+.list .group { font-size: 11px; letter-spacing: .03em; color: var(--quiet); padding: 6px 12px 2px; }
+.list .item { display: flex; justify-content: space-between; gap: 12px; padding: 5px 12px; }
+.list .item.on { background: var(--sel); }
+.list .item small { color: var(--quiet); }
+.list mark { background: none; color: var(--accent); font-weight: 600; }
+.consequence { color: var(--quiet); font-size: 12.5px; margin-top: 8px; }
+.actions { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+.btn { font: inherit; font-size: 12.5px; padding: 5px 12px; border-radius: var(--r); border: 1px solid var(--accent); background: var(--accent); color: #fff; }
+.link { color: var(--accent); font-size: 12.5px; }
+.diff { font-family: var(--mono); font-size: 12px; background: var(--ground); border: 1px solid var(--rule); border-radius: var(--r); padding: 8px 10px; margin-top: 8px; line-height: 1.7; white-space: pre; }
+.diff .f { font-family: var(--font); color: var(--quiet); }
+.diff .m { color: var(--error); } .diff .p { color: var(--ok); } .diff .n { color: var(--quiet); }
+.canvas { position: relative; height: 330px; background: #eef2f3; background-image: radial-gradient(#cfd9dc 1px, transparent 1px); background-size: 16px 16px; border: 1px solid var(--rule); border-radius: var(--r); overflow: hidden; }
+.node { position: absolute; width: 132px; padding: 8px 10px; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
+.badge { font-size: 11px; padding: 0 6px; border-radius: var(--r-chip); background: var(--error-ground); color: var(--error); }
+.tools { display: flex; gap: 8px; margin: 0 0 10px; }
+.tools .search { flex: 1; border: 1px solid var(--rule); border-radius: var(--r); padding: 5px 10px; background: var(--surface); color: var(--quiet); }
+.tools .b { border: 1px solid var(--rule); border-radius: var(--r); padding: 5px 12px; background: var(--surface); }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="bar"><span><b>ddd gui</b><span class="pv">PREVIEW</span></span><span><a>Projects</a><a>DemoDevice</a></span></div>
+
+<div class="page" id="component">
+<div class="title"><h1>Controller</h1><span>components/controller.ddd.json · 14 declarations · 1 error</span></div>
+<div class="split">
+<div class="box"><table>
+<tr><th>Scope</th><th>Name</th><th>Kind</th><th>Type</th><th>Unit</th><th>Findings</th></tr>
+<tr class="sel" id="rowA"><td>input</td><td>ValueA</td><td>measurement</td><td>uint8</td><td class="bad unitbtn" id="tU">rpm</td><td id="tF"><span class="chip">definition-mismatch</span></td></tr>
+<tr><td>input</td><td>ValueB</td><td>measurement</td><td>uint16</td><td class="unitbtn">V</td><td></td></tr>
+<tr><td>output</td><td>ValueE</td><td>measurement</td><td>uint16</td><td class="unitbtn">Hz</td><td></td></tr>
+<tr><td>output</td><td>ValueF</td><td>measurement</td><td>sint16</td><td class="unitbtn">degC</td><td></td></tr>
+<tr><td>output</td><td>StateA</td><td>measurement</td><td>uint8</td><td class="quiet unitbtn">none</td><td></td></tr>
+<tr><td>local</td><td>ParameterA</td><td>parameter</td><td>uint16</td><td class="unitbtn">Hz</td><td></td></tr>
+<tr><td>local</td><td>AxisB</td><td>axis</td><td>uint8</td><td class="unitbtn">%</td><td></td></tr>
+<tr><td>local</td><td>CurveA</td><td>curve</td><td>uint16</td><td class="unitbtn">ms</td><td></td></tr>
+</table></div>
+<div class="box panel" id="panel"></div>
+</div>
+</div>
+
+<div class="page" id="graph" hidden>
+<div class="title"><h1>DemoDevice</h1></div>
+<div class="tabs"><span class="on">Graph</span><span>Table</span></div>
+<div class="split" style="grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr)">
+<div>
+<div class="tools"><span class="search">Search modules</span><span class="b">Tidy</span><span class="b">Fit</span></div>
+<div class="canvas">
+<svg width="100%" height="100%" style="position:absolute;inset:0">
+<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b8c5c9"/></marker>
+<marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b3261e"/></marker></defs>
+<path d="M132,96 L304,96" stroke="#b8c5c9" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<path d="M278,196 C292,196 292,96 304,96" stroke="#b8c5c9" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<path d="M424,96 L450,96" stroke="#b8c5c9" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<path d="M278,196 C380,196 420,130 452,110" stroke="#b8c5c9" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<path d="M132,96 C146,96 144,196 158,196" stroke="#e3f1f3" stroke-width="9" fill="none"/>
+<path d="M132,96 C146,96 144,196 158,196" stroke="#b3261e" stroke-width="2.5" fill="none" marker-end="url(#arr)"/>
+<g font-family="Segoe UI, system-ui" font-size="11">
+<rect x="134" y="137" width="22" height="18" rx="9" fill="#fdecea" stroke="#b3261e"/><text x="145" y="150" text-anchor="middle" fill="#b3261e">2</text>
+<rect x="207" y="87" width="22" height="18" rx="9" fill="#fff" stroke="#b8c5c9"/><text x="218" y="100" text-anchor="middle" fill="#5b6b71">2</text>
+<rect x="281" y="137" width="22" height="18" rx="9" fill="#fff" stroke="#b8c5c9"/><text x="292" y="150" text-anchor="middle" fill="#5b6b71">6</text>
+<rect x="372" y="163" width="22" height="18" rx="9" fill="#fff" stroke="#b8c5c9"/><text x="383" y="176" text-anchor="middle" fill="#5b6b71">1</text>
+</g>
+</svg>
+<div class="node" style="left:14px;top:78px;width:118px">SensorHub<span class="badge">1</span></div>
+<div class="node" style="left:160px;top:178px;width:118px">Controller<span class="badge">1</span></div>
+<div class="node" style="left:306px;top:78px;width:118px">UserInterface</div>
+<div class="node" style="left:452px;top:78px;width:118px">EventLogger</div>
+</div>
+</div>
+<div class="box panel" id="panel2"></div>
+</div>
+</div>
+
+<script>
+const state = (location.hash || "#panel").slice(1);
+const vocabulary = state === "vocabulary";
+const typed = vocabulary ? "RPM" : "%";
+const picked = state === "applied" ? "%" : typed;
+const declared = [["SensorHub", "produces", "%"], ["Controller", "reads", "rpm"], ["UserInterface", "reads", "%"]];
+const rows = declared.map(([who, role, unit]) => {
+  const now = state === "applied" ? "%" : unit;
+  const change = state !== "applied" && now !== picked;
+  return `<tr class="${change ? "chg" : ""}"><td>${who}</td><td class="quiet">${role}</td><td>${now === "rpm" && state !== "applied" ? '<span class="bad">rpm</span>' : now}${change ? '<span class="tag">will change</span>' : ""}</td></tr>`;
+}).join("");
+const changing = declared.filter(([, , u]) => u !== picked).map(([w]) => ({ SensorHub: "sensor_hub", Controller: "controller", UserInterface: "user_interface" })[w] + ".ddd.json");
+const list = vocabulary
+  ? `<div class="list"><div class="group">Declared for ValueA</div>
+<div class="item"><span><mark>rpm</mark></span><small>Controller</small></div>
+<div class="group">This project's units</div>
+<div class="item"><span><mark>rpm</mark></span><small>rotational speed, revolutions per minute · 1 variable</small></div>
+<div class="group">As typed</div>
+<div class="item on"><span>RPM</span><small>not one of this project's units</small></div></div>`
+  : `<div class="list"><div class="group">Declared for ValueA</div>
+<div class="item on"><span>%</span><small>SensorHub, UserInterface</small></div>
+<div class="item"><span>rpm</span><small>Controller</small></div>
+<div class="group">Other units in this project</div>
+<div class="item"><span>Hz</span><small>4 variables</small></div>
+<div class="item"><span>V</span><small>3 variables</small></div>
+<div class="item"><span>degC</span><small>1 variable</small></div>
+<div class="item"><span>ms</span><small>1 variable</small></div>
+<div class="group">No unit</div><div class="item"><span class="quiet">none</span><small></small></div></div>`;
+const diff = `<div class="diff"><span class="f">controller.ddd.json, line 14</span>
+<span class="n">          "datatype": "uint8",</span>
+<span class="m">-         "unit": "rpm",</span>
+<span class="p">+         "unit": "%",</span>
+<span class="n">          "conversion": { "kind": "linear", "factor": 0.5 },</span></div>`;
+const open = state === "picker" || vocabulary;
+const findings = state === "applied" ? "" : `<div class="findings"><span class="chip">definition-mismatch</span><span class="msg">Controller states rpm, SensorHub %</span></div>`;
+const bottom = state === "applied"
+  ? `<div class="consequence" style="color:var(--ok)">ValueA is % everywhere. Changed controller.ddd.json.</div>`
+  : `<div class="consequence">${vocabulary ? "Changes 3 files: sensor_hub.ddd.json, controller.ddd.json, user_interface.ddd.json" : "Changes 1 file: " + changing.join(", ")}</div>
+${state === "changes" ? diff : ""}
+<div class="actions"><span class="link">${state === "changes" ? "Hide changes" : "Show changes"}</span><button class="btn">Apply to ${vocabulary ? "3 files" : "1 file"}</button></div>`;
+const panel = `<h2>ValueA</h2><p class="meta">measurement · uint8 · produced by SensorHub</p>
+<table><tr><th>Declared by</th><th>Role</th><th>Unit</th></tr>${rows}</table>
+${findings}
+<div class="field"><label>Unit of ValueA</label>
+<div class="combo ${open ? "open" : ""}"><span>${picked}</span><span class="caret">&#9662;</span></div>
+${vocabulary ? '<div class="warn">Not one of this project\'s units</div>' : ""}${open ? list : ""}</div>
+${bottom}`;
+if (state === "applied") {
+  document.getElementById("tU").textContent = "%"; document.getElementById("tU").className = "unitbtn";
+  document.getElementById("tF").innerHTML = ""; document.getElementById("rowA").classList.add("fine");
+}
+if (state === "canvas") {
+  document.getElementById("component").hidden = true; document.getElementById("graph").hidden = false;
+  document.getElementById("panel2").innerHTML = `<p class="meta" style="margin:0 0 6px">SensorHub to Controller · 2 variables, 1 in disagreement</p>` + panel;
+} else {
+  document.getElementById("panel").innerHTML = panel;
+}
+</script>
+</body>
+</html>

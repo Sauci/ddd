@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unit resolver mockups</title>
+<style>
+:root {
+  --ink: #1d2a2f; --ink-quiet: #5b6b71; --ground: #f7f9f9; --surface: #ffffff; --canvas: #eef2f3;
+  --rule: #d9e2e5; --accent: #0e6b7c; --accent-ground: #e3f1f3; --error: #b3261e; --error-ground: #fdecea;
+  --warning: #7a4f00; --warning-ground: #fff4dc; --ok: #1e6b35; --ok-ground: #e6f4ea;
+  --font: "Segoe UI", system-ui, sans-serif; --mono: "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px 16px 48px; background: var(--canvas); color: var(--ink); font: 15px/1.5 var(--font); }
+main { max-width: 1040px; margin: 0 auto; }
+.intro h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+.intro p { margin: 0 0 20px; color: var(--ink-quiet); font-size: 14px; }
+.variant { margin: 0 0 28px; }
+.variant > header { display: flex; align-items: baseline; gap: 10px; margin: 0 0 8px; }
+.variant > header h2 { font-size: 16px; font-weight: 600; margin: 0; }
+.variant > header span { font-size: 13px; color: var(--ink-quiet); }
+.pick { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: var(--accent-ground); color: var(--accent); }
+.app { background: var(--ground); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+.bar { display: flex; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--rule); font-size: 13px; }
+.bar b { font-weight: 600; } .bar .pv { color: var(--ink-quiet); letter-spacing: .04em; margin-left: 6px; font-size: 11px; }
+.bar a { color: var(--accent); text-decoration: none; margin-left: 12px; }
+.page { padding: 14px 16px 18px; }
+.page h3 { font-size: 20px; font-weight: 600; margin: 0 0 10px; }
+table { width: 100%; border-collapse: collapse; background: var(--surface); font-size: 13px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th { font-weight: 600; }
+.bad { color: var(--error); font-weight: 600; }
+.chip { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--error-ground); color: var(--error); }
+.chip.link { cursor: pointer; border: 1px solid transparent; } .chip.link:hover { border-color: var(--error); }
+.flag { border-left: 3px solid var(--error); }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; }
+.popover { position: relative; max-width: 420px; margin: 8px 0 0 auto; margin-right: 12%; box-shadow: 0 6px 18px rgba(29, 42, 47, .12); }
+.popover::before { content: ""; position: absolute; top: -7px; right: 60px; width: 12px; height: 12px; background: var(--surface); border-left: 1px solid var(--rule); border-top: 1px solid var(--rule); transform: rotate(45deg); }
+.card h4 { font-size: 14px; font-weight: 600; margin: 0 0 2px; }
+.quiet { color: var(--ink-quiet); font-size: 12px; }
+.opt { display: flex; gap: 8px; align-items: flex-start; padding: 7px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.opt:hover { background: var(--ground); }
+.opt input { margin-top: 3px; accent-color: var(--accent); }
+.row { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 8px; }
+button { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.textlink { border: 0; background: none; padding: 0; color: var(--accent); }
+select { font: inherit; font-size: 13px; padding: 4px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); color: var(--ink); }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 14px; align-items: start; }
+tr.sel td { background: var(--accent-ground); }
+tr.chg td { background: var(--warning-ground); }
+tr.chg td:last-child::after { content: "  will change"; color: var(--warning); font-size: 11px; }
+.diff { font-family: var(--mono); font-size: 12px; background: var(--ground); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; margin-top: 8px; line-height: 1.7; }
+.diff .f { font-family: var(--font); color: var(--ink-quiet); }
+.diff .m { color: var(--error); } .diff .p { color: var(--ok); }
+.done { margin-top: 10px; padding: 8px 10px; border-radius: 6px; background: var(--ok-ground); color: var(--ok); font-size: 13px; }
+.scrim { background: rgba(29, 42, 47, .35); padding: 28px 16px; display: flex; justify-content: center; }
+.dialog { width: 100%; max-width: 470px; }
+.choice { display: block; border: 1px solid var(--rule); border-radius: 8px; padding: 9px 12px; margin: 6px 0; cursor: pointer; font-size: 13px; }
+.choice:has(input:checked) { border-color: var(--accent); background: var(--accent-ground); }
+.choice input { accent-color: var(--accent); margin-right: 6px; }
+[hidden] { display: none !important; }
+@media (max-width: 720px) { .split { grid-template-columns: minmax(0, 1fr); } .popover { margin-right: 0; } th, td { white-space: normal; } }
+</style>
+</head>
+<body>
+<main>
+<div class="intro">
+<h1>Unit mismatch resolver: three options</h1>
+<p>SensorHub produces ValueA in %. Controller and UserInterface read it; Controller has drifted to rpm. Every mockup is clickable, and each Apply shows which files would change.</p>
+</div>
+
+<section class="variant">
+<header><h2>A · Popover at the finding</h2><span>opens from the red finding in the component table</span></header>
+<div class="app">
+<div class="bar"><span><b>ddd gui</b><span class="pv">PREVIEW</span></span><span><a>Projects</a><a>DemoDevice</a></span></div>
+<div class="page">
+<h3>Controller</h3>
+<table>
+<tr><th>Scope</th><th>Name</th><th>Kind</th><th>Type</th><th>Unit</th><th>Findings</th></tr>
+<tr id="aRow" class="flag"><td>input</td><td>ValueA</td><td>measurement</td><td>uint8</td><td id="aU" class="bad">rpm</td><td id="aF"><span class="chip link" id="aChip">definition-mismatch</span></td></tr>
+<tr><td>input</td><td>ValueB</td><td>measurement</td><td>uint16</td><td>V</td><td></td></tr>
+<tr><td>output</td><td>ValueE</td><td>measurement</td><td>uint16</td><td>Hz</td><td></td></tr>
+</table>
+<div class="card popover" id="aP">
+<h4>ValueA has two units</h4>
+<label class="opt"><input type="radio" name="a" value="%" checked><span>% <span class="quiet">· SensorHub, which produces it, and UserInterface</span><br><span class="quiet">Changes controller.ddd.json</span></span></label>
+<label class="opt"><input type="radio" name="a" value="rpm"><span>rpm <span class="quiet">· Controller</span><br><span class="quiet">Changes sensor_hub.ddd.json and user_interface.ddd.json</span></span></label>
+<div class="row"><button id="aCancel">Cancel</button><button class="primary" id="aApply">Use %</button></div>
+</div>
+<div class="done" id="aDone" hidden></div>
+</div></div>
+</section>
+
+<section class="variant">
+<header><h2>B · Panel for the variable</h2><span class="pick">recommended</span><span>opens beside the table, or from a red arrow on the canvas</span></header>
+<div class="app">
+<div class="bar"><span><b>ddd gui</b><span class="pv">PREVIEW</span></span><span><a>Projects</a><a>DemoDevice</a></span></div>
+<div class="page">
+<h3>Controller</h3>
+<div class="split">
+<table>
+<tr><th>Scope</th><th>Name</th><th>Unit</th><th>Findings</th></tr>
+<tr class="sel flag"><td>input</td><td>ValueA</td><td id="bU" class="bad">rpm</td><td id="bF"><span class="chip">definition-mismatch</span></td></tr>
+<tr><td>input</td><td>ValueB</td><td>V</td><td></td></tr>
+<tr><td>output</td><td>ValueE</td><td>Hz</td><td></td></tr>
+<tr><td>output</td><td>ValueF</td><td>degC</td><td></td></tr>
+</table>
+<div class="card">
+<h4>ValueA</h4>
+<div class="quiet" style="margin-bottom:8px">measurement · uint8 · produced by SensorHub</div>
+<table id="bT">
+<tr><th>Declared by</th><th>Role</th><th>Unit</th></tr>
+<tr data-u="%"><td>SensorHub</td><td class="quiet">produces</td><td>%</td></tr>
+<tr data-u="rpm"><td>Controller</td><td class="quiet">reads</td><td class="bad">rpm</td></tr>
+<tr data-u="%"><td>UserInterface</td><td class="quiet">reads</td><td>%</td></tr>
+</table>
+<div style="display:flex;align-items:center;gap:8px;margin:12px 0 2px;font-size:13px">
+<label for="bS">Unit of ValueA</label>
+<select id="bS"><option value="%">% (SensorHub, UserInterface)</option><option value="rpm">rpm (Controller)</option></select>
+</div>
+<div class="quiet" id="bC"></div>
+<div class="row" style="justify-content:space-between"><button class="textlink" id="bShow">Show changes</button><button class="primary" id="bApply">Apply</button></div>
+<div class="diff" id="bDiff" hidden></div>
+<div class="done" id="bDone" hidden></div>
+</div>
+</div>
+</div></div>
+</section>
+
+<section class="variant">
+<header><h2>C · Guided dialog</h2><span>opens over the page, and shows the exact lines before writing</span></header>
+<div class="app">
+<div class="bar"><span><b>ddd gui</b><span class="pv">PREVIEW</span></span><span><a>Projects</a><a>DemoDevice</a></span></div>
+<div class="scrim">
+<div class="card dialog">
+<div id="c1">
+<h4>Controller and SensorHub disagree about ValueA</h4>
+<p class="quiet" style="margin:2px 0 8px">SensorHub produces ValueA in %. Controller reads it as rpm. Pick the unit ValueA should have everywhere.</p>
+<label class="choice"><input type="radio" name="c" value="%" checked>Keep % <span class="quiet">· SensorHub owns ValueA; Controller changes</span></label>
+<label class="choice"><input type="radio" name="c" value="rpm">Change to rpm <span class="quiet">· SensorHub and UserInterface change</span></label>
+<div class="row"><button>Cancel</button><button class="primary" id="cNext">Review changes</button></div>
+</div>
+<div id="c2" hidden>
+<h4>Review the change</h4>
+<div class="diff" id="cDiff"></div>
+<div class="row" style="justify-content:space-between"><button id="cBack">Back</button><button class="primary" id="cApply">Apply</button></div>
+</div>
+<div class="done" id="cDone" hidden></div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const files = { "%": ["controller.ddd.json"], rpm: ["sensor_hub.ddd.json", "user_interface.ddd.json"] };
+const diffs = {
+  "%": [["controller.ddd.json", "rpm", "%"]],
+  rpm: [["sensor_hub.ddd.json", "%", "rpm"], ["user_interface.ddd.json", "%", "rpm"]],
+};
+const picked = (name) => document.querySelector(`input[name="${name}"]:checked`).value;
+const listed = (u) => `${files[u].length} file${files[u].length > 1 ? "s" : ""}: ${files[u].join(", ")}`;
+const diffHtml = (u) => diffs[u].map(([f, a, b]) =>
+  `<div class="f">${f}</div><div class="m">-   "unit": "${a}",</div><div class="p">+   "unit": "${b}",</div>`).join("");
+const settled = (u) => `ValueA is ${u} everywhere. Changed ${files[u].join(", ")}.`;
+
+document.querySelectorAll('input[name="a"]').forEach((r) => r.addEventListener("change", () => { $("aApply").textContent = `Use ${picked("a")}`; }));
+$("aChip").onclick = () => { $("aP").hidden = false; };
+$("aCancel").onclick = () => { $("aP").hidden = true; };
+$("aApply").onclick = () => {
+  const u = picked("a");
+  $("aU").textContent = u; $("aU").className = ""; $("aF").innerHTML = ""; $("aRow").className = "";
+  $("aP").hidden = true; $("aDone").hidden = false; $("aDone").textContent = settled(u);
+};
+
+function bUpdate() {
+  const u = $("bS").value;
+  document.querySelectorAll("#bT tr[data-u]").forEach((tr) => tr.classList.toggle("chg", tr.dataset.u !== u));
+  $("bC").textContent = `Changes ${listed(u)}`;
+  $("bApply").textContent = `Apply to ${files[u].length} file${files[u].length > 1 ? "s" : ""}`;
+  $("bDiff").innerHTML = diffHtml(u);
+}
+$("bS").onchange = bUpdate; bUpdate();
+$("bShow").onclick = () => { const d = $("bDiff"); d.hidden = !d.hidden; $("bShow").textContent = d.hidden ? "Show changes" : "Hide changes"; };
+$("bApply").onclick = () => {
+  const u = $("bS").value;
+  document.querySelectorAll("#bT tr[data-u]").forEach((tr) => { tr.dataset.u = u; tr.classList.remove("chg"); tr.cells[2].textContent = u; tr.cells[2].className = ""; });
+  $("bU").textContent = u; $("bU").className = ""; $("bF").innerHTML = "";
+  document.querySelector("tr.sel").classList.remove("flag");
+  ["bApply", "bShow", "bC", "bDiff"].forEach((id) => { $(id).hidden = true; });
+  $("bDone").hidden = false; $("bDone").textContent = settled(u);
+};
+
+$("cNext").onclick = () => { $("cDiff").innerHTML = diffHtml(picked("c")); $("c1").hidden = true; $("c2").hidden = false; };
+$("cBack").onclick = () => { $("c2").hidden = true; $("c1").hidden = false; };
+$("cApply").onclick = () => { $("c2").hidden = true; $("cDone").hidden = false; $("cDone").textContent = settled(picked("c")); };
+</script>
+</body>
+</html>

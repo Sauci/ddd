@@ -207,6 +207,21 @@ class TestOpening:
         assert module._kind(Path("x.ddd.json"), {"other": 1}) == "unknown"
 
 
+def test_a_revision_keeps_the_index_its_analysis_built(tmp_path: Path) -> None:
+    write_tree(
+        tmp_path,
+        {
+            "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+            "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+        },
+    )
+    session = Session(tmp_path)
+    revision = session.open(tmp_path / "p.ddd.json")
+    assert revision.index is not None
+    assert len(revision.index.declarations["Speed"]) == 2
+
+
 class TestFollowingTheDisk:
     def test_nothing_is_polled_while_no_project_is_open(self, tmp_path: Path) -> None:
         assert Session(tmp_path).poll() is False

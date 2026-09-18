@@ -36,7 +36,8 @@ from ddd.diagnostics import (
 )
 from ddd.ir import DataDictionary
 from ddd.loading import load_workspace
-from ddd.lsp.navigation import Loaded, resolve_projects
+from ddd.lsp.navigation import Index, Loaded, resolve_projects
+from ddd.lsp.navigation import index as index_of
 from ddd.lsp.ranges import Document, read
 from ddd.plugins import PluginError
 
@@ -57,11 +58,15 @@ class Run:
     ``dictionary`` is ``None`` when the analysis did not get that far - a read that reported an
     error is not analysed, and a plugin that raises stops the run - which is exactly when a
     reader of the dictionary has nothing it could trust.
+
+    ``index`` is the language server's own index of where the project writes each name, built
+    from the same read, or ``None`` when the project could not be read at all.
     """
 
     bag: DiagnosticBag
     covered: frozenset[Path]
     dictionary: DataDictionary | None
+    index: Index | None = None
 
 
 def analyse(info: BuildInfo) -> tuple[DiagnosticBag, frozenset[Path]]:
@@ -168,11 +173,13 @@ def _run(root: Path, bag: DiagnosticBag) -> Run:
     """
     covered = frozenset({root})
     dictionary: DataDictionary | None = None
+    built: Index | None = None
     try:
         workspace = load_workspace(root, bag)
         if workspace is None:
             return Run(bag, covered, None)
         covered = frozenset(workspace.sources())
+        built = index_of(workspace)
         if not bag.has_errors:
             dictionary = analyze(workspace, bag)
     except PluginError as error:
@@ -180,7 +187,7 @@ def _run(root: Path, bag: DiagnosticBag) -> Run:
         # check`` reports it as a usage error, but the server promises findings and never an
         # exception, so it is turned into one here, on the project file itself.
         bag.add("plugin-invalid", str(error), Location(root))
-    return Run(bag, covered, dictionary)
+    return Run(bag, covered, dictionary, built)
 
 
 def collect(

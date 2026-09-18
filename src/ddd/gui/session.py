@@ -29,6 +29,7 @@ from ddd.ir import DataDictionary
 from ddd.loading import parse_json_text
 from ddd.lsp.diagnostics import Run, group_findings, run_build, run_project
 from ddd.lsp.discovery import BUILD_DIRECTORY_PATTERNS, discover
+from ddd.lsp.navigation import Index
 
 KINDS: Final = ("project", "component", "types", "units", "sections", "constants", "rasters")
 """The top-level keys that say what a description file is, as the loader reads them."""
@@ -97,6 +98,10 @@ class Revision:
     dictionary: DataDictionary | None
     checks: tuple[CheckInfo, ...]
     """The plugin checks the analysis registered, beside the built-in ones every run has."""
+
+    index: Index | None
+    """Where the project writes down each name it uses, from the analysis's own read: the first
+    run that built one, since every run of one project reads the same files."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -262,6 +267,7 @@ class Session:
             ),
             dictionary=next((run.dictionary for run in runs if run.dictionary is not None), None),
             checks=tuple(registered.values()),
+            index=next((run.index for run in runs if run.index is not None), None),
         )
 
     def _publish(

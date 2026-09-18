@@ -937,6 +937,17 @@ class TestRuns:
         assert covered == service.run_project(DEMO).covered
         assert not bag.has_errors
 
+    def test_a_project_run_keeps_the_index_of_what_it_read(self) -> None:
+        run = service.run_project(DEMO)
+        assert run.index is not None
+        assert sorted(site.path.name for site in run.index.declarations["ValueA"]) == [
+            "controller.ddd.json",
+            "sensor_hub.ddd.json",
+        ]
+
+    def test_a_root_that_cannot_be_read_has_no_index(self, tmp_path: Path) -> None:
+        assert service.run_project(tmp_path / "absent.ddd.json").index is None
+
 
 class TestTheProjectIsReadOnce:
     """How often a refresh and a request read the project above the document.

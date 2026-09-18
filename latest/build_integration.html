@@ -718,7 +718,9 @@ compile the generated sources, and binutils for the <code class="docutils litera
 itself is installed with its development extra, which is also where the cmake and the ninja
 that build the cmake example come from: both are wheels from pypi rather than debian packages,
 because debian bookworm still ships cmake 3.25 and the module needs 3.30. <code class="docutils literal notranslate"><span class="pre">docker/compile.sh</span></code>
-is installed as the command <code class="docutils literal notranslate"><span class="pre">ddd-compile</span></code>.</p>
+is installed as the command <code class="docutils literal notranslate"><span class="pre">ddd-compile</span></code>. The image serves <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> too: its pages are
+compiled in an earlier stage of the same file, which has Node.js and is thrown away, and only
+the pages reach the image, installed with DDD.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>The image is a linux image, so on a Windows host run docker from a WSL shell, where docker
@@ -743,10 +745,29 @@ docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w">
 </div>
 <p>The working tree is bind mounted at <code class="docutils literal notranslate"><span class="pre">/work</span></code> and <code class="docutils literal notranslate"><span class="pre">PYTHONPATH=/work/src</span></code> makes it shadow the
 copy installed into the image, so a change to the sources takes effect without rebuilding
-anything. The <code class="docutils literal notranslate"><span class="pre">docs</span></code> service installs the documentation extra into that mount and runs
-<code class="docutils literal notranslate"><span class="pre">sphinx-build</span></code> with <code class="docutils literal notranslate"><span class="pre">-W</span></code>, so a warning - a broken cross reference, a directive that does
-not render - fails the build rather than producing a page nobody looks at twice. There is also
-a <code class="docutils literal notranslate"><span class="pre">shell</span></code> service, which is the same container with an interactive bash in it.</p>
+anything. The <code class="docutils literal notranslate"><span class="pre">docs</span></code> service runs <code class="docutils literal notranslate"><span class="pre">sphinx-build</span></code> with <code class="docutils literal notranslate"><span class="pre">-W</span></code> on the documentation
+requirements the image carries, installing nothing, so a warning - a broken cross reference, a
+directive that does not render - fails the build rather than producing a page nobody looks at
+twice. There is also a <code class="docutils literal notranslate"><span class="pre">shell</span></code> service, which is the same container with an interactive bash
+in it.</p>
+<p>The pages of <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> are shadowed with the rest: a service serves the ones compiled in the
+working tree, which git ignores, so over a checkout that never compiled them <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> refuses
+to start there, and the pages the image carries are what a container run without that
+<code class="docutils literal notranslate"><span class="pre">PYTHONPATH</span></code> serves. Either way it answers on the loopback address of the container by default,
+which a browser outside the container reaches only if the container shares the host’s network.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">gui</span></code> service is the exception: it clears <code class="docutils literal notranslate"><span class="pre">PYTHONPATH</span></code>, so it runs the image’s own code
+and serves the pages it carries rather than the working tree’s, and it passes <code class="docutils literal notranslate"><span class="pre">--host</span> <span class="pre">0.0.0.0</span></code>
+so it answers beyond its own loopback. The project it opens is still the checkout’s, though:
+<code class="docutils literal notranslate"><span class="pre">examples/demo</span></code> is bind mounted under <code class="docutils literal notranslate"><span class="pre">/work</span></code> like every service’s sources, so an edit made
+in the browser is written into the developer’s own checkout there, the file keeping its owner and
+permissions although this service runs as root, as every service does. <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span> <span class="pre">up</span>
+<span class="pre">gui</span></code> builds the image first - the code it runs is the image’s, so an image built before a
+change would serve what it was built from - and starts it, publishing the same port number on the host’s loopback
+alone, <code class="docutils literal notranslate"><span class="pre">-p</span> <span class="pre">127.0.0.1:8123:8123</span></code> - a different number outside would have the Host header
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> sees name a port it is not listening on, answered <code class="docutils literal notranslate"><span class="pre">421</span> <span class="pre">misdirected</span> <span class="pre">request</span></code>, and
+beyond the container’s loopback the token in the address it prints is the only guard, which is
+why nothing wider is published. Opening that address in a browser on the host is the image’s own
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> serving the checkout’s demo project.</p>
 <section id="what-the-compile-service-proves">
 <h3>What the compile service proves<a class="headerlink" href="#what-the-compile-service-proves" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">compile</span></code> runs <code class="docutils literal notranslate"><span class="pre">docker/compile.sh</span></code>, which is deliberately more suspicious than a plain
@@ -795,8 +816,9 @@ templates cannot answer on its behalf.</p>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
 <p>The container runs as root, so files it writes under <code class="docutils literal notranslate"><span class="pre">build/</span></code> belong to root when the
-mount is a real linux filesystem. The base image is also still referenced by tag: pin it to
-a digest before a result from it is used to release something, as the comment at the top of
+mount is a real linux filesystem. The base images are also still referenced by tag -
+python’s, and node’s for the stage that compiles the pages: pin them to digests before a
+result from the image is used to release something, as the comment at the top of
 <code class="docutils literal notranslate"><span class="pre">docker/Dockerfile</span></code> describes.</p>
 </div>
 </section>

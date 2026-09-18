@@ -250,29 +250,33 @@ name and the linker decides what it means.</p></td>
 token for the publishing job and the package index decides whether the claims in it
 match a publisher somebody registered, so no API token is stored in the repository.</p></td>
 </tr>
-<tr class="row-odd"><td><p>RAM</p></td>
+<tr class="row-odd"><td><p>PEP</p></td>
+<td><p>Python Enhancement Proposal. PEP 440 says what a version of a python package may be,
+which is why the development builds on TestPyPI cannot carry their commit in theirs.</p></td>
+</tr>
+<tr class="row-even"><td><p>RAM</p></td>
 <td><p>Random access memory, the volatile storage a measurement normally lives in. Named in
 the <a class="reference internal" href="consistency_checks.html"><span class="doc">checks</span></a> for what a section usually stands for.</p></td>
 </tr>
-<tr class="row-even"><td><p>ROM</p></td>
+<tr class="row-odd"><td><p>ROM</p></td>
 <td><p>Read-only memory, the storage a calibration value normally lives in - often behind an
 emulation overlay so that a calibration tool can write it. Another of the kinds of
 memory a declared section stands for.</p></td>
 </tr>
-<tr class="row-odd"><td><p>UTF-16</p></td>
+<tr class="row-even"><td><p>UTF-16</p></td>
 <td><p>The two byte Unicode encoding Windows PowerShell 5.1 re-encodes redirected output in,
 which is why <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">-o</span> <span class="pre">FILE</span></code> writes the file itself rather than leaving the bytes
 to the shell: a dictionary redirected with <code class="docutils literal notranslate"><span class="pre">&gt;</span></code> there cannot be read back.</p></td>
 </tr>
-<tr class="row-even"><td><p>VSIX</p></td>
+<tr class="row-odd"><td><p>VSIX</p></td>
 <td><p>The package format of a Visual Studio Code extension. The <code class="docutils literal notranslate"><span class="pre">ddd-&lt;version&gt;.vsix</span></code>
 attached to each GitHub release is the whole of how the editor extension is delivered.</p></td>
 </tr>
-<tr class="row-odd"><td><p>WSL</p></td>
+<tr class="row-even"><td><p>WSL</p></td>
 <td><p>The Windows Subsystem for Linux, where docker speaks linux containers on a Windows
 machine. It is where the compose services of this repository are run from.</p></td>
 </tr>
-<tr class="row-even"><td><p>XCP</p></td>
+<tr class="row-odd"><td><p>XCP</p></td>
 <td><p>Universal Measurement and Calibration Protocol, the successor of CCP. An exported
 measurement with a <a class="reference internal" href="file_formats/rasters.html"><span class="doc">raster</span></a> reaches the generated a2l with
 an <code class="docutils literal notranslate"><span class="pre">IF_DATA</span> <span class="pre">XCP</span></code> block naming its DAQ event; the rest of the protocol - the event

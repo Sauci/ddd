@@ -666,12 +666,18 @@ to start there, and the pages the image carries are what a container run without
 ``PYTHONPATH`` serves. Either way it answers on the loopback address of the container by default,
 which a browser outside the container reaches only if the container shares the host's network.
 
-The ``gui`` service is the exception: it clears ``PYTHONPATH``, so it serves the pages the image
-carries rather than the working tree's, and it passes ``--host 0.0.0.0`` so it answers beyond its
-own loopback. ``docker compose up gui`` starts it, publishing the same port on the host's loopback
-alone, ``-p 127.0.0.1:8123:8123`` - beyond the container's loopback the token in the address it
-prints is the only guard, which is why nothing wider is published. Opening that address in a
-browser on the host is ``ddd gui`` serving the demo project from the image.
+The ``gui`` service is the exception: it clears ``PYTHONPATH``, so it runs the image's own code
+and serves the pages it carries rather than the working tree's, and it passes ``--host 0.0.0.0``
+so it answers beyond its own loopback. The project it opens is still the checkout's, though:
+``examples/demo`` is bind mounted under ``/work`` like every service's sources, so an edit made
+in the browser is written into the developer's own checkout there - and, on a native Linux
+engine, comes back owned by root, since this service runs as root exactly as every service above
+does. ``docker compose up gui`` starts it, publishing the same port number on the host's loopback
+alone, ``-p 127.0.0.1:8123:8123`` - a different number outside would have the Host header
+``ddd gui`` sees name a port it is not listening on, answered ``421 misdirected request``, and
+beyond the container's loopback the token in the address it prints is the only guard, which is
+why nothing wider is published. Opening that address in a browser on the host is the image's own
+``ddd gui`` serving the checkout's demo project.
 
 What the compile service proves
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

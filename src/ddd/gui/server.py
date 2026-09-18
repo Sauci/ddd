@@ -1,4 +1,4 @@
-"""The web server of ``ddd gui``: the compiled pages and the JSON API, on this computer only.
+"""The web server of ``ddd gui``: the compiled pages and the JSON API, on this computer by default.
 
 Any web page open in the same browser can send requests to a server on the loopback address, so
 this one trusts nothing it did not hand out itself:
@@ -23,6 +23,7 @@ import hmac
 import ipaddress
 import json
 import secrets
+import socket
 import sys
 import traceback
 import webbrowser
@@ -78,23 +79,22 @@ def static_directory() -> Path:
     return Path(str(resources.files("ddd.gui").joinpath("static")))
 
 
-def is_loopback(host: str) -> bool:
-    """Whether ``host`` can only mean this computer: a loopback address, or ``localhost``.
+def is_loopback(address: str) -> bool:
+    """Whether a numeric address can only mean this computer: 127.0.0.0/8, or ``::1``.
 
-    ``run`` below reads this to decide what a ``--host`` beyond the default, ``127.0.0.1``,
-    changes: whether a browser is opened, and what the one warning it prints says. 127.0.0.0/8
-    and ``::1`` are the ranges a platform routes back to itself without ever touching a
-    network, and ``localhost`` is the name every resolver is supposed to answer with one of
-    them - taken as its own case rather than resolved, since nothing here needs a lookup that
-    can fail or be re-pointed. Anything ``ipaddress`` cannot parse - a host name such as
-    ``example.com``, or an address malformed enough that no interface could carry it - answers
-    ``False`` rather than raising: it is certainly not this computer alone, and whether it can
-    be bound at all is for the socket that tries to decide.
+    ``run`` below reads this, once, to decide what answering beyond the default,
+    ``127.0.0.1``, changes: whether a browser is opened, and what the one warning it prints
+    says. It never sees a name: ``run`` resolves ``--host`` with ``socket.getaddrinfo`` before
+    calling this, so a hosts file that redefines ``localhost`` is judged by what it resolves
+    to and not by its spelling, and ``LOCALHOST`` or ``localhost.`` are judged the same way as
+    ``localhost`` rather than by a spelling this function would have to special-case. Anything
+    ``ipaddress`` cannot parse - a name, such as ``localhost`` itself, reaching this function
+    directly, or an address malformed enough that no interface could carry it - answers
+    ``False`` rather than raising, which matters only to this function's own tests: every
+    caller in this module already hands it what a real resolution produced.
     """
-    if host == "localhost":
-        return True
     try:
-        return ipaddress.ip_address(host).is_loopback
+        return ipaddress.ip_address(address).is_loopback
     except ValueError:
         return False
 
@@ -122,9 +122,11 @@ class GuiServer(ThreadingHTTPServer):
     def address(self) -> str:
         """The address to open; the token in it is what the cookie is given for.
 
-        Always ``127.0.0.1``, whatever ``host`` this server was built with: a browser that
-        pastes it in is on the host that address means, never inside the container a wider
-        ``host`` is for, and the loopback address it names always reaches this process.
+        Always ``127.0.0.1``, whatever ``host`` this server binds: pasted into a browser on
+        this computer, it reaches the process when ``host`` is ``127.0.0.1`` itself or
+        ``0.0.0.0`` - every interface, loopback included - and not when ``host`` names one
+        interface that is neither, such as ``127.0.0.2`` or a specific address of a network
+        this computer is also on: that interface alone answers, and this is a different one.
         """
         return f"http://127.0.0.1:{self.port}/open?token={self.token}"
 
@@ -284,6 +286,13 @@ _PAGES_ARE_READ: Final = "pages are read with GET"
 _INTERNAL: Final = "ddd gui failed on this request; the terminal it runs in shows why"
 
 
+def _refused(value: str, port: int, error: Exception) -> int:
+    """A usage error naming what could not be served and the port, the same shape whether
+    resolving ``--host`` or binding what it resolved to is what failed."""
+    print(f"ddd: cannot serve {value} on port {port}: {error}", file=sys.stderr)
+    return EXIT_USAGE
+
+
 def run(
     project: Path | None,
     build_directories: Sequence[Path],
@@ -294,11 +303,26 @@ def run(
     static: Path | None = None,
 ) -> int:
     """Serve until interrupted; the exit code of ``ddd gui``."""
-    if port == 0 and not is_loopback(host):
+    # Resolved once, before anything else is decided from it: a hosts file that redefines
+    # ``localhost`` is then judged by the address it resolves to and not by its spelling, in
+    # both directions. The server is IPv4 only, hence AF_INET; asking only for that also
+    # turns ``--host ::1`` from a bind failure that blamed the port into a plain refusal here,
+    # naming the address. A malformed or non-ASCII host used to reach the bind unresolved and
+    # raise past every usage-error handler - a bare TypeError, exit 1 with a traceback -
+    # where getaddrinfo instead raises a UnicodeEncodeError (a ValueError) or a gaierror (an
+    # OSError), both ordinary usage errors.
+    try:
+        # str(): a general sockaddr's first element is typed str | int for every address
+        # family this could be, and AF_INET's is always the former.
+        address = str(socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)[0][4][0])
+    except (OSError, ValueError) as error:
+        return _refused(host, port, error)
+    beyond_loopback = not is_loopback(address)
+    if port == 0 and beyond_loopback:
         print(
-            "ddd: --port 0 lets the system pick a free port, which cannot be published in "
-            f"advance; give a fixed --port when --host {host} listens beyond this computer's "
-            "loopback",
+            f"ddd: --host resolves to {address}, beyond this computer's loopback; --port 0 "
+            "lets the system pick a free one there, which cannot be published in advance, "
+            "so give a fixed --port too",
             file=sys.stderr,
         )
         return EXIT_USAGE
@@ -319,19 +343,18 @@ def run(
             print(f"ddd: {error}", file=sys.stderr)
             return EXIT_USAGE
     try:
-        server = GuiServer(Api(session, project), pages, port, host)
+        server = GuiServer(Api(session, project), pages, port, address)
     except OSError as error:
-        print(f"ddd: cannot serve on port {port}: {error}", file=sys.stderr)
-        return EXIT_USAGE
+        return _refused(address, port, error)
     print(f"ddd gui (preview) serving {server.address}", flush=True)
-    if not is_loopback(host):
+    if beyond_loopback:
         # No browser to open in a container, and nothing left to protect this with either:
         # the Host and Origin allow-lists above still only admit 127.0.0.1 and localhost, so
         # a client that merely reaches the port could forge both. The token in the address
         # this just printed is what is left, hence publishing the port on the host's loopback
         # alone rather than trusting the network between here and there.
         print(
-            f"ddd gui: listening on {host}:{server.port}, beyond this computer's loopback; "
+            f"ddd gui: listening on {address}:{server.port}, beyond this computer's loopback; "
             f"publish it on the host's loopback only, -p 127.0.0.1:{server.port}:{server.port}, "
             "since the token in the address is what keeps others out",
             file=sys.stderr,

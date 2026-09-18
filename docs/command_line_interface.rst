@@ -287,7 +287,7 @@ The commands
        :doc:`editor_integration`.
    * - ``ddd gui [PROJECT]``
      - preview: serve a browser interface over one project's description files, on this
-       computer only, and open the browser on it. The project opens on a graph of its
+       computer by default, and open the browser on it. The project opens on a graph of its
        modules, an arrow per pair coloured by the worst disagreement between them, with the
        component table one tab away. Every change is written into the files in
        their own layout and checked the way ``ddd check`` checks them. ``-b DIR`` names a build

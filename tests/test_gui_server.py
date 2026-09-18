@@ -531,15 +531,21 @@ class TestAProjectWithAFileThatDoesNotParse:
 
 
 class TestLoopback:
-    """The default that keeps ``ddd gui`` answering only this computer, and what widens it."""
+    """Classifies a numeric address alone; resolving a name to one is run()'s job, with
+    socket.getaddrinfo, before this ever sees it."""
 
-    @pytest.mark.parametrize("host", ["127.0.0.1", "127.0.0.2", "::1", "localhost"])
-    def test_an_address_or_name_of_this_computer_alone_is_loopback(self, host: str) -> None:
-        assert is_loopback(host) is True
+    @pytest.mark.parametrize("address", ["127.0.0.1", "127.0.0.2", "::1"])
+    def test_a_loopback_address_is_loopback(self, address: str) -> None:
+        assert is_loopback(address) is True
 
-    @pytest.mark.parametrize("host", ["0.0.0.0", "::", "192.168.1.10", "example.com"])
-    def test_an_address_or_name_reaching_beyond_it_is_not(self, host: str) -> None:
-        assert is_loopback(host) is False
+    @pytest.mark.parametrize(
+        "address",
+        ["0.0.0.0", "::", "192.168.1.10", "example.com", "localhost", "LOCALHOST", ""],
+    )
+    def test_anything_that_is_not_a_loopback_address_is_not(self, address: str) -> None:
+        """Not even ``localhost``: a name is not a numeric address, whatever it usually
+        resolves to, and this function never resolves one."""
+        assert is_loopback(address) is False
 
     def test_a_malformed_address_is_answered_false_rather_than_raised(self) -> None:
         assert is_loopback("300.300.300.300") is False
@@ -573,16 +579,16 @@ class TestRunning:
             taken.listen()
             port = taken.getsockname()[1]
             assert run(None, [], port, open_browser=False, static=pages) == EXIT_USAGE
-        assert f"cannot serve on port {port}" in capsys.readouterr().err
+        assert f"cannot serve 127.0.0.1 on port {port}" in capsys.readouterr().err
 
     def test_a_fixed_port_is_required_beyond_loopback(self, pages, capsys) -> None:
         """``--port 0`` lets the system pick one, which a container cannot publish in advance."""
         result = run(None, [], 0, open_browser=False, static=pages, host="0.0.0.0")
         assert result == EXIT_USAGE
         assert capsys.readouterr().err == (
-            "ddd: --port 0 lets the system pick a free port, which cannot be published in "
-            "advance; give a fixed --port when --host 0.0.0.0 listens beyond this computer's "
-            "loopback\n"
+            "ddd: --host resolves to 0.0.0.0, beyond this computer's loopback; --port 0 lets "
+            "the system pick a free one there, which cannot be published in advance, so give "
+            "a fixed --port too\n"
         )
 
     def test_an_unbindable_address_is_a_usage_error_like_a_taken_port(
@@ -594,21 +600,32 @@ class TestRunning:
         machine, so it stands for one this computer cannot bind, but asking a real socket to
         try could still hang or answer differently depending on the network this test runs
         on. The construction is patched instead, standing in for whatever the platform's
-        socket would have refused.
+        socket would have refused; it resolves to itself (it is already numeric), so it is
+        what run() hands the fake, unlike the raw --host of a name that resolves elsewhere.
         """
-        real_init = GuiServer.__init__
 
         def refuses_the_address(self, api, static, port=0, host="127.0.0.1"):
-            if host == "127.0.0.1":
-                real_init(self, api, static, port, host)
-            else:
-                raise OSError("Cannot assign requested address")
+            raise OSError("Cannot assign requested address")
 
         monkeypatch.setattr(GuiServer, "__init__", refuses_the_address)
         result = run(None, [], 8123, open_browser=False, static=pages, host="203.0.113.5")
         assert result == EXIT_USAGE
         message = capsys.readouterr().err
-        assert "cannot serve on port 8123: Cannot assign requested address" in message
+        assert message == (
+            "ddd: cannot serve 203.0.113.5 on port 8123: Cannot assign requested address\n"
+        )
+
+    def test_a_host_that_cannot_be_resolved_is_a_usage_error_not_a_crash(
+        self, pages, capsys
+    ) -> None:
+        """A non-ASCII --host used to reach the bind unresolved and raise a bare TypeError
+        past every usage-error handler, exit 1 with a traceback. Resolving it explicitly,
+        instead of leaving that to the bind, turns the same address into a plain
+        UnicodeEncodeError - a ValueError - caught here like any other usage error."""
+        result = run(None, [], 8123, open_browser=False, static=pages, host="é..x")
+        assert result == EXIT_USAGE
+        message = capsys.readouterr().err
+        assert message.startswith("ddd: cannot serve é..x on port 8123:")
 
     def test_beyond_loopback_it_warns_once_and_opens_no_browser(
         self, pages, monkeypatch, capsys
@@ -617,16 +634,23 @@ class TestRunning:
         loopback the token in the printed address is the only thing keeping another client
         out - and there is no browser to open in a container anyway."""
         real_init = GuiServer.__init__
+        received: list[tuple[str, int]] = []
         created: list[GuiServer] = []
 
-        def binds_loopback_for_real(self, api, static, port=0, host="127.0.0.1"):
+        def binds_loopback_but_reports_beyond_it(self, api, static, port=0, host="127.0.0.1"):
+            received.append((host, port))
             # A real bind of 0.0.0.0 can raise a firewall dialog on Windows and block the
-            # run; this is about what run() does with the host it was given, not about
-            # asking a real socket to answer on every interface.
+            # run; this test is about what run() does with the address it was actually
+            # given, not about asking a real socket to answer on every interface. The real
+            # bind stays on 127.0.0.1, and server_address is overwritten afterwards to
+            # stand in for the wider one - otherwise nothing here could tell a printed
+            # address that is always 127.0.0.1 apart from one that merely happens to be,
+            # because it was never bound to anything else.
             real_init(self, api, static, 0)
+            self.server_address = ("0.0.0.0", self.server_address[1])
             created.append(self)
 
-        monkeypatch.setattr(GuiServer, "__init__", binds_loopback_for_real)
+        monkeypatch.setattr(GuiServer, "__init__", binds_loopback_but_reports_beyond_it)
         monkeypatch.setattr(Session, "start_polling", lambda self: None)
         monkeypatch.setattr(Session, "stop", lambda self: None)
         monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
@@ -636,15 +660,110 @@ class TestRunning:
         result = run(None, [], 8123, open_browser=True, static=pages, host="0.0.0.0")
 
         assert result == EXIT_OK
+        assert received == [("0.0.0.0", 8123)]
         (server,) = created
         captured = capsys.readouterr()
         (line,) = captured.out.splitlines()
-        assert line == f"ddd gui (preview) serving {server.address}"
+        assert line == (
+            f"ddd gui (preview) serving http://127.0.0.1:{server.port}/open?token={server.token}"
+        )
         assert captured.err == (
             f"ddd gui: listening on 0.0.0.0:{server.port}, beyond this computer's loopback; "
             f"publish it on the host's loopback only, -p 127.0.0.1:{server.port}:{server.port}, "
             "since the token in the address is what keeps others out\n"
         )
+        assert opened == []
+
+    def test_localhost_resolving_to_loopback_is_loopback(
+        self, project_file, pages, monkeypatch, capsys
+    ) -> None:
+        """is_loopback never sees the string 'localhost': run() resolves it first, with
+        socket.getaddrinfo, so a hosts file could redirect it and this would still answer
+        correctly - proven here by resolving it to 127.0.0.1 itself, not by trusting the
+        spelling."""
+
+        def getaddrinfo(host, port, family, kind):
+            assert (host, family, kind) == ("localhost", socket.AF_INET, socket.SOCK_STREAM)
+            return [(family, kind, 0, "", ("127.0.0.1", port))]
+
+        monkeypatch.setattr(module.socket, "getaddrinfo", getaddrinfo)
+        monkeypatch.setattr(Session, "start_polling", lambda self: None)
+        monkeypatch.setattr(Session, "stop", lambda self: None)
+        monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
+        opened: list[str] = []
+        monkeypatch.setattr(module.webbrowser, "open", opened.append)
+
+        result = run(project_file, [], 0, open_browser=True, static=pages, host="localhost")
+
+        assert result == EXIT_OK
+        (line,) = capsys.readouterr().out.splitlines()
+        assert line.startswith("ddd gui (preview) serving http://127.0.0.1:")
+        assert opened == [line.rsplit(" ", 1)[1]]
+
+    def test_uppercase_localhost_resolving_to_loopback_is_loopback(
+        self, pages, monkeypatch, capsys
+    ) -> None:
+        """The review that found this asked for it directly: LOCALHOST resolves like
+        localhost, since a resolver does not care about case, and this now reads the
+        resolver rather than the spelling of --host."""
+
+        def getaddrinfo(host, port, family, kind):
+            assert host == "LOCALHOST"
+            return [(family, kind, 0, "", ("127.0.0.1", port))]
+
+        monkeypatch.setattr(module.socket, "getaddrinfo", getaddrinfo)
+        monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
+        result = run(None, [], 0, open_browser=False, static=pages, host="LOCALHOST")
+        assert result == EXIT_OK
+        assert capsys.readouterr().err == ""
+
+    def test_localhost_resolving_beyond_loopback_needs_a_fixed_port(
+        self, pages, monkeypatch, capsys
+    ) -> None:
+        """A hosts file that points localhost at a LAN address is judged by that address,
+        not by the name: the default port is refused exactly as --host 0.0.0.0 is."""
+
+        def getaddrinfo(host, port, family, kind):
+            return [(family, kind, 0, "", ("192.168.1.50", port))]
+
+        monkeypatch.setattr(module.socket, "getaddrinfo", getaddrinfo)
+        result = run(None, [], 0, open_browser=False, static=pages, host="localhost")
+        assert result == EXIT_USAGE
+        assert capsys.readouterr().err == (
+            "ddd: --host resolves to 192.168.1.50, beyond this computer's loopback; --port 0 "
+            "lets the system pick a free one there, which cannot be published in advance, so "
+            "give a fixed --port too\n"
+        )
+
+    def test_localhost_resolving_beyond_loopback_warns_and_opens_no_browser(
+        self, pages, monkeypatch, capsys
+    ) -> None:
+        """Same as ``localhost`` resolving to a LAN address above, but with a fixed port: it
+        serves, warns once and opens no browser, exactly as --host 0.0.0.0 does."""
+
+        def getaddrinfo(host, port, family, kind):
+            return [(family, kind, 0, "", ("192.168.1.50", port))]
+
+        real_init = GuiServer.__init__
+
+        def binds_loopback_for_real(self, api, static, port=0, host="127.0.0.1"):
+            # Never 192.168.1.50 for real, for the same reason as every such fake in this
+            # file: this is about what run() decides from the address, not about a real
+            # socket answering on a LAN interface in a test.
+            real_init(self, api, static, 0)
+
+        monkeypatch.setattr(module.socket, "getaddrinfo", getaddrinfo)
+        monkeypatch.setattr(GuiServer, "__init__", binds_loopback_for_real)
+        monkeypatch.setattr(Session, "start_polling", lambda self: None)
+        monkeypatch.setattr(Session, "stop", lambda self: None)
+        monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
+        opened: list[str] = []
+        monkeypatch.setattr(module.webbrowser, "open", opened.append)
+
+        result = run(None, [], 8123, open_browser=True, static=pages, host="localhost")
+
+        assert result == EXIT_OK
+        assert "listening on 192.168.1.50:" in capsys.readouterr().err
         assert opened == []
 
     @pytest.mark.parametrize("open_browser", [True, False])

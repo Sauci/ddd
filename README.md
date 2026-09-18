@@ -775,7 +775,7 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | `ddd artefacts [FILE]` | list the artefacts `generate` accepts: `c`, `a2l`, and each plugin of the project that provides one |
 | `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for the language server and `ddd gui` |
 | `ddd lsp` | run the language server, reporting the checks in the editor while a file is written |
-| `ddd gui [PROJECT]` | preview: a browser interface over one project's description files, on this computer only; a change is written into the files in their own layout and checked the way `ddd check` checks it |
+| `ddd gui [PROJECT]` | preview: a browser interface over one project's description files, on this computer by default; a change is written into the files in their own layout and checked the way `ddd check` checks it |
 | `ddd checks` | list the checks and their default severity, marking the ones that cannot be relaxed `(fixed)`, need every component of a project `(project)` or grade a delivery comparison `(comparison)`; `--plugin` lists a plugin's checks after the built-in ones |
 | `ddd cmake-dir` | print the directory holding the cmake integration module |
 | `ddd templates-dir` | print the directory holding the example c templates, to copy into a project |
@@ -923,9 +923,12 @@ docker compose run --rm ddd ddd list examples/demo/demo.ddd.json
 The image serves `ddd gui` too: a stage of its own compiles the pages, and only the pages
 reach the image, installed with DDD - no Node.js.  The services run the working tree, though,
 pages included, so there `ddd gui` serves what the checkout compiled - except `gui`, which
-clears `PYTHONPATH` to serve the image's own pages, listens beyond the container's loopback,
-and publishes the same port on the host's loopback: `docker compose up gui`, then the address
-it prints in a browser on the host.
+clears `PYTHONPATH` to run the image's own code and pages instead, over the checkout's project
+files still: an edit made in the browser writes back into the working tree, root-owned
+afterwards on a native Linux engine, since the service runs as root like every other.  It
+listens beyond the container's loopback and publishes the same port number on the host's
+loopback - a different one would misdirect the Host header `ddd gui` checks: `docker compose up
+gui`, then the address it prints in a browser on the host.
 
 `compile` runs [docker/compile.sh](https://github.com/Sauci/ddd/blob/master/docker/compile.sh), which
 

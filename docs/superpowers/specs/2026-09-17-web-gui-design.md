@@ -91,8 +91,8 @@ On the developer's PC
 - **The frontend** (`gui/`) is a React application in TypeScript. It is compiled once, in CI,
   into static files shipped inside the wheel; nothing is fetched from the network at run time.
 - **The server** (`src/ddd/gui/`) is Python's standard-library HTTP server, bound to the
-  loopback address. It serves the compiled pages and a JSON API, and adds no runtime dependency
-  to the package: like `ddd lsp`, it runs on what Python already has.
+  loopback address by default. It serves the compiled pages and a JSON API, and adds no runtime
+  dependency to the package: like `ddd lsp`, it runs on what Python already has.
 - **The session** holds the one open project and the result of its last analysis, numbered as
   a revision.
 - **The edit engine** (`src/ddd/editing.py`) turns an operation at a pointer into a text edit in
@@ -190,10 +190,11 @@ ddd gui [PROJECT] [-b DIR]... [--host ADDRESS] [--port N] [--no-browser]
   published on the host in advance.
 - `--no-browser` prints the address without opening it.
 
-The command prints one line, `ddd gui (preview) serving <address>`, and runs until it is
-interrupted, which exits 0. It exits 2 when the project is not a project description, when a
-fixed port is taken or the given `--host` cannot be bound, when `--port 0` is combined with a
-`--host` beyond loopback, or when the installation has no compiled pages (section 6.8).
+The command prints one line to stdout, `ddd gui (preview) serving <address>`, and, beyond
+loopback, one more to stderr warning about it (6.3); it runs until it is interrupted, which
+exits 0. It exits 2 when the project is not a project description, when `--host` cannot be
+resolved to an address or a fixed port is taken, when `--port 0` is combined with a `--host`
+beyond loopback, or when the installation has no compiled pages (section 6.8).
 
 The findings of an open project are those of every build record that names it, merged the way
 the language server merges them. With no record naming it, the project is analysed with the
@@ -202,16 +203,22 @@ for.
 
 ### 6.3 The server
 
-The server is `http.server.ThreadingHTTPServer` bound to `127.0.0.1` by default, not
-`localhost`, which resolves to an IPv6 address on some machines. `--host` binds another address
-instead, for a container: `0.0.0.0`, with `docker compose` publishing the same port on the
-host's loopback alone, `-p 127.0.0.1:8123:8123`. The address the command prints still says
-`127.0.0.1`, so it pastes into a browser on the host as is, and the Host and Origin allow-lists
-below are unchanged - refusing what they always refused, whatever address the server is reached
-through. Beyond loopback that leaves the token in the printed address as the only barrier, since
-a client that merely reaches the port can forge a `Host` or `Origin` header; `ddd gui` prints one
-warning there, naming the port to publish, and does not open a browser - there is none in a
-container.
+The server is `http.server.ThreadingHTTPServer`, bound to `127.0.0.1` by default, not
+`localhost`, which resolves to an IPv6 address on some machines. `--host` names another address
+instead, resolved once with `socket.getaddrinfo` (the server is IPv4 only) before anything else
+is decided from it, so a hosts file that redefines `localhost` is judged by what it resolves to
+and not by its spelling - in both directions - and the numeric result is what is actually
+bound. For a container that address is `0.0.0.0`, with `docker compose` publishing the same
+port number on the host's loopback alone, `-p 127.0.0.1:8123:8123`: a different number there
+would have the Host header `ddd gui` sees name a port it does not listen on, answered `421
+misdirected request`, since the Host check below names this server's own port.
+
+The address the command prints still says `127.0.0.1`, so it pastes into a browser on the host
+as is, and the Host and Origin allow-lists below are unchanged - refusing what they always
+refused, whatever address is actually bound. Beyond loopback that leaves the token in the
+printed address as the only barrier, since a client that merely reaches the port can forge a
+`Host` or `Origin` header; `ddd gui` prints one warning there, naming the port to publish, and
+does not open a browser - there is none in a container.
 
 Any web page open in the same browser can send requests to a local server, so the server trusts
 nothing it did not hand out itself:

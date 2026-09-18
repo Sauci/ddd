@@ -84,8 +84,10 @@ analysis of its own - it is read from the revision the session has already publi
 
 ### 4.2 A module
 
-One component of the project, identified by the project-relative posix path of its description
-file, which is the same string `GET /api/state` uses for that file. It carries the component's
+One component of the project, identified by its description file's path as `GET /api/state`
+spells it: the absolute path in posix form, which the page hands back to `/api/file` unchanged and
+never shows. The findings a module carries locate themselves by that same path, which is why the
+graph speaks it rather than a prettier relative one. It carries the component's
 name, its finding counts by severity, and whether its file was loaded. A file that does not parse
 has no component name; the module is named by the file's stem and marked not loaded.
 
@@ -118,7 +120,7 @@ that something is.
   "revision": 7,
   "modules": [
     {
-      "path": "components/controller.ddd.json",
+      "path": "C:/work/demo/components/controller.ddd.json",
       "name": "Controller",
       "loaded": true,
       "findings": {"error": 1, "warning": 0, "info": 0}
@@ -126,8 +128,8 @@ that something is.
   ],
   "flows": [
     {
-      "from": "components/sensor_hub.ddd.json",
-      "to": "components/controller.ddd.json",
+      "from": "C:/work/demo/components/sensor_hub.ddd.json",
+      "to": "C:/work/demo/components/controller.ddd.json",
       "objects": ["ValueA", "ValueB"],
       "severity": "error",
       "disagreements": [

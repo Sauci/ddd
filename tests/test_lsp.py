@@ -3202,6 +3202,47 @@ class TestPropagating:
             if "unit" in action["title"] and mine in action["edit"]["changes"]
         ] == []
 
+    def test_a_declaration_stating_no_type_explicitly_is_offered_the_unit(
+        self, tmp_path: Path
+    ) -> None:
+        """An explicit ``null`` names no type, for the loader and so for the offer: a plain
+        declaration that happens to state ``"typename": null`` beside its ``datatype`` is
+        offered the producer's unit exactly like one that leaves ``typename`` out altogether.
+
+        ``declare()`` drops ``datatype`` the moment ``typename`` is among its keyword
+        arguments - it assumes a caller naming ``typename`` at all means storage by type - so
+        this declaration is written out by hand.
+        """
+        offered, _ = self.offer(
+            tmp_path,
+            "b.ddd.json",
+            "component.interface[0].definition",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component(
+                    "B",
+                    {
+                        "scope": "input",
+                        "definition": {
+                            "name": "Speed",
+                            "datatype": "uint8",
+                            "conversion": {"kind": "identity"},
+                            "typename": None,
+                            "kind": "measurement",
+                            "volatile": False,
+                        },
+                    },
+                ),
+            },
+        )
+        (use_unit,) = [
+            action for action in offered if action["title"] == "Use the unit declared in a"
+        ]
+        (edits,) = use_unit["edit"]["changes"].values()
+        rewritten = apply_edits(tmp_path / "b.ddd.json", edits)
+        declared = json.loads(rewritten)["component"]["interface"][0]["definition"]
+        assert declared["unit"] == "rpm"
+
 
 class TestPositions:
     """Turning where the cursor is into what it is on."""

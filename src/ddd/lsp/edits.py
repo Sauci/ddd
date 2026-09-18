@@ -610,8 +610,11 @@ def _assign(document: Document, definition: str, key: str, raw: str) -> dict[str
     """
     if key not in _keys_of(document, definition)[0]:
         return None
-    if key in MEANING_KEYS and document.raw_at(f"{definition}.typename") is not None:
-        # The type it names fixes this key; stated beside it, the loader refuses the file.
+    if key in MEANING_KEYS and isinstance(document.value_at(f"{definition}.typename"), str):
+        # The type it names fixes this key; stated beside it, the loader refuses the file. An
+        # explicit ``null`` names no type - the same reading ``settle`` gives it, so a plain
+        # declaration that happens to state ``"typename": null`` beside its ``datatype`` is not
+        # caught here.
         return None
     existing = document.raw_at(f"{definition}.{key}")
     if existing is not None:

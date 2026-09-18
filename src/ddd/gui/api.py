@@ -22,7 +22,7 @@ from typing import Any, Final
 from pydantic import BaseModel, ValidationError
 
 from ddd import __version__
-from ddd.diagnostics import CHECKS, CheckInfo
+from ddd.diagnostics import CHECKS
 from ddd.editing import INVALID, STALE, UNREADABLE, UNVERIFIED, EditError, FileChange, Operation
 from ddd.graph import Disagreement, Flow, Module, graph_of
 from ddd.gui import contract
@@ -30,7 +30,6 @@ from ddd.gui.session import (
     Filed,
     NoProjectError,
     NotInProjectError,
-    Revision,
     Session,
     SourceFile,
     find_projects,
@@ -125,7 +124,21 @@ class Api:
             contract.State(
                 revision=revision.number,
                 project=revision.project.as_posix(),
-                files=[_file(file) for file in revision.files],
+                files=[
+                    {
+                        "path": file.path.as_posix(),
+                        "kind": file.kind,
+                        "name": file.name,
+                        "loaded": file.loaded,
+                        "fingerprint": file.fingerprint,
+                        "findings": {
+                            "error": file.errors,
+                            "warning": file.warnings,
+                            "info": file.infos,
+                        },
+                    }
+                    for file in revision.files
+                ],
                 findings=[_finding(filed) for filed in revision.findings],
             ).model_dump(mode="json"),
         )
@@ -149,10 +162,15 @@ class Api:
         revision = self.session.revision
         if revision is None:
             raise NoProjectError("no project is open")
+        dictionary = revision.dictionary
         return Reply(
             200,
             contract.DictionaryReply(
-                revision=revision.number, dictionary=revision.dictionary
+                revision=revision.number,
+                # Dumped here rather than left a model for DictionaryReply to nest: the file
+                # format already publishes this shape under `ddd schema dictionary`, and the
+                # api schema is not the place to publish it a second time.
+                dictionary=None if dictionary is None else dictionary.model_dump(mode="json"),
             ).model_dump(mode="json"),
         )
 
@@ -179,7 +197,17 @@ class Api:
         return Reply(
             200,
             contract.ChecksReply(
-                checks=[_check(info) for info in (*CHECKS.values(), *plugins)]
+                checks=[
+                    {
+                        "check": info.identifier,
+                        "default_severity": info.default_severity,
+                        "description": info.description,
+                        "overridable": info.overridable,
+                        "needs_every_component": info.needs_every_component,
+                        "comparison": info.comparison,
+                    }
+                    for info in (*CHECKS.values(), *plugins)
+                ]
             ).model_dump(mode="json"),
         )
 
@@ -204,11 +232,15 @@ class Api:
 
     def _session_body(self) -> dict[str, Any]:
         revision = self.session.revision
+        project = None
+        if revision is not None:
+            name = next((f.name for f in revision.files if f.path == revision.project), None)
+            project = {"path": revision.project.as_posix(), "name": name}
         return contract.SessionInfo(
             version=__version__,
             preview=True,
             root=self.session.root.as_posix(),
-            project=None if revision is None else _project(revision),
+            project=project,
             builds=[]
             if revision is None
             else [
@@ -237,23 +269,10 @@ def _error(status: int, code: str, message: str) -> Reply:
     return Reply(status, {"error": code, "message": message})
 
 
-def _project(revision: Revision) -> dict[str, Any]:
-    name = next((f.name for f in revision.files if f.path == revision.project), None)
-    return contract.OpenProject(path=revision.project.as_posix(), name=name).model_dump(mode="json")
-
-
-def _file(file: SourceFile) -> dict[str, Any]:
-    return contract.SourceFile(
-        path=file.path.as_posix(),
-        kind=file.kind,
-        name=file.name,
-        loaded=file.loaded,
-        fingerprint=file.fingerprint,
-        findings={"error": file.errors, "warning": file.warnings, "info": file.infos},
-    ).model_dump(mode="json")
-
-
 def _finding(filed: Filed) -> dict[str, Any]:
+    # Kept as a function, unlike the answers _state/_checks/_session_body now build inline:
+    # tests/test_gui_api.py imports it directly to check a note with no place is carried
+    # without one.
     finding = filed.diagnostic
     return contract.Finding(
         file=filed.file.as_posix(),
@@ -269,17 +288,6 @@ def _finding(filed: Filed) -> dict[str, Any]:
             }
             for text, note in finding.notes
         ],
-    ).model_dump(mode="json")
-
-
-def _check(info: CheckInfo) -> dict[str, Any]:
-    return contract.CheckInfo(
-        check=info.identifier,
-        default_severity=info.default_severity,
-        description=info.description,
-        overridable=info.overridable,
-        needs_every_component=info.needs_every_component,
-        comparison=info.comparison,
     ).model_dump(mode="json")
 
 

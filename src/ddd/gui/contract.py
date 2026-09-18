@@ -33,7 +33,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.json_schema import GenerateJsonSchema, models_json_schema
 
 from ddd.diagnostics import Severity
-from ddd.ir import DataDictionary
 
 __all__ = [
     "BuildSummary",
@@ -285,8 +284,15 @@ class DictionaryReply(_Frozen):
     revision: int
     """The revision this dictionary was resolved for."""
 
-    dictionary: DataDictionary | None
-    """The resolved dictionary, as ``ddd dump`` writes it, or ``None`` when it did not resolve."""
+    dictionary: dict[str, Any] | None
+    """The resolved dictionary, or ``None`` when it did not resolve.
+
+    Left untyped rather than declared as :class:`ddd.ir.DataDictionary`: this is that model's
+    own ``model_dump(mode="json")`` payload, so its schema is the one ``ddd schema dictionary``
+    already publishes and its TypeScript type is the one the page already generates as
+    ``dictionary.ts`` - declaring it here too would carry the whole file format's ``$defs`` into
+    the api schema a second time, under a second name, which is exactly the duplication this
+    contract exists to remove."""
 
 
 # --- GET /api/checks -----------------------------------------------------------------------
@@ -433,7 +439,7 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
 """Every request and response of spec section 6.5, with the schema pydantic builds for each:
 ``"validation"`` for a request, read for the shape a caller must send; ``"serialization"`` for
 a response, read for the shape ``model_dump(mode="json")`` produces - the two differ wherever a
-field has a default, :class:`DictionaryReply`'s nested dictionary included.
+field has a default.
 
 Nothing else needs listing: every other model above is reachable from one of these and is
 published under ``$defs`` regardless, :class:`Operation` and :class:`Severity` included.

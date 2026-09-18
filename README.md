@@ -919,6 +919,7 @@ docker compose run --rm docs             # the html documentation, into build/do
 docker compose run --rm shell            # an interactive shell in the image
 docker compose run --rm ddd ddd list examples/demo/demo.ddd.json
 docker compose up gui                    # ddd gui on the demo: open the address it prints
+docker compose run --rm gui-screenshots  # the gui's stories, photographed and compared
 ```
 
 The image serves `ddd gui` too. A stage of its own compiles the pages, so the image carries

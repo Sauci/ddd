@@ -208,6 +208,29 @@ jobs:
           path: gui/playwright-report
           overwrite: true # a name is unique within a run, and re-running the run uploads it again
 
+  gui-screenshots:
+    # Every story of gui/ photographed and compared with the reference image committed beside
+    # the stories, in the Linux image of the very Playwright version the page pins: the one place
+    # those images are made (docker compose run --rm gui-screenshots makes them locally), so a
+    # look that changes without meaning to fails here, and one that changes on purpose arrives
+    # with its new references in the same pull request.
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.63.0-noble
+    defaults:
+      run:
+        working-directory: gui
+    steps:
+      - uses: actions/checkout@v7
+      - run: npm ci
+      - run: npm run ladle:build
+      - run: npm run screenshots
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots-diff
+          path: gui/test-results
+          overwrite: true # a name is unique within a run, and re-running the run uploads it again
+
   # A development build of the last commit of every push to master, and of every push to this
   # repository's own pull requests, on TestPyPI: such a commit then installs with pip, pages
   # included and no node anywhere, for anybody - without the GitHub account an artifact needs,
@@ -225,7 +248,7 @@ jobs:
   dev-build:
     # Once every other job of the run has passed: a commit any of them fails is no build to point
     # anybody at. A job added to this file joins the list, or a test says so.
-    needs: [test, lint, container, extension, gui]
+    needs: [test, lint, container, extension, gui, gui-screenshots]
     # This repository's own runs alone. A pull request from a fork is given no token to publish
     # with, and a fork's own push to its master has no publisher on TestPyPI, so both skip here
     # rather than failing at the upload; dev-publish needs this job, and skips with it. A

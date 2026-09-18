@@ -134,3 +134,30 @@ services:
       - "8123"
       - --no-browser
       - examples/demo/demo.ddd.json
+
+  # docker compose run --rm gui-screenshots photographs every story of gui/ and compares it with
+  # its reference image; UPDATE=1 docker compose run --rm gui-screenshots writes the references
+  # afresh. Playwright's own Linux image, of the version gui/package.json pins, is the one place
+  # those images are made: Windows and Linux draw text differently. Node lives in that image, so
+  # the machine running this needs none; the packages go into a volume of their own rather than
+  # the checkout, and what the run writes into the checkout - the references, Ladle's build and
+  # Playwright's results - is handed back to whoever owns gui/, since the image runs as root.
+  gui-screenshots:
+    image: mcr.microsoft.com/playwright:v1.63.0-noble
+    working_dir: /work/gui
+    volumes:
+      - .:/work
+      - gui-screenshots-packages:/work/gui/node_modules
+    environment:
+      UPDATE: ${UPDATE:-}
+    command:
+      - sh
+      - -c
+      - |
+        npm ci --no-audit --no-fund && npm run ladle:build && npm run screenshots -- $${UPDATE:+--update-snapshots}
+        status=$$?
+        chown -R "$$(stat -c %u:%g .)" screenshots ladle-build test-results 2>/dev/null
+        exit $$status
+
+volumes:
+  gui-screenshots-packages:

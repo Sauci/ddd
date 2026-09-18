@@ -1992,6 +1992,18 @@ class TestTheDevelopmentImage:
         )
 
 
+def test_the_screenshot_image_is_the_playwright_the_page_pins() -> None:
+    """The reference images are only true of one renderer: the Playwright the page pins, in its
+    own Linux image. A bump of one without the other photographs with a browser the references
+    were not made with, and every story fails at once for no reason of its own."""
+    pinned = json.loads((ROOT / "gui" / "package.json").read_text(encoding="utf-8"))[
+        "devDependencies"
+    ]["@playwright/test"]
+    image = f"mcr.microsoft.com/playwright:v{pinned}-noble"
+    assert image in (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    assert image in (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+
 def workflow_actions() -> dict[str, set[str]]:
     """Every action the workflows use, to the set of refs they pin it at."""
     used: dict[str, set[str]] = {}

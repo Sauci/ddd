@@ -640,16 +640,83 @@ request; do not dispatch CI.
 
 ## Progress log
 
+Started is local time on 18 September 2026; the milestone ran overnight while the maintainer slept. Duration runs from dispatching the task to dispatching the next, reviews and fix rounds included; several reviews ran beside the next task, so the durations overlap by design. Tokens are those the task's agents reported, implementer and reviews together; the controlling session is not counted.
+
 | Task | Started | Duration | Tokens | Notes |
 | --- | --- | --- | --- | --- |
-| 1 | | | | |
-| 2 | | | | |
-| 3 | | | | |
-| 4 | | | | |
-| 5 | | | | |
-| 6 | | | | |
-| 7 | | | | |
+| 1 | 01:17 | 52 min | 639,678 | The graph of a revision. Its review found a Critical the tests could not: a variable one component declares `local` can still be read by another - the analysis reports `local-conflict` and keeps the reference - so such a pair drew an ordinary arrow. Fix round 1 also stopped a `KeyError` when a module's name has no component in the dictionary. |
+| 2 | 02:09 | 28 min | 432,760 | `GET /api/graph`. The paths are the absolute ones `/api/state` already speaks, which the spec now says; a relative path could not be compared with a finding's note, which is where colouring would have stopped. |
+| 3 | 02:37 | 29 min | 428,806 | The dagre layout, the remembered arrangement and the client call. `@xyflow/react` 12.11.6 and `@dagrejs/dagre` 3.1.1, both MIT. It also fixed the licence script, which crashed on an unmet optional peer dependency. |
+| 4 | 03:06 | 44 min | 386,272 | The canvas: modules, arrows, colours, the tabs, a click opening a module. Its review (opus) found the "no dictionary" banner asserting what the page could not know - the same shape as a project whose components simply share nothing. |
+| 5 | 03:50 | 58 min | 556,877 | Task 4's findings and then hover fading, search, dragging that is remembered, `Tidy`, `Fit` and the arrow tooltip. The banner now follows a `dictionary` flag the endpoint answers. Two accessible names moved deliberately, and Task 6 was dispatched with them. |
+| 6 | 04:48 | 28 min | 278,087 | Six canvas journeys, and milestone 1's seven brought back to green (two needed the `Table` tab). The documentation: the changelog, the command page and the developer page. Reviewed by the controller reading the diff rather than by a review seat, at 05:35. |
+| 7 | 05:16 | 35 min | - | The gate from a clean build, the 200-module measurement, the screenshots and this log. |
 
 ## Left open by the implementers
 
-(Anything a task deferred, with the reason, so that the milestone after it starts from there.)
+Nothing below blocks the branch; each says where it belongs.
+
+**Before this milestone is called done**
+- Spec 5.7 is not met at size. Measured on a generated project of 200 components and 600 flows:
+  `ddd check` 656 ms, the session's analysis 190 ms, `graph_of` 18 ms, `GET /api/graph` 35-40 ms
+  over HTTP even with a long poll open - but the canvas takes about 6.5 s to appear in headless
+  Edge. The cost is the page drawing 200 nodes and 600 arrows, each arrow's label portalled on its
+  own, not the server. Fewer DOM nodes per arrow, or virtualising what is off screen, is the fix.
+- A failed first read of a *new* revision still replaces the canvas with a banner: TanStack drops
+  its placeholder once a new key settles to error. "The server stopped" is covered, because the
+  revision does not advance then. What to draw while a new revision's first read is failing is a
+  deliberate choice nobody has made yet.
+
+**Milestone 3 (the visual design), which restyles this canvas**
+- `stateOf`'s three colours, the badge and the node box live in `gui/src/styles/app.css` beside
+  milestone 1's; the canvas deliberately invents no visual style of its own.
+- A module that did not load shows `not loaded` but not the loader's message on hover, which spec
+  5.6 asks for: `/api/graph` does not carry it. Clicking the module reaches it on the component
+  page.
+- A file that does not parse at all never becomes a module: the session cannot tell what kind of
+  file it is, so it has kind `unknown` and the canvas's `component` filter drops it. A file that
+  parses and fails its schema does appear, marked not loaded. Either the session learns a broken
+  file's kind from the project's includes, or spec 4.2 is narrowed to files that parse.
+
+**Whenever the file is next touched**
+- `tests/test_graph.py`: two loaded modules sharing one name collapse in `paths_by_component`; a
+  diagnostic carrying several notes fans out into one disagreement per note (no check emits more
+  than one today). Both are commented where they live.
+- `gui/src/lib/layout.ts`: no test pins the centre-to-top-left conversion, so dropping the
+  half-size subtraction would still pass every layout test.
+- `gui/src/state/positions.ts`: `isRecord` accepts an array from storage, and `rememberPosition`
+  serialises inside the same `try` as the write, so a programming error would be swallowed with a
+  storage failure.
+- `gui/src/screens/GraphPage.tsx`: one tooltip slot is shared by the keyboard-focused arrow and the
+  mouse-hovered one.
+- No Python test pins "two resolved modules that share nothing answer `dictionary: true`"; the
+  screenshot shows it.
+
+**On the branch below this one** (`feature/gui-api-contract`, not yet a pull request): its review
+left two Important findings unfixed overnight - three response helpers that hand-build a dict a
+model then re-validates, and `DictionaryReply` publishing the file format's whole type tree inside
+the API schema (23 of 45 definitions). They were parked at 02:00 to keep the canvas on the critical
+path, and the graph's own additions sit beside them.
+
+## Rulings made while executing the plan
+
+The maintainer approved the spec by delegation and slept; every decision below was the controlling session's, and each says what it costs if it was wrong.
+
+1. the maintainer delegated the spec's approval ("Can you approve the spec and continue") and went to sleep, so the brainstorming skill's review gate is met by the controller's own self-review, recorded in the spec's commit — cost if wrong: a spec they would have changed, found in the morning.
+2. work in place in the main checkout on feature/module-graph, no linked worktree, as milestone 1 did — cost if wrong: a second session in this checkout would collide.
+3. the graph stacks on feature/gui-api-contract rather than on master, because its endpoint is declared in the pydantic contract that branch introduces — cost if wrong: two branches to merge in order.
+4. model per task rather than the cheapest everywhere, as the maintainer asked: sonnet for Tasks 1, 2, 3 and 6 (transcription and tests from a detailed brief), opus for Tasks 4 and 5 (React Flow and the interaction, described in prose rather than given as code), reviews on sonnet with opus for Task 4's — cost if wrong: more of the weekly limit than sonnet throughout.
+5. agents one at a time in the background, pushing each task, no pull request and no CI dispatch overnight — cost if wrong: nothing but the wait.
+6. no whole-branch review at the end tonight; the per-task reviews stand, and the maintainer reads the branch in the morning — cost if wrong: a cross-task defect found later than milestone 1's were.
+7. an implementer may run beside a read-only reviewer when their files do not overlap (Task 1 writes src/ddd/graph.py and tests/test_graph.py; the API review reads api.py, contract.py and the frontend's api files), never two implementers — the maintainer is asleep and wall-clock is the scarce thing tonight — cost if wrong: a reviewer reading a file mid-change, which a re-read settles.
+8. both are fixed in one round on that branch before the graph's Task 2 touches the same files, and the branch is then merged into feature/module-graph so the graph builds on the fixed contract — the alternative, fixing them later, means two branches editing api.py and contract.py in the same regions — cost if wrong: one merge commit in the graph branch.
+9. the fix round waits for Task 1 to finish rather than running beside it: the two branches cannot be checked out at once in this working tree, and the venv's editable install points at this checkout, so a linked worktree would test the wrong tree — cost if wrong: about half an hour of wall clock tonight.
+10. the contract branch's two Important findings are parked until the morning rather than fixed tonight. It is 02:00, the maintainer wakes at about 07:00 and asked to see the canvas working; fixing them costs a branch switch, a fix round and a re-review, about forty minutes of the critical path, and the graph's Task 2 can add its models beside the helpers as they stand, leaving a small mechanical conflict to resolve when the branches merge. Cost if wrong: the contract branch carries two known findings overnight, and Task 2's additions have to be re-touched when they are fixed.
+11. from here the priority is a visible canvas by morning - Tasks 2, 3 and 4 - and Tasks 5 and 6 only if the clock allows; a task review may run beside the next task's implementer when their files do not overlap. Cost if wrong: interaction and journeys land in the morning instead of overnight.
+12. accept absolute paths and correct the spec instead of the code (commit d570a8d) — the page treats the path as an opaque identity it hands back to /api/file, and matching what /api/state says is what keeps the two answers joinable; a relative path would also have to be resolved before it could be compared with a note's location, which is where colouring would silently stop — cost if wrong: the JSON shows a machine's directory layout, which the page never displays.
+13. fold the Important and the four cheap Minors into Task 5's dispatch instead of a separate fix round and re-review — it is 03:45, Task 5 rewrites the same two files, and its review then covers both — cost if wrong: a defect in the fixes is caught one review later than the loop would.
+14. spec 5.6's "the loader's message when a module that did not load is hovered" is parked for a later milestone — the message is not in /api/graph, the node already says "not loaded", and clicking it opens the component page where milestone 1 shows the loader's reason — cost if wrong: one hover short of the spec until then.
+15. the spec's example answer gains the dictionary field (commit ad3615a) rather than leaving the record behind the code — cost if wrong: none.
+16. park that race rather than open a fix round at 05:00 — the reviewer approved the task, no data is lost (positions are already in storage), and it needs a deliberate choice about what to render while a new revision's first read is failing; it goes to the plan's "Left open" for the milestone after — cost if wrong: a reader who hits a transient failure on the poll that carries a new revision loses pan, zoom and search, and reloads.
+17. no review seat for Task 6 at 05:35; the controller read the diff instead. skeleton.spec.ts gains 131 lines and deletes none, so no milestone 1 expectation was loosened; the two forced changes are a Table-tab click each, commented; the new journeys assert the arrows' spoken sentences (`... 2 variables, error` then `agreed`), the tooltip's check, the module opening, the tab's address and the arrangement surviving a revision. Cost if wrong: a defect in the journeys themselves reaches the maintainer unreviewed, with the suite passing twice as the only guard.
+18. spec 5.7's "under a second" is not met at 200 modules and the milestone ships without meeting it. The measurement says where the time goes (the page, not the endpoint), the canvas is usable at the sizes the maintainer will try it on first, and the fix - fewer DOM nodes per arrow, or virtualising what is off screen - is a rendering decision that belongs with the milestone that styles the canvas. Recorded in the plan's "Left open" with the numbers. Cost if wrong: a project of that size opens in about six seconds until then.

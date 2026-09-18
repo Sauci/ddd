@@ -534,8 +534,16 @@ class TestRunning:
     def test_an_installation_without_compiled_pages_is_a_usage_error(
         self, tmp_path, capsys
     ) -> None:
+        """Node builds the pages and nothing that installs them needs it, so the message says
+        where it looked and what already carries them before the two commands that build them."""
         assert run(None, [], 0, open_browser=False, static=tmp_path) == EXIT_USAGE
-        assert "npm run build" in capsys.readouterr().err
+        message = capsys.readouterr().err
+        looked = message.index(f"no compiled pages for ddd gui in {tmp_path};")
+        released = message.index("a released ddd-tool carries them")
+        wheel = message.index("the wheel ci builds for every branch")
+        built = message.index("with 'npm ci' and 'npm run build' in its gui directory")
+        assert looked < released < wheel < built
+        assert not set("*`|") & set(message), "markup in a message printed to a terminal"
 
     def test_a_file_that_is_not_a_project_is_a_usage_error(
         self, project_file, pages, capsys

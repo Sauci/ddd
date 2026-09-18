@@ -269,8 +269,9 @@ def run(
     pages = static_directory() if static is None else static
     if not (pages / "index.html").is_file():
         print(
-            "ddd: this installation has no compiled pages for ddd gui; build them in the gui "
-            "directory of a source checkout with 'npm ci' and 'npm run build'",
+            f"ddd: this installation has no compiled pages for ddd gui in {pages}; a released "
+            "ddd-tool carries them, and so does the wheel ci builds for every branch; a source "
+            "checkout builds them with 'npm ci' and 'npm run build' in its gui directory",
             file=sys.stderr,
         )
         return EXIT_USAGE

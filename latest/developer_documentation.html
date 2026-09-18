@@ -82,6 +82,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#publishing-this-documentation">Publishing this documentation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#publishing-a-release">Publishing a release</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#delivering-the-editor-extension">Delivering the editor extension</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-browser-interface">The browser interface</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="faq.html">FAQ</a></li>
@@ -491,11 +492,16 @@ treatment.</p>
 <h2>Continuous integration<a class="headerlink" href="#continuous-integration" title="Link to this heading"></a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">.github/workflows/ci.yml</span></code> runs the commands above - the suite with its coverage gate,
 <code class="docutils literal notranslate"><span class="pre">ruff</span></code> twice and <code class="docutils literal notranslate"><span class="pre">mypy</span></code> - on every push to <code class="docutils literal notranslate"><span class="pre">master</span></code> and every pull request, in two jobs,
-and two more the commands above do not cover. <code class="docutils literal notranslate"><span class="pre">extension</span></code> installs node and the package,
+and three more the commands above do not cover. <code class="docutils literal notranslate"><span class="pre">extension</span></code> installs node and the package,
 runs <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">ci</span></code>, <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">test</span></code> and <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">run</span> <span class="pre">package</span></code> in <code class="docutils literal notranslate"><span class="pre">editors/vscode</span></code>, and uploads the
 <code class="docutils literal notranslate"><span class="pre">.vsix</span></code> it produced. Its tests start a real language server, which is why it installs the
 python package as well as compiling typescript, and packaging the extension there proves that
 the artefact a customer is handed can be produced at all.</p>
+<p><code class="docutils literal notranslate"><span class="pre">gui</span></code> builds and tests the browser interface on ubuntu and windows: it installs the package and
+node, generates the TypeScript types from <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span></code>, runs Biome, the type check and Vitest
+with its coverage gate, compiles the pages, and drives them in Chromium against a real
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> with Playwright. The pages it compiles are thrown away; the release build compiles
+them again, into the wheel.</p>
 <p><code class="docutils literal notranslate"><span class="pre">container</span></code> builds the image behind <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span></code> and runs the <code class="docutils literal notranslate"><span class="pre">generate</span></code> service in
 it. Nothing built the image for a long time, and it is the local equivalent of every other
 job here: a <code class="docutils literal notranslate"><span class="pre">COPY</span></code> of a directory removed three releases earlier failed the build on its
@@ -521,14 +527,15 @@ distribution.</p>
 release can be cut from a commit this workflow never saw, and an upload to an index is
 permanent.</p>
 <p>Nothing in the toolchain moves on its own. Every <code class="docutils literal notranslate"><span class="pre">uses:</span></code> is pinned by a major tag, the
-extension’s lock file pins its dependencies exactly, and <code class="docutils literal notranslate"><span class="pre">ruff</span></code> and <code class="docutils literal notranslate"><span class="pre">mypy</span></code> are capped to
-a minor in <code class="docutils literal notranslate"><span class="pre">requirements-dev.txt</span></code> - those two are gates rather than libraries, so a release
-of either fails the lint job on the day it is published rather than on the day somebody
-upgrades it. What proposes the moves instead is <code class="docutils literal notranslate"><span class="pre">.github/dependabot.yml</span></code>, weekly, for the
-actions, the requirements files and the extension: a bump then arrives as a pull request that
-ci has already run, which is the difference between upgrading a tool and discovering on a
-release day that one has moved on without you. A test holds every action to one version
-across the three workflows, and both caps to being caps.</p>
+extension’s and the browser interface’s lock files pin their dependencies exactly, and
+<code class="docutils literal notranslate"><span class="pre">ruff</span></code> and <code class="docutils literal notranslate"><span class="pre">mypy</span></code> are capped to a minor in <code class="docutils literal notranslate"><span class="pre">requirements-dev.txt</span></code> - those two are gates
+rather than libraries, so a release of either fails the lint job on the day it is published
+rather than on the day somebody upgrades it. What proposes the moves instead is
+<code class="docutils literal notranslate"><span class="pre">.github/dependabot.yml</span></code>, weekly, for the actions, the requirements files, the extension and
+the browser interface: a bump then arrives as a pull request that ci has already run, which is
+the difference between upgrading a tool and discovering on a release day that one has moved on
+without you. A test holds every action to one version across the three workflows, and both
+caps to being caps.</p>
 </section>
 <section id="building-this-documentation">
 <h2>Building this documentation<a class="headerlink" href="#building-this-documentation" title="Link to this heading"></a></h2>
@@ -741,6 +748,27 @@ refused when it publishes, which reads as a wrong password rather than a wrong s
 expires within a year, and the failure lands on a release that has already uploaded to PyPI.
 Whoever takes that on puts the install instructions back on the four pages at the same time;
 a test refuses the two halves separately.</p>
+</section>
+<section id="the-browser-interface">
+<h2>The browser interface<a class="headerlink" href="#the-browser-interface" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> serves pages compiled from <code class="docutils literal notranslate"><span class="pre">gui/</span></code>, a Vite project in TypeScript and React, into
+<code class="docutils literal notranslate"><span class="pre">src/ddd/gui/static/</span></code>. git ignores the compiled pages; the release build compiles them before
+it builds the wheel, which then carries them. A source checkout needs Node.js 24 to build them,
+with the package installed so that its types can be generated:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>cd gui
+npm ci
+npm run schemas     # TypeScript types, from ddd schema all
+npm run build       # the pages, and third-party-licenses.txt beside them
+npm run watch       # rebuilds on every change; reload the page ddd gui serves
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">run</span> <span class="pre">lint</span></code> and <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">run</span> <span class="pre">typecheck</span></code> are the frontend’s ruff and mypy, and <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">test</span></code>
+runs Vitest with a 100 % gate over the modules that hold logic - <code class="docutils literal notranslate"><span class="pre">src/api</span></code>, <code class="docutils literal notranslate"><span class="pre">src/lib</span></code> and
+<code class="docutils literal notranslate"><span class="pre">src/state</span></code>. The screens are covered by <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">run</span> <span class="pre">e2e</span></code>: Playwright drives the real <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>
+over a copy of <code class="docutils literal notranslate"><span class="pre">examples/demo</span></code>, started with the interpreter <code class="docutils literal notranslate"><span class="pre">DDD_PYTHON</span></code> names, and
+<code class="docutils literal notranslate"><span class="pre">PLAYWRIGHT_CHANNEL=msedge</span></code> drives the installed Edge on a machine without Playwright’s own
+Chromium. The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0,
+BSD-2-Clause or BSD-3-Clause.</p>
 </section>
 </section>
 

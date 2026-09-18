@@ -31,7 +31,11 @@ interface Props {
   inputValue: string;
   onInputChange: (value: string) => void;
   sections: readonly ComboSection[];
-  /** An entry of the list taken: pressed, or reached with the arrow keys and taken with Enter. */
+  /**
+   * An entry of the list taken: pressed, or focused - with the arrow keys, or by the pointer
+   * resting on it - and taken with Enter, or with Tab as the reader moves on, which is how React
+   * Aria's ComboBox takes a focused entry. Text typed is never taken this way.
+   */
   onPick: (id: string) => void;
   /**
    * Enter pressed with no entry of the list focused, with the text the field holds: the caller

@@ -25,7 +25,7 @@ function Field({ open = false, note }: { open?: boolean; note?: string }) {
       sections={SECTIONS}
       onPick={() => undefined}
       note={note}
-      autoFocus={open}
+      autoFocus={open ? 1 : null}
     />
   );
 }

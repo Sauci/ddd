@@ -10,7 +10,8 @@ interface Props {
   name: string;
   revision: number | undefined;
   stopped: boolean;
-  focusPicker: boolean;
+  /** A new value on every request to focus the picker; `null` asks for no focus. */
+  focusPicker: number | null;
   onClose: () => void;
 }
 

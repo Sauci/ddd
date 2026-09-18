@@ -34,8 +34,13 @@ interface Props {
   /** A line under the field, such as that a typed unit is not one of the project's. */
   note?: string | undefined;
   isDisabled?: boolean;
-  /** Take the focus when shown, which opens the list: a unit cell hands the reader over. */
-  autoFocus?: boolean;
+  /**
+   * Take the focus when this changes to a new value, which opens the list: a unit cell hands
+   * the reader over, even on a second press of the same cell - a plain boolean would not change
+   * between two such presses, and the field would not take the focus back. `null` asks for no
+   * focus.
+   */
+  autoFocus?: number | null;
 }
 
 /**
@@ -51,11 +56,11 @@ export function ComboBox({
   onPick,
   note,
   isDisabled = false,
-  autoFocus = false,
+  autoFocus = null,
 }: Props) {
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (autoFocus) input.current?.focus();
+    if (autoFocus !== null) input.current?.focus();
   }, [autoFocus]);
   return (
     <AriaComboBox

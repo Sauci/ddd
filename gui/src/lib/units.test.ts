@@ -187,6 +187,14 @@ group("what the picker lists", () => {
     );
   });
 
+  test("typing the no-unit label matches it exactly, so nothing is offered as typed", () => {
+    const sections = pickerSections("ValueA", VALUE_A, FREE, "no unit");
+    expect(sections.map((section) => section.id)).toEqual(["none"]);
+    expect(sections[0]?.choices).toEqual([
+      { id: "none:", unit: null, label: "no unit", detail: "" },
+    ]);
+  });
+
   test("a unit outside the vocabulary is only flagged when there is one", () => {
     expect(outsideVocabulary(VOCABULARY, "RPM")).toBe(true);
     expect(outsideVocabulary(VOCABULARY, "rpm")).toBe(false);

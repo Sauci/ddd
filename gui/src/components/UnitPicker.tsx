@@ -9,7 +9,8 @@ interface Props {
   onPick: (unit: string | null) => void;
   note: string | undefined;
   isDisabled: boolean;
-  autoFocus: boolean;
+  /** A new value on every request to focus the field; `null` asks for no focus. */
+  autoFocus: number | null;
 }
 
 /** The unit of one variable: the sections of lib/units.ts in React Aria's combobox. */

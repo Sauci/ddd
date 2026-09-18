@@ -36,7 +36,8 @@ export interface VariablePanelViewProps {
   onChangesShown: (shown: boolean) => void;
   onApply: () => void;
   busy: boolean;
-  focusPicker: boolean;
+  /** A new value on every request to focus the picker; `null` asks for no focus. */
+  focusPicker: number | null;
   onClose: () => void;
 }
 

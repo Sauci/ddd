@@ -58,7 +58,7 @@ function View({
       onChangesShown={setChangesShown}
       onApply={() => undefined}
       busy={false}
-      focusPicker={focusPicker}
+      focusPicker={focusPicker ? 1 : null}
       onClose={() => undefined}
     />
   );

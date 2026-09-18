@@ -47,6 +47,25 @@ test("the picker lists the variable's units, then the project's, narrowed by wha
   await expect(page.getByRole("option", { name: "%", exact: true })).toHaveCount(0);
 });
 
+test("a unit cell pressed again, once focus has moved elsewhere, moves it back to the picker", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const cell = page.getByRole("button", { name: "Set the unit of ValueA" });
+  const picker = page.getByRole("combobox", { name: "Unit of ValueA" });
+  await cell.click();
+  await expect(picker).toBeFocused();
+  // Open, the picker's own list hides the rest of the page from the accessibility tree (as the
+  // CSP journey's neighbour above already works around); close it before reaching the masthead.
+  await picker.press("Escape");
+  await page.getByRole("button", { name: "DemoDevice" }).focus();
+  await expect(picker).not.toBeFocused();
+  await cell.click();
+  await expect(picker).toBeFocused();
+});
+
 test("the address keeps the panel open across a reload", async ({ page, gui }) => {
   await page.goto(gui.address);
   await page.getByRole("button", { name: "Controller", exact: true }).click();

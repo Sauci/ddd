@@ -120,7 +120,15 @@ export function pickerSections(
       choices: section.choices.filter((entry) => entry.label.toLowerCase().includes(wanted)),
     }))
     .filter((section) => section.choices.length > 0);
-  const exact = sections.some((section) => section.choices.some((entry) => entry.unit === typed));
+  // A match on the label of a no-unit choice counts as exact too: what was typed cannot equal
+  // `null` itself, so without this a reader who picks "no unit" - whose label, not its `null`
+  // unit, comes back through the field once React Aria commits the selection - would be offered
+  // "As typed: no unit", which would write that literal text as the unit instead of clearing it.
+  const exact = sections.some((section) =>
+    section.choices.some(
+      (entry) => entry.unit === typed || (entry.unit === null && entry.label === typed),
+    ),
+  );
   if (typed !== "" && !exact) {
     const note = outsideVocabulary(units, typed) ? "not one of this project's units" : "";
     sections.push({ id: "typed", title: "As typed", choices: [choice("typed", typed, note)] });

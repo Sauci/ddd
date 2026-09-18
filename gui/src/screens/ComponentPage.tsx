@@ -22,11 +22,17 @@ interface Props {
 
 /** One component: its declarations, the panel of the one selected, and the findings in it. */
 export function ComponentPage({ file, variable, state, stopped, onVariable }: Props) {
-  // Set when a unit cell opened the panel, so its picker takes the focus; a row does not.
-  const [focusPicker, setFocusPicker] = useState(false);
+  // A new number on every unit cell press, even a second press of the same cell, so the
+  // picker's focus request always changes; null when a row selects its variable without one.
+  const [focusPicker, setFocusPicker] = useState<number | null>(null);
   const content = useQuery({
     queryKey: ["file", file, state?.revision],
     queryFn: () => getFile(file),
+    // The table stays up while this file is read again for a newer revision: swapped for
+    // "Reading the file…", it lost the open panel's own draft and the scroll position on every
+    // edit. Only this file's answer is kept - another component's page starts from nothing, not
+    // from the last one's table - and an edit made from it carries the fingerprint it was read
+    // at, which the server refuses as stale if the file has moved on.
     placeholderData: (previous, previousQuery) =>
       previousQuery?.queryKey[1] === file ? previous : undefined,
   });
@@ -61,12 +67,11 @@ export function ComponentPage({ file, variable, state, stopped, onVariable }: Pr
         <h1>{name}</h1>
         <Table
           aria-label={`Declarations of ${name}`}
-          className="declarations"
           selectionMode="single"
           selectedKeys={selected}
           onSelectionChange={(keys) => {
             const key = keys === "all" ? undefined : [...keys][0];
-            setFocusPicker(false);
+            setFocusPicker(null);
             onVariable(rows.find((row) => row.id === key)?.name);
           }}
         >
@@ -82,8 +87,10 @@ export function ComponentPage({ file, variable, state, stopped, onVariable }: Pr
             {(row) => (
               <Row
                 id={row.id}
-                className={
-                  row.own.some((finding) => finding.severity === "error") ? "has-error" : ""
+                className={({ defaultClassName }) =>
+                  row.own.some((finding) => finding.severity === "error")
+                    ? `${defaultClassName} has-error`
+                    : (defaultClassName ?? "")
                 }
               >
                 <Cell>{row.scope}</Cell>
@@ -96,7 +103,7 @@ export function ComponentPage({ file, variable, state, stopped, onVariable }: Pr
                     aria-label={`Set the unit of ${row.name}`}
                     isDisabled={stopped}
                     onPress={() => {
-                      setFocusPicker(true);
+                      setFocusPicker((request) => (request ?? 0) + 1);
                       onVariable(row.name);
                     }}
                   >

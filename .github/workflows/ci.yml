@@ -78,6 +78,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: docker compose build ddd
+      # The pages of `ddd gui` come from a stage of the image's own, and an image that stopped
+      # copying them would still build and run every service - a service runs the working tree,
+      # PYTHONPATH first. -I leaves the working tree out, so what answers is the package
+      # installed in the image.
+      - name: Check the image carries the compiled pages
+        run: |
+          docker compose run --rm ddd python -I -c '
+          import sys
+          from ddd.gui.server import static_directory
+          if not (static_directory() / "index.html").is_file():
+              sys.exit(f"the image has no {static_directory()}/index.html: ddd gui would have nothing to serve")
+          '
       - run: docker compose run --rm generate
 
   extension:

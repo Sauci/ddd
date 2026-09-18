@@ -24,7 +24,7 @@ coverage.xml
 coverage.json
 docs/_build/
 docs/superpowers/*.pdf
-# What npm leaves in the tree, which the image makes for itself: its first stage installs the
+# What npm leaves in the tree, which the image makes for itself: its pages stage installs the
 # packages of gui/, generates the page types and compiles the pages, and the final stage takes
 # the pages from it. `COPY src` and `COPY gui` take whatever the context holds, so the host's
 # would be laid over the image's own - a stale build's pages installed beside the fresh ones,
@@ -35,6 +35,6 @@ docs/superpowers/*.pdf
 src/ddd/gui/static/
 gui/src/generated/
 # What running the browser tests leaves, Playwright's traces and its report: nothing the image
-# uses, and copied into its first stage by `COPY gui` otherwise.
+# uses, and copied into its pages stage by `COPY gui` otherwise.
 gui/test-results/
 gui/playwright-report/

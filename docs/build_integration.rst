@@ -671,9 +671,10 @@ The ``gui`` service is the exception: it clears ``PYTHONPATH``, so it runs the i
 and serves the pages it carries rather than the working tree's, and it passes ``--host 0.0.0.0``
 so it answers beyond its own loopback. The project it opens is still the checkout's, though:
 ``examples/demo`` is bind mounted under ``/work`` like every service's sources, so an edit made
-in the browser is written into the developer's own checkout there - and, on a native Linux
-engine, comes back owned by root, since this service runs as root exactly as every service above
-does. ``docker compose up gui`` starts it, publishing the same port number on the host's loopback
+in the browser is written into the developer's own checkout there, the file keeping its owner and
+permissions although this service runs as root, as every service does. ``docker compose up
+gui`` builds the image first - the code it runs is the image's, so an image built before a
+change would serve what it was built from - and starts it, publishing the same port number on the host's loopback
 alone, ``-p 127.0.0.1:8123:8123`` - a different number outside would have the Host header
 ``ddd gui`` sees name a port it is not listening on, answered ``421 misdirected request``, and
 beyond the container's loopback the token in the address it prints is the only guard, which is

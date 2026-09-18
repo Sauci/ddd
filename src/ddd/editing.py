@@ -31,7 +31,9 @@ import contextlib
 import copy
 import hashlib
 import json
+import os
 import re
+import stat
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -675,11 +677,29 @@ def _stage_and_replace(path: Path, data: bytes) -> None:
     staging = path.with_name(path.name + STAGING_SUFFIX)
     try:
         staging.write_bytes(data)
+        _keep_access(path, staging)
         staging.replace(path)
     except OSError:
         with contextlib.suppress(OSError):
             staging.unlink()
         raise
+
+
+def _keep_access(original: Path, staged: Path) -> None:
+    """Give the staged file the original's permissions, and its owner where this process may.
+
+    A file written afresh takes this process's umask and user rather than the file's own. An
+    edit made as root in a container, over a checkout mounted from the host, left the developer
+    a file they could no longer save; one made to a file somebody kept read-only made it
+    writable. Giving a file away is root's alone on a posix system and no notion at all on
+    windows, so a refusal - or a system without ``chown`` - leaves the owner the write gave it.
+    """
+    status = original.stat()
+    staged.chmod(stat.S_IMODE(status.st_mode))
+    chown = getattr(os, "chown", None)
+    if chown is not None:
+        with contextlib.suppress(OSError):
+            chown(staged, status.st_uid, status.st_gid)
 
 
 def _put_back(path: Path, data: bytes) -> bool:

@@ -928,9 +928,11 @@ them and holds no Node.js.
 host. With the engine inside WSL, Windows reaches it through WSL's localhost forwarding, which
 is on by default. `up` rather than `run --rm`, because `run` does not publish the port.
 
-The `gui` service runs the image's own code and pages, but the project files it serves are the
-working tree's: an edit made in the browser is written into your checkout, and on a native
-Linux engine the edited file comes back owned by root, since every service runs as root.
+The `gui` service runs the image's own code and pages, so `up` builds the image first, from
+the cache when nothing changed: an image built earlier would serve what it was built from. The
+project files it serves are the working tree's, though: an edit made in the browser is
+written into your checkout, and the file keeps its owner and permissions although every
+service runs as root.
 
 It listens on every interface of the container and publishes port 8123 on the host's loopback
 only, with the same number on both sides: `ddd gui` checks that each request names the port it

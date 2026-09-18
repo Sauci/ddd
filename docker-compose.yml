@@ -106,8 +106,11 @@ services:
   # git does not track them. The project it opens is still the checkout's, though:
   # examples/demo is read, and an edit made in the browser writes it back, under /work, the
   # same bind mount as every service above - so an edit lands in the developer's own checkout,
-  # and, on a native Linux engine, comes back owned by root, since this service runs as root
-  # exactly as every service above does. --host 0.0.0.0 is what lets the container answer its
+  # keeping the file's owner and permissions although this service runs as root, as every
+  # service above does. pull_policy: build rebuilds the image on every up, from the cache when
+  # nothing changed: the code and pages served are the image's, so an image built before a
+  # change would be served as it was - and one built before this service existed has a ddd
+  # without --host, which refuses the command below. --host 0.0.0.0 is what lets the container answer its
   # host at all, and publishing the same port number on the host's loopback alone, rather than
   # every interface, is what a browser there needs: a different number outside would have the
   # Host header ddd gui sees name a port it does not listen on, answered 421, and beyond the
@@ -116,6 +119,7 @@ services:
   # docker compose stop does not wait out its grace period on SIGTERM first.
   gui:
     <<: *ddd
+    pull_policy: build
     environment:
       PYTHONDONTWRITEBYTECODE: "1"
     ports:

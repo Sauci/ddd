@@ -63,10 +63,13 @@ class Hunk:
 
 @dataclass(frozen=True, slots=True)
 class Planned:
-    """The edit of one file a settlement comes to, and the lines it changes."""
+    """The edit of one file a preview comes to, and the lines it changes."""
 
     path: Path
-    fingerprint: str
+    fingerprint: str | None
+    """What the analysis read the file at, which the edit is checked against; ``None`` for a
+    file the change creates."""
+
     operations: tuple[Operation, ...]
     hunks: tuple[Hunk, ...]
 
@@ -111,20 +114,24 @@ def located_on(declared: Sequence[Declared], file: Path, diagnostic: Diagnostic)
     )
 
 
-def units_in_use(built: Index, cache: dict[Path, Document]) -> tuple[tuple[str, int], ...]:
+def units_in_use(built: Index) -> tuple[tuple[str, int], ...]:
     """Every unit a declaration states, with how many variables state it: most used first, then
-    by spelling. A variable several components declare counts once; no unit is not a unit."""
-    counted: dict[str, int] = {}
-    for sites in built.declarations.values():
-        units = {
-            unit
-            for site in sites
-            if isinstance(unit := read(site.path, cache).value_at(f"{site.pointer}.unit"), str)
-            and unit
-        }
-        for unit in units:
-            counted[unit] = counted.get(unit, 0) + 1
-    return tuple(sorted(counted.items(), key=lambda pair: (-pair[1], pair[0])))
+    by spelling. A variable several components declare counts once; no unit is not a unit.
+
+    Counted from the index's record of units, which the Units tab counts from too, so the picker
+    and the tab cannot disagree about how many variables state a unit. A unit only types and
+    structure members state is used by no variable, and is not one of these.
+    """
+    counted = {
+        unit: len({stated.name for stated in sites if stated.kind == "variable"})
+        for unit, sites in built.units.items()
+    }
+    return tuple(
+        sorted(
+            ((unit, count) for unit, count in counted.items() if count),
+            key=lambda pair: (-pair[1], pair[0]),
+        )
+    )
 
 
 def vocabulary_of(documents: Sequence[Document]) -> tuple[tuple[str, str | None], ...] | None:
@@ -168,7 +175,37 @@ def preview(
         )
         operations.setdefault(change.site.path, []).append(made)
     return tuple(
-        _planned(path, tuple(made), fingerprints) for path, made in sorted(operations.items())
+        planned(path, tuple(made), fingerprints) for path, made in sorted(operations.items())
+    )
+
+
+def planned(
+    path: Path, operations: tuple[Operation, ...], fingerprints: Mapping[Path, str]
+) -> Planned:
+    """The edit of one file the analysis read, and the lines it changes, made in memory.
+
+    The file carries the fingerprint the analysis read it at, from ``fingerprints`` (keyed by
+    resolved path): a file the analysis did not read, or that can no longer be read as utf-8,
+    is refused as unreadable rather than previewed from bytes nobody analysed.
+    """
+    stamp = fingerprints.get(path.resolve())
+    if stamp is None:
+        raise EditError(UNREADABLE, f"{path} is not a file the last analysis read")
+    try:
+        text = path.read_bytes().removeprefix(codecs.BOM_UTF8).decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        raise EditError(UNREADABLE, f"{path} can no longer be read as utf-8") from None
+    return Planned(path, stamp, operations, hunks(text, edit_text(text, operations)))
+
+
+def hunks(before: str, after: str) -> tuple[Hunk, ...]:
+    """The lines a change replaces in a text, each run of them numbered as the text stood."""
+    old, new = before.splitlines(), after.splitlines()
+    matcher = difflib.SequenceMatcher(a=old, b=new, autojunk=False)
+    return tuple(
+        Hunk(first + 1, tuple(old[first:last]), tuple(new[start:end]))
+        for tag, first, last, start, end in matcher.get_opcodes()
+        if tag != "equal"
     )
 
 
@@ -211,26 +248,3 @@ def _fixed(built: Index, type_name: str | None, cache: dict[Path, Document]) -> 
     if site is None:
         return {}
     return _stated(read(site.path, cache), site.pointer, FIXED_BY_A_TYPE)
-
-
-def _planned(
-    path: Path, operations: tuple[Operation, ...], fingerprints: Mapping[Path, str]
-) -> Planned:
-    stamp = fingerprints.get(path.resolve())
-    if stamp is None:
-        raise EditError(UNREADABLE, f"{path} is not a file the last analysis read")
-    try:
-        text = path.read_bytes().removeprefix(codecs.BOM_UTF8).decode("utf-8")
-    except (OSError, UnicodeDecodeError):
-        raise EditError(UNREADABLE, f"{path} can no longer be read as utf-8") from None
-    return Planned(path, stamp, operations, _hunks(text, edit_text(text, operations)))
-
-
-def _hunks(before: str, after: str) -> tuple[Hunk, ...]:
-    old, new = before.splitlines(), after.splitlines()
-    matcher = difflib.SequenceMatcher(a=old, b=new, autojunk=False)
-    return tuple(
-        Hunk(first + 1, tuple(old[first:last]), tuple(new[start:end]))
-        for tag, first, last, start, end in matcher.get_opcodes()
-        if tag != "equal"
-    )

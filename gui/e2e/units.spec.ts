@@ -268,6 +268,24 @@ test("no page reports a violation of its content security policy", async ({ page
   await expect(page.getByRole("heading", { name: "Open a project" })).toBeVisible();
   await page.getByRole("button", { name: "DemoDevice", exact: true }).click();
 
+  // The Units tab: a unit's panel with a rename's changes shown, then - the demo having no units
+  // file - the adoption's preview in its place.
+  await page.getByRole("link", { name: "Units" }).click();
+  await page.getByRole("row", { name: "rpm", exact: true }).click();
+  const unit = page.getByRole("complementary", { name: "rpm" });
+  const rename = unit.getByRole("combobox", { name: "Rename rpm to" });
+  await rename.fill("%");
+  await rename.press("Enter");
+  await unit.getByRole("button", { name: "Show changes" }).click();
+  await expect(unit.locator(".hunk")).toBeVisible();
+  await page
+    .getByRole("status")
+    .filter({ hasText: "no units file" })
+    .getByRole("button", { name: "Show changes" })
+    .click();
+  const adoption = page.getByRole("complementary", { name: "Adopt a vocabulary" });
+  await expect(adoption.getByText("units.ddd.json, new")).toBeVisible();
+
   await page.getByRole("link", { name: "Table" }).click();
   await page.getByRole("button", { name: "Controller", exact: true }).click();
   await page.getByRole("button", { name: "Set the unit of ValueA" }).click();

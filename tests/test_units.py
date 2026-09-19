@@ -14,6 +14,7 @@ import pytest
 from pydantic import ValidationError
 
 from conftest import checks, component, declare, messages, project, run_analysis, write_tree
+from ddd.analysis import close_units
 from ddd.diagnostics import DiagnosticBag
 from ddd.loading import load_workspace
 from ddd.models import UnitsFile
@@ -97,6 +98,37 @@ class TestTheCheck:
     def test_the_nearest_spelling_is_suggested(self, tree: Path) -> None:
         _, bag = run_analysis(tree, self.files("nm", "Nm", "rpm"))
         assert "did you mean 'Nm'" in messages(bag)
+
+    def test_every_close_spelling_is_suggested_closest_first(self, tree: Path) -> None:
+        """As :func:`ddd.analysis.close_units` finds them - closest first, a tie by spelling -
+        which is also what the editor offers to rename the unit to."""
+        _, bag = run_analysis(tree, self.files("rpms", "Nm", "rpm", "rpm2", "rps"))
+        (finding,) = bag
+        assert finding.message == (
+            "'rpms' is not a unit this project declares - did you mean 'rpm' or 'rps' or 'rpm2'?"
+        )
+
+    def test_a_spelling_in_another_case_is_suggested(self, tree: Path) -> None:
+        """The likeliest near miss of all, which the spellings as written would score at
+        nothing: 'RPM' and 'rpm' share no character."""
+        _, bag = run_analysis(tree, self.files("RPM", "rpm", "Nm"))
+        (finding,) = bag
+        assert finding.message == "'RPM' is not a unit this project declares - did you mean 'rpm'?"
+
+    def test_every_spelling_of_a_close_unit_is_suggested_but_its_own(self) -> None:
+        """Case counts in the vocabulary - 'mV' and 'MV' are two units - so both are named, by
+        spelling; and a unit is never its own suggestion."""
+        assert close_units("mv", ("V", "mV", "MV")) == ("MV", "mV", "V")
+        assert close_units("mV", ("V", "mV", "MV")) == ("MV", "V")
+
+    def test_no_more_than_three_spellings_are_suggested(self) -> None:
+        assert close_units("rpms", ("Nm", "rpm", "rpm2", "rpms2", "rps")) == ("rpms2", "rpm", "rps")
+
+    def test_a_spelling_half_the_same_is_close_enough(self) -> None:
+        """The cutoff is 0.5, and a spelling that close is suggested: difflib scores twice what
+        two spellings share over their length together, so 'ms' scores 0.5 against 'us' and 0.4
+        against 'rpm'."""
+        assert close_units("ms", ("us", "rpm")) == ("us",)
 
     def test_the_empty_unit_is_always_allowed(self, tree: Path) -> None:
         """A dimensionless value states no unit rather than a spelling of one."""

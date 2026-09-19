@@ -7,6 +7,8 @@ import {
   getSession,
   getSettle,
   getState,
+  getUnit,
+  getUnitPlan,
   getUnits,
   getVariable,
   openProject,
@@ -86,6 +88,15 @@ describe("requests to the server", () => {
     await getUnits(fetchImpl);
     await getSettle("ValueA", "unit", '"%"', fetchImpl);
     await getSettle("ValueA", "unit", null, fetchImpl);
+    await getUnit("°C", fetchImpl);
+    await getUnitPlan({ action: "rename", unit: "RPM", to: "rpm" }, fetchImpl);
+    await getUnitPlan({ action: "add", unit: "m/s" }, fetchImpl);
+    await getUnitPlan({ action: "remove", unit: "kPa" }, fetchImpl);
+    await getUnitPlan(
+      { action: "describe", unit: "rpm", description: "rotational speed, 1/min" },
+      fetchImpl,
+    );
+    await getUnitPlan({ action: "adopt" }, fetchImpl);
     await postEdit(
       { changes: [{ file: "a", fingerprint: "x", operations: [{ op: "remove", pointer: "a" }] }] },
       fetchImpl,
@@ -110,6 +121,15 @@ describe("requests to the server", () => {
       ["/api/units", { credentials: "same-origin" }],
       ["/api/settle?name=ValueA&key=unit&raw=%22%25%22", { credentials: "same-origin" }],
       ["/api/settle?name=ValueA&key=unit", { credentials: "same-origin" }],
+      ["/api/unit?name=%C2%B0C", { credentials: "same-origin" }],
+      ["/api/unit-plan?action=rename&unit=RPM&to=rpm", { credentials: "same-origin" }],
+      ["/api/unit-plan?action=add&unit=m%2Fs", { credentials: "same-origin" }],
+      ["/api/unit-plan?action=remove&unit=kPa", { credentials: "same-origin" }],
+      [
+        "/api/unit-plan?action=describe&unit=rpm&description=rotational%20speed%2C%201%2Fmin",
+        { credentials: "same-origin" },
+      ],
+      ["/api/unit-plan?action=adopt", { credentials: "same-origin" }],
       [
         "/api/edit",
         {

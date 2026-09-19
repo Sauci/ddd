@@ -1123,7 +1123,7 @@ class _Analysis:
 
         def check(unit: str, where: Location) -> None:
             if unit and unit not in vocabulary:
-                nearest = _did_you_mean(unit, sorted(vocabulary), cutoff=0.5)
+                nearest = _suggesting(close_units(unit, sorted(vocabulary)))
                 self._bag.add(
                     "unknown-unit",
                     f"'{unit}' is not a unit this project declares{nearest}",
@@ -3548,14 +3548,43 @@ where it lives, which event updates it, which earlier delivery it continues, and
 plugin knows about it are all decided by the component that produces it."""
 
 
+def close_units(unit: str, vocabulary: Sequence[str]) -> tuple[str, ...]:
+    """The spellings of ``vocabulary`` closest to ``unit``, whatever their case: at most three,
+    closest first, then by spelling.
+
+    One rule for the two places a unit is suggested: the did-you-mean of ``unknown-unit``, and
+    the language server's "Rename 'RPM' to 'rpm' everywhere", which offers exactly the spellings
+    the finding names. The spellings are compared lowercased, because a unit written in the
+    wrong case is the likeliest near miss of all - and scored as written, ``RPM`` and ``rpm``
+    share no character. Case still counts in the vocabulary, so every spelling of a close unit
+    is answered: ``mV`` and ``MV`` alike. A unit is a short spelling and matches loosely, at
+    0.5; ``unit`` itself is never answered.
+    """
+    wanted = unit.lower()
+    scores = {
+        spelling: difflib.SequenceMatcher(None, spelling.lower(), wanted).ratio()
+        for spelling in vocabulary
+        if spelling != unit
+    }
+    close = sorted(
+        (spelling for spelling, score in scores.items() if score >= 0.5),
+        key=lambda spelling: (-scores[spelling], spelling),
+    )
+    return tuple(close[:3])
+
+
 def _did_you_mean(name: str, candidates: Sequence[str], *, cutoff: float) -> str:
-    """`` - did you mean 'Nm'?``: the suggestion suffix, empty when nothing is close enough.
+    """The suggestion suffix for ``name``, from the candidates at least ``cutoff`` close to it.
 
     The cutoff stays with the caller: a unit or section is a short spelling and matches
     loosely at 0.5, a type name is longer and wants the stricter 0.6.
     """
-    matches = difflib.get_close_matches(name, candidates, n=3, cutoff=cutoff)
-    return f" - did you mean {_or_list(tuple(matches))}?" if matches else ""
+    return _suggesting(tuple(difflib.get_close_matches(name, candidates, n=3, cutoff=cutoff)))
+
+
+def _suggesting(matches: tuple[str, ...]) -> str:
+    """`` - did you mean 'Nm'?``: the suggestion suffix, empty when nothing is close enough."""
+    return f" - did you mean {_or_list(matches)}?" if matches else ""
 
 
 def _or_list(values: tuple[str, ...]) -> str:

@@ -612,8 +612,14 @@ class FileChange:
     """The operations for one file, and the fingerprint of the bytes they were computed for."""
 
     path: Path
-    fingerprint: str
+    fingerprint: str | None
+    """``None`` for a change that creates its file, which must not exist yet: one ``set`` of the
+    whole document, at the pointer ``""``."""
+
     operations: tuple[Operation, ...]
+    like: Path | None = None
+    """The file a created file takes its mode from, and its owner and group where this process
+    may give it them; a file that exists keeps its own, whatever this says."""
 
 
 def fingerprint(data: bytes) -> str:
@@ -627,18 +633,22 @@ def apply_changes(changes: Sequence[FileChange]) -> dict[Path, str]:
     Every file is checked against its fingerprint and edited in memory before anything is
     written, so a refusal leaves every file as it was. Each write is staged beside its file and
     renamed onto it; when one fails, the files already written are written back from the bytes
-    read before the edit, and the refusal names any that could not be.
+    read before the edit, a file the edit created is taken away again, and the refusal names
+    any that could not be.
     """
-    staged: list[tuple[Path, bytes, bytes]] = []
+    staged: list[tuple[FileChange, bytes | None, bytes]] = []
     for pending in changes:
-        if any(path == pending.path for path, _, _ in staged):
+        if any(done.path == pending.path for done, _, _ in staged):
             raise EditError(INVALID, f"{pending.path} is named twice in one edit")
-        original, new = _edited(pending)
-        staged.append((pending.path, original, new))
-    written: list[tuple[Path, bytes]] = []
-    for path, original, new in staged:
+        original, new = edited(pending)
+        staged.append((pending, original, new))
+    written: list[tuple[Path, bytes | None]] = []
+    for pending, original, new in staged:
+        # A file that exists keeps its own access; one the edit creates takes the access of the
+        # file it is like, or the access any new file gets when it is like none.
+        like = pending.path if original is not None else pending.like
         try:
-            _stage_and_replace(path, new)
+            _stage_and_replace(pending.path, new, like)
         except OSError as error:
             lost = [done for done, before in written if not _put_back(done, before)]
             outcome = (
@@ -647,14 +657,22 @@ def apply_changes(changes: Sequence[FileChange]) -> dict[Path, str]:
                 else "the files already written were put back"
             )
             raise EditError(
-                UNWRITABLE, f"{path} could not be written ({error}); {outcome}"
+                UNWRITABLE, f"{pending.path} could not be written ({error}); {outcome}"
             ) from None
-        written.append((path, original))
-    return {path: fingerprint(new) for path, _, new in staged}
+        written.append((pending.path, original))
+    return {pending.path: fingerprint(new) for pending, _, new in staged}
 
 
-def _edited(pending: FileChange) -> tuple[bytes, bytes]:
-    """A file's bytes as they are, and as the change leaves them."""
+def edited(pending: FileChange) -> tuple[bytes | None, bytes]:
+    """A file's bytes as they are, and as the change leaves them, made in memory and refused as
+    :func:`apply_changes` refuses them; ``None`` for the bytes of a file the change creates.
+
+    Public for a caller that has to know what an edit would write before it is made: ``ddd gui``
+    lets an edit create a file only when its change of the project description includes that
+    file, and asks this - rather than a reading of its own - what the description would say.
+    """
+    if pending.fingerprint is None:
+        return None, _created(pending)
     try:
         original = pending.path.read_bytes()
     except OSError:
@@ -667,17 +685,39 @@ def _edited(pending: FileChange) -> tuple[bytes, bytes]:
     except UnicodeDecodeError:
         raise EditError(UNREADABLE, f"{pending.path} is not utf-8") from None
     try:
-        edited = edit_text(text, pending.operations)
+        changed = edit_text(text, pending.operations)
     except EditError as refusal:
         raise EditError(refusal.code, f"{pending.path}: {refusal}") from None
-    return original, mark + edited.encode("utf-8")
+    return original, mark + changed.encode("utf-8")
 
 
-def _stage_and_replace(path: Path, data: bytes) -> None:
+def _created(pending: FileChange) -> bytes:
+    """The bytes of a file a change creates: its one ``set`` of the whole document, as given.
+
+    As given, because there is no file yet whose layout an edit could follow - whoever plans the
+    change lays the document out - and still read by the loader's rule first, so that no file
+    ``ddd check`` would refuse to read is ever written. A file already there is somebody's, and
+    the change was computed without it: refused as stale, whatever it holds.
+    """
+    only = pending.operations[0] if len(pending.operations) == 1 else None
+    if only is None or (only.op, only.pointer) != ("set", "") or only.raw is None:
+        raise EditError(
+            INVALID, f"{pending.path} is created whole, by one set at the top of the file"
+        )
+    _read(only.raw, INVALID, f"{pending.path} would be created holding what DDD does not read")
+    if pending.path.exists():
+        raise EditError(STALE, f"{pending.path} exists already")
+    return only.raw.encode("utf-8")
+
+
+def _stage_and_replace(path: Path, data: bytes, like: Path | None) -> None:
+    """Write ``data`` to ``path`` through a file staged beside it, which takes the access of
+    ``like``, the file itself when it exists, before it is renamed into place."""
     staging = path.with_name(path.name + STAGING_SUFFIX)
     try:
         staging.write_bytes(data)
-        _keep_access(path, staging)
+        if like is not None:
+            _keep_access(like, staging)
         staging.replace(path)
     except OSError:
         with contextlib.suppress(OSError):
@@ -702,9 +742,14 @@ def _keep_access(original: Path, staged: Path) -> None:
             chown(staged, status.st_uid, status.st_gid)
 
 
-def _put_back(path: Path, data: bytes) -> bool:
+def _put_back(path: Path, data: bytes | None) -> bool:
+    """Leave a file as it was before the edit - its bytes written back, or the file taken away
+    when the edit created it - and say whether that could be done."""
     try:
-        _stage_and_replace(path, data)
+        if data is None:
+            path.unlink()
+        else:
+            _stage_and_replace(path, data, path)
     except OSError:
         return False
     return True

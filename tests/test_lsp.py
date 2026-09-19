@@ -32,11 +32,14 @@ from conftest import (
     scalar_type,
     sent,
     session,
+    struct_type,
     types,
+    value_member,
     write_tree,
 )
 from ddd.build_info import BUILD_INFO_FILENAME, BUILD_INFO_FORMAT, BuildInfo
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
+from ddd.editing import INVALID, EditError, Operation, edit_text
 from ddd.loading import load_workspace
 from ddd.lsp import diagnostics as service
 from ddd.lsp import navigation
@@ -58,6 +61,15 @@ from ddd.lsp.protocol import (
 )
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.server import Server, uri_to_path
+from ddd.lsp.units import (
+    PlannedEdit,
+    UnitPlan,
+    UnitRefusalError,
+    rename_unit,
+    text_edits,
+    unit_drift,
+    unit_project,
+)
 
 
 def raw_frame(body: bytes) -> bytes:
@@ -2117,6 +2129,60 @@ def apply_edits(path: Path, edits: list[dict[str, Any]]) -> str:
     return text
 
 
+UNIT_PLACES = [
+    ("a.ddd.json", "component.interface[0].definition.unit"),
+    ("b.ddd.json", "component.interface[0].definition.unit"),
+    ("a.ddd.json", "component.types[0].unit"),
+    ("a.ddd.json", "component.types[1].members[0].unit"),
+    ("types.ddd.json", "types[0].unit"),
+    ("types.ddd.json", "types[1].members[0].unit"),
+    ("units.ddd.json", "units[0].unit"),
+]
+"""Every kind of place :func:`unit_places` spells ``rpm``: a declaration on either side, a scalar
+type and a structure member in a component's own list and in a types file, and its vocabulary
+entry, an object."""
+
+
+def unit_places(base: Path) -> Path:
+    """A project stating ``rpm`` in every kind of place a unit is stated, and listing it in its
+    vocabulary as an object - and ``Nm`` as a spelling on its own, stated by one member."""
+    write_tree(
+        base,
+        {
+            "p.ddd.json": project(
+                "P", "units.ddd.json", "types.ddd.json", "a.ddd.json", "b.ddd.json"
+            ),
+            "units.ddd.json": {"units": [{"unit": "rpm", "description": "speed"}, "Nm"]},
+            "types.ddd.json": types(
+                scalar_type("Speed_t", unit="rpm"),
+                struct_type(
+                    "Pair_t",
+                    value_member("speed", unit="rpm"),
+                    value_member("torque", unit="Nm"),
+                ),
+            ),
+            "a.ddd.json": component(
+                "A",
+                declare("output", "Speed", unit="rpm"),
+                types=[
+                    scalar_type("Idle_t", unit="rpm"),
+                    struct_type("Spin_t", value_member("idle", unit="rpm")),
+                ],
+            ),
+            "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+        },
+    )
+    return base / "p.ddd.json"
+
+
+def rewritten_by(changes: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
+    """Every file an edit changes, by name, as a client leaves it."""
+    return {
+        uri_to_path(uri).name: apply_edits(uri_to_path(uri), edits)
+        for uri, edits in changes.items()
+    }
+
+
 class TestRename:
     """Rewriting a name everywhere the project writes it."""
 
@@ -2444,6 +2510,171 @@ class TestRename:
 
         too_long = "A" * (IDENTIFIER_MAX_LENGTH + 1)
         assert rename_problem(self.index_of(self.workspace(tmp_path)), too_long) is not None
+
+    @pytest.mark.parametrize(("source", "pointer"), UNIT_PLACES)
+    def test_a_unit_is_a_rename_subject_wherever_it_is_spelled(
+        self, tmp_path: Path, source: str, pointer: str
+    ) -> None:
+        unit_places(tmp_path)
+        assert navigation.renameable_at(read(tmp_path / source, {}), pointer) == ("unit", "rpm")
+
+    def test_a_vocabulary_entry_that_is_the_spelling_alone_is_a_rename_subject(
+        self, tmp_path: Path
+    ) -> None:
+        unit_places(tmp_path)
+        document = read(tmp_path / "units.ddd.json", {})
+        assert navigation.renameable_at(document, "units[1]") == ("unit", "Nm")
+
+    @pytest.mark.parametrize("pointer", ["units[0]", "units[0].description"])
+    def test_an_entry_written_as_an_object_is_renamed_from_its_unit_alone(
+        self, tmp_path: Path, pointer: str
+    ) -> None:
+        """The editor opens its box over the range this names, and neither the object nor its
+        description is a spelling to type over."""
+        unit_places(tmp_path)
+        assert navigation.renameable_at(read(tmp_path / "units.ddd.json", {}), pointer) is None
+
+    def test_neither_the_empty_unit_nor_a_plugins_own_unit_is_a_rename_subject(
+        self, tmp_path: Path
+    ) -> None:
+        """A dimensionless value states no unit, so there is no spelling to rename; and an
+        extensions block may spell any key, ``unit`` among them."""
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": component(
+                    "A", declare("local", "Ratio", unit="", extensions={"tag": {"unit": "rpm"}})
+                )
+            },
+        )
+        document = read(tmp_path / "a.ddd.json", {})
+        definition = "component.interface[0].definition"
+        assert navigation.renameable_at(document, f"{definition}.unit") is None
+        assert navigation.renameable_at(document, f"{definition}.extensions.tag.unit") is None
+
+    def test_a_file_that_loaded_with_an_error_is_unreadable_but_not_unloaded(
+        self, tmp_path: Path
+    ) -> None:
+        """A units file listing a unit twice loads, with a duplicate-unit error: it stays in the
+        index, where a plan can reach both entries. A component its schema refuses does not."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "units.ddd.json", "a.ddd.json"),
+                "units.ddd.json": {"units": ["rpm", "RPM", "RPM"]},
+                "a.ddd.json": component("A", declare("output", "Speed", "uint99", unit="rpm")),
+            },
+        )
+        (loaded,) = navigation.workspaces([], tmp_path / "units.ddd.json", tmp_path)
+        assert [path.name for path in loaded.unreadable] == ["a.ddd.json", "units.ddd.json"]
+        assert [path.name for path in loaded.unloaded] == ["a.ddd.json"]
+
+
+class TestAUnitPlanAsTextEdits:
+    """A unit's plan as an editor applies it, and the buffers that keep it from being made."""
+
+    def vocabulary(self, tmp_path: Path) -> Path:
+        write_tree(tmp_path, {"units.ddd.json": {"units": ["rpm", {"unit": "Nm"}, "degC", "kPa"]}})
+        return tmp_path / "units.ddd.json"
+
+    @pytest.mark.parametrize(
+        "operations",
+        [
+            pytest.param((Operation("set", "units[0]", '"1/min"'),), id="replaced"),
+            pytest.param((Operation("set", "units[1].unit", '"N.m"'),), id="replaced-in-an-object"),
+            pytest.param(
+                (Operation("set", "units[1].description", '"torque"'),), id="member-added"
+            ),
+            pytest.param((Operation("insert", "units[4]", '"bar"'),), id="inserted"),
+            pytest.param((Operation("remove", "units[1]"),), id="removed"),
+            pytest.param(
+                (Operation("remove", "units[3]"), Operation("remove", "units[2]")),
+                id="neighbours-removed-last-first",
+            ),
+            pytest.param(
+                (Operation("remove", "units[2]"), Operation("remove", "units[2]")),
+                id="neighbours-removed-in-turn",
+            ),
+            pytest.param(
+                (
+                    Operation("set", "units[0]", '"1/min"'),
+                    Operation("remove", "units[3]"),
+                    Operation("remove", "units[2]"),
+                ),
+                id="replaced-and-removed",
+            ),
+        ],
+    )
+    def test_a_client_applying_the_edits_writes_what_the_engine_writes(
+        self, tmp_path: Path, operations: tuple[Operation, ...]
+    ) -> None:
+        """The engine makes a file's operations in turn, each on the text the last one left; a
+        client applies a file's edits at once, to the text as it stands. The file has to come
+        out the same, or the editor and ddd gui would write two different things."""
+        path = self.vocabulary(tmp_path)
+        plan = UnitPlan((PlannedEdit(path, operations),))
+        (edits,) = text_edits(plan, {}).values()
+        assert apply_edits(path, edits) == edit_text(path.read_text(encoding="utf-8"), operations)
+
+    def test_neighbouring_entries_taken_out_are_one_edit(self, tmp_path: Path) -> None:
+        """Each removal takes one comma, and against the text as it stands the two would both
+        claim the one between them: two overlapping edits, which a client refuses whole."""
+        path = self.vocabulary(tmp_path)
+        removed = (Operation("remove", "units[3]"), Operation("remove", "units[2]"))
+        (edits,) = text_edits(UnitPlan((PlannedEdit(path, removed),)), {}).values()
+        assert len(edits) == 1
+        assert json.loads(apply_edits(path, edits))["units"] == ["rpm", {"unit": "Nm"}]
+
+    def test_the_edit_is_made_in_the_buffer_on_screen(self, tmp_path: Path) -> None:
+        """The client applies it to what it shows, which one blank line puts a line lower."""
+        path = self.vocabulary(tmp_path)
+        disk = path.read_text(encoding="utf-8")
+        plan = UnitPlan((PlannedEdit(path, (Operation("set", "units[0]", '"1/min"'),)),))
+        (edits,) = text_edits(plan, {path: Document("\n" + disk)}).values()
+        on_disk = Document(disk).value_range_of("units[0]")
+        assert on_disk is not None
+        assert edits[0]["range"]["start"]["line"] == on_disk["start"]["line"] + 1
+
+    def test_a_file_the_plan_creates_is_no_text_edit(self, tmp_path: Path) -> None:
+        """Only an adoption creates a file, and only ddd gui adopts: an edit of a file that is
+        not there would be one no client can apply."""
+        created = PlannedEdit(
+            tmp_path / "units.ddd.json",
+            (Operation("set", "", '{"units": ["rpm"]}'),),
+            creates=True,
+        )
+        with pytest.raises(EditError) as refused:
+            text_edits(UnitPlan((created,)), {})
+        assert refused.value.code == INVALID
+
+    def built(self, tmp_path: Path) -> Any:
+        workspace = load_workspace(unit_places(tmp_path), DiagnosticBag())
+        assert workspace is not None
+        return navigation.index(workspace)
+
+    def test_a_unit_where_the_index_found_it_has_not_drifted(self, tmp_path: Path) -> None:
+        """Its entry an object or the spelling alone, wherever it is stated."""
+        built = self.built(tmp_path)
+        assert unit_drift(built, "rpm", {}) == ()
+        assert unit_drift(built, "Nm", {}) == ()
+
+    def test_a_buffer_that_moved_a_stated_unit_has_drifted(self, tmp_path: Path) -> None:
+        built = self.built(tmp_path)
+        b = tmp_path / "b.ddd.json"
+        moved = json.dumps(
+            component(
+                "B", declare("input", "Other", unit="Nm"), declare("input", "Speed", unit="rpm")
+            ),
+            indent=2,
+        )
+        assert unit_drift(built, "rpm", {b: Document(moved)}) == (b,)
+
+    def test_a_buffer_that_moved_a_vocabulary_entry_has_drifted(self, tmp_path: Path) -> None:
+        built = self.built(tmp_path)
+        units = tmp_path / "units.ddd.json"
+        moved = Document(json.dumps({"units": ["Nm", {"unit": "rpm", "description": "speed"}]}))
+        assert unit_drift(built, "rpm", {units: moved}) == (units,)
+        assert unit_drift(built, "Nm", {units: moved}) == (units,)
 
 
 class TestPropagating:
@@ -4103,6 +4334,272 @@ class TestServer:
         (edits,) = answer["result"]["changes"].values()
         assert len(edits) == 1
 
+    @pytest.mark.parametrize(("source", "pointer"), [*UNIT_PLACES, ("units.ddd.json", "units[1]")])
+    def test_preparing_a_rename_of_a_unit_puts_the_box_over_its_spelling(
+        self, tmp_path: Path, source: str, pointer: str
+    ) -> None:
+        unit_places(tmp_path)
+        path = tmp_path / source
+        document = Document(path.read_text(encoding="utf-8"))
+        position = document.range_of(pointer)["start"]
+        writer = io.BytesIO()
+        Server(
+            session(self.navigation_request("textDocument/prepareRename", path, position)),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = answered(writer)
+        assert answer["result"] == {
+            "range": document.text_range_of(pointer),
+            "placeholder": document.value_at(pointer),
+        }
+
+    def renamed_unit(self, tmp_path: Path, source: str, pointer: str, name: str) -> Any:
+        """The server's answer to a rename asked at ``pointer`` in ``source``."""
+        writer = io.BytesIO()
+        Server(
+            session(self.rename_request(tmp_path / source, pointer, name)),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = answered(writer)
+        return answer
+
+    @pytest.mark.parametrize(("source", "pointer"), UNIT_PLACES)
+    def test_a_unit_is_renamed_everywhere_from_wherever_it_is_spelled(
+        self, tmp_path: Path, source: str, pointer: str
+    ) -> None:
+        """The same four files whichever place the rename starts from, and afterwards no file
+        states the old spelling; the vocabulary's entry keeps its description."""
+        unit_places(tmp_path)
+        answer = self.renamed_unit(tmp_path, source, pointer, "1/min")
+        rewritten = rewritten_by(answer["result"]["changes"])
+        assert set(rewritten) == {"units.ddd.json", "types.ddd.json", "a.ddd.json", "b.ddd.json"}
+        assert not any('"rpm"' in text for text in rewritten.values())
+        assert sum(text.count('"1/min"') for text in rewritten.values()) == len(UNIT_PLACES)
+        assert json.loads(rewritten["units.ddd.json"])["units"] == [
+            {"unit": "1/min", "description": "speed"},
+            "Nm",
+        ]
+
+    def test_a_unit_listed_as_a_spelling_alone_is_renamed_from_its_entry(
+        self, tmp_path: Path
+    ) -> None:
+        unit_places(tmp_path)
+        answer = self.renamed_unit(tmp_path, "units.ddd.json", "units[1]", "N.m")
+        rewritten = rewritten_by(answer["result"]["changes"])
+        assert set(rewritten) == {"units.ddd.json", "types.ddd.json"}
+        assert json.loads(rewritten["units.ddd.json"])["units"][1] == "N.m"
+        pair = json.loads(rewritten["types.ddd.json"])["types"][1]
+        assert pair["members"][1]["unit"] == "N.m"
+
+    def test_renaming_onto_a_listed_unit_merges_the_two_spellings(self, tmp_path: Path) -> None:
+        """Two spellings of one unit are what a rename of a unit is for: the old one's entry
+        is taken out, and the entry that stays keeps its description."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "units.ddd.json", "a.ddd.json", "b.ddd.json"),
+                "units.ddd.json": {
+                    "units": [{"unit": "rpm", "description": "speed"}, "1/min", "Nm"]
+                },
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Speed", unit="1/min"),
+                    declare("output", "Idle", unit="rpm"),
+                ),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
+            },
+        )
+        answer = self.renamed_unit(
+            tmp_path, "b.ddd.json", "component.interface[0].definition.unit", "rpm"
+        )
+        rewritten = rewritten_by(answer["result"]["changes"])
+        assert set(rewritten) == {"units.ddd.json", "a.ddd.json", "b.ddd.json"}
+        assert json.loads(rewritten["units.ddd.json"])["units"] == [
+            {"unit": "rpm", "description": "speed"},
+            "Nm",
+        ]
+        assert "1/min" not in rewritten["a.ddd.json"] + rewritten["b.ddd.json"]
+
+    def test_a_unit_listed_twice_is_merged_at_both_of_its_entries(self, tmp_path: Path) -> None:
+        """The units file loaded, though with a duplicate-unit error, so the rename reaches
+        both entries - and the two neighbours taken out come to the client as one edit."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "units.ddd.json", "a.ddd.json"),
+                "units.ddd.json": {"units": ["rpm", "RPM", "RPM"]},
+                "a.ddd.json": component("A", declare("output", "Speed", unit="RPM")),
+            },
+        )
+        answer = self.renamed_unit(
+            tmp_path, "a.ddd.json", "component.interface[0].definition.unit", "rpm"
+        )
+        changes = answer["result"]["changes"]
+        rewritten = rewritten_by(changes)
+        assert json.loads(rewritten["units.ddd.json"])["units"] == ["rpm"]
+        speed = json.loads(rewritten["a.ddd.json"])["component"]["interface"][0]
+        assert speed["definition"]["unit"] == "rpm"
+        assert len(changes[(tmp_path / "units.ddd.json").as_uri()]) == 1
+
+    def refusal_of(self, document: Path, old: str, new: str) -> UnitRefusalError:
+        """The plan's own refusal of this rename, which is what the server has to answer."""
+        (loaded,) = navigation.workspaces([], document, document.parent)
+        built = navigation.index(loaded.workspace)
+        project = unit_project(loaded.path, loaded.unloaded, {})
+        with pytest.raises(UnitRefusalError) as refused:
+            rename_unit(built, project, old, new, {})
+        return refused.value
+
+    @pytest.mark.parametrize("name", ["", " 1/min", "rpm"])
+    def test_a_unit_rename_the_plan_refuses_is_answered_with_its_reason(
+        self, tmp_path: Path, name: str
+    ) -> None:
+        """No spelling at all, one with spaces around it, and the spelling it has already."""
+        unit_places(tmp_path)
+        a = tmp_path / "a.ddd.json"
+        answer = self.renamed_unit(
+            tmp_path, "a.ddd.json", "component.interface[0].definition.unit", name
+        )
+        refusal = self.refusal_of(a, "rpm", name)
+        assert refusal.code == "invalid"
+        assert answer["error"] == {"code": REQUEST_FAILED, "message": refusal.message}
+
+    def test_a_unit_rename_is_refused_while_a_file_of_the_project_did_not_load(
+        self, tmp_path: Path
+    ) -> None:
+        """The file that did not load may state the unit too, and nothing could reach it."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "units.ddd.json", "a.ddd.json", "b.ddd.json"),
+                "units.ddd.json": {"units": ["rpm"]},
+                "a.ddd.json": component("A", declare("output", "Speed", "uint99", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+            },
+        )
+        answer = self.renamed_unit(
+            tmp_path, "b.ddd.json", "component.interface[0].definition.unit", "1/min"
+        )
+        refusal = self.refusal_of(tmp_path / "b.ddd.json", "rpm", "1/min")
+        assert refusal.code == "unreadable"
+        assert "a.ddd.json" in refusal.message
+        assert answer["error"] == {"code": REQUEST_FAILED, "message": refusal.message}
+
+    def unit_rename_in_a_buffer(
+        self, tmp_path: Path, opened: Path, text: str, asked: Path, name: str
+    ) -> dict[str, Any]:
+        """The answer to a rename of the unit of ``asked``'s first declaration, while ``opened``
+        holds ``text`` unsaved."""
+        shown = text if asked == opened else asked.read_text(encoding="utf-8")
+        at = Document(shown).range_of("component.interface[0].definition.unit")["start"]
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"rootUri": tmp_path.as_uri()},
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": opened.as_uri(),
+                        "languageId": "json",
+                        "version": 1,
+                        "text": text,
+                    }
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "textDocument/rename",
+                "params": {
+                    "textDocument": {"uri": asked.as_uri()},
+                    "position": at,
+                    "newName": name,
+                },
+            },
+            {"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        return next(message for message in sent(writer) if message.get("id") == 2)
+
+    def test_renaming_a_unit_the_project_neither_states_nor_lists_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """Typed into a buffer and not saved: the project the index read has no such unit."""
+        unit_places(tmp_path)
+        a = tmp_path / "a.ddd.json"
+        typed = a.read_text(encoding="utf-8").replace('"unit": "rpm"', '"unit": "rpmx"', 1)
+        answer = self.unit_rename_in_a_buffer(tmp_path, a, typed, a, "1/min")
+        refusal = self.refusal_of(a, "rpmx", "1/min")
+        assert refusal.code == "not-found"
+        assert answer["error"] == {"code": REQUEST_FAILED, "message": refusal.message}
+
+    def test_a_unit_rename_is_refused_while_a_buffer_has_moved_the_unit(
+        self, tmp_path: Path
+    ) -> None:
+        """The plan's pointers are the disk's: made in B's buffer, where a declaration was put
+        in front, the rename would respell 'Other' and leave 'Speed' as it was."""
+        unit_places(tmp_path)
+        moved = json.dumps(
+            component(
+                "B", declare("input", "Other", unit="Nm"), declare("input", "Speed", unit="rpm")
+            ),
+            indent=2,
+        )
+        answer = self.unit_rename_in_a_buffer(
+            tmp_path, tmp_path / "b.ddd.json", moved, tmp_path / "a.ddd.json", "1/min"
+        )
+        assert answer["error"]["code"] == REQUEST_FAILED
+        assert answer["error"]["message"].startswith("b.ddd.json has unsaved changes")
+        assert "result" not in answer
+
+    def test_a_code_action_on_an_unknown_unit_offers_the_vocabulary_fixes(
+        self, tmp_path: Path
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "units.ddd.json", "a.ddd.json"),
+                "units.ddd.json": {"units": ["rpm", "Nm"]},
+                "a.ddd.json": component("A", declare("output", "Speed", unit="RPM")),
+            },
+        )
+        a = tmp_path / "a.ddd.json"
+        span = Document(a.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition.unit"
+        )
+        writer = io.BytesIO()
+        Server(
+            session(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 13,
+                    "method": "textDocument/codeAction",
+                    "params": {
+                        "textDocument": {"uri": a.as_uri()},
+                        "range": span,
+                        "context": {"diagnostics": UNLISTED},
+                    },
+                }
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = answered(writer)
+        added, renamed = answer["result"]
+        assert added["title"] == "Add 'RPM' to the vocabulary"
+        assert list(added["edit"]["changes"]) == [(tmp_path / "units.ddd.json").as_uri()]
+        assert renamed["title"] == "Rename 'RPM' to 'rpm' everywhere"
+        assert list(renamed["edit"]["changes"]) == [a.as_uri()]
+
     def test_it_offers_quick_fixes(self, tmp_path: Path) -> None:
         from ddd.lsp.edits import QUICK_FIX
 
@@ -5029,6 +5526,194 @@ class TestOfferingAnIdentity:
             built, path, read(path, cache), "component.interface[0].definition", cache, UNSTAMPED
         )
         assert [entry for entry in offered if "id" in entry["title"]] == []
+
+
+UNLISTED = [
+    {"code": "unknown-unit", "source": "ddd", "message": "is not a unit this project declares"}
+]
+
+
+class TestFixingAnUnknownUnit:
+    """The code actions behind ``unknown-unit``: put the unit into the vocabulary, or respell it
+    everywhere as a unit the vocabulary lists - the plans ``ddd gui`` makes, as text edits."""
+
+    AT_THE_UNIT = "component.interface[0].definition.unit"
+
+    def stating(self, tmp_path: Path, unit: str, *vocabulary: Any) -> Path:
+        """A producer declaring two variables in ``unit`` and a reader of one, and a vocabulary
+        of ``vocabulary`` when it lists anything."""
+        files: dict[str, Any] = {
+            "a.ddd.json": component(
+                "A", declare("output", "Speed", unit=unit), declare("output", "Idle", unit=unit)
+            ),
+            "b.ddd.json": component("B", declare("input", "Speed", unit=unit)),
+        }
+        if vocabulary:
+            files["units.ddd.json"] = {"units": list(vocabulary)}
+        write_tree(tmp_path, {"p.ddd.json": project("P", *files), **files})
+        return tmp_path / "p.ddd.json"
+
+    def offered(
+        self,
+        root: Path,
+        source: str = "a.ddd.json",
+        pointer: str = AT_THE_UNIT,
+        cache: dict[Path, Document] | None = None,
+        reported: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        from ddd.lsp.edits import actions
+
+        cache = {} if cache is None else cache
+        reported = UNLISTED if reported is None else reported
+        workspace = load_workspace(root, DiagnosticBag())
+        assert workspace is not None
+        built = navigation.index(workspace)
+        path = root.parent / source
+        project = unit_project(root, (), cache)
+        return actions(built, path, read(path, cache), pointer, cache, reported, project)
+
+    def titles(self, offered: list[dict[str, Any]]) -> list[str]:
+        return [action["title"] for action in offered]
+
+    def test_an_unknown_unit_is_offered_the_vocabulary_and_each_close_spelling(
+        self, tmp_path: Path
+    ) -> None:
+        """One rename per spelling the finding suggests, in the order it names them: closest
+        first, a tie by spelling."""
+        offered = self.offered(self.stating(tmp_path, "rpms", "rpm", "rps", "rpm2", "Nm"))
+        assert self.titles(offered) == [
+            "Add 'rpms' to the vocabulary",
+            "Rename 'rpms' to 'rpm' everywhere",
+            "Rename 'rpms' to 'rps' everywhere",
+            "Rename 'rpms' to 'rpm2' everywhere",
+        ]
+        assert all(action["diagnostics"] == UNLISTED for action in offered)
+
+    @pytest.mark.parametrize(
+        ("vocabulary", "added"),
+        [
+            (("rpm", "Nm"), "rpms"),
+            (("rpm", {"unit": "Nm", "description": "torque"}), {"unit": "rpms", "description": ""}),
+        ],
+    )
+    def test_adding_appends_the_unit_in_the_form_the_vocabulary_is_written_in(
+        self, tmp_path: Path, vocabulary: tuple[Any, ...], added: Any
+    ) -> None:
+        root = self.stating(tmp_path, "rpms", *vocabulary)
+        (adding,) = [a for a in self.offered(root) if a["title"].startswith("Add")]
+        rewritten = rewritten_by(adding["edit"]["changes"])
+        assert json.loads(rewritten["units.ddd.json"])["units"] == [*vocabulary, added]
+
+    def test_renaming_respells_the_unit_everywhere_it_is_stated(self, tmp_path: Path) -> None:
+        root = self.stating(tmp_path, "rpms", "rpm", "Nm")
+        (renaming,) = [a for a in self.offered(root) if a["title"].startswith("Rename")]
+        rewritten = rewritten_by(renaming["edit"]["changes"])
+        assert set(rewritten) == {"a.ddd.json", "b.ddd.json"}
+        assert rewritten["a.ddd.json"].count('"unit": "rpm"') == 2
+        assert rewritten["b.ddd.json"].count('"unit": "rpm"') == 1
+
+    def test_a_unit_a_type_states_is_offered_the_same(self, tmp_path: Path) -> None:
+        """A unit is written on a scalar type as often as on a declaration."""
+        files: dict[str, Any] = {
+            "units.ddd.json": {"units": ["rpm", "Nm"]},
+            "types.ddd.json": types(scalar_type("Speed_t", unit="rpms")),
+        }
+        write_tree(tmp_path, {"p.ddd.json": project("P", *files), **files})
+        offered = self.offered(tmp_path / "p.ddd.json", "types.ddd.json", "types[0].unit")
+        assert self.titles(offered) == [
+            "Add 'rpms' to the vocabulary",
+            "Rename 'rpms' to 'rpm' everywhere",
+        ]
+
+    def test_a_unit_in_another_case_is_offered_the_spelling_the_vocabulary_lists(
+        self, tmp_path: Path
+    ) -> None:
+        """The design's own example: 'RPM' against a vocabulary listing 'rpm'."""
+        root = self.stating(tmp_path, "RPM", "rpm", "Nm")
+        offered = self.offered(root)
+        assert self.titles(offered) == [
+            "Add 'RPM' to the vocabulary",
+            "Rename 'RPM' to 'rpm' everywhere",
+        ]
+        rewritten = rewritten_by(offered[1]["edit"]["changes"])
+        assert "RPM" not in rewritten["a.ddd.json"] + rewritten["b.ddd.json"]
+
+    def test_a_unit_nothing_in_the_vocabulary_is_close_to_is_offered_no_rename(
+        self, tmp_path: Path
+    ) -> None:
+        """The finding suggests nothing, and neither does the lightbulb."""
+        offered = self.offered(self.stating(tmp_path, "bar", "rpm", "Nm"))
+        assert self.titles(offered) == ["Add 'bar' to the vocabulary"]
+
+    def test_nothing_is_offered_unless_the_finding_was_reported(self, tmp_path: Path) -> None:
+        """Which keeps the offer inside the project's own severity policy, as the identity's."""
+        root = self.stating(tmp_path, "rpms", "rpm", "Nm")
+        assert self.offered(root, reported=[]) == []
+
+    def test_nothing_is_offered_without_the_project_to_plan_in(self, tmp_path: Path) -> None:
+        from ddd.lsp.edits import actions
+
+        root = self.stating(tmp_path, "rpms", "rpm", "Nm")
+        workspace = load_workspace(root, DiagnosticBag())
+        assert workspace is not None
+        path = tmp_path / "a.ddd.json"
+        cache: dict[Path, Document] = {}
+        offered = actions(
+            navigation.index(workspace),
+            path,
+            read(path, cache),
+            self.AT_THE_UNIT,
+            cache,
+            UNLISTED,
+        )
+        assert offered == []
+
+    def test_a_unit_the_vocabulary_lists_by_now_is_offered_nothing(self, tmp_path: Path) -> None:
+        """The finding came from an older save; the vocabulary lists the unit now."""
+        assert self.offered(self.stating(tmp_path, "rpm", "rpm", "Nm")) == []
+
+    def test_a_plan_the_project_refuses_is_not_offered(self, tmp_path: Path) -> None:
+        """No units file to add the unit to, and no vocabulary to be close to: a finding from
+        before the units file was taken out of the project."""
+        assert self.offered(self.stating(tmp_path, "rpms")) == []
+
+    def test_a_rename_the_plan_refuses_is_not_offered(self, tmp_path: Path) -> None:
+        """The buffer spells a unit the project on disk does not state, so there is nothing
+        of it to rename yet - while adding it is a plan like any other."""
+        root = self.stating(tmp_path, "rpms", "rpm", "rps", "rpm2", "Nm")
+        a = tmp_path / "a.ddd.json"
+        typed = json.dumps(
+            component(
+                "A", declare("output", "Speed", unit="rpms"), declare("output", "Idle", unit="rpmx")
+            ),
+            indent=2,
+        )
+        offered = self.offered(
+            root, pointer="component.interface[1].definition.unit", cache={a: Document(typed)}
+        )
+        assert self.titles(offered) == ["Add 'rpmx' to the vocabulary"]
+
+    def test_a_units_file_caught_halfway_through_an_edit_is_offered_no_addition(
+        self, tmp_path: Path
+    ) -> None:
+        """Its buffer is no json the engine can place an entry in, and no edit is better than
+        one that lands somewhere else."""
+        root = self.stating(tmp_path, "rpms", "rpm", "Nm")
+        units = tmp_path / "units.ddd.json"
+        offered = self.offered(root, cache={units: Document('{"units": ["rpm", "Nm"')})
+        assert self.titles(offered) == ["Rename 'rpms' to 'rpm' everywhere"]
+
+    def test_no_rename_is_offered_while_a_buffer_has_moved_the_unit(self, tmp_path: Path) -> None:
+        root = self.stating(tmp_path, "rpms", "rpm", "Nm")
+        b = tmp_path / "b.ddd.json"
+        moved = json.dumps(
+            component(
+                "B", declare("input", "Other", unit="Nm"), declare("input", "Speed", unit="rpms")
+            ),
+            indent=2,
+        )
+        offered = self.offered(root, cache={b: Document(moved)})
+        assert self.titles(offered) == ["Add 'rpms' to the vocabulary"]
 
 
 class TestFrameLengths:

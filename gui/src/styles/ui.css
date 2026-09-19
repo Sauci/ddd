@@ -310,6 +310,70 @@ tr.changing td {
   box-shadow: inset 3px 0 var(--error);
 }
 
+/* The Units tab (docs/superpowers/specs/2026-09-19-gui-units-project-design.md, 5): the table's
+   spelling in bold and its count to the right; a unit's panel - its sub-heading, each change it
+   offers set apart, the Description field and the line under the rename; and the adoption
+   banner, its sentence beside its two buttons and a refusal under both. */
+.react-aria-Cell.unit {
+  font-weight: 600;
+}
+.react-aria-Column.stated,
+.react-aria-Cell.stated {
+  text-align: right;
+  white-space: nowrap;
+}
+.panel-heading {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: var(--text-small);
+  font-weight: 600;
+}
+.panel-offer {
+  margin-top: var(--space-3);
+}
+.panel-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
+.panel-field input {
+  padding: var(--cell);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-body);
+}
+.panel-field input:disabled {
+  background: var(--ground);
+}
+.rename-note {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
+.adopt-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.adopt-banner p {
+  margin: 0;
+}
+.adopt-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-3);
+  white-space: nowrap;
+}
+.adopt-refusal {
+  margin: var(--space-2) 0 0;
+}
+
 /* The project screen's tabs, moved out of app.css unchanged. */
 .tabs {
   display: flex;

@@ -4,6 +4,10 @@ import type { Page } from "@playwright/test";
 
 export const CONTROLLER = join("components", "controller.ddd.json");
 export const SENSOR_HUB = join("components", "sensor_hub.ddd.json");
+/** The files of examples/vocabulary the journeys change, in its copy: the component stating its
+ * units, and the units file listing them. */
+export const PUMP = "pump.ddd.json";
+export const UNITS = "units.ddd.json";
 
 /** A variable's own `"unit": ...` in a file: the first one after its name, whichever file it is. */
 function unitOf(variable: string): RegExp {
@@ -24,9 +28,15 @@ export function withUnitOfValueA(bytes: Buffer, unit: string): Buffer {
 /** Controller's reading of a variable drifted to another unit, saved from outside - ValueA's to
  * `rpm` unless said otherwise; answers the file as it was before. */
 export function drift(directory: string, variable = "ValueA", unit = "rpm"): Buffer {
-  const file = join(directory, CONTROLLER);
-  const before = readFileSync(file);
-  writeFileSync(file, withUnitOf(before, variable, unit));
+  return driftIn(directory, CONTROLLER, variable, unit);
+}
+
+/** A variable's unit in one file of a copy drifted to another spelling, saved from outside;
+ * answers the file as it was before. */
+export function driftIn(directory: string, file: string, variable: string, unit: string): Buffer {
+  const path = join(directory, file);
+  const before = readFileSync(path);
+  writeFileSync(path, withUnitOf(before, variable, unit));
   return before;
 }
 

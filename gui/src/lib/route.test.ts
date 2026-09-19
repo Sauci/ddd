@@ -49,3 +49,23 @@ test.each([
 ] as const)("%o is at %s", (route, href) => {
   expect(hrefOf(route)).toBe(href);
 });
+
+test.each([
+  ["/project", "?view=units", { page: "project", view: "units" }],
+  ["/project", "?view=units&unit=RPM", { page: "project", view: "units", unit: "RPM" }],
+  ["/project", "?view=units&unit=%25", { page: "project", view: "units", unit: "%" }],
+  ["/project", "?view=units&unit=", { page: "project", view: "units" }],
+  ["/project", "?view=units&variable=ValueA", { page: "project", view: "units" }],
+  ["/project", "?unit=RPM", { page: "project", view: "graph" }],
+] as const)("%s%s carries the unit %o", (pathname, search, route) => {
+  expect(parseRoute(pathname, search)).toEqual(route);
+});
+
+test.each([
+  [{ page: "project", view: "units" }, "/project?view=units"],
+  [{ page: "project", view: "units", unit: "RPM" }, "/project?view=units&unit=RPM"],
+  [{ page: "project", view: "units", unit: "°C" }, "/project?view=units&unit=%C2%B0C"],
+  [{ page: "project", view: "units", unit: "m/s" }, "/project?view=units&unit=m%2Fs"],
+] as const)("%o is at %s", (route, href) => {
+  expect(hrefOf(route)).toBe(href);
+});

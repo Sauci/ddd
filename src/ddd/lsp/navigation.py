@@ -28,10 +28,10 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from ddd.build_info import BuildInfo
-from ddd.diagnostics import DiagnosticBag, Severity
+from ddd.diagnostics import DiagnosticBag, Location, Severity
 from ddd.loading import Workspace, load_workspace
 from ddd.lsp.ranges import Document, read
 from ddd.models import (
@@ -85,8 +85,24 @@ _TYPENAME_KEY: Final = re.compile(
 _TYPE_NAME: Final = re.compile(r"^(?:component\.)?types\[\d+\]\.name$")
 _CONSTANT_NAME: Final = re.compile(r"^(?:component\.)?constants\[\d+\]\.name$")
 
+_UNIT_KEY: Final = re.compile(
+    rf"^(?:(?:component\.interface\[\d+\]\.definition|(?:component\.)?types\[\d+\]|{_MEMBER}"
+    rf"|units\[\d+\])\.unit|units\[\d+\])$"
+)
+"""Where a unit is spelled: a declaration's ``unit``; a scalar type's or a structure member's, in
+a types file or in a component's own list; and an entry of a units file - the spelling on its
+own, or the ``unit`` of an object. The places ``unknown-unit`` checks, and the vocabulary it
+checks them against."""
+
 _BASE_DATATYPES: Final = frozenset(member.value for member in Datatype)
 """The keys whose string value names a constant: one dimension entry, or an axis size."""
+
+LOAD_CHECKS: Final = frozenset({"file-not-found", "json-syntax", "file-kind", "schema"})
+"""The checks whose error on a file means that file did not load.
+
+One notion for both clients: ``ddd gui`` shows such a file as not loaded, and a plan of
+:mod:`ddd.lsp.units` made in the language server refuses to reach round one.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +111,18 @@ class Site:
 
     path: Path
     pointer: str
+
+
+@dataclass(frozen=True, slots=True)
+class UnitSite:
+    """One place a unit is stated: its string, and what states it."""
+
+    site: Site
+    """The unit's string itself: ``….definition.unit``, a scalar type's ``unit``, a member's."""
+
+    kind: Literal["variable", "type", "member"]
+    name: str
+    """The variable's name, the type's, or ``Type.member`` for a structure member."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +164,22 @@ class Index:
     something that no longer exists.
     """
 
+    units: dict[str, list[UnitSite]] = field(default_factory=dict)
+    """Unit -> every place it is stated: a declaration's ``unit``, a scalar type's and a
+    structure member's, which are the places ``unknown-unit`` checks - the declarations first,
+    in the order the project lists its components, then the types by name.
+
+    Keyed by the exact spelling, so ``rpm`` and ``RPM`` are two units, which is the drift a
+    rename exists to merge. A declaration repeated in one component is here each time, though
+    the check reads it once: a rename that left the repeat alone would leave the old spelling
+    in the file. The empty unit is not here - a dimensionless value states no unit rather than a
+    spelling of one.
+    """
+
+    vocabulary: dict[str, list[Site]] = field(default_factory=dict)
+    """Unit -> every entry of the units files listing it, at ``units[i]``, whether the entry is
+    the spelling on its own or an object naming it. Two entries are a unit listed twice."""
+
 
 def index(workspace: Workspace) -> Index:
     """Read the positions out of an already loaded project."""
@@ -164,17 +208,32 @@ def index(workspace: Workspace) -> Index:
                 where = loaded.declaration_location(position, "definition.typename")
                 built.type_uses.setdefault(named, []).append(Site(where.path, where.pointer))
             _occupy(built, declaration.definition.conversion)
+            _unit_stated(
+                built,
+                declaration.definition.unit,
+                loaded.declaration_location(position, "definition.unit"),
+                "variable",
+                name,
+            )
     for entry in workspace.types:
         built.types[entry.name] = Site(entry.path, entry.location().pointer)
         built.occupied[entry.name] = f"the name of the type '{entry.name}'"
         declared = entry.declared
         if isinstance(declared, ScalarType):
             _occupy(built, declared.conversion)
+            _unit_stated(built, declared.unit, entry.location("unit"), "type", entry.name)
         structure = entry.structure
         if structure is None:
             continue
         for position, member in enumerate(structure.members):
             _occupy(built, member.conversion)
+            _unit_stated(
+                built,
+                member.unit,
+                entry.location(f"members[{position}].unit"),
+                "member",
+                f"{entry.name}.{member.name}",
+            )
             # A member naming a base datatype names no type; the two keys keep them apart.
             if member.typename is not None:
                 where = entry.location(f"members[{position}].typename")
@@ -190,7 +249,25 @@ def index(workspace: Workspace) -> Index:
     for constant in workspace.constants:
         built.constants[constant.name] = Site(constant.path, constant.location().pointer)
         built.occupied[constant.name] = f"the name of the declared constant '{constant.name}'"
+    for listed in workspace.unit_entries:
+        where = listed.location()
+        built.vocabulary.setdefault(listed.unit, []).append(Site(where.path, where.pointer))
     return built
+
+
+def _unit_stated(
+    built: Index,
+    unit: str,
+    where: Location,
+    kind: Literal["variable", "type", "member"],
+    name: str,
+) -> None:
+    """Note one place a unit is stated, unless it states the empty unit, which is no unit:
+    ``unknown-unit`` never checks it, so a rename or an adoption has nothing to do with it."""
+    if unit:
+        built.units.setdefault(unit, []).append(
+            UnitSite(Site(where.path, where.pointer), kind, name)
+        )
 
 
 def _occupy(built: Index, conversion: Conversion | None) -> None:
@@ -238,6 +315,16 @@ class Loaded:
     Settled when the read finished rather than derived on demand: a caller that goes on to
     analyse this workspace reports into the same bag, and what an edit may not rewrite is a
     file that did not *load*.
+    """
+
+    unloaded: tuple[Path, ...] = ()
+    """The files of ``unreadable`` that did not load at all, sorted: an error of one of
+    :data:`LOAD_CHECKS`, as ``ddd gui`` counts a file that did not load.
+
+    Narrower on purpose, for the plans of :mod:`ddd.lsp.units`. A file that loaded with an error
+    is in the index all the same: a units file listing a unit twice is reported as
+    ``duplicate-unit``, and a rename of that unit has to reach both of its entries, which a
+    refusal would not let it do.
     """
 
 
@@ -317,15 +404,18 @@ def _loaded(path: Path, failed: dict[Path, str]) -> Loaded | None:
         return None
     if workspace is None:
         return None
-    return Loaded(path, workspace, bag, _unreadable(bag))
+    return Loaded(path, workspace, bag, _unreadable(bag), _unreadable(bag, LOAD_CHECKS))
 
 
-def _unreadable(bag: DiagnosticBag) -> tuple[Path, ...]:
-    """Every file the read reported an error on, sorted and each named once."""
+def _unreadable(bag: DiagnosticBag, checks: frozenset[str] | None = None) -> tuple[Path, ...]:
+    """Every file the read reported an error on - an error of one of ``checks``, when they are
+    given - sorted and each named once."""
     found = {
         finding.location.path
         for finding in bag.sorted
-        if finding.severity is Severity.ERROR and finding.location is not None
+        if finding.severity is Severity.ERROR
+        and finding.location is not None
+        and (checks is None or finding.check in checks)
     }
     return tuple(sorted(found))
 
@@ -517,8 +607,12 @@ def renameable_at(document: Document, pointer: str) -> tuple[str, str] | None:
 
     A variable, from its name or from a reference naming it; a declared type, from the
     ``name`` of its entry or from any ``typename`` spelling it; a declared constant, from the
-    ``name`` of its entry or from any dimension or axis ``size`` spelling it. Narrow on
-    purpose, like :func:`variable_at`: the editor opens its box over the range this names.
+    ``name`` of its entry or from any dimension or axis ``size`` spelling it; a unit, from any
+    place it is stated or from its entry in a units file. Narrow on purpose, like
+    :func:`variable_at`: the editor opens its box over the range this names.
+
+    A unit is renamed by :func:`ddd.lsp.units.rename_unit` rather than by :func:`rename_edits`:
+    its rename rewrites the vocabulary too, and merges two spellings where a name would collide.
     """
     value = document.value_at(pointer)
     if not isinstance(value, str):
@@ -530,6 +624,10 @@ def renameable_at(document: Document, pointer: str) -> tuple[str, str] | None:
         return ("type", value)
     if _DIMENSION_KEY.match(pointer) or _CONSTANT_NAME.match(pointer):
         return ("constant", value)
+    # The empty unit is no unit - a dimensionless value states none - so there is nothing
+    # spelled there to rename.
+    if value and _UNIT_KEY.match(pointer):
+        return ("unit", value)
     return None
 
 

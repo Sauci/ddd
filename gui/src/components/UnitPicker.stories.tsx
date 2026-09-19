@@ -13,7 +13,7 @@ function Field({ open = false }: { open?: boolean }) {
   const [typed, setTyped] = useState<string | undefined>(undefined);
   return (
     <UnitPicker
-      name="ValueA"
+      label="Unit of ValueA"
       sections={pickerSections("ValueA", DISAGREEING.declarations, FREE_UNITS, typed ?? "")}
       typed={typed ?? "%"}
       onTyped={setTyped}

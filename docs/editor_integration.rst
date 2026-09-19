@@ -88,17 +88,22 @@ identifier, or one the project already uses - for another object, an enum, an en
 type or a declared constant - is refused with the reason before anything is written, because
 a rename that silently merges two objects compiles, links, and shares storage nobody
 intended to share; a type may not take the spelling of a base datatype either, which the
-loader would refuse. Only the characters between the quotes are replaced, so formatting
-survives and free text is left alone.
+loader would refuse. A unit is renamed from any place it is stated, or from its entry in a
+units file; renaming onto a unit that already exists merges the two instead of refusing the
+collision, as a variable's rename would. It is refused, naming the file, only while a file of
+the project does not load at all - a unit listed twice, reported as ``duplicate-unit``, does
+not stop it, because renaming may be how such a mistake is fixed. Only the characters between
+the quotes are replaced, so formatting survives and free text is left alone.
 
-A rename, and every quick fix below, is also refused - naming the file, and before anything
-is written - while the project on disk is not the project the edit would be computed from:
-while an open document has unsaved changes that moved a declaration the edit would touch, and
-while a file of the project reported an error that stopped it being read. A project is
-indexed from what loaded, so a file a ``schema`` error dropped mid edit declares nothing as
-far as the index knows: the rename would rewrite every other file and leave that one holding
-the old name, and a fix would offer to remove a key "no other declaration has" while the
-unloaded producer states exactly that key. Fix the file and ask again.
+A variable's, a type's or a constant's rename, and every quick fix below, is also refused -
+naming the file, and before anything is written - while the project on disk is not the
+project the edit would be computed from: while an open document has unsaved changes that
+moved a declaration the edit would touch, and while a file of the project reported an error
+that stopped it being read. A project is indexed from what loaded, so a file a ``schema``
+error dropped mid edit declares nothing as far as the index knows: the rename would rewrite
+every other file and leave that one holding the old name, and a fix would offer to remove a
+key "no other declaration has" while the unloaded producer states exactly that key. Fix the
+file and ask again.
 
 **Quick fixes.** On a key the declarations of one object have to agree on - a ``unit``, a
 ``conversion``, a ``datatype`` - a ``definition-mismatch`` offers every way of reconciling
@@ -116,6 +121,12 @@ key ``ddd id --assign`` would write, in the same place, decided by the same code
 stamps a whole file, the fix stamps the declaration you are looking at. It is offered only
 where the finding is: a project that has silenced ``missing-id`` has said it is not adopting
 ids yet, and the editor does not argue with that.
+
+An ``unknown-unit`` finding, which only a project with a vocabulary reports, offers two fixes
+of its own: "Add 'RPM' to the vocabulary", and, for each spelling close enough to suggest,
+"Rename 'RPM' to 'rpm' everywhere" - the same rename ``F2`` makes, merging into a unit that
+exists. Both are the plans ``ddd gui`` previews and applies, so the editor and the page never
+disagree about what either does; a plan that is refused is not offered.
 
 Which project a file belongs to
 -------------------------------

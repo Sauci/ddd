@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import re
+import stat
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -11,7 +13,15 @@ import pytest
 
 from conftest import EXAMPLES, build_record, component, declare, project, write_tree
 from ddd.diagnostics import SeverityPolicy, UnknownCheckError
-from ddd.editing import STALE, UNREADABLE, EditError, FileChange, Operation, fingerprint
+from ddd.editing import (
+    INVALID,
+    STALE,
+    UNREADABLE,
+    EditError,
+    FileChange,
+    Operation,
+    fingerprint,
+)
 from ddd.gui import session as module
 from ddd.gui.session import NoProjectError, NotInProjectError, Session, find_projects
 from ddd.lsp.diagnostics import Run
@@ -470,6 +480,87 @@ class TestReadingAndEditing:
     def test_an_edit_needs_an_open_project(self, shared: Path) -> None:
         with pytest.raises(NoProjectError):
             Session(shared.parent).edit([unit_of_b(shared, "Hz")])
+
+
+def adoption(project_file: Path, name: str = "units.ddd.json") -> list[FileChange]:
+    """What adopting a vocabulary posts: a units file created beside the project, and its name
+    appended to the project's includes."""
+    includes = json.loads(project_file.read_text(encoding="utf-8"))["project"]["includes"]
+    return [
+        FileChange(project_file.parent / name, None, (Operation("set", "", '{"units": ["rpm"]}'),)),
+        FileChange(
+            project_file,
+            fingerprint(project_file.read_bytes()),
+            (Operation("insert", f"project.includes[{len(includes)}]", json.dumps(name)),),
+        ),
+    ]
+
+
+class TestCreatingAFile:
+    """An edit creates a file only beside the project description, and only by including it."""
+
+    def test_a_file_the_same_edit_includes_beside_the_project_is_created_and_read(
+        self, shared: Path
+    ) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        units = (shared.parent / "units.ddd.json").resolve()
+        revision, written = session.edit(adoption(shared))
+        assert units.read_bytes() == b'{"units": ["rpm"]}'
+        assert set(written) == {units, shared.resolve()}
+        described = {f.path.name: (f.kind, f.loaded) for f in revision.files}
+        assert described["units.ddd.json"] == ("units", True)
+
+    def test_a_created_file_takes_the_mode_of_the_project_description(self, shared: Path) -> None:
+        shared.chmod(0o640)
+        mode = stat.S_IMODE(shared.stat().st_mode)
+        session = Session(shared.parent)
+        session.open(shared)
+        session.edit(adoption(shared))
+        assert stat.S_IMODE((shared.parent / "units.ddd.json").stat().st_mode) == mode
+
+    def test_a_file_the_edit_does_not_include_is_not_created(self, shared: Path) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        created, _ = adoption(shared)
+        with pytest.raises(EditError) as refused:
+            session.edit([created])
+        assert refused.value.code == INVALID
+        assert not (shared.parent / "units.ddd.json").exists()
+
+    def test_a_change_of_the_description_that_leaves_the_file_out_is_not_enough(
+        self, shared: Path
+    ) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        created, _ = adoption(shared)
+        renamed = FileChange(
+            shared, fingerprint(shared.read_bytes()), (Operation("set", "project.name", '"Q"'),)
+        )
+        before = shared.read_bytes()
+        with pytest.raises(EditError) as refused:
+            session.edit([created, renamed])
+        assert refused.value.code == INVALID
+        assert not (shared.parent / "units.ddd.json").exists()
+        assert shared.read_bytes() == before
+
+    def test_a_file_is_created_only_beside_the_project_description(self, shared: Path) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        with pytest.raises(EditError) as refused:
+            session.edit(adoption(shared, "vocabulary/units.ddd.json"))
+        assert refused.value.code == INVALID
+        assert not (shared.parent / "vocabulary").exists()
+
+    def test_a_description_changed_on_disk_since_is_stale(self, shared: Path) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        edit = adoption(shared)
+        shared.write_text(shared.read_text(encoding="utf-8") + " ", encoding="utf-8")
+        with pytest.raises(EditError) as refused:
+            session.edit(edit)
+        assert refused.value.code == STALE
+        assert not (shared.parent / "units.ddd.json").exists()
 
 
 def test_the_demo_opens_clean() -> None:

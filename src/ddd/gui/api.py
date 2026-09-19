@@ -525,6 +525,7 @@ def _message(error: ValidationError) -> str:
 
 
 def _file_change(change: contract.Change) -> FileChange:
-    """A validated change, as the session's edit engine takes it."""
+    """A validated change, as the session's edit engine takes it: a ``null`` fingerprint stays
+    ``None``, the change that creates its file."""
     operations = tuple(Operation(o.op, o.pointer, o.raw, o.to) for o in change.operations)
     return FileChange(Path(change.file), change.fingerprint, operations)

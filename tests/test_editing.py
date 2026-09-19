@@ -608,10 +608,10 @@ class TestWritingFiles:
         b.write_bytes(b'{"x": 1}')
         real = editing._stage_and_replace
 
-        def failing(path, data):
+        def failing(path, data, like):
             if path == b:
                 raise OSError("disk full")
-            real(path, data)
+            real(path, data, like)
 
         monkeypatch.setattr(editing, "_stage_and_replace", failing)
         with pytest.raises(EditError) as refused:
@@ -630,11 +630,11 @@ class TestWritingFiles:
         real = editing._stage_and_replace
         calls = []
 
-        def failing(path, data):
+        def failing(path, data, like):
             calls.append(path)
             if path == b or calls.count(a) > 1:
                 raise OSError("disk full")
-            real(path, data)
+            real(path, data, like)
 
         monkeypatch.setattr(editing, "_stage_and_replace", failing)
         with pytest.raises(EditError) as refused:
@@ -658,3 +658,127 @@ class TestWritingFiles:
 
     def test_edits_stage_under_the_name_every_other_writer_stages_under(self):
         assert STAGING_SUFFIX == ARTEFACT_STAGING_SUFFIX
+
+
+def created(path: Path, raw: str, like: Path | None = None) -> FileChange:
+    return FileChange(path, None, (Operation("set", "", raw),), like)
+
+
+UNITS_FILE = '{\n  "units": [\n    { "unit": "rpm", "description": "" }\n  ]\n}\n'
+
+
+class TestCreatingAFile:
+    """A change without a fingerprint creates its file: the one a vocabulary's adoption writes."""
+
+    def test_a_created_file_holds_its_one_set_exactly_as_given(self, tmp_path):
+        path = tmp_path / "units.ddd.json"
+        written = apply_changes([created(path, UNITS_FILE)])
+        assert path.read_bytes() == UNITS_FILE.encode("utf-8")
+        assert written == {path: fingerprint(UNITS_FILE.encode("utf-8"))}
+        assert not list(tmp_path.glob(f"*{STAGING_SUFFIX}"))
+
+    @pytest.mark.parametrize(
+        "operations",
+        [
+            (),
+            (Operation("set", "", "{}"), Operation("set", "units", "[]")),
+            (Operation("insert", "", "{}"),),
+            (Operation("set", "units", '["rpm"]'),),
+            (Operation("set", ""),),
+        ],
+    )
+    def test_a_file_is_created_only_whole_by_one_set_at_its_top(self, tmp_path, operations):
+        path = tmp_path / "units.ddd.json"
+        with pytest.raises(EditError) as refused:
+            apply_changes([FileChange(path, None, operations)])
+        assert refused.value.code == INVALID
+        assert str(refused.value).startswith(str(path))
+        assert not path.exists()
+
+    @pytest.mark.parametrize("raw", ["{", '{"units": NaN}', '{"units": [], "units": []}'])
+    def test_a_file_is_never_created_holding_what_the_loader_does_not_read(self, tmp_path, raw):
+        path = tmp_path / "units.ddd.json"
+        with pytest.raises(EditError) as refused:
+            apply_changes([created(path, raw)])
+        assert refused.value.code == INVALID
+        assert not path.exists()
+
+    def test_a_file_that_exists_by_the_time_of_the_edit_is_stale(self, tmp_path):
+        path = tmp_path / "units.ddd.json"
+        path.write_bytes(b'{"units": ["Nm"]}')
+        with pytest.raises(EditError) as refused:
+            apply_changes([created(path, UNITS_FILE)])
+        assert refused.value.code == STALE
+        assert path.read_bytes() == b'{"units": ["Nm"]}'
+
+    def test_a_created_file_is_taken_away_when_a_later_file_fails(self, tmp_path, monkeypatch):
+        units = tmp_path / "units.ddd.json"
+        project = tmp_path / "p.ddd.json"
+        project.write_bytes(b'{"project": {"includes": []}}')
+        real = editing._stage_and_replace
+
+        def failing(path, data, like):
+            if path == project:
+                raise OSError("disk full")
+            real(path, data, like)
+
+        monkeypatch.setattr(editing, "_stage_and_replace", failing)
+        with pytest.raises(EditError) as refused:
+            apply_changes(
+                [
+                    created(units, UNITS_FILE),
+                    change(project, Operation("insert", "project.includes[0]", '"units.ddd.json"')),
+                ]
+            )
+        assert refused.value.code == UNWRITABLE
+        assert "put back" in str(refused.value)
+        assert not units.exists()
+        assert project.read_bytes() == b'{"project": {"includes": []}}'
+
+    def test_a_created_file_takes_the_mode_of_the_file_it_is_like(self, tmp_path):
+        like = tmp_path / "p.ddd.json"
+        like.write_bytes(b"{}")
+        like.chmod(0o640)
+        mode = stat.S_IMODE(like.stat().st_mode)
+        path = tmp_path / "units.ddd.json"
+        apply_changes([created(path, UNITS_FILE, like)])
+        assert stat.S_IMODE(path.stat().st_mode) == mode
+
+    def test_a_created_file_is_given_to_the_owner_of_the_file_it_is_like(
+        self, tmp_path, monkeypatch
+    ):
+        """What ``ddd gui`` run as root in its container needs: the units file an adoption
+        writes into a checkout mounted from the host belongs to whoever owns the project."""
+        given = []
+        monkeypatch.setattr(
+            editing.os, "chown", lambda _, uid, gid: given.append((uid, gid)), raising=False
+        )
+        like = tmp_path / "p.ddd.json"
+        like.write_bytes(b"{}")
+        owner = like.stat()
+        apply_changes([created(tmp_path / "units.ddd.json", UNITS_FILE, like)])
+        assert given == [(owner.st_uid, owner.st_gid)]
+
+    def test_a_file_created_like_no_file_keeps_the_access_a_new_file_gets(
+        self, tmp_path, monkeypatch
+    ):
+        given = []
+        monkeypatch.setattr(editing.os, "chown", lambda *args: given.append(args), raising=False)
+        path = tmp_path / "units.ddd.json"
+        apply_changes([created(path, UNITS_FILE)])
+        assert path.read_bytes() == UNITS_FILE.encode("utf-8")
+        assert given == []
+
+    def test_a_file_that_exists_keeps_its_own_mode_whatever_it_is_said_to_be_like(self, tmp_path):
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"a": 1}')
+        path.chmod(0o600)
+        mode = stat.S_IMODE(path.stat().st_mode)
+        like = tmp_path / "p.ddd.json"
+        like.write_bytes(b"{}")
+        like.chmod(0o644)
+        pending = FileChange(
+            path, fingerprint(b'{"a": 1}'), (Operation("set", "a", "2"),), like=like
+        )
+        apply_changes([pending])
+        assert stat.S_IMODE(path.stat().st_mode) == mode

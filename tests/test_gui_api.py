@@ -611,6 +611,63 @@ class TestEdit:
         reply = post(api, "/api/edit", unit_edit(api, root, "Hz"))
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
 
+    def test_a_change_without_a_fingerprint_creates_the_file_the_edit_includes(
+        self, api: Api, root: Path
+    ) -> None:
+        described = root / "p.ddd.json"
+        created = {"op": "set", "pointer": "", "raw": '{"units": ["rpm"]}'}
+        included = {"op": "insert", "pointer": "project.includes[2]", "raw": '"units.ddd.json"'}
+        edit = {
+            "changes": [
+                {
+                    "file": (root / "units.ddd.json").as_posix(),
+                    "fingerprint": None,
+                    "operations": [created],
+                },
+                {
+                    "file": described.as_posix(),
+                    "fingerprint": fingerprint(described.read_bytes()),
+                    "operations": [included],
+                },
+            ]
+        }
+        reply = post(api, "/api/edit", edit)
+        assert reply.status == 200
+        assert (root / "units.ddd.json").read_bytes() == b'{"units": ["rpm"]}'
+        assert {f["path"] for f in reply.body["files"]} == {
+            posix(root, "units.ddd.json"),
+            posix(root, "p.ddd.json"),
+        }
+        files = {Path(f["path"]).name: f for f in get(api, "/api/state").body["files"]}
+        assert (files["units.ddd.json"]["kind"], files["units.ddd.json"]["loaded"]) == (
+            "units",
+            True,
+        )
+
+    def test_a_file_the_edit_does_not_include_is_not_created(self, api: Api, root: Path) -> None:
+        edit = {
+            "changes": [
+                {
+                    "file": (root / "units.ddd.json").as_posix(),
+                    "fingerprint": None,
+                    "operations": [{"op": "set", "pointer": "", "raw": '{"units": ["rpm"]}'}],
+                }
+            ]
+        }
+        reply = post(api, "/api/edit", edit)
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert not (root / "units.ddd.json").exists()
+
+    def test_a_change_that_leaves_its_fingerprint_out_is_a_bad_request(
+        self, api: Api, root: Path
+    ) -> None:
+        """Left out is not ``null``: a page that forgot the fingerprint is not taken to be
+        creating the file."""
+        edit = unit_edit(api, root, "Hz")
+        del edit["changes"][0]["fingerprint"]
+        reply = post(api, "/api/edit", edit)
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+
     def test_a_move_carries_its_target_index(self, api: Api, root: Path) -> None:
         target = root / "p.ddd.json"
         edit = {

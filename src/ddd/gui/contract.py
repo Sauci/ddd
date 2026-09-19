@@ -607,8 +607,10 @@ class Change(_Request):
     file: str
     """Absolute, posix-separated path of the file this change is made to."""
 
-    fingerprint: str
-    """The fingerprint the file was read at; refused as ``stale`` if it has since changed."""
+    fingerprint: str | None
+    """The fingerprint the file was read at; refused as ``stale`` if it has since changed.
+    ``None`` creates the file, which must not exist yet, from one ``set`` of its whole document
+    at the pointer ``""``."""
 
     operations: tuple[Operation, ...] = Field(min_length=1)
     """The operations to apply to the file, in order."""

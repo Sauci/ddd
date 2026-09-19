@@ -24,12 +24,13 @@ from typing import Any, Final
 
 from ddd.build_info import BuildInfo
 from ddd.diagnostics import CheckInfo, Diagnostic, Severity
-from ddd.editing import FileChange, apply_changes, fingerprint
+from ddd.editing import INVALID, EditError, FileChange, apply_changes, edited, fingerprint
 from ddd.ir import DataDictionary
-from ddd.loading import parse_json_text
+from ddd.loading import parse_json_text, resolve_path
 from ddd.lsp.diagnostics import Run, group_findings, run_build, run_project
 from ddd.lsp.discovery import BUILD_DIRECTORY_PATTERNS, discover
 from ddd.lsp.navigation import LOAD_CHECKS, Index
+from ddd.lsp.ranges import Document
 
 KINDS: Final = ("project", "component", "types", "units", "sections", "constants", "rasters")
 """The top-level keys that say what a description file is, as the loader reads them."""
@@ -214,13 +215,15 @@ class Session:
         return FileContent(target, fingerprint(data), parsed, None)
 
     def edit(self, changes: Sequence[FileChange]) -> tuple[Revision, dict[Path, str]]:
-        """Make an edit of description files of the open project, then analyse it again."""
+        """Make an edit of description files of the open project, then analyse it again.
+
+        A change without a fingerprint creates its file, and only the kind of file adopting a
+        vocabulary writes: one beside the project description, in an edit whose change of that
+        description includes it. Any other is refused before a file is touched.
+        """
         with self._lock:
             revision = self._required()
-            confined = [
-                FileChange(_source(revision, pending.path), pending.fingerprint, pending.operations)
-                for pending in changes
-            ]
+            confined = [_confined(revision, pending, changes) for pending in changes]
             written = apply_changes(confined)
             # After the edit's own write, so the next poll does not take it for somebody else's,
             # and before the analysis, so a save landing while that runs is not taken for seen.
@@ -290,6 +293,46 @@ def _source(revision: Revision, path: Path) -> Path:
     if not any(file.path == resolved and file.kind != "plugin" for file in revision.files):
         raise NotInProjectError(f"{path} is not a description file of the open project")
     return resolved
+
+
+def _confined(revision: Revision, pending: FileChange, changes: Sequence[FileChange]) -> FileChange:
+    """One change of an edit, its file resolved and allowed: a description file of the open
+    project, or a file the edit may create, which takes the access of the project description."""
+    if pending.fingerprint is not None:
+        return FileChange(_source(revision, pending.path), pending.fingerprint, pending.operations)
+    target = pending.path.resolve()
+    project = revision.project
+    described = next(
+        (c for c in changes if c.fingerprint is not None and c.path.resolve() == project), None
+    )
+    if (
+        target.parent != project.parent
+        or described is None
+        or target not in _included(project, described)
+    ):
+        raise EditError(
+            INVALID,
+            f"{pending.path} can be created only beside {project.name}, "
+            "by an edit that adds it to the includes there",
+        )
+    return FileChange(target, None, pending.operations, like=project)
+
+
+def _included(project: Path, change: FileChange) -> frozenset[Path]:
+    """The files the project description's ``includes`` name once ``change`` is made to it, each
+    entry resolved as the loader resolves one naming a file.
+
+    Made in memory by the edit engine itself, so a description that changed on disk since the
+    change was computed is refused as stale here, as the engine would refuse it. A pattern is
+    not expanded: the file it would have to match does not exist yet.
+    """
+    _, new = edited(FileChange(project, change.fingerprint, change.operations))
+    entries = Document(new.decode("utf-8-sig")).value_at("project.includes")
+    return frozenset(
+        resolve_path(project.parent / entry)
+        for entry in (entries if isinstance(entries, list) else [])
+        if isinstance(entry, str)
+    )
 
 
 def _described(path: Path, findings: Iterable[Diagnostic]) -> SourceFile:

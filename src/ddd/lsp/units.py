@@ -24,10 +24,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Literal
 
-from ddd.editing import DEFAULT_INDENT_UNIT, Operation, lay_out
+from ddd.editing import (
+    DEFAULT_INDENT_UNIT,
+    INVALID,
+    EditError,
+    Operation,
+    TextEdit,
+    insertion,
+    lay_out,
+    member_addition,
+    removal,
+    replacement,
+)
 from ddd.loading import expand_include, resolve_path
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document, read
+from ddd.pointers import parent_pointer
 
 ADOPTED: Final = "units.ddd.json"
 """The units file adopting a vocabulary writes, beside the project description."""
@@ -352,3 +364,112 @@ def _paths(entries: Iterable[Site]) -> list[Path]:
 
 def _names(files: Iterable[Path]) -> str:
     return ", ".join(file.name for file in files)
+
+
+def text_edits(plan: UnitPlan, cache: dict[Path, Document]) -> dict[str, list[dict[str, Any]]]:
+    """A plan as a language client applies it: the protocol's text edits, by file uri.
+
+    Each operation is made by the edit engine's own :func:`~ddd.editing.replacement`,
+    :func:`~ddd.editing.member_addition`, :func:`~ddd.editing.removal` or
+    :func:`~ddd.editing.insertion`, on the text the operations before it left - the way
+    ``POST /api/edit`` makes them, so an editor and ``ddd gui`` write the same bytes. A client
+    applies a file's edits all at once, to the text as it stands, and refuses two that overlap,
+    so the edits are restated against that text, and edits that meet become one: two
+    neighbouring vocabulary entries taken out would otherwise both claim the comma between them.
+
+    Each file is read through ``cache``, which holds the buffers an editor has open, because
+    the edit is applied to what is on screen. A plan that creates a file - an adoption, which
+    only ``ddd gui`` plans - is refused rather than rendered: a text edit changes a file that
+    is there.
+    """
+    changes: dict[str, list[dict[str, Any]]] = {}
+    for planned in plan.edits:
+        if planned.creates:
+            raise EditError(
+                INVALID, f"{planned.path.name} is created by this plan, which no text edit can do"
+            )
+        document = read(planned.path, cache)
+        changes[planned.path.as_uri()] = [
+            _protocol_edit(document, edit) for edit in _simultaneous(document, planned.operations)
+        ]
+    return changes
+
+
+def unit_drift(built: Index, unit: str, cache: dict[Path, Document]) -> tuple[Path, ...]:
+    """The files whose text no longer holds ``unit`` where the index found it, sorted.
+
+    The index is read off the disk, and a buffer an editor has open may have moved or respelled
+    what it recorded since. A plan's pointers are the index's, so made in that buffer they would
+    respell whatever sits there now: the language server refuses the rename instead, naming
+    these files, and offers none as a quick fix.
+    """
+    stated = [
+        found.site.path
+        for found in built.units.get(unit, ())
+        if read(found.site.path, cache).value_at(found.site.pointer) != unit
+    ]
+    listed = [
+        entry.path
+        for entry in built.vocabulary.get(unit, ())
+        if read(entry.path, cache).value_at(entry.pointer) != unit
+        and read(entry.path, cache).value_at(f"{entry.pointer}.unit") != unit
+    ]
+    return tuple(sorted({*stated, *listed}, key=Path.as_posix))
+
+
+def _simultaneous(document: Document, operations: Sequence[Operation]) -> list[TextEdit]:
+    """The operations' edits of ``document`` as its text stands, in order and none overlapping.
+
+    Made one after another, as the engine makes them, with every character of the result
+    remembered by where it came from: an offset of the text as it stands, or none for a
+    character an edit wrote. Whatever lies between two characters kept from that text is one
+    edit of it, however many operations it took.
+    """
+    current = document
+    origins: list[int | None] = list(range(len(document.text)))
+    for operation in operations:
+        edit = _engine_edit(current, operation)
+        origins[edit.start : edit.end] = [None] * len(edit.text)
+        text = current.text
+        current = Document(f"{text[: edit.start]}{edit.text}{text[edit.end :]}")
+    edits: list[TextEdit] = []
+    kept = 0
+    written: list[str] = []
+    # A last character kept past the end, so that an edit running to the end of the text is
+    # closed like any other.
+    ends = ("", len(document.text))
+    for character, origin in [*zip(current.text, origins, strict=True), ends]:
+        if origin is None:
+            written.append(character)
+            continue
+        if origin != kept or written:
+            edits.append(TextEdit(kept, origin, "".join(written)))
+            written = []
+        kept = origin + 1
+    return edits
+
+
+def _engine_edit(document: Document, operation: Operation) -> TextEdit:
+    """The edit the engine makes for one operation, as :func:`ddd.editing.edit_text` makes it:
+    an entry taken out with one comma, an element inserted into an array, a value replaced, or
+    a member added to an object that has none of that name. A plan makes no ``move``."""
+    if operation.op == "remove":
+        return removal(document, operation.pointer)
+    # Every other operation of a plan writes a value, carried as json text.
+    assert operation.raw is not None
+    if operation.op == "insert":
+        return insertion(document, operation.pointer, operation.raw)
+    if document.raw_at(operation.pointer) is not None:
+        return replacement(document, operation.pointer, operation.raw)
+    parent = parent_pointer(operation.pointer)
+    key = operation.pointer[len(parent) + 1 :] if parent else operation.pointer
+    return member_addition(document, parent, key, operation.raw)
+
+
+def _protocol_edit(document: Document, edit: TextEdit) -> dict[str, Any]:
+    """An edit the engine computed as offsets, as the protocol carries it - the rendering
+    :mod:`ddd.lsp.edits` gives its quick fixes."""
+    return {
+        "range": {"start": document.position(edit.start), "end": document.position(edit.end)},
+        "newText": edit.text,
+    }

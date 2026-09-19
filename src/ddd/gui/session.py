@@ -29,13 +29,10 @@ from ddd.ir import DataDictionary
 from ddd.loading import parse_json_text
 from ddd.lsp.diagnostics import Run, group_findings, run_build, run_project
 from ddd.lsp.discovery import BUILD_DIRECTORY_PATTERNS, discover
-from ddd.lsp.navigation import Index
+from ddd.lsp.navigation import LOAD_CHECKS, Index
 
 KINDS: Final = ("project", "component", "types", "units", "sections", "constants", "rasters")
 """The top-level keys that say what a description file is, as the loader reads them."""
-
-LOAD_CHECKS: Final = frozenset({"file-not-found", "json-syntax", "file-kind", "schema"})
-"""The checks whose error on a file means that file did not load."""
 
 SEARCH_DEPTH: Final = 4
 """How many directories below the start the search for project descriptions goes."""

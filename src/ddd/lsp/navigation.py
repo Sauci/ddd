@@ -85,8 +85,24 @@ _TYPENAME_KEY: Final = re.compile(
 _TYPE_NAME: Final = re.compile(r"^(?:component\.)?types\[\d+\]\.name$")
 _CONSTANT_NAME: Final = re.compile(r"^(?:component\.)?constants\[\d+\]\.name$")
 
+_UNIT_KEY: Final = re.compile(
+    rf"^(?:(?:component\.interface\[\d+\]\.definition|(?:component\.)?types\[\d+\]|{_MEMBER}"
+    rf"|units\[\d+\])\.unit|units\[\d+\])$"
+)
+"""Where a unit is spelled: a declaration's ``unit``; a scalar type's or a structure member's, in
+a types file or in a component's own list; and an entry of a units file - the spelling on its
+own, or the ``unit`` of an object. The places ``unknown-unit`` checks, and the vocabulary it
+checks them against."""
+
 _BASE_DATATYPES: Final = frozenset(member.value for member in Datatype)
 """The keys whose string value names a constant: one dimension entry, or an axis size."""
+
+LOAD_CHECKS: Final = frozenset({"file-not-found", "json-syntax", "file-kind", "schema"})
+"""The checks whose error on a file means that file did not load.
+
+One notion for both clients: ``ddd gui`` shows such a file as not loaded, and a plan of
+:mod:`ddd.lsp.units` made in the language server refuses to reach round one.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -301,6 +317,16 @@ class Loaded:
     file that did not *load*.
     """
 
+    unloaded: tuple[Path, ...] = ()
+    """The files of ``unreadable`` that did not load at all, sorted: an error of one of
+    :data:`LOAD_CHECKS`, as ``ddd gui`` counts a file that did not load.
+
+    Narrower on purpose, for the plans of :mod:`ddd.lsp.units`. A file that loaded with an error
+    is in the index all the same: a units file listing a unit twice is reported as
+    ``duplicate-unit``, and a rename of that unit has to reach both of its entries, which a
+    refusal would not let it do.
+    """
+
 
 @dataclass(frozen=True, slots=True)
 class Containing:
@@ -378,15 +404,18 @@ def _loaded(path: Path, failed: dict[Path, str]) -> Loaded | None:
         return None
     if workspace is None:
         return None
-    return Loaded(path, workspace, bag, _unreadable(bag))
+    return Loaded(path, workspace, bag, _unreadable(bag), _unreadable(bag, LOAD_CHECKS))
 
 
-def _unreadable(bag: DiagnosticBag) -> tuple[Path, ...]:
-    """Every file the read reported an error on, sorted and each named once."""
+def _unreadable(bag: DiagnosticBag, checks: frozenset[str] | None = None) -> tuple[Path, ...]:
+    """Every file the read reported an error on - an error of one of ``checks``, when they are
+    given - sorted and each named once."""
     found = {
         finding.location.path
         for finding in bag.sorted
-        if finding.severity is Severity.ERROR and finding.location is not None
+        if finding.severity is Severity.ERROR
+        and finding.location is not None
+        and (checks is None or finding.check in checks)
     }
     return tuple(sorted(found))
 
@@ -578,8 +607,12 @@ def renameable_at(document: Document, pointer: str) -> tuple[str, str] | None:
 
     A variable, from its name or from a reference naming it; a declared type, from the
     ``name`` of its entry or from any ``typename`` spelling it; a declared constant, from the
-    ``name`` of its entry or from any dimension or axis ``size`` spelling it. Narrow on
-    purpose, like :func:`variable_at`: the editor opens its box over the range this names.
+    ``name`` of its entry or from any dimension or axis ``size`` spelling it; a unit, from any
+    place it is stated or from its entry in a units file. Narrow on purpose, like
+    :func:`variable_at`: the editor opens its box over the range this names.
+
+    A unit is renamed by :func:`ddd.lsp.units.rename_unit` rather than by :func:`rename_edits`:
+    its rename rewrites the vocabulary too, and merges two spellings where a name would collide.
     """
     value = document.value_at(pointer)
     if not isinstance(value, str):
@@ -591,6 +624,10 @@ def renameable_at(document: Document, pointer: str) -> tuple[str, str] | None:
         return ("type", value)
     if _DIMENSION_KEY.match(pointer) or _CONSTANT_NAME.match(pointer):
         return ("constant", value)
+    # The empty unit is no unit - a dimensionless value states none - so there is nothing
+    # spelled there to rename.
+    if value and _UNIT_KEY.match(pointer):
+        return ("unit", value)
     return None
 
 

@@ -36,16 +36,27 @@ editor re-asks after every fix anyway.
 
 from __future__ import annotations
 
+import contextlib
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any, Final, Literal
 
-from ddd.editing import TextEdit, member_addition, removal
+from ddd.analysis import close_units
+from ddd.editing import EditError, TextEdit, member_addition, removal
 from ddd.identity import insertions
-from ddd.lsp.navigation import Index, Site
+from ddd.lsp.navigation import Index, Site, renameable_at
 from ddd.lsp.ranges import Document, read
+from ddd.lsp.units import (
+    UnitProject,
+    UnitRefusalError,
+    add_unit,
+    rename_unit,
+    text_edits,
+    unit_drift,
+)
 from ddd.models import definition_keys
 from ddd.models.objects import MEANING_KEYS
 
@@ -115,6 +126,14 @@ id, and this one as a fix for a disagreement it does nothing about.
 """
 
 
+UNKNOWN_UNIT: Final = frozenset({"unknown-unit"})
+"""The finding the vocabulary actions settle, so a client can put its lightbulb on the squiggle.
+
+Its own set for the reason :data:`UNIDENTIFIED` has one: these actions change the vocabulary, or
+every place a unit is stated, rather than one declaration to agree with another.
+"""
+
+
 _WITHIN_DEFINITION: Final = re.compile(r"^component\.interface\[\d+\]\.definition")
 """Anywhere inside one definition, however deep - the prefix names the definition."""
 
@@ -174,6 +193,7 @@ def actions(
     pointer: str,
     cache: dict[Path, Document],
     reported: Sequence[dict[str, Any]] = (),
+    project: UnitProject | None = None,
 ) -> list[dict[str, Any]]:
     """What an editor may offer at this position.
 
@@ -194,7 +214,29 @@ def actions(
     reported, which is what keeps it inside the project's own severity policy: a project that
     has silenced the check with ``-W missing-id=ignore`` has said it is not adopting ids yet,
     and an editor that goes on offering them anyway is arguing with a decision already made.
+
+    The vocabulary actions are offered only where ``unknown-unit`` was reported, for the same
+    reason, and on whatever states the unit - a scalar type or a structure member as much as a
+    declaration. They are planned in the project ``project`` names; without one, none is.
     """
+    # After the declaration's own actions, so that neither inherits the other's findings, and
+    # a fix the reader asked for about the declaration keeps the preferred slot.
+    return [
+        *_on_the_declaration(built, path, document, pointer, cache, reported),
+        *_vocabulary_actions(built, document, pointer, cache, reported, project),
+    ]
+
+
+def _on_the_declaration(
+    built: Index,
+    path: Path,
+    document: Document,
+    pointer: str,
+    cache: dict[Path, Document],
+    reported: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """The actions on the declaration around the cursor: its keys brought into agreement with
+    the other declarations of its object, and an identity where ``missing-id`` was reported."""
     within = _WITHIN_DEFINITION.match(pointer)
     if within is None:
         return []
@@ -246,6 +288,59 @@ def actions(
         if identity is not None:
             identity["diagnostics"] = unstamped
             offered.append(identity)
+    return offered
+
+
+def _vocabulary_actions(
+    built: Index,
+    document: Document,
+    pointer: str,
+    cache: dict[Path, Document],
+    reported: Sequence[dict[str, Any]],
+    project: UnitProject | None,
+) -> list[dict[str, Any]]:
+    """Put the unit under the cursor into the vocabulary, or respell it everywhere as a unit the
+    vocabulary lists.
+
+    Both are the plans of :mod:`ddd.lsp.units`, the ones ``ddd gui`` makes, so an editor and the
+    page write the same edit. The spellings offered are the finding's own suggestions -
+    :func:`ddd.analysis.close_units` over the same vocabulary - so the lightbulb never proposes
+    a unit the message did not name, and a unit nothing is close to is offered no rename at
+    all. A plan that is refused is not offered.
+    """
+    unknown = [entry for entry in reported if entry.get("code") in UNKNOWN_UNIT]
+    subject = renameable_at(document, pointer)
+    if project is None or not unknown or subject is None or subject[0] != "unit":
+        return []
+    unit = subject[1]
+    if unit in built.vocabulary:
+        # The finding is older than the vocabulary, which lists the unit now.
+        return []
+    plans = [(f"Add '{unit}' to the vocabulary", partial(add_unit, built, project, unit, cache))]
+    # A rename's pointers are the disk's, and made in a buffer that has moved one of them it
+    # would respell whatever sits there now: none is offered until that buffer is saved.
+    if not unit_drift(built, unit, cache):
+        plans.extend(
+            (
+                f"Rename '{unit}' to '{close}' everywhere",
+                partial(rename_unit, built, project, unit, close, cache),
+            )
+            for close in close_units(unit, sorted(built.vocabulary))
+        )
+    offered: list[dict[str, Any]] = []
+    for title, plan in plans:
+        # Refused, or not an edit the engine can make in the buffer as it stands - a units file
+        # caught halfway through an edit: either way there is nothing to offer.
+        with contextlib.suppress(UnitRefusalError, EditError):
+            changes = text_edits(plan(), cache)
+            offered.append(
+                {
+                    "title": title,
+                    "kind": QUICK_FIX,
+                    "edit": {"changes": changes},
+                    "diagnostics": unknown,
+                }
+            )
     return offered
 
 

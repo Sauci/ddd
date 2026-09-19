@@ -37,7 +37,9 @@ export function VariablePanel({
   });
   // Spec 5.5: a variable renamed or removed on disk - or named by an address no file declares,
   // such as an old bookmark - is not declared any longer, and its panel closes. It says why on
-  // the page it was beside rather than in a panel of its own, which is about to go.
+  // the page it was beside rather than in a panel of its own, which is about to go. While a file
+  // does not load the server cannot say that, and answers `unreadable` instead: the panel then
+  // stays, naming the file, and shows the variable again once the file loads.
   const undeclared = variable.error instanceof ApiError && variable.error.code === "not-found";
   useEffect(() => {
     if (undeclared) onUndeclared();

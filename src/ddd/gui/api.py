@@ -287,7 +287,7 @@ class Api:
             return _error(400, "bad-request", "variable takes ?name=")
         declared = _declared(revision, name, {})
         if not declared:
-            return _error(404, "not-found", f"'{name}' is not declared in the open project")
+            return _undeclared(revision, name)
         return Reply(
             200,
             contract.VariableReply(
@@ -349,7 +349,7 @@ class Api:
                 return _error(400, "bad-request", str(refused))
         built = revision.index
         if built is None or name not in built.declarations:
-            return _error(404, "not-found", f"'{name}' is not declared in the open project")
+            return _undeclared(revision, name)
         settlement = settle(built, name, key, raw, {})
         if settlement.unsettled:
             code, message = refusal(settlement.unsettled[0], name, key)
@@ -467,6 +467,25 @@ def _module(file: SourceFile) -> Module:
 
 def _declared(revision: Revision, name: str, cache: dict[Path, Document]) -> tuple[Declared, ...]:
     return () if revision.index is None else declarations_of(revision.index, name, cache)
+
+
+def _undeclared(revision: Revision, name: str) -> Reply:
+    """The answer about ``name`` when no declaration of it was read.
+
+    That nothing declares it only while every file loaded: a file saved half-edited, as an editor
+    saves one being typed into, keeps the names only it declares out of every index until it
+    parses again, and a page told they are not declared would close their panels for good
+    (spec 5.5) rather than wait for the next save.
+    """
+    unread = [file.path.name for file in revision.files if not file.loaded]
+    if unread:
+        return _error(
+            409,
+            UNREADABLE,
+            f"'{name}' is not declared in any file that loaded, "
+            f"and {', '.join(unread)} did not load",
+        )
+    return _error(404, "not-found", f"'{name}' is not declared in the open project")
 
 
 def _single(values: Sequence[str] | None) -> str | None:

@@ -27,3 +27,22 @@ export function keyedFindings(findings: readonly Finding[]): (readonly [Finding,
     return [finding, `${content}#${occurrence}`] as const;
   });
 }
+
+/**
+ * A list of findings with each statement in it once: the first of those that share severity,
+ * check and message, wherever they are filed.
+ *
+ * The analysis files a disagreement on each of the files it concerns - mirrored onto the
+ * producer for every consumer that disagrees with it - so that an editor shows it in each. A list
+ * that speaks of one variable across its files, as its panel's does, would say the same sentence
+ * once per file.
+ */
+export function distinctFindings(findings: readonly Finding[]): Finding[] {
+  const said = new Set<string>();
+  return findings.filter((finding) => {
+    const statement = JSON.stringify([finding.severity, finding.check, finding.message]);
+    if (said.has(statement)) return false;
+    said.add(statement);
+    return true;
+  });
+}

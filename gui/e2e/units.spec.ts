@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CONTROLLER, chooseUnit, drift, renameValueA } from "./demo";
 import { expect, test } from "./fixtures";
@@ -17,6 +17,8 @@ test("a disagreement written from outside is resolved from the component page", 
   const picker = panel.getByRole("combobox", { name: "Unit of ValueA" });
   await expect(picker).toHaveValue("%");
   await expect(panel.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
+  // Filed on both of the files it concerns, the disagreement is still one sentence here.
+  await expect(panel.getByText("is declared differently by component 'Controller'")).toHaveCount(1);
   await panel.getByRole("button", { name: "Show changes" }).click();
   await expect(panel.getByText('"unit": "rpm"')).toBeVisible();
 
@@ -277,4 +279,31 @@ test("no page reports a violation of its content security policy", async ({ page
   expect(
     await page.evaluate(() => (window as unknown as { violations: string[] }).violations),
   ).toEqual([]);
+});
+
+test("a file saved half-edited leaves open the panel of a variable only it declares", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await expect(page.getByLabel("SensorHub to Controller: 2 variables, agreed")).toBeVisible();
+  // ValueH is local to Controller: no other file declares it.
+  await page.goto(`${new URL(gui.address).origin}/project?variable=ValueH`);
+  const panel = page.getByRole("complementary", { name: "ValueH" });
+  const picker = panel.getByRole("combobox", { name: "Unit of ValueH" });
+  await expect(picker).toBeVisible();
+
+  // Saved half-edited, as an editor saves a file being typed into: it no longer parses, and the
+  // variable is gone from every file that loads - but not from the project, and the panel stays.
+  const file = join(gui.directory, CONTROLLER);
+  const before = readFileSync(file);
+  writeFileSync(file, before.subarray(0, Math.floor(before.length / 2)));
+  await expect(panel.getByText("controller.ddd.json did not load")).toBeVisible();
+  await expect(page).toHaveURL(/\/project\?variable=ValueH$/);
+  await expect(page.getByText("ValueH is no longer declared")).toHaveCount(0);
+
+  // Saved again whole: the panel shows the variable as it did.
+  writeFileSync(file, before);
+  await expect(picker).toBeVisible();
+  await expect(page).toHaveURL(/\/project\?variable=ValueH$/);
 });

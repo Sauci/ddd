@@ -1,5 +1,5 @@
 import type { PlannedChange, SettleReply, UnitsReply, VariableReply } from "../api/types";
-import { keyedFindings } from "../lib/findings";
+import { distinctFindings, keyedFindings } from "../lib/findings";
 import {
   baseName,
   consequence,
@@ -84,7 +84,7 @@ export function VariablePanelView(props: VariablePanelViewProps) {
       </table>
       {variable.findings.length > 0 && (
         <ul className="panel-findings">
-          {keyedFindings(variable.findings).map(([finding, key]) => (
+          {keyedFindings(distinctFindings(variable.findings)).map(([finding, key]) => (
             <li key={key}>
               <Chip tone={finding.severity === "error" ? "error" : "warning"}>{finding.check}</Chip>{" "}
               <span className="quiet">{finding.message}</span>

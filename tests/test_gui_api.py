@@ -27,6 +27,14 @@ TYPED = {
     "b.ddd.json": component("B", declare("input", "Speed", "uint16", unit="%")),
 }
 
+# A project whose one file declaring `Torque` was saved half-edited, as an editor saves a file
+# being typed into: it no longer parses, so `Torque` is in no index while the file is like this.
+HALF_SAVED = {
+    "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+    "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+    "b.ddd.json": json.dumps(component("B", declare("input", "Torque", unit="Nm")), indent=2)[:60],
+}
+
 
 def opened(tmp_path: Path, files: dict[str, object]) -> Api:
     write_tree(tmp_path, files)
@@ -675,8 +683,22 @@ class TestVariable:
     def test_a_name_nothing_declares_is_not_found(self, api: Api) -> None:
         assert get(api, "/api/variable", name="Torque").status == 404
 
-    def test_a_project_the_analysis_could_not_read_declares_nothing(self, tmp_path: Path) -> None:
-        assert get(unloaded(tmp_path), "/api/variable", name="Speed").status == 404
+    def test_a_name_only_a_file_that_did_not_load_declares_is_not_said_to_be_gone(
+        self, tmp_path: Path
+    ) -> None:
+        # Answered "not declared", the page would close the name's panel for good (spec 5.5),
+        # when the next save puts the declaration back: the answer says which file did not load.
+        reply = get(opened(tmp_path, HALF_SAVED), "/api/variable", name="Torque")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"] == (
+            "'Torque' is not declared in any file that loaded, and b.ddd.json did not load"
+        )
+
+    def test_a_project_the_analysis_could_not_read_cannot_say_what_it_declares(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(unloaded(tmp_path), "/api/variable", name="Speed")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
 
     def test_a_variable_needs_an_open_project(self, root: Path) -> None:
         reply = get(Api(Session(root)), "/api/variable", name="Speed")
@@ -798,9 +820,18 @@ class TestSettle:
     def test_a_name_nothing_declares_is_not_found(self, api: Api) -> None:
         assert get(api, "/api/settle", name="Torque", key="unit", raw='"%"').status == 404
 
+    def test_a_name_only_a_file_that_did_not_load_declares_is_not_said_to_be_gone(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(
+            opened(tmp_path, HALF_SAVED), "/api/settle", name="Torque", key="unit", raw="null"
+        )
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert "b.ddd.json did not load" in reply.body["message"]
+
     def test_a_project_the_analysis_could_not_read_settles_nothing(self, tmp_path: Path) -> None:
         reply = get(unloaded(tmp_path), "/api/settle", name="Speed", key="unit", raw='"%"')
-        assert reply.status == 404
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
 
     def test_settling_needs_an_open_project(self, root: Path) -> None:
         reply = get(Api(Session(root)), "/api/settle", name="Speed", key="unit", raw='"%"')

@@ -872,8 +872,9 @@ json pointers, file by file, or a refusal naming the file it concerns. The langu
 renders a plan as the text edits of ``F2`` on a unit and of its two quick fixes on
 ``unknown-unit``; ``ddd gui`` previews the same plan and posts its changes, unchanged, to
 ``POST /api/edit``. Neither client decides on its own what a rename or an adoption does, so
-the two can never disagree about it - the precedent is part 1's ``settle``, one rule read by
-both.
+the two can never disagree about it - as ``ddd.lsp.edits.settle`` already does for a
+variable's keys, one rule the language server's reconcile quick fix and ``ddd gui``'s
+variable panel both read.
 
 The edit engine learnt one thing for adoption: a change whose ``fingerprint`` is ``null``
 creates its file, one ``set`` of the whole document at the root pointer, and is refused as

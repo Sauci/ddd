@@ -100,7 +100,11 @@ def unit_project(project: Path, unread: Sequence[Path], cache: dict[Path, Docume
             document = read(file, cache).data
             if file not in found and isinstance(document, dict) and "units" in document:
                 found.append(file)
-    return UnitProject(path, tuple(found), tuple(sorted({resolve_path(file) for file in unread})))
+    return UnitProject(
+        path,
+        tuple(found),
+        tuple(sorted({resolve_path(file) for file in unread}, key=Path.as_posix)),
+    )
 
 
 def rename_unit(
@@ -228,7 +232,7 @@ def adopt_units(built: Index, project: UnitProject, cache: dict[Path, Document])
     to a line, so that the first edit anybody makes to it reads as a one-line change.
     """
     entries = [entry for listed in built.vocabulary.values() for entry in listed]
-    held = sorted({*project.units_files, *_paths(entries)})
+    held = sorted({*project.units_files, *_paths(entries)}, key=Path.as_posix)
     if held:
         raise UnitRefusalError("invalid", f"this project has a vocabulary already: {_names(held)}")
     if project.unread:
@@ -258,7 +262,7 @@ def adopt_units(built: Index, project: UnitProject, cache: dict[Path, Document])
         PlannedEdit(created, (Operation("set", "", whole),), creates=True),
         PlannedEdit(project.project, (included,)),
     )
-    return UnitPlan(tuple(sorted(edits, key=lambda edit: edit.path)))
+    return UnitPlan(tuple(sorted(edits, key=lambda edit: edit.path.as_posix())))
 
 
 def _spelling(unit: str) -> None:
@@ -305,7 +309,7 @@ def _taken_out(
                 f"'{unit}' is all {file.name} lists, and a units file lists at least one unit",
             )
     operations: dict[Path, list[Operation]] = {}
-    for entry in sorted(entries, key=lambda entry: (entry.path, -_position(entry))):
+    for entry in sorted(entries, key=lambda entry: (entry.path.as_posix(), -_position(entry))):
         operations.setdefault(entry.path, []).append(Operation("remove", entry.pointer))
     return operations
 
@@ -329,7 +333,10 @@ def _position(entry: Site) -> int:
 def _plan(operations: Mapping[Path, Sequence[Operation]]) -> UnitPlan:
     """One edit per file, sorted by path, each file's operations in the order they were planned."""
     return UnitPlan(
-        tuple(PlannedEdit(path, tuple(made)) for path, made in sorted(operations.items()))
+        tuple(
+            PlannedEdit(path, tuple(made))
+            for path, made in sorted(operations.items(), key=lambda item: item[0].as_posix())
+        )
     )
 
 
@@ -340,7 +347,7 @@ def _raw(value: Any) -> str:
 
 
 def _paths(entries: Iterable[Site]) -> list[Path]:
-    return sorted({entry.path for entry in entries})
+    return sorted({entry.path for entry in entries}, key=Path.as_posix)
 
 
 def _names(files: Iterable[Path]) -> str:

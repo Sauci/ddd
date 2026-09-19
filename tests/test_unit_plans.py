@@ -575,3 +575,18 @@ def test_a_refused_plan_has_read_no_file(
     with pytest.raises(UnitRefusalError):
         plan(idx, where, cache)
     assert cache == {}
+
+
+def test_a_plans_edits_are_ordered_by_the_posix_spelling_of_their_path(tmp_path: Path) -> None:
+    """Two files whose names differ in the case of their first letter: ordered the way
+    ``expand_include`` orders what a project includes, by the posix spelling of the path rather
+    than by comparing the ``Path`` objects themselves - which windows compares case
+    insensitively and linux by code point, so a plan's edits would otherwise come out in a
+    different order on the two platforms."""
+    files = {
+        "Types.ddd.json": component("Types", declare("output", "A", unit="RPM")),
+        "sensors.ddd.json": component("Sensors", declare("output", "B", unit="RPM")),
+    }
+    idx, where = opened(tmp_path, files)
+    plan = rename_unit(idx, where, "RPM", "1/min", {})
+    assert [edit.path.name for edit in plan.edits] == ["Types.ddd.json", "sensors.ddd.json"]

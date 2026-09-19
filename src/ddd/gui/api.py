@@ -319,7 +319,7 @@ class Api:
         vocabulary = vocabulary_of(
             [read(file.path, cache) for file in revision.files if file.kind == "units"]
         )
-        used = () if revision.index is None else units_in_use(revision.index, cache)
+        used = () if revision.index is None else units_in_use(revision.index)
         return Reply(
             200,
             contract.UnitsReply(

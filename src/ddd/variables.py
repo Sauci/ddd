@@ -111,20 +111,24 @@ def located_on(declared: Sequence[Declared], file: Path, diagnostic: Diagnostic)
     )
 
 
-def units_in_use(built: Index, cache: dict[Path, Document]) -> tuple[tuple[str, int], ...]:
+def units_in_use(built: Index) -> tuple[tuple[str, int], ...]:
     """Every unit a declaration states, with how many variables state it: most used first, then
-    by spelling. A variable several components declare counts once; no unit is not a unit."""
-    counted: dict[str, int] = {}
-    for sites in built.declarations.values():
-        units = {
-            unit
-            for site in sites
-            if isinstance(unit := read(site.path, cache).value_at(f"{site.pointer}.unit"), str)
-            and unit
-        }
-        for unit in units:
-            counted[unit] = counted.get(unit, 0) + 1
-    return tuple(sorted(counted.items(), key=lambda pair: (-pair[1], pair[0])))
+    by spelling. A variable several components declare counts once; no unit is not a unit.
+
+    Counted from the index's record of units, which the Units tab counts from too, so the picker
+    and the tab cannot disagree about how many variables state a unit. A unit only types and
+    structure members state is used by no variable, and is not one of these.
+    """
+    counted = {
+        unit: len({stated.name for stated in sites if stated.kind == "variable"})
+        for unit, sites in built.units.items()
+    }
+    return tuple(
+        sorted(
+            ((unit, count) for unit, count in counted.items() if count),
+            key=lambda pair: (-pair[1], pair[0]),
+        )
+    )
 
 
 def vocabulary_of(documents: Sequence[Document]) -> tuple[tuple[str, str | None], ...] | None:

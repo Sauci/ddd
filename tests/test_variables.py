@@ -146,7 +146,7 @@ class TestUnits:
                 "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
             },
         )
-        assert units_in_use(idx, {}) == (("rpm", 2), ("Nm", 1))
+        assert units_in_use(idx) == (("rpm", 2), ("Nm", 1))
 
     def test_without_a_units_file_the_vocabulary_is_none(self) -> None:
         assert vocabulary_of([]) is None

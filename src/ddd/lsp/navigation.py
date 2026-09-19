@@ -28,10 +28,10 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from ddd.build_info import BuildInfo
-from ddd.diagnostics import DiagnosticBag, Severity
+from ddd.diagnostics import DiagnosticBag, Location, Severity
 from ddd.loading import Workspace, load_workspace
 from ddd.lsp.ranges import Document, read
 from ddd.models import (
@@ -98,6 +98,18 @@ class Site:
 
 
 @dataclass(frozen=True, slots=True)
+class UnitSite:
+    """One place a unit is stated: its string, and what states it."""
+
+    site: Site
+    """The unit's string itself: ``….definition.unit``, a scalar type's ``unit``, a member's."""
+
+    kind: Literal["variable", "type", "member"]
+    name: str
+    """The variable's name, the type's, or ``Type.member`` for a structure member."""
+
+
+@dataclass(frozen=True, slots=True)
 class Index:
     """Where a project writes down each of the names it uses."""
 
@@ -136,6 +148,22 @@ class Index:
     something that no longer exists.
     """
 
+    units: dict[str, list[UnitSite]] = field(default_factory=dict)
+    """Unit -> every place it is stated: a declaration's ``unit``, a scalar type's and a
+    structure member's, which are the places ``unknown-unit`` checks - the declarations first,
+    in the order the project lists its components, then the types by name.
+
+    Keyed by the exact spelling, so ``rpm`` and ``RPM`` are two units, which is the drift a
+    rename exists to merge. A declaration repeated in one component is here each time, though
+    the check reads it once: a rename that left the repeat alone would leave the old spelling
+    in the file. The empty unit is not here - a dimensionless value states no unit rather than a
+    spelling of one.
+    """
+
+    vocabulary: dict[str, list[Site]] = field(default_factory=dict)
+    """Unit -> every entry of the units files listing it, at ``units[i]``, whether the entry is
+    the spelling on its own or an object naming it. Two entries are a unit listed twice."""
+
 
 def index(workspace: Workspace) -> Index:
     """Read the positions out of an already loaded project."""
@@ -164,17 +192,32 @@ def index(workspace: Workspace) -> Index:
                 where = loaded.declaration_location(position, "definition.typename")
                 built.type_uses.setdefault(named, []).append(Site(where.path, where.pointer))
             _occupy(built, declaration.definition.conversion)
+            _unit_stated(
+                built,
+                declaration.definition.unit,
+                loaded.declaration_location(position, "definition.unit"),
+                "variable",
+                name,
+            )
     for entry in workspace.types:
         built.types[entry.name] = Site(entry.path, entry.location().pointer)
         built.occupied[entry.name] = f"the name of the type '{entry.name}'"
         declared = entry.declared
         if isinstance(declared, ScalarType):
             _occupy(built, declared.conversion)
+            _unit_stated(built, declared.unit, entry.location("unit"), "type", entry.name)
         structure = entry.structure
         if structure is None:
             continue
         for position, member in enumerate(structure.members):
             _occupy(built, member.conversion)
+            _unit_stated(
+                built,
+                member.unit,
+                entry.location(f"members[{position}].unit"),
+                "member",
+                f"{entry.name}.{member.name}",
+            )
             # A member naming a base datatype names no type; the two keys keep them apart.
             if member.typename is not None:
                 where = entry.location(f"members[{position}].typename")
@@ -190,7 +233,25 @@ def index(workspace: Workspace) -> Index:
     for constant in workspace.constants:
         built.constants[constant.name] = Site(constant.path, constant.location().pointer)
         built.occupied[constant.name] = f"the name of the declared constant '{constant.name}'"
+    for listed in workspace.unit_entries:
+        where = listed.location()
+        built.vocabulary.setdefault(listed.unit, []).append(Site(where.path, where.pointer))
     return built
+
+
+def _unit_stated(
+    built: Index,
+    unit: str,
+    where: Location,
+    kind: Literal["variable", "type", "member"],
+    name: str,
+) -> None:
+    """Note one place a unit is stated, unless it states the empty unit, which is no unit:
+    ``unknown-unit`` never checks it, so a rename or an adoption has nothing to do with it."""
+    if unit:
+        built.units.setdefault(unit, []).append(
+            UnitSite(Site(where.path, where.pointer), kind, name)
+        )
 
 
 def _occupy(built: Index, conversion: Conversion | None) -> None:

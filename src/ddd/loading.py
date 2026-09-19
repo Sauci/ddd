@@ -392,6 +392,15 @@ class Workspace:
     one, every stated unit is checked against the union of what every units file declares.
     """
 
+    unit_entries: tuple[LoadedUnit, ...] = ()
+    """Every entry of the units files that loaded, in the order they were read.
+
+    ``units`` keeps the first declaration of a spelling, which is all the check against the
+    vocabulary needs; a unit listed twice is a ``duplicate-unit`` finding and is here twice.
+    Renaming a unit needs both: an entry left out of the rename would still list the old
+    spelling, in a file the rename said it had rewritten.
+    """
+
     sections: tuple[LoadedSection, ...] = ()
     """The memory sections the project declares, sorted by name.
 
@@ -583,6 +592,7 @@ class _Loader:
         self._components_by_name: dict[str, LoadedComponent] = {}
         self._types_by_name: dict[str, LoadedType] = {}
         self._units_by_name: dict[str, LoadedUnit] = {}
+        self._unit_entries: list[LoadedUnit] = []
         self._sections_by_name: dict[str, LoadedSection] = {}
         self._rasters_by_name: dict[str, LoadedRaster] = {}
         self._constants_by_name: dict[str, LoadedConstant] = {}
@@ -648,6 +658,7 @@ class _Loader:
             projects=tuple(self._projects),
             types=tuple(sorted(self._types_by_name.values(), key=lambda entry: entry.name)),
             units=tuple(sorted(self._units_by_name.values(), key=lambda entry: entry.unit)),
+            unit_entries=tuple(self._unit_entries),
             sections=tuple(
                 sorted(self._sections_by_name.values(), key=lambda entry: entry.section)
             ),
@@ -846,11 +857,18 @@ class _Loader:
             data,
             file_model=UnitsFile,
             entries=lambda model: model.units,
-            wrap=LoadedUnit,
+            wrap=self._unit_entry,
             key=lambda loaded: loaded.unit,
             registry=self._units_by_name,
             noun="unit",
         )
+
+    def _unit_entry(self, path: Path, index: int, declared: UnitDeclaration) -> LoadedUnit:
+        """One entry of a units file, kept whether or not the registry takes it: the second
+        declaration of a spelling is refused there, and is still an entry a rename rewrites."""
+        entry = LoadedUnit(path, index, declared)
+        self._unit_entries.append(entry)
+        return entry
 
     def _load_sections(self, path: Path, data: dict[str, Any]) -> None:
         """Read a section description and register what it declares.

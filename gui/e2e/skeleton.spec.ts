@@ -115,7 +115,9 @@ test("the page says so when the server stops", async ({ page, gui }) => {
   await page.goto(gui.address);
   await expect(page.getByRole("heading", { name: "DemoDevice" })).toBeVisible();
   await gui.stop();
-  await expect(page.getByRole("alert")).toContainText("stopped");
+  // Stopped in the middle of the canvas's own request, the server also leaves the canvas saying
+  // that request went unanswered (the module graph's spec 5.6): a second alert, beside this one.
+  await expect(page.getByRole("alert").filter({ hasText: "stopped" })).toBeVisible();
 });
 
 test("without a project the start page lists the ones found and opens the one chosen", async ({

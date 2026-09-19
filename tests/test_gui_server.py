@@ -493,6 +493,60 @@ class TestEveryEndpointOnTheDemo:
         assert disagreeing == {"controller.ddd.json", "sensor_hub.ddd.json"}
 
 
+class TestBlankParameters:
+    """A parameter given with no value reaches the api as the empty text: clearing a unit's
+    description sends ``description=``. Every other handler answers it as a missing one."""
+
+    @pytest.fixture
+    def described(self, tmp_path: Path, pages: Path) -> Iterator[tuple[GuiServer, Path]]:
+        """ddd gui serving a project whose vocabulary describes its one unit."""
+        root = tmp_path / "described"
+        write_tree(
+            root,
+            {
+                "p.ddd.json": project("P", "units.ddd.json", "a.ddd.json"),
+                "units.ddd.json": {"units": [{"unit": "rpm", "description": "rotational speed"}]},
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        for server in serving(Api(session, root / "p.ddd.json", wait_seconds=0.05), pages):
+            yield server, root.resolve()
+
+    def test_an_empty_description_clears_the_units_description(self, described) -> None:
+        server, root = described
+        plan = answered(server, "GET", "/api/unit-plan?action=describe&unit=rpm&description=")
+        (change,) = plan["changes"]
+        assert change["operations"] == [
+            {"op": "set", "pointer": "units[0].description", "raw": '""'}
+        ]
+        edit = {"changes": [{key: change[key] for key in ("file", "fingerprint", "operations")}]}
+        answered(server, "POST", "/api/edit", edit)
+        units = json.loads((root / "units.ddd.json").read_text(encoding="utf-8"))["units"]
+        assert units == [{"unit": "rpm", "description": ""}]
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/api/variable?name=",
+            "/api/unit?name=",
+            "/api/file?path=",
+            "/api/settle?name=&key=unit",
+            "/api/unit-plan?action=",
+            "/api/unit-plan?action=rename&unit=&to=rpm",
+        ],
+    )
+    def test_any_other_blank_parameter_is_refused_as_a_missing_one(self, server, path) -> None:
+        assert answered(server, "GET", path, status=400)["error"] == "bad-request"
+
+    def test_a_blank_raw_takes_the_key_out_as_a_missing_one_does(self, server) -> None:
+        changes = answered(server, "GET", "/api/settle?name=Speed&key=unit&raw=")["changes"]
+        assert [change["operations"] for change in changes] == [
+            [{"op": "remove", "pointer": "component.interface[0].definition.unit", "raw": None}]
+        ]
+
+
 class TestAProjectWithAFileThatDoesNotParse:
     """Spec 6.10: the project still opens, the file is marked as not loaded, its findings say
     why, and reading it answers the reason instead of a document."""

@@ -45,9 +45,30 @@ from ddd.gui.session import (
     find_projects,
 )
 from ddd.lsp.edits import PROPAGATED_KEYS, settle
+from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document, read
+from ddd.lsp.units import (
+    UnitPlan,
+    UnitProject,
+    UnitRefusalError,
+    add_unit,
+    adopt_units,
+    describe_unit,
+    remove_unit,
+    rename_unit,
+    unit_project,
+)
+from ddd.project_units import (
+    adoptable,
+    description_of,
+    located_on_unit,
+    places_of,
+    previewed,
+    unit_rows,
+)
 from ddd.variables import (
     Declared,
+    Planned,
     declarations_of,
     located_on,
     preview,
@@ -61,6 +82,16 @@ WAIT_SECONDS: Final = 25.0
 
 REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED})
 """The edit refusals a page can act on, answered 409; anything else an edit raises is a 500."""
+
+UNIT_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
+    "rename": ("unit", "to"),
+    "add": ("unit",),
+    "describe": ("unit", "description"),
+    "remove": ("unit",),
+    "adopt": (),
+}
+"""The changes ``GET /api/unit-plan`` previews, each with the parameters it takes besides
+``action``."""
 
 type Query = Mapping[str, Sequence[str]]
 
@@ -166,7 +197,7 @@ class Api:
 
     def _file(self, query: Query, body: bytes | None) -> Reply:
         path = _single(query.get("path"))
-        if path is None:
+        if not path:
             return _error(400, "bad-request", "file takes ?path=")
         content = self.session.read_file(Path(path))
         return Reply(
@@ -319,7 +350,13 @@ class Api:
         vocabulary = vocabulary_of(
             [read(file.path, cache) for file in revision.files if file.kind == "units"]
         )
-        used = () if revision.index is None else units_in_use(revision.index)
+        built = revision.index
+        used = () if built is None else units_in_use(built)
+        rows = (
+            ()
+            if built is None
+            else unit_rows(built, [(f.file, f.diagnostic) for f in revision.findings], cache)
+        )
         return Reply(
             200,
             contract.UnitsReply(
@@ -328,12 +365,107 @@ class Api:
                 if vocabulary is None
                 else [{"unit": unit, "description": text} for unit, text in vocabulary],
                 used=[{"unit": unit, "variables": count} for unit, count in used],
+                units=[
+                    {
+                        "unit": row.unit,
+                        "description": row.description,
+                        "files": [path.resolve().as_posix() for path in row.files],
+                        "variables": row.variables,
+                        "types": row.types,
+                        "members": row.members,
+                        "findings": row.findings,
+                    }
+                    for row in rows
+                ],
+                adoptable=adoptable(built, vocabulary is not None),
+            ).model_dump(mode="json"),
+        )
+
+    def _unit(self, query: Query, body: bytes | None) -> Reply:
+        revision = self._opened()
+        unit = _single(query.get("name"))
+        if not unit:
+            return _error(400, "bad-request", "unit takes ?name=")
+        built = revision.index
+        if built is None or (unit not in built.units and unit not in built.vocabulary):
+            return _undeclared(revision, unit)
+        cache: dict[Path, Document] = {}
+        return Reply(
+            200,
+            contract.UnitReply(
+                revision=revision.number,
+                unit=unit,
+                description=description_of(built, unit, cache),
+                entries=[
+                    {"file": entry.path.resolve().as_posix(), "pointer": entry.pointer}
+                    for entry in built.vocabulary.get(unit, ())
+                ],
+                sites=[
+                    {
+                        "path": place.stated.site.path.resolve().as_posix(),
+                        "pointer": place.stated.site.pointer,
+                        "kind": place.stated.kind,
+                        "name": place.stated.name,
+                        "component": place.component,
+                        "role": place.role,
+                    }
+                    for place in places_of(built, unit, cache)
+                ],
+                findings=[
+                    _finding(filed)
+                    for filed in revision.findings
+                    if located_on_unit(built, unit, filed.file, filed.diagnostic)
+                ],
+            ).model_dump(mode="json"),
+        )
+
+    def _unit_plan(self, query: Query, body: bytes | None) -> Reply:
+        revision = self._opened()
+        action = _single(query.get("action")) or ""
+        takes = UNIT_PLANS.get(action)
+        if takes is None:
+            return _error(
+                400, "bad-request", f"unit-plan takes ?action= one of {', '.join(UNIT_PLANS)}"
+            )
+        given = {part: value for part in takes if (value := _single(query.get(part))) is not None}
+        if len(given) < len(takes) or given.get("unit") == "":
+            wanted = " and ".join(f"?{part}=" for part in takes)
+            return _error(400, "bad-request", f"{action} takes {wanted}")
+        built = revision.index
+        if built is None:
+            unread = [file.path.name for file in revision.files if not file.loaded]
+            return _error(
+                409,
+                UNREADABLE,
+                f"{', '.join(unread) or revision.project.name} did not load, "
+                "so no unit of the project can be changed",
+            )
+        cache: dict[Path, Document] = {}
+        project = unit_project(
+            revision.project, [file.path for file in revision.files if not file.loaded], cache
+        )
+        try:
+            plan = _unit_plan_of(action, built, project, given, cache)
+        except UnitRefusalError as refused:
+            status = 404 if refused.code == "not-found" else 409
+            return _error(status, refused.code, refused.message)
+        stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
+        try:
+            planned = previewed(plan, stamps)
+        except EditError as refused:
+            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+        return Reply(
+            200,
+            contract.PlanReply(
+                revision=revision.number, changes=_planned_changes(planned)
             ).model_dump(mode="json"),
         )
 
     def _settle(self, query: Query, body: bytes | None) -> Reply:
         revision = self._opened()
-        name, key, raw = (_single(query.get(part)) for part in ("name", "key", "raw"))
+        name, key = (_single(query.get(part)) for part in ("name", "key"))
+        # A blank ``raw`` is none, as a missing one: the key goes from every declaration.
+        raw = _single(query.get("raw")) or None
         if not name or not key:
             return _error(
                 400, "bad-request", "settle takes ?name= and ?key=, and ?raw= unless the key goes"
@@ -362,22 +494,7 @@ class Api:
         return Reply(
             200,
             contract.SettleReply(
-                revision=revision.number,
-                changes=[
-                    {
-                        "file": entry.path.resolve().as_posix(),
-                        "fingerprint": entry.fingerprint,
-                        "operations": [
-                            {"op": o.op, "pointer": o.pointer, "raw": o.raw}
-                            for o in entry.operations
-                        ],
-                        "hunks": [
-                            {"line": h.line, "before": h.before, "after": h.after}
-                            for h in entry.hunks
-                        ],
-                    }
-                    for entry in planned
-                ],
+                revision=revision.number, changes=_planned_changes(planned)
             ).model_dump(mode="json"),
         )
 
@@ -422,6 +539,8 @@ _ROUTES: Final[dict[str, tuple[str, Answer]]] = {
     "/api/variable": ("GET", Api._variable),
     "/api/units": ("GET", Api._units),
     "/api/settle": ("GET", Api._settle),
+    "/api/unit": ("GET", Api._unit),
+    "/api/unit-plan": ("GET", Api._unit_plan),
 }
 
 
@@ -486,6 +605,41 @@ def _undeclared(revision: Revision, name: str) -> Reply:
             f"and {', '.join(unread)} did not load",
         )
     return _error(404, "not-found", f"'{name}' is not declared in the open project")
+
+
+def _unit_plan_of(
+    action: str,
+    built: Index,
+    project: UnitProject,
+    given: Mapping[str, str],
+    cache: dict[Path, Document],
+) -> UnitPlan:
+    """The plan ``action`` names, over the parameters :data:`UNIT_PLANS` says it takes."""
+    if action == "rename":
+        return rename_unit(built, project, given["unit"], given["to"], cache)
+    if action == "add":
+        return add_unit(built, project, given["unit"], cache)
+    if action == "describe":
+        return describe_unit(built, project, given["unit"], given["description"], cache)
+    if action == "remove":
+        return remove_unit(built, project, given["unit"], cache)
+    return adopt_units(built, project, cache)
+
+
+def _planned_changes(planned: Sequence[Planned]) -> list[dict[str, Any]]:
+    """A preview's files as the page reads them: the edit of each - posted to ``POST /api/edit``
+    as it stands - beside the lines it changes."""
+    return [
+        {
+            "file": entry.path.resolve().as_posix(),
+            "fingerprint": entry.fingerprint,
+            "operations": [
+                {"op": o.op, "pointer": o.pointer, "raw": o.raw} for o in entry.operations
+            ],
+            "hunks": [{"line": h.line, "before": h.before, "after": h.after} for h in entry.hunks],
+        }
+        for entry in planned
+    ]
 
 
 def _single(values: Sequence[str] | None) -> str | None:

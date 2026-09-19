@@ -80,6 +80,16 @@ export const FIXED_BY_TYPE: VariableReply = {
   findings: [],
 };
 
+/** A row of the Units tab, which the variable panel does not read: a unit variables state. */
+function row(
+  unit: string,
+  variables: number,
+  description: string | null = null,
+  files: string[] = [],
+): UnitsReply["units"][number] {
+  return { unit, description, files, variables, types: 0, members: 0, findings: 0 };
+}
+
 /** A project with no units vocabulary: the picker's "Other units in this project" list. */
 export const FREE_UNITS: UnitsReply = {
   revision: 7,
@@ -91,7 +101,11 @@ export const FREE_UNITS: UnitsReply = {
     { unit: "degC", variables: 1 },
     { unit: "rpm", variables: 1 },
   ],
+  units: [row("%", 3), row("Hz", 4), row("V", 3), row("degC", 1), row("rpm", 1)],
+  adoptable: 5,
 };
+
+const UNITS_FILE = "C:/work/demo/units.ddd.json";
 
 /** A project's declared vocabulary, described, with how many variables use each. */
 export const VOCABULARY: UnitsReply = {
@@ -103,6 +117,13 @@ export const VOCABULARY: UnitsReply = {
     { unit: "kPa", description: "pressure" },
   ],
   used: [{ unit: "rpm", variables: 1 }],
+  units: [
+    row("Nm", 0, "torque, newton metre", [UNITS_FILE]),
+    row("degC", 0, "temperature", [UNITS_FILE]),
+    row("kPa", 0, "pressure", [UNITS_FILE]),
+    row("rpm", 1, "rotational speed, revolutions per minute", [UNITS_FILE]),
+  ],
+  adoptable: null,
 };
 
 /** The one-hunk preview of chosen-design.html's "Show changes": controller.ddd.json, line 14. */

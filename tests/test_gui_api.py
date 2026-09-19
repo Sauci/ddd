@@ -11,7 +11,17 @@ from typing import Any, Final
 
 import pytest
 
-from conftest import EXAMPLES, component, declare, project, scalar_type, types, write_tree
+from conftest import (
+    EXAMPLES,
+    component,
+    declare,
+    project,
+    scalar_type,
+    struct_type,
+    types,
+    value_member,
+    write_tree,
+)
 from ddd import __version__
 from ddd.diagnostics import CHECKS
 from ddd.editing import UNVERIFIED, UNWRITABLE, EditError, fingerprint
@@ -35,6 +45,23 @@ HALF_SAVED = {
     "b.ddd.json": json.dumps(component("B", declare("input", "Torque", unit="Nm")), indent=2)[:60],
 }
 
+# One unit stated three ways: by a variable, by a scalar type and by a structure member.
+STATED_THREE_WAYS = {
+    "p.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+    "types.ddd.json": types(
+        scalar_type("Speed_t", unit="rpm"),
+        struct_type("Sample_t", value_member("speed", unit="rpm")),
+    ),
+    "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+}
+
+# A vocabulary listing one unit twice, which the loader reports as `duplicate-unit`.
+LISTED_TWICE = {
+    "p.ddd.json": project("P", "units.ddd.json", "a.ddd.json"),
+    "units.ddd.json": {"units": ["rpm", "rpm"]},
+    "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+}
+
 
 def opened(tmp_path: Path, files: dict[str, object]) -> Api:
     write_tree(tmp_path, files)
@@ -53,6 +80,12 @@ def unloaded(tmp_path: Path) -> Api:
 
 def posix(root: Path, name: str) -> str:
     return (root / name).resolve().as_posix()
+
+
+def picked(body: dict[str, Any]) -> dict[str, Any]:
+    """What part 1's picker reads of ``GET /api/units``: the Units tab's rows and adoption left
+    out, which the tests of the tab assert on their own."""
+    return {key: body[key] for key in ("revision", "vocabulary", "used")}
 
 
 @pytest.fixture
@@ -764,7 +797,7 @@ class TestVariable:
 
 class TestUnits:
     def test_without_a_vocabulary_the_units_in_use_are_answered(self, api: Api) -> None:
-        assert get(api, "/api/units").body == {
+        assert picked(get(api, "/api/units").body) == {
             "revision": 1,
             "vocabulary": None,
             "used": [{"unit": "rpm", "variables": 1}],
@@ -938,6 +971,11 @@ def with_unit(data: bytes, name: str, unit: str | None) -> bytes:
     return changed.encode("utf-8")
 
 
+def findings_of(state: dict[str, Any]) -> set[tuple[str, str, str, str]]:
+    """What a state reports, each finding by its file, check, place and sentence."""
+    return {(f["file"], f["check"], f["pointer"], f["message"]) for f in state["findings"]}
+
+
 class TestTheDemo:
     """The three endpoints over a copy of examples/demo, and what applying a preview writes."""
 
@@ -967,7 +1005,7 @@ class TestTheDemo:
         self, demo: tuple[Api, Path]
     ) -> None:
         api, _ = demo
-        assert get(api, "/api/units").body == {
+        assert picked(get(api, "/api/units").body) == {
             "revision": 1,
             "vocabulary": None,
             "used": [
@@ -1017,6 +1055,60 @@ class TestTheDemo:
         declarations = get(api, "/api/variable", name="ValueA").body["declarations"]
         assert [declaration["stated"].get("unit") for declaration in declarations] == [None, None]
 
+    def test_the_units_tab_lists_every_unit_in_use_and_how_many_adopting_would_list(
+        self, demo: tuple[Api, Path]
+    ) -> None:
+        api, _ = demo
+        body = get(api, "/api/units").body
+        assert body["adoptable"] == 5
+        assert [
+            (u["unit"], u["variables"], u["types"], u["members"], u["findings"])
+            for u in body["units"]
+        ] == [
+            ("%", 5, 0, 0, 0),
+            ("Hz", 3, 0, 0, 0),
+            ("V", 2, 0, 0, 0),
+            ("degC", 2, 0, 0, 0),
+            ("ms", 1, 0, 0, 0),
+        ]
+        assert all((u["description"], u["files"]) == (None, []) for u in body["units"])
+
+    def test_adopting_writes_the_units_file_includes_it_and_reports_nothing_more(
+        self, demo: tuple[Api, Path]
+    ) -> None:
+        api, root = demo
+        before = contents(root)
+        reported = findings_of(get(api, "/api/state").body)
+        preview = get(api, "/api/unit-plan", action="adopt").body
+        assert contents(root) == before
+        described, created = preview["changes"]
+        assert (described["file"], created["file"]) == (
+            posix(root, "demo.ddd.json"),
+            posix(root, "units.ddd.json"),
+        )
+        assert described["fingerprint"] == fingerprint(before["demo.ddd.json"])
+        assert created["fingerprint"] is None
+        assert applied(api, preview).status == 200
+        text = (root / "units.ddd.json").read_text(encoding="utf-8")
+        assert created["hunks"] == [{"line": 1, "before": [], "after": text.splitlines()}]
+        listed = json.loads(text)["units"]
+        assert sorted(entry["unit"] for entry in listed) == ["%", "Hz", "V", "degC", "ms"]
+        assert all(entry["description"] == "" for entry in listed)
+        last = b'"subsystems/logging/logging.ddd.json"'
+        assert contents(root) == {
+            **before,
+            "demo.ddd.json": before["demo.ddd.json"].replace(
+                last, last + b',\n      "units.ddd.json"'
+            ),
+            "units.ddd.json": text.encode("utf-8"),
+        }
+        assert findings_of(get(api, "/api/state").body) <= reported
+        units = get(api, "/api/units").body
+        assert units["adoptable"] is None
+        assert {u["unit"]: u["files"] for u in units["units"]}["Hz"] == [
+            posix(root, "units.ddd.json")
+        ]
+
 
 class TestTheVocabulary:
     """The three endpoints over a copy of examples/vocabulary, a project that pins its units."""
@@ -1031,7 +1123,7 @@ class TestTheVocabulary:
         self, vocabulary: tuple[Api, Path]
     ) -> None:
         api, _ = vocabulary
-        assert get(api, "/api/units").body == {
+        assert picked(get(api, "/api/units").body) == {
             "revision": 1,
             "vocabulary": [
                 {"unit": "rpm", "description": "rotational speed, revolutions per minute"},
@@ -1079,3 +1171,394 @@ class TestTheVocabulary:
         assert (refused.status, refused.body["error"]) == (409, "fixed-by-type")
         assert "Torque_t" in refused.body["message"]
         assert contents(root) == before
+
+    def test_the_units_tab_lists_the_vocabulary_beside_what_states_each_unit(
+        self, vocabulary: tuple[Api, Path]
+    ) -> None:
+        api, root = vocabulary
+        body = get(api, "/api/units").body
+        listing = [posix(root, "units.ddd.json")]
+        assert body["adoptable"] is None
+        assert body["units"] == [
+            {
+                "unit": "Nm",
+                "description": "torque, newton metre",
+                "files": listing,
+                "variables": 0,
+                "types": 1,
+                "members": 0,
+                "findings": 0,
+            },
+            {
+                "unit": "degC",
+                "description": "temperature",
+                "files": listing,
+                "variables": 0,
+                "types": 0,
+                "members": 0,
+                "findings": 0,
+            },
+            {
+                "unit": "kPa",
+                "description": "pressure",
+                "files": listing,
+                "variables": 2,
+                "types": 0,
+                "members": 0,
+                "findings": 0,
+            },
+            {
+                "unit": "rpm",
+                "description": "rotational speed, revolutions per minute",
+                "files": listing,
+                "variables": 1,
+                "types": 0,
+                "members": 0,
+                "findings": 0,
+            },
+        ]
+
+    def test_a_unit_a_type_states_is_answered_with_its_entry_and_the_type(
+        self, vocabulary: tuple[Api, Path]
+    ) -> None:
+        api, root = vocabulary
+        assert get(api, "/api/unit", name="Nm").body == {
+            "revision": 1,
+            "unit": "Nm",
+            "description": "torque, newton metre",
+            "entries": [{"file": posix(root, "units.ddd.json"), "pointer": "units[1]"}],
+            "sites": [
+                {
+                    "path": posix(root, self.PUMP),
+                    "pointer": "component.types[0].unit",
+                    "kind": "type",
+                    "name": "Torque_t",
+                    "component": None,
+                    "role": None,
+                }
+            ],
+            "findings": [],
+        }
+
+    def test_a_spelling_drifted_from_outside_merges_into_the_vocabularys_own(
+        self, vocabulary: tuple[Api, Path]
+    ) -> None:
+        api, root = vocabulary
+        original = contents(root)
+        (root / self.PUMP).write_bytes(with_unit(original[self.PUMP], "PumpSpeed", "RPM"))
+        assert api.session.poll() is True
+        drifted = {u["unit"]: u for u in get(api, "/api/units").body["units"]}["RPM"]
+        assert (drifted["description"], drifted["files"], drifted["findings"]) == (None, [], 1)
+        before = contents(root)
+        preview = get(api, "/api/unit-plan", action="rename", unit="RPM", to="rpm").body
+        assert contents(root) == before
+        assert [(c["file"], c["operations"]) for c in preview["changes"]] == [
+            (
+                posix(root, self.PUMP),
+                [
+                    {
+                        "op": "set",
+                        "pointer": "component.interface[0].definition.unit",
+                        "raw": '"rpm"',
+                    }
+                ],
+            )
+        ]
+        assert applied(api, preview).status == 200
+        assert contents(root) == original
+        units = {u["unit"]: u for u in get(api, "/api/units").body["units"]}
+        assert "RPM" not in units
+        assert (units["rpm"]["variables"], units["rpm"]["findings"]) == (1, 0)
+
+    def test_a_description_is_written_into_its_entry_and_nowhere_else(
+        self, vocabulary: tuple[Api, Path]
+    ) -> None:
+        api, root = vocabulary
+        before = contents(root)
+        preview = get(
+            api, "/api/unit-plan", action="describe", unit="kPa", description="pressure, kilopascal"
+        ).body
+        assert contents(root) == before
+        assert applied(api, preview).status == 200
+        assert contents(root) == {
+            **before,
+            "units.ddd.json": before["units.ddd.json"].replace(
+                b'"pressure"', b'"pressure, kilopascal"'
+            ),
+        }
+        assert get(api, "/api/unit", name="kPa").body["description"] == "pressure, kilopascal"
+
+    def test_a_unit_outside_the_vocabulary_is_added_in_the_form_its_entries_take(
+        self, vocabulary: tuple[Api, Path]
+    ) -> None:
+        api, root = vocabulary
+        original = contents(root)
+        (root / self.PUMP).write_bytes(with_unit(original[self.PUMP], "ManifoldPressure", "bar"))
+        assert api.session.poll() is True
+        before = contents(root)
+        preview = get(api, "/api/unit-plan", action="add", unit="bar").body
+        assert contents(root) == before
+        assert applied(api, preview).status == 200
+        last = b'{ "unit": "kPa", "description": "pressure" }'
+        assert contents(root) == {
+            **before,
+            "units.ddd.json": before["units.ddd.json"].replace(
+                last, last + b',\n    { "unit": "bar", "description": "" }'
+            ),
+        }
+        assert "unknown-unit" not in {f["check"] for f in get(api, "/api/state").body["findings"]}
+
+    def test_a_unit_nothing_states_is_removed_from_the_vocabulary(
+        self, vocabulary: tuple[Api, Path]
+    ) -> None:
+        api, root = vocabulary
+        before = contents(root)
+        preview = get(api, "/api/unit-plan", action="remove", unit="degC").body
+        assert contents(root) == before
+        assert applied(api, preview).status == 200
+        assert contents(root) == {
+            **before,
+            "units.ddd.json": before["units.ddd.json"].replace(
+                b'    { "unit": "degC", "description": "temperature" },\n', b""
+            ),
+        }
+        assert get(api, "/api/unit", name="degC").status == 404
+
+    def test_a_unit_something_still_states_is_not_removed(
+        self, vocabulary: tuple[Api, Path]
+    ) -> None:
+        api, root = vocabulary
+        before = contents(root)
+        reply = get(api, "/api/unit-plan", action="remove", unit="rpm")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert contents(root) == before
+
+
+class TestUnitsTab:
+    """The rows ``GET /api/units`` adds for the Units tab, and what adopting would list."""
+
+    def test_each_unit_in_use_is_a_row_and_adopting_would_list_it(self, api: Api) -> None:
+        body = get(api, "/api/units").body
+        assert body["units"] == [
+            {
+                "unit": "rpm",
+                "description": None,
+                "files": [],
+                "variables": 1,
+                "types": 0,
+                "members": 0,
+                "findings": 0,
+            }
+        ]
+        assert body["adoptable"] == 1
+
+    def test_a_unit_is_counted_by_the_variables_types_and_members_stating_it(
+        self, tmp_path: Path
+    ) -> None:
+        (row,) = get(opened(tmp_path, STATED_THREE_WAYS), "/api/units").body["units"]
+        assert (row["unit"], row["variables"], row["types"], row["members"]) == ("rpm", 1, 1, 1)
+
+    def test_a_unit_listed_twice_counts_its_findings_on_both_entries_and_its_file_once(
+        self, tmp_path: Path
+    ) -> None:
+        body = get(opened(tmp_path, LISTED_TWICE), "/api/units").body
+        assert body["adoptable"] is None
+        (row,) = body["units"]
+        assert (row["files"], row["findings"]) == ([posix(tmp_path, "units.ddd.json")], 2)
+
+    def test_a_project_the_analysis_could_not_read_has_no_rows_and_nothing_to_adopt(
+        self, tmp_path: Path
+    ) -> None:
+        body = get(unloaded(tmp_path), "/api/units").body
+        assert (body["units"], body["adoptable"]) == ([], 0)
+
+
+class TestUnit:
+    def test_every_place_stating_a_unit_is_answered_with_its_variable(
+        self, api: Api, root: Path
+    ) -> None:
+        reply = get(api, "/api/unit", name="rpm")
+        assert reply.status == 200
+        assert reply.body == {
+            "revision": 1,
+            "unit": "rpm",
+            "description": None,
+            "entries": [],
+            "sites": [
+                {
+                    "path": posix(root, name),
+                    "pointer": UNIT,
+                    "kind": "variable",
+                    "name": "Speed",
+                    "component": component_name,
+                    "role": role,
+                }
+                for name, component_name, role in (
+                    ("a.ddd.json", "A", "produces"),
+                    ("b.ddd.json", "B", "reads"),
+                )
+            ],
+            "findings": [],
+        }
+
+    def test_a_type_and_a_structure_member_are_places_of_their_unit(self, tmp_path: Path) -> None:
+        sites = get(opened(tmp_path, STATED_THREE_WAYS), "/api/unit", name="rpm").body["sites"]
+        assert sorted(
+            (s["kind"], s["name"], s["pointer"], s["component"], s["role"]) for s in sites
+        ) == [
+            ("member", "Sample_t.speed", "types[1].members[0].unit", None, None),
+            ("type", "Speed_t", "types[0].unit", None, None),
+            ("variable", "Speed", UNIT, "A", "produces"),
+        ]
+
+    def test_a_variable_its_file_no_longer_declares_there_is_left_out(
+        self, api: Api, root: Path
+    ) -> None:
+        write_tree(root, {"b.ddd.json": component("B", declare("input", "Torque", unit="rpm"))})
+        sites = get(api, "/api/unit", name="rpm").body["sites"]
+        assert [(s["component"], s["name"]) for s in sites] == [("A", "Speed")]
+
+    def test_a_unit_listed_twice_has_its_findings_on_both_entries(self, tmp_path: Path) -> None:
+        body = get(opened(tmp_path, LISTED_TWICE), "/api/unit", name="rpm").body
+        units = posix(tmp_path, "units.ddd.json")
+        assert body["entries"] == [
+            {"file": units, "pointer": "units[0]"},
+            {"file": units, "pointer": "units[1]"},
+        ]
+        assert sorted((f["file"], f["check"], f["pointer"]) for f in body["findings"]) == [
+            (units, "duplicate-unit", "units[0]"),
+            (units, "duplicate-unit", "units[1]"),
+        ]
+
+    def test_a_unit_is_asked_for_by_name(self, api: Api) -> None:
+        reply = get(api, "/api/unit")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+
+    def test_a_unit_nothing_states_or_lists_is_not_found(self, api: Api) -> None:
+        reply = get(api, "/api/unit", name="RPM")
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_a_unit_only_a_file_that_did_not_load_states_is_not_said_to_be_gone(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(opened(tmp_path, HALF_SAVED), "/api/unit", name="Nm")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert "b.ddd.json did not load" in reply.body["message"]
+
+    def test_a_project_the_analysis_could_not_read_cannot_say_what_it_states(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(unloaded(tmp_path), "/api/unit", name="rpm")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_a_unit_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root)), "/api/unit", name="rpm")
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+
+class TestUnitPlan:
+    def test_a_rename_is_previewed_as_the_edit_and_the_lines_it_changes(
+        self, api: Api, root: Path
+    ) -> None:
+        before = contents(root)
+        reply = get(api, "/api/unit-plan", action="rename", unit="rpm", to="Hz")
+        assert reply.status == 200
+        assert contents(root) == before
+        assert reply.body["revision"] == 1
+        assert [change["file"] for change in reply.body["changes"]] == [
+            posix(root, "a.ddd.json"),
+            posix(root, "b.ddd.json"),
+        ]
+        for change in reply.body["changes"]:
+            name = Path(change["file"]).name
+            lines = before[name].decode("utf-8").splitlines()
+            line = next(n for n, text in enumerate(lines, 1) if '"unit": "rpm"' in text)
+            assert change["fingerprint"] == fingerprint(before[name])
+            assert change["operations"] == [{"op": "set", "pointer": UNIT, "raw": '"Hz"'}]
+            assert change["hunks"] == [
+                {
+                    "line": line,
+                    "before": [lines[line - 1]],
+                    "after": [lines[line - 1].replace('"rpm"', '"Hz"')],
+                }
+            ]
+
+    def test_posting_a_rename_changes_the_unit_everywhere_it_is_stated(
+        self, api: Api, root: Path
+    ) -> None:
+        before = contents(root)
+        preview = get(api, "/api/unit-plan", action="rename", unit="rpm", to="Hz").body
+        assert applied(api, preview).status == 200
+        assert contents(root) == {
+            **before,
+            **{
+                name: before[name].replace(b'"unit": "rpm"', b'"unit": "Hz"')
+                for name in ("a.ddd.json", "b.ddd.json")
+            },
+        }
+        assert get(api, "/api/unit", name="rpm").status == 404
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            {},
+            {"action": "merge", "unit": "rpm"},
+            {"action": "rename", "unit": "rpm"},
+            {"action": "rename", "to": "Hz"},
+            {"action": "describe", "unit": "rpm"},
+            {"action": "remove", "unit": ""},
+        ],
+    )
+    def test_a_missing_or_unknown_parameter_is_a_bad_request(
+        self, api: Api, query: dict[str, str]
+    ) -> None:
+        reply = get(api, "/api/unit-plan", **query)
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            {"action": "rename", "unit": "rpm", "to": "rpm"},
+            {"action": "rename", "unit": "rpm", "to": ""},
+            {"action": "add", "unit": "rpm"},
+        ],
+    )
+    def test_a_plan_its_rules_refuse_is_invalid_and_writes_nothing(
+        self, api: Api, root: Path, query: dict[str, str]
+    ) -> None:
+        before = contents(root)
+        reply = get(api, "/api/unit-plan", **query)
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert contents(root) == before
+
+    def test_a_unit_the_project_neither_states_nor_lists_is_not_found(self, api: Api) -> None:
+        reply = get(api, "/api/unit-plan", action="rename", unit="Nm", to="rpm")
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_a_rename_while_a_file_does_not_load_is_unreadable_and_names_it(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(
+            opened(tmp_path, HALF_SAVED), "/api/unit-plan", action="rename", unit="rpm", to="Hz"
+        )
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert "b.ddd.json" in reply.body["message"]
+
+    def test_a_project_the_analysis_could_not_read_plans_nothing(self, tmp_path: Path) -> None:
+        reply = get(unloaded(tmp_path), "/api/unit-plan", action="adopt")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"].startswith("p.ddd.json did not load")
+
+    def test_a_preview_the_engine_refuses_is_a_refusal_the_page_can_act_on(
+        self, api: Api, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def refuse(*_: object) -> None:
+            raise EditError(UNVERIFIED, "does not read back")
+
+        monkeypatch.setattr("ddd.gui.api.previewed", refuse)
+        reply = get(api, "/api/unit-plan", action="rename", unit="rpm", to="Hz")
+        assert (reply.status, reply.body["error"]) == (409, "unverified")
+
+    def test_planning_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root)), "/api/unit-plan", action="adopt")
+        assert (reply.status, reply.body["error"]) == (409, "no-project")

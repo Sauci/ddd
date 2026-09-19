@@ -289,8 +289,9 @@ The commands
      - preview: serve a browser interface over one project's description files, on this
        computer by default, and open the browser on it. The project opens on a graph of its
        modules, an arrow per pair coloured by the worst disagreement between them, with the
-       component table one tab away. Every change is written into the files in
-       their own layout and checked the way ``ddd check`` checks them. ``-b DIR`` names a build
+       component table one tab away; a variable's unit is set from a panel for the whole
+       variable, not one declaration. Every change is written into the files in their own
+       layout and checked the way ``ddd check`` checks them. ``-b DIR`` names a build
        directory as for ``ddd lsp``, ``--host ADDRESS`` listens beyond this computer for a
        container, ``--port N`` fixes the port and ``--no-browser`` only
        prints the address. It serves until interrupted, and its options are not yet part of

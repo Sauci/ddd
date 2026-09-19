@@ -488,6 +488,15 @@ builds the image first, since the code it serves is the image’s, and starts it
 the container’s loopback and publishes the same port number on the
 host’s loopback, <code class="docutils literal notranslate"><span class="pre">-p</span> <span class="pre">127.0.0.1:8123:8123</span></code> - a different one would misdirect the Host header
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> checks - so the address it prints opens in a browser there.</p>
+<p><code class="docutils literal notranslate"><span class="pre">gui-screenshots</span></code> runs beside it: <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span> <span class="pre">run</span> <span class="pre">--rm</span> <span class="pre">gui-screenshots</span></code> photographs
+every story of <code class="docutils literal notranslate"><span class="pre">gui/</span></code> and compares it with its reference image, and <code class="docutils literal notranslate"><span class="pre">UPDATE=1</span> <span class="pre">docker</span>
+<span class="pre">compose</span> <span class="pre">run</span> <span class="pre">--rm</span> <span class="pre">gui-screenshots</span></code> writes the references afresh. Playwright’s own Linux
+image, of the version <code class="docutils literal notranslate"><span class="pre">gui/package.json</span></code> pins, is the one place those images are made,
+since Windows and Linux draw text differently. Node lives in that image, so the machine
+running this needs none; its packages go into a volume of their own rather than the
+checkout, and what the run writes into the checkout - the references, Ladle’s build and
+Playwright’s results - is handed back to whoever owns <code class="docutils literal notranslate"><span class="pre">gui/</span></code>, since this service too runs
+as root.</p>
 <p>The <code class="docutils literal notranslate"><span class="pre">compile</span></code> service is the one that keeps the c backend honest. It generates the demo
 project, writes one translation unit per generated header that includes it twice - which
 proves that every header is self contained and that its include guard works - compiles
@@ -890,14 +899,30 @@ npm run build       # the pages, and third-party-licenses.txt beside them
 npm run watch       # rebuilds on every change; reload the page ddd gui serves
 </pre></div>
 </div>
+<p>React Aria Components is the widget library the screens are built from, wrapped once in
+<code class="docutils literal notranslate"><span class="pre">gui/src/ui/</span></code> - Button, ComboBox and Table over its own primitives, Chip, Banner and
+LinkTabs beside them, and Panel around a Button - under the tokens of
+<code class="docutils literal notranslate"><span class="pre">gui/src/styles/tokens.css</span></code> and the rules of <code class="docutils literal notranslate"><span class="pre">gui/src/styles/ui.css</span></code>, and a screen takes
+none of its widgets from anywhere else. React Aria’s press handling injects a <code class="docutils literal notranslate"><span class="pre">&lt;style&gt;</span></code>
+element that the page’s Content-Security-Policy forbids, so <code class="docutils literal notranslate"><span class="pre">gui/public/pressable.css</span></code>,
+linked from <code class="docutils literal notranslate"><span class="pre">gui/index.html</span></code> under the id <code class="docutils literal notranslate"><span class="pre">react-aria-pressable-style</span></code>, stands in for it;
+a React Aria upgrade must check the rule still matches the one React Aria would inject.
+<code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">run</span> <span class="pre">ladle</span></code> serves every story with hot reloading, on mock data and without <code class="docutils literal notranslate"><span class="pre">ddd</span>
+<span class="pre">gui</span></code>; a story imports nothing from Ladle itself, because it ships raw <code class="docutils literal notranslate"><span class="pre">.tsx</span></code> sources that
+fail this project’s type check, and <code class="docutils literal notranslate"><span class="pre">skipLibCheck</span></code> does not skip a <code class="docutils literal notranslate"><span class="pre">.tsx</span></code>. Every story is
+then photographed and compared with its reference image by <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">run</span> <span class="pre">screenshots</span></code>: only in
+Playwright’s Linux image, since Windows and Linux draw text differently, through <code class="docutils literal notranslate"><span class="pre">docker</span>
+<span class="pre">compose</span> <span class="pre">run</span> <span class="pre">--rm</span> <span class="pre">gui-screenshots</span></code> on a developer’s machine or ci’s own job of that name.
+<code class="docutils literal notranslate"><span class="pre">UPDATE=1</span> <span class="pre">docker</span> <span class="pre">compose</span> <span class="pre">run</span> <span class="pre">--rm</span> <span class="pre">gui-screenshots</span></code> writes the references afresh, and they
+are made nowhere else.</p>
 <p><code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">run</span> <span class="pre">lint</span></code> and <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">run</span> <span class="pre">typecheck</span></code> are the frontend’s ruff and mypy, and <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">test</span></code>
 runs Vitest with a 100 % gate over the modules that hold logic - <code class="docutils literal notranslate"><span class="pre">src/api</span></code>, <code class="docutils literal notranslate"><span class="pre">src/lib</span></code> and
 <code class="docutils literal notranslate"><span class="pre">src/state</span></code>. The screens are covered by <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">run</span> <span class="pre">e2e</span></code>: Playwright drives the real <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>
 over a copy of <code class="docutils literal notranslate"><span class="pre">examples/demo</span></code>, started with the interpreter <code class="docutils literal notranslate"><span class="pre">DDD_PYTHON</span></code> names, and
 <code class="docutils literal notranslate"><span class="pre">PLAYWRIGHT_CHANNEL=msedge</span></code> drives the installed Edge on a machine without Playwright’s own
 Chromium. The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0,
-BSD-2-Clause or BSD-3-Clause. The project screen’s canvas is drawn with <code class="docutils literal notranslate"><span class="pre">&#64;xyflow/react</span></code> and
-laid out with <code class="docutils literal notranslate"><span class="pre">&#64;dagrejs/dagre</span></code>, both MIT like every other bundled package.</p>
+BSD-2-Clause, BSD-3-Clause or 0BSD. The project screen’s canvas is drawn with <code class="docutils literal notranslate"><span class="pre">&#64;xyflow/react</span></code>
+and laid out with <code class="docutils literal notranslate"><span class="pre">&#64;dagrejs/dagre</span></code>, both MIT like every other bundled package.</p>
 </section>
 </section>
 

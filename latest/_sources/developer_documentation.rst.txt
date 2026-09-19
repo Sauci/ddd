@@ -387,6 +387,16 @@ the container's loopback and publishes the same port number on the
 host's loopback, ``-p 127.0.0.1:8123:8123`` - a different one would misdirect the Host header
 ``ddd gui`` checks - so the address it prints opens in a browser there.
 
+``gui-screenshots`` runs beside it: ``docker compose run --rm gui-screenshots`` photographs
+every story of ``gui/`` and compares it with its reference image, and ``UPDATE=1 docker
+compose run --rm gui-screenshots`` writes the references afresh. Playwright's own Linux
+image, of the version ``gui/package.json`` pins, is the one place those images are made,
+since Windows and Linux draw text differently. Node lives in that image, so the machine
+running this needs none; its packages go into a volume of their own rather than the
+checkout, and what the run writes into the checkout - the references, Ladle's build and
+Playwright's results - is handed back to whoever owns ``gui/``, since this service too runs
+as root.
+
 The ``compile`` service is the one that keeps the c backend honest. It generates the demo
 project, writes one translation unit per generated header that includes it twice - which
 proves that every header is self contained and that its include guard works - compiles
@@ -830,11 +840,28 @@ them, with the package installed so that its types can be generated:
    npm run build       # the pages, and third-party-licenses.txt beside them
    npm run watch       # rebuilds on every change; reload the page ddd gui serves
 
+React Aria Components is the widget library the screens are built from, wrapped once in
+``gui/src/ui/`` - Button, ComboBox and Table over its own primitives, Chip, Banner and
+LinkTabs beside them, and Panel around a Button - under the tokens of
+``gui/src/styles/tokens.css`` and the rules of ``gui/src/styles/ui.css``, and a screen takes
+none of its widgets from anywhere else. React Aria's press handling injects a ``<style>``
+element that the page's Content-Security-Policy forbids, so ``gui/public/pressable.css``,
+linked from ``gui/index.html`` under the id ``react-aria-pressable-style``, stands in for it;
+a React Aria upgrade must check the rule still matches the one React Aria would inject.
+``npm run ladle`` serves every story with hot reloading, on mock data and without ``ddd
+gui``; a story imports nothing from Ladle itself, because it ships raw ``.tsx`` sources that
+fail this project's type check, and ``skipLibCheck`` does not skip a ``.tsx``. Every story is
+then photographed and compared with its reference image by ``npm run screenshots``: only in
+Playwright's Linux image, since Windows and Linux draw text differently, through ``docker
+compose run --rm gui-screenshots`` on a developer's machine or ci's own job of that name.
+``UPDATE=1 docker compose run --rm gui-screenshots`` writes the references afresh, and they
+are made nowhere else.
+
 ``npm run lint`` and ``npm run typecheck`` are the frontend's ruff and mypy, and ``npm test``
 runs Vitest with a 100 % gate over the modules that hold logic - ``src/api``, ``src/lib`` and
 ``src/state``. The screens are covered by ``npm run e2e``: Playwright drives the real ``ddd gui``
 over a copy of ``examples/demo``, started with the interpreter ``DDD_PYTHON`` names, and
 ``PLAYWRIGHT_CHANNEL=msedge`` drives the installed Edge on a machine without Playwright's own
 Chromium. The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0,
-BSD-2-Clause or BSD-3-Clause. The project screen's canvas is drawn with ``@xyflow/react`` and
-laid out with ``@dagrejs/dagre``, both MIT like every other bundled package.
+BSD-2-Clause, BSD-3-Clause or 0BSD. The project screen's canvas is drawn with ``@xyflow/react``
+and laid out with ``@dagrejs/dagre``, both MIT like every other bundled package.

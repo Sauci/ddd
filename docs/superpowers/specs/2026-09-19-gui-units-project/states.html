@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Units page states</title>
+<style>
+:root {
+  --ink: #1d2a2f; --quiet: #5b6b71; --ground: #f7f9f9; --surface: #ffffff; --rule: #d9e2e5;
+  --accent: #0e6b7c; --focus: rgba(14, 107, 124, .16); --sel: #e3f1f3;
+  --error: #b3261e; --error-ground: #fdecea; --warning: #7a4f00; --warning-ground: #fff4dc;
+  --ok: #1e6b35; --ok-ground: #e6f4ea;
+  --font: "Segoe UI", system-ui, sans-serif; --mono: "Cascadia Mono", Consolas, monospace;
+  --r: 6px; --r-chip: 10px; --cell: 6px 10px; --shadow: 0 8px 24px rgba(20, 30, 35, .14);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 13.5px/1.5 var(--font); }
+.bar { display: flex; justify-content: space-between; align-items: center; padding: 9px 16px; border-bottom: 1px solid var(--rule); font-size: 12.5px; }
+.bar b { font-weight: 600; } .bar .pv { color: var(--quiet); letter-spacing: .05em; margin-left: 6px; font-size: 10.5px; }
+.bar a { color: var(--accent); margin-left: 14px; text-decoration: none; }
+.page { padding: 14px 16px 18px; }
+.title { display: flex; align-items: baseline; gap: 12px; margin: 0 0 12px; }
+.title h1 { font-size: 20px; font-weight: 600; margin: 0; }
+.title span { color: var(--quiet); font-size: 12.5px; }
+.title .label { color: #fff; }
+.tabs { display: flex; gap: 18px; border-bottom: 1px solid var(--rule); margin: 0 0 12px; font-size: 13px; }
+.tabs span { padding: 0 0 6px; color: var(--accent); }
+.tabs span.on { color: var(--ink); border-bottom: 2px solid var(--accent); font-weight: 600; }
+.split { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+table { width: 100%; border-collapse: collapse; background: var(--surface); }
+th, td { text-align: left; padding: var(--cell); border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th { font-weight: 600; font-size: 12.5px; }
+td.num, th.num { text-align: right; }
+.box { border: 1px solid var(--rule); border-radius: var(--r); overflow: hidden; background: var(--surface); }
+.quiet { color: var(--quiet); }
+.chip { display: inline-block; font-size: 11.5px; padding: 0 8px; border-radius: var(--r-chip); background: var(--error-ground); color: var(--error); line-height: 1.7; }
+.chip.soft { background: var(--ground); color: var(--quiet); border: 1px solid var(--rule); }
+tr.sel td { background: var(--sel); }
+tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--error); }
+.unit { font-weight: 600; }
+.panel { padding: 12px 14px; }
+.panel h2 { margin: 0; font-size: 14.5px; font-weight: 600; }
+.meta { color: var(--quiet); font-size: 12.5px; margin: 0 0 8px; }
+.findings { margin: 8px 0 0; font-size: 12.5px; }
+.findings .msg { color: var(--quiet); margin-left: 6px; }
+h3 { font-size: 12.5px; font-weight: 600; margin: 12px 0 4px; }
+.field { margin: 12px 0 4px; }
+.field label { display: block; font-size: 12.5px; color: var(--quiet); margin: 0 0 4px; }
+.combo { display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--rule); border-radius: var(--r); padding: 5px 10px; background: var(--surface); }
+.combo .caret { color: var(--quiet); font-size: 11px; }
+.consequence { color: var(--quiet); font-size: 12.5px; margin-top: 8px; }
+.actions { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+.btn { font: inherit; font-size: 12.5px; padding: 5px 12px; border-radius: var(--r); border: 1px solid var(--accent); background: var(--accent); color: #fff; }
+.btn.ghost { background: var(--surface); color: var(--accent); }
+.link { color: var(--accent); font-size: 12.5px; }
+.sites td { font-size: 12.5px; }
+.label { display: inline-block; margin-left: auto; font: 600 12px var(--font); color: #fff; background: var(--accent); padding: 2px 10px; border-radius: 10px; }
+/* B */
+.group { margin: 0 0 12px; }
+.group > .head { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 10px; font-weight: 600; font-size: 12.5px; }
+.group.out > .head { background: var(--error-ground); color: var(--error); }
+.group.in > .head, .group.unused > .head { background: var(--ground); }
+.row { display: grid; grid-template-columns: 90px 1fr 130px 400px; gap: 10px; align-items: center; padding: 6px 10px; border-top: 1px solid var(--rule); }
+.row .inline { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.row .inline .combo { width: 120px; padding: 3px 8px; }
+.row .inline .btn { padding: 3px 10px; }
+.expanded { grid-column: 1 / -1; background: var(--ground); border-radius: var(--r); padding: 6px 10px; font-size: 12.5px; color: var(--quiet); }
+.desc { border: 1px dashed transparent; }
+/* C */
+.md { display: grid; grid-template-columns: 250px 1fr; gap: 14px; align-items: start; }
+.side .search { border: 1px solid var(--rule); border-radius: var(--r); padding: 5px 10px; background: var(--surface); color: var(--quiet); margin: 0 0 8px; }
+.side .item { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--rule); }
+.side .item.on { background: var(--sel); box-shadow: inset 3px 0 0 var(--error); }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--error); margin-right: 6px; }
+.dot.none { background: transparent; }
+.detail { padding: 14px 18px; }
+.detail h2 { margin: 0 0 2px; font-size: 18px; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+[hidden] { display: none !important; }
+
+.desc-field { display: flex; gap: 8px; align-items: center; }
+.desc-field .combo { flex: 1; }
+.banner { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 12px; border-radius: var(--r); background: var(--warning-ground); color: var(--warning); margin: 0 0 12px; font-size: 12.5px; }
+.banner .go { display: flex; gap: 12px; align-items: center; white-space: nowrap; flex-shrink: 0; }
+.diff { font-family: var(--mono); font-size: 12px; background: var(--ground); border: 1px solid var(--rule); border-radius: var(--r); padding: 8px 10px; margin-top: 8px; line-height: 1.7; white-space: pre; }
+.diff .f { font-family: var(--font); color: var(--quiet); }
+.diff .m { color: var(--error); } .diff .p { color: var(--ok); }
+tr.fine td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+tr.fine td { background: var(--sel); }
+</style>
+</head>
+<body>
+<div class="bar"><span><b>ddd gui</b><span class="pv">PREVIEW</span></span><span><a>Projects</a><a>DemoDevice</a></span></div>
+<div class="page" id="vocab" hidden>
+<div class="title"><h1>DemoDevice</h1><span>9 units · 2 not in the vocabulary</span></div>
+<div class="tabs"><span>Graph</span><span>Table</span><span class="on">Units</span></div>
+<div class="split">
+<div class="box"><table>
+<tr><th>Unit</th><th>Description</th><th class="num">Stated by</th><th>Findings</th></tr>
+<tr ><td class="unit">RPM</td><td class="quiet">not in the vocabulary</td><td class="num">1 variable, 1 type</td><td><span class="chip">unknown-unit</span></td></tr>
+<tr><td class="unit">°C</td><td class="quiet">not in the vocabulary</td><td class="num">1 variable</td><td><span class="chip">unknown-unit</span></td></tr>
+<tr><td class="unit">%</td><td>percentage</td><td class="num">4 variables</td><td></td></tr>
+<tr><td class="unit">Hz</td><td>frequency</td><td class="num">3 variables</td><td></td></tr>
+<tr class="fine"><td class="unit">rpm</td><td>rotational speed</td><td class="num">2 variables</td><td></td></tr>
+<tr><td class="unit">V</td><td>voltage</td><td class="num">2 variables</td><td></td></tr>
+<tr><td class="unit">degC</td><td>temperature</td><td class="num">2 variables</td><td></td></tr>
+<tr><td class="unit">ms</td><td>time</td><td class="num">1 variable</td><td></td></tr>
+<tr><td class="unit">kPa</td><td>pressure</td><td class="num quiet">unused</td><td></td></tr>
+</table></div>
+<div class="box panel">
+<div class="actions" style="margin:0"><h2>rpm</h2><span class="link">Close</span></div>
+<p class="meta">in the vocabulary, units.ddd.json · stated in 2 places, 2 files</p>
+<div class="field"><label>Description</label><div class="desc-field"><div class="combo"><span>rotational speed, revolutions per minute</span></div><button class="btn ghost">Save</button></div></div>
+<h3>Where it is stated</h3>
+<table class="sites"><tr><th>Where</th><th>File</th><th>What</th></tr>
+<tr><td>EngineSpeed</td><td class="quiet">sensor_hub.ddd.json</td><td>produces</td></tr>
+<tr><td>PumpSpeed</td><td class="quiet">pump.ddd.json</td><td>local</td></tr></table>
+<div class="field"><label>Rename rpm to</label><div class="combo"><span class="quiet">rpm</span><span class="caret">▾</span></div></div>
+<div class="consequence">Nothing to change. A unit stated nowhere can be removed from the vocabulary; this one is stated in 2 places.</div>
+</div>
+</div>
+</div>
+<div class="page" id="adopt" hidden>
+<div class="title"><h1>DemoDevice</h1><span>8 units · no units file</span></div>
+<div class="tabs"><span>Graph</span><span>Table</span><span class="on">Units</span></div>
+<div class="banner"><span>This project has no units file, so no unit is checked against a vocabulary. Adopting writes units.ddd.json with the 8 units in use and includes it in the project: nothing is reported that is not reported today.</span><span class="go"><span class="link">Show changes</span><button class="btn">Adopt 8 units</button></span></div><div class="split">
+<div class="box"><table>
+<tr><th>Unit</th><th>Description</th><th class="num">Stated by</th><th>Findings</th></tr>
+<tr ><td class="unit">RPM</td><td></td><td class="num">1 variable, 1 type</td><td></td></tr>
+<tr><td class="unit">°C</td><td></td><td class="num">1 variable</td><td></td></tr>
+<tr><td class="unit">%</td><td></td><td class="num">4 variables</td><td></td></tr>
+<tr><td class="unit">Hz</td><td></td><td class="num">3 variables</td><td></td></tr>
+<tr ><td class="unit">rpm</td><td></td><td class="num">2 variables</td><td></td></tr>
+<tr><td class="unit">V</td><td></td><td class="num">2 variables</td><td></td></tr>
+<tr><td class="unit">degC</td><td></td><td class="num">2 variables</td><td></td></tr>
+<tr><td class="unit">ms</td><td></td><td class="num">1 variable</td><td></td></tr>
+
+</table></div>
+<div class="box panel">
+<div class="actions" style="margin:0"><h2>Adopt a vocabulary</h2><span class="link">Close</span></div>
+<p class="meta">Changes 2 files: demo.ddd.json, and units.ddd.json, which is new</p>
+<div class="diff"><span class="f">demo.ddd.json, line 5</span>
+<span class="p">+        "units.ddd.json",</span>
+<span class="f">units.ddd.json, new</span>
+<span class="p">+ {</span>
+<span class="p">+   "units": [</span>
+<span class="p">+     {"unit": "%", "description": ""},</span>
+<span class="p">+     {"unit": "Hz", "description": ""},</span>
+<span class="p">+     …six more</span>
+<span class="p">+   ]</span>
+<span class="p">+ }</span></div>
+<div class="actions"><span class="link">Hide changes</span><button class="btn">Adopt 8 units</button></div>
+</div>
+</div>
+</div>
+<div class="page" id="merge" hidden>
+<div class="title"><h1>DemoDevice</h1><span>9 units · 2 not in the vocabulary</span></div>
+<div class="tabs"><span>Graph</span><span>Table</span><span class="on">Units</span></div>
+<div class="split">
+<div class="box"><table>
+<tr><th>Unit</th><th>Description</th><th class="num">Stated by</th><th>Findings</th></tr>
+<tr class="sel"><td class="unit">RPM</td><td class="quiet">not in the vocabulary</td><td class="num">1 variable, 1 type</td><td><span class="chip">unknown-unit</span></td></tr>
+<tr><td class="unit">°C</td><td class="quiet">not in the vocabulary</td><td class="num">1 variable</td><td><span class="chip">unknown-unit</span></td></tr>
+<tr><td class="unit">%</td><td>percentage</td><td class="num">4 variables</td><td></td></tr>
+<tr><td class="unit">Hz</td><td>frequency</td><td class="num">3 variables</td><td></td></tr>
+<tr ><td class="unit">rpm</td><td>rotational speed</td><td class="num">2 variables</td><td></td></tr>
+<tr><td class="unit">V</td><td>voltage</td><td class="num">2 variables</td><td></td></tr>
+<tr><td class="unit">degC</td><td>temperature</td><td class="num">2 variables</td><td></td></tr>
+<tr><td class="unit">ms</td><td>time</td><td class="num">1 variable</td><td></td></tr>
+<tr><td class="unit">kPa</td><td>pressure</td><td class="num quiet">unused</td><td></td></tr>
+</table></div>
+<div class="box panel">
+<div class="actions" style="margin:0"><h2>RPM</h2><span class="link">Close</span></div>
+<p class="meta">not in the vocabulary · stated in 2 places, 2 files</p>
+<div class="findings"><span class="chip">unknown-unit</span><span class="msg">'RPM' is not in the vocabulary; did you mean 'rpm'?</span></div>
+<div class="field"><label>Rename RPM to</label><div class="combo"><span>rpm</span><span class="caret">▾</span></div></div>
+<div class="consequence">Changes 2 files: controller.ddd.json, types.ddd.json. rpm is in the vocabulary already, so RPM merges into it.</div>
+<div class="diff"><span class="f">controller.ddd.json, line 14</span>
+<span class="m">-           "unit": "RPM",</span>
+<span class="p">+           "unit": "rpm",</span>
+<span class="f">types.ddd.json, line 6</span>
+<span class="m">-       "unit": "RPM",</span>
+<span class="p">+       "unit": "rpm",</span></div>
+<div class="actions"><span class="link">Hide changes</span><button class="btn">Apply to 2 files</button></div>
+</div>
+</div>
+</div>
+<script>
+const view = new URLSearchParams(location.search).get("view");
+for (const id of ["vocab", "adopt", "merge"]) document.getElementById(id).hidden = view !== null && id !== view;
+</script>
+</body>
+</html>

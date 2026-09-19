@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Units page layouts</title>
+<style>
+:root {
+  --ink: #1d2a2f; --quiet: #5b6b71; --ground: #f7f9f9; --surface: #ffffff; --rule: #d9e2e5;
+  --accent: #0e6b7c; --focus: rgba(14, 107, 124, .16); --sel: #e3f1f3;
+  --error: #b3261e; --error-ground: #fdecea; --warning: #7a4f00; --warning-ground: #fff4dc;
+  --ok: #1e6b35; --ok-ground: #e6f4ea;
+  --font: "Segoe UI", system-ui, sans-serif; --mono: "Cascadia Mono", Consolas, monospace;
+  --r: 6px; --r-chip: 10px; --cell: 6px 10px; --shadow: 0 8px 24px rgba(20, 30, 35, .14);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 13.5px/1.5 var(--font); }
+.bar { display: flex; justify-content: space-between; align-items: center; padding: 9px 16px; border-bottom: 1px solid var(--rule); font-size: 12.5px; }
+.bar b { font-weight: 600; } .bar .pv { color: var(--quiet); letter-spacing: .05em; margin-left: 6px; font-size: 10.5px; }
+.bar a { color: var(--accent); margin-left: 14px; text-decoration: none; }
+.page { padding: 14px 16px 18px; }
+.title { display: flex; align-items: baseline; gap: 12px; margin: 0 0 12px; }
+.title h1 { font-size: 20px; font-weight: 600; margin: 0; }
+.title span { color: var(--quiet); font-size: 12.5px; }
+.title .label { color: #fff; }
+.tabs { display: flex; gap: 18px; border-bottom: 1px solid var(--rule); margin: 0 0 12px; font-size: 13px; }
+.tabs span { padding: 0 0 6px; color: var(--accent); }
+.tabs span.on { color: var(--ink); border-bottom: 2px solid var(--accent); font-weight: 600; }
+.split { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+table { width: 100%; border-collapse: collapse; background: var(--surface); }
+th, td { text-align: left; padding: var(--cell); border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th { font-weight: 600; font-size: 12.5px; }
+td.num, th.num { text-align: right; }
+.box { border: 1px solid var(--rule); border-radius: var(--r); overflow: hidden; background: var(--surface); }
+.quiet { color: var(--quiet); }
+.chip { display: inline-block; font-size: 11.5px; padding: 0 8px; border-radius: var(--r-chip); background: var(--error-ground); color: var(--error); line-height: 1.7; }
+.chip.soft { background: var(--ground); color: var(--quiet); border: 1px solid var(--rule); }
+tr.sel td { background: var(--sel); }
+tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--error); }
+.unit { font-weight: 600; }
+.panel { padding: 12px 14px; }
+.panel h2 { margin: 0; font-size: 14.5px; font-weight: 600; }
+.meta { color: var(--quiet); font-size: 12.5px; margin: 0 0 8px; }
+.findings { margin: 8px 0 0; font-size: 12.5px; }
+.findings .msg { color: var(--quiet); margin-left: 6px; }
+h3 { font-size: 12.5px; font-weight: 600; margin: 12px 0 4px; }
+.field { margin: 12px 0 4px; }
+.field label { display: block; font-size: 12.5px; color: var(--quiet); margin: 0 0 4px; }
+.combo { display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--rule); border-radius: var(--r); padding: 5px 10px; background: var(--surface); }
+.combo .caret { color: var(--quiet); font-size: 11px; }
+.consequence { color: var(--quiet); font-size: 12.5px; margin-top: 8px; }
+.actions { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+.btn { font: inherit; font-size: 12.5px; padding: 5px 12px; border-radius: var(--r); border: 1px solid var(--accent); background: var(--accent); color: #fff; }
+.btn.ghost { background: var(--surface); color: var(--accent); }
+.link { color: var(--accent); font-size: 12.5px; }
+.sites td { font-size: 12.5px; }
+.label { display: inline-block; margin-left: auto; font: 600 12px var(--font); color: #fff; background: var(--accent); padding: 2px 10px; border-radius: 10px; }
+/* B */
+.group { margin: 0 0 12px; }
+.group > .head { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 10px; font-weight: 600; font-size: 12.5px; }
+.group.out > .head { background: var(--error-ground); color: var(--error); }
+.group.in > .head, .group.unused > .head { background: var(--ground); }
+.row { display: grid; grid-template-columns: 90px 1fr 130px 400px; gap: 10px; align-items: center; padding: 6px 10px; border-top: 1px solid var(--rule); }
+.row .inline { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.row .inline .combo { width: 120px; padding: 3px 8px; }
+.row .inline .btn { padding: 3px 10px; }
+.expanded { grid-column: 1 / -1; background: var(--ground); border-radius: var(--r); padding: 6px 10px; font-size: 12.5px; color: var(--quiet); }
+.desc { border: 1px dashed transparent; }
+/* C */
+.md { display: grid; grid-template-columns: 250px 1fr; gap: 14px; align-items: start; }
+.side .search { border: 1px solid var(--rule); border-radius: var(--r); padding: 5px 10px; background: var(--surface); color: var(--quiet); margin: 0 0 8px; }
+.side .item { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--rule); }
+.side .item.on { background: var(--sel); box-shadow: inset 3px 0 0 var(--error); }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--error); margin-right: 6px; }
+.dot.none { background: transparent; }
+.detail { padding: 14px 18px; }
+.detail h2 { margin: 0 0 2px; font-size: 18px; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="bar"><span><b>ddd gui</b><span class="pv">PREVIEW</span></span><span><a>Projects</a><a>DemoDevice</a></span></div>
+
+<!-- A: a table of units and a panel beside it, as the component page does -->
+<div class="page" id="a">
+<div class="title"><h1>DemoDevice</h1><span>9 units · 2 not in the vocabulary</span><span class="label">A · table and panel</span></div>
+<div class="tabs"><span>Graph</span><span>Table</span><span class="on">Units</span></div>
+<div class="split">
+<div class="box"><table>
+<tr><th>Unit</th><th>Description</th><th class="num">Stated by</th><th>Findings</th></tr>
+<tr class="sel"><td class="unit">RPM</td><td class="quiet">not in the vocabulary</td><td class="num">1 variable, 1 type</td><td><span class="chip">unknown-unit</span></td></tr>
+<tr><td class="unit">°C</td><td class="quiet">not in the vocabulary</td><td class="num">1 variable</td><td><span class="chip">unknown-unit</span></td></tr>
+<tr><td class="unit">%</td><td>percentage</td><td class="num">4 variables</td><td></td></tr>
+<tr><td class="unit">Hz</td><td>frequency</td><td class="num">3 variables</td><td></td></tr>
+<tr><td class="unit">rpm</td><td>rotational speed</td><td class="num">2 variables</td><td></td></tr>
+<tr><td class="unit">V</td><td>voltage</td><td class="num">2 variables</td><td></td></tr>
+<tr><td class="unit">degC</td><td>temperature</td><td class="num">2 variables</td><td></td></tr>
+<tr><td class="unit">ms</td><td>time</td><td class="num">1 variable</td><td></td></tr>
+<tr><td class="unit">kPa</td><td>pressure</td><td class="num quiet">unused</td><td></td></tr>
+</table></div>
+<div class="box panel">
+<div class="actions" style="margin:0"><h2>RPM</h2><span class="link">Close</span></div>
+<p class="meta">not in the vocabulary · stated in 2 places, 2 files</p>
+<div class="findings"><span class="chip">unknown-unit</span><span class="msg">'RPM' is not in the vocabulary; did you mean 'rpm'?</span></div>
+<h3>Where it is stated</h3>
+<table class="sites"><tr><th>Where</th><th>File</th><th>What</th></tr>
+<tr><td>EngineSpeed</td><td class="quiet">controller.ddd.json</td><td>reads</td></tr>
+<tr><td>Speed_t</td><td class="quiet">types.ddd.json</td><td>scalar type</td></tr></table>
+<div class="field"><label>Rename RPM to</label><div class="combo"><span>rpm</span><span class="caret">▾</span></div></div>
+<div class="consequence">Changes 2 files: controller.ddd.json, types.ddd.json. rpm is in the vocabulary already, so RPM merges into it.</div>
+<div class="actions"><span class="link">Show changes</span><span><span class="link" style="margin-right:12px">Add RPM to the vocabulary instead</span><button class="btn">Apply to 2 files</button></span></div>
+</div>
+</div>
+</div>
+
+<!-- B: one full-width list, grouped by where each unit stands, acting inline -->
+<div class="page" id="b" hidden>
+<div class="title"><h1>DemoDevice</h1><span>9 units · 2 not in the vocabulary</span><span class="label">B · grouped list, inline</span></div>
+<div class="tabs"><span>Graph</span><span>Table</span><span class="on">Units</span></div>
+<div class="box group out">
+<div class="head"><span>Not in the vocabulary · 2</span><span>unknown-unit on each variable stating one</span></div>
+<div class="row"><span class="unit">RPM</span><span class="quiet">EngineSpeed in Controller, Speed_t in types.ddd.json</span><span class="quiet">2 places, 2 files</span><span class="inline"><span class="quiet">rename to</span><span class="combo"><span>rpm</span><span class="caret">▾</span></span><button class="btn">Apply to 2 files</button></span>
+<div class="expanded">controller.ddd.json, line 14: "unit": "RPM" becomes "rpm" · types.ddd.json, line 6: "unit": "RPM" becomes "rpm" · <span class="link">Add RPM to the vocabulary instead</span></div></div>
+<div class="row"><span class="unit">°C</span><span class="quiet">OilTemp in SensorHub</span><span class="quiet">1 place, 1 file</span><span class="inline"><span class="quiet">rename to</span><span class="combo"><span class="quiet">choose…</span><span class="caret">▾</span></span><button class="btn ghost">Add to vocabulary</button></span></div>
+</div>
+<div class="box group in">
+<div class="head"><span>In the vocabulary · 6</span><span class="quiet">description</span></div>
+<div class="row"><span class="unit">%</span><span class="desc">percentage</span><span class="quiet">4 variables</span><span class="inline"><span class="link">Rename…</span></span></div>
+<div class="row"><span class="unit">Hz</span><span class="desc">frequency</span><span class="quiet">3 variables</span><span class="inline"><span class="link">Rename…</span></span></div>
+<div class="row"><span class="unit">rpm</span><span class="desc">rotational speed</span><span class="quiet">2 variables</span><span class="inline"><span class="link">Rename…</span></span></div>
+<div class="row"><span class="unit">V</span><span class="desc">voltage</span><span class="quiet">2 variables</span><span class="inline"><span class="link">Rename…</span></span></div>
+<div class="row"><span class="unit">degC</span><span class="desc">temperature</span><span class="quiet">2 variables</span><span class="inline"><span class="link">Rename…</span></span></div>
+<div class="row"><span class="unit">ms</span><span class="desc">time</span><span class="quiet">1 variable</span><span class="inline"><span class="link">Rename…</span></span></div>
+</div>
+<div class="box group unused">
+<div class="head"><span>In the vocabulary, unused · 1</span><span></span></div>
+<div class="row"><span class="unit">kPa</span><span class="desc">pressure</span><span class="quiet">no variable</span><span class="inline"><span class="link">Remove from the vocabulary</span></span></div>
+</div>
+</div>
+
+<!-- C: a list of units on the left, one unit's whole page on the right -->
+<div class="page" id="c" hidden>
+<div class="title"><h1>DemoDevice</h1><span>9 units · 2 not in the vocabulary</span><span class="label">C · list and detail</span></div>
+<div class="tabs"><span>Graph</span><span>Table</span><span class="on">Units</span></div>
+<div class="md">
+<div class="side">
+<div class="search">Filter units</div>
+<div class="box">
+<div class="item on"><span><span class="dot"></span><b>RPM</b></span><span class="quiet">2</span></div>
+<div class="item"><span><span class="dot"></span><b>°C</b></span><span class="quiet">1</span></div>
+<div class="item"><span><span class="dot none"></span><b>%</b></span><span class="quiet">4</span></div>
+<div class="item"><span><span class="dot none"></span><b>Hz</b></span><span class="quiet">3</span></div>
+<div class="item"><span><span class="dot none"></span><b>rpm</b></span><span class="quiet">2</span></div>
+<div class="item"><span><span class="dot none"></span><b>V</b></span><span class="quiet">2</span></div>
+<div class="item"><span><span class="dot none"></span><b>degC</b></span><span class="quiet">2</span></div>
+<div class="item"><span><span class="dot none"></span><b>ms</b></span><span class="quiet">1</span></div>
+<div class="item"><span><span class="dot none"></span><b>kPa</b></span><span class="quiet">unused</span></div>
+</div>
+</div>
+<div class="box detail">
+<h2>RPM</h2>
+<p class="meta">not in the vocabulary · stated in 2 places, 2 files</p>
+<div class="findings"><span class="chip">unknown-unit</span><span class="msg">'RPM' is not in the vocabulary; did you mean 'rpm'?</span></div>
+<div class="cols">
+<div>
+<h3>Where it is stated</h3>
+<table class="sites"><tr><th>Where</th><th>File</th><th>What</th></tr>
+<tr><td>EngineSpeed</td><td class="quiet">controller.ddd.json</td><td>reads</td></tr>
+<tr><td>Speed_t</td><td class="quiet">types.ddd.json</td><td>scalar type</td></tr></table>
+<h3>Description</h3>
+<p class="quiet" style="margin:0">Only a unit in the vocabulary has one. <span class="link">Add RPM to the vocabulary</span></p>
+</div>
+<div>
+<h3>Rename</h3>
+<div class="field" style="margin-top:0"><label>Rename RPM to</label><div class="combo"><span>rpm</span><span class="caret">▾</span></div></div>
+<div class="consequence">Changes 2 files: controller.ddd.json, types.ddd.json. rpm is in the vocabulary already, so RPM merges into it.</div>
+<div class="actions"><span class="link">Show changes</span><button class="btn">Apply to 2 files</button></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<script>
+const layout = new URLSearchParams(location.search).get("layout");
+if (layout) for (const id of ["a", "b", "c"]) document.getElementById(id).hidden = id !== layout;
+else for (const id of ["b", "c"]) document.getElementById(id).hidden = false;
+</script>
+</body>
+</html>

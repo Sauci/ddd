@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass, field, fields
 from pathlib import Path, PurePath
 from typing import Any, Protocol
@@ -1084,53 +1084,13 @@ class _Loader:
     def _expand(
         self, source: Path, pattern: str, origin: Location, excluded: set[Path]
     ) -> list[Path]:
-        """Resolve one include entry into a list of existing files.
-
-        An entry that names a file is that file, tried before it is read as a pattern. The
-        two readings only ever collide over the three characters a pattern is made of, and a
-        directory carrying one of them is not a thing a project chooses: the cmake module
-        writes every include of a collected project as a literal absolute path, so a checkout
-        under ``C:/work/proj [v2]`` - a copy Windows or a user names that way - turned every
-        one of them into a character class that matched nothing, and the whole build failed
-        on a project whose files were all there. Where a file of that name exists, it is what
-        the entry meant; where none does, the entry is expanded as it always was, so
-        ``a[12].ddd.json`` still reaches ``a1`` and ``a2``. A project that wants the class
-        where a file of its own spelling exists renames one of the two.
-        """
-        raw = Path(pattern)
-        candidate = raw if raw.is_absolute() else source.parent / raw
-        # `is_file()` rather than `exists()` for the second half: a directory of that name is
-        # no more includable than a missing one, and reading it as a pattern is the better of
-        # the two answers, a pattern being what it looks like. It answers False rather than
-        # raising for a name the platform refuses outright, as every other reading here does.
-        if not any(character in pattern for character in _GLOB_CHARACTERS) or candidate.is_file():
-            return [resolve_path(candidate)]
-
-        # The anchor decides where a pattern starts, not is_absolute(): on Windows both the
-        # rooted '/shared/*.ddd.json' and the drive relative 'C:*.ddd.json' carry an anchor
-        # while reporting is_absolute() as false, and handing either to Path.glob unchanged
-        # makes pathlib refuse a non-relative pattern.
-        anchor = raw.anchor
-        base = _pattern_anchor(source.parent, raw)
-        relative = raw.relative_to(anchor) if anchor else raw
+        """Resolve one include entry into a list of existing files, by :func:`expand_include`,
+        reporting an entry that reaches none as ``include-empty``."""
         try:
-            found = list(base.glob(relative.as_posix()))
+            matches = expand_include(source, pattern, excluded)
         except (OSError, ValueError, NotImplementedError) as error:
             self._bag.add("include-empty", f"cannot expand pattern '{pattern}': {error}", origin)
             return []
-        # Sorted by the POSIX spelling rather than by the Path, which compares as the platform
-        # compares a path: case insensitively on Windows and by code point on Linux, so one
-        # project loaded 'alpha' before 'Zeta' here and the other way round there, and the
-        # definition file and the a2l of that project differed between two builds of the same
-        # sources. Names are already ordered by code point, and so are these.
-        matches = sorted(
-            (
-                resolved
-                for match in found
-                if match.is_file() and (resolved := resolve_path(match)) not in excluded
-            ),
-            key=Path.as_posix,
-        )
         if not matches:
             self._bag.add("include-empty", f"pattern '{pattern}' matches no file", origin)
         return matches
@@ -1343,6 +1303,60 @@ def _meaningful(items: list[_Placed]) -> list[_Placed]:
         return holds_something and explained_by_a_deeper_finding(place)
 
     return [(place, item) for place, item in items if not is_only_a_consequence(place, item)]
+
+
+def expand_include(
+    source: Path, pattern: str, excluded: Collection[Path] = frozenset()
+) -> list[Path]:
+    """The files one ``includes`` entry of the project description ``source`` names, resolved.
+
+    An entry that names a file is that file, tried before it is read as a pattern. The two
+    readings only ever collide over the three characters a pattern is made of, and a directory
+    carrying one of them is not a thing a project chooses: the cmake module writes every
+    include of a collected project as a literal absolute path, so a checkout under
+    ``C:/work/proj [v2]`` - a copy Windows or a user names that way - turned every one of them
+    into a character class that matched nothing, and the whole build failed on a project whose
+    files were all there. Where a file of that name exists, it is what the entry meant; where
+    none does, the entry is expanded as it always was, so ``a[12].ddd.json`` still reaches
+    ``a1`` and ``a2``. A project that wants the class where a file of its own spelling exists
+    renames one of the two.
+
+    Public so that what else has to know which files a project includes - the unit plans
+    finding the units file a new unit goes into - reads an entry by the loader's own rule, and
+    cannot come to another answer than the run that checks the project. A pattern pathlib
+    refuses to expand raises what pathlib raised: ``OSError``, ``ValueError`` or
+    ``NotImplementedError``.
+    """
+    raw = Path(pattern)
+    candidate = raw if raw.is_absolute() else source.parent / raw
+    # `is_file()` rather than `exists()` for the second half: a directory of that name is no
+    # more includable than a missing one, and reading it as a pattern is the better of the two
+    # answers, a pattern being what it looks like. It answers False rather than raising for a
+    # name the platform refuses outright, as every other reading here does.
+    if not any(character in pattern for character in _GLOB_CHARACTERS) or candidate.is_file():
+        return [resolve_path(candidate)]
+
+    # The anchor decides where a pattern starts, not is_absolute(): on Windows both the rooted
+    # '/shared/*.ddd.json' and the drive relative 'C:*.ddd.json' carry an anchor while
+    # reporting is_absolute() as false, and handing either to Path.glob unchanged makes
+    # pathlib refuse a non-relative pattern.
+    anchor = raw.anchor
+    base = _pattern_anchor(source.parent, raw)
+    relative = raw.relative_to(anchor) if anchor else raw
+    found = list(base.glob(relative.as_posix()))
+    # Sorted by the POSIX spelling rather than by the Path, which compares as the platform
+    # compares a path: case insensitively on Windows and by code point on Linux, so one project
+    # loaded 'alpha' before 'Zeta' here and the other way round there, and the definition file
+    # and the a2l of that project differed between two builds of the same sources. Names are
+    # already ordered by code point, and so are these.
+    return sorted(
+        (
+            resolved
+            for match in found
+            if match.is_file() and (resolved := resolve_path(match)) not in excluded
+        ),
+        key=Path.as_posix,
+    )
 
 
 def _pattern_anchor[Directory: PurePath](directory: Directory, pattern: PurePath) -> Directory:

@@ -6,11 +6,19 @@ import { ComponentPage } from "../screens/ComponentPage";
 import { GraphPage } from "../screens/GraphPage";
 import { ProjectPage } from "../screens/ProjectPage";
 import { StartPage } from "../screens/StartPage";
+import { UnitsPage } from "../screens/UnitsPage";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { LinkTabs } from "../ui/LinkTabs";
 import { useProjectState } from "./useProjectState";
 import { useRoute } from "./useRoute";
+
+/** The project screen's tabs, in the order they are shown. */
+const PROJECT_VIEWS = [
+  ["graph", "Graph"],
+  ["table", "Table"],
+  ["units", "Units"],
+] as const;
 
 export function App() {
   const queries = useQueryClient();
@@ -36,6 +44,17 @@ export function App() {
       ),
     [navigate],
   );
+  // Selecting a unit replaces the address, as selecting a variable does.
+  const openUnit = useCallback(
+    (unit: string | undefined) =>
+      navigate(
+        unit === undefined
+          ? { page: "project", view: "units" }
+          : { page: "project", view: "units", unit },
+        { replace: true },
+      ),
+    [navigate],
+  );
 
   let page: ReactNode;
   if (session.isPending) {
@@ -57,9 +76,9 @@ export function App() {
         <h1>{opened.name ?? opened.path}</h1>
         <LinkTabs
           label="Project views"
-          tabs={(["graph", "table"] as const).map((view) => ({
+          tabs={PROJECT_VIEWS.map(([view, label]) => ({
             href: hrefOf({ page: "project", view }),
-            label: view === "graph" ? "Graph" : "Table",
+            label,
             current: route.view === view,
             onFollow: () => navigate({ page: "project", view }),
           }))}
@@ -73,6 +92,8 @@ export function App() {
             onComponent={openComponent}
             onVariable={openVariable}
           />
+        ) : route.view === "units" ? (
+          <UnitsPage state={state} unit={route.unit} stopped={stopped} onUnit={openUnit} />
         ) : (
           <ProjectPage state={state} onComponent={openComponent} />
         )}

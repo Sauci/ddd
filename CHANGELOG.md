@@ -20,16 +20,29 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   project's description files on the developer's own computer and opens the browser on it:
   the project opens on a canvas of its modules, an arrow per producing-consuming pair
   coloured by the worst disagreement between its ends, and the component table one tab
-  away, with a declaration's unit changed in place - nothing but the unit changing in the
-  file, the rest of its layout, its owner and its permissions kept, and checked the way
-  `ddd check` checks it.  It is the first step of a GUI for developers who would rather not
-  edit JSON, and its options are not yet part of the public interface.  Installing it needs
-  no Node.js: a release carries the compiled pages, and so do the wheel ci builds for every
-  branch it runs on and the development build it publishes to TestPyPI of the last commit of
-  every push to `master` and to this repository's pull requests, once its checks pass -
-  `0.10.1.dev57` for run 57, the commit it was built from named in its metadata.  `--host`
-  can also serve it from a container: published on the host's loopback alone, with the token
-  in the address as the only guard beyond it.
+  away.  A declaration's unit is no longer changed in the table; selecting a declaration
+  opens a panel for its variable - every declaration of it, who produces and who reads it,
+  and the unit each states - where one unit is chosen for the variable and applied to every
+  declaration at once, with the lines each file will change shown on request, under Show
+  changes; a red or orange arrow on the canvas opens the same panel.  A unit a declared type
+  fixes is shown with its type and left to the type.  It is the first step of a GUI for
+  developers who would rather not edit JSON, and its options are not yet part of the public
+  interface.  Installing it needs no Node.js: a release carries the compiled pages, and so do
+  the wheel ci builds for every branch it runs on and the development build it publishes to
+  TestPyPI of the last commit of every push to `master` and to this repository's pull
+  requests, once its checks pass - `0.10.1.dev57` for run 57, the commit it was built from
+  named in its metadata.  `--host` can also serve it from a container: published on the
+  host's loopback alone, with the token in the address as the only guard beyond it.
+
+* **The editor offers no unit to a declaration whose type fixes it.**  A declaration naming a
+  declared type takes its `unit`, `conversion` and `limits` from the type, and the loader
+  refuses one of them stated beside the `typename`.  A `definition-mismatch` on such a
+  declaration was offered the producer's `unit` or `conversion` all the same, or the one
+  every other declaration states, and "Apply this unit to N other declarations" from another
+  declaration wrote into it too: each fix left a file that no longer loaded.  None of the
+  three is offered to a declaration naming a type any longer, and "Apply this unit", or the
+  same action for a `conversion` or `limits`, leaves it out of the declarations it counts and
+  changes.
 
 ## 0.10.0
 

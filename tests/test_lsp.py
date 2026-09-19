@@ -29,8 +29,10 @@ from conftest import (
     directory_link,
     framed,
     project,
+    scalar_type,
     sent,
     session,
+    types,
     write_tree,
 )
 from ddd.build_info import BUILD_INFO_FILENAME, BUILD_INFO_FORMAT, BuildInfo
@@ -934,6 +936,17 @@ class TestRuns:
         bag, covered = service.analyse(BuildInfo(project=DEMO.as_posix()))
         assert covered == service.run_project(DEMO).covered
         assert not bag.has_errors
+
+    def test_a_project_run_keeps_the_index_of_what_it_read(self) -> None:
+        run = service.run_project(DEMO)
+        assert run.index is not None
+        assert sorted(site.path.name for site in run.index.declarations["ValueA"]) == [
+            "controller.ddd.json",
+            "sensor_hub.ddd.json",
+        ]
+
+    def test_a_root_that_cannot_be_read_has_no_index(self, tmp_path: Path) -> None:
+        assert service.run_project(tmp_path / "absent.ddd.json").index is None
 
 
 class TestTheProjectIsReadOnce:
@@ -3159,12 +3172,87 @@ class TestPropagating:
             is None
         )
 
+    def test_assigning_the_value_already_stated_changes_nothing(self) -> None:
+        """`_assign`'s own guarantee, kept for its own sake now that every caller happens to
+        check it first: `_adopt` only calls where the target states nothing, `_from_producer`
+        only where the two values differ, and `_propagate` only for a site `settle` already
+        found to disagree. Asked to write what a declaration already states, there is still
+        nothing for `_assign` itself to do."""
+        from ddd.lsp.edits import _assign
+
+        document = Document(
+            '{"component": {"interface": [{"definition": '
+            '{"name": "S", "kind": "measurement", "unit": "rpm"}}]}}'
+        )
+        assert _assign(document, "component.interface[0].definition", "unit", '"rpm"') is None
+
     def test_a_definition_that_is_not_an_object_is_left_alone(self, tmp_path: Path) -> None:
         """Belt and braces around the insertion: there is nowhere to insert into."""
         from ddd.lsp.edits import _insert
 
         document = Document('{"component": {"interface": [{"definition": 7}]}}')
         assert _insert(document, "component.interface[0].definition", "unit", '"rpm"') is None
+
+    def test_a_declaration_naming_a_type_is_offered_no_unit(self, tmp_path: Path) -> None:
+        """The type fixes the unit of every declaration naming it, and the loader refuses one
+        stated beside it: the producer's unit is not offered to such a declaration."""
+        offered, _ = self.offer(
+            tmp_path,
+            "b.ddd.json",
+            "component.interface[0].definition",
+            **{
+                "types.ddd.json": types(scalar_type("Speed_t", unit="1/min")),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", typename="Speed_t")),
+            },
+        )
+        mine = (tmp_path / "b.ddd.json").as_uri()
+        assert [
+            action["title"]
+            for action in offered
+            if "unit" in action["title"] and mine in action["edit"]["changes"]
+        ] == []
+
+    def test_a_declaration_stating_no_type_explicitly_is_offered_the_unit(
+        self, tmp_path: Path
+    ) -> None:
+        """An explicit ``null`` names no type, for the loader and so for the offer: a plain
+        declaration that happens to state ``"typename": null`` beside its ``datatype`` is
+        offered the producer's unit exactly like one that leaves ``typename`` out altogether.
+
+        ``declare()`` drops ``datatype`` the moment ``typename`` is among its keyword
+        arguments - it assumes a caller naming ``typename`` at all means storage by type - so
+        this declaration is written out by hand.
+        """
+        offered, _ = self.offer(
+            tmp_path,
+            "b.ddd.json",
+            "component.interface[0].definition",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component(
+                    "B",
+                    {
+                        "scope": "input",
+                        "definition": {
+                            "name": "Speed",
+                            "datatype": "uint8",
+                            "conversion": {"kind": "identity"},
+                            "typename": None,
+                            "kind": "measurement",
+                            "volatile": False,
+                        },
+                    },
+                ),
+            },
+        )
+        (use_unit,) = [
+            action for action in offered if action["title"] == "Use the unit declared in a"
+        ]
+        (edits,) = use_unit["edit"]["changes"].values()
+        rewritten = apply_edits(tmp_path / "b.ddd.json", edits)
+        declared = json.loads(rewritten)["component"]["interface"][0]["definition"]
+        assert declared["unit"] == "rpm"
 
 
 class TestPositions:

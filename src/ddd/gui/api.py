@@ -23,16 +23,37 @@ from pydantic import BaseModel, ValidationError
 
 from ddd import __version__
 from ddd.diagnostics import CHECKS
-from ddd.editing import INVALID, STALE, UNREADABLE, UNVERIFIED, EditError, FileChange, Operation
+from ddd.editing import (
+    INVALID,
+    STALE,
+    UNREADABLE,
+    UNVERIFIED,
+    EditError,
+    FileChange,
+    Operation,
+    parse_raw,
+)
 from ddd.graph import Module, graph_of
 from ddd.gui import contract
 from ddd.gui.session import (
     Filed,
     NoProjectError,
     NotInProjectError,
+    Revision,
     Session,
     SourceFile,
     find_projects,
+)
+from ddd.lsp.edits import PROPAGATED_KEYS, settle
+from ddd.lsp.ranges import Document, read
+from ddd.variables import (
+    Declared,
+    declarations_of,
+    located_on,
+    preview,
+    refusal,
+    units_in_use,
+    vocabulary_of,
 )
 
 WAIT_SECONDS: Final = 25.0
@@ -259,6 +280,113 @@ class Api:
             ).model_dump(mode="json"),
         )
 
+    def _variable(self, query: Query, body: bytes | None) -> Reply:
+        revision = self._opened()
+        name = _single(query.get("name"))
+        if not name:
+            return _error(400, "bad-request", "variable takes ?name=")
+        declared = _declared(revision, name, {})
+        if not declared:
+            return _undeclared(revision, name)
+        return Reply(
+            200,
+            contract.VariableReply(
+                revision=revision.number,
+                name=name,
+                declarations=[
+                    {
+                        "path": entry.site.path.resolve().as_posix(),
+                        "pointer": entry.site.pointer,
+                        "component": entry.component,
+                        "role": entry.role,
+                        "stated": dict(entry.stated),
+                        "type": entry.type_name,
+                        "fixed": dict(entry.fixed),
+                    }
+                    for entry in declared
+                ],
+                findings=[
+                    _finding(filed)
+                    for filed in revision.findings
+                    if located_on(declared, filed.file, filed.diagnostic)
+                ],
+            ).model_dump(mode="json"),
+        )
+
+    def _units(self, query: Query, body: bytes | None) -> Reply:
+        revision = self._opened()
+        cache: dict[Path, Document] = {}
+        vocabulary = vocabulary_of(
+            [read(file.path, cache) for file in revision.files if file.kind == "units"]
+        )
+        used = () if revision.index is None else units_in_use(revision.index, cache)
+        return Reply(
+            200,
+            contract.UnitsReply(
+                revision=revision.number,
+                vocabulary=None
+                if vocabulary is None
+                else [{"unit": unit, "description": text} for unit, text in vocabulary],
+                used=[{"unit": unit, "variables": count} for unit, count in used],
+            ).model_dump(mode="json"),
+        )
+
+    def _settle(self, query: Query, body: bytes | None) -> Reply:
+        revision = self._opened()
+        name, key, raw = (_single(query.get(part)) for part in ("name", "key", "raw"))
+        if not name or not key:
+            return _error(
+                400, "bad-request", "settle takes ?name= and ?key=, and ?raw= unless the key goes"
+            )
+        if key not in PROPAGATED_KEYS:
+            return _error(
+                400, "bad-request", f"'{key}' is not a key the declarations of a variable share"
+            )
+        if raw is not None:
+            try:
+                parse_raw(raw)
+            except EditError as refused:
+                return _error(400, "bad-request", str(refused))
+        built = revision.index
+        if built is None or name not in built.declarations:
+            return _undeclared(revision, name)
+        settlement = settle(built, name, key, raw, {})
+        if settlement.unsettled:
+            code, message = refusal(settlement.unsettled[0], name, key)
+            return _error(409, code, message)
+        stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
+        try:
+            planned = preview(settlement, key, stamps)
+        except EditError as refused:
+            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+        return Reply(
+            200,
+            contract.SettleReply(
+                revision=revision.number,
+                changes=[
+                    {
+                        "file": entry.path.resolve().as_posix(),
+                        "fingerprint": entry.fingerprint,
+                        "operations": [
+                            {"op": o.op, "pointer": o.pointer, "raw": o.raw}
+                            for o in entry.operations
+                        ],
+                        "hunks": [
+                            {"line": h.line, "before": h.before, "after": h.after}
+                            for h in entry.hunks
+                        ],
+                    }
+                    for entry in planned
+                ],
+            ).model_dump(mode="json"),
+        )
+
+    def _opened(self) -> Revision:
+        revision = self.session.revision
+        if revision is None:
+            raise NoProjectError("no project is open")
+        return revision
+
     def _session_body(self) -> dict[str, Any]:
         revision = self.session.revision
         project = None
@@ -291,6 +419,9 @@ _ROUTES: Final[dict[str, tuple[str, Answer]]] = {
     "/api/graph": ("GET", Api._graph),
     "/api/checks": ("GET", Api._checks),
     "/api/edit": ("POST", Api._edit),
+    "/api/variable": ("GET", Api._variable),
+    "/api/units": ("GET", Api._units),
+    "/api/settle": ("GET", Api._settle),
 }
 
 
@@ -332,6 +463,29 @@ def _module(file: SourceFile) -> Module:
         file.warnings,
         file.infos,
     )
+
+
+def _declared(revision: Revision, name: str, cache: dict[Path, Document]) -> tuple[Declared, ...]:
+    return () if revision.index is None else declarations_of(revision.index, name, cache)
+
+
+def _undeclared(revision: Revision, name: str) -> Reply:
+    """The answer about ``name`` when no declaration of it was read.
+
+    That nothing declares it only while every file loaded: a file saved half-edited, as an editor
+    saves one being typed into, keeps the names only it declares out of every index until it
+    parses again, and a page told they are not declared would close their panels for good
+    (spec 5.5) rather than wait for the next save.
+    """
+    unread = [file.path.name for file in revision.files if not file.loaded]
+    if unread:
+        return _error(
+            409,
+            UNREADABLE,
+            f"'{name}' is not declared in any file that loaded, "
+            f"and {', '.join(unread)} did not load",
+        )
+    return _error(404, "not-found", f"'{name}' is not declared in the open project")
 
 
 def _single(values: Sequence[str] | None) -> str | None:

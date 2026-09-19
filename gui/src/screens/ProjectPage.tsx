@@ -1,4 +1,5 @@
 import type { State } from "../api/types";
+import { Button } from "../ui/Button";
 
 interface Props {
   state: State | null;
@@ -32,9 +33,9 @@ export function ProjectPage({ state, onComponent }: Props) {
           {components.map((file) => (
             <tr key={file.path} className={file.findings.error > 0 ? "has-error" : undefined}>
               <td>
-                <button type="button" className="link" onClick={() => onComponent(file.path)}>
+                <Button variant="link" onPress={() => onComponent(file.path)}>
                   {file.name ?? file.path}
-                </button>
+                </Button>
               </td>
               <td>{file.findings.error}</td>
               <td>{file.findings.warning}</td>

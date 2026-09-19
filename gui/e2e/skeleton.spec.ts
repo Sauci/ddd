@@ -1,10 +1,9 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
+import { CONTROLLER, chooseUnit, SENSOR_HUB, withUnitOfValueA } from "./demo";
 import { expect, test } from "./fixtures";
 
-const CONTROLLER = join("components", "controller.ddd.json");
-const SENSOR_HUB = join("components", "sensor_hub.ddd.json");
 const COMPONENTS = ["Controller", "SensorHub", "UserInterface", "EventLogger"];
 
 /** The project page's row for one component, to read its Errors and Warnings cells from. */
@@ -25,56 +24,47 @@ test("the demo opens on its project page, with every component", async ({ page, 
   }
 });
 
-test("a unit is written as one value and the disagreement is shown on both sides", async ({
+test("a unit set from the panel is written as one value in every file declaring it", async ({
   page,
   gui,
 }) => {
-  const file = join(gui.directory, CONTROLLER);
-  const before = readFileSync(file);
+  const files = [join(gui.directory, CONTROLLER), join(gui.directory, SENSOR_HUB)];
+  const before = files.map((file) => readFileSync(file));
   await page.goto(gui.address);
   await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
 
-  await page.getByRole("button", { name: "Change unit of ValueA" }).click();
-  await page.getByRole("textbox", { name: "Unit of ValueA" }).fill("rpm");
-  await page.getByRole("textbox", { name: "Unit of ValueA" }).press("Enter");
-  await expect(page.getByRole("button", { name: "Change unit of ValueA" })).toHaveText("rpm");
-  const expected = Buffer.from(
-    before.toString("utf8").replace('"unit": "%"', '"unit": "rpm"'),
-    "utf8",
-  );
-  await expect.poll(() => readFileSync(file).equals(expected)).toBe(true);
-  await expect(page.locator(".findings").getByText("definition-mismatch")).toBeVisible();
+  await chooseUnit(page, "rpm");
+  await expect(
+    page.getByText("Changes 2 files: controller.ddd.json, sensor_hub.ddd.json"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Apply to 2 files" }).click();
+  for (const [index, file] of files.entries()) {
+    const expected = withUnitOfValueA(before[index] as Buffer, "rpm");
+    await expect.poll(() => readFileSync(file).equals(expected)).toBe(true);
+  }
 
-  await page.getByRole("button", { name: "DemoDevice" }).click();
-  // The counts this journey checks are the table's, one tab away from the canvas the project
-  // now opens on - which is also why undoing this and the click above takes three goBacks
-  // below, not two: the Table tab is one more stop on the way to SensorHub's page.
-  await page.getByRole("link", { name: "Table" }).click();
-  await expect(componentRow(page, "Controller").getByRole("cell").nth(1)).toHaveText("1");
-  await expect(componentRow(page, "SensorHub").getByRole("cell").nth(1)).toHaveText("1");
-  await page.getByRole("button", { name: "SensorHub", exact: true }).click();
-  await expect(page.locator(".findings").getByText("definition-mismatch")).toBeVisible();
-
-  await page.goBack();
-  await page.goBack();
-  await page.goBack();
-  await page.getByRole("button", { name: "Change unit of ValueA" }).click();
-  await page.getByRole("textbox", { name: "Unit of ValueA" }).fill("%");
-  await page.getByRole("textbox", { name: "Unit of ValueA" }).press("Enter");
-  await expect(page.getByText("None.")).toBeVisible();
-  await expect.poll(() => readFileSync(file).equals(before)).toBe(true);
+  await chooseUnit(page, "%");
+  await page.getByRole("button", { name: "Apply to 2 files" }).click();
+  for (const [index, file] of files.entries()) {
+    await expect.poll(() => readFileSync(file).equals(before[index] as Buffer)).toBe(true);
+  }
 });
 
-test("escape leaves a unit as it was", async ({ page, gui }) => {
-  const file = join(gui.directory, CONTROLLER);
-  const before = readFileSync(file);
+test("a unit chosen but not applied changes nothing", async ({ page, gui }) => {
+  const files = [join(gui.directory, CONTROLLER), join(gui.directory, SENSOR_HUB)];
+  const before = files.map((file) => readFileSync(file));
   await page.goto(gui.address);
   await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Change unit of ValueA" }).click();
-  await page.getByRole("textbox", { name: "Unit of ValueA" }).fill("rpm");
-  await page.getByRole("textbox", { name: "Unit of ValueA" }).press("Escape");
-  await expect(page.getByRole("button", { name: "Change unit of ValueA" })).toHaveText("%");
-  expect(readFileSync(file).equals(before)).toBe(true);
+  await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
+  await chooseUnit(page, "rpm");
+  await expect(page.getByText("Changes 2 files", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Close ValueA" }).click();
+  await expect(page.getByRole("complementary", { name: "ValueA" })).toHaveCount(0);
+  expect(files.map((file, index) => readFileSync(file).equals(before[index] as Buffer))).toEqual([
+    true,
+    true,
+  ]);
 });
 
 test("a change saved by another editor reaches the page, and a unit being typed keeps its draft", async ({
@@ -84,16 +74,21 @@ test("a change saved by another editor reaches the page, and a unit being typed 
   const file = join(gui.directory, CONTROLLER);
   await page.goto(gui.address);
   await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Change unit of ValueB" })).toHaveText("V");
-  await page.getByRole("button", { name: "Change unit of ValueA" }).click();
-  await page.getByRole("textbox", { name: "Unit of ValueA" }).fill("rp");
+  await expect(page.getByRole("button", { name: "Set the unit of ValueB" })).toHaveText("V");
+  await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
+  const picker = page.getByRole("combobox", { name: "Unit of ValueA" });
+  await picker.fill("rp");
   writeFileSync(file, readFileSync(file, "utf8").replace('"unit": "V"', '"unit": "mV"'));
-  await expect(page.getByRole("button", { name: "Change unit of ValueB" })).toHaveText("mV", {
-    timeout: 5_000,
-  });
-  // The table stays while the file is read again for the new revision, so the editor open in it
-  // does too: swapped for "Reading the file…", it lost the draft.
-  await expect(page.getByRole("textbox", { name: "Unit of ValueA" })).toHaveValue("rp");
+  // The reader is still typing, so the picker's list is still open, and while it is React Aria
+  // hides the rest of the page from assistive technology: ValueB's button is looked for there
+  // all the same.
+  await expect(
+    page.getByRole("button", { name: "Set the unit of ValueB", includeHidden: true }),
+  ).toHaveText("mV", { timeout: 5_000 });
+  // The table and the panel stay while the file is read again for the new revision, so the
+  // picker does too: swapped for a loading line, it lost what the reader was typing.
+  await expect(picker).toHaveValue("rp");
+  await expect(picker).toHaveAttribute("aria-expanded", "true");
 });
 
 test("an edit made from a page that is out of date is refused, and the file reloaded", async ({
@@ -103,24 +98,26 @@ test("an edit made from a page that is out of date is refused, and the file relo
   const file = join(gui.directory, CONTROLLER);
   await page.goto(gui.address);
   await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Change unit of ValueB" })).toHaveText("V");
+  await expect(page.getByRole("button", { name: "Set the unit of ValueB" })).toHaveText("V");
+  await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
+  await chooseUnit(page, "rpm");
   await page.route("**/api/edit", async (route) => {
     writeFileSync(file, readFileSync(file, "utf8").replace('"unit": "V"', '"unit": "mV"'));
     await route.continue();
   });
-  await page.getByRole("button", { name: "Change unit of ValueA" }).click();
-  await page.getByRole("textbox", { name: "Unit of ValueA" }).fill("rpm");
-  await page.getByRole("textbox", { name: "Unit of ValueA" }).press("Enter");
-  await expect(page.getByRole("status")).toContainText("changed on disk");
-  await expect(page.getByRole("button", { name: "Change unit of ValueB" })).toHaveText("mV");
-  expect(readFileSync(file, "utf8")).toContain('"unit": "%"');
+  await page.getByRole("button", { name: "Apply to 2 files" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "changed on disk" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Set the unit of ValueB" })).toHaveText("mV");
+  expect(readFileSync(file, "utf8")).toMatch(/"name": "ValueA"[\s\S]*?"unit": "%"/);
 });
 
 test("the page says so when the server stops", async ({ page, gui }) => {
   await page.goto(gui.address);
   await expect(page.getByRole("heading", { name: "DemoDevice" })).toBeVisible();
   await gui.stop();
-  await expect(page.getByRole("alert")).toContainText("stopped");
+  // Stopped in the middle of the canvas's own request, the server also leaves the canvas saying
+  // that request went unanswered (the module graph's spec 5.6): a second alert, beside this one.
+  await expect(page.getByRole("alert").filter({ hasText: "stopped" })).toBeVisible();
 });
 
 test("without a project the start page lists the ones found and opens the one chosen", async ({
@@ -151,39 +148,22 @@ test("the demo opens on a canvas of its four modules", async ({ page, gui }) => 
 });
 
 test("a disagreement colours its arrow", async ({ page, gui }) => {
+  const file = join(gui.directory, CONTROLLER);
+  const before = readFileSync(file);
+  writeFileSync(file, withUnitOfValueA(before, "rpm"));
   await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Change unit of ValueA" }).click();
-  await page.getByRole("textbox", { name: "Unit of ValueA" }).fill("rpm");
-  await page.getByRole("textbox", { name: "Unit of ValueA" }).press("Enter");
-  await expect(page.getByRole("button", { name: "Change unit of ValueA" })).toHaveText("rpm");
-
-  await page.getByRole("button", { name: "DemoDevice" }).click();
   // SensorHub owns both ValueA and ValueB that Controller reads, so the arrow's count is the
   // pair's, not the disagreement's: it stays "2 variables" whether one of them disagrees or not.
   await expect(page.getByLabel("SensorHub to Controller: 2 variables, error")).toBeVisible();
-
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Change unit of ValueA" }).click();
-  await page.getByRole("textbox", { name: "Unit of ValueA" }).fill("%");
-  await page.getByRole("textbox", { name: "Unit of ValueA" }).press("Enter");
-  await expect(page.getByRole("button", { name: "Change unit of ValueA" })).toHaveText("%");
-
-  await page.getByRole("button", { name: "DemoDevice" }).click();
+  writeFileSync(file, before);
   await expect(page.getByLabel("SensorHub to Controller: 2 variables, agreed")).toBeVisible();
 });
 
 test("an arrow says what is wrong", async ({ page, gui }) => {
+  const file = join(gui.directory, CONTROLLER);
+  writeFileSync(file, withUnitOfValueA(readFileSync(file), "rpm"));
   await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Change unit of ValueA" }).click();
-  await page.getByRole("textbox", { name: "Unit of ValueA" }).fill("rpm");
-  await page.getByRole("textbox", { name: "Unit of ValueA" }).press("Enter");
-  await expect(page.getByRole("button", { name: "Change unit of ValueA" })).toHaveText("rpm");
-
-  await page.getByRole("button", { name: "DemoDevice" }).click();
   await expect(page.getByLabel("SensorHub to Controller: 2 variables, error")).toBeVisible();
-
   // The label sits on the middle of the curve and is a tooltip trigger in its own right, so a
   // reader can aim at it without hitting the stroke underneath.
   await page.locator(".flow-label.error").hover();

@@ -9,6 +9,7 @@
  */
 
 import { type Edge, MarkerType, type Node } from "@xyflow/react";
+import type { KeyboardEvent } from "react";
 import type { GraphDisagreement, GraphFlow, GraphModule, GraphReply } from "../api/types";
 import { laidOut } from "./layout";
 import { neighboursOf } from "./neighbours";
@@ -36,8 +37,8 @@ export interface ModuleData extends Record<string, unknown> {
  * says out loud, and a path is never shown. `disagreements` rides along for the tooltip, which
  * is open while `active` and carries `tooltip` as its id, the one the arrow points at with
  * `aria-describedby`. `onReached` is the same callback the arrow's own group calls, so that the
- * label sitting on the middle of the curve opens the tooltip rather than hiding the curve that
- * would have.
+ * label sitting on the middle of the curve opens the tooltip exactly as the curve itself does;
+ * a click on the label reaches the group's own click through React's tree, and opens the panel.
  */
 export interface FlowData extends Record<string, unknown> {
   source: string;
@@ -92,11 +93,21 @@ export function nodesOf(
  * Every flow as an arrow, carrying the two modules' names rather than their paths.
  *
  * `onReached` is called with the arrow's id when the reader's pointer or keyboard arrives on it
- * and with `null` when it leaves, which is what opens and closes the tooltip. The handlers ride
- * in `domAttributes` because React Flow owns the group they belong on; `ariaLabel` replaces the
- * default that would otherwise announce the arrow as its two file paths.
+ * and with `null` when it leaves, which is what opens and closes the tooltip. `onOpen` is called
+ * with the id on a click, or on Enter or Space, which is what opens the panel beside the canvas
+ * (spec 5.4). Both handlers ride in `domAttributes` because React Flow owns the group they
+ * belong on, spreading it after its own `onClick` and `onKeyDown` there - so `onOpen`'s handlers
+ * replace React Flow's click-to-select and its Enter, Space and Escape keyboard selection
+ * outright, which costs this canvas nothing, since it never otherwise turns an edge "selected".
+ * `ariaLabel` replaces the default that would otherwise announce the arrow as its two file paths;
+ * `ariaRole` marks as a button only the arrow choosing it would open something on, spec 5.4's "a
+ * red or orange arrow is a button" - one whose ends agree needs no role of its own.
  */
-export function edgesOf(graph: GraphReply, onReached: (id: string | null) => void): FlowEdgeType[] {
+export function edgesOf(
+  graph: GraphReply,
+  onReached: (id: string | null) => void,
+  onOpen: (id: string) => void,
+): FlowEdgeType[] {
   const names = new Map(graph.modules.map((module) => [module.path, module.name]));
   return graph.flows.flatMap((flow, index) => {
     const source = names.get(flow.from);
@@ -106,6 +117,7 @@ export function edgesOf(graph: GraphReply, onReached: (id: string | null) => voi
     if (source === undefined || target === undefined) return [];
     const id = `${flow.from} -> ${flow.to}`;
     const tooltip = `flow-tooltip-${index}`;
+    const opensPanel = flow.disagreements.some((disagreement) => disagreement.object !== null);
     return [
       {
         id,
@@ -119,11 +131,21 @@ export function edgesOf(graph: GraphReply, onReached: (id: string | null) => voi
           height: 18,
         },
         ariaLabel: sentenceOf(source, target, flow.objects.length, stateOf(flow.severity)),
+        // Only present when true: exactOptionalPropertyTypes makes `ariaRole: undefined` a type
+        // error of its own, and would in any case still be a key React Flow's `??` falls back
+        // past, drawing the group as a plain "img" while advertising a role that never applied.
+        ...(opensPanel ? { ariaRole: "button" as const } : {}),
         domAttributes: {
           onMouseEnter: () => onReached(id),
           onMouseLeave: () => onReached(null),
           onFocus: () => onReached(id),
           onBlur: () => onReached(null),
+          onClick: () => onOpen(id),
+          onKeyDown: (event: KeyboardEvent) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            onOpen(id);
+          },
           // What a reader hears the moment they reach the arrow: React Flow's own description
           // here only says how to select an edge, which this canvas does nothing with.
           "aria-describedby": tooltip,
@@ -142,6 +164,24 @@ export function edgesOf(graph: GraphReply, onReached: (id: string | null) => voi
       },
     ];
   });
+}
+
+/** The variables an arrow disagrees about, each once: what its panel is for. */
+export function objectsInDisagreement(graph: GraphReply, id: string): string[] {
+  const flow = graph.flows.find((entry) => `${entry.from} -> ${entry.to}` === id);
+  const objects = (flow?.disagreements ?? []).flatMap((entry) =>
+    entry.object === null ? [] : [entry.object],
+  );
+  return [...new Set(objects)].sort();
+}
+
+/** An arrow as its sentence begins: the module it leaves, then the one it reaches. */
+export function flowTitle(graph: GraphReply, id: string): string {
+  const flow = graph.flows.find((entry) => `${entry.from} -> ${entry.to}` === id);
+  const name = (path: string) => graph.modules.find((module) => module.path === path)?.name;
+  const source = flow === undefined ? undefined : name(flow.from);
+  const target = flow === undefined ? undefined : name(flow.to);
+  return source === undefined || target === undefined ? id : `${source} to ${target}`;
 }
 
 /** What one arrow says out loud: who sends how much to whom, and how the two ends get on. */

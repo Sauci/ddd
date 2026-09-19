@@ -5,7 +5,10 @@ import { execSync } from "node:child_process";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const ALLOWED = new Set(["MIT", "ISC", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause"]);
+// The zero-clause BSD licence (0BSD) grants everything BSD-2-Clause does and asks for less - not
+// even the notice - so it is within "the BSD licences" spec 6.8 of the web GUI design allows;
+// tslib (a dependency of React Aria's @swc/helpers) is the package that brought it.
+const ALLOWED = new Set(["MIT", "ISC", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "0BSD"]);
 const tree = JSON.parse(execSync("npm ls --omit=dev --all --long --json", { encoding: "utf8" }));
 
 const packages = new Map();

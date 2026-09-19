@@ -5,7 +5,10 @@ import type {
   Found,
   GraphReply,
   SessionInfo,
+  SettleReply,
   State,
+  UnitsReply,
+  VariableReply,
 } from "./types";
 
 type Fetch = (path: string, init?: RequestInit) => Promise<Response>;
@@ -87,6 +90,25 @@ export const getFile = (path: string, fetchImpl: Fetch = fetch) =>
 
 export const getGraph = (fetchImpl: Fetch = fetch) =>
   request<GraphReply>("/api/graph", {}, fetchImpl);
+
+export const getVariable = (name: string, fetchImpl: Fetch = fetch) =>
+  request<VariableReply>(`/api/variable?name=${encodeURIComponent(name)}`, {}, fetchImpl);
+
+export const getUnits = (fetchImpl: Fetch = fetch) =>
+  request<UnitsReply>("/api/units", {}, fetchImpl);
+
+export const getSettle = (
+  name: string,
+  key: string,
+  raw: string | null,
+  fetchImpl: Fetch = fetch,
+) => request<SettleReply>(`/api/settle?${settleQuery(name, key, raw)}`, {}, fetchImpl);
+
+/** The preview's query: without `raw`, the key is to go from every declaration. */
+function settleQuery(name: string, key: string, raw: string | null): string {
+  const query = `name=${encodeURIComponent(name)}&key=${encodeURIComponent(key)}`;
+  return raw === null ? query : `${query}&raw=${encodeURIComponent(raw)}`;
+}
 
 export const postEdit = (changes: Changes, fetchImpl: Fetch = fetch) =>
   request<EditReply>("/api/edit", post(changes), fetchImpl);

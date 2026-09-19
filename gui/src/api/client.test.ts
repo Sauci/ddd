@@ -5,7 +5,10 @@ import {
   getGraph,
   getProjects,
   getSession,
+  getSettle,
   getState,
+  getUnits,
+  getVariable,
   openProject,
   postEdit,
   request,
@@ -79,6 +82,10 @@ describe("requests to the server", () => {
     await getState(3, signal, fetchImpl);
     await getFile("C:/p/a b.ddd.json", fetchImpl);
     await getGraph(fetchImpl);
+    await getVariable("Value A", fetchImpl);
+    await getUnits(fetchImpl);
+    await getSettle("ValueA", "unit", '"%"', fetchImpl);
+    await getSettle("ValueA", "unit", null, fetchImpl);
     await postEdit(
       { changes: [{ file: "a", fingerprint: "x", operations: [{ op: "remove", pointer: "a" }] }] },
       fetchImpl,
@@ -99,6 +106,10 @@ describe("requests to the server", () => {
       ["/api/state?after=3", { credentials: "same-origin", signal }],
       ["/api/file?path=C%3A%2Fp%2Fa%20b.ddd.json", { credentials: "same-origin" }],
       ["/api/graph", { credentials: "same-origin" }],
+      ["/api/variable?name=Value%20A", { credentials: "same-origin" }],
+      ["/api/units", { credentials: "same-origin" }],
+      ["/api/settle?name=ValueA&key=unit&raw=%22%25%22", { credentials: "same-origin" }],
+      ["/api/settle?name=ValueA&key=unit", { credentials: "same-origin" }],
       [
         "/api/edit",
         {

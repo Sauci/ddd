@@ -1,4 +1,5 @@
-/* The skeleton's few tokens. Milestone 2 replaces them with the visual style it chooses. */
+/* The page's one set of tokens (docs/superpowers/specs/2026-09-18-gui-units-design.md, 5.1):
+   nothing else in the page holds a colour or a size. */
 :root {
   --ink: #1d2a2f;
   --ink-quiet: #5b6b71;
@@ -7,18 +8,28 @@
   --canvas: #eef2f3;
   --rule: #d9e2e5;
   --accent: #0e6b7c;
+  --accent-ground: #e3f1f3;
+  --focus: rgb(14 107 124 / 16%);
   --error: #b3261e;
   --error-ground: #fdecea;
   --warning: #7a4f00;
   --warning-ground: #fff4dc;
+  --ok: #1e6b35;
+  --ok-ground: #e6f4ea;
+  --radius: 6px;
+  --radius-chip: 10px;
+  --radius-frame: 10px;
+  --shadow-popover: 0 8px 24px rgb(20 30 35 / 14%);
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-6: 24px;
-  --text-small: 13px;
-  --text-body: 15px;
-  --text-title: 22px;
+  --cell: 6px 10px;
+  --panel-pad: 12px 14px;
+  --text-small: 12.5px;
+  --text-body: 13.5px;
+  --text-title: 20px;
   --font: "Segoe UI", system-ui, sans-serif;
   --mono: "Cascadia Mono", Consolas, monospace;
 }

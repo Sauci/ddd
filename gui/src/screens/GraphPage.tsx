@@ -13,7 +13,6 @@ import {
 import { type KeyboardEvent, useCallback, useMemo, useState } from "react";
 import { getGraph } from "../api/client";
 import type { GraphReply, State } from "../api/types";
-import { Banner } from "../components/Banner";
 import { FlowEdge } from "../components/FlowEdge";
 import { ModuleNode } from "../components/ModuleNode";
 import {
@@ -21,11 +20,17 @@ import {
   edgesOf,
   fadedNodes,
   firstMatch,
+  flowTitle,
   type ModuleNodeType,
   nodesOf,
+  objectsInDisagreement,
   shownEdges,
 } from "../lib/canvas";
 import { forgetPositions, rememberPosition, savedPositions } from "../state/positions";
+import { Banner } from "../ui/Banner";
+import { Button } from "../ui/Button";
+import { Panel } from "../ui/Panel";
+import { VariablePanel } from "./VariablePanel";
 
 // Outside the component on purpose: a fresh object here makes React Flow rebuild every node and
 // every edge on each render, which it says so itself in the console.
@@ -38,11 +43,14 @@ const FLIGHT = 300;
 interface Props {
   project: string;
   state: State | null;
+  variable: string | undefined;
+  stopped: boolean;
   onComponent: (file: string) => void;
+  onVariable: (variable: string | undefined) => void;
 }
 
 /** The open project as a canvas: one node per module, one arrow per producing-consuming pair. */
-export function GraphPage({ project, state, onComponent }: Props) {
+export function GraphPage({ project, state, variable, stopped, onComponent, onVariable }: Props) {
   const graph = useQuery({
     // The project is in the key beside the revision: until the first state answer arrives the
     // revision is undefined, so two projects opened one after the other in the same session
@@ -70,7 +78,15 @@ export function GraphPage({ project, state, onComponent }: Props) {
         </Banner>
       )}
       <ReactFlowProvider>
-        <Canvas graph={graph.data} project={project} onComponent={onComponent} />
+        <Canvas
+          graph={graph.data}
+          project={project}
+          variable={variable}
+          revision={state?.revision}
+          stopped={stopped}
+          onComponent={onComponent}
+          onVariable={onVariable}
+        />
       </ReactFlowProvider>
     </>
   );
@@ -86,11 +102,19 @@ export function GraphPage({ project, state, onComponent }: Props) {
 function Canvas({
   graph,
   project,
+  variable,
+  revision,
+  stopped,
   onComponent,
+  onVariable,
 }: {
   graph: GraphReply;
   project: string;
+  variable: string | undefined;
+  revision: number | undefined;
+  stopped: boolean;
   onComponent: (file: string) => void;
+  onVariable: (variable: string | undefined) => void;
 }) {
   const flow = useReactFlow();
   const [hovered, setHovered] = useState<string | null>(null);
@@ -145,7 +169,27 @@ function Canvas({
     [flow, graph, search],
   );
 
-  const edges = useMemo(() => edgesOf(graph, setReached), [graph]);
+  // An arrow in disagreement about several variables asks which one; one about a single
+  // variable opens it straight away, and an arrow whose ends agree opens nothing.
+  const [chooser, setChooser] = useState<{ title: string; objects: string[] } | null>(null);
+  // The variable whose panel closed because no file declares it any longer (spec 5.5), named
+  // above the canvas until another variable is opened or the reader leaves the canvas.
+  const [undeclared, setUndeclared] = useState<string | null>(null);
+  const onOpen = useCallback(
+    (id: string) => {
+      const objects = objectsInDisagreement(graph, id);
+      if (objects.length === 1) {
+        setChooser(null);
+        setUndeclared(null);
+        onVariable(objects[0]);
+      } else if (objects.length > 1) {
+        onVariable(undefined);
+        setChooser({ title: flowTitle(graph, id), objects });
+      }
+    },
+    [graph, onVariable],
+  );
+  const edges = useMemo(() => edgesOf(graph, setReached, onOpen), [graph, onOpen]);
   const bright = useMemo(
     () => brightOf(graph.modules, graph.flows, hovered, search),
     [graph, hovered, search],
@@ -154,52 +198,88 @@ function Canvas({
   const shownArrows = useMemo(() => shownEdges(edges, bright, reached), [edges, bright, reached]);
 
   return (
-    <>
-      <div className="canvas-tools">
-        <input
-          // A textbox, not a search box: the journeys look for the role an <input type="text">
-          // has, and the clear button a search field adds has nothing to clear here.
-          type="text"
-          aria-label="Search modules"
-          placeholder="Search modules"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          onKeyDown={onSearchKey}
-        />
-        <button type="button" onClick={onTidy}>
-          Tidy
-        </button>
-        <button type="button" onClick={onFit}>
-          Fit
-        </button>
+    <div className={variable !== undefined || chooser !== null ? "with-panel" : undefined}>
+      <div>
+        {undeclared !== null && (
+          <Banner tone="warning">{undeclared} is no longer declared in the open project.</Banner>
+        )}
+        <div className="canvas-tools">
+          <input
+            // A textbox, not a search box: the journeys look for the role an <input type="text">
+            // has, and the clear button a search field adds has nothing to clear here.
+            type="text"
+            aria-label="Search modules"
+            placeholder="Search modules"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            onKeyDown={onSearchKey}
+          />
+          <Button onPress={onTidy}>Tidy</Button>
+          <Button onPress={onFit}>Fit</Button>
+        </div>
+        <section className="canvas" aria-label="Modules">
+          <ReactFlow
+            nodes={shownNodes}
+            edges={shownArrows}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            onNodesChange={onNodesChange}
+            onNodeDragStop={onDragStop}
+            onNodeMouseEnter={onEnter}
+            onNodeMouseLeave={onLeave}
+            fitView
+            // A reader reads this graph; they do not draw one, and they do not take a module out
+            // of it either - the delete key would otherwise remove what it is pointing at until
+            // the next revision put it back.
+            nodesConnectable={false}
+            deleteKeyCode={null}
+            // The node is a box around a button: React Flow's own tab stop in front of it carries
+            // no name and would put two stops in the way of every module.
+            nodesFocusable={false}
+          >
+            <Background />
+            {/* Tidy and Fit are this canvas's controls, named above it. React Flow's lock would
+                write dragging and connecting back into its own store, past the props here, and
+                its fit-view icon is Fit again without a name worth reading. */}
+            <Controls showInteractive={false} showFitView={false} />
+          </ReactFlow>
+        </section>
       </div>
-      <section className="canvas" aria-label="Modules">
-        <ReactFlow
-          nodes={shownNodes}
-          edges={shownArrows}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          onNodesChange={onNodesChange}
-          onNodeDragStop={onDragStop}
-          onNodeMouseEnter={onEnter}
-          onNodeMouseLeave={onLeave}
-          fitView
-          // A reader reads this graph; they do not draw one, and they do not take a module out
-          // of it either - the delete key would otherwise remove what it is pointing at until
-          // the next revision put it back.
-          nodesConnectable={false}
-          deleteKeyCode={null}
-          // The node is a box around a button: React Flow's own tab stop in front of it carries
-          // no name and would put two stops in the way of every module.
-          nodesFocusable={false}
-        >
-          <Background />
-          {/* Tidy and Fit are this canvas's controls, named above it. React Flow's lock would
-              write dragging and connecting back into its own store, past the props here, and
-              its fit-view icon is Fit again without a name worth reading. */}
-          <Controls showInteractive={false} showFitView={false} />
-        </ReactFlow>
-      </section>
-    </>
+      {variable !== undefined ? (
+        <VariablePanel
+          key={variable}
+          name={variable}
+          revision={revision}
+          stopped={stopped}
+          focusPicker={null}
+          onClose={() => onVariable(undefined)}
+          onUndeclared={() => {
+            setUndeclared(variable);
+            onVariable(undefined);
+          }}
+        />
+      ) : (
+        chooser !== null && (
+          <Panel title={chooser.title} onClose={() => setChooser(null)}>
+            <ul className="panel-choices">
+              {chooser.objects.map((object) => (
+                <li key={object}>
+                  <Button
+                    variant="link"
+                    onPress={() => {
+                      setChooser(null);
+                      setUndeclared(null);
+                      onVariable(object);
+                    }}
+                  >
+                    {object}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        )
+      )}
+    </div>
   );
 }

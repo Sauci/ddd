@@ -149,6 +149,11 @@ usability sessions will shape them.
 The days are the estimate's likely case. Milestone 1 replaces the throwaway spike the estimate
 recommended: it measures the same thing (section 6.13) and keeps its code.
 
+The module graph (`2026-09-18-module-graph-design.md`) took milestone 2's place, and what
+follows it is replaced by `2026-09-18-gui-units-design.md` - the GUI grows by field, units
+first, then the project's units, then the other keys; the remaining rows above are planned
+again after that.
+
 ## 6 Milestone 1: the walking skeleton
 
 ### 6.1 What it delivers

@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Finding } from "../api/types";
-import { keyedFindings } from "./findings";
+import { distinctFindings, keyedFindings } from "./findings";
 
 const finding = (overrides: Partial<Finding> = {}): Finding => ({
   file: "/p/a.ddd.json",
@@ -34,4 +34,20 @@ test("a finding keeps its key when a different finding before it in the list dis
   const keyWithOther = keysOf([other, kept])[1];
   const keyWithoutOther = keysOf([kept])[0];
   expect(keyWithoutOther).toBe(keyWithOther);
+});
+
+test("the two sides of one disagreement, filed on each of its files, are said once", () => {
+  const consumer = finding({ file: "/p/controller.ddd.json" });
+  const producer = finding({ file: "/p/sensor_hub.ddd.json" });
+  expect(distinctFindings([consumer, producer])).toEqual([consumer]);
+});
+
+test("findings that differ in severity, check or message are each kept, in order", () => {
+  const listed = [
+    finding(),
+    finding({ severity: "warning" }),
+    finding({ check: "storage-mismatch" }),
+    finding({ message: "'ValueA' is declared differently by component 'UserInterface'" }),
+  ];
+  expect(distinctFindings(listed)).toEqual(listed);
 });

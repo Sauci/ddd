@@ -22,3 +22,4 @@ src/ddd/gui/static/
 gui/src/generated/
 gui/test-results/
 gui/playwright-report/
+gui/ladle-build/

@@ -52,14 +52,23 @@ __all__ = [
     "GraphFlow",
     "GraphModule",
     "GraphReply",
+    "Hunk",
     "Note",
     "OpenProject",
     "OpenRequest",
     "Operation",
+    "PlannedChange",
+    "PlannedOperation",
     "RefusedBuild",
     "SessionInfo",
+    "SettleReply",
     "SourceFile",
     "State",
+    "UnitsReply",
+    "UsedUnit",
+    "VariableDeclaration",
+    "VariableReply",
+    "VocabularyUnit",
     "api_schema",
 ]
 
@@ -381,6 +390,146 @@ class GraphReply(_Frozen):
     """Every flow between two modules, sorted by source then target."""
 
 
+# --- GET /api/variable ----------------------------------------------------------------------
+
+
+class VariableDeclaration(_Frozen):
+    """One declaration of a variable, as its file states it now."""
+
+    path: str
+    """Absolute, posix-separated path of the file declaring it."""
+
+    pointer: str
+    """Dotted path of the declaration's definition inside that file."""
+
+    component: str
+    """Name of the component declaring it."""
+
+    role: Literal["produces", "reads", "local"]
+    """What the component does with the variable, by the declaration's scope."""
+
+    stated: dict[str, str]
+    """The json text of ``kind`` and of every key the declarations of a variable agree on that
+    this one states, spelled as the file spells it."""
+
+    type: str | None
+    """The declared type it names, or ``None``."""
+
+    fixed: dict[str, str]
+    """The json text of each key that type fixes (``datatype``, ``unit``, ``conversion``,
+    ``limits``), empty without a type."""
+
+
+class VariableReply(_Frozen):
+    """What ``GET /api/variable`` answers: one variable's declarations and the findings filed on
+    them."""
+
+    revision: int
+    """The revision this answer was read from."""
+
+    name: str
+    """The variable named in the request."""
+
+    declarations: tuple[VariableDeclaration, ...]
+    """Every declaration the file still holds, in the order the project lists its components."""
+
+    findings: tuple[Finding, ...]
+    """Every finding located on one of them, both sides of a disagreement included."""
+
+
+# --- GET /api/units -------------------------------------------------------------------------
+
+
+class VocabularyUnit(_Frozen):
+    """One unit a project's units files declare."""
+
+    unit: str
+    """A spelling the project declares."""
+
+    description: str | None
+    """What it means, or ``None``."""
+
+
+class UsedUnit(_Frozen):
+    """One unit a declaration states, and how widely."""
+
+    unit: str
+    """A unit a declaration states."""
+
+    variables: int
+    """How many variables state it."""
+
+
+class UnitsReply(_Frozen):
+    """What ``GET /api/units`` answers: the project's declared vocabulary, and its units in use."""
+
+    revision: int
+    """The revision this answer was read from."""
+
+    vocabulary: tuple[VocabularyUnit, ...] | None
+    """The units the project's units files declare, or ``None`` when it has none, which keeps
+    its units free."""
+
+    used: tuple[UsedUnit, ...]
+    """Every unit in use, most used first."""
+
+
+# --- GET /api/settle ------------------------------------------------------------------------
+
+
+class PlannedOperation(_Frozen):
+    """One change at one pointer, as a settlement comes to it."""
+
+    op: Literal["set", "remove"]
+    """Which of the two operations a settlement ever makes this is."""
+
+    pointer: str
+    """Dotted path to the value this operation acts on."""
+
+    raw: str | None
+    """The json text ``set`` writes, or ``None`` for ``remove``."""
+
+
+class Hunk(_Frozen):
+    """Lines of one file a change replaces, numbered as the file stands before it."""
+
+    line: int
+    """The first line replaced, counting from 1, as the file stands."""
+
+    before: tuple[str, ...]
+    """The lines the change replaces."""
+
+    after: tuple[str, ...]
+    """The lines that replace them."""
+
+
+class PlannedChange(_Frozen):
+    """The edit of one file a settlement comes to, and the lines it changes."""
+
+    file: str
+    """Absolute, posix-separated path of the file this change is made to."""
+
+    fingerprint: str
+    """What the file was read at, which ``POST /api/edit`` checks."""
+
+    operations: tuple[PlannedOperation, ...]
+    """The operations to apply to the file, in order."""
+
+    hunks: tuple[Hunk, ...]
+    """The lines the operations change; the page drops these and posts the rest to
+    ``POST /api/edit``."""
+
+
+class SettleReply(_Frozen):
+    """What ``GET /api/settle`` answers: the preview of making a variable's declarations agree."""
+
+    revision: int
+    """The revision this preview was computed from."""
+
+    changes: tuple[PlannedChange, ...]
+    """One per file, sorted by path; empty when every declaration already agrees."""
+
+
 # --- GET /api/checks -----------------------------------------------------------------------
 
 
@@ -522,6 +671,9 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (ChecksReply, "serialization"),
     (Changes, "validation"),
     (EditReply, "serialization"),
+    (VariableReply, "serialization"),
+    (UnitsReply, "serialization"),
+    (SettleReply, "serialization"),
 )
 """Every request and response of spec section 6.5, with the schema pydantic builds for each:
 ``"validation"`` for a request, read for the shape a caller must send; ``"serialization"`` for

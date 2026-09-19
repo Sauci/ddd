@@ -288,8 +288,8 @@ its own panel. The address carries it as it does on the component page.
 - **The file changed on disk** between the preview and Apply. The edit is refused as `stale`, and
   the panel says so, next to the Apply that was refused; the panel shows the new revision's
   declarations and the reader chooses again.
-- **The variable is no longer declared**, renamed or removed on disk. The panel says so and closes
-  back to the table.
+- **The variable is no longer declared**, renamed or removed on disk. The panel closes back to the
+  table, or to the canvas, and a banner there says the variable is no longer declared.
 - **The server stopped.** Milestone 1's banner appears, and the panel keeps what it shows but offers
   no Apply.
 

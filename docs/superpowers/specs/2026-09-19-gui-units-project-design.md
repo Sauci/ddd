@@ -114,7 +114,7 @@ Refusals, before any file is touched:
 ### 4.3 The edit engine creates a file
 
 A change whose `fingerprint` is `null` creates its file: the file must not exist, and the change
-has exactly one operation, an `add` at the root pointer carrying the whole document. It is staged
+has exactly one operation, a `set` at the root pointer carrying the whole document. It is staged
 and renamed into place like any write; if a later file of the same edit fails, the created file is
 deleted with the others put back; if the file exists by the time the edit is made, the edit is
 refused as `stale`. A created file takes the mode, and where the process may set them the owner and

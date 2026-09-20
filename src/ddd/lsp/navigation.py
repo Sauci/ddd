@@ -147,6 +147,18 @@ class Index:
     constant_uses: dict[str, list[Site]] = field(default_factory=dict)
     """Constant name -> every dimension entry and axis size that spells it."""
 
+    kinds: dict[str, str] = field(default_factory=dict)
+    """Name -> the kind its first declaration states, in the order the project lists its
+    components.
+
+    What a chooser naming an object reads: the ``axis`` of a curve is one of the project's
+    axes, the ``input`` of an axis one of its measurements. One kind per name rather than one
+    per declaration, because declarations disagreeing about their kind are two objects under
+    one name - which ``definition-mismatch`` reports and no chooser can settle, ``kind`` being
+    the one shared key an edit may not carry from one declaration to another (see
+    :data:`ddd.lsp.edits.PROPAGATED_KEYS`).
+    """
+
     occupied: dict[str, str] = field(default_factory=dict)
     """C identifier -> what already spends it, for identifiers that are not variables.
 
@@ -190,6 +202,7 @@ def index(workspace: Workspace) -> Index:
             site = Site(location.path, location.pointer)
             name = declaration.definition.name
             built.declarations.setdefault(name, []).append(site)
+            built.kinds.setdefault(name, declaration.definition.kind.value)
             if declaration.scope.is_producer:
                 built.producers.setdefault(name, []).append(site)
             built.mentions.setdefault(name, []).append(

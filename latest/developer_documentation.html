@@ -923,6 +923,25 @@ over a copy of <code class="docutils literal notranslate"><span class="pre">exam
 Chromium. The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0,
 BSD-2-Clause, BSD-3-Clause or 0BSD. The project screen’s canvas is drawn with <code class="docutils literal notranslate"><span class="pre">&#64;xyflow/react</span></code>
 and laid out with <code class="docutils literal notranslate"><span class="pre">&#64;dagrejs/dagre</span></code>, both MIT like every other bundled package.</p>
+<p>A change to the project’s units - a rename, an addition, a description, a removal, an
+adoption - is planned once, in <code class="docutils literal notranslate"><span class="pre">ddd.lsp.units</span></code>: the operations <code class="docutils literal notranslate"><span class="pre">ddd.editing</span></code> takes, on
+json pointers, file by file, or a refusal naming the file it concerns. The language server
+renders a plan as the text edits of <code class="docutils literal notranslate"><span class="pre">F2</span></code> on a unit and of its two quick fixes on
+<code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code>; <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> previews the same plan and posts its changes, unchanged, to
+<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/edit</span></code>. Neither client decides on its own what a rename or an adoption does, so
+the two can never disagree about it - as <code class="docutils literal notranslate"><span class="pre">ddd.lsp.edits.settle</span></code> already does for a
+variable’s keys, one rule the language server’s reconcile quick fix and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>’s
+variable panel both read.</p>
+<p>The edit engine learnt one thing for adoption: a change whose <code class="docutils literal notranslate"><span class="pre">fingerprint</span></code> is <code class="docutils literal notranslate"><span class="pre">null</span></code>
+creates its file, one <code class="docutils literal notranslate"><span class="pre">set</span></code> of the whole document at the root pointer, and is refused as
+<code class="docutils literal notranslate"><span class="pre">stale</span></code> if the file exists by the time the edit is made. It is staged and renamed into
+place like any other write, and taken away again if a later file of the same edit fails. The
+session of <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> accepts such a change only beside the open project’s description, and
+only when the same edit’s change to that description leaves the new file among its
+<code class="docutils literal notranslate"><span class="pre">includes</span></code>; any other is refused as <code class="docutils literal notranslate"><span class="pre">invalid</span></code> before anything is written. The file it
+creates takes the mode, and where the process may set them the owner and group, of the
+project description beside it, so <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> running in a container leaves the developer a
+file of their own rather than root’s.</p>
 </section>
 </section>
 

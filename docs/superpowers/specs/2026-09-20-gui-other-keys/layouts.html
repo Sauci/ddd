@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The panel for every key</title>
+<style>
+:root {
+  --ink: #1d2a2f; --quiet: #5b6b71; --ground: #f7f9f9; --surface: #ffffff; --rule: #d9e2e5;
+  --accent: #0e6b7c; --focus: rgba(14, 107, 124, .16); --sel: #e3f1f3;
+  --error: #b3261e; --error-ground: #fdecea; --warning: #7a4f00; --warning-ground: #fff4dc;
+  --ok: #1e6b35; --ok-ground: #e6f4ea;
+  --font: "Segoe UI", system-ui, sans-serif; --mono: "Cascadia Mono", Consolas, monospace;
+  --r: 6px; --r-chip: 10px; --cell: 6px 10px; --shadow: 0 8px 24px rgba(20, 30, 35, .14);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 13.5px/1.5 var(--font); }
+.bar { display: flex; justify-content: space-between; align-items: center; padding: 9px 16px; border-bottom: 1px solid var(--rule); font-size: 12.5px; }
+.bar b { font-weight: 600; } .bar .pv { color: var(--quiet); letter-spacing: .05em; margin-left: 6px; font-size: 10.5px; }
+.bar a { color: var(--accent); margin-left: 14px; text-decoration: none; }
+.page { padding: 14px 16px 18px; }
+.title { display: flex; align-items: baseline; gap: 12px; margin: 0 0 12px; }
+.title h1 { font-size: 20px; font-weight: 600; margin: 0; }
+.title span { color: var(--quiet); font-size: 12.5px; }
+.title .label { color: #fff; display: inline-block; margin-left: auto; font: 600 12px var(--font); background: var(--accent); padding: 2px 10px; border-radius: 10px; }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 14px; align-items: start; }
+table { width: 100%; border-collapse: collapse; background: var(--surface); }
+th, td { text-align: left; padding: var(--cell); border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th { font-weight: 600; font-size: 12.5px; }
+.box { border: 1px solid var(--rule); border-radius: var(--r); overflow: hidden; background: var(--surface); }
+.quiet { color: var(--quiet); }
+.mono { font-family: var(--mono); font-size: 12px; }
+.chip { display: inline-block; font-size: 11.5px; padding: 0 8px; border-radius: var(--r-chip); background: var(--error-ground); color: var(--error); line-height: 1.7; }
+tr.sel td { background: var(--sel); }
+tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--error); }
+.panel { padding: 12px 14px; }
+.panel h2 { margin: 0; font-size: 14.5px; font-weight: 600; }
+.meta { color: var(--quiet); font-size: 12.5px; margin: 0 0 8px; }
+.actions { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+.btn { font: inherit; font-size: 12.5px; padding: 5px 12px; border-radius: var(--r); border: 1px solid var(--accent); background: var(--accent); color: #fff; }
+.btn.ghost { background: var(--surface); color: var(--accent); }
+.link { color: var(--accent); font-size: 12.5px; }
+h3 { font-size: 12.5px; font-weight: 600; margin: 12px 0 4px; }
+.field label { display: block; font-size: 12.5px; color: var(--quiet); margin: 0 0 4px; }
+.combo { display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--rule); border-radius: var(--r); padding: 5px 10px; background: var(--surface); }
+.combo.open { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+.combo .caret { color: var(--quiet); font-size: 11px; }
+.list { margin-top: 4px; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); box-shadow: var(--shadow); padding: 4px 0; }
+.list .group { font-size: 11px; letter-spacing: .03em; color: var(--quiet); padding: 6px 12px 2px; }
+.list .item { display: flex; justify-content: space-between; gap: 12px; padding: 5px 12px; }
+.list .item.on { background: var(--sel); }
+.list .item small { color: var(--quiet); }
+.consequence { color: var(--quiet); font-size: 12.5px; margin-top: 8px; }
+.diff { font-family: var(--mono); font-size: 12px; background: var(--ground); border: 1px solid var(--rule); border-radius: var(--r); padding: 8px 10px; margin-top: 8px; line-height: 1.7; white-space: pre; }
+.diff .f { font-family: var(--font); color: var(--quiet); } .diff .m { color: var(--error); } .diff .p { color: var(--ok); }
+td.dis { background: var(--error-ground); }
+tr.keysel td { background: var(--sel); } tr.keysel td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.tabs2 { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.tabs2 span { font-size: 12px; padding: 2px 9px; border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); color: var(--quiet); }
+.tabs2 span.on { background: var(--sel); border-color: var(--accent); color: var(--ink); font-weight: 600; }
+.tabs2 span.bad { border-color: var(--error); color: var(--error); }
+.group-head { display: flex; justify-content: space-between; padding: 6px 10px; background: var(--ground); font-size: 12.5px; font-weight: 600; }
+.agree { font-size: 12.5px; color: var(--quiet); padding: 6px 10px; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="bar"><span><b>ddd gui</b><span class="pv">PREVIEW</span></span><span><a>Projects</a><a>DemoDevice</a></span></div>
+
+<!-- A: a row per key, the declarations across -->
+<div class="page" id="a">
+<div class="title"><h1>Controller</h1><span>components/controller.ddd.json</span><span class="label">A · a row per key</span></div>
+<div class="split">
+<div class="box"><table>
+<tr><th>Scope</th><th>Name</th><th>Kind</th><th>Type</th><th>Unit</th><th>Findings</th></tr>
+<tr class="sel"><td>input</td><td>ValueA</td><td>measurement</td><td>uint8</td><td>rpm</td><td><span class="chip">definition-mismatch</span></td></tr>
+<tr><td>input</td><td>ValueB</td><td>measurement</td><td>uint16</td><td>V</td><td></td></tr>
+<tr><td>output</td><td>ValueE</td><td>measurement</td><td>uint16</td><td>Hz</td><td></td></tr>
+<tr><td>local</td><td>ValueH</td><td>measurement</td><td>sint16</td><td>%</td><td></td></tr>
+</table></div>
+<div class="box panel">
+<div class="actions" style="margin:0"><h2>ValueA</h2><span class="link">Close</span></div>
+<p class="meta">measurement · produced by SensorHub · 3 declarations · 2 keys disagree</p>
+<table><tr><th>Key</th><th>SensorHub<br><span class="quiet" style="font-weight:400">produces</span></th><th>Controller<br><span class="quiet" style="font-weight:400">reads</span></th><th>UserInterface<br><span class="quiet" style="font-weight:400">reads</span></th></tr>
+<tr class="keysel"><td>unit</td><td class="mono">"%"</td><td class="mono dis">"rpm"</td><td class="mono">"%"</td></tr>
+<tr><td>limits</td><td class="mono">{0, 100}</td><td class="mono dis">{0, 250}</td><td class="mono">{0, 100}</td></tr>
+<tr><td>datatype</td><td class="mono">"uint8"</td><td class="mono">"uint8"</td><td class="mono">"uint8"</td></tr>
+<tr><td>conversion</td><td class="mono">linear ×0.5</td><td class="mono">linear ×0.5</td><td class="mono">linear ×0.5</td></tr>
+<tr><td>volatile</td><td class="mono">true</td><td class="mono">true</td><td class="mono">true</td></tr>
+<tr><td class="quiet">dimensions</td><td class="quiet" colspan="3">stated nowhere</td></tr>
+</table>
+<div class="field" style="margin-top:12px"><label>unit of ValueA</label><div class="combo"><span>%</span><span class="caret">▾</span></div></div>
+<div class="consequence">Changes 1 file: controller.ddd.json. SensorHub produces ValueA, and states %.</div>
+<div class="actions"><span class="link">Show changes</span><button class="btn">Apply to 1 file</button></div>
+</div>
+</div>
+</div>
+
+<!-- B: one key at a time, part 1's panel with a key chooser -->
+<div class="page" id="b" hidden>
+<div class="title"><h1>Controller</h1><span>components/controller.ddd.json</span><span class="label">B · one key at a time</span></div>
+<div class="split">
+<div class="box"><table>
+<tr><th>Scope</th><th>Name</th><th>Kind</th><th>Type</th><th>Unit</th><th>Findings</th></tr>
+<tr class="sel"><td>input</td><td>ValueA</td><td>measurement</td><td>uint8</td><td>rpm</td><td><span class="chip">definition-mismatch</span></td></tr>
+<tr><td>input</td><td>ValueB</td><td>measurement</td><td>uint16</td><td>V</td><td></td></tr>
+<tr><td>output</td><td>ValueE</td><td>measurement</td><td>uint16</td><td>Hz</td><td></td></tr>
+<tr><td>local</td><td>ValueH</td><td>measurement</td><td>sint16</td><td>%</td><td></td></tr>
+</table></div>
+<div class="box panel">
+<div class="actions" style="margin:0"><h2>ValueA</h2><span class="link">Close</span></div>
+<p class="meta">measurement · uint8 · produced by SensorHub</p>
+<div class="tabs2"><span class="on bad">unit</span><span class="bad">limits</span><span>datatype</span><span>conversion</span><span>volatile</span><span class="quiet">dimensions</span><span class="quiet">typename</span><span class="quiet">size</span><span class="quiet">axis</span><span class="quiet">x_axis</span><span class="quiet">y_axis</span><span class="quiet">input</span></div>
+<table><tr><th>Declared by</th><th>Role</th><th>unit</th></tr>
+<tr><td>SensorHub</td><td class="quiet">produces</td><td class="mono">"%"</td></tr>
+<tr style="background:var(--warning-ground)"><td>Controller</td><td class="quiet">reads</td><td class="mono">"rpm" <span style="font-size:10.5px;color:var(--warning)">will change</span></td></tr>
+<tr><td>UserInterface</td><td class="quiet">reads</td><td class="mono">"%"</td></tr>
+</table>
+<div class="field" style="margin-top:12px"><label>unit of ValueA</label><div class="combo"><span>%</span><span class="caret">▾</span></div></div>
+<div class="consequence">Changes 1 file: controller.ddd.json.</div>
+<div class="actions"><span class="link">Show changes</span><button class="btn">Apply to 1 file</button></div>
+</div>
+</div>
+</div>
+
+<!-- C: what disagrees, first and expanded -->
+<div class="page" id="c" hidden>
+<div class="title"><h1>Controller</h1><span>components/controller.ddd.json</span><span class="label">C · what disagrees first</span></div>
+<div class="split">
+<div class="box"><table>
+<tr><th>Scope</th><th>Name</th><th>Kind</th><th>Type</th><th>Unit</th><th>Findings</th></tr>
+<tr class="sel"><td>input</td><td>ValueA</td><td>measurement</td><td>uint8</td><td>rpm</td><td><span class="chip">definition-mismatch</span></td></tr>
+<tr><td>input</td><td>ValueB</td><td>measurement</td><td>uint16</td><td>V</td><td></td></tr>
+<tr><td>output</td><td>ValueE</td><td>measurement</td><td>uint16</td><td>Hz</td><td></td></tr>
+<tr><td>local</td><td>ValueH</td><td>measurement</td><td>sint16</td><td>%</td><td></td></tr>
+</table></div>
+<div class="box panel">
+<div class="actions" style="margin:0"><h2>ValueA</h2><span class="link">Close</span></div>
+<p class="meta">measurement · uint8 · produced by SensorHub · 3 declarations</p>
+<div class="box" style="margin-top:10px">
+<div class="group-head"><span style="color:var(--error)">unit</span><span class="quiet">SensorHub "%" · Controller "rpm" · UserInterface "%"</span></div>
+<div style="padding:8px 10px">
+<div class="field"><label>unit of ValueA</label><div class="combo open"><span>%</span><span class="caret">▾</span></div>
+<div class="list"><div class="group">Stated by its declarations</div><div class="item on"><span>%</span><small>SensorHub, produces · UserInterface</small></div><div class="item"><span>rpm</span><small>Controller</small></div><div class="group">No unit</div><div class="item"><span class="quiet">no unit</span><small></small></div></div></div>
+<div class="consequence">Changes 1 file: controller.ddd.json.</div>
+<div class="actions"><span class="link">Show changes</span><button class="btn">Apply to 1 file</button></div>
+</div>
+</div>
+<div class="box" style="margin-top:10px">
+<div class="group-head"><span style="color:var(--error)">limits</span><span class="quiet">SensorHub {0, 100} · Controller {0, 250} · UserInterface {0, 100}</span></div>
+<div class="agree"><span class="link">Choose a value for limits…</span></div>
+</div>
+<div class="box" style="margin-top:10px">
+<div class="group-head"><span>Nine keys agree</span><span class="link">Show them</span></div>
+<div class="agree quiet">datatype uint8 · conversion linear ×0.5 · volatile true · dimensions stated nowhere …</div>
+</div>
+</div>
+</div>
+</div>
+
+<script>
+const which = new URLSearchParams(location.search).get("layout");
+if (which) for (const id of ["a", "b", "c"]) document.getElementById(id).hidden = id !== which;
+</script>
+</body>
+</html>

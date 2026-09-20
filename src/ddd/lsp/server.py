@@ -35,7 +35,7 @@ from ddd import __version__
 from ddd.build_info import BuildInfo
 from ddd.lsp.diagnostics import collect
 from ddd.lsp.discovery import discover
-from ddd.lsp.edits import QUICK_FIX, actions
+from ddd.lsp.edits import QUICK_FIX, UNKNOWN_UNIT, actions
 from ddd.lsp.hover import describe, describe_constant, describe_external, describe_type, resolve
 from ddd.lsp.navigation import (
     Loaded,
@@ -67,6 +67,7 @@ from ddd.lsp.protocol import (
     write_message,
 )
 from ddd.lsp.ranges import Document, read
+from ddd.lsp.units import UnitRefusalError, rename_unit, text_edits, unit_drift, unit_project
 
 _DID_OPEN: Final = "textDocument/didOpen"
 _DID_CHANGE: Final = "textDocument/didChange"
@@ -722,6 +723,9 @@ class Server:
         file and leaving that one alone is the half-renamed project the refusal exists to
         prevent, and it would happen silently, because the client asked for one rename, not a
         rename of everything except what it could not reach.
+
+        A unit is renamed by :meth:`_rename_unit` instead: its rename is a plan that rewrites
+        the vocabulary as well, and merges two spellings where a variable's would collide.
         """
         path = self._document(message)
         cache = self._cache(path)
@@ -729,13 +733,13 @@ class Server:
         pointer = document.pointer_at(self._at(message))
         params = _field(message.get("params"), dict, "params")
         wanted = _field(params.get("newName"), str, "params.newName")
+        subject = renameable_at(document, pointer)
+        if subject is not None and subject[0] == "unit":
+            self._rename_unit(request_id, path, subject[1], wanted, cache)
+            return
         changes: dict[str, list[dict[str, Any]]] = {}
-        # A component linked into two images is in two projects, and both of them mention the
-        # same characters. Sending that edit twice is not a duplicate an editor tolerates: it
-        # is two overlapping rewrites of one range.
         seen: set[tuple[str, int, int]] = set()
         drifted: set[Path] = set()
-        subject = renameable_at(document, pointer)
         for loaded in self._projects_of(path):
             unreadable = self._unreadable(loaded)
             if unreadable is not None:
@@ -748,26 +752,84 @@ class Server:
                 return
             edited = rename_edits(built, document, pointer, wanted, cache)
             drifted.update(edited.drifted)
-            for uri, edits in edited.changes.items():
-                for edit in edits:
-                    start = edit["range"]["start"]
-                    where = (uri, start["line"], start["character"])
-                    if where not in seen:
-                        seen.add(where)
-                        changes.setdefault(uri, []).append(edit)
+            self._gather(changes, seen, edited.changes)
         if drifted:
-            names = ", ".join(sorted(p.name for p in drifted))
-            verb = "has" if len(drifted) == 1 else "have"
-            msg = (
-                f"{names} {verb} unsaved changes that moved a declaration this rename would "
-                "touch; save it and rename again"
-            )
-            write_message(self.writer, error(request_id, REQUEST_FAILED, msg))
+            refusal = self._drifted(drifted, "moved a declaration")
+            write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
             return
         # The edits rewrite the very files every answer above was read out of, so anything
         # kept from before them now describes the past.
         self._forget()
         write_message(self.writer, response(request_id, self._workspace_edit(changes)))
+
+    def _rename_unit(
+        self, request_id: Any, path: Path, old: str, new: str, cache: dict[Path, Document]
+    ) -> None:
+        """Respell a unit everywhere each project holding the document states or lists it, or
+        say why it cannot be.
+
+        The plan is :func:`ddd.lsp.units.rename_unit`'s, the one ``ddd gui`` previews and
+        applies, so an editor and the page cannot disagree about what a rename reaches or when
+        it merges two spellings; its refusal is answered as a variable's is. The plan refuses
+        while a file of the project did not load, and only then: one that loaded with an error
+        is in the index, and a unit its units file lists twice is renamed at both entries. A
+        buffer that no longer holds the unit where the index found it refuses the rename before
+        the plan is made: the plan's pointers are the disk's, and made in that buffer they would
+        respell whatever sits there now.
+        """
+        changes: dict[str, list[dict[str, Any]]] = {}
+        seen: set[tuple[str, int, int]] = set()
+        drifted: set[Path] = set()
+        for loaded in self._projects_of(path):
+            built = index(loaded.workspace)
+            moved = unit_drift(built, old, cache)
+            if moved:
+                drifted.update(moved)
+                continue
+            project = unit_project(loaded.path, loaded.unloaded, cache)
+            try:
+                plan = rename_unit(built, project, old, new, cache)
+            except UnitRefusalError as refused:
+                write_message(self.writer, error(request_id, REQUEST_FAILED, refused.message))
+                return
+            self._gather(changes, seen, text_edits(plan, cache))
+        if drifted:
+            refusal = self._drifted(drifted, "moved or respelled a unit")
+            write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
+            return
+        self._forget()
+        write_message(self.writer, response(request_id, self._workspace_edit(changes)))
+
+    @staticmethod
+    def _gather(
+        changes: dict[str, list[dict[str, Any]]],
+        seen: set[tuple[str, int, int]],
+        found: dict[str, list[dict[str, Any]]],
+    ) -> None:
+        """Add one project's edits to a rename's, each place once.
+
+        A component linked into two images is in two projects, and both of them mention the
+        same characters. Sending that edit twice is not a duplicate an editor tolerates: it is
+        two overlapping rewrites of one range.
+        """
+        for uri, edits in found.items():
+            for edit in edits:
+                start = edit["range"]["start"]
+                where = (uri, start["line"], start["character"])
+                if where not in seen:
+                    seen.add(where)
+                    changes.setdefault(uri, []).append(edit)
+
+    @staticmethod
+    def _drifted(drifted: set[Path], changed: str) -> str:
+        """Why a rename is refused while a buffer no longer holds what the index found in it,
+        naming every such file."""
+        names = ", ".join(sorted(path.name for path in drifted))
+        verb = "has" if len(drifted) == 1 else "have"
+        return (
+            f"{names} {verb} unsaved changes that {changed} this rename would touch; save it "
+            "and rename again"
+        )
 
     def _actions(self, message: dict[str, Any]) -> list[dict[str, Any]]:
         """What can be offered for the key under the cursor.
@@ -782,13 +844,18 @@ class Server:
         params = _field(message.get("params"), dict, "params")
         context = _field(params.get("context"), dict, "params.context")
         reported = context.get("diagnostics", [])
+        # A unit is fixed from the project's units files, and telling which files those are
+        # reads every file the description includes. A client asks for actions at every move
+        # of the caret, so they are looked for only when it sent a finding about a unit.
+        about_units = any(entry.get("code") in UNKNOWN_UNIT for entry in reported)
         offered: list[dict[str, Any]] = []
         for loaded in self._projects_of(path):
             unreadable = self._unreadable(loaded)
             if unreadable is not None:
                 raise MessageError(REQUEST_FAILED, unreadable)
+            project = unit_project(loaded.path, loaded.unloaded, cache) if about_units else None
             offered.extend(
-                actions(index(loaded.workspace), path, document, pointer, cache, reported)
+                actions(index(loaded.workspace), path, document, pointer, cache, reported, project)
             )
         for action in offered:
             action["edit"] = self._workspace_edit(action["edit"]["changes"])

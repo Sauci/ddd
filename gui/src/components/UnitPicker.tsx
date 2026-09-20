@@ -2,7 +2,8 @@ import { enteredUnit, type UnitSection } from "../lib/units";
 import { ComboBox } from "../ui/ComboBox";
 
 interface Props {
-  name: string;
+  /** What the field is for: "Unit of ValueA", "Rename RPM to". */
+  label: string;
   sections: readonly UnitSection[];
   typed: string;
   onTyped: (text: string) => void;
@@ -17,9 +18,10 @@ interface Props {
   menuTrigger?: "input" | "focus" | undefined;
 }
 
-/** The unit of one variable: the sections of lib/units.ts in React Aria's combobox. */
+/** A unit to choose - a variable's, or the spelling a unit is renamed to: the sections of
+ * lib/units.ts or lib/projectUnits.ts in React Aria's combobox. */
 export function UnitPicker({
-  name,
+  label,
   sections,
   typed,
   onTyped,
@@ -32,7 +34,7 @@ export function UnitPicker({
 }: Props) {
   return (
     <ComboBox
-      label={`Unit of ${name}`}
+      label={label}
       inputValue={typed}
       onInputChange={onTyped}
       sections={sections}

@@ -34,6 +34,18 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   named in its metadata.  `--host` can also serve it from a container: published on the
   host's loopback alone, with the token in the address as the only guard beyond it.
 
+  A third tab, Units, is a table of every unit the project states or its vocabulary lists -
+  its description, how many variables, types and structure members state it, and its
+  findings; selecting one opens its panel beside the table, every place it is stated
+  included.  A unit is renamed everywhere at once - every declaration, structure member and
+  scalar type stating it, and its vocabulary entry - and renaming onto a unit that exists
+  merges the two spellings.  A vocabulary's description is edited from a unit's panel, a unit
+  outside the vocabulary is added to it, and a unit nothing states any more is removed from
+  it; a project with no units file adopts one, writing every unit already in use into it, so
+  that adopting reports nothing it did not report before.  Every change is previewed - which
+  files, and the exact lines on request - and written to every file or none, as every change
+  here is.
+
 * **The editor offers no unit to a declaration whose type fixes it.**  A declaration naming a
   declared type takes its `unit`, `conversion` and `limits` from the type, and the loader
   refuses one of them stated beside the `typename`.  A `definition-mismatch` on such a
@@ -43,6 +55,21 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   three is offered to a declaration naming a type any longer, and "Apply this unit", or the
   same action for a `conversion` or `limits`, leaves it out of the declarations it counts and
   changes.
+
+* **Renaming a unit from the editor, and quick fixes for an unknown one.**  `F2` on a unit -
+  from any place it is stated, or from its entry in a units file - renames it everywhere at
+  once, the vocabulary included, and merges the two spellings where the new one is listed
+  there already, as the Units tab's rename does; it is refused, naming the file, while a file
+  of the project does not load.  An `unknown-unit` finding offers "Add 'RPM' to the
+  vocabulary", and, for each spelling close enough to suggest, "Rename 'RPM' to 'rpm'
+  everywhere".
+
+* **`unknown-unit` suggests a spelling that only differs in case.**  Its did-you-mean scored
+  a candidate as written, so `RPM` for the declared `rpm` shared no character with it and
+  suggested nothing - the likeliest near miss going unmentioned.  Spellings are now compared
+  lowercased first, so `RPM` suggests `rpm`; the vocabulary itself still tells the two apart,
+  and `mV` and `MV` remain two units.  The language server's rename-everywhere quick fix,
+  which offers exactly what the finding suggests, gains the same spellings.
 
 ## 0.10.0
 

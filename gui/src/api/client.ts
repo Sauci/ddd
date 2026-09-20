@@ -4,9 +4,11 @@ import type {
   FileContent,
   Found,
   GraphReply,
+  PlanReply,
   SessionInfo,
   SettleReply,
   State,
+  UnitReply,
   UnitsReply,
   VariableReply,
 } from "./types";
@@ -108,6 +110,29 @@ export const getSettle = (
 function settleQuery(name: string, key: string, raw: string | null): string {
   const query = `name=${encodeURIComponent(name)}&key=${encodeURIComponent(key)}`;
   return raw === null ? query : `${query}&raw=${encodeURIComponent(raw)}`;
+}
+
+/** One change to the project's units, as `GET /api/unit-plan` takes it: what each action needs,
+ * and nothing it does not. */
+export type UnitPlanRequest =
+  | { action: "rename"; unit: string; to: string }
+  | { action: "add" | "remove"; unit: string }
+  | { action: "describe"; unit: string; description: string }
+  | { action: "adopt" };
+
+export const getUnit = (name: string, fetchImpl: Fetch = fetch) =>
+  request<UnitReply>(`/api/unit?name=${encodeURIComponent(name)}`, {}, fetchImpl);
+
+export const getUnitPlan = (plan: UnitPlanRequest, fetchImpl: Fetch = fetch) =>
+  request<PlanReply>(`/api/unit-plan?${planQuery(plan)}`, {}, fetchImpl);
+
+/** A plan's query: the action, then the unit and whichever of `to` and `description` it takes. */
+function planQuery(plan: UnitPlanRequest): string {
+  const parts: [string, string][] = [["action", plan.action]];
+  if (plan.action !== "adopt") parts.push(["unit", plan.unit]);
+  if (plan.action === "rename") parts.push(["to", plan.to]);
+  if (plan.action === "describe") parts.push(["description", plan.description]);
+  return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
 }
 
 export const postEdit = (changes: Changes, fetchImpl: Fetch = fetch) =>

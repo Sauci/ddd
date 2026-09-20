@@ -51,6 +51,16 @@ const VALUE_A = [
   declared("SensorHub", "produces", "%"),
   declared("UserInterface", "reads", "%"),
 ];
+/** A row of the Units tab, which nothing here reads: a unit stated by variables alone. */
+function row(
+  unit: string,
+  variables: number,
+  description: string | null = null,
+  files: string[] = [],
+): UnitsReply["units"][number] {
+  return { unit, description, files, variables, types: 0, members: 0, findings: 0 };
+}
+
 const FREE: UnitsReply = {
   revision: 1,
   vocabulary: null,
@@ -59,7 +69,10 @@ const FREE: UnitsReply = {
     { unit: "%", variables: 3 },
     { unit: "rpm", variables: 1 },
   ],
+  units: [row("%", 3), row("Hz", 4), row("rpm", 1)],
+  adoptable: 3,
 };
+const UNITS_FILE = "C:/w/units.ddd.json";
 const VOCABULARY: UnitsReply = {
   revision: 1,
   vocabulary: [
@@ -67,6 +80,8 @@ const VOCABULARY: UnitsReply = {
     { unit: "Nm", description: null },
   ],
   used: [{ unit: "rpm", variables: 1 }],
+  units: [row("Nm", 0, null, [UNITS_FILE]), row("rpm", 1, "rotational speed", [UNITS_FILE])],
+  adoptable: null,
 };
 const ONE_FILE: SettleReply = {
   revision: 1,

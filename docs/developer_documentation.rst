@@ -865,3 +865,24 @@ over a copy of ``examples/demo``, started with the interpreter ``DDD_PYTHON`` na
 Chromium. The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0,
 BSD-2-Clause, BSD-3-Clause or 0BSD. The project screen's canvas is drawn with ``@xyflow/react``
 and laid out with ``@dagrejs/dagre``, both MIT like every other bundled package.
+
+A change to the project's units - a rename, an addition, a description, a removal, an
+adoption - is planned once, in ``ddd.lsp.units``: the operations ``ddd.editing`` takes, on
+json pointers, file by file, or a refusal naming the file it concerns. The language server
+renders a plan as the text edits of ``F2`` on a unit and of its two quick fixes on
+``unknown-unit``; ``ddd gui`` previews the same plan and posts its changes, unchanged, to
+``POST /api/edit``. Neither client decides on its own what a rename or an adoption does, so
+the two can never disagree about it - as ``ddd.lsp.edits.settle`` already does for a
+variable's keys, one rule the language server's reconcile quick fix and ``ddd gui``'s
+variable panel both read.
+
+The edit engine learnt one thing for adoption: a change whose ``fingerprint`` is ``null``
+creates its file, one ``set`` of the whole document at the root pointer, and is refused as
+``stale`` if the file exists by the time the edit is made. It is staged and renamed into
+place like any other write, and taken away again if a later file of the same edit fails. The
+session of ``ddd gui`` accepts such a change only beside the open project's description, and
+only when the same edit's change to that description leaves the new file among its
+``includes``; any other is refused as ``invalid`` before anything is written. The file it
+creates takes the mode, and where the process may set them the owner and group, of the
+project description beside it, so ``ddd gui`` running in a container leaves the developer a
+file of their own rather than root's.

@@ -57,13 +57,18 @@ __all__ = [
     "OpenProject",
     "OpenRequest",
     "Operation",
+    "PlanReply",
     "PlannedChange",
     "PlannedOperation",
+    "ProjectUnit",
     "RefusedBuild",
     "SessionInfo",
     "SettleReply",
     "SourceFile",
     "State",
+    "UnitEntry",
+    "UnitPlace",
+    "UnitReply",
     "UnitsReply",
     "UsedUnit",
     "VariableDeclaration",
@@ -460,8 +465,37 @@ class UsedUnit(_Frozen):
     """How many variables state it."""
 
 
+class ProjectUnit(_Frozen):
+    """One row of the Units tab: a spelling the project states or its vocabulary lists."""
+
+    unit: str
+    """The spelling, exactly: ``rpm`` and ``RPM`` are two units."""
+
+    description: str | None
+    """What the vocabulary says it means, or ``None`` outside the vocabulary, without one, or
+    for an entry that is a spelling alone."""
+
+    files: tuple[str, ...]
+    """Absolute, posix-separated paths of the units files listing it; empty outside the
+    vocabulary."""
+
+    variables: int
+    """How many variables state it."""
+
+    types: int
+    """How many scalar types state it."""
+
+    members: int
+    """How many structure members state it."""
+
+    findings: int
+    """How many ``unknown-unit`` and ``duplicate-unit`` findings are filed on the places stating
+    it and the entries listing it."""
+
+
 class UnitsReply(_Frozen):
-    """What ``GET /api/units`` answers: the project's declared vocabulary, and its units in use."""
+    """What ``GET /api/units`` answers: the project's declared vocabulary, its units in use, and
+    the Units tab's rows."""
 
     revision: int
     """The revision this answer was read from."""
@@ -473,15 +507,82 @@ class UnitsReply(_Frozen):
     used: tuple[UsedUnit, ...]
     """Every unit in use, most used first."""
 
+    units: tuple[ProjectUnit, ...]
+    """Every unit the project states or its vocabulary lists, by spelling."""
+
+    adoptable: int | None
+    """How many units adopting a vocabulary would list - every unit in use - or ``None`` when
+    the project has a units file."""
+
+
+# --- GET /api/unit --------------------------------------------------------------------------
+
+
+class UnitEntry(_Frozen):
+    """One entry of the vocabulary listing a unit."""
+
+    file: str
+    """Absolute, posix-separated path of the units file."""
+
+    pointer: str
+    """Dotted path of the entry inside that file, ``units[i]``."""
+
+
+class UnitPlace(_Frozen):
+    """One place a unit is stated: a variable's declaration, a scalar type or a structure member."""
+
+    path: str
+    """Absolute, posix-separated path of the file stating it."""
+
+    pointer: str
+    """Dotted path of the unit's own string inside that file."""
+
+    kind: Literal["variable", "type", "member"]
+    """What states it."""
+
+    name: str
+    """The variable's name, the type's, or ``Type.member`` for a structure member."""
+
+    component: str | None
+    """The component declaring the variable; ``None`` for a type or a member."""
+
+    role: str | None
+    """What that component does with the variable - ``produces``, ``reads`` or ``local`` - by the
+    declaration's scope; ``None`` for a type or a member."""
+
+
+class UnitReply(_Frozen):
+    """What ``GET /api/unit`` answers: one unit's panel."""
+
+    revision: int
+    """The revision this answer was read from."""
+
+    unit: str
+    """The unit named in the request."""
+
+    description: str | None
+    """What the vocabulary says it means, or ``None`` outside the vocabulary, without one, or for
+    an entry that is a spelling alone."""
+
+    entries: tuple[UnitEntry, ...]
+    """Every vocabulary entry listing it; more than one is a ``duplicate-unit``."""
+
+    sites: tuple[UnitPlace, ...]
+    """Every place stating it, in the order the navigation index recorded them."""
+
+    findings: tuple[Finding, ...]
+    """Every ``unknown-unit`` and ``duplicate-unit`` finding filed on one of its places or
+    entries."""
+
 
 # --- GET /api/settle ------------------------------------------------------------------------
 
 
 class PlannedOperation(_Frozen):
-    """One change at one pointer, as a settlement comes to it."""
+    """One change at one pointer, as a preview comes to it."""
 
-    op: Literal["set", "remove"]
-    """Which of the two operations a settlement ever makes this is."""
+    op: Literal["set", "remove", "insert"]
+    """Which operation this is: a settlement sets and removes, and a unit's plan inserts too."""
 
     pointer: str
     """Dotted path to the value this operation acts on."""
@@ -504,13 +605,14 @@ class Hunk(_Frozen):
 
 
 class PlannedChange(_Frozen):
-    """The edit of one file a settlement comes to, and the lines it changes."""
+    """The edit of one file a preview comes to, and the lines it changes."""
 
     file: str
     """Absolute, posix-separated path of the file this change is made to."""
 
-    fingerprint: str
-    """What the file was read at, which ``POST /api/edit`` checks."""
+    fingerprint: str | None
+    """What the file was read at, which ``POST /api/edit`` checks; ``None`` for a file the
+    change creates."""
 
     operations: tuple[PlannedOperation, ...]
     """The operations to apply to the file, in order."""
@@ -528,6 +630,20 @@ class SettleReply(_Frozen):
 
     changes: tuple[PlannedChange, ...]
     """One per file, sorted by path; empty when every declaration already agrees."""
+
+
+# --- GET /api/unit-plan ---------------------------------------------------------------------
+
+
+class PlanReply(_Frozen):
+    """What ``GET /api/unit-plan`` answers: the preview of one change of the project's units."""
+
+    revision: int
+    """The revision this preview was computed from."""
+
+    changes: tuple[PlannedChange, ...]
+    """One per file, sorted by path; a file the change creates has no fingerprint, and one hunk
+    at line 1 that is the whole of it."""
 
 
 # --- GET /api/checks -----------------------------------------------------------------------
@@ -607,8 +723,10 @@ class Change(_Request):
     file: str
     """Absolute, posix-separated path of the file this change is made to."""
 
-    fingerprint: str
-    """The fingerprint the file was read at; refused as ``stale`` if it has since changed."""
+    fingerprint: str | None
+    """The fingerprint the file was read at; refused as ``stale`` if it has since changed.
+    ``None`` creates the file, which must not exist yet, from one ``set`` of its whole document
+    at the pointer ``""``."""
 
     operations: tuple[Operation, ...] = Field(min_length=1)
     """The operations to apply to the file, in order."""
@@ -674,6 +792,8 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (VariableReply, "serialization"),
     (UnitsReply, "serialization"),
     (SettleReply, "serialization"),
+    (UnitReply, "serialization"),
+    (PlanReply, "serialization"),
 )
 """Every request and response of spec section 6.5, with the schema pydantic builds for each:
 ``"validation"`` for a request, read for the shape a caller must send; ``"serialization"`` for

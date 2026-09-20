@@ -203,7 +203,12 @@ class _Handler(BaseHTTPRequestHandler):
             body = self._body()
             if body is None:
                 return
-        reply = self._gui.api.handle(method, url.path, parse_qs(url.query), body)
+        # Blank values kept: clearing a unit's description asks for `description=`, which means
+        # the empty text, where a parameter left out means nothing was given. Every handler that
+        # reads a parameter answers a blank one as it answers a missing one, as it did when
+        # blank values were dropped here.
+        query = parse_qs(url.query, keep_blank_values=True)
+        reply = self._gui.api.handle(method, url.path, query, body)
         self._send_json(reply.status, reply.body)
 
     def _sign_in(self, query: dict[str, list[str]]) -> None:

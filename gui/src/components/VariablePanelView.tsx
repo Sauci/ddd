@@ -1,17 +1,10 @@
-import type { PlannedChange, SettleReply, UnitsReply, VariableReply } from "../api/types";
+import type { SettleReply, UnitsReply, VariableReply } from "../api/types";
 import { distinctFindings, keyedFindings } from "../lib/findings";
-import {
-  baseName,
-  consequence,
-  describe,
-  hunkLines,
-  pickerSections,
-  unitOfDeclaration,
-  willChange,
-} from "../lib/units";
+import { consequence, describe, pickerSections, unitOfDeclaration, willChange } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
+import { Changes } from "./Changes";
 import { UnitPicker } from "./UnitPicker";
 
 export interface VariablePanelViewProps {
@@ -93,7 +86,7 @@ export function VariablePanelView(props: VariablePanelViewProps) {
         </ul>
       )}
       <UnitPicker
-        name={variable.name}
+        label={`Unit of ${variable.name}`}
         sections={pickerSections(variable.name, variable.declarations, units, props.narrow)}
         typed={props.typed}
         onTyped={props.onTyped}
@@ -125,27 +118,5 @@ export function VariablePanelView(props: VariablePanelViewProps) {
         </>
       )}
     </Panel>
-  );
-}
-
-/** The lines each file will get, as Show changes prints them. */
-function Changes({ changes }: { changes: readonly PlannedChange[] }) {
-  return (
-    <div className="changes">
-      {changes.flatMap((change) =>
-        change.hunks.map((hunk) => (
-          <pre key={`${change.file} ${hunk.line}`} className="hunk">
-            <span className="where">
-              {baseName(change.file)}, line {hunk.line}
-            </span>
-            {hunkLines(hunk).map((line) => (
-              <span key={line.key} className={line.sign === "-" ? "removed" : "added"}>
-                {line.sign} {line.text}
-              </span>
-            ))}
-          </pre>
-        )),
-      )}
-    </div>
   );
 }

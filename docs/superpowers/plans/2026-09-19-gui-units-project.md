@@ -8374,12 +8374,30 @@ Update the pull request's description, and ask before marking it ready for revie
 
 | Task | Started | Duration | Tokens | Notes |
 | --- | --- | --- | --- | --- |
+| 1 | 09:35 | 10 min | ~257k | The index records every place a unit is stated and every vocabulary entry, and `units_in_use` counts from it. Review clean, no findings. |
+| 2 | 09:45 | 29 min | ~459k | The five plans. Its review found the new module sorting `Path` objects, which order differently on Windows and Linux, where the loader's own include expansion sorts by posix spelling; one fix round settled it everywhere in the file. |
+| 3 | 10:14 | 25 min | ~498k | Rename Symbol on a unit, and the two quick fixes on `unknown-unit`. Review clean. Its one question - whether the quick fixes should pass the gate the rename now passes - was ruled below. |
+| 4 | 10:39 | 24 min | ~387k | The edit engine creates a file. Review clean: the confinement was checked against `..`, symlinks and respelled paths, and the window between the must-not-exist check and the rename was ruled below. |
+| 5 | 11:03 | 28 min | ~545k | The three endpoints, blank query values kept, part 1's contract widened. Review clean, no findings. |
+| 6 | 11:31 | 15 min | ~314k | The page's calls, its pure logic and the Units tab's route. Review clean; the generated types matched the plan's own expectations exactly. |
+| 7 | 11:46 | 20 min | ~373k | The tab's widgets, and a story with its reference for every state. Part 1's journeys ran too, since the picker's prop was renamed; none of its references changed. Review clean. |
+| 8 | 12:06 | 37 min | ~484k | The tab's screens and five journeys - the first run they ever had. The stale journey raced the server's once-a-second poll and now waits for its re-analysis, as milestone 1's own stale journey does. Review clean. |
+| 9 | 12:43 | 35 min | ~595k | The documentation. Its review found a refusal paragraph that read as covering the unit rename, which is refused only while a file does not load, and a "part 1" label no published page defines; one fix round. |
+| Final review | 14:00 | 20 min | ~334k | The whole branch: ready to merge, nothing Critical or Important. Every deferred minor was triaged "can wait", and nine rulings were confirmed against the code. It ran on sonnet: the account's weekly Opus limit was exhausted (ruling below). |
+| 10 | 14:25 | 55 min | controller | The gate from a clean build: Python 3593 at 100 %, ruff, mypy, the documentation from nothing, Vitest 150, the build, Ladle, 30 journeys in Chrome, 27 stories in Playwright's image. Its first run failed on three demo tests: the final reviewer had driven the checkout's own `examples/demo` rather than a copy, and left `degC` renamed to `Hz` there; restored, and the gate then passed. Then `docker compose up gui`: the demo adopted a vocabulary, a unit was described, a spelling drifted in from outside was merged back by typing and pressing Enter, the created file came out owned by the user with the project description's mode, and no page reported a policy violation. The screenshots are beside this plan in `2026-09-19-gui-units-project/`. |
 
 ## Left open by the implementers
 
-Minor findings of the task reviews, deferred to the final whole-branch review, which decides which must be fixed before merging.
+The minor findings of the task reviews, which the final whole-branch review triaged as able to wait, and the one it found itself. The maintainer decides which, if any, must be fixed before merging.
 
-- Found while writing the plan, in part 1's code: `pickerSections` gives a unit the vocabulary lists twice two entries with one id (`gui/src/lib/units.ts`, the vocabulary section).
+- Task 2: `remove_unit` repeats `_known`'s not-found message inline rather than calling it.
+- Task 4: `_confined` recomputes `_included` once per created file (one today); no test of `_put_back` failing to unlink a created file during a rollback.
+- Task 6: `renameSections` repeats part 1's `pickerSections`' narrowing and typed-section logic, over different choice shapes.
+- Task 7: `UnitPanelView` repeats `VariablePanelView`'s findings list; a tie in the table's order falls to code-unit spelling (`V`, `degC` before `rpm`), where the mockup shows another order.
+- Task 8: a unit's panel keeps one refusal message for all its actions, so trying Remove clears a Save refusal shown beside it; and a plan refetched right after a stale refusal can carry the old fingerprint until the server's once-a-second poll re-analyses, so an immediate retry is refused again. The second is shared with part 1's variable panel, and is out as a follow-up.
+- Task 9: the command page's `ddd gui` row says "tab" twice in close succession.
+- Found by the final review: `variables.preview` sorts `Path` objects, the ordering hazard this branch fixed next door in `lsp/units.py`; it is part 1's code, and goes out as a follow-up.
+- Found while writing the plan, in part 1's code: `pickerSections` gives a unit the vocabulary lists twice two entries with one id.
 
 ## Rulings made while writing and executing the plan
 
@@ -8418,3 +8436,17 @@ Rulings 1 to 33 were taken while writing the plan, on 2026-09-19.
 31. **A description's plan is asked for at each change of the field**, the last kept on screen with Save disabled until the next arrives; the field is a labelled `<input>`, not a new `ui/` widget. Cost if wrong: requests while typing.
 32. **A fifth journey covers spec 5.4**: a unit gone from outside, a bookmark naming it, and the panel staying while a file does not load. Cost if wrong: none.
 33. **The drafters verified their code on scratch copies**: Tasks 1 to 5 pass the Python gate together at 100 %, and Tasks 6 to 8 pass lint, typecheck, Vitest at 100 %, build and Ladle with Task 5's types in place. The journeys are type-checked only until Tasks 1 to 5 exist to serve them. Cost if wrong: a journey's first run finds what reading could not.
+
+Rulings 34 to 44 were taken executing the plan, on 2026-09-19 and 2026-09-20, in the controlling session's ledger:
+
+34. **Work in place** on `feature/gui-units-project` in the main checkout, no linked worktree: the venv's editable install points at this checkout's `src/`, as for part 1. Cost if wrong: a second session in this checkout collides with this one.
+35. **Implementers and task reviews on sonnet**, the final whole-branch review on the most capable model available. Cost if wrong: tokens.
+36. **Task 7 ran part 1's journeys as well as its own gate**, since it renamed a prop of `UnitPicker`, which those journeys drive. Cost if wrong: a few minutes.
+37. **Task 8's journeys were its failing tests**: never run while the plan was written, run against Tasks 1 to 7 and made to pass. Cost if wrong: none.
+38. **Task 6 began with `npm run schemas` and a typecheck**, and a difference between the generated types and the plan's own expectation would have been fixed in the page code, not the contract. There was none. Cost if wrong: a contract field shaped for the page's convenience.
+39. **An implementer keeps the co-author trailer its own harness gives it**, which names the model that wrote the commit; no pushed commit is rewritten. Cost if wrong: none.
+40. **Every collection of paths in `lsp/units.py` is sorted by its posix spelling** (Task 2's review): `Path` orders case-insensitively on Windows and by code point on Linux, and the loader's own include expansion already sorted this way. Cost if wrong: none.
+41. **The unit quick fixes keep the gate every code action has** - withheld while any file had an error from the read - although the explicit rename passes a narrower one (Task 3). Cost if wrong: no unit quick fix in an editor while a units file lists a unit twice; the rename and the page still work.
+42. **The created file's must-not-exist check stands where the edit is computed** (Task 4), as an ordinary edit's fingerprint check does, rather than being made atomic at the rename with a hard link, which not every filesystem or bind mount offers. Cost if wrong: a `units.ddd.json` written by another program in that window is overwritten.
+43. **The final whole-branch review ran on sonnet**: the account's weekly Opus limit was exhausted for two days, and every task's own review was already clean behind it. Cost if wrong: a less searching final review than part 1's.
+44. **No fix wave followed the final review**, which left nothing Critical or Important; its one Minor is part 1's code and goes out as a follow-up rather than a controller fix that would skip review. Cost if wrong: part 1 keeps an ordering difference between Windows and Linux that it has shipped with since it merged.

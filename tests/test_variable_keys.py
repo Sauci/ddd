@@ -280,6 +280,138 @@ class TestWhatIsInPlay:
         assert json.loads(values[0].raw) == {"kind": "linear", "factor": 2, "offset": 0}
         assert list(json.loads(values[0].raw)) == ["kind", "factor", "offset"]
 
+    def test_a_conversion_the_models_complete_is_one_value_with_what_it_completes_to(
+        self, tmp_path: Path
+    ) -> None:
+        # `{"factor": 2}` is the conversion `{"kind": "linear", "factor": 2, "offset": 0}` by
+        # `definition-mismatch`'s own account - the models infer the rest - so the panel has to
+        # group them the same way, or it marks a row red the checker files no finding about.
+        idx = built(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", conversion={"factor": 2})),
+                "b.ddd.json": component(
+                    "B",
+                    declare(
+                        "input",
+                        "Speed",
+                        conversion={"kind": "linear", "factor": 2, "offset": 0},
+                    ),
+                ),
+            },
+        )
+        offer = offered(idx, "Speed", "conversion")
+        assert [(value.components, value.producer) for value in offer.values] == [
+            (("A", "B"), True)
+        ]
+        assert offer.disagrees is False
+
+    def test_limits_the_model_resolves_the_same_are_one_value(self, tmp_path: Path) -> None:
+        idx = built(
+            tmp_path,
+            **{
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", limits={"min": 0, "max": 100})
+                ),
+                "b.ddd.json": component(
+                    "B", declare("input", "Speed", limits={"min": 0.0, "max": 100.0})
+                ),
+            },
+        )
+        offer = offered(idx, "Speed", "limits")
+        assert [(value.components, value.producer) for value in offer.values] == [
+            (("A", "B"), True)
+        ]
+        assert offer.disagrees is False
+
+    def test_two_enum_conversions_of_one_name_group_by_the_name_alone(self, tmp_path: Path) -> None:
+        # Reordered and redescribed enumerators are `enum-conflict`'s to report, not this
+        # panel's: :func:`~ddd.models.conversion.conversion_interface_value` narrows an enum to
+        # its name, exactly as `definition-mismatch` does.
+        idx = built(
+            tmp_path,
+            **{
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Speed",
+                        conversion={
+                            "kind": "enum",
+                            "name": "StateA",
+                            "enumerators": [
+                                {"name": "OFF", "value": 0},
+                                {"name": "ON", "value": 1},
+                            ],
+                        },
+                    ),
+                ),
+                "b.ddd.json": component(
+                    "B",
+                    declare(
+                        "input",
+                        "Speed",
+                        conversion={
+                            "kind": "enum",
+                            "name": "StateA",
+                            "enumerators": [
+                                {"name": "ON", "value": 1, "description": "engaged"},
+                                {"name": "OFF", "value": 0},
+                            ],
+                        },
+                    ),
+                ),
+            },
+        )
+        offer = offered(idx, "Speed", "conversion")
+        assert [(value.components, value.producer) for value in offer.values] == [
+            (("A", "B"), True)
+        ]
+        assert offer.disagrees is False
+
+    def test_a_conversion_the_models_refuse_falls_back_to_its_own_text(
+        self, tmp_path: Path
+    ) -> None:
+        # A definition mid-edit may hold a conversion the models refuse outright - `factor: 0`
+        # cannot convert back - and the panel still has to draw a row for what is on disk
+        # rather than pretend the key states nothing.
+        idx = built(
+            tmp_path,
+            **{"a.ddd.json": component("A", declare("output", "Speed", conversion={"factor": 2}))},
+        )
+        edited(
+            tmp_path / "a.ddd.json",
+            lambda definition: definition.__setitem__(
+                "conversion", {"kind": "linear", "factor": 0}
+            ),
+        )
+        values = offered(idx, "Speed", "conversion").values
+        assert len(values) == 1
+        assert json.loads(values[0].raw) == {"kind": "linear", "factor": 0}
+        assert values[0].components == ("A",)
+        assert values[0].producer is True
+
+    def test_limits_the_models_refuse_fall_back_to_their_own_text(self, tmp_path: Path) -> None:
+        # The same drift as the conversion above, for limits: a `min` above the `max` is
+        # refused outright, and the panel still has to draw a row for what is on disk.
+        idx = built(
+            tmp_path,
+            **{
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", limits={"min": 0, "max": 100})
+                )
+            },
+        )
+        edited(
+            tmp_path / "a.ddd.json",
+            lambda definition: definition.__setitem__("limits", {"min": 100, "max": 0}),
+        )
+        values = offered(idx, "Speed", "limits").values
+        assert len(values) == 1
+        assert json.loads(values[0].raw) == {"min": 100, "max": 0}
+        assert values[0].components == ("A",)
+        assert values[0].producer is True
+
     def test_a_key_nobody_states_has_nothing_in_play(self, tmp_path: Path) -> None:
         idx = built(tmp_path, **{"a.ddd.json": component("A", declare("output", "Speed"))})
         assert offered(idx, "Speed", "unit").values == ()

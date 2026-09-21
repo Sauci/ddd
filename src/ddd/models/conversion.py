@@ -305,7 +305,7 @@ def conversion_identity(conversion: Conversion) -> object:
     everything else compares as written, because ``linear`` with factor 1 is deliberately
     not the identity. This is what a delivery comparison compares and what ``enum-conflict``
     holds two declarations of one enum to; the in-project interface table narrows an enum to
-    its name instead (:func:`ddd.analysis._conversion_value`), the enumerators being
+    its name instead (:func:`conversion_interface_value`), the enumerators being
     ``enum-conflict``'s there.
     """
     if isinstance(conversion, EnumConversion):
@@ -315,6 +315,28 @@ def conversion_identity(conversion: Conversion) -> object:
             tuple((entry.name, entry.value) for entry in conversion.enumerators),
         )
     return conversion.model_dump(mode="json")
+
+
+def conversion_interface_value(conversion: Conversion) -> object:
+    """What two declarations of one object, within a project, have to agree on about a conversion.
+
+    An identity or a linear conversion is compared in full, by :func:`conversion_identity` -
+    kind and parameters both, completed the way the models complete them: ``{"factor": 2}``
+    and ``{"kind": "linear", "factor": 2, "offset": 0}`` agree. An enum narrows to its name
+    alone: the enumerators, descriptions included, are ``enum-conflict``'s to agree on, and
+    folding them in here as well would turn one mistake into two findings - the second of
+    which cannot even say what it means, because a definition explains itself by calling
+    :meth:`EnumConversion.describe`, which names the enum and nothing else, so a reordered or
+    revalued enumerator used to print identical text on both sides of the mismatch.
+
+    Used by :func:`ddd.analysis._conversion_value` for ``definition-mismatch``, and by
+    :mod:`ddd.variable_keys` to decide which declarations of a variable already agree about a
+    conversion before the panel of ``ddd gui`` offers to settle it - the checker and the panel
+    must not disagree about what counts as one conversion.
+    """
+    if isinstance(conversion, EnumConversion):
+        return ("enum", conversion.name)
+    return conversion_identity(conversion)
 
 
 SIGNIFICANT_DIGITS: Final = 12

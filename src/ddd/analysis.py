@@ -60,6 +60,7 @@ from ddd.models import (
     check_string_member_shape,
     check_string_shape,
     conversion_identity,
+    conversion_interface_value,
     conversion_range,
     format_number,
     format_shape,
@@ -216,23 +217,16 @@ def _describe_limits(definition: DataObject) -> str:
 def _conversion_value(definition: DataObject) -> object:
     """What two declarations of one object have to agree on in their conversion.
 
-    An identity or a linear conversion is compared in full, by
-    :func:`~ddd.models.conversion.conversion_identity` - kind and parameters both. An enum
-    compares by its name alone: the enumerators, descriptions included, are
-    ``enum-conflict``'s to agree on, and folding them in here as well would turn one mistake
-    into two findings - the second of which cannot even say what it means, because this field
-    explains itself by calling :meth:`~ddd.models.conversion.EnumConversion.describe`, which
-    names the enum and nothing else, so a reordered or revalued enumerator used to print
-    identical text on both sides of the mismatch.
+    ``None`` for a structured declaration: the type carries the meaning, so there is no
+    conversion here to disagree about, and every declaration of the object says the same
+    nothing. Otherwise :func:`~ddd.models.conversion.conversion_interface_value`, which
+    :mod:`ddd.variable_keys` groups the panel of ``ddd gui``'s values by too, so the checker
+    and the panel cannot disagree about what counts as one conversion.
     """
     conversion = definition.conversion
     if conversion is None:
-        # A structured declaration: the type carries the meaning, so there is no conversion
-        # here to disagree about, and every declaration of the object says the same nothing.
         return None
-    if isinstance(conversion, EnumConversion):
-        return ("enum", conversion.name)
-    return conversion_identity(conversion)
+    return conversion_interface_value(conversion)
 
 
 # What every component sharing an object has to agree on: a disagreement is an error.

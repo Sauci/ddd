@@ -212,7 +212,11 @@ export function describeVariable(variable: VariableReply): string {
   const declarations = `${variable.declarations.length} declaration${
     variable.declarations.length === 1 ? "" : "s"
   }`;
-  const disagreeing = variable.keys.filter((offer) => offer.disagrees).length;
+  // `kind` is the page's own row - keyRows marks it the same way, so the line and the table
+  // never contradict each other over whether it disagrees.
+  const kindDisagrees = new Set(variable.declarations.map((entry) => entry.stated.kind)).size > 1;
+  const disagreeing =
+    variable.keys.filter((offer) => offer.disagrees).length + (kindDisagrees ? 1 : 0);
   const state =
     disagreeing === 0
       ? "all agreed"

@@ -11,6 +11,7 @@ import {
   NOTHING,
   ONE_FILE,
   PREVIEW_CONVERSION,
+  PREVIEW_LIMITS,
   SHAPED,
   VOCABULARY,
 } from "../stories/fixtures";
@@ -67,6 +68,7 @@ function View({
   };
   const onRange = (next: { min: string; max: string }) => {
     setRange(next);
+    setTyped(undefined);
     const raw = limitsRaw(next.min, next.max);
     if (raw !== null) setChosen(raw);
   };
@@ -76,7 +78,6 @@ function View({
       units={units}
       selected={selected}
       onSelect={select}
-      chosen={target}
       typed={typed ?? (selected === undefined ? "" : labelOfRaw(variable, selected, target))}
       // Never the target: opening the list on the value settled on must still list everything,
       // not just the entries that happen to contain it (spec 5.3, and part 1's own journey).
@@ -163,7 +164,7 @@ export const ConversionChosen = () => (
 );
 
 export const RangeTyped = () => (
-  <View variable={SHAPED} units={FREE_UNITS} preview={ONE_FILE} selected="limits" />
+  <View variable={SHAPED} units={FREE_UNITS} preview={PREVIEW_LIMITS} selected="limits" />
 );
 
 export const NameChosen = () => (

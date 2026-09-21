@@ -25,7 +25,6 @@ function Field({ variable, keyName, open = false }: Props) {
       variable={variable}
       keyName={keyName}
       units={FREE_UNITS}
-      chosen={chosen}
       typed={typed ?? labelOfRaw(variable, keyName, chosen)}
       narrow={typed ?? ""}
       onTyped={setTyped}

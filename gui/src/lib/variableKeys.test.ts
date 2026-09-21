@@ -265,6 +265,14 @@ describe("the panel's line under the name", () => {
     expect(describeVariable(agreed)).toContain("2 declarations · all agreed");
   });
 
+  test("two kinds disagreeing is a key too, though kind is not one of variable.keys", () => {
+    const twoKinds = variable(
+      [offer("unit")],
+      [{ kind: '"measurement"' }, { kind: '"parameter"' }],
+    );
+    expect(describeVariable(twoKinds)).toContain("1 key disagrees");
+  });
+
   test("no declarations at all names nothing", () => {
     expect(
       describeVariable({ revision: 1, name: "Nothing", declarations: [], keys: [], findings: [] }),

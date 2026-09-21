@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { ApiError, getSettle, getUnits, getVariable, postEdit } from "../api/client";
 import { VariablePanelView } from "../components/VariablePanelView";
 import { editOf, outsideVocabulary, textOf } from "../lib/units";
-import { labelOfRaw, limitsOf, limitsRaw, startingRaw } from "../lib/variableKeys";
+import { keyRows, labelOfRaw, limitsOf, limitsRaw, startingRaw } from "../lib/variableKeys";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
 
@@ -50,7 +50,9 @@ export function VariablePanel({
     queryFn: () => getUnits(),
     placeholderData: (previous) => previous,
   });
-  const [selected, setSelected] = useState<string | undefined>(undefined);
+  // The reader's own choice of key, kept as a tri-state the way `chosen` below is: `undefined`
+  // until they choose, `null` once they let a row go, a string for the key they picked.
+  const [picked, setPicked] = useState<string | null | undefined>(undefined);
   // `undefined` until the reader chooses: the chooser then settles on the producer's value, the
   // direction the tool's own rule reads in, and says what that would change.
   const [chosen, setChosen] = useState<string | null | undefined>(undefined);
@@ -58,6 +60,20 @@ export function VariablePanel({
   const [range, setRange] = useState<{ min: string; max: string }>({ min: "", max: "" });
   const [changesShown, setChangesShown] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
+  // What the table actually offers to settle (`kind` aside): what a key remembered from a
+  // previous variable, or forced by `focusPicker`, has to be checked against before it is shown.
+  const rows =
+    variable.data === undefined ? [] : keyRows(variable.data, null).filter((row) => row.settleable);
+  // The key actually shown: the reader's own choice, once made and still one the table lists;
+  // else the first row that disagrees - spec 5.1's own order, and what a red arrow on the canvas
+  // is about, since it opens this panel because something disagrees and a reader could settle it
+  // from there in one press; else none.
+  const selected =
+    picked === null
+      ? undefined
+      : picked !== undefined
+        ? rows.find((row) => row.key === picked)?.key
+        : rows.find((row) => row.disagrees)?.key;
   const target =
     selected === undefined || variable.data === undefined
       ? null
@@ -70,9 +86,10 @@ export function VariablePanel({
     enabled: variable.data !== undefined && selected !== undefined,
   });
   // Selecting a row starts that key afresh - what was chosen for the last one means nothing for
-  // this one.
+  // this one. Letting a row go is a choice too, not a blank: it must show the table alone even
+  // while a row still disagrees, not hand the reader straight back to it.
   const select = (key: string | undefined) => {
-    setSelected(key);
+    setPicked(key ?? null);
     setChosen(undefined);
     setTyped(undefined);
     setChangesShown(false);
@@ -92,6 +109,7 @@ export function VariablePanel({
   // A range typed into the two fields is the value chosen as soon as it is a range.
   const onRange = (next: { min: string; max: string }) => {
     setRange(next);
+    setTyped(undefined);
     const raw = limitsRaw(next.min, next.max);
     // A half-typed range is not a choice: the preview keeps showing the last whole one.
     if (raw !== null) {
@@ -152,7 +170,6 @@ export function VariablePanel({
       units={units.data}
       selected={selected}
       onSelect={select}
-      chosen={target}
       typed={typed ?? (selected === undefined ? "" : labelOfRaw(variable.data, selected, target))}
       // Never the target: opening the list on the producer's value must still list everything,
       // not just the entries that happen to contain it (spec 5.3, and part 1's own journey).

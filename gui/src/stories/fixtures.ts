@@ -381,6 +381,32 @@ export const PREVIEW_CONVERSION: SettleReply = {
   ],
 };
 
+/** A preview that settles Rpm_Axis's limits onto Controller too, resolving SHAPED's own
+ * disagreement: the table's "will change" tag, and Show changes, have something to draw. */
+export const PREVIEW_LIMITS: SettleReply = {
+  revision: 7,
+  changes: [
+    {
+      file: CONTROLLER,
+      fingerprint: "3c9909afec25354d551dae21590bb26e38d53f2173b8d3dc3eee4c047e7ab1c1",
+      operations: [
+        {
+          op: "set",
+          pointer: "component.interface[1].definition.limits",
+          raw: '{"min": 0, "max": 8000}',
+        },
+      ],
+      hunks: [
+        {
+          line: 18,
+          before: ['          "limits": {"min": 0, "max": 6000},'],
+          after: ['          "limits": {"min": 0, "max": 8000},'],
+        },
+      ],
+    },
+  ],
+};
+
 /** A row of the Units tab, which the variable panel does not read: a unit variables state. */
 function row(
   unit: string,

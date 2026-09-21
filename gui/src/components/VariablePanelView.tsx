@@ -54,7 +54,6 @@ export function VariablePanelView(props: VariablePanelViewProps) {
           variable={variable}
           keyName={selected}
           units={units}
-          chosen={props.chosen}
           typed={props.typed}
           narrow={props.narrow}
           onTyped={props.onTyped}

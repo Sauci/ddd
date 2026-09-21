@@ -9,8 +9,6 @@ export interface KeyChooserProps {
   /** Which key is being settled. */
   keyName: string;
   units: UnitsReply;
-  /** The json text settled on, or `null` for "state nothing". */
-  chosen: string | null;
   /** What the field reads: what is being typed, else the value settled on. */
   typed: string;
   /** What narrows the list: "" unless the reader is typing (part 1's rule, spec 5.3). */

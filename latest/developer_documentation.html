@@ -932,6 +932,23 @@ renders a plan as the text edits of <code class="docutils literal notranslate"><
 the two can never disagree about it - as <code class="docutils literal notranslate"><span class="pre">ddd.lsp.edits.settle</span></code> already does for a
 variable’s keys, one rule the language server’s reconcile quick fix and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>’s
 variable panel both read.</p>
+<p>What a key of a variable offers the panel is worked out in <code class="docutils literal notranslate"><span class="pre">ddd.variable_keys</span></code>: per key,
+and per declaration, whether that declaration’s kind has the key at all and whether it
+must state it - <code class="docutils literal notranslate"><span class="pre">ddd.models.definition_keys</span></code>, plus the storage keys a declaration cannot
+be left without - beside the values in play, one entry per value however its file spells
+it, the components stating it and whether one of them produces the variable. It says which
+field chooses the key and what that field names: the eleven datatypes, the project’s
+types, its declared constants, or its axes and measurements, which the navigation index
+records as it reads each declaration’s kind. <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/variable</span></code> answers those beside
+the declarations themselves; <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/settle</span></code> settles any of the twelve keys of
+<code class="docutils literal notranslate"><span class="pre">ddd.lsp.edits.PROPAGATED_KEYS</span></code> and is the same endpoint the unit has always used.
+<code class="docutils literal notranslate"><span class="pre">ddd.value_identity.same_value</span></code> decides when two spellings are one value - a conversion
+through the models and an enum by its name, limits as the numbers they resolve to,
+everything else its canonical json text, anything the models refuse outright falling back
+to that text - so the panel’s values in play, <code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code> and what
+<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/settle</span></code> previews through <code class="docutils literal notranslate"><span class="pre">ddd.variables.narrowed</span></code> can never disagree about
+one. <code class="docutils literal notranslate"><span class="pre">ddd.lsp.edits.settle</span></code> itself is untouched, and still compares a declaration’s own
+text.</p>
 <p>The edit engine learnt one thing for adoption: a change whose <code class="docutils literal notranslate"><span class="pre">fingerprint</span></code> is <code class="docutils literal notranslate"><span class="pre">null</span></code>
 creates its file, one <code class="docutils literal notranslate"><span class="pre">set</span></code> of the whole document at the root pointer, and is refused as
 <code class="docutils literal notranslate"><span class="pre">stale</span></code> if the file exists by the time the edit is made. It is staged and renamed into

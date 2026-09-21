@@ -415,7 +415,7 @@
 <span class="sd">    everything else compares as written, because ``linear`` with factor 1 is deliberately</span>
 <span class="sd">    not the identity. This is what a delivery comparison compares and what ``enum-conflict``</span>
 <span class="sd">    holds two declarations of one enum to; the in-project interface table narrows an enum to</span>
-<span class="sd">    its name instead (:func:`ddd.analysis._conversion_value`), the enumerators being</span>
+<span class="sd">    its name instead (:func:`conversion_interface_value`), the enumerators being</span>
 <span class="sd">    ``enum-conflict``'s there.</span>
 <span class="sd">    """</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">):</span>
@@ -425,6 +425,28 @@
             <span class="nb">tuple</span><span class="p">((</span><span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">entry</span><span class="o">.</span><span class="n">value</span><span class="p">)</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">conversion</span><span class="o">.</span><span class="n">enumerators</span><span class="p">),</span>
         <span class="p">)</span>
     <span class="k">return</span> <span class="n">conversion</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"json"</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">conversion_interface_value</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">object</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""What two declarations of one object, within a project, have to agree on about a conversion.</span>
+
+<span class="sd">    An identity or a linear conversion is compared in full, by :func:`conversion_identity` -</span>
+<span class="sd">    kind and parameters both, completed the way the models complete them: ``{"factor": 2}``</span>
+<span class="sd">    and ``{"kind": "linear", "factor": 2, "offset": 0}`` agree. An enum narrows to its name</span>
+<span class="sd">    alone: the enumerators, descriptions included, are ``enum-conflict``'s to agree on, and</span>
+<span class="sd">    folding them in here as well would turn one mistake into two findings - the second of</span>
+<span class="sd">    which cannot even say what it means, because a definition explains itself by calling</span>
+<span class="sd">    :meth:`EnumConversion.describe`, which names the enum and nothing else, so a reordered or</span>
+<span class="sd">    revalued enumerator used to print identical text on both sides of the mismatch.</span>
+
+<span class="sd">    Used by :func:`ddd.analysis._conversion_value` for ``definition-mismatch``, and by</span>
+<span class="sd">    :mod:`ddd.variable_keys` to decide which declarations of a variable already agree about a</span>
+<span class="sd">    conversion before the panel of ``ddd gui`` offers to settle it - the checker and the panel</span>
+<span class="sd">    must not disagree about what counts as one conversion.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="s2">"enum"</span><span class="p">,</span> <span class="n">conversion</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">conversion_identity</span><span class="p">(</span><span class="n">conversion</span><span class="p">)</span>
 
 
 <span class="n">SIGNIFICANT_DIGITS</span><span class="p">:</span> <span class="n">Final</span> <span class="o">=</span> <span class="mi">12</span>

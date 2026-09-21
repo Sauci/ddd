@@ -876,6 +876,24 @@ the two can never disagree about it - as ``ddd.lsp.edits.settle`` already does f
 variable's keys, one rule the language server's reconcile quick fix and ``ddd gui``'s
 variable panel both read.
 
+What a key of a variable offers the panel is worked out in ``ddd.variable_keys``: per key,
+and per declaration, whether that declaration's kind has the key at all and whether it
+must state it - ``ddd.models.definition_keys``, plus the storage keys a declaration cannot
+be left without - beside the values in play, one entry per value however its file spells
+it, the components stating it and whether one of them produces the variable. It says which
+field chooses the key and what that field names: the eleven datatypes, the project's
+types, its declared constants, or its axes and measurements, which the navigation index
+records as it reads each declaration's kind. ``GET /api/variable`` answers those beside
+the declarations themselves; ``GET /api/settle`` settles any of the twelve keys of
+``ddd.lsp.edits.PROPAGATED_KEYS`` and is the same endpoint the unit has always used.
+``ddd.value_identity.same_value`` decides when two spellings are one value - a conversion
+through the models and an enum by its name, limits as the numbers they resolve to,
+everything else its canonical json text, anything the models refuse outright falling back
+to that text - so the panel's values in play, ``definition-mismatch`` and what
+``GET /api/settle`` previews through ``ddd.variables.narrowed`` can never disagree about
+one. ``ddd.lsp.edits.settle`` itself is untouched, and still compares a declaration's own
+text.
+
 The edit engine learnt one thing for adoption: a change whose ``fingerprint`` is ``null``
 creates its file, one ``set`` of the whole document at the root pointer, and is refused as
 ``stale`` if the file exists by the time the edit is made. It is staged and renamed into

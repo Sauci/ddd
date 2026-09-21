@@ -1,5 +1,5 @@
 import type { SettleReply, VariableReply } from "../api/types";
-import { keyRows } from "../lib/variableKeys";
+import { keyColumns, keyRows } from "../lib/variableKeys";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
 
 export interface VariableKeysTableProps {
@@ -20,9 +20,11 @@ export function VariableKeysTable({
   onSelect,
 }: VariableKeysTableProps) {
   const rows = keyRows(variable, preview);
+  // The producer's column first, as `keyRows` orders every row's cells: `at` is the place in
+  // that order, which is what a cell is looked up by below.
   const columns = [
     { id: "key", name: "Key", at: -1 },
-    ...variable.declarations.map((declaration, at) => ({
+    ...keyColumns(variable).map(({ declaration }, at) => ({
       id: `${declaration.path} ${declaration.pointer}`,
       name: declaration.component,
       at,
@@ -50,9 +52,9 @@ export function VariableKeysTable({
             {(column) => {
               if (column.at < 0) return <Cell className={also("key")}>{row.key}</Cell>;
               const cell = row.cells[column.at];
-              // `columns` beyond the key column is built from `variable.declarations`, and
-              // `row.cells` from the same array (lib/variableKeys.ts's `rowOf`), so the two are
-              // always the same length; this is only what tells the type checker so under
+              // `columns` beyond the key column and `row.cells` are both built from
+              // `keyColumns(variable)`, in that one order, so the two are always the same
+              // length; this is only what tells the type checker so under
               // `noUncheckedIndexedAccess`.
               if (cell === undefined) return <Cell />;
               return (

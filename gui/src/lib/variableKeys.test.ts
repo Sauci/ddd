@@ -4,8 +4,10 @@ import {
   chooserSections,
   describeVariable,
   enteredValue,
+  keyColumns,
   keyRows,
   labelOfRaw,
+  limitsNote,
   limitsOf,
   limitsRaw,
   offerOf,
@@ -217,6 +219,83 @@ describe("the rows of the table", () => {
     };
     expect(willChangeKey(preview, controller, "unit")).toBe(true);
     expect(willChangeKey(preview, controller, "datatype")).toBe(false);
+  });
+});
+
+describe("the columns of the table", () => {
+  /** ValueA as a project that lists Controller before SensorHub answers it: the reader first,
+   * the producer second, which is the order every other reader of the api is given. */
+  function readerFirst(keys: VariableKeyOffer[]): VariableReply {
+    return {
+      revision: 7,
+      name: "ValueA",
+      declarations: [
+        {
+          path: CONTROLLER,
+          pointer: "component.interface[0].definition",
+          component: "Controller",
+          role: "reads",
+          stated: { kind: '"parameter"', unit: '"rpm"' },
+          type: null,
+          fixed: {},
+        },
+        {
+          path: SENSOR_HUB,
+          pointer: "component.interface[2].definition",
+          component: "SensorHub",
+          role: "produces",
+          stated: { kind: '"measurement"', unit: '"%"', dimensions: "[4]" },
+          type: null,
+          fixed: {},
+        },
+      ],
+      keys,
+      findings: [],
+    };
+  }
+
+  test("the producer comes first, and the rest keep the answer's order", () => {
+    const columns = keyColumns(
+      readerFirst([offer("unit", { values: [value('"%"', ["SensorHub"], true)] })]),
+    );
+    expect(columns.map((column) => [column.declaration.component, column.at])).toEqual([
+      ["SensorHub", 1],
+      ["Controller", 0],
+    ]);
+  });
+
+  test("every row's cells follow that order, carried read where the answer put it", () => {
+    const rows = keyRows(
+      readerFirst([
+        offer("unit", { values: [value('"%"', ["SensorHub"], true)] }),
+        offer("dimensions", {
+          // Controller's parameter carries no dimensions; it is the answer's first
+          // declaration and the table's second, and the cell has to follow the declaration.
+          carried: [
+            { allowed: false, required: false },
+            { allowed: true, required: false },
+          ],
+          values: [value("[4]", ["SensorHub"], true)],
+        }),
+      ]),
+      null,
+    );
+    expect(rows[0]?.cells.map((cell) => cell.text)).toEqual(["measurement", "parameter"]);
+    const textOfRow = (key: string) =>
+      rows.find((row) => row.key === key)?.cells.map((cell) => cell.text);
+    expect(textOfRow("unit")).toEqual(["%", "rpm"]);
+    expect(textOfRow("dimensions")).toEqual(["4", "not on a parameter"]);
+  });
+
+  test("a variable no declaration produces is drawn in the answer's own order", () => {
+    const of = readerFirst([offer("unit")]);
+    const producer = of.declarations[1];
+    if (producer === undefined) throw new Error("fixture must have a second declaration");
+    of.declarations[1] = { ...producer, role: "reads" };
+    expect(keyColumns(of).map((column) => column.declaration.component)).toEqual([
+      "Controller",
+      "SensorHub",
+    ]);
   });
 });
 
@@ -506,5 +585,25 @@ describe("a range typed into two fields", () => {
     expect(limitsOf(null)).toEqual({ min: "", max: "" });
     expect(limitsOf("{")).toEqual({ min: "", max: "" });
     expect(limitsOf("null")).toEqual({ min: "", max: "" });
+  });
+
+  test("a maximum below the minimum is no range at all", () => {
+    // Limits refuses it, so every file it was written into would stop loading: it never
+    // becomes a value to settle on, and the chooser says why instead.
+    expect(limitsRaw("100", "0")).toBeNull();
+    expect(limitsNote("100", "0")).toBe("The maximum is below the minimum");
+    // The two bounds may be the same number, which Limits allows.
+    expect(limitsRaw("5", "5")).toBe('{ "min": 5, "max": 5 }');
+    expect(limitsNote("5", "5")).toBeNull();
+  });
+
+  test("two empty fields state nothing, and anything half typed is nothing to apply", () => {
+    expect(limitsNote("", "")).toBeNull();
+    expect(limitsNote(" ", " ")).toBeNull();
+    expect(limitsNote("0", "")).toBe("A range needs a minimum and a maximum");
+    expect(limitsNote("", "100")).toBe("A range needs a minimum and a maximum");
+    expect(limitsNote("low", "100")).toBe("A range needs a minimum and a maximum");
+    expect(limitsNote("0", "high")).toBe("A range needs a minimum and a maximum");
+    expect(limitsNote("0", "100")).toBeNull();
   });
 });

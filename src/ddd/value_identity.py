@@ -6,10 +6,14 @@ one value in play, exactly as :mod:`ddd.analysis` treats them for ``definition-m
 :mod:`ddd.variables` narrows a settlement by it - a declaration already stating a value that
 means what is being set to has nothing left to change, however differently the two are spelled.
 
-A small module of its own rather than living in either caller: :mod:`ddd.variable_keys` already
-imports :class:`~ddd.variables.Declared` from :mod:`ddd.variables`, so putting this rule in
-whichever of the two narrows a settlement would close a cycle the moment the other imported it
-back. Neither depends on this one.
+A small module of its own rather than living with the values it compares: the rule needs
+:func:`~ddd.models.conversion.conversion_interface_value` beside
+:class:`~ddd.models.objects.Limits`, and :mod:`ddd.models.objects` imports
+:mod:`ddd.models.conversion` back, so a home in :mod:`ddd.models.conversion` would close that
+cycle. It is no better off in a caller: :mod:`ddd.variable_keys` already imports
+:class:`~ddd.variables.Declared` from :mod:`ddd.variables`, so the rule put in
+:mod:`ddd.variable_keys` would close a cycle the moment :mod:`ddd.variables` imported it back to
+narrow a settlement. Neither caller depends on the other for it.
 """
 
 from __future__ import annotations

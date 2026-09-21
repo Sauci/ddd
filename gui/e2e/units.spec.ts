@@ -296,7 +296,7 @@ test("no page reports a violation of its content security policy", async ({ page
   await expect(page.getByRole("option", { name: "%", exact: true })).toBeVisible();
   await panel.getByRole("combobox", { name: "Unit of ValueA" }).press("Escape");
 
-  // The keys table's other rows and choosers (part 2), open on the page too.
+  // The keys table's other rows and choosers (part 3), open on the page too.
   await panel.getByRole("row", { name: /^limits/ }).click();
   await panel.getByRole("combobox", { name: "Limits of ValueA" }).press("ArrowDown");
   await expect(panel.getByLabel("Max")).toBeVisible();

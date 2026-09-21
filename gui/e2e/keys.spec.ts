@@ -56,6 +56,44 @@ test("a range typed into the two fields reaches every declaration", async ({ pag
   expect(valueA(gui.directory, CONTROLLER).limits).toEqual({ min: 0, max: 50 });
 });
 
+test("a range the two fields do not make offers no Apply, and changes nothing", async ({
+  page,
+  gui,
+}) => {
+  const before = new Map(
+    [SENSOR_HUB, CONTROLLER].map((file) => [file, readFileSync(join(gui.directory, file))]),
+  );
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await panel.getByRole("row", { name: /^limits/ }).click();
+  const field = panel.getByRole("combobox", { name: "Limits of ValueA" });
+  // A whole range first, so what follows shows that nothing of it is kept behind the fields.
+  await panel.getByLabel("Max").fill("50");
+  await expect(panel.getByRole("button", { name: "Apply to 2 files" })).toBeVisible();
+
+  await panel.getByLabel("Min").fill("100");
+  await expect(panel.getByText("The maximum is below the minimum")).toBeVisible();
+  await expect(field).toHaveValue("");
+  await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+
+  await panel.getByLabel("Max").fill("");
+  await expect(panel.getByText("A range needs a minimum and a maximum")).toBeVisible();
+  await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+
+  // Taking the key out is a choice the list still offers, and it empties the two fields.
+  await field.fill("state nothing");
+  await field.press("Enter");
+  await expect(panel.getByLabel("Min")).toHaveValue("");
+  await expect(panel.getByLabel("Max")).toHaveValue("");
+  await expect(panel.getByRole("button", { name: "Apply to 2 files" })).toBeVisible();
+
+  // Nothing was applied, so the row still reads what the files say, and the files say what
+  // they always did.
+  await expect(panel.getByRole("row", { name: /^limits/ })).toContainText("0 … 100");
+  for (const [file, bytes] of before) {
+    expect(readFileSync(join(gui.directory, file)).equals(bytes)).toBe(true);
+  }
+});
+
 test("a truth value is typed, confirmed with Enter, and cannot be left unstated", async ({
   page,
   gui,

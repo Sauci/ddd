@@ -3,7 +3,14 @@ import { useEffect, useState } from "react";
 import { ApiError, getSettle, getUnits, getVariable, postEdit } from "../api/client";
 import { VariablePanelView } from "../components/VariablePanelView";
 import { editOf, outsideVocabulary, textOf } from "../lib/units";
-import { keyRows, labelOfRaw, limitsOf, limitsRaw, startingRaw } from "../lib/variableKeys";
+import {
+  keyRows,
+  labelOfRaw,
+  limitsNote,
+  limitsOf,
+  limitsRaw,
+  startingRaw,
+} from "../lib/variableKeys";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
 
@@ -74,16 +81,24 @@ export function VariablePanel({
       : picked !== undefined
         ? rows.find((row) => row.key === picked)?.key
         : rows.find((row) => row.disagrees)?.key;
+  // `limits` is the one key with fields of its own, and they are what the panel would write:
+  // the target is read back from them rather than kept beside them, so that what the two
+  // fields say and what Apply writes cannot drift apart. Two empty fields are "state nothing",
+  // which the list offers too; anything else that is not a range is not a value at all, and
+  // the chooser says so instead of previewing something the reader did not ask for.
+  const broken = selected === "limits" ? limitsNote(range.min, range.max) : null;
   const target =
-    selected === undefined || variable.data === undefined
+    selected === undefined || variable.data === undefined || broken !== null
       ? null
-      : chosen === undefined
-        ? startingRaw(variable.data, selected)
-        : chosen;
+      : selected === "limits"
+        ? limitsRaw(range.min, range.max)
+        : chosen === undefined
+          ? startingRaw(variable.data, selected)
+          : chosen;
   const preview = useQuery({
     queryKey: ["settle", name, selected, target, revision],
     queryFn: () => getSettle(name, selected as string, target),
-    enabled: variable.data !== undefined && selected !== undefined,
+    enabled: variable.data !== undefined && selected !== undefined && broken === null,
   });
   // Selecting a row starts that key afresh - what was chosen for the last one means nothing for
   // this one. Letting a row go is a choice too, not a blank: it must show the table alone even
@@ -106,16 +121,13 @@ export function VariablePanel({
   useEffect(() => {
     if (focusPicker !== null) select("unit");
   }, [focusPicker]);
-  // A range typed into the two fields is the value chosen as soon as it is a range.
+  // A range typed into the two fields is read straight back out of them by `target` above,
+  // so there is nothing to remember here: a half-typed one leaves no whole one behind to be
+  // applied in its place.
   const onRange = (next: { min: string; max: string }) => {
     setRange(next);
     setTyped(undefined);
-    const raw = limitsRaw(next.min, next.max);
-    // A half-typed range is not a choice: the preview keeps showing the last whole one.
-    if (raw !== null) {
-      setChosen(raw);
-      setRefused(null);
-    }
+    setRefused(null);
   };
   const apply = useMutation({
     mutationFn: () => {
@@ -170,7 +182,14 @@ export function VariablePanel({
       units={units.data}
       selected={selected}
       onSelect={select}
-      typed={typed ?? (selected === undefined ? "" : labelOfRaw(variable.data, selected, target))}
+      // A range the fields do not make is no value, so the field above them reads empty and
+      // the note says why, rather than naming a value nothing would be settled on.
+      typed={
+        typed ??
+        (selected === undefined || broken !== null
+          ? ""
+          : labelOfRaw(variable.data, selected, target))
+      }
       // Never the target: opening the list on the producer's value must still list everything,
       // not just the entries that happen to contain it (spec 5.3, and part 1's own journey).
       narrow={typed ?? ""}
@@ -179,18 +198,27 @@ export function VariablePanel({
         setChosen(raw);
         setTyped(undefined);
         setRefused(null);
+        // A range chosen from the list - one in play, or "state nothing", which empties them -
+        // is settled on by writing it into the two fields, since they are what is applied.
         if (selected === "limits") setRange(limitsOf(raw));
       }}
       onPickerClosed={() => setTyped(undefined)}
       range={range}
       onRange={onRange}
       note={
-        selected === "unit" && outsideVocabulary(units.data, textOf(target ?? undefined))
+        broken ??
+        (selected === "unit" && outsideVocabulary(units.data, textOf(target ?? undefined))
           ? "Not one of this project's units"
-          : undefined
+          : undefined)
       }
-      preview={preview.data ?? null}
-      refusal={refused ?? (preview.error === null ? null : preview.error.message)}
+      // Nothing is previewed while the fields say nothing to apply, whatever this key was
+      // previewed on before: the query is not asked, and an answer it kept is not shown.
+      preview={broken === null ? (preview.data ?? null) : null}
+      // A settlement refused is about the value that was asked for; while the fields make no
+      // value, nothing was asked, and the note is the whole of what the panel has to say.
+      refusal={
+        refused ?? (broken !== null || preview.error === null ? null : preview.error.message)
+      }
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => apply.mutate()}

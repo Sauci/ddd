@@ -189,13 +189,22 @@ def narrowed(settlement: Settlement, key: str, declared: Sequence[Declared]) -> 
     changes = tuple(
         change
         for change in settlement.changes
-        if change.raw is None or _differs(by_site[change.site], key, change.raw)
+        if change.raw is None or _differs(by_site.get(change.site), key, change.raw)
     )
     return Settlement(changes, settlement.unsettled)
 
 
-def _differs(entry: Declared, key: str, raw: str) -> bool:
-    """Whether ``entry`` does not already state a value that means ``raw`` for ``key``."""
+def _differs(entry: Declared | None, key: str, raw: str) -> bool:
+    """Whether ``entry`` does not already state a value that means ``raw`` for ``key``.
+
+    A site ``declared`` does not list is ``None`` here, and its change stays: a miss is not a
+    declaration that agrees, it is one whose text this narrowing never read. ``GET /api/settle``
+    hands :func:`settle` and :func:`declarations_of` one cache of the files, so the two see the
+    same sites today and there is none to miss; were they ever read apart, dropping a change
+    here would settle one file fewer than the preview it was read from promised.
+    """
+    if entry is None:
+        return True
     stated = entry.stated.get(key)
     return stated is None or same_value(key, stated) != same_value(key, raw)
 

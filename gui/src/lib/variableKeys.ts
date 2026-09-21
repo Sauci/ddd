@@ -27,6 +27,13 @@ export interface KeyRow {
   settleable: boolean;
 }
 
+/** One column of the panel's table: the declaration it draws, and where the answer lists it. */
+export interface KeyColumn {
+  declaration: VariableDeclaration;
+  /** Its place in `variable.declarations`, which every key's `carried` is indexed by. */
+  at: number;
+}
+
 /** One value a chooser offers: the json text it settles on, or `null` for "state nothing". */
 export interface ValueChoice {
   /** Unique across the whole list: its section, then the value. */
@@ -56,6 +63,22 @@ const NAMED: Record<string, string> = {
   input: "This project's measurements",
 };
 
+/** The columns of the panel's table, in the order it draws them: the producer's declaration
+ * first (spec 1.1), then the rest as the answer lists them, which is the order the project
+ * lists its components in.
+ *
+ * The one place that order is decided. The header, every row's cells and each key's `carried`
+ * are positional and have to line up, so a column keeps the place it has in the answer (`at`)
+ * whatever place the table gives it. The answer itself is left alone: other readers of
+ * `GET /api/variable` are entitled to the project's own order.
+ */
+export function keyColumns(variable: VariableReply): KeyColumn[] {
+  const columns = variable.declarations.map((declaration, at) => ({ declaration, at }));
+  const producer = columns.find((column) => column.declaration.role === "produces");
+  if (producer === undefined) return columns;
+  return [producer, ...columns.filter((column) => column !== producer)];
+}
+
 /** The rows of the panel's table: `kind`, then what disagrees, then what is stated, then the
  * keys this variable's kinds allow and nobody states.
  *
@@ -63,10 +86,11 @@ const NAMED: Record<string, string> = {
  * looking at one learns nothing from a line of "not on an axis".
  */
 export function keyRows(variable: VariableReply, preview: SettleReply | null): KeyRow[] {
-  const kinds = variable.declarations.map((declaration) => declaration.stated.kind);
+  const columns = keyColumns(variable);
+  const kinds = columns.map((column) => column.declaration.stated.kind);
   const kind: KeyRow = {
     key: "kind",
-    cells: variable.declarations.map((declaration) => ({
+    cells: columns.map(({ declaration }) => ({
       text: textOf(declaration.stated.kind) ?? "none",
       quiet: textOf(declaration.stated.kind) === null,
       from: null,
@@ -77,7 +101,7 @@ export function keyRows(variable: VariableReply, preview: SettleReply | null): K
   };
   const rows = variable.keys
     .filter((offer) => offer.carried.some((carried) => carried.allowed))
-    .map((offer) => rowOf(variable, offer, preview));
+    .map((offer) => rowOf(columns, offer, preview));
   // Stable, so the answer's own order - the order a definition spells its keys - survives
   // inside each of the three groups.
   return [kind, ...rows.sort((one, other) => group(one) - group(other))];
@@ -90,13 +114,13 @@ function group(row: KeyRow): number {
 }
 
 function rowOf(
-  variable: VariableReply,
+  columns: readonly KeyColumn[],
   offer: VariableKeyOffer,
   preview: SettleReply | null,
 ): KeyRow {
   return {
     key: offer.key,
-    cells: variable.declarations.map((declaration, at) => cellOf(declaration, offer, at, preview)),
+    cells: columns.map((column) => cellOf(column.declaration, offer, column.at, preview)),
     disagrees: offer.disagrees,
     settleable: true,
   };
@@ -234,7 +258,9 @@ export function offerOf(variable: VariableReply, key: string): VariableKeyOffer 
   return variable.keys.find((offer) => offer.key === key);
 }
 
-/** The json text the chooser starts on: the producer's value, which the answer lists first. */
+/** The json text the chooser starts on: the first value the answer lists, which is the
+ * producer's where a declaration produces the variable and the first in the project's own
+ * order where none does. */
 export function startingRaw(variable: VariableReply, key: string): string | null {
   return offerOf(variable, key)?.values[0]?.raw ?? null;
 }
@@ -362,12 +388,36 @@ function numberText(value: unknown): string {
   return typeof value === "number" ? String(value) : "";
 }
 
-/** The json text a range typed into the two fields travels as; `null` while it is not one. */
+/** The json text a range typed into the two fields travels as; `null` while it is not one.
+ *
+ * A range is two numbers with the maximum at least the minimum (spec 5.2), which is what
+ * `Limits` itself allows: a pair the models refuse would be written into every declaration
+ * and stop each of those files loading, so it never becomes a value to settle on.
+ */
 export function limitsRaw(min: string, max: string): string | null {
-  const low = Number(min);
-  const high = Number(max);
-  if (min.trim() === "" || max.trim() === "" || Number.isNaN(low) || Number.isNaN(high)) {
-    return null;
-  }
+  const low = numberOf(min);
+  const high = numberOf(max);
+  if (low === null || high === null || high < low) return null;
   return `{ "min": ${low}, "max": ${high} }`;
+}
+
+/** What the chooser says is wrong with the two fields, or `null` while they say something the
+ * panel can settle on.
+ *
+ * Two empty fields are not wrong: they are "state nothing", which the list offers as well and
+ * which removes the key. Anything else that is not a range is nothing to apply, and saying so
+ * is the whole of what the panel does about it - no Apply, and no preview behind it.
+ */
+export function limitsNote(min: string, max: string): string | null {
+  if (min.trim() === "" && max.trim() === "") return null;
+  const low = numberOf(min);
+  const high = numberOf(max);
+  if (low === null || high === null) return "A range needs a minimum and a maximum";
+  return high < low ? "The maximum is below the minimum" : null;
+}
+
+/** The number a field holds, or `null` where it holds none: empty, or not a number at all. */
+function numberOf(text: string): number | null {
+  const value = Number(text);
+  return text.trim() === "" || Number.isNaN(value) ? null : value;
 }

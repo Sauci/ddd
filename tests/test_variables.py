@@ -12,13 +12,14 @@ from conftest import component, declare, project, scalar_type, types, write_tree
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
 from ddd.editing import UNREADABLE, EditError, Operation, fingerprint
 from ddd.loading import load_workspace
-from ddd.lsp.edits import Settlement, Unsettled, settle
+from ddd.lsp.edits import Settled, Settlement, Unsettled, settle
 from ddd.lsp.navigation import Index, Site, index
 from ddd.lsp.ranges import Document
 from ddd.variables import (
     Hunk,
     declarations_of,
     located_on,
+    narrowed,
     preview,
     refusal,
     units_in_use,
@@ -225,6 +226,26 @@ class TestPreview:
         with pytest.raises(EditError) as refused:
             preview(settlement, "unit", known)
         assert refused.value.code == UNREADABLE
+
+
+class TestNarrowed:
+    def test_a_declaration_already_meaning_the_value_has_nothing_to_change(
+        self, tmp_path: Path
+    ) -> None:
+        idx = speed(tmp_path, reader_unit="rpm")
+        declared = declarations_of(idx, "Speed", {})
+        settlement = Settlement(tuple(Settled(entry.site, '"rpm"') for entry in declared), ())
+        assert narrowed(settlement, "unit", declared).changes == ()
+
+    def test_a_site_no_declaration_was_read_at_keeps_its_change(self, tmp_path: Path) -> None:
+        """A miss is not agreement: nothing here read that declaration's own text, so the
+        change it was given stays, rather than being dropped as one that changes nothing."""
+        idx = speed(tmp_path)
+        elsewhere = Settled(Site(tmp_path / "c.ddd.json", DEFINITION), '"rpm"')
+        settlement = Settlement((elsewhere,), ())
+        assert narrowed(settlement, "unit", declarations_of(idx, "Speed", {})).changes == (
+            elsewhere,
+        )
 
 
 class TestRefusal:

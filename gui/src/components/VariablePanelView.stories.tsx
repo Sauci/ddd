@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { SettleReply, UnitsReply, VariableReply } from "../api/types";
 import { outsideVocabulary, textOf } from "../lib/units";
-import { labelOfRaw, limitsOf, limitsRaw, startingRaw } from "../lib/variableKeys";
+import { labelOfRaw, limitsNote, limitsOf, limitsRaw, startingRaw } from "../lib/variableKeys";
 import {
   AGREEING,
   DISAGREEING,
@@ -57,8 +57,17 @@ function View({
       : limitsOf(startingRaw(variable, initialSelected)),
   );
   const [changesShown, setChangesShown] = useState(initialChangesShown);
+  // As in VariablePanel.tsx: for `limits` the two fields are the value, so what they say and
+  // what would be applied are one thing, and a pair that is no range says so and offers none.
+  const broken = selected === "limits" ? limitsNote(range.min, range.max) : null;
   const target =
-    selected === undefined ? null : chosen === undefined ? startingRaw(variable, selected) : chosen;
+    selected === undefined || broken !== null
+      ? null
+      : selected === "limits"
+        ? limitsRaw(range.min, range.max)
+        : chosen === undefined
+          ? startingRaw(variable, selected)
+          : chosen;
   const select = (key: string | undefined) => {
     setSelected(key);
     setChosen(undefined);
@@ -69,8 +78,6 @@ function View({
   const onRange = (next: { min: string; max: string }) => {
     setRange(next);
     setTyped(undefined);
-    const raw = limitsRaw(next.min, next.max);
-    if (raw !== null) setChosen(raw);
   };
   return (
     <VariablePanelView
@@ -78,7 +85,10 @@ function View({
       units={units}
       selected={selected}
       onSelect={select}
-      typed={typed ?? (selected === undefined ? "" : labelOfRaw(variable, selected, target))}
+      typed={
+        typed ??
+        (selected === undefined || broken !== null ? "" : labelOfRaw(variable, selected, target))
+      }
       // Never the target: opening the list on the value settled on must still list everything,
       // not just the entries that happen to contain it (spec 5.3, and part 1's own journey).
       narrow={typed ?? ""}
@@ -92,11 +102,12 @@ function View({
       range={range}
       onRange={onRange}
       note={
-        selected === "unit" && outsideVocabulary(units, textOf(target ?? undefined))
+        broken ??
+        (selected === "unit" && outsideVocabulary(units, textOf(target ?? undefined))
           ? "Not one of this project's units"
-          : undefined
+          : undefined)
       }
-      preview={preview}
+      preview={broken === null ? preview : null}
       refusal={refusal ?? null}
       changesShown={changesShown}
       onChangesShown={setChangesShown}

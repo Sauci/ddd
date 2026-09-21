@@ -14,9 +14,9 @@ it lands. The mockups the maintainer chose from are beside this spec in `2026-09
 ## 1 What this adds
 
 1. **A table of keys in the panel**, where part 1 put a single unit column: a row per key, a column
-   per declaration, the producer first, and the cells that differ marked. The rows whose
-   declarations disagree come first, then the keys someone states, then the keys this kind allows
-   and nobody states.
+   per declaration, the producer first, and the rows the declarations differ about marked. The rows
+   whose declarations disagree come first, then the keys someone states, then the keys this kind
+   allows and nobody states.
 2. **Every key the reconcile actions settle**: `datatype`, `typename`, `unit`, `conversion`,
    `limits`, `dimensions`, `size`, `volatile`, `axis`, `x_axis`, `y_axis` and `input`.
 3. **Choosing a value**, in the place part 1's picker sits: the values already in play, each naming

@@ -59,6 +59,7 @@ export const DISAGREEING: VariableReply = {
       fixed: {},
     },
   ],
+  keys: [],
   findings: [MISMATCH],
 };
 
@@ -88,6 +89,7 @@ export const FIXED_BY_TYPE: VariableReply = {
       fixed: { unit: '"rpm"' },
     },
   ],
+  keys: [],
   findings: [],
 };
 

@@ -15,7 +15,7 @@ never a hand-assembled ``dict`` - so the shape answered here and the shape
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
@@ -66,8 +66,8 @@ from ddd.project_units import (
     previewed,
     unit_rows,
 )
+from ddd.variable_keys import offers
 from ddd.variables import (
-    Declared,
     Planned,
     declarations_of,
     located_on,
@@ -316,8 +316,9 @@ class Api:
         name = _single(query.get("name"))
         if not name:
             return _error(400, "bad-request", "variable takes ?name=")
-        declared = _declared(revision, name, {})
-        if not declared:
+        built = revision.index
+        declared = () if built is None else declarations_of(built, name, {})
+        if built is None or not declared:
             return _undeclared(revision, name)
         return Reply(
             200,
@@ -336,6 +337,10 @@ class Api:
                     }
                     for entry in declared
                 ],
+                # The dataclasses of `ddd.variable_keys` are the contract's models field for
+                # field; the contract validates what comes out, so a name that drifts apart
+                # fails here rather than reaching the page.
+                keys=[asdict(offer) for offer in offers(built, declared)],
                 findings=[
                     _finding(filed)
                     for filed in revision.findings
@@ -582,10 +587,6 @@ def _module(file: SourceFile) -> Module:
         file.warnings,
         file.infos,
     )
-
-
-def _declared(revision: Revision, name: str, cache: dict[Path, Document]) -> tuple[Declared, ...]:
-    return () if revision.index is None else declarations_of(revision.index, name, cache)
 
 
 def _undeclared(revision: Revision, name: str) -> Reply:

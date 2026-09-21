@@ -27,6 +27,7 @@ from ddd.diagnostics import CHECKS
 from ddd.editing import UNVERIFIED, UNWRITABLE, EditError, fingerprint
 from ddd.gui.api import Api, Reply
 from ddd.gui.session import Session
+from ddd.variable_keys import KEY_ORDER
 
 UNIT = "component.interface[0].definition.unit"
 
@@ -68,6 +69,14 @@ def opened(tmp_path: Path, files: dict[str, object]) -> Api:
     session = Session(tmp_path)
     session.open(tmp_path / "p.ddd.json")
     return Api(session, tmp_path / "p.ddd.json", wait_seconds=0.05)
+
+
+def opened_example(tmp_path: Path, example: str, description: str) -> Api:
+    """``ddd gui`` over a copy of one of the shipped examples, so the test may edit it."""
+    shutil.copytree(EXAMPLES / example, tmp_path / example)
+    session = Session(tmp_path / example)
+    session.open(tmp_path / example / description)
+    return Api(session, tmp_path / example / description, wait_seconds=0.05)
 
 
 def unloaded(tmp_path: Path) -> Api:
@@ -794,6 +803,95 @@ class TestVariable:
         reply = get(Api(Session(root)), "/api/variable", name="Speed")
         assert (reply.status, reply.body["error"]) == (409, "no-project")
 
+    def test_every_shared_key_is_answered_with_what_it_offers(self, api: Api) -> None:
+        offered = {
+            offer["key"]: offer for offer in get(api, "/api/variable", name="Speed").body["keys"]
+        }
+        assert list(offered) == list(KEY_ORDER)
+        # Both declarations of the root fixture are measurements stating rpm.
+        assert offered["unit"]["values"] == [
+            {"raw": '"rpm"', "components": ["A", "B"], "producer": True}
+        ]
+        assert offered["volatile"]["carried"] == [
+            {"allowed": True, "required": True},
+            {"allowed": True, "required": True},
+        ]
+        assert offered["size"]["carried"] == [
+            {"allowed": False, "required": False},
+            {"allowed": False, "required": False},
+        ]
+
+    def test_the_keys_that_disagree_say_so(self, api: Api, root: Path) -> None:
+        assert post(api, "/api/edit", unit_edit(api, root, "%")).status == 200
+        offered = {
+            offer["key"]: offer for offer in get(api, "/api/variable", name="Speed").body["keys"]
+        }
+        assert offered["unit"]["disagrees"] is True
+        assert offered["datatype"]["disagrees"] is False
+        assert offered["limits"]["disagrees"] is False
+
+    def test_a_key_says_which_field_chooses_it_and_what_that_field_lists(self, api: Api) -> None:
+        offered = {
+            offer["key"]: offer for offer in get(api, "/api/variable", name="Speed").body["keys"]
+        }
+        assert (offered["datatype"]["editor"], offered["datatype"]["choices"][:2]) == (
+            "datatype",
+            ["boolean", "uint8"],
+        )
+        assert (offered["conversion"]["editor"], offered["conversion"]["choices"]) == ("none", [])
+        assert (offered["unit"]["editor"], offered["limits"]["editor"]) == ("unit", "limits")
+
+    def test_a_value_a_type_fixes_is_in_play_and_its_storage_is_not_removable(
+        self, tmp_path: Path
+    ) -> None:
+        offered = {
+            offer["key"]: offer
+            for offer in get(opened(tmp_path, TYPED), "/api/variable", name="Speed").body["keys"]
+        }
+        # `a.ddd.json` names Speed_t, which fixes rpm; `b.ddd.json` states % itself.
+        assert offered["unit"]["values"] == [
+            {"raw": '"rpm"', "components": ["A"], "producer": True},
+            {"raw": '"%"', "components": ["B"], "producer": False},
+        ]
+        assert offered["typename"]["carried"] == [
+            {"allowed": True, "required": True},
+            {"allowed": True, "required": False},
+        ]
+        assert offered["typename"]["choices"] == ["Speed_t"]
+
+    def test_a_key_naming_an_object_lists_the_projects_objects_of_that_kind(
+        self, tmp_path: Path
+    ) -> None:
+        api = opened_example(tmp_path, "demo", "demo.ddd.json")
+        offered = {
+            offer["key"]: offer for offer in get(api, "/api/variable", name="MapA").body["keys"]
+        }
+        # The demo's map is declared once, local to Controller, over the two axes it declares.
+        assert offered["x_axis"]["values"] == [
+            {"raw": '"AxisA"', "components": ["Controller"], "producer": False}
+        ]
+        assert offered["x_axis"]["choices"] == ["AxisA", "AxisB"]
+        assert offered["y_axis"]["choices"] == ["AxisA", "AxisB"]
+        # A map has no `axis` of its own, and the axes are not measurements.
+        assert offered["axis"]["carried"] == [{"allowed": False, "required": False}]
+        assert "ValueA" in offered["input"]["choices"]
+        assert "AxisA" not in offered["input"]["choices"]
+
+    def test_one_value_two_files_spell_differently_is_one_value_in_play(
+        self, tmp_path: Path
+    ) -> None:
+        api = opened_example(tmp_path, "demo", "demo.ddd.json")
+        offered = {
+            offer["key"]: offer for offer in get(api, "/api/variable", name="ValueA").body["keys"]
+        }
+        # SensorHub writes ValueA's conversion over four lines and Controller writes it on one:
+        # one conversion, in the producer's spelling, and a row the panel does not mark.
+        assert [
+            (value["components"], value["producer"]) for value in offered["conversion"]["values"]
+        ] == [(["Controller", "SensorHub"], True)]
+        assert json.loads(offered["conversion"]["values"][0]["raw"])["kind"] == "linear"
+        assert "\n" in offered["conversion"]["values"][0]["raw"]
+
 
 class TestUnits:
     def test_without_a_vocabulary_the_units_in_use_are_answered(self, api: Api) -> None:
@@ -926,6 +1024,58 @@ class TestSettle:
     def test_settling_needs_an_open_project(self, root: Path) -> None:
         reply = get(Api(Session(root)), "/api/settle", name="Speed", key="unit", raw='"%"')
         assert reply.status == 409
+
+    @pytest.mark.parametrize(
+        ("name", "key", "raw", "written"),
+        [
+            ("ValueA", "unit", '"Hz"', "Hz"),
+            ("ValueA", "limits", '{"min": 0, "max": 50}', {"min": 0, "max": 50}),
+            (
+                "ValueA",
+                "conversion",
+                '{"kind": "linear", "factor": 0.25}',
+                {"kind": "linear", "factor": 0.25},
+            ),
+            ("ValueA", "volatile", "true", True),
+            ("CurveA", "axis", '"AxisB"', "AxisB"),
+        ],
+    )
+    def test_a_key_of_any_shape_previews_without_writing_and_applies_what_it_said(
+        self, tmp_path: Path, name: str, key: str, raw: str, written: Any
+    ) -> None:
+        api = opened_example(tmp_path, "demo", "demo.ddd.json")
+        root = tmp_path / "demo"
+        before = contents(root)
+        preview = get(api, "/api/settle", name=name, key=key, raw=raw)
+        assert preview.status == 200
+        assert contents(root) == before, "a preview writes nothing"
+        edit = {
+            "changes": [
+                {field: change[field] for field in ("file", "fingerprint", "operations")}
+                for change in preview.body["changes"]
+            ]
+        }
+        assert post(api, "/api/edit", edit).status == 200
+        for declaration in get(api, "/api/variable", name=name).body["declarations"]:
+            assert json.loads(declaration["stated"][key]) == written
+
+    def test_a_key_a_declarations_kind_cannot_hold_is_refused_whole(self, tmp_path: Path) -> None:
+        # Two kinds under one name: the measurement may hold dimensions and the parameter may
+        # not, so the change reaches some declarations and not others - which `ddd gui` refuses
+        # rather than applying by halves (see `ddd.lsp.edits.settle`).
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", dimensions=[4])),
+                "b.ddd.json": component("B", declare("input", "Speed", kind="parameter")),
+            },
+        )
+        before = contents(tmp_path)
+        reply = get(api, "/api/settle", name="Speed", key="dimensions", raw="[8]")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert "b.ddd.json" in reply.body["message"]
+        assert contents(tmp_path) == before
 
 
 def copied(tmp_path: Path, example: str, project_file: str) -> tuple[Api, Path]:

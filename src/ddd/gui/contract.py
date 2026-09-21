@@ -72,6 +72,9 @@ __all__ = [
     "UnitsReply",
     "UsedUnit",
     "VariableDeclaration",
+    "VariableKeyCarried",
+    "VariableKeyOffer",
+    "VariableKeyValue",
     "VariableReply",
     "VocabularyUnit",
     "api_schema",
@@ -425,6 +428,61 @@ class VariableDeclaration(_Frozen):
     ``limits``), empty without a type."""
 
 
+class VariableKeyCarried(_Frozen):
+    """What one declaration's kind does with a key."""
+
+    allowed: bool
+    """Its kind has the key at all: ``dimensions`` on a measurement, never on a parameter."""
+
+    required: bool
+    """It cannot be left without it, so the panel offers no "state nothing" for the key."""
+
+
+class VariableKeyValue(_Frozen):
+    """One value a key has among the declarations, and who has it."""
+
+    raw: str
+    """The json text, as the file that carries it spells it.
+
+    One entry per value rather than per spelling: two files writing one conversion with its keys
+    in a different order state the same conversion, and this is the producer's spelling of it.
+    """
+
+    components: tuple[str, ...]
+    """The components stating it, in the order the project lists them."""
+
+    producer: bool
+    """The producer is one of them; the panel marks that entry."""
+
+
+class VariableKeyOffer(_Frozen):
+    """What one key of a variable offers: a row of the panel, and the chooser the row opens."""
+
+    key: str
+    """One of the twelve keys every declaration of an object has to agree on."""
+
+    carried: tuple[VariableKeyCarried, ...]
+    """One per declaration, aligned with ``VariableReply.declarations``."""
+
+    values: tuple[VariableKeyValue, ...]
+    """Every distinct value in play, the producer's first."""
+
+    disagrees: bool
+    """The declarations do not all say the same thing about the key."""
+
+    editor: Literal["unit", "datatype", "typename", "volatile", "limits", "size", "name", "none"]
+    """Which field the page offers beside the values in play.
+
+    ``none`` is not "nothing may be chosen": a value in play is always offered, and for a
+    ``conversion`` or a ``dimensions`` that is all - an editor composes those better than a
+    panel would.
+    """
+
+    choices: tuple[str, ...]
+    """What that field names, sorted: the datatypes, the project's types, its declared constants
+    or its objects of the kind the key takes. Empty for a field that names nothing."""
+
+
 class VariableReply(_Frozen):
     """What ``GET /api/variable`` answers: one variable's declarations and the findings filed on
     them."""
@@ -437,6 +495,11 @@ class VariableReply(_Frozen):
 
     declarations: tuple[VariableDeclaration, ...]
     """Every declaration the file still holds, in the order the project lists its components."""
+
+    keys: tuple[VariableKeyOffer, ...]
+    """What every shared key offers for these declarations, in the order a definition spells
+    them (``ddd.variable_keys.KEY_ORDER``). The page groups the rows it draws; the order here
+    is what it keeps inside each group."""
 
     findings: tuple[Finding, ...]
     """Every finding located on one of them, both sides of a disagreement included."""

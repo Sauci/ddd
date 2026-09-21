@@ -5,6 +5,8 @@ import type {
   SettleReply,
   UnitReply,
   UnitsReply,
+  VariableKeyCarried,
+  VariableKeyValue,
   VariableReply,
 } from "../api/types";
 
@@ -21,12 +23,47 @@ const MISMATCH: Finding = {
   file: CONTROLLER,
   check: "definition-mismatch",
   severity: "error",
-  message: "Controller states rpm, SensorHub %",
+  message: "Controller states rpm and ×1, SensorHub states % and ×0.5",
   pointer: "component.interface[0].definition.unit",
   notes: [],
 };
 
-/** ValueA as the mockups show it: SensorHub produces %, Controller reads rpm, one finding. */
+/** One declaration's part of a key's answer: it may carry the key, as every declaration below
+ * does for the keys it lists - `keyRows` reads `offer.carried` positionally against
+ * `declarations`. */
+function carried(required: boolean): VariableKeyCarried {
+  return { allowed: true, required };
+}
+
+/** A kind that cannot carry the key at all, for the cell that reads "not on a parameter". */
+const NOT_CARRIED: VariableKeyCarried = { allowed: false, required: false };
+
+/** One value a key has among its declarations, as the server's `_in_play` orders them: the
+ * producer's first. */
+function inPlay(raw: string, components: string[], producer: boolean): VariableKeyValue {
+  return { raw, components, producer };
+}
+
+/** The eleven datatypes DDD can allocate storage for (`ddd.models.common.Datatype`), in the
+ * order the enum declares them - what a `datatype` key's chooser offers. */
+const DATATYPES = [
+  "boolean",
+  "uint8",
+  "sint8",
+  "uint16",
+  "sint16",
+  "uint32",
+  "sint32",
+  "uint64",
+  "sint64",
+  "float32",
+  "float64",
+];
+
+/** ValueA as the mockups show it: SensorHub produces %, Controller reads rpm, one finding;
+ * Controller's conversion (×1) disagrees with the other two's (×0.5) as well, so a preview
+ * carrying the producer's conversion onto it (PREVIEW_CONVERSION) is a real settlement, not a
+ * no-op. Besides those two, a datatype, limits and volatile every declaration agrees about. */
 export const DISAGREEING: VariableReply = {
   revision: 7,
   name: "ValueA",
@@ -36,7 +73,14 @@ export const DISAGREEING: VariableReply = {
       pointer: "component.interface[2].definition",
       component: "SensorHub",
       role: "produces",
-      stated: { kind: '"measurement"', datatype: '"uint8"', unit: '"%"' },
+      stated: {
+        kind: '"measurement"',
+        datatype: '"uint8"',
+        unit: '"%"',
+        conversion: '{"factor": 0.5}',
+        limits: '{"min": 0, "max": 100}',
+        volatile: "true",
+      },
       type: null,
       fixed: {},
     },
@@ -45,7 +89,14 @@ export const DISAGREEING: VariableReply = {
       pointer: "component.interface[0].definition",
       component: "Controller",
       role: "reads",
-      stated: { kind: '"measurement"', datatype: '"uint8"', unit: '"rpm"' },
+      stated: {
+        kind: '"measurement"',
+        datatype: '"uint8"',
+        unit: '"rpm"',
+        conversion: '{"factor": 1}',
+        limits: '{"min": 0, "max": 100}',
+        volatile: "true",
+      },
       type: null,
       fixed: {},
     },
@@ -54,22 +105,100 @@ export const DISAGREEING: VariableReply = {
       pointer: "component.interface[0].definition",
       component: "UserInterface",
       role: "reads",
-      stated: { kind: '"measurement"', datatype: '"uint8"', unit: '"%"' },
+      stated: {
+        kind: '"measurement"',
+        datatype: '"uint8"',
+        unit: '"%"',
+        conversion: '{"factor": 0.5}',
+        limits: '{"min": 0, "max": 100}',
+        volatile: "true",
+      },
       type: null,
       fixed: {},
+    },
+  ],
+  keys: [
+    {
+      key: "datatype",
+      carried: [carried(true), carried(true), carried(true)],
+      values: [inPlay('"uint8"', ["SensorHub", "Controller", "UserInterface"], true)],
+      disagrees: false,
+      editor: "datatype",
+      choices: DATATYPES,
+    },
+    {
+      key: "unit",
+      carried: [carried(false), carried(false), carried(false)],
+      values: [
+        inPlay('"%"', ["SensorHub", "UserInterface"], true),
+        inPlay('"rpm"', ["Controller"], false),
+      ],
+      disagrees: true,
+      editor: "unit",
+      choices: [],
+    },
+    {
+      key: "conversion",
+      carried: [carried(true), carried(true), carried(true)],
+      values: [
+        inPlay('{"factor": 0.5}', ["SensorHub", "UserInterface"], true),
+        inPlay('{"factor": 1}', ["Controller"], false),
+      ],
+      disagrees: true,
+      editor: "none",
+      choices: [],
+    },
+    {
+      key: "limits",
+      carried: [carried(false), carried(false), carried(false)],
+      values: [
+        inPlay('{"min": 0, "max": 100}', ["SensorHub", "Controller", "UserInterface"], true),
+      ],
+      disagrees: false,
+      editor: "limits",
+      choices: [],
+    },
+    {
+      key: "volatile",
+      carried: [carried(true), carried(true), carried(true)],
+      values: [inPlay("true", ["SensorHub", "Controller", "UserInterface"], true)],
+      disagrees: false,
+      editor: "volatile",
+      choices: [],
     },
   ],
   findings: [MISMATCH],
 };
 
-/** The same declarations settled: Controller reads % too, and the disagreement is gone. */
+/** The same declarations settled: Controller reads % and ×0.5 too, and both disagreements are
+ * gone. */
 export const AGREEING: VariableReply = {
   ...DISAGREEING,
   declarations: DISAGREEING.declarations.map((declaration) =>
     declaration.component === "Controller"
-      ? { ...declaration, stated: { ...declaration.stated, unit: '"%"' } }
+      ? {
+          ...declaration,
+          stated: { ...declaration.stated, unit: '"%"', conversion: '{"factor": 0.5}' },
+        }
       : declaration,
   ),
+  keys: DISAGREEING.keys.map((offer) => {
+    if (offer.key === "unit") {
+      return {
+        ...offer,
+        values: [inPlay('"%"', ["SensorHub", "Controller", "UserInterface"], true)],
+        disagrees: false,
+      };
+    }
+    if (offer.key === "conversion") {
+      return {
+        ...offer,
+        values: [inPlay('{"factor": 0.5}', ["SensorHub", "Controller", "UserInterface"], true)],
+        disagrees: false,
+      };
+    }
+    return offer;
+  }),
   findings: [],
 };
 
@@ -88,7 +217,194 @@ export const FIXED_BY_TYPE: VariableReply = {
       fixed: { unit: '"rpm"' },
     },
   ],
+  keys: [
+    {
+      key: "unit",
+      carried: [carried(false)],
+      values: [inPlay('"rpm"', ["SensorHub"], true)],
+      disagrees: false,
+      editor: "unit",
+      choices: [],
+    },
+  ],
   findings: [],
+};
+
+/** An axis two components declare: SensorHub's 8 points index EngineSpeed, and Controller's
+ * limits disagree with it - for a naming chooser (`input`) and a range (`limits`). */
+export const SHAPED: VariableReply = {
+  revision: 7,
+  name: "Rpm_Axis",
+  declarations: [
+    {
+      path: SENSOR_HUB,
+      pointer: "component.interface[3].definition",
+      component: "SensorHub",
+      role: "produces",
+      stated: {
+        kind: '"axis"',
+        datatype: '"uint16"',
+        unit: '"rpm"',
+        size: "8",
+        input: '"EngineSpeed"',
+        limits: '{"min": 0, "max": 8000}',
+      },
+      type: null,
+      fixed: {},
+    },
+    {
+      path: CONTROLLER,
+      pointer: "component.interface[1].definition",
+      component: "Controller",
+      role: "reads",
+      stated: {
+        kind: '"axis"',
+        datatype: '"uint16"',
+        unit: '"rpm"',
+        size: "8",
+        input: '"EngineSpeed"',
+        limits: '{"min": 0, "max": 6000}',
+      },
+      type: null,
+      fixed: {},
+    },
+  ],
+  keys: [
+    {
+      key: "size",
+      carried: [carried(true), carried(true)],
+      values: [inPlay("8", ["SensorHub", "Controller"], true)],
+      disagrees: false,
+      editor: "size",
+      choices: ["ADC_SAMPLES", "PRESSURE_CELLS"],
+    },
+    {
+      key: "limits",
+      carried: [carried(false), carried(false)],
+      values: [
+        inPlay('{"min": 0, "max": 8000}', ["SensorHub"], true),
+        inPlay('{"min": 0, "max": 6000}', ["Controller"], false),
+      ],
+      disagrees: true,
+      editor: "limits",
+      choices: [],
+    },
+    {
+      key: "input",
+      carried: [carried(false), carried(false)],
+      values: [inPlay('"EngineSpeed"', ["SensorHub", "Controller"], true)],
+      disagrees: false,
+      editor: "name",
+      choices: ["EngineSpeed", "OilPressure"],
+    },
+  ],
+  findings: [],
+};
+
+/** SharedName as a measurement SensorHub produces, with dimensions, and as a parameter Pump
+ * declares too: the "not on a parameter" cell. */
+export const MIXED_KINDS: VariableReply = {
+  revision: 7,
+  name: "SharedName",
+  declarations: [
+    {
+      path: SENSOR_HUB,
+      pointer: "component.interface[5].definition",
+      component: "SensorHub",
+      role: "produces",
+      stated: { kind: '"measurement"', datatype: '"uint8"', unit: '"%"', dimensions: "[4]" },
+      type: null,
+      fixed: {},
+    },
+    {
+      path: PUMP,
+      pointer: "component.interface[1].definition",
+      component: "Pump",
+      role: "local",
+      stated: { kind: '"parameter"', datatype: '"uint8"', unit: '"%"' },
+      type: null,
+      fixed: {},
+    },
+  ],
+  keys: [
+    {
+      key: "datatype",
+      carried: [carried(true), carried(true)],
+      values: [inPlay('"uint8"', ["SensorHub", "Pump"], true)],
+      disagrees: false,
+      editor: "datatype",
+      choices: DATATYPES,
+    },
+    {
+      key: "unit",
+      carried: [carried(false), carried(false)],
+      values: [inPlay('"%"', ["SensorHub", "Pump"], true)],
+      disagrees: false,
+      editor: "unit",
+      choices: [],
+    },
+    {
+      key: "dimensions",
+      carried: [carried(false), NOT_CARRIED],
+      values: [inPlay("[4]", ["SensorHub"], true)],
+      disagrees: false,
+      editor: "none",
+      choices: [],
+    },
+  ],
+  findings: [],
+};
+
+/** A preview that settles ValueA's conversion onto Controller too, beside DISAGREEING's own
+ * unit mismatch: the table's "will change" tag, and Show changes, have something to draw. */
+export const PREVIEW_CONVERSION: SettleReply = {
+  revision: 7,
+  changes: [
+    {
+      file: CONTROLLER,
+      fingerprint: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      operations: [
+        {
+          op: "set",
+          pointer: "component.interface[0].definition.conversion",
+          raw: '{"factor": 0.5}',
+        },
+      ],
+      hunks: [
+        {
+          line: 14,
+          before: ['          "conversion": {"factor": 1},'],
+          after: ['          "conversion": {"factor": 0.5},'],
+        },
+      ],
+    },
+  ],
+};
+
+/** A preview that settles Rpm_Axis's limits onto Controller too, resolving SHAPED's own
+ * disagreement: the table's "will change" tag, and Show changes, have something to draw. */
+export const PREVIEW_LIMITS: SettleReply = {
+  revision: 7,
+  changes: [
+    {
+      file: CONTROLLER,
+      fingerprint: "3c9909afec25354d551dae21590bb26e38d53f2173b8d3dc3eee4c047e7ab1c1",
+      operations: [
+        {
+          op: "set",
+          pointer: "component.interface[1].definition.limits",
+          raw: '{"min": 0, "max": 8000}',
+        },
+      ],
+      hunks: [
+        {
+          line: 18,
+          before: ['          "limits": {"min": 0, "max": 6000},'],
+          after: ['          "limits": {"min": 0, "max": 8000},'],
+        },
+      ],
+    },
+  ],
 };
 
 /** A row of the Units tab, which the variable panel does not read: a unit variables state. */

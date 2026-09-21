@@ -394,6 +394,44 @@ tr.changing td {
   font-weight: 600;
 }
 
+/* VariableKeysTable / KeyChooser (spec 5.1, 5.2): the key column reads as a name; a row that
+   disagrees already keeps the has-error tint above, since both tables share react-aria-Row and
+   react-aria-Cell. The chooser stacks its field over the range a `limits` key takes, and the
+   range's two fields sit side by side, each a short width. */
+.react-aria-Cell.key {
+  font-family: var(--mono);
+}
+.key-chooser {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.key-range {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.key-range label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
+.key-range input {
+  width: 6em;
+  padding: var(--cell);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-body);
+}
+.key-range input:disabled {
+  background: var(--ground);
+}
+
 /* Ladle only: a row of widgets with a gap, for a story that shows several at once. */
 .story-row {
   display: flex;

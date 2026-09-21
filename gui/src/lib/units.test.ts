@@ -3,18 +3,15 @@ import type { SettleReply, UnitsReply, VariableDeclaration } from "../api/types"
 import {
   baseName,
   consequence,
-  describe,
   editOf,
   enteredUnit,
   hunkLines,
   outsideVocabulary,
   pickerSections,
   rawOf,
-  startingUnit,
   textOf,
   unitLabel,
   unitOfDeclaration,
-  willChange,
 } from "./units";
 
 const HUB = "C:/w/components/sensor_hub.ddd.json";
@@ -115,26 +112,6 @@ group("reading what a declaration states", () => {
       fixed: { unit: '"rpm"' },
     });
     expect(unitOfDeclaration(typed)).toBe("rpm");
-  });
-
-  test("the picker starts on the producer's unit, else the first declaration's", () => {
-    expect(startingUnit(VALUE_A)).toBe("%");
-    expect(startingUnit([declared("Controller", "reads", "rpm")])).toBe("rpm");
-    expect(startingUnit([])).toBeNull();
-  });
-
-  test("a variable is described by its kind, its datatype or type, and who owns it", () => {
-    expect(describe(VALUE_A)).toBe("measurement · uint8 · produced by SensorHub");
-    expect(describe([declared("Controller", "local", "ms")])).toBe(
-      "measurement · uint8 · local to Controller",
-    );
-    expect(describe([declared("Controller", "reads", "rpm", { type: "Speed_t" })])).toBe(
-      "measurement · Speed_t · no producer",
-    );
-    expect(describe([declared("Controller", "reads", "rpm", { stated: {} })])).toBe(
-      "declaration · no datatype · no producer",
-    );
-    expect(describe([])).toBe("");
   });
 });
 
@@ -275,17 +252,6 @@ group("what a preview says and sends", () => {
   test("a unit travels as its json text, and no unit as nothing", () => {
     expect(rawOf("%")).toBe('"%"');
     expect(rawOf(null)).toBeNull();
-  });
-
-  test("a declaration will change when an operation lands under it", () => {
-    expect(willChange(ONE_FILE, declared("Controller", "reads", "rpm"))).toBe(true);
-    expect(willChange(ONE_FILE, declared("SensorHub", "produces", "%"))).toBe(false);
-    expect(
-      willChange(
-        ONE_FILE,
-        declared("Controller", "reads", "rpm", { pointer: "component.interface[1].definition" }),
-      ),
-    ).toBe(false);
   });
 
   test("the consequence names the files a change writes", () => {

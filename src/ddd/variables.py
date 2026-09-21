@@ -2,11 +2,15 @@
 
 Transport-neutral, like :mod:`ddd.graph`: nothing here knows about http or the session. It reads
 the files the language server's navigation index points into, as hover and the quick fixes do,
-and it decides nothing about which declarations a change reaches - that is
-:func:`ddd.lsp.edits.settle`'s, so that the page and the editor cannot disagree about it. What it
-adds is what a page needs around that rule: every declaration of one variable as its file states
-it now, the units a project uses and declares, and the edit a settlement comes to with the lines
-it changes, computed without writing anything.
+and it decides nothing about whether a declaration may take a change at all - that is
+:func:`ddd.lsp.edits.settle`'s, so that the page and the editor cannot disagree about it. It does
+narrow what a settlement :func:`settle` allowed comes to write (:func:`narrowed`): ``ddd gui`` is
+the only caller that ever offers a declaration the *producer's own raw text* rather than a value
+typed fresh, and a declaration already stating what that text means needs no operation, however
+differently the two files spell it. What it otherwise adds is what a page needs around
+``settle``'s rule: every declaration of one variable as its file states it now, the units a
+project uses and declares, and the edit a settlement comes to with the lines it changes, computed
+without writing anything.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from ddd.lsp.edits import PROPAGATED_KEYS, Settlement, Unsettled
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document, read
 from ddd.models.objects import MEANING_KEYS
+from ddd.value_identity import same_value
 
 ROLES: Final = (("output", "produces"), ("input", "reads"), ("local", "local"))
 """What a declaration's scope says its component does with the variable."""
@@ -153,6 +158,55 @@ def vocabulary_of(documents: Sequence[Document]) -> tuple[tuple[str, str | None]
                 described = entry.get("description")
                 declared.append((entry["unit"], described if isinstance(described, str) else None))
     return tuple(declared)
+
+
+def narrowed(settlement: Settlement, key: str, declared: Sequence[Declared]) -> Settlement:
+    """``settlement``, with every declaration that already states a value meaning what it would
+    be set to left out of :attr:`~ddd.lsp.edits.Settlement.changes`.
+
+    ``settle`` compares a declaration's own text against the value byte for byte, which is
+    right for a name, a number or a truth value - anything an editor's own quick fix writes as
+    one token, unchanged from however the reader typed it. A ``conversion`` or a range of
+    ``limits`` is an object, though, and the json text is the *file's own layout*: an edit
+    writes the value in the *target file's* layout, not the layout it arrived in. Comparing
+    text after that would ask for the same change forever - the producer's file might lay a
+    conversion out over three lines, and once an edit has written it compactly into a file that
+    already agreed, the next preview would offer to write it again, never reaching "nothing to
+    change" for a value two files were always going to spell differently.
+
+    Narrowed by :func:`~ddd.value_identity.same_value` instead, the same rule
+    :func:`ddd.variable_keys._in_play` already groups the panel's own values by, so a settlement
+    and the row it was read from cannot disagree about what already agrees. Only ``ddd gui``
+    needs this: it is the only caller that ever settles a declaration onto another declaration's
+    own raw text (the producer's, spec 5.1) rather than a value typed fresh, which is where two
+    files' layouts can first differ over a value that means the same thing.
+
+    ``settlement.unsettled`` is untouched - a declaration that cannot take the change at all
+    does not belong here - and so is every removal (``change.raw is None``): a key that is
+    stated has something to take out regardless of what it currently means.
+    """
+    by_site = {entry.site: entry for entry in declared}
+    changes = tuple(
+        change
+        for change in settlement.changes
+        if change.raw is None or _differs(by_site.get(change.site), key, change.raw)
+    )
+    return Settlement(changes, settlement.unsettled)
+
+
+def _differs(entry: Declared | None, key: str, raw: str) -> bool:
+    """Whether ``entry`` does not already state a value that means ``raw`` for ``key``.
+
+    A site ``declared`` does not list is ``None`` here, and its change stays: a miss is not a
+    declaration that agrees, it is one whose text this narrowing never read. ``GET /api/settle``
+    hands :func:`settle` and :func:`declarations_of` one cache of the files, so the two see the
+    same sites today and there is none to miss; were they ever read apart, dropping a change
+    here would settle one file fewer than the preview it was read from promised.
+    """
+    if entry is None:
+        return True
+    stated = entry.stated.get(key)
+    return stated is None or same_value(key, stated) != same_value(key, raw)
 
 
 def preview(

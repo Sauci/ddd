@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 export const CONTROLLER = join("components", "controller.ddd.json");
 export const SENSOR_HUB = join("components", "sensor_hub.ddd.json");
@@ -52,4 +52,52 @@ export function renameValueA(directory: string, name: string): void {
 export async function chooseUnit(page: Page, unit: string): Promise<void> {
   await page.getByRole("combobox", { name: "Unit of ValueA" }).fill(unit);
   await page.getByRole("option", { name: unit, exact: true }).first().click();
+}
+
+/** Opens a variable's panel from its component's table, the way a reader reaches it: the unit
+ * cell, which opens the panel on the unit's row with its field focused. */
+export async function openPanel(
+  page: Page,
+  address: string,
+  variable: string,
+  component = "Controller",
+): Promise<Locator> {
+  await page.goto(address);
+  await page.getByRole("button", { name: component, exact: true }).click();
+  await page.getByRole("button", { name: `Set the unit of ${variable}` }).click();
+  return page.getByRole("complementary", { name: variable });
+}
+
+/** One variable's linear factor in one file of a copy drifted, saved from outside; answers the
+ * file as it was before. */
+export function driftFactor(
+  directory: string,
+  file: string,
+  variable: string,
+  factor: number,
+): Buffer {
+  return driftNumber(directory, file, variable, "factor", factor);
+}
+
+/** One variable's greatest limit in one file of a copy drifted, saved from outside, which is
+ * what makes its two declarations disagree about `limits`; answers the file as it was before. */
+export function driftMax(directory: string, file: string, variable: string, max: number): Buffer {
+  return driftNumber(directory, file, variable, "max", max);
+}
+
+/** The first number one variable's key holds in a file of a copy, replaced in place. */
+function driftNumber(
+  directory: string,
+  file: string,
+  variable: string,
+  key: string,
+  value: number,
+): Buffer {
+  const path = join(directory, file);
+  const before = readFileSync(path);
+  const text = before
+    .toString("utf8")
+    .replace(new RegExp(`("name": "${variable}"[\\s\\S]*?"${key}": )[0-9.]+`), `$1${value}`);
+  writeFileSync(path, text, "utf8");
+  return before;
 }

@@ -32,6 +32,9 @@ export type {
   UnitsReply,
   UsedUnit,
   VariableDeclaration,
+  VariableKeyCarried,
+  VariableKeyOffer,
+  VariableKeyValue,
   VariableReply,
   VocabularyUnit,
 } from "../generated/api";

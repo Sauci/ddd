@@ -46,6 +46,19 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   files, and the exact lines on request - and written to every file or none, as every change
   here is.
 
+  A variable's panel now carries every key its declarations share rather than the unit alone:
+  a row per key - what the variable is made of, what it means, what shape it has and which
+  declarations it points at - a column per declaration, and the rows they disagree about
+  first.  Selecting a row offers the values already in play, each naming the components
+  stating it and marking the producer's, and the field the key takes: one of the eleven
+  datatypes, a type, an axis, a measurement or a declared constant the project has, true or
+  false, a minimum and a maximum, or the unit picker with the project's vocabulary behind
+  it.  A conversion and a list of dimensions are carried from the declaration that states
+  them rather than composed here, and `kind` is shown and never settled, since it decides
+  which other keys a declaration may carry at all.  What is chosen is applied to every
+  declaration at once, with the lines each file will change shown on request, exactly as a
+  unit already was.
+
 * **The editor offers no unit to a declaration whose type fixes it.**  A declaration naming a
   declared type takes its `unit`, `conversion` and `limits` from the type, and the loader
   refuses one of them stated beside the `typename`.  A `definition-mismatch` on such a

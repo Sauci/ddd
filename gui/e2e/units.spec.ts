@@ -122,7 +122,7 @@ test("after Apply the panel stays on the unit applied, and asks again only what 
   });
   await panel.getByRole("button", { name: "Apply to 2 files" }).click();
   // The new revision's declarations, both stating the unit applied...
-  await expect(panel.getByRole("cell", { name: "rpm", exact: true })).toHaveCount(2);
+  await expect(panel.getByRole("gridcell", { name: "rpm", exact: true })).toHaveCount(2);
   // ...and the panel still on that unit with nothing left to change, never a preview of undoing
   // it; nor was anything asked for again that an Apply cannot change, such as the session.
   await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toHaveValue("rpm");
@@ -294,6 +294,13 @@ test("no page reports a violation of its content security policy", async ({ page
   await expect(panel.locator(".hunk")).toBeVisible();
   await panel.getByRole("combobox", { name: "Unit of ValueA" }).press("ArrowDown");
   await expect(page.getByRole("option", { name: "%", exact: true })).toBeVisible();
+  await panel.getByRole("combobox", { name: "Unit of ValueA" }).press("Escape");
+
+  // The keys table's other rows and choosers (part 3), open on the page too.
+  await panel.getByRole("row", { name: /^limits/ }).click();
+  await panel.getByRole("combobox", { name: "Limits of ValueA" }).press("ArrowDown");
+  await expect(panel.getByLabel("Max")).toBeVisible();
+
   expect(
     await page.evaluate(() => (window as unknown as { violations: string[] }).violations),
   ).toEqual([]);
@@ -305,14 +312,16 @@ test("a file saved half-edited leaves open the panel of a variable only it decla
 }) => {
   await page.goto(gui.address);
   await expect(page.getByLabel("SensorHub to Controller: 2 variables, agreed")).toBeVisible();
-  // ValueH is local to Controller: no other file declares it.
+  // ValueH is local to Controller: no other file declares it. A single declaration never
+  // disagrees with itself, so the panel opens on the table alone - this journey is about the
+  // file that stops loading, not about a chooser.
   await page.goto(`${new URL(gui.address).origin}/project?variable=ValueH`);
   const panel = page.getByRole("complementary", { name: "ValueH" });
-  const picker = panel.getByRole("combobox", { name: "Unit of ValueH" });
-  await expect(picker).toBeVisible();
+  await expect(panel).toBeVisible();
 
   // Saved half-edited, as an editor saves a file being typed into: it no longer parses, and the
-  // variable is gone from every file that loads - but not from the project, and the panel stays.
+  // variable is gone from every file that loads - but not from the project, and the panel stays,
+  // naming the file rather than closing for good.
   const file = join(gui.directory, CONTROLLER);
   const before = readFileSync(file);
   writeFileSync(file, before.subarray(0, Math.floor(before.length / 2)));
@@ -322,6 +331,7 @@ test("a file saved half-edited leaves open the panel of a variable only it decla
 
   // Saved again whole: the panel shows the variable as it did.
   writeFileSync(file, before);
-  await expect(picker).toBeVisible();
+  await expect(panel.getByText("controller.ddd.json did not load")).toHaveCount(0);
+  await expect(panel).toBeVisible();
   await expect(page).toHaveURL(/\/project\?variable=ValueH$/);
 });

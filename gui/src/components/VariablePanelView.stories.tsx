@@ -51,14 +51,16 @@ function View({
   const [selected, setSelected] = useState<string | undefined>(initialSelected);
   const [chosen, setChosen] = useState<string | null | undefined>(initialChosen);
   const [typed, setTyped] = useState<string | undefined>(undefined);
-  const [range, setRange] = useState<{ min: string; max: string }>(
-    initialSelected === undefined
-      ? { min: "", max: "" }
-      : limitsOf(startingRaw(variable, initialSelected)),
-  );
+  const [edited, setEdited] = useState<{ min: string; max: string } | undefined>(undefined);
   const [changesShown, setChangesShown] = useState(initialChangesShown);
   // As in VariablePanel.tsx: for `limits` the two fields are the value, so what they say and
   // what would be applied are one thing, and a pair that is no range says so and offers none.
+  // Derived here as the screen derives it - a story that seeded the fields instead would draw
+  // a panel the screen cannot reach, which is how a row opening on two empty fields, a
+  // removal, went unseen through forty screenshots.
+  const range =
+    edited ??
+    (selected === undefined ? { min: "", max: "" } : limitsOf(startingRaw(variable, selected)));
   const broken = selected === "limits" ? limitsNote(range.min, range.max) : null;
   const target =
     selected === undefined || broken !== null
@@ -72,11 +74,11 @@ function View({
     setSelected(key);
     setChosen(undefined);
     setTyped(undefined);
+    setEdited(undefined);
     setChangesShown(false);
-    setRange(key === undefined ? { min: "", max: "" } : limitsOf(startingRaw(variable, key)));
   };
   const onRange = (next: { min: string; max: string }) => {
-    setRange(next);
+    setEdited(next);
     setTyped(undefined);
   };
   return (
@@ -96,7 +98,7 @@ function View({
       onChosen={(raw) => {
         setChosen(raw);
         setTyped(undefined);
-        if (selected === "limits") setRange(limitsOf(raw));
+        if (selected === "limits") setEdited(limitsOf(raw));
       }}
       onPickerClosed={() => setTyped(undefined)}
       range={range}

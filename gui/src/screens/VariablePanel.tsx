@@ -64,7 +64,13 @@ export function VariablePanel({
   // direction the tool's own rule reads in, and says what that would change.
   const [chosen, setChosen] = useState<string | null | undefined>(undefined);
   const [typed, setTyped] = useState<string | undefined>(undefined);
-  const [range, setRange] = useState<{ min: string; max: string }>({ min: "", max: "" });
+  // What the reader has put in the two fields of a range, `undefined` until they touch one:
+  // the same tri-state as `picked`, `chosen` and `typed`. What the fields read is derived
+  // below rather than seeded by a handler, so that a `limits` row reached by any path - by
+  // hand, or opened for the reader because it is the first row that disagrees - starts on the
+  // value the chooser starts on. Two empty fields are a removal, and a removal is something
+  // the reader asks for, never where a row opens.
+  const [edited, setEdited] = useState<{ min: string; max: string } | undefined>(undefined);
   const [changesShown, setChangesShown] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
   // What the table actually offers to settle (`kind` aside): what a key remembered from a
@@ -86,6 +92,11 @@ export function VariablePanel({
   // fields say and what Apply writes cannot drift apart. Two empty fields are "state nothing",
   // which the list offers too; anything else that is not a range is not a value at all, and
   // the chooser says so instead of previewing something the reader did not ask for.
+  const range =
+    edited ??
+    (selected === undefined || variable.data === undefined
+      ? { min: "", max: "" }
+      : limitsOf(startingRaw(variable.data, selected)));
   const broken = selected === "limits" ? limitsNote(range.min, range.max) : null;
   const target =
     selected === undefined || variable.data === undefined || broken !== null
@@ -107,13 +118,9 @@ export function VariablePanel({
     setPicked(key ?? null);
     setChosen(undefined);
     setTyped(undefined);
+    setEdited(undefined);
     setChangesShown(false);
     setRefused(null);
-    setRange(
-      key === undefined || variable.data === undefined
-        ? { min: "", max: "" }
-        : limitsOf(startingRaw(variable.data, key)),
-    );
   };
   // The unit cell of the component table hands the reader over to the unit's chooser, which is
   // what `focusPicker` has always asked for; it now says which row to open as well.
@@ -125,7 +132,7 @@ export function VariablePanel({
   // so there is nothing to remember here: a half-typed one leaves no whole one behind to be
   // applied in its place.
   const onRange = (next: { min: string; max: string }) => {
-    setRange(next);
+    setEdited(next);
     setTyped(undefined);
     setRefused(null);
   };
@@ -200,7 +207,8 @@ export function VariablePanel({
         setRefused(null);
         // A range chosen from the list - one in play, or "state nothing", which empties them -
         // is settled on by writing it into the two fields, since they are what is applied.
-        if (selected === "limits") setRange(limitsOf(raw));
+        // It is the reader's own choice, so it counts as an edit of the fields.
+        if (selected === "limits") setEdited(limitsOf(raw));
       }}
       onPickerClosed={() => setTyped(undefined)}
       range={range}

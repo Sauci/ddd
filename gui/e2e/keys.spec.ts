@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONTROLLER, driftFactor, openPanel, PUMP, SENSOR_HUB } from "./demo";
+import { CONTROLLER, driftFactor, driftMax, openPanel, PUMP, SENSOR_HUB } from "./demo";
 import { expect, test } from "./fixtures";
 
 /** ValueA's definition in one file of the copy, read back from disk. */
@@ -54,6 +54,59 @@ test("a range typed into the two fields reaches every declaration", async ({ pag
   await expect(panel.getByText("Nothing to change")).toBeVisible();
   expect(valueA(gui.directory, SENSOR_HUB).limits).toEqual({ min: 0, max: 50 });
   expect(valueA(gui.directory, CONTROLLER).limits).toEqual({ min: 0, max: 50 });
+});
+
+test("a limits row the panel opens by itself settles on the producer's range", async ({
+  page,
+  gui,
+}) => {
+  // Drifting Controller's greatest limit makes `limits` the one row that disagrees, so the
+  // panel opens on it with nothing pressed but the variable's row - the path the component
+  // table and the canvas both take, where no chooser is asked for by name.
+  driftMax(gui.directory, CONTROLLER, "ValueA", 50);
+  // As in the conversion journey: an Apply carries the fingerprint the analysis read the file
+  // at, so wait for the server to have reanalysed the drift before pressing it.
+  const reanalysed = page.waitForResponse((response) =>
+    response.url().includes("/api/state?after="),
+  );
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("rowheader", { name: "ValueA" }).click();
+  await reanalysed;
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+
+  // The producer's own range, in the field and in the two fields under it - not the removal
+  // two empty fields would ask for.
+  await expect(panel.getByRole("combobox", { name: "Limits of ValueA" })).toHaveValue("0 … 100");
+  await expect(panel.getByLabel("Min")).toHaveValue("0");
+  await expect(panel.getByLabel("Max")).toHaveValue("100");
+  await expect(panel.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
+  await panel.getByRole("button", { name: "Show changes" }).click();
+  await expect(panel.locator(".hunk .added")).toContainText('"max": 100');
+  // Nothing is written until Apply, and both files still state the limits they had.
+  expect(valueA(gui.directory, SENSOR_HUB).limits).toEqual({ min: 0, max: 100 });
+  expect(valueA(gui.directory, CONTROLLER).limits).toEqual({ min: 0, max: 50 });
+
+  // The other range in play is offered too, and a range taken from the list fills the two
+  // fields with it, which is what would be written; the producer's is chosen back again.
+  const field = panel.getByRole("combobox", { name: "Limits of ValueA" });
+  await field.press("ArrowDown");
+  // The list is a popover at the root of the page, not inside the panel.
+  await page.getByRole("option", { name: "0 … 50", exact: true }).click();
+  await expect(panel.getByLabel("Max")).toHaveValue("50");
+  await expect(panel.getByText("Changes 1 file: sensor_hub.ddd.json")).toBeVisible();
+  await field.press("ArrowDown");
+  await page.getByRole("option", { name: "0 … 100", exact: true }).click();
+  await expect(panel.getByLabel("Max")).toHaveValue("100");
+  await expect(panel.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
+
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  // The range settled, so nothing disagrees any longer and the row the panel opened by itself
+  // closes with it: the reader never picked a key, and there is none left to pick for them.
+  await expect(panel.getByText("Select a key to settle it")).toBeVisible();
+  await expect(panel.getByRole("row", { name: /^limits/ })).toContainText("0 … 100");
+  expect(valueA(gui.directory, SENSOR_HUB).limits).toEqual({ min: 0, max: 100 });
+  expect(valueA(gui.directory, CONTROLLER).limits).toEqual({ min: 0, max: 100 });
 });
 
 test("a range the two fields do not make offers no Apply, and changes nothing", async ({

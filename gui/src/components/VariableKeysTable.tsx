@@ -20,8 +20,12 @@ export function VariableKeysTable({
   onSelect,
 }: VariableKeysTableProps) {
   const rows = keyRows(variable, preview);
-  // The producer's column first, as `keyRows` orders every row's cells: `at` is the place in
-  // that order, which is what a cell is looked up by below.
+  // The producer's column first, as `keyRows` orders every row's cells. The `at` built here is
+  // the place in *that* order, which is what `row.cells` is indexed by below - deliberately not
+  // the `at` of `keyColumns`, which is where the answer lists the declaration and what each
+  // key's `carried` is indexed by. The two are the same number only when the producer already
+  // leads the answer; both meanings are right where they are used, and swapping either would
+  // quietly draw one component's values under another's name.
   const columns = [
     { id: "key", name: "Key", at: -1 },
     ...keyColumns(variable).map(({ declaration }, at) => ({

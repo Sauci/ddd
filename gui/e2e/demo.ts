@@ -76,11 +76,28 @@ export function driftFactor(
   variable: string,
   factor: number,
 ): Buffer {
+  return driftNumber(directory, file, variable, "factor", factor);
+}
+
+/** One variable's greatest limit in one file of a copy drifted, saved from outside, which is
+ * what makes its two declarations disagree about `limits`; answers the file as it was before. */
+export function driftMax(directory: string, file: string, variable: string, max: number): Buffer {
+  return driftNumber(directory, file, variable, "max", max);
+}
+
+/** The first number one variable's key holds in a file of a copy, replaced in place. */
+function driftNumber(
+  directory: string,
+  file: string,
+  variable: string,
+  key: string,
+  value: number,
+): Buffer {
   const path = join(directory, file);
   const before = readFileSync(path);
   const text = before
     .toString("utf8")
-    .replace(new RegExp(`("name": "${variable}"[\\s\\S]*?"factor": )[0-9.]+`), `$1${factor}`);
+    .replace(new RegExp(`("name": "${variable}"[\\s\\S]*?"${key}": )[0-9.]+`), `$1${value}`);
   writeFileSync(path, text, "utf8");
   return before;
 }

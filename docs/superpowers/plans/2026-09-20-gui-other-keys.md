@@ -2946,16 +2946,42 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ## Progress log
 
-| Task | Started | Duration | Tokens | Notes |
+Executed on 2026-09-20 and 2026-09-21 by subagent-driven development: an implementer per task,
+a reviewer after each, and a scoped re-review after every fix round. Duration and tokens are the
+implementer's; the review's follow in brackets.
+
+| Task | Implementer | Duration | Tokens | Notes |
 | --- | --- | --- | --- | --- |
-| | | | | |
+| 1 The index records each object's kind | haiku | 4 min [4 min] | 70 k [104 k] | Clean. |
+| 2 What a key offers | sonnet | 14 min + 14 min fix [7 + 3 min] | 212 k + 312 k [155 k + 118 k] | One fix round: values were grouped by their json text where the checker compares what the models resolve to, so `{"factor": 2}` and `{"kind": "linear", "factor": 2, "offset": 0}` read as a disagreement the analysis never files. `ddd.models.conversion.conversion_interface_value` now holds that rule for the checker and the panel both. |
+| 3 The endpoint answers what every key offers | sonnet | 10 min [5 min] | 177 k [122 k] | Clean. The brief's contract had lost `disagrees`; the implementer restored it from the dataclass. |
+| 4 The page's logic | sonnet | 19 min [7 min] | 258 k [139 k] | Clean. Four of the brief's fixtures contradicted their own expected values and were corrected; the reviewer checked each against the spec rather than the code. |
+| 5 The two new pictures, and their stories | sonnet | 22 min + 6 min fix [10 + 3 min] | 313 k + 355 k [176 k + 112 k] | One fix round: a preview fixture described an edit the server could never answer. The `Range` story's list was closed after its open popover was found covering the two fields - caught by looking at the photograph. |
+| 6 The panel rebuilt around them | sonnet | 20 min + 15 min fix [7 + 3 min] | 297 k + 442 k [166 k + 136 k] | One fix round, on the first review run against opus: three of part 1's journeys broke on the new table, and the panel opened on nothing when reached from the canvas. It now opens on the first row that disagrees, and the meta line counts the `kind` row it draws itself. |
+| 7 The journeys | sonnet | 35 min + 26 min fix [4 min] | 353 k + 516 k [105 k] | One fix round, for a real bug the journey found: `settle` compares json text, and an edit writes a value in the target file's own layout, so carrying a conversion from a producer that spreads it over four lines left the panel asking for the same change forever. `ddd gui` now narrows a settlement by what a value means; the language server still compares text. |
+| 8 The documentation | sonnet | 11 min [7 min] | 149 k [129 k] | Clean. Every claim on the developer page was checked against the code. |
+| 9 Milestone gate | sonnet | 16 min | 196 k | Every step passed from a clean build; four photographs of the real application kept beside this plan. |
 
 ## Left open by the implementers
 
-_Filled in as the plan runs: anything found and not fixed, with why._
-
-- The whitespace of a value is the file's own. Two declarations stating one value in different layouts are one value in play and one agreeing row, but `ddd.lsp.edits.settle` compares the json text: settling that value on both rewrites the one whose layout differs, which Show changes shows as a change of the line. The edit engine lays every value out in the file's own style, so the content is the same afterwards.
-- Moving a variable onto a declared type - choosing a `typename` for a declaration that states a `datatype` - writes a file the loader refuses until its storage keys go, which the panel cannot do in the same edit. Spec 4.2 rules that such a value is written and reported on the next analysis; a reader doing this fixes the rest in an editor.
+- **The language server still compares text.** What this plan wrote up as a cosmetic wart turned
+  out to stop the panel settling at all: `ddd.lsp.edits.settle` compares the json text of a key, an
+  edit writes a value in the target file's own layout, and so carrying a conversion from a producer
+  that spreads it over four lines onto a reader that writes it on one never reached "nothing to
+  change" - the Apply never went away. `ddd gui` now narrows a settlement by what a value means
+  (`ddd.value_identity.same_value`, `ddd.variables.narrowed`), which is the rule the checker and the
+  panel's own grouping already used. The language server keeps the old comparison, so its "Apply
+  this X to N other declarations" still offers to rewrite a line to a value it already means; fixing
+  that is a change to `settle` itself, which spec 2 put outside this branch.
+- Moving a variable onto a declared type - choosing a `typename` for a declaration that states a
+  `datatype` - writes a file the loader refuses until its storage keys go, which the panel cannot do
+  in the same edit. Spec 4.2 rules that such a value is written and reported on the next analysis; a
+  reader doing this fixes the rest in an editor.
+- `ddd.variables.narrowed` finds each change's declaration by a bare lookup, which cannot miss only
+  because `GET /api/settle` hands `settle` and `declarations_of` one read cache. A caller that
+  passed a fresh one would turn a file rewritten between the two reads into a 500.
+- The panel recomputes `keyRows` beside the table's own call, and part 1's half-saved-file journey
+  asserts that the panel stays rather than that no chooser renders.
 
 ## Rulings made while writing and executing the plan
 
@@ -2969,3 +2995,14 @@ Each ruling: what was decided, why, and what it costs if it is wrong.
 6. **A name is chosen from the list and never typed**, where a `size` may be typed as a whole number. Why: the choices are the answer to "what may this be", and a typed name is a reference to something the project does not declare - which the loader reports and nothing in the panel could fix. Cost if wrong: a reader naming an object declared in a file that did not load has to edit by hand until it loads.
 7. **`limits` is two fields beside the list, and the list stays.** Why: a range is the one value a reader is likely to want that no declaration has yet, and the values in play are how the producer's range is taken in one press. Cost if wrong: a slightly busier chooser for one key of twelve.
 8. **The unit keeps part 1's picker.** Why: it carries part 2's vocabulary, its "not one of this project's units" note and its own journeys; a second unit chooser would be a second set of rules. Cost if wrong: one key's chooser looks a little different from the other eleven, which is what its vocabulary earns it.
+
+### Taken while executing it
+
+9. **A subagent's commit names its own model** in its `Co-Authored-By` line, rather than the one this plan wrote. Why: the line says who wrote the commit, and rewriting it to name another model would be false attribution. Cost if wrong: the branch's trailers name two models instead of one.
+10. **A value's identity is what the checker compares, not its text** (Task 2's fix). `definition-mismatch` resolves a conversion through the models and compares limits as numbers, so `{"factor": 2}` and `{"kind": "linear", "factor": 2, "offset": 0}` are one conversion; grouping by text marked rows the analysis files no finding about. `ddd.models.conversion.conversion_interface_value` now holds that rule for both. Cost if wrong: one more rule to keep in step with the checker's own comparison.
+11. **`disagrees` was restored to the contract** (Task 3). The plan's interfaces section carried the field and its Task 3 body did not - the edit that added it missed the second copy. Cost if wrong: none, the two agree now.
+12. **A fixture must be an answer the server could give** (Task 5's fix). A preview whose hunk contradicted its own declarations was fixed by making the disagreement real rather than by patching the hunk. Cost if wrong: that fixture's screenshots show two disagreeing rows where they used to show one.
+13. **The panel opens on the first row that disagrees** (Task 6's fix), and on nothing when none does. A red arrow on the canvas opens this panel because something disagrees, and part 1's reader could settle it from there in one press. Cost if wrong: a panel sometimes opens with a chooser the reader did not ask for, which is one press to let go.
+14. **Task 6's four minor findings were fixed in the same round** rather than deferred: one was the fixture class Task 5 had just been fixed for, one was dead interface weight, and two were one-liners. Cost if wrong: a slightly larger fix diff to re-review.
+15. **A settlement is narrowed in `ddd gui`'s own layer, never in `settle`** (Task 7's fix). Spec 2 decides that the language server is untouched, and changing that comparison changes what its quick fixes rewrite; the GUI already narrows what `settle` offers, since it refuses a settlement all-or-nothing. Cost if wrong: the language server keeps offering to rewrite a line to a value it already means.
+16. **The Content-Security-Policy journey was extended where it lives** (`units.spec.ts`), not where the plan said it was (`skeleton.spec.ts`). Cost if wrong: none; the plan misremembered which file part 2 put it in.

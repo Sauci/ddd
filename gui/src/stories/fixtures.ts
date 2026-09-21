@@ -23,7 +23,7 @@ const MISMATCH: Finding = {
   file: CONTROLLER,
   check: "definition-mismatch",
   severity: "error",
-  message: "Controller states rpm, SensorHub %",
+  message: "Controller states rpm and ×1, SensorHub states % and ×0.5",
   pointer: "component.interface[0].definition.unit",
   notes: [],
 };

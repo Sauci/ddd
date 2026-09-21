@@ -54,27 +54,6 @@ function owner(declarations: readonly VariableDeclaration[]): VariableDeclaratio
   return declarations.find((entry) => entry.role === "produces") ?? declarations[0];
 }
 
-/** The unit the picker starts on: the owner's, which is what a reader adopts by the tool's rule. */
-export function startingUnit(declarations: readonly VariableDeclaration[]): string | null {
-  const first = owner(declarations);
-  return first === undefined ? null : unitOfDeclaration(first);
-}
-
-/** The panel's line under the variable's name: kind, datatype or type, and who owns it. */
-export function describe(declarations: readonly VariableDeclaration[]): string {
-  const first = owner(declarations);
-  if (first === undefined) return "";
-  const kind = textOf(first.stated.kind) ?? "declaration";
-  const datatype = first.type ?? textOf(first.stated.datatype) ?? "no datatype";
-  const who =
-    first.role === "produces"
-      ? `produced by ${first.component}`
-      : first.role === "local"
-        ? `local to ${first.component}`
-        : "no producer";
-  return `${kind} · ${datatype} · ${who}`;
-}
-
 /** Every section the picker lists, narrowed to what was typed, in the order spec 5.3 gives. */
 export function pickerSections(
   name: string,
@@ -175,17 +154,6 @@ export function outsideVocabulary(units: UnitsReply, unit: string | null): boole
 /** The json text a chosen unit travels as, or `null` for no unit: the key then goes. */
 export function rawOf(unit: string | null): string | null {
   return unit === null ? null : JSON.stringify(unit);
-}
-
-/** Whether a preview writes into this declaration. */
-export function willChange(preview: SettleReply, declaration: VariableDeclaration): boolean {
-  return preview.changes.some(
-    (change) =>
-      change.file === declaration.path &&
-      change.operations.some((operation) =>
-        operation.pointer.startsWith(`${declaration.pointer}.`),
-      ),
-  );
 }
 
 /** What a preview changes, in one sentence naming the files. */

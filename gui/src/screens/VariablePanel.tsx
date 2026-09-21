@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ApiError, getSettle, getUnits, getVariable, postEdit } from "../api/client";
 import { VariablePanelView } from "../components/VariablePanelView";
-import { editOf, outsideVocabulary, rawOf, startingUnit, unitLabel } from "../lib/units";
+import { editOf, outsideVocabulary, textOf } from "../lib/units";
+import { labelOfRaw, limitsOf, limitsRaw, startingRaw } from "../lib/variableKeys";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
 
@@ -20,7 +21,7 @@ interface Props {
 const STALE =
   "A file changed on disk, so nothing was written. The panel now shows the files as they are.";
 
-/** One variable's panel: its declarations, the unit they state, and a unit to settle on. */
+/** One variable's panel: its keys, what each declaration says of them, and a key to settle. */
 export function VariablePanel({
   name,
   revision,
@@ -49,30 +50,64 @@ export function VariablePanel({
     queryFn: () => getUnits(),
     placeholderData: (previous) => previous,
   });
-  // `undefined` until the reader chooses: the panel then settles on the owner's unit, the
+  const [selected, setSelected] = useState<string | undefined>(undefined);
+  // `undefined` until the reader chooses: the chooser then settles on the producer's value, the
   // direction the tool's own rule reads in, and says what that would change.
   const [chosen, setChosen] = useState<string | null | undefined>(undefined);
-  // What the reader is typing into the picker, `undefined` whenever its list is closed: the field
-  // then reads the unit settled on, so the field, the consequence line and Show changes always
-  // speak of the same unit.
   const [typed, setTyped] = useState<string | undefined>(undefined);
+  const [range, setRange] = useState<{ min: string; max: string }>({ min: "", max: "" });
   const [changesShown, setChangesShown] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
-  const target = chosen === undefined ? startingUnit(variable.data?.declarations ?? []) : chosen;
+  const target =
+    selected === undefined || variable.data === undefined
+      ? null
+      : chosen === undefined
+        ? startingRaw(variable.data, selected)
+        : chosen;
   const preview = useQuery({
-    queryKey: ["settle", name, target, revision],
-    queryFn: () => getSettle(name, "unit", rawOf(target)),
-    enabled: variable.data !== undefined,
+    queryKey: ["settle", name, selected, target, revision],
+    queryFn: () => getSettle(name, selected as string, target),
+    enabled: variable.data !== undefined && selected !== undefined,
   });
+  // Selecting a row starts that key afresh - what was chosen for the last one means nothing for
+  // this one.
+  const select = (key: string | undefined) => {
+    setSelected(key);
+    setChosen(undefined);
+    setTyped(undefined);
+    setChangesShown(false);
+    setRefused(null);
+    setRange(
+      key === undefined || variable.data === undefined
+        ? { min: "", max: "" }
+        : limitsOf(startingRaw(variable.data, key)),
+    );
+  };
+  // The unit cell of the component table hands the reader over to the unit's chooser, which is
+  // what `focusPicker` has always asked for; it now says which row to open as well.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: select is rebuilt every render and reads only state setters and the latest data.
+  useEffect(() => {
+    if (focusPicker !== null) select("unit");
+  }, [focusPicker]);
+  // A range typed into the two fields is the value chosen as soon as it is a range.
+  const onRange = (next: { min: string; max: string }) => {
+    setRange(next);
+    const raw = limitsRaw(next.min, next.max);
+    // A half-typed range is not a choice: the preview keeps showing the last whole one.
+    if (raw !== null) {
+      setChosen(raw);
+      setRefused(null);
+    }
+  };
   const apply = useMutation({
     mutationFn: () => {
       const edit = preview.data === undefined ? null : editOf(preview.data);
       if (edit === null) throw new Error("there is nothing to change");
       return postEdit(edit);
     },
-    // The unit chosen stays chosen: the panel then says there is nothing left to change. Let go,
-    // it fell back on the owner's unit in the declarations still on screen, which are the ones
-    // the edit has just changed, and previewed undoing it.
+    // The value chosen stays chosen: the panel then says there is nothing left to change. Let
+    // go, it fell back on the producer's value in the declarations still on screen, which are
+    // the ones the edit has just changed, and previewed undoing it.
     onSuccess: () => {
       setTyped(undefined);
       setChangesShown(false);
@@ -115,25 +150,35 @@ export function VariablePanel({
     <VariablePanelView
       variable={variable.data}
       units={units.data}
-      typed={typed ?? unitLabel(target)}
-      // Never the target: opening the picker on the owner's unit must still list everything,
-      // not just the entries that happen to contain it (the picker's own journey, and spec 5.3).
+      selected={selected}
+      onSelect={select}
+      chosen={target}
+      typed={typed ?? (selected === undefined ? "" : labelOfRaw(variable.data, selected, target))}
+      // Never the target: opening the list on the producer's value must still list everything,
+      // not just the entries that happen to contain it (spec 5.3, and part 1's own journey).
       narrow={typed ?? ""}
       onTyped={setTyped}
-      onChosen={(unit) => {
-        setChosen(unit);
+      onChosen={(raw) => {
+        setChosen(raw);
         setTyped(undefined);
         setRefused(null);
+        if (selected === "limits") setRange(limitsOf(raw));
       }}
       onPickerClosed={() => setTyped(undefined)}
-      note={outsideVocabulary(units.data, target) ? "Not one of this project's units" : undefined}
+      range={range}
+      onRange={onRange}
+      note={
+        selected === "unit" && outsideVocabulary(units.data, textOf(target ?? undefined))
+          ? "Not one of this project's units"
+          : undefined
+      }
       preview={preview.data ?? null}
       refusal={refused ?? (preview.error === null ? null : preview.error.message)}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => apply.mutate()}
       busy={stopped || apply.isPending}
-      focusPicker={focusPicker}
+      focus={focusPicker}
       onClose={onClose}
     />
   );

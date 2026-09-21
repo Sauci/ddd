@@ -2977,9 +2977,17 @@ implementer's; the review's follow in brackets.
   `datatype` - writes a file the loader refuses until its storage keys go, which the panel cannot do
   in the same edit. Spec 4.2 rules that such a value is written and reported on the next analysis; a
   reader doing this fixes the rest in an editor.
-- `ddd.variables.narrowed` finds each change's declaration by a bare lookup, which cannot miss only
-  because `GET /api/settle` hands `settle` and `declarations_of` one read cache. A caller that
-  passed a fresh one would turn a file rewritten between the two reads into a 500.
+- **A screen's own state is guarded by the journeys alone.** The Vitest gate covers `src/api`,
+  `src/lib` and `src/state`, and a story draws what its harness derives: the Critical the final fix
+  wave introduced - a `limits` row opened by itself previewing a removal - moved no screenshot and
+  no unit test, because the story seeded the range the screen derives. The harness now derives it
+  the same way, but it is a copy of the screen rather than the screen.
+- The reader's own state (`chosen`, `typed`, the range) is cleared when they select a row, not when
+  the row the panel selects for them changes: an outside edit that makes another key disagree can
+  re-open a chooser on what was typed for the last one.
+- After an Apply on a row the panel opened by itself, the chooser closes - nothing disagrees any
+  more and the reader never picked a key. The table still shows the settled value, and the row is
+  one press away.
 - The panel recomputes `keyRows` beside the table's own call, and part 1's half-saved-file journey
   asserts that the panel stays rather than that no chooser renders.
 
@@ -3006,3 +3014,6 @@ Each ruling: what was decided, why, and what it costs if it is wrong.
 14. **Task 6's four minor findings were fixed in the same round** rather than deferred: one was the fixture class Task 5 had just been fixed for, one was dead interface weight, and two were one-liners. Cost if wrong: a slightly larger fix diff to re-review.
 15. **A settlement is narrowed in `ddd gui`'s own layer, never in `settle`** (Task 7's fix). Spec 2 decides that the language server is untouched, and changing that comparison changes what its quick fixes rewrite; the GUI already narrows what `settle` offers, since it refuses a settlement all-or-nothing. Cost if wrong: the language server keeps offering to rewrite a line to a value it already means.
 16. **The Content-Security-Policy journey was extended where it lives** (`units.spec.ts`), not where the plan said it was (`skeleton.spec.ts`). Cost if wrong: none; the plan misremembered which file part 2 put it in.
+17. **The whole-branch review's Critical and Important were fixed in one wave**, with the cheap minors beside them: a `limits` field that accepted an inverted range and would have stopped two files loading, and a column order the spec fixes as producer-first, which the branch's own photographs contradicted. Cost if wrong: a larger diff to re-review, which is what the scoped re-review is for.
+18. **Spec 1.1's "the cells that differ marked" was amended to name the rows**, which is what the panel draws. Why: a tinted row that leads the table says what a reader needs at three columns, and marking the minority cells would restyle the table and every screenshot for no gain. Cost if wrong: a reader of a wide table compares the cells themselves.
+19. **A second fix round was taken, against the process's one-wave rule**, for a Critical the wave itself introduced: a `limits` row the panel opened by itself previewed a removal and offered to apply it, which would have deleted the limits from every declaration. Why: the alternative was handing over a branch whose default action loses a reader's data. Cost if wrong: one more fix and one more scoped re-review before the handover.

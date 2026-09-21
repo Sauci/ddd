@@ -294,6 +294,13 @@ test("no page reports a violation of its content security policy", async ({ page
   await expect(panel.locator(".hunk")).toBeVisible();
   await panel.getByRole("combobox", { name: "Unit of ValueA" }).press("ArrowDown");
   await expect(page.getByRole("option", { name: "%", exact: true })).toBeVisible();
+  await panel.getByRole("combobox", { name: "Unit of ValueA" }).press("Escape");
+
+  // The keys table's other rows and choosers (part 2), open on the page too.
+  await panel.getByRole("row", { name: /^limits/ }).click();
+  await panel.getByRole("combobox", { name: "Limits of ValueA" }).press("ArrowDown");
+  await expect(panel.getByLabel("Max")).toBeVisible();
+
   expect(
     await page.evaluate(() => (window as unknown as { violations: string[] }).violations),
   ).toEqual([]);

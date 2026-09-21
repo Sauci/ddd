@@ -71,6 +71,7 @@ from ddd.variables import (
     Planned,
     declarations_of,
     located_on,
+    narrowed,
     preview,
     refusal,
     units_in_use,
@@ -487,10 +488,14 @@ class Api:
         built = revision.index
         if built is None or name not in built.declarations:
             return _undeclared(revision, name)
-        settlement = settle(built, name, key, raw, {})
+        # One cache for both reads below, so a declaration `settle` already read for this
+        # request is not read from disk a second time to narrow what it comes to.
+        cache: dict[Path, Document] = {}
+        settlement = settle(built, name, key, raw, cache)
         if settlement.unsettled:
             code, message = refusal(settlement.unsettled[0], name, key)
             return _error(409, code, message)
+        settlement = narrowed(settlement, key, declarations_of(built, name, cache))
         stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
         try:
             planned = preview(settlement, key, stamps)

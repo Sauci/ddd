@@ -37,16 +37,6 @@ test("a conversion drifted from outside is carried back from the producer", asyn
   await expect(panel.locator(".hunk .added")).toContainText("0.5");
 
   await panel.getByRole("button", { name: "Apply to 1 file" }).click();
-  // Known concern, see task-7-report.md: this assertion currently fails. ddd.lsp.edits.settle()
-  // (settle()'s `stated == raw` check) compares a declaration's stored text against the
-  // producer's raw text byte for byte; SensorHub pretty-prints ValueA's conversion over three
-  // lines and Controller keeps it on one, so even once Controller states the identical value,
-  // settle() still proposes rewriting it (an empty-hunk, no-op operation) and the panel keeps
-  // offering "Apply to 1 file" instead of settling here. Task 6's own report already named the
-  // same "will change" tag on the unmodified, fully-agreeing demo as "a real, pre-existing
-  // backend behavior". The edit itself is correct (asserted below); this line, exactly as the
-  // brief gives it, is kept rather than weakened, per instructions to report a page that is
-  // wrong instead of loosening the assertion.
   await expect(panel.getByText("Nothing to change")).toBeVisible();
   expect(valueA(gui.directory, CONTROLLER).conversion).toEqual({ kind: "linear", factor: 0.5 });
 });

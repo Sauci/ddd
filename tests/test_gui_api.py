@@ -1077,6 +1077,34 @@ class TestSettle:
         assert "b.ddd.json" in reply.body["message"]
         assert contents(tmp_path) == before
 
+    def test_a_container_value_spelled_differently_but_meaning_the_producers_is_settled(
+        self, tmp_path: Path
+    ) -> None:
+        # A and B mean the same range of limits - one spelled with ints, the other with floats.
+        # `stated == raw` (ddd.lsp.edits.settle's own check) compares text, so before ddd gui
+        # narrowed a settlement by what a value means rather than only how it is spelled, this
+        # found something to change here; now the producer's own value (A's, the int spelling)
+        # is already what B means, so there is nothing to settle.
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", limits={"min": 0, "max": 100})
+                ),
+                "b.ddd.json": component(
+                    "B", declare("input", "Speed", limits={"min": 0.0, "max": 100.0})
+                ),
+            },
+        )
+        raw = next(
+            key["values"][0]["raw"]
+            for key in get(api, "/api/variable", name="Speed").body["keys"]
+            if key["key"] == "limits"
+        )
+        assert json.loads(raw) == {"min": 0, "max": 100}
+        assert get(api, "/api/settle", name="Speed", key="limits", raw=raw).body["changes"] == []
+
 
 def copied(tmp_path: Path, example: str, project_file: str) -> tuple[Api, Path]:
     """``ddd gui``'s api over a copy of one of the examples, and where the copy is: the example
@@ -1150,6 +1178,41 @@ class TestTheDemo:
             (posix(root, self.SENSOR_HUB), "SensorHub", "produces", '"%"', None),
         ]
         assert reply.body["findings"] == []
+
+    def test_settling_a_conversion_onto_the_producers_own_layout_reaches_nothing_to_change(
+        self, demo: tuple[Api, Path]
+    ) -> None:
+        # SensorHub (ValueA's producer) pretty-prints its conversion over three lines; Controller
+        # keeps it compact. Drifting Controller's factor gives the settlement something real to
+        # change; applying it writes the value in Controller's own layout, not SensorHub's - so a
+        # second preview that compared text, as `ddd.lsp.edits.settle` alone does, would find
+        # something to change again forever. It must not: this is the case reported against Task
+        # 7 (see task-7-report.md), reproduced here.
+        api, root = demo
+        controller = root / self.CONTROLLER
+        before = controller.read_text("utf-8")
+        pattern = r'("name": "ValueA"[\s\S]*?"factor": )[0-9.]+'
+        drifted = re.sub(pattern, r"\g<1>0.25", before, count=1)
+        assert drifted != before
+        controller.write_text(drifted, encoding="utf-8")
+        assert api.session.poll() is True
+
+        raw = next(
+            key["values"][0]["raw"]
+            for key in get(api, "/api/variable", name="ValueA").body["keys"]
+            if key["key"] == "conversion"
+        )
+        preview = get(api, "/api/settle", name="ValueA", key="conversion", raw=raw).body
+        assert [change["file"] for change in preview["changes"]] == [posix(root, self.CONTROLLER)]
+        assert applied(api, preview).status == 200
+        declarations = get(api, "/api/variable", name="ValueA").body["declarations"]
+        controller_conversion = next(d for d in declarations if d["component"] == "Controller")[
+            "stated"
+        ]["conversion"]
+        assert json.loads(controller_conversion) == {"kind": "linear", "factor": 0.5}
+
+        again = get(api, "/api/settle", name="ValueA", key="conversion", raw=raw).body
+        assert again["changes"] == []
 
     def test_without_a_vocabulary_the_units_in_use_are_answered_most_used_first(
         self, demo: tuple[Api, Path]

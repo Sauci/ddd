@@ -61,8 +61,9 @@ const DATATYPES = [
 ];
 
 /** ValueA as the mockups show it: SensorHub produces %, Controller reads rpm, one finding;
- * besides the disagreement, a datatype, conversion, limits and volatile every declaration
- * agrees about. */
+ * Controller's conversion (×1) disagrees with the other two's (×0.5) as well, so a preview
+ * carrying the producer's conversion onto it (PREVIEW_CONVERSION) is a real settlement, not a
+ * no-op. Besides those two, a datatype, limits and volatile every declaration agrees about. */
 export const DISAGREEING: VariableReply = {
   revision: 7,
   name: "ValueA",
@@ -92,7 +93,7 @@ export const DISAGREEING: VariableReply = {
         kind: '"measurement"',
         datatype: '"uint8"',
         unit: '"rpm"',
-        conversion: '{"factor": 0.5}',
+        conversion: '{"factor": 1}',
         limits: '{"min": 0, "max": 100}',
         volatile: "true",
       },
@@ -139,8 +140,11 @@ export const DISAGREEING: VariableReply = {
     {
       key: "conversion",
       carried: [carried(true), carried(true), carried(true)],
-      values: [inPlay('{"factor": 0.5}', ["SensorHub", "Controller", "UserInterface"], true)],
-      disagrees: false,
+      values: [
+        inPlay('{"factor": 0.5}', ["SensorHub", "UserInterface"], true),
+        inPlay('{"factor": 1}', ["Controller"], false),
+      ],
+      disagrees: true,
       editor: "none",
       choices: [],
     },
@@ -166,23 +170,35 @@ export const DISAGREEING: VariableReply = {
   findings: [MISMATCH],
 };
 
-/** The same declarations settled: Controller reads % too, and the disagreement is gone. */
+/** The same declarations settled: Controller reads % and ×0.5 too, and both disagreements are
+ * gone. */
 export const AGREEING: VariableReply = {
   ...DISAGREEING,
   declarations: DISAGREEING.declarations.map((declaration) =>
     declaration.component === "Controller"
-      ? { ...declaration, stated: { ...declaration.stated, unit: '"%"' } }
+      ? {
+          ...declaration,
+          stated: { ...declaration.stated, unit: '"%"', conversion: '{"factor": 0.5}' },
+        }
       : declaration,
   ),
-  keys: DISAGREEING.keys.map((offer) =>
-    offer.key === "unit"
-      ? {
-          ...offer,
-          values: [inPlay('"%"', ["SensorHub", "Controller", "UserInterface"], true)],
-          disagrees: false,
-        }
-      : offer,
-  ),
+  keys: DISAGREEING.keys.map((offer) => {
+    if (offer.key === "unit") {
+      return {
+        ...offer,
+        values: [inPlay('"%"', ["SensorHub", "Controller", "UserInterface"], true)],
+        disagrees: false,
+      };
+    }
+    if (offer.key === "conversion") {
+      return {
+        ...offer,
+        values: [inPlay('{"factor": 0.5}', ["SensorHub", "Controller", "UserInterface"], true)],
+        disagrees: false,
+      };
+    }
+    return offer;
+  }),
   findings: [],
 };
 

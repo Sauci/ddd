@@ -55,6 +55,12 @@ export function TypePanelView(props: TypePanelViewProps) {
   const keyRows = keyRowsOfType(type);
   const selectedRow = keyRows.find((row) => row.key === selected);
   const kindWord = KIND_WORDS[type.kind] ?? "unknown";
+  // Any of the panel's three write paths can be what `preview`/`refusal` are about: a key
+  // chosen, a rename typed, or - the one the props carry no marker for - the description edited
+  // away from the type's own. Without this, a description-only edit could never be previewed or
+  // applied: `selected` and `renameTo` both stay at their nothing-pending value throughout.
+  const pending =
+    selected !== undefined || renameTo !== null || props.description !== type.description;
   // An external type fixes nothing a chooser edits (`keys` is empty, like a structure's) but its
   // header is the one fact that makes it external at all, so the meta line carries it - the same
   // place `unitMeta`/`typesTitle` already pack a quick fact onto the line under a title.
@@ -147,26 +153,22 @@ export function TypePanelView(props: TypePanelViewProps) {
         </p>
       ) : (
         // As the variable panel's own consequence line stays with `selected !== undefined`: a
-        // stale preview says nothing once nothing is pending, key chosen or rename typed alike.
-        (selected !== undefined || renameTo !== null) &&
-        preview !== null && <p className="consequence">{consequence(preview.changes)}</p>
+        // stale preview says nothing once nothing is pending.
+        pending && preview !== null && <p className="consequence">{consequence(preview.changes)}</p>
       )}
-      {refusal === null &&
-        (selected !== undefined || renameTo !== null) &&
-        preview !== null &&
-        preview.changes.length > 0 && (
-          <>
-            {props.changesShown && <Changes changes={shownChanges(preview.changes)} />}
-            <div className="panel-actions">
-              <Button variant="link" onPress={() => props.onChangesShown(!props.changesShown)}>
-                {props.changesShown ? "Hide changes" : "Show changes"}
-              </Button>
-              <Button variant="primary" isDisabled={busy} onPress={props.onApply}>
-                Apply to {preview.changes.length} file{preview.changes.length === 1 ? "" : "s"}
-              </Button>
-            </div>
-          </>
-        )}
+      {refusal === null && pending && preview !== null && preview.changes.length > 0 && (
+        <>
+          {props.changesShown && <Changes changes={shownChanges(preview.changes)} />}
+          <div className="panel-actions">
+            <Button variant="link" onPress={() => props.onChangesShown(!props.changesShown)}>
+              {props.changesShown ? "Hide changes" : "Show changes"}
+            </Button>
+            <Button variant="primary" isDisabled={busy} onPress={props.onApply}>
+              Apply to {preview.changes.length} file{preview.changes.length === 1 ? "" : "s"}
+            </Button>
+          </div>
+        </>
+      )}
       <h3 className="panel-heading">Where it is used</h3>
       {type.uses.length === 0 ? (
         <p className="quiet">Nothing in the project uses {type.name}.</p>

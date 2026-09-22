@@ -154,6 +154,12 @@ describe("where a finding leads", () => {
     expect(routeHref(one)).toBe("/project?view=units&unit=degC");
   });
 
+  test("a type, by its name", () => {
+    const one = finding({ check: "duplicate-type", route: { kind: "type", name: "Sensor_t" } });
+    expect(routeLabel(one, state([one]))).toBe("Open Sensor_t");
+    expect(routeHref(one)).toBe("/project?view=types&type=Sensor_t");
+  });
+
   test("a component, by the name its file gives it", () => {
     const one = finding({ route: { kind: "component", name: null } });
     expect(routeLabel(one, state([one]))).toBe("Open SensorHub");

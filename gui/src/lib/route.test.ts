@@ -72,3 +72,14 @@ test.each([
 ] as const)("%o is at %s", (route, href) => {
   expect(hrefOf(route)).toBe(href);
 });
+
+test.each([
+  [{ page: "project", view: "types" }, "/project?view=types"],
+  [
+    { page: "project", view: "types", type: "Temperature_t" },
+    "/project?view=types&type=Temperature_t",
+  ],
+  [{ page: "project", view: "types", type: "Sensor_t" }, "/project?view=types&type=Sensor_t"],
+] as const)("%o is at %s", (route, href) => {
+  expect(hrefOf(route)).toBe(href);
+});

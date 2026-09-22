@@ -57,6 +57,11 @@ export function hrefOf(route: Route): string {
           ? "/project?view=units"
           : `/project?view=units&unit=${encodeURIComponent(route.unit)}`;
       }
+      if (route.view === "types") {
+        return route.type === undefined
+          ? "/project?view=types"
+          : `/project?view=types&type=${encodeURIComponent(route.type)}`;
+      }
       if (route.view === "findings") return "/project?view=findings";
       return variable === "" ? "/project" : `/project?${variable}`;
     case "component": {

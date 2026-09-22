@@ -1094,8 +1094,24 @@ export const SCALAR_TYPE: TypeReply = {
   findings: [],
 };
 
+/** Sensor_t filed as the second of two types sharing its name - Sensing's own inline types list,
+ * left over from before types.ddd.json existed, still declares one too. The panel's Findings
+ * section (part 4) needs a type carrying a real finding to be drawn at all; the table's own
+ * fixture already counts one against Status_t (`PROJECT_TYPES`), so a structure carrying one
+ * here is the same story told in full. */
+const DUPLICATE_SENSOR: Finding = {
+  file: TYPES,
+  check: "duplicate-type",
+  severity: "error",
+  message: "type 'Sensor_t' is already declared",
+  pointer: "types[4]",
+  notes: [{ message: "first declared here", file: SENSING, pointer: "component.types[0]" }],
+  route: { kind: "type", name: "Sensor_t" },
+};
+
 /** Sensor_t: no keys - a structure fixes nothing a chooser edits - four members, the last with
- * dimensions, and the two declarations naming it, produced by Sensing and read by Monitoring. */
+ * dimensions, the two declarations naming it, produced by Sensing and read by Monitoring, and
+ * one finding. */
 export const STRUCT_TYPE: TypeReply = {
   revision: 7,
   name: "Sensor_t",
@@ -1161,7 +1177,7 @@ export const STRUCT_TYPE: TypeReply = {
       dimensions: ["8"],
     },
   ],
-  findings: [],
+  findings: [DUPLICATE_SENSOR],
 };
 
 /** DriverStatus_t: an external type's own header, and its one use - Sensor_t's driver member. */

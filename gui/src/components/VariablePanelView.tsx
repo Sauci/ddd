@@ -16,6 +16,8 @@ export interface VariablePanelViewProps
   /** The key whose chooser is open, or `undefined` - the panel then shows the table alone. */
   selected: string | undefined;
   onSelect: (key: string | undefined) => void;
+  /** Following a fixed key to the type that fixes it, without a reload. */
+  onOpenType: (name: string) => void;
   preview: SettleReply | null;
   /** Why the chosen value cannot be applied, or why applying it was refused. */
   refusal: string | null;
@@ -37,6 +39,7 @@ export function VariablePanelView(props: VariablePanelViewProps) {
         preview={preview}
         selected={selected}
         onSelect={props.onSelect}
+        onOpenType={props.onOpenType}
       />
       {variable.findings.length > 0 && (
         <ul className="panel-findings">

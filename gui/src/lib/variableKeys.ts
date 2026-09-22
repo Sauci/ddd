@@ -4,6 +4,7 @@ import type {
   VariableKeyOffer,
   VariableReply,
 } from "../api/types";
+import { hrefOf } from "./route";
 import { textOf } from "./units";
 
 /** What one declaration's cell of a row reads. */
@@ -14,6 +15,9 @@ export interface KeyCell {
   quiet: boolean;
   /** The declared type the value comes from, which the cell names after it. */
   from: string | null;
+  /** Where `from`'s type opens, paired with it exactly as `label` pairs with `href` in
+   * `FindingPanelView`: `null` together with `from`. */
+  href: string | null;
   /** The preview writes this key into this declaration. */
   changing: boolean;
 }
@@ -94,6 +98,7 @@ export function keyRows(variable: VariableReply, preview: SettleReply | null): K
       text: textOf(declaration.stated.kind) ?? "none",
       quiet: textOf(declaration.stated.kind) === null,
       from: null,
+      href: null,
       changing: false,
     })),
     disagrees: new Set(kinds).size > 1,
@@ -138,17 +143,20 @@ function cellOf(
       text: `not on a ${textOf(declaration.stated.kind) ?? "declaration"}`,
       quiet: true,
       from: null,
+      href: null,
       changing,
     };
   }
   const stated = declaration.stated[offer.key];
   const fixed = declaration.fixed[offer.key];
   const raw = stated ?? fixed;
-  if (raw === undefined) return { text: "none", quiet: true, from: null, changing };
+  if (raw === undefined) return { text: "none", quiet: true, from: null, href: null, changing };
+  const from = stated === undefined ? declaration.type : null;
   return {
     text: shortValue(offer.key, raw),
     quiet: false,
-    from: stated === undefined ? declaration.type : null,
+    from,
+    href: from === null ? null : hrefOf({ page: "project", view: "types", type: from }),
     changing,
   };
 }

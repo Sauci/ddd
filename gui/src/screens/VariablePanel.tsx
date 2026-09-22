@@ -25,6 +25,9 @@ interface Props {
   onClose: () => void;
   /** No file of the open project declares the variable: the page closes the panel, saying why. */
   onUndeclared: () => void;
+  /** Following a fixed key to the type that fixes it, without a reload - the project's Types
+   * tab, since the type is the project's rather than this variable's own. */
+  onOpenType: (name: string) => void;
 }
 
 const STALE =
@@ -38,6 +41,7 @@ export function VariablePanel({
   focusPicker,
   onClose,
   onUndeclared,
+  onOpenType,
 }: Props) {
   const queries = useQueryClient();
   const variable = useQuery({
@@ -212,6 +216,7 @@ export function VariablePanel({
       units={units.data}
       selected={selected}
       onSelect={select}
+      onOpenType={onOpenType}
       // A range the fields do not make is no value, so the field above them reads empty and
       // the note says why, rather than naming a value nothing would be settled on.
       typed={

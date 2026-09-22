@@ -168,12 +168,26 @@ describe("the rows of the table", () => {
     ]);
   });
 
-  test("a value a type fixes names the type", () => {
+  test("a value a type fixes names the type, linked to its panel", () => {
     const of = variable([offer("unit", { values: [value('"rpm"', ["SensorHub"], true)] })]);
     const sensorHub = of.declarations[0];
     if (sensorHub === undefined) throw new Error("fixture must have a first declaration");
     of.declarations[0] = { ...sensorHub, type: "Speed_t", fixed: { unit: '"rpm"' } };
-    expect(keyRows(of, null)[1]?.cells[0]).toMatchObject({ text: "rpm", from: "Speed_t" });
+    expect(keyRows(of, null)[1]?.cells[0]).toMatchObject({
+      text: "rpm",
+      from: "Speed_t",
+      href: "/project?view=types&type=Speed_t",
+    });
+  });
+
+  test("a value stated outright carries no such link", () => {
+    // SensorHub's own declaration states its unit directly and names no type - `from` and
+    // `href` stay `null` together, the way `label` and `href` do in `FindingPanelView`.
+    const of = variable(
+      [offer("unit", { values: [value('"%"', ["SensorHub"], true)] })],
+      [{ unit: '"%"' }],
+    );
+    expect(keyRows(of, null)[1]?.cells[0]).toMatchObject({ text: "%", from: null, href: null });
   });
 
   test("the declarations a preview writes into are marked on that key's row alone", () => {

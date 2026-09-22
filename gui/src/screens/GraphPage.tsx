@@ -47,10 +47,20 @@ interface Props {
   stopped: boolean;
   onComponent: (file: string) => void;
   onVariable: (variable: string | undefined) => void;
+  /** Following a fixed key of the open variable's panel to the type that fixes it. */
+  onOpenType: (name: string) => void;
 }
 
 /** The open project as a canvas: one node per module, one arrow per producing-consuming pair. */
-export function GraphPage({ project, state, variable, stopped, onComponent, onVariable }: Props) {
+export function GraphPage({
+  project,
+  state,
+  variable,
+  stopped,
+  onComponent,
+  onVariable,
+  onOpenType,
+}: Props) {
   const graph = useQuery({
     // The project is in the key beside the revision: until the first state answer arrives the
     // revision is undefined, so two projects opened one after the other in the same session
@@ -86,6 +96,7 @@ export function GraphPage({ project, state, variable, stopped, onComponent, onVa
           stopped={stopped}
           onComponent={onComponent}
           onVariable={onVariable}
+          onOpenType={onOpenType}
         />
       </ReactFlowProvider>
     </>
@@ -107,6 +118,7 @@ function Canvas({
   stopped,
   onComponent,
   onVariable,
+  onOpenType,
 }: {
   graph: GraphReply;
   project: string;
@@ -115,6 +127,7 @@ function Canvas({
   stopped: boolean;
   onComponent: (file: string) => void;
   onVariable: (variable: string | undefined) => void;
+  onOpenType: (name: string) => void;
 }) {
   const flow = useReactFlow();
   const [hovered, setHovered] = useState<string | null>(null);
@@ -257,6 +270,7 @@ function Canvas({
             setUndeclared(variable);
             onVariable(undefined);
           }}
+          onOpenType={onOpenType}
         />
       ) : (
         chooser !== null && (

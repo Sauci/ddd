@@ -1,3 +1,4 @@
+import type { MouseEvent } from "react";
 import type { SettleReply, VariableReply } from "../api/types";
 import { keyColumns, keyRows } from "../lib/variableKeys";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
@@ -9,6 +10,8 @@ export interface VariableKeysTableProps {
   selected: string | undefined;
   /** A row selected, or the selected one let go. `kind` is never selected. */
   onSelect: (key: string | undefined) => void;
+  /** Following a cell's `from` to the type that fixes it, without a reload. */
+  onOpenType: (name: string) => void;
 }
 
 /** The panel's table (spec 5.1): a row per key, a column per declaration, drawn from what the
@@ -18,6 +21,7 @@ export function VariableKeysTable({
   preview,
   selected,
   onSelect,
+  onOpenType,
 }: VariableKeysTableProps) {
   const rows = keyRows(variable, preview);
   // The producer's column first, as `keyRows` orders every row's cells. The `at` built here is
@@ -61,10 +65,30 @@ export function VariableKeysTable({
               // length; this is only what tells the type checker so under
               // `noUncheckedIndexedAccess`.
               if (cell === undefined) return <Cell />;
+              // `from` and `href` are `null` together (`KeyCell`'s own doc), so narrowing one
+              // through a local, rather than `cell.from`/`cell.href` again inside the handler,
+              // is what keeps the closure below narrowed too.
+              const type = cell.from;
+              const href = cell.href;
               return (
                 <Cell className={also(cell.quiet ? "quiet" : "")}>
                   {cell.text}
-                  {cell.from !== null && <span className="quiet">, from {cell.from}</span>}
+                  {type !== null && href !== null && (
+                    <a
+                      className="button link"
+                      href={href}
+                      onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+                        // A modified or secondary click asks the browser for a new tab or window.
+                        const modified =
+                          event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
+                        if (modified || event.button !== 0) return;
+                        event.preventDefault();
+                        onOpenType(type);
+                      }}
+                    >
+                      , from {type}
+                    </a>
+                  )}
                   {cell.changing && <span className="tag">will change</span>}
                 </Cell>
               );

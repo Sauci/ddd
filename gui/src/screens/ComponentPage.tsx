@@ -20,10 +20,14 @@ interface Props {
   state: State | null;
   stopped: boolean;
   onVariable: (variable: string | undefined) => void;
+  /** Following a fixed key of the open variable's panel to the type that fixes it - the
+   * project's Types tab, which leaves this page: the type is the project's, not the
+   * component's. */
+  onOpenType: (name: string) => void;
 }
 
 /** One component: its declarations, the panel of the one selected, and the findings in it. */
-export function ComponentPage({ file, variable, state, stopped, onVariable }: Props) {
+export function ComponentPage({ file, variable, state, stopped, onVariable, onOpenType }: Props) {
   // A new number on every unit cell press, even a second press of the same cell, so the
   // picker's focus request always changes; null when a row selects its variable without one.
   const [focusPicker, setFocusPicker] = useState<number | null>(null);
@@ -197,6 +201,7 @@ export function ComponentPage({ file, variable, state, stopped, onVariable }: Pr
             setUndeclared({ file, name: variable });
             onVariable(undefined);
           }}
+          onOpenType={onOpenType}
         />
       )}
     </section>

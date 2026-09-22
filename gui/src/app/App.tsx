@@ -110,6 +110,7 @@ export function App() {
             stopped={stopped}
             onComponent={openComponent}
             onVariable={openVariable}
+            onOpenType={(type) => navigate({ page: "project", view: "types", type })}
           />
         ) : route.view === "units" ? (
           <UnitsPage state={state} unit={route.unit} stopped={stopped} onUnit={openUnit} />
@@ -143,6 +144,7 @@ export function App() {
             { replace: true },
           )
         }
+        onOpenType={(type) => navigate({ page: "project", view: "types", type })}
       />
     );
   }

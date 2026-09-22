@@ -741,11 +741,12 @@ export const ADOPTION: PlanReply = {
 // to a unit, one to a component, and one leading nowhere because its file did not load.
 
 /** SensorHub's ValueA, the one declaration with no id: leads to its variable's panel, and is the
- * finding `ID_FIX` carries a fix for. */
+ * finding `ID_FIX` carries a fix for. `missing-id`'s own default is info
+ * (`src/ddd/diagnostics.py`). */
 export const MISSING_ID: Finding = {
   file: SENSOR_HUB,
   check: "missing-id",
-  severity: "error",
+  severity: "info",
   message:
     "'ValueA' has no 'id', so a later delivery that renames it reports a removal and an " +
     "unrelated addition; 'ddd id --assign' writes one",
@@ -755,11 +756,13 @@ export const MISSING_ID: Finding = {
 };
 
 /** RPM, stated by Controller's EngineSpeed and mirrored onto the type that also states it: leads
- * to its unit's panel, with a note for the other site. */
+ * to its unit's panel, with a note for the other site. `unknown-unit`'s own default is error, and
+ * it is the one check whose route is ever a unit's (`src/ddd/finding_routes.py`'s
+ * `UNIT_CHECKS`). */
 export const UNKNOWN_RPM_FINDING: Finding = {
   file: CONTROLLER,
   check: "unknown-unit",
-  severity: "warning",
+  severity: "error",
   message: "'RPM' is not a unit this project declares - did you mean 'rpm'?",
   pointer: "component.interface[3].definition.unit",
   notes: [{ message: "Also stated by 'Speed_t'", file: TYPES, pointer: "types[0].unit" }],
@@ -767,11 +770,12 @@ export const UNKNOWN_RPM_FINDING: Finding = {
 };
 
 /** UserInterface sharing its name with another component: not within a declaration, so it leads
- * to the component's own page rather than a variable's panel. */
+ * to the component's own page rather than a variable's panel. `duplicate-component`'s own default
+ * is error. */
 const DUPLICATE_COMPONENT: Finding = {
   file: USER_INTERFACE,
   check: "duplicate-component",
-  severity: "info",
+  severity: "error",
   message: "Another component in this project is also named 'UserInterface'",
   pointer: "component.name",
   notes: [],
@@ -779,11 +783,11 @@ const DUPLICATE_COMPONENT: Finding = {
 };
 
 /** Pump's ValueB, filed on a file that did not load: the row says so instead of leading nowhere
- * silently. */
+ * silently. `storage-mismatch`'s own default is warning. */
 export const STORAGE_MISMATCH: Finding = {
   file: PUMP,
   check: "storage-mismatch",
-  severity: "error",
+  severity: "warning",
   message: "'ValueB' is stored as uint16 here but uint8 elsewhere",
   pointer: "component.interface[1].definition",
   notes: [
@@ -797,7 +801,9 @@ export const STORAGE_MISMATCH: Finding = {
 };
 
 /** The project of spec 6's screenshots: every severity, every route a finding can lead to, and
- * one whose file did not load - pump.ddd.json, still listed as the analysis last read it. */
+ * one whose file did not load - pump.ddd.json, still listed as the analysis last read it. Worst
+ * first: `unknown-unit` and `duplicate-component` (error), `storage-mismatch` (warning),
+ * `missing-id` (info) - each check's own default severity, `src/ddd/diagnostics.py`. */
 export const PROJECT_FINDINGS: State = {
   revision: 7,
   project: DEMO,
@@ -808,7 +814,7 @@ export const PROJECT_FINDINGS: State = {
       name: "Controller",
       loaded: true,
       fingerprint: "a",
-      findings: { error: 0, warning: 1, info: 0 },
+      findings: { error: 1, warning: 0, info: 0 },
     },
     {
       path: PUMP,
@@ -816,7 +822,7 @@ export const PROJECT_FINDINGS: State = {
       name: null,
       loaded: false,
       fingerprint: "b",
-      findings: { error: 1, warning: 0, info: 0 },
+      findings: { error: 0, warning: 1, info: 0 },
     },
     {
       path: SENSOR_HUB,
@@ -824,7 +830,7 @@ export const PROJECT_FINDINGS: State = {
       name: "SensorHub",
       loaded: true,
       fingerprint: "c",
-      findings: { error: 1, warning: 0, info: 0 },
+      findings: { error: 0, warning: 0, info: 1 },
     },
     {
       path: USER_INTERFACE,
@@ -832,10 +838,10 @@ export const PROJECT_FINDINGS: State = {
       name: "UserInterface",
       loaded: true,
       fingerprint: "d",
-      findings: { error: 0, warning: 0, info: 1 },
+      findings: { error: 1, warning: 0, info: 0 },
     },
   ],
-  findings: [MISSING_ID, STORAGE_MISMATCH, UNKNOWN_RPM_FINDING, DUPLICATE_COMPONENT],
+  findings: [UNKNOWN_RPM_FINDING, DUPLICATE_COMPONENT, STORAGE_MISMATCH, MISSING_ID],
 };
 
 /** The one fix the tab offers: `missing-id`, previewed onto SensorHub's ValueA. */

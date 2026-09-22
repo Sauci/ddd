@@ -34,8 +34,7 @@ export function FindingPanelView(props: FindingPanelViewProps) {
   return (
     <Panel title={finding.check} meta={baseName(finding.file)} onClose={props.onClose}>
       <p>
-        <Chip tone={toneOf(finding.severity)}>{finding.check}</Chip>{" "}
-        <span className="quiet">{finding.severity}</span>
+        <Chip tone={toneOf(finding.severity)}>{severityWord(finding.severity)}</Chip>
       </p>
       <p>{finding.message}</p>
       {finding.notes.length > 0 && (
@@ -111,4 +110,10 @@ export function FindingPanelView(props: FindingPanelViewProps) {
 /** The chip's tone for a severity; `info` is the quiet one the design system calls neutral. */
 function toneOf(severity: Finding["severity"]) {
   return severity === "error" ? "error" : severity === "warning" ? "warning" : "neutral";
+}
+
+/** The chip's own word for a severity - the title already says the check, so the chip is the one
+ * place left to read which severity this is - the noun `findingCounts` already counts it under. */
+function severityWord(severity: Finding["severity"]) {
+  return severity === "error" ? "error" : severity === "warning" ? "warning" : "note";
 }

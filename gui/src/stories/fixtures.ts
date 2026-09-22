@@ -1,8 +1,10 @@
 import type {
   Finding,
+  FixReply,
   PlanReply,
   ProjectUnit,
   SettleReply,
+  State,
   UnitReply,
   UnitsReply,
   VariableKeyCarried,
@@ -26,7 +28,7 @@ const MISMATCH: Finding = {
   message: "Controller states rpm and ×1, SensorHub states % and ×0.5",
   pointer: "component.interface[0].definition.unit",
   notes: [],
-  route: null,
+  route: { kind: "variable", name: "ValueA" },
 };
 
 /** One declaration's part of a key's answer: it may carry the key, as every declaration below
@@ -539,7 +541,7 @@ const UNKNOWN: Finding = {
   message: "'RPM' is not a unit this project declares - did you mean 'rpm'?",
   pointer: "component.interface[3].definition.unit",
   notes: [],
-  route: null,
+  route: { kind: "unit", name: "RPM" },
 };
 
 /** RPM's panel: where it is stated, and its finding, filed at each place. */
@@ -733,4 +735,156 @@ export const ADOPTION: PlanReply = {
       hunks: [{ line: 1, before: [], after: ADOPTED }],
     },
   ],
+};
+
+// The Findings tab (spec 5.1, 5.2): one finding of each severity, one leading to a variable, one
+// to a unit, one to a component, and one leading nowhere because its file did not load.
+
+/** SensorHub's ValueA, the one declaration with no id: leads to its variable's panel, and is the
+ * finding `ID_FIX` carries a fix for. */
+export const MISSING_ID: Finding = {
+  file: SENSOR_HUB,
+  check: "missing-id",
+  severity: "error",
+  message:
+    "'ValueA' has no 'id', so a later delivery that renames it reports a removal and an " +
+    "unrelated addition; 'ddd id --assign' writes one",
+  pointer: "component.interface[2].definition.name",
+  notes: [],
+  route: { kind: "variable", name: "ValueA" },
+};
+
+/** RPM, stated by Controller's EngineSpeed and mirrored onto the type that also states it: leads
+ * to its unit's panel, with a note for the other site. */
+export const UNKNOWN_RPM_FINDING: Finding = {
+  file: CONTROLLER,
+  check: "unknown-unit",
+  severity: "warning",
+  message: "'RPM' is not a unit this project declares - did you mean 'rpm'?",
+  pointer: "component.interface[3].definition.unit",
+  notes: [{ message: "Also stated by 'Speed_t'", file: TYPES, pointer: "types[0].unit" }],
+  route: { kind: "unit", name: "RPM" },
+};
+
+/** UserInterface sharing its name with another component: not within a declaration, so it leads
+ * to the component's own page rather than a variable's panel. */
+const DUPLICATE_COMPONENT: Finding = {
+  file: USER_INTERFACE,
+  check: "duplicate-component",
+  severity: "info",
+  message: "Another component in this project is also named 'UserInterface'",
+  pointer: "component.name",
+  notes: [],
+  route: { kind: "component", name: null },
+};
+
+/** Pump's ValueB, filed on a file that did not load: the row says so instead of leading nowhere
+ * silently. */
+export const STORAGE_MISMATCH: Finding = {
+  file: PUMP,
+  check: "storage-mismatch",
+  severity: "error",
+  message: "'ValueB' is stored as uint16 here but uint8 elsewhere",
+  pointer: "component.interface[1].definition",
+  notes: [
+    {
+      message: "Stored as uint8",
+      file: SENSOR_HUB,
+      pointer: "component.interface[1].definition.datatype",
+    },
+  ],
+  route: null,
+};
+
+/** The project of spec 6's screenshots: every severity, every route a finding can lead to, and
+ * one whose file did not load - pump.ddd.json, still listed as the analysis last read it. */
+export const PROJECT_FINDINGS: State = {
+  revision: 7,
+  project: DEMO,
+  files: [
+    {
+      path: CONTROLLER,
+      kind: "component",
+      name: "Controller",
+      loaded: true,
+      fingerprint: "a",
+      findings: { error: 0, warning: 1, info: 0 },
+    },
+    {
+      path: PUMP,
+      kind: "component",
+      name: null,
+      loaded: false,
+      fingerprint: "b",
+      findings: { error: 1, warning: 0, info: 0 },
+    },
+    {
+      path: SENSOR_HUB,
+      kind: "component",
+      name: "SensorHub",
+      loaded: true,
+      fingerprint: "c",
+      findings: { error: 1, warning: 0, info: 0 },
+    },
+    {
+      path: USER_INTERFACE,
+      kind: "component",
+      name: "UserInterface",
+      loaded: true,
+      fingerprint: "d",
+      findings: { error: 0, warning: 0, info: 1 },
+    },
+  ],
+  findings: [MISSING_ID, STORAGE_MISMATCH, UNKNOWN_RPM_FINDING, DUPLICATE_COMPONENT],
+};
+
+/** The one fix the tab offers: `missing-id`, previewed onto SensorHub's ValueA. */
+export const ID_FIX: FixReply = {
+  revision: 7,
+  fixes: [
+    {
+      title: "Give 'ValueA' an id",
+      changes: [
+        {
+          file: SENSOR_HUB,
+          fingerprint: "c",
+          operations: [
+            { op: "set", pointer: "component.interface[2].definition.id", raw: '"rbdtf7g2eey1"' },
+          ],
+          hunks: [
+            {
+              line: 13,
+              before: ['          "name": "ValueA",'],
+              after: ['          "name": "ValueA",', '          "id": "rbdtf7g2eey1",'],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+/** A project with nothing to report. */
+export const NO_FINDINGS: State = {
+  revision: 7,
+  project: DEMO,
+  files: [
+    {
+      path: CONTROLLER,
+      kind: "component",
+      name: "Controller",
+      loaded: true,
+      fingerprint: "a",
+      findings: { error: 0, warning: 0, info: 0 },
+    },
+    {
+      path: SENSOR_HUB,
+      kind: "component",
+      name: "SensorHub",
+      loaded: true,
+      fingerprint: "c",
+      findings: { error: 0, warning: 0, info: 0 },
+    },
+  ],
+  findings: [],
 };

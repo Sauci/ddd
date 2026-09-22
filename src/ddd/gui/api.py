@@ -71,7 +71,6 @@ from ddd.variables import (
     Planned,
     declarations_of,
     located_on,
-    narrowed,
     preview,
     refusal,
     units_in_use,
@@ -495,7 +494,6 @@ class Api:
         if settlement.unsettled:
             code, message = refusal(settlement.unsettled[0], name, key)
             return _error(409, code, message)
-        settlement = narrowed(settlement, key, declarations_of(built, name, cache))
         stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
         try:
             planned = preview(settlement, key, stamps)

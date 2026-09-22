@@ -3149,6 +3149,26 @@ class TestPropagating:
         )
         assert offered == []
 
+    def test_no_action_offers_to_rewrite_a_value_that_already_means_the_same(
+        self, tmp_path: Path
+    ) -> None:
+        """`ddd gui` has compared meaning since part 3; the editor now does too, so a lightbulb
+        that rewrote a line to the value it already had is gone."""
+        offered, _ = self.offer(
+            tmp_path,
+            "b.ddd.json",
+            "component.interface[0].definition.conversion",
+            **{
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", conversion={"kind": "linear", "factor": 2})
+                ),
+                "b.ddd.json": component(
+                    "B", declare("input", "Speed", conversion={"factor": 2, "offset": 0})
+                ),
+            },
+        )
+        assert [entry["title"] for entry in offered] == []
+
     def test_nothing_is_offered_when_nobody_else_declares_it(self, tmp_path: Path) -> None:
         offered, _ = self.offer(
             tmp_path,

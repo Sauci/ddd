@@ -59,6 +59,7 @@ from ddd.lsp.units import (
 )
 from ddd.models import definition_keys
 from ddd.models.objects import MEANING_KEYS
+from ddd.value_identity import same_value
 
 PROPAGATED_KEYS: Final = frozenset(
     {
@@ -417,7 +418,7 @@ def settle(
                 unsettled.append(Unsettled(site, "type", typename))
             continue
         stated = document.raw_at(f"{site.pointer}.{key}")
-        if stated == raw or (key in DEFERRED_KEYS and stated is None):
+        if _already(key, stated, raw) or (key in DEFERRED_KEYS and stated is None):
             continue
         accepted, required = _keys_of(document, site.pointer)
         if (raw is None and key in required) or (raw is not None and key not in accepted):
@@ -432,6 +433,21 @@ def _fixed_by(built: Index, typename: str, key: str, cache: dict[Path, Document]
     structure, which has no room for a unit, or a name no type of the project declares."""
     site = built.types.get(typename)
     return None if site is None else read(site.path, cache).raw_at(f"{site.pointer}.{key}")
+
+
+def _already(key: str, stated: str | None, raw: str | None) -> bool:
+    """Whether the declaration already says what the settlement would write.
+
+    By what the value means rather than by its json text. The text is the file's own layout,
+    and an edit writes a value in the *target* file's layout: comparing text would call a
+    declaration changed for spelling a conversion over four lines where the value came from a
+    file that writes it on one, and would go on asking for that change after every apply.
+    Removing a key compares as it always did - ``None`` against ``None`` is nothing to remove,
+    and a stated key has something to take out whatever it says.
+    """
+    if stated is None or raw is None:
+        return stated == raw
+    return same_value(key, stated) == same_value(key, raw)
 
 
 def _at_site(site: Site, name: str, cache: dict[Path, Document]) -> Document | None:
@@ -713,7 +729,7 @@ def _assign(document: Document, definition: str, key: str, raw: str) -> dict[str
         return None
     existing = document.raw_at(f"{definition}.{key}")
     if existing is not None:
-        if existing == raw:
+        if same_value(key, existing) == same_value(key, raw):
             return None
         return {"range": document.value_range_of(f"{definition}.{key}"), "newText": raw}
     return _insert(document, definition, key, raw)

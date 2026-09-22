@@ -66,7 +66,15 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
       return postEdit(edit);
     },
     onMutate: () => setRefused(null),
-    onSuccess: () => setChangesShown(false),
+    // The reader's own apply closes the panel quietly, exactly as it left it open: the finding
+    // is about to be gone from the next revision's rows, but that is the reader's own doing
+    // (spec 5.3 reserves the "somebody else fixed it" warning for a finding gone some other
+    // way), and clearing `selected` here, before that revision even arrives, is what keeps the
+    // render-phase check below from mistaking this for one.
+    onSuccess: () => {
+      setChangesShown(false);
+      setSelected(undefined);
+    },
     onError: (error) =>
       setRefused(
         error instanceof ApiError && error.code === "stale"
@@ -102,26 +110,31 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
           <FindingsTableView rows={rows} selected={selected} onSelect={select} />
         </div>
         {finding !== undefined && (
-          <FindingPanelView
-            key={selected}
-            finding={finding}
-            label={routeLabel(finding, state)}
-            href={routeHref(finding)}
-            reason={noRouteReason(finding, state)}
-            onOpen={() => {
-              const route = routeOf(finding);
-              if (route !== null) onOpen(route);
-            }}
-            fixes={fixes.data ?? null}
-            chosen={chosen}
-            onChoose={setChosen}
-            changesShown={changesShown}
-            onChangesShown={setChangesShown}
-            onApply={() => apply.mutate()}
-            refusal={refused}
-            busy={stopped || apply.isPending}
-            onClose={() => select(undefined)}
-          />
+          <div key={selected}>
+            {/* The fix a finding carries could not even be asked for - a refusal from the
+             * engine itself (e.g. a stale fingerprint), not one the reader's own choice
+             * provoked - so it is said here rather than under a fix nothing offered. */}
+            {fixes.isError && <Banner tone="error">{fixes.error.message}</Banner>}
+            <FindingPanelView
+              finding={finding}
+              label={routeLabel(finding, state)}
+              href={routeHref(finding)}
+              reason={noRouteReason(finding, state)}
+              onOpen={() => {
+                const route = routeOf(finding);
+                if (route !== null) onOpen(route);
+              }}
+              fixes={fixes.data ?? null}
+              chosen={chosen}
+              onChoose={setChosen}
+              changesShown={changesShown}
+              onChangesShown={setChangesShown}
+              onApply={() => apply.mutate()}
+              refusal={refused}
+              busy={stopped || apply.isPending}
+              onClose={() => select(undefined)}
+            />
+          </div>
         )}
       </div>
     </>

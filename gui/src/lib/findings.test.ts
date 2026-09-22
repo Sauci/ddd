@@ -6,6 +6,8 @@ import {
   findingRows,
   fixEdit,
   keyedFindings,
+  leadsElsewhere,
+  namesThisVariable,
   noRouteReason,
   routeHref,
   routeLabel,
@@ -212,6 +214,55 @@ describe("why a finding leads nowhere", () => {
     expect(noRouteReason(one, state([one]))).toBe(
       "elsewhere.ddd.json is not a file of this project",
     );
+  });
+});
+
+describe("whether a finding in a component's list leads elsewhere", () => {
+  test("a variable route on this very file still leads somewhere - it opens that panel", () => {
+    expect(leadsElsewhere(finding(), SENSOR_HUB)).toBe(true);
+  });
+
+  test("a unit route always leads elsewhere, whichever file is asking", () => {
+    const one = finding({ check: "unknown-unit", route: { kind: "unit", name: "degC" } });
+    expect(leadsElsewhere(one, SENSOR_HUB)).toBe(true);
+  });
+
+  test("a bare component route naming this very file is the page already open - no link", () => {
+    const one = finding({ route: { kind: "component", name: null } });
+    expect(leadsElsewhere(one, SENSOR_HUB)).toBe(false);
+  });
+
+  test("that same bare route still leads elsewhere from a different file's page", () => {
+    const one = finding({ route: { kind: "component", name: null } });
+    expect(leadsElsewhere(one, TYPES)).toBe(true);
+  });
+
+  test("nowhere to lead when the answer says so", () => {
+    expect(leadsElsewhere(finding({ route: null }), SENSOR_HUB)).toBe(false);
+  });
+});
+
+describe("whether a finding in a variable's panel names that very variable", () => {
+  test("its route names the variable whose panel this is", () => {
+    expect(namesThisVariable(finding(), "ValueA")).toBe(true);
+  });
+
+  test("its route names a different variable", () => {
+    expect(namesThisVariable(finding(), "ValueB")).toBe(false);
+  });
+
+  test("its route is a bare component page, naming no variable at all", () => {
+    const one = finding({ route: { kind: "component", name: null } });
+    expect(namesThisVariable(one, "ValueA")).toBe(false);
+  });
+
+  test("its route is a unit, not a place on any component's page", () => {
+    const one = finding({ check: "unknown-unit", route: { kind: "unit", name: "degC" } });
+    expect(namesThisVariable(one, "ValueA")).toBe(false);
+  });
+
+  test("nowhere to lead when the answer says so", () => {
+    expect(namesThisVariable(finding({ route: null }), "ValueA")).toBe(false);
   });
 });
 

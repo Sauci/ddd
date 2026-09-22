@@ -56,6 +56,18 @@
   text-decoration: underline;
 }
 
+/* A plain <a> styled as one of these - the Findings panel's Open (spec 5.2), a finding's link on
+   a component's page or in a variable's panel - carries none of React Aria's data attributes, so
+   `.button:focus-visible`'s own outline: none above would otherwise leave it with no ring at all
+   for a reader tabbing through. Its focus ring and hover feedback come from the native
+   pseudo-classes instead, an anchor always has both. */
+a.button:focus-visible {
+  box-shadow: 0 0 0 3px var(--focus);
+}
+a.button.link:hover {
+  text-decoration: underline;
+}
+
 /* Chip: a short label on a tinted ground, in one of the page's three tones. A check's own name
    is hyphenated (missing-id, duplicate-component, …), which a browser breaks at like a space
    once the column holding it is narrow enough - one line is what a chip is. */

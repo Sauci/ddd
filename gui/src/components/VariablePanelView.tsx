@@ -1,5 +1,5 @@
-import type { Finding, SettleReply, UnitsReply, VariableReply } from "../api/types";
-import { distinctFindings, keyedFindings, routeHref, routeOf } from "../lib/findings";
+import type { SettleReply, UnitsReply, VariableReply } from "../api/types";
+import { distinctFindings, keyedFindings, namesThisVariable, routeHref } from "../lib/findings";
 import { consequence } from "../lib/units";
 import { describeVariable } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
@@ -101,11 +101,4 @@ export function VariablePanelView(props: VariablePanelViewProps) {
       )}
     </Panel>
   );
-}
-
-/** Whether a finding's route names this very variable - the place already being looked at, so
- * it stays text rather than becoming a link (spec 5.2). */
-function namesThisVariable(finding: Finding, name: string): boolean {
-  const route = routeOf(finding);
-  return route !== null && route.page === "component" && route.variable === name;
 }

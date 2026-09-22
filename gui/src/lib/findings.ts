@@ -119,6 +119,23 @@ export function routeHref(finding: Finding): string | null {
   return route === null ? null : hrefOf(route);
 }
 
+/** Whether a finding's route leads somewhere other than this very component's page - a link to
+ * where the reader already is teaches nothing (spec 5.2). */
+export function leadsElsewhere(finding: Finding, file: string): boolean {
+  const route = routeOf(finding);
+  return (
+    route !== null &&
+    !(route.page === "component" && route.file === file && route.variable === undefined)
+  );
+}
+
+/** Whether a finding's route names this very variable - the place already being looked at, so
+ * it stays text rather than becoming a link (spec 5.2). */
+export function namesThisVariable(finding: Finding, name: string): boolean {
+  const route = routeOf(finding);
+  return route !== null && route.page === "component" && route.variable === name;
+}
+
 /** Why a finding leads nowhere, in the words the panel says it. */
 export function noRouteReason(finding: Finding, state: State): string {
   const name = baseName(finding.file);

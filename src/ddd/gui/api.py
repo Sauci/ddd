@@ -504,7 +504,7 @@ class Api:
             return _error(status, refused.code, refused.message)
         stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
         try:
-            planned = previewed(plan, stamps)
+            planned = previewed(plan.edits, stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(

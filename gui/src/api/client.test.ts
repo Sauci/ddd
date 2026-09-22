@@ -8,12 +8,14 @@ import {
   getSession,
   getSettle,
   getState,
+  getUndo,
   getUnit,
   getUnitPlan,
   getUnits,
   getVariable,
   openProject,
   postEdit,
+  postUndo,
   request,
   ServerUnreachable,
 } from "./client";
@@ -106,6 +108,8 @@ describe("requests to the server", () => {
       },
       fetchImpl,
     );
+    await getUndo(fetchImpl);
+    await postUndo(3, fetchImpl);
     expect(fetchImpl.mock.calls).toEqual([
       ["/api/session", { credentials: "same-origin" }],
       ["/api/projects", { credentials: "same-origin" }],
@@ -148,6 +152,16 @@ describe("requests to the server", () => {
           body:
             '{"changes":[{"file":"a","fingerprint":"x","operations":[{"op":"remove","pointer":"a"}]}],' +
             '"label":"the unit of ValueA"}',
+        },
+      ],
+      ["/api/undo", { credentials: "same-origin" }],
+      [
+        "/api/undo",
+        {
+          credentials: "same-origin",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: '{"at":3}',
         },
       ],
     ]);

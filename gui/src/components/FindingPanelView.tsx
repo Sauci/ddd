@@ -1,6 +1,6 @@
 import type { MouseEvent } from "react";
 import type { Finding, FixReply } from "../api/types";
-import { baseName, consequence } from "../lib/units";
+import { baseName, consequence, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
@@ -102,7 +102,7 @@ export function FindingPanelView(props: FindingPanelViewProps) {
             )}
             {refusal === null && fix.changes.length > 0 && (
               <>
-                {props.changesShown && <Changes changes={fix.changes} />}
+                {props.changesShown && <Changes changes={shownChanges(fix.changes)} />}
                 <div className="panel-actions">
                   <Button variant="link" onPress={() => props.onChangesShown(!props.changesShown)}>
                     {props.changesShown ? "Hide changes" : "Show changes"}

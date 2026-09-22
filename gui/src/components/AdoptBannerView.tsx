@@ -1,6 +1,6 @@
 import type { PlanReply } from "../api/types";
 import { adoptionSentence } from "../lib/projectUnits";
-import { consequence } from "../lib/units";
+import { consequence, shownChanges } from "../lib/units";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { Panel } from "../ui/Panel";
@@ -64,7 +64,7 @@ export interface AdoptPanelViewProps {
 export function AdoptPanelView({ adoptable, plan, onAdopt, busy, onClose }: AdoptPanelViewProps) {
   return (
     <Panel title="Adopt a vocabulary" meta={consequence(plan.changes)} onClose={onClose}>
-      <Changes changes={plan.changes} />
+      <Changes changes={shownChanges(plan.changes)} />
       <div className="panel-actions">
         <Button variant="link" onPress={onClose}>
           Hide changes

@@ -1,6 +1,6 @@
 import type { SettleReply, UnitsReply, VariableReply } from "../api/types";
 import { distinctFindings, keyedFindings, namesThisVariable, routeHref } from "../lib/findings";
-import { consequence } from "../lib/units";
+import { consequence, shownChanges } from "../lib/units";
 import { describeVariable } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
@@ -88,7 +88,7 @@ export function VariablePanelView(props: VariablePanelViewProps) {
       )}
       {refusal === null && changes.length > 0 && (
         <>
-          {props.changesShown && <Changes changes={changes} />}
+          {props.changesShown && <Changes changes={shownChanges(changes)} />}
           <div className="panel-actions">
             <Button variant="link" onPress={() => props.onChangesShown(!props.changesShown)}>
               {props.changesShown ? "Hide changes" : "Show changes"}

@@ -7,7 +7,7 @@ import {
   renameSections,
   unitMeta,
 } from "../lib/projectUnits";
-import { baseName, consequence } from "../lib/units";
+import { baseName, consequence, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
@@ -214,7 +214,7 @@ function Outcome({
       {plan !== null && <p className="consequence">{sentence(plan)}</p>}
       {plan !== null && plan.changes.length > 0 && (
         <>
-          {shown && <Changes changes={plan.changes} />}
+          {shown && <Changes changes={shownChanges(plan.changes)} />}
           <div className="panel-actions">
             <Button variant="link" onPress={() => onShown(!shown)}>
               {shown ? "Hide changes" : "Show changes"}

@@ -163,6 +163,24 @@ export function consequence(changes: readonly PlannedChange[]): string {
   return `Changes ${files.length} file${files.length === 1 ? "" : "s"}: ${files.join(", ")}`;
 }
 
+/** One file's lines as `Changes` prints them: what it changes, and the word standing where its
+ * line number would when it has none of its own - a file that is about to appear or go. */
+export interface ShownChange {
+  file: string;
+  hunks: readonly Hunk[];
+  note: string | null;
+}
+
+/** A preview's changes as `Changes` prints them: a file the change creates has no line of its
+ * own yet, and is named as new. */
+export function shownChanges(changes: readonly PlannedChange[]): ShownChange[] {
+  return changes.map(({ file, fingerprint, hunks }) => ({
+    file,
+    hunks,
+    note: fingerprint === null ? "new" : null,
+  }));
+}
+
 /** A file's own name, from the absolute posix path the api speaks. */
 export function baseName(file: string): string {
   return file.slice(file.lastIndexOf("/") + 1);

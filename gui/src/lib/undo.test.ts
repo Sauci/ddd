@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { Finding } from "../api/types";
-import { fixLabel, settleLabel, unitLabel } from "./undo";
+import type { Finding, UndoneChange } from "../api/types";
+import {
+  fixLabel,
+  settleLabel,
+  shownUndo,
+  undoAction,
+  undoButton,
+  undoConsequence,
+  unitLabel,
+} from "./undo";
 
 const MISSING_ID: Finding = {
   file: "C:/work/demo/components/sensor_hub.ddd.json",
@@ -48,5 +56,48 @@ describe("what an edit is called", () => {
     const label = settleLabel("V".repeat(200), "unit");
     expect(label).toHaveLength(120);
     expect(label.endsWith("…")).toBe(true);
+  });
+});
+
+const CHANGED: UndoneChange = {
+  file: "C:/work/demo/components/controller.ddd.json",
+  gone: false,
+  hunks: [{ line: 4, before: ['      "unit": "Hz"'], after: ['      "unit": "rpm"'] }],
+};
+
+const CREATED: UndoneChange = {
+  file: "C:/work/demo/units.ddd.json",
+  gone: true,
+  hunks: [{ line: 1, before: ["{", '  "units": []', "}"], after: [] }],
+};
+
+const STATE = { revision: 4, project: "C:/work/demo/demo.ddd.json", files: [], findings: [] };
+
+describe("the undo control", () => {
+  it("says what it would undo", () => {
+    expect(undoButton({ ...STATE, undoable: { at: 3, label: "the unit of ValueA" } })).toBe(
+      "Undo the unit of ValueA",
+    );
+  });
+
+  it("is not there with nothing to undo", () => {
+    expect(undoButton(null)).toBeNull();
+    expect(undoButton({ ...STATE, undoable: null })).toBeNull();
+  });
+
+  it("says which files it puts back, and how many", () => {
+    expect(undoConsequence([CHANGED])).toBe("Puts back 1 file: controller.ddd.json");
+    expect(undoConsequence([CHANGED, CREATED])).toBe(
+      "Puts back 2 files: controller.ddd.json, units.ddd.json",
+    );
+    expect(undoAction([CHANGED])).toBe("Put back 1 file");
+    expect(undoAction([CHANGED, CREATED])).toBe("Put back 2 files");
+  });
+
+  it("names a file it takes away by what happens to it", () => {
+    expect(shownUndo([CHANGED, CREATED])).toEqual([
+      { file: CHANGED.file, hunks: CHANGED.hunks, note: null },
+      { file: CREATED.file, hunks: CREATED.hunks, note: "removed" },
+    ]);
   });
 });

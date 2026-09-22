@@ -79,7 +79,7 @@ def new_id() -> str:
     return "".join(secrets.choice(OBJECT_ID_ALPHABET) for _ in range(OBJECT_ID_LENGTH))
 
 
-def _unstamped(document: Document) -> list[tuple[str, bool]]:
+def unstamped(document: Document) -> list[tuple[str, bool]]:
     """Every producing declaration without an id: its ``...definition`` pointer, and whether
     it states the key as ``null`` - which the dump writes for an unstamped object, and which
     ``missing-id`` reports exactly as it reports the key's absence.
@@ -142,7 +142,7 @@ def insertions(document: Document) -> list[Insertion]:
     is why a caller applies the answer it was given rather than asking again.
     """
     found = []
-    for definition, stated_null in _unstamped(document):
+    for definition, stated_null in unstamped(document):
         target = f"{definition}.id" if stated_null else f"{definition}.name"
         # The walk above reads the parsed document and the spans come from a scan of the same
         # text, under pointers built from the same decoded keys - and every segment of this

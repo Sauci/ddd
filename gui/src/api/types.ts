@@ -9,6 +9,8 @@ export type {
   FileContent,
   Finding,
   FindingRoute,
+  FixOffered,
+  FixReply,
   Found,
   FoundProject,
   GraphDisagreement,

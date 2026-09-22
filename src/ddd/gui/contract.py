@@ -47,6 +47,8 @@ __all__ = [
     "Finding",
     "FindingCounts",
     "FindingRoute",
+    "FixOffered",
+    "FixReply",
     "Found",
     "FoundProject",
     "GraphDisagreement",
@@ -712,6 +714,29 @@ class SettleReply(_Frozen):
     """One per file, sorted by path; empty when every declaration already agrees."""
 
 
+# --- GET /api/fix ---------------------------------------------------------------------------
+
+
+class FixOffered(_Frozen):
+    """One fix a finding carries, previewed."""
+
+    title: str
+    """What the button says."""
+
+    changes: tuple[PlannedChange, ...]
+    """One per file, as ``POST /api/edit`` takes them, beside the lines each would change."""
+
+
+class FixReply(_Frozen):
+    """What ``GET /api/fix`` answers: every fix one finding carries."""
+
+    revision: int
+    """The revision the previews were computed from."""
+
+    fixes: tuple[FixOffered, ...]
+    """Empty for a finding that carries none, which is most of them."""
+
+
 # --- GET /api/unit-plan ---------------------------------------------------------------------
 
 
@@ -872,6 +897,7 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (VariableReply, "serialization"),
     (UnitsReply, "serialization"),
     (SettleReply, "serialization"),
+    (FixReply, "serialization"),
     (UnitReply, "serialization"),
     (PlanReply, "serialization"),
 )

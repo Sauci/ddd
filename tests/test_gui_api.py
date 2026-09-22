@@ -1146,6 +1146,65 @@ class TestSettle:
         assert get(api, "/api/settle", name="Speed", key="limits", raw=raw).body["changes"] == []
 
 
+class TestFix:
+    def test_a_missing_id_is_previewed_and_applied(self, api: Api, root: Path) -> None:
+        before = contents(root)
+        reply = get(
+            api,
+            "/api/fix",
+            file=posix(root, "a.ddd.json"),
+            pointer="component.interface[0].definition",
+            check="missing-id",
+        )
+        assert reply.status == 200
+        assert [fix["title"] for fix in reply.body["fixes"]] == ["Give 'Speed' an id"]
+        assert contents(root) == before, "a preview writes nothing"
+
+        (change,) = reply.body["fixes"][0]["changes"]
+        assert change["hunks"], "the reader is shown the line it would add"
+        edit = {"changes": [{f: change[f] for f in ("file", "fingerprint", "operations")}]}
+        assert post(api, "/api/edit", edit).status == 200
+        stamped = json.loads((root / "a.ddd.json").read_text(encoding="utf-8"))
+        assert len(stamped["component"]["interface"][0]["definition"]["id"]) == 12
+
+    def test_a_finding_with_no_fix_answers_none(self, api: Api, root: Path) -> None:
+        reply = get(
+            api,
+            "/api/fix",
+            file=posix(root, "a.ddd.json"),
+            pointer="component.interface[0].definition",
+            check="definition-mismatch",
+        )
+        assert (reply.status, reply.body["fixes"]) == (200, [])
+
+    @pytest.mark.parametrize(
+        "query",
+        [{}, {"file": "a.ddd.json"}, {"file": "a.ddd.json", "pointer": "x"}],
+    )
+    def test_a_malformed_request_is_bad(self, api: Api, query: dict[str, str]) -> None:
+        assert get(api, "/api/fix", **query).status == 400
+
+    def test_a_file_of_no_project_is_not_found(self, api: Api, tmp_path: Path) -> None:
+        reply = get(
+            api,
+            "/api/fix",
+            file=(tmp_path / "elsewhere.ddd.json").resolve().as_posix(),
+            pointer="component.interface[0].definition",
+            check="missing-id",
+        )
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_fixing_needs_an_open_project(self, root: Path) -> None:
+        reply = get(
+            Api(Session(root)),
+            "/api/fix",
+            file=posix(root, "a.ddd.json"),
+            pointer="component.interface[0].definition",
+            check="missing-id",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+
 def copied(tmp_path: Path, example: str, project_file: str) -> tuple[Api, Path]:
     """``ddd gui``'s api over a copy of one of the examples, and where the copy is: the example
     itself is never written to."""

@@ -2,6 +2,7 @@ import type {
   Changes,
   EditReply,
   FileContent,
+  FixReply,
   Found,
   GraphReply,
   PlanReply,
@@ -111,6 +112,14 @@ function settleQuery(name: string, key: string, raw: string | null): string {
   const query = `name=${encodeURIComponent(name)}&key=${encodeURIComponent(key)}`;
   return raw === null ? query : `${query}&raw=${encodeURIComponent(raw)}`;
 }
+
+export const getFix = (file: string, pointer: string, check: string, fetchImpl: Fetch = fetch) =>
+  request<FixReply>(
+    `/api/fix?file=${encodeURIComponent(file)}&pointer=${encodeURIComponent(pointer)}` +
+      `&check=${encodeURIComponent(check)}`,
+    {},
+    fetchImpl,
+  );
 
 /** One change to the project's units, as `GET /api/unit-plan` takes it: what each action needs,
  * and nothing it does not. */

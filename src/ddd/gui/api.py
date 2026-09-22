@@ -33,6 +33,7 @@ from ddd.editing import (
     Operation,
     parse_raw,
 )
+from ddd.finding_fixes import fixes_for
 from ddd.finding_routes import Route, route_of
 from ddd.graph import Module, graph_of
 from ddd.gui import contract
@@ -72,6 +73,7 @@ from ddd.variables import (
     Planned,
     declarations_of,
     located_on,
+    planned,
     preview,
     refusal,
     units_in_use,
@@ -515,6 +517,32 @@ class Api:
             ).model_dump(mode="json"),
         )
 
+    def _fix(self, query: Query, body: bytes | None) -> Reply:
+        revision = self._opened()
+        file, check = (_single(query.get(part)) for part in ("file", "check"))
+        pointer = _single(query.get("pointer"))
+        if not file or not check or pointer is None:
+            return _error(400, "bad-request", "fix takes ?file=, ?pointer= and ?check=")
+        wanted = Path(file).resolve()
+        source = next((f for f in revision.files if f.path.resolve() == wanted), None)
+        if source is None:
+            return _error(404, "not-found", f"{file} is not a file of the open project")
+        cache: dict[Path, Document] = {}
+        stamps = {f.path.resolve(): f.fingerprint for f in revision.files}
+        # No try here, unlike `_settle`/`_unit_plan`: those plan a change against declarations
+        # an earlier analysis recorded, so the file `planned` re-reads may have moved on since.
+        # Every `Fix` here names `source.path`, which `fixes_for` has just read successfully in
+        # this same request, and `stamps` carries its fingerprint (`source.fingerprint`, always
+        # a `str`) - so neither way `planned` raises `EditError` is reachable from this call.
+        offered = []
+        for fix in fixes_for(check, source.path, pointer, cache):
+            made = planned(fix.path, fix.operations, stamps)
+            offered.append({"title": fix.title, "changes": _planned_changes([made])})
+        return Reply(
+            200,
+            contract.FixReply(revision=revision.number, fixes=offered).model_dump(mode="json"),
+        )
+
     def _opened(self) -> Revision:
         revision = self.session.revision
         if revision is None:
@@ -556,6 +584,7 @@ _ROUTES: Final[dict[str, tuple[str, Answer]]] = {
     "/api/variable": ("GET", Api._variable),
     "/api/units": ("GET", Api._units),
     "/api/settle": ("GET", Api._settle),
+    "/api/fix": ("GET", Api._fix),
     "/api/unit": ("GET", Api._unit),
     "/api/unit-plan": ("GET", Api._unit_plan),
 }

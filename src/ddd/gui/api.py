@@ -33,6 +33,7 @@ from ddd.editing import (
     Operation,
     fingerprint,
     parse_raw,
+    unchanged,
 )
 from ddd.finding_fixes import fixes_for
 from ddd.finding_routes import Route, route_of
@@ -45,6 +46,7 @@ from ddd.gui.session import (
     Revision,
     Session,
     SourceFile,
+    Undoable,
     find_projects,
 )
 from ddd.lsp.edits import PROPAGATED_KEYS, settle
@@ -73,6 +75,7 @@ from ddd.variable_keys import offers
 from ddd.variables import (
     Planned,
     declarations_of,
+    hunks,
     located_on,
     planned,
     preview,
@@ -122,9 +125,9 @@ class Api:
         route = _ROUTES.get(path)
         if route is None:
             return _error(404, "not-found", f"{path} is not part of the api")
-        expected, answer = route
-        if method != expected:
-            return _error(405, "method-not-allowed", f"{path} takes {expected}")
+        answer = route.get(method)
+        if answer is None:
+            return _error(405, "method-not-allowed", f"{path} takes {' or '.join(route)}")
         try:
             return answer(self, query, body)
         except NoProjectError as error:
@@ -175,6 +178,7 @@ class Api:
             revision = self.session.wait(after, self.wait_seconds)
         if revision is None:
             raise NoProjectError("no project is open")
+        top = self.session.undoable
         sources = {file.path.resolve(): file for file in revision.files}
         cache: dict[Path, Document] = {}
         return Reply(
@@ -201,6 +205,7 @@ class Api:
                     _finding(filed, sources.get(filed.file.resolve()), cache)
                     for filed in revision.findings
                 ],
+                undoable=None if top is None else {"at": top.at, "label": top.label},
             ).model_dump(mode="json"),
         )
 
@@ -321,6 +326,35 @@ class Api:
                 ],
             ).model_dump(mode="json"),
         )
+
+    def _undo(self, query: Query, body: bytes | None) -> Reply:
+        """What putting the last edit back would give each file, read from the disk as it
+        stands."""
+        revision = self._opened()
+        top = self.session.undoable
+        if top is None:
+            return _error(404, "not-found", "no edit of this session is left to undo")
+        try:
+            changes = _undone_changes(top)
+        except EditError as refused:
+            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+        return Reply(
+            200,
+            contract.UndoPreview(
+                revision=revision.number, at=top.at, label=top.label, changes=changes
+            ).model_dump(mode="json"),
+        )
+
+    def _apply_undo(self, query: Query, body: bytes | None) -> Reply:
+        """Put that edit back, and answer the revision it produced."""
+        request = _validated(contract.UndoRequest, body)
+        if isinstance(request, Reply):
+            return request
+        try:
+            revision = self.session.undo(request.at)
+        except EditError as refused:
+            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+        return Reply(200, contract.UndoReply(revision=revision.number).model_dump(mode="json"))
 
     def _variable(self, query: Query, body: bytes | None) -> Reply:
         revision = self._opened()
@@ -572,22 +606,23 @@ class Api:
 
 type Answer = Callable[[Api, Query, bytes | None], Reply]
 
-_ROUTES: Final[dict[str, tuple[str, Answer]]] = {
-    "/api/session": ("GET", Api._session),
-    "/api/projects": ("GET", Api._projects),
-    "/api/open": ("POST", Api._open),
-    "/api/state": ("GET", Api._state),
-    "/api/file": ("GET", Api._file),
-    "/api/dictionary": ("GET", Api._dictionary),
-    "/api/graph": ("GET", Api._graph),
-    "/api/checks": ("GET", Api._checks),
-    "/api/edit": ("POST", Api._edit),
-    "/api/variable": ("GET", Api._variable),
-    "/api/units": ("GET", Api._units),
-    "/api/settle": ("GET", Api._settle),
-    "/api/fix": ("GET", Api._fix),
-    "/api/unit": ("GET", Api._unit),
-    "/api/unit-plan": ("GET", Api._unit_plan),
+_ROUTES: Final[dict[str, dict[str, Answer]]] = {
+    "/api/session": {"GET": Api._session},
+    "/api/projects": {"GET": Api._projects},
+    "/api/open": {"POST": Api._open},
+    "/api/state": {"GET": Api._state},
+    "/api/file": {"GET": Api._file},
+    "/api/dictionary": {"GET": Api._dictionary},
+    "/api/graph": {"GET": Api._graph},
+    "/api/checks": {"GET": Api._checks},
+    "/api/edit": {"POST": Api._edit},
+    "/api/undo": {"GET": Api._undo, "POST": Api._apply_undo},
+    "/api/variable": {"GET": Api._variable},
+    "/api/units": {"GET": Api._units},
+    "/api/settle": {"GET": Api._settle},
+    "/api/fix": {"GET": Api._fix},
+    "/api/unit": {"GET": Api._unit},
+    "/api/unit-plan": {"GET": Api._unit_plan},
 }
 
 
@@ -733,6 +768,31 @@ def _planned_changes(planned: Sequence[Planned]) -> list[dict[str, Any]]:
         }
         for entry in planned
     ]
+
+
+def _undone_changes(entry: Undoable) -> list[dict[str, Any]]:
+    """The files an undo puts back and the lines each would get, read from the disk as it
+    stands.
+
+    A file whose bytes are not the ones that edit left refuses the whole preview rather than
+    being left out of it: an undo is all-or-nothing, and offering the rest would be offering to
+    throw away half of what somebody wrote in their own editor.
+    """
+    changes: list[dict[str, Any]] = []
+    for file in entry.files:
+        current = unchanged(file).decode("utf-8-sig")
+        previous = "" if file.before is None else file.before.decode("utf-8-sig")
+        changes.append(
+            {
+                "file": file.path.as_posix(),
+                "gone": file.before is None,
+                "hunks": [
+                    {"line": h.line, "before": h.before, "after": h.after}
+                    for h in hunks(current, previous)
+                ],
+            }
+        )
+    return changes
 
 
 def _single(values: Sequence[str] | None) -> str | None:

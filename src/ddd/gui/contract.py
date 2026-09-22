@@ -69,6 +69,11 @@ __all__ = [
     "SettleReply",
     "SourceFile",
     "State",
+    "UndoPreview",
+    "UndoReply",
+    "UndoRequest",
+    "UndoableEdit",
+    "UndoneChange",
     "UnitEntry",
     "UnitPlace",
     "UnitReply",
@@ -276,6 +281,16 @@ class Finding(_Frozen):
     at all."""
 
 
+class UndoableEdit(_Frozen):
+    """The edit an undo would put back: what the control on the page offers."""
+
+    at: int
+    """What the session numbered that edit, which ``POST /api/undo`` takes back."""
+
+    label: str
+    """What the page called it when it applied it."""
+
+
 class State(_Frozen):
     """What ``GET /api/state`` answers: one revision of the open project."""
 
@@ -290,6 +305,10 @@ class State(_Frozen):
 
     findings: tuple[Finding, ...]
     """Every finding of the analysis, grouped by the file it is filed on."""
+
+    undoable: UndoableEdit | None
+    """The last edit the interface made and has not put back, or ``None`` when it has made
+    none: what makes the Undo control appear without a request of its own."""
 
 
 # --- GET /api/file -------------------------------------------------------------------------
@@ -751,6 +770,56 @@ class PlanReply(_Frozen):
     at line 1 that is the whole of it."""
 
 
+# --- GET /api/undo and POST /api/undo -------------------------------------------------------
+
+
+class UndoneChange(_Frozen):
+    """One file an undo puts back, and the lines it would get."""
+
+    file: str
+    """Absolute, posix-separated path of the file."""
+
+    gone: bool
+    """``True`` for a file the edit created, which the undo takes away again."""
+
+    hunks: tuple[Hunk, ...]
+    """The lines the undo changes, numbered as the file stands now."""
+
+
+class UndoPreview(_Frozen):
+    """What ``GET /api/undo`` answers: what putting the last edit back would do.
+
+    It carries no operations, and the page sends none back: an undo is bytes the server is
+    holding, not an edit the page composes, which is the one place this differs from every
+    other preview of the api.
+    """
+
+    revision: int
+    """The revision this preview was read at."""
+
+    at: int
+    """The edit it would put back, which ``POST /api/undo`` takes back."""
+
+    label: str
+    """What the page called that edit."""
+
+    changes: tuple[UndoneChange, ...]
+    """One per file the edit wrote, in the order it wrote them."""
+
+
+class UndoRequest(_Request):
+    """What ``POST /api/undo`` takes: the edit the preview was made from."""
+
+    at: int
+    """Refused as ``stale`` when it is no longer the one to undo."""
+
+
+class UndoReply(_Frozen):
+    """What ``POST /api/undo`` answers: the revision the undo produced."""
+
+    revision: int
+
+
 # --- GET /api/checks -----------------------------------------------------------------------
 
 
@@ -899,6 +968,9 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (ChecksReply, "serialization"),
     (Changes, "validation"),
     (EditReply, "serialization"),
+    (UndoPreview, "serialization"),
+    (UndoRequest, "validation"),
+    (UndoReply, "serialization"),
     (VariableReply, "serialization"),
     (UnitsReply, "serialization"),
     (SettleReply, "serialization"),

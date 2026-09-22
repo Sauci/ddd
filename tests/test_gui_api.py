@@ -813,6 +813,70 @@ class TestEdit:
         assert includes == ["b.ddd.json", "a.ddd.json"]
 
 
+class TestUndoing:
+    def test_the_state_says_what_there_is_to_undo(self, api: Api, root: Path) -> None:
+        assert get(api, "/api/state").body["undoable"] is None
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
+
+    def test_nothing_to_undo_is_not_found(self, api: Api) -> None:
+        reply = get(api, "/api/undo")
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_the_preview_carries_the_lines_each_file_would_get_back(
+        self, api: Api, root: Path
+    ) -> None:
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        body = get(api, "/api/undo").body
+        assert (body["at"], body["label"]) == (1, "the unit of Speed")
+        assert body["revision"] == get(api, "/api/state").body["revision"]
+        change = body["changes"][0]
+        assert Path(change["file"]).name == "b.ddd.json"
+        assert change["gone"] is False
+        assert any('"Hz"' in line for hunk in change["hunks"] for line in hunk["before"])
+        assert any('"rpm"' in line for hunk in change["hunks"] for line in hunk["after"])
+
+    def test_a_file_changed_since_the_edit_refuses_the_preview(self, api: Api, root: Path) -> None:
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        b = root / "b.ddd.json"
+        b.write_text('{"component": {"name": "B", "interface": []}}', encoding="utf-8")
+        reply = get(api, "/api/undo")
+        assert (reply.status, reply.body["error"]) == (409, "stale")
+        assert "b.ddd.json" in reply.body["message"]
+
+    def test_an_undo_puts_the_files_back_and_answers_the_new_revision(
+        self, api: Api, root: Path
+    ) -> None:
+        b = root / "b.ddd.json"
+        before = b.read_bytes()
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        reply = post(api, "/api/undo", {"at": 1})
+        assert reply.status == 200
+        assert reply.body == {"revision": 3}
+        assert b.read_bytes() == before
+        assert get(api, "/api/state").body["undoable"] is None
+
+    def test_an_undo_of_anything_but_the_top_is_refused(self, api: Api, root: Path) -> None:
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        reply = post(api, "/api/undo", {"at": 9})
+        assert (reply.status, reply.body["error"]) == (409, "stale")
+        assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
+
+    def test_an_undo_takes_a_number(self, api: Api) -> None:
+        reply = post(api, "/api/undo", {})
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+
+    def test_undoing_needs_an_open_project(self, root: Path) -> None:
+        bare = Api(Session(root))
+        assert get(bare, "/api/undo").status == 409
+        assert post(bare, "/api/undo", {"at": 1}).status == 409
+
+    def test_both_methods_of_one_path_are_served(self, api: Api) -> None:
+        reply = api.handle("DELETE", "/api/undo", {}, None)
+        assert (reply.status, reply.body["error"]) == (405, "method-not-allowed")
+        assert reply.body["message"] == "/api/undo takes GET or POST"
+
+
 class TestVariable:
     def test_every_declaration_of_a_variable_is_described(self, api: Api, root: Path) -> None:
         reply = get(api, "/api/variable", name="Speed")
@@ -1551,6 +1615,37 @@ class TestTheDemo:
         assert {u["unit"]: u["files"] for u in units["units"]}["Hz"] == [
             posix(root, "units.ddd.json")
         ]
+
+    def test_undoing_an_adoption_takes_the_file_away_and_puts_the_description_back(
+        self, demo: tuple[Api, Path]
+    ) -> None:
+        api, root = demo
+        before = contents(root)
+        preview = get(api, "/api/unit-plan", action="adopt").body
+        assert applied(api, preview, "the vocabulary adopted").status == 200
+        undo = get(api, "/api/undo").body
+        assert undo["label"] == "the vocabulary adopted"
+        changes = {Path(c["file"]).name: c for c in undo["changes"]}
+        assert changes["units.ddd.json"]["gone"] is True
+        assert changes["units.ddd.json"]["hunks"][0]["after"] == []
+        assert changes["demo.ddd.json"]["gone"] is False
+        assert post(api, "/api/undo", {"at": undo["at"]}).status == 200
+        # Every file of the project is exactly as it was, the new one gone with the line that
+        # included it.
+        assert contents(root) == before
+
+    def test_undoing_a_settlement_puts_a_re_laid_out_container_back_exactly(
+        self, demo: tuple[Api, Path]
+    ) -> None:
+        api, root = demo
+        before = contents(root)
+        preview = get(
+            api, "/api/settle", name="ValueA", key="limits", raw='{"min": 0, "max": 10}'
+        ).body
+        assert applied(api, preview, "the limits of ValueA").status == 200
+        assert contents(root) != before
+        assert post(api, "/api/undo", {"at": 1}).status == 200
+        assert contents(root) == before
 
 
 class TestTheVocabulary:

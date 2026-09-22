@@ -320,7 +320,7 @@ class TestWhatIsServed:
         def failing(api: Api, query: object, body: object) -> None:
             raise RuntimeError("a defect")
 
-        monkeypatch.setitem(api_module._ROUTES, "/api/session", ("GET", failing))
+        monkeypatch.setitem(api_module._ROUTES, "/api/session", {"GET": failing})
         response, data = ask(server, "GET", "/api/session")
         assert response.status == 500
         assert response.getheader("Cache-Control") == "no-store"
@@ -340,7 +340,7 @@ class TestWhatIsServed:
         def slipped(api: Api, query: object, body: object) -> Reply:
             return Reply(200, {"limit": float("nan")})
 
-        monkeypatch.setitem(api_module._ROUTES, "/api/session", ("GET", slipped))
+        monkeypatch.setitem(api_module._ROUTES, "/api/session", {"GET": slipped})
         response, data = ask(server, "GET", "/api/session")
         assert (response.status, json.loads(data)["error"]) == (500, "internal")
         assert "ValueError: Out of range float values are not JSON compliant" in (
@@ -353,7 +353,7 @@ class TestWhatIsServed:
         def gone(api: Api, query: object, body: object) -> None:
             raise ConnectionAbortedError("the tab was closed")
 
-        monkeypatch.setitem(api_module._ROUTES, "/api/session", ("GET", gone))
+        monkeypatch.setitem(api_module._ROUTES, "/api/session", {"GET": gone})
         with pytest.raises(http.client.RemoteDisconnected):
             ask(server, "GET", "/api/session")
         assert capsys.readouterr().err == ""

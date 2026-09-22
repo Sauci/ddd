@@ -126,6 +126,23 @@ def offers(built: Index, declared: Sequence[Declared]) -> tuple[KeyOffer, ...]:
     return tuple(_offer(built, declared, key) for key in KEY_ORDER)
 
 
+def offer_for(built: Index, key: str, raw: str | None, *, required: bool) -> KeyOffer:
+    """What one key offers when one value states it, which is a type's whole story.
+
+    A variable's panel builds an offer per key from every declaration; a type has one entry, so
+    the offer carries one ``carried`` and at most one value. The editor and the choices are the
+    same in both, which is what lets one chooser draw both.
+    """
+    return KeyOffer(
+        key=key,
+        carried=(Carried(allowed=True, required=required),),
+        values=() if raw is None else (InPlay(raw=raw, components=(), producer=False),),
+        disagrees=False,
+        editor=EDITORS[key],
+        choices=_choices(built, key),
+    )
+
+
 def _offer(built: Index, declared: Sequence[Declared], key: str) -> KeyOffer:
     carried = tuple(_carried(entry, key) for entry in declared)
     values = _in_play(declared, key)

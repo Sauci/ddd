@@ -139,7 +139,9 @@ def post(api: Api, path: str, body: object) -> Reply:
     return api.handle("POST", path, {}, raw)
 
 
-def unit_edit(api: Api, root: Path, unit: str, name: str = "b.ddd.json") -> dict:
+def unit_edit(
+    api: Api, root: Path, unit: str, name: str = "b.ddd.json", label: str = "the unit of Speed"
+) -> dict:
     target = root / name
     return {
         "changes": [
@@ -148,7 +150,8 @@ def unit_edit(api: Api, root: Path, unit: str, name: str = "b.ddd.json") -> dict
                 "fingerprint": fingerprint(target.read_bytes()),
                 "operations": [{"op": "set", "pointer": UNIT, "raw": json.dumps(unit)}],
             }
-        ]
+        ],
+        "label": label,
     }
 
 
@@ -500,7 +503,8 @@ class TestGraph:
                     "fingerprint": fingerprint(controller.read_bytes()),
                     "operations": [{"op": "set", "pointer": UNIT, "raw": json.dumps("rpm")}],
                 }
-            ]
+            ],
+            "label": "the unit of ValueA",
         }
         assert post(api, "/api/edit", edit).status == 200
         body = get(api, "/api/graph").body
@@ -561,7 +565,8 @@ class TestEdit:
                     "fingerprint": fingerprint(target.read_bytes()),
                     "operations": [{"op": "set", "pointer": UNIT, "raw": "1.0"}],
                 }
-            ]
+            ],
+            "label": "the unit of Speed",
         }
         assert post(api, "/api/edit", edit).status == 200
         assert '"unit": 1.0' in target.read_text(encoding="utf-8")
@@ -575,7 +580,7 @@ class TestEdit:
     def test_an_edit_that_could_not_be_written_is_a_server_error(
         self, api: Api, root: Path, monkeypatch
     ) -> None:
-        def unwritable(changes):
+        def unwritable(changes, label):
             raise EditError(UNWRITABLE, "disk full")
 
         monkeypatch.setattr(api.session, "edit", unwritable)
@@ -585,7 +590,7 @@ class TestEdit:
     def test_an_edit_that_does_not_read_back_is_a_refusal_the_page_can_act_on(
         self, api: Api, root: Path, monkeypatch
     ) -> None:
-        def unverified(changes):
+        def unverified(changes, label):
             raise EditError(
                 UNVERIFIED, "the edited file does not read back as the intended document"
             )
@@ -607,8 +612,8 @@ class TestEdit:
         [
             b"not json",
             {},
-            {"changes": []},
-            {"changes": [7]},
+            {"changes": [], "label": "x"},
+            {"changes": [7], "label": "x"},
             {
                 "changes": [
                     {
@@ -616,10 +621,11 @@ class TestEdit:
                         "fingerprint": "x",
                         "operations": [{"op": "set", "pointer": "a", "raw": "1"}],
                     }
-                ]
+                ],
+                "label": "x",
             },
-            {"changes": [{"file": "a", "fingerprint": "x", "operations": []}]},
-            {"changes": [{"file": "a", "fingerprint": "x", "operations": [7]}]},
+            {"changes": [{"file": "a", "fingerprint": "x", "operations": []}], "label": "x"},
+            {"changes": [{"file": "a", "fingerprint": "x", "operations": [7]}], "label": "x"},
             {
                 "changes": [
                     {
@@ -627,12 +633,14 @@ class TestEdit:
                         "fingerprint": "x",
                         "operations": [{"op": "rename", "pointer": "a"}],
                     }
-                ]
+                ],
+                "label": "x",
             },
             {
                 "changes": [
                     {"file": "a", "fingerprint": "x", "operations": [{"op": "set", "pointer": 1}]}
-                ]
+                ],
+                "label": "x",
             },
             {
                 "changes": [
@@ -641,7 +649,8 @@ class TestEdit:
                         "fingerprint": "x",
                         "operations": [{"op": "set", "pointer": "a", "raw": 1}],
                     }
-                ]
+                ],
+                "label": "x",
             },
             {
                 "changes": [
@@ -650,7 +659,8 @@ class TestEdit:
                         "fingerprint": "x",
                         "operations": [{"op": "move", "pointer": "a[0]", "to": "1"}],
                     }
-                ]
+                ],
+                "label": "x",
             },
             {
                 "changes": [
@@ -659,7 +669,8 @@ class TestEdit:
                         "fingerprint": "x",
                         "operations": [{"op": "move", "pointer": "a[0]", "to": True}],
                     }
-                ]
+                ],
+                "label": "x",
             },
             {
                 "changes": [
@@ -668,12 +679,38 @@ class TestEdit:
                         "fingerprint": "x",
                         "operations": [{"op": "set", "pointer": "a", "raw": "1", "unknown": True}],
                     }
-                ]
+                ],
+                "label": "x",
             },
         ],
     )
     def test_a_malformed_edit_is_a_bad_request(self, api: Api, body: object) -> None:
         reply = post(api, "/api/edit", body)
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+
+    def test_an_edit_without_a_label_is_refused(self, api: Api, root: Path) -> None:
+        controller = root / "a.ddd.json"
+        reply = post(
+            api,
+            "/api/edit",
+            {
+                "changes": [
+                    {
+                        "file": controller.as_posix(),
+                        "fingerprint": fingerprint(controller.read_bytes()),
+                        "operations": [{"op": "set", "pointer": UNIT, "raw": '"Hz"'}],
+                    }
+                ]
+            },
+        )
+        assert reply.status == 400
+        assert reply.body["error"] == "bad-request"
+
+    @pytest.mark.parametrize("label", ["", "x" * 121])
+    def test_a_label_is_a_sentence_of_at_most_a_hundred_and_twenty_characters(
+        self, api: Api, root: Path, label: str
+    ) -> None:
+        reply = post(api, "/api/edit", unit_edit(api, root, "Hz", label=label))
         assert (reply.status, reply.body["error"]) == (400, "bad-request")
 
     def test_a_pointer_that_names_nothing_is_an_invalid_edit(self, api: Api, root: Path) -> None:
@@ -718,7 +755,8 @@ class TestEdit:
                     "fingerprint": fingerprint(described.read_bytes()),
                     "operations": [included],
                 },
-            ]
+            ],
+            "label": "the vocabulary adopted",
         }
         reply = post(api, "/api/edit", edit)
         assert reply.status == 200
@@ -741,7 +779,8 @@ class TestEdit:
                     "fingerprint": None,
                     "operations": [{"op": "set", "pointer": "", "raw": '{"units": ["rpm"]}'}],
                 }
-            ]
+            ],
+            "label": "the vocabulary adopted",
         }
         reply = post(api, "/api/edit", edit)
         assert (reply.status, reply.body["error"]) == (409, "invalid")
@@ -766,7 +805,8 @@ class TestEdit:
                     "fingerprint": fingerprint(target.read_bytes()),
                     "operations": [{"op": "move", "pointer": "project.includes[0]", "to": 1}],
                 }
-            ]
+            ],
+            "label": "the includes reordered",
         }
         assert post(api, "/api/edit", edit).status == 200
         includes = json.loads(target.read_text(encoding="utf-8"))["project"]["includes"]
@@ -1038,7 +1078,8 @@ class TestSettle:
             "changes": [
                 {key: change[key] for key in ("file", "fingerprint", "operations")}
                 for change in preview["changes"]
-            ]
+            ],
+            "label": "the unit of Speed",
         }
         assert post(api, "/api/edit", edit).status == 200
         for name, bytes_before in before.items():
@@ -1141,7 +1182,8 @@ class TestSettle:
             "changes": [
                 {field: change[field] for field in ("file", "fingerprint", "operations")}
                 for change in preview.body["changes"]
-            ]
+            ],
+            "label": f"the {key} of {name}",
         }
         assert post(api, "/api/edit", edit).status == 200
         for declaration in get(api, "/api/variable", name=name).body["declarations"]:
@@ -1225,7 +1267,10 @@ class TestFix:
 
         (change,) = reply.body["fixes"][0]["changes"]
         assert change["hunks"], "the reader is shown the line it would add"
-        edit = {"changes": [{f: change[f] for f in ("file", "fingerprint", "operations")}]}
+        edit = {
+            "changes": [{f: change[f] for f in ("file", "fingerprint", "operations")}],
+            "label": "Give 'Speed' an id",
+        }
         assert post(api, "/api/edit", edit).status == 200
         stamped = json.loads((root / "a.ddd.json").read_text(encoding="utf-8"))
         assert len(stamped["component"]["interface"][0]["definition"]["id"]) == 12
@@ -1310,13 +1355,13 @@ def contents(root: Path) -> dict[str, bytes]:
     }
 
 
-def applied(api: Api, preview: dict[str, Any]) -> Reply:
+def applied(api: Api, preview: dict[str, Any], label: str = "the change previewed") -> Reply:
     """A preview's edit posted exactly as the page posts it: each change without its hunks."""
     changes = [
         {key: change[key] for key in ("file", "fingerprint", "operations")}
         for change in preview["changes"]
     ]
-    return post(api, "/api/edit", {"changes": changes})
+    return post(api, "/api/edit", {"changes": changes, "label": label})
 
 
 def with_unit(data: bytes, name: str, unit: str | None) -> bytes:

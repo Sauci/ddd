@@ -297,7 +297,8 @@ class TestWhatIsServed:
                         }
                     ],
                 }
-            ]
+            ],
+            "label": "the unit of Speed",
         }
         response, data = ask(
             server,
@@ -477,7 +478,8 @@ class TestEveryEndpointOnTheDemo:
                         }
                     ],
                 }
-            ]
+            ],
+            "label": "the unit of ValueA",
         }
         body = answered(server, "POST", "/api/edit", edit)
         after = controller.read_bytes()
@@ -521,7 +523,10 @@ class TestBlankParameters:
         assert change["operations"] == [
             {"op": "set", "pointer": "units[0].description", "raw": '""'}
         ]
-        edit = {"changes": [{key: change[key] for key in ("file", "fingerprint", "operations")}]}
+        edit = {
+            "changes": [{key: change[key] for key in ("file", "fingerprint", "operations")}],
+            "label": "the description of rpm",
+        }
         answered(server, "POST", "/api/edit", edit)
         units = json.loads((root / "units.ddd.json").read_text(encoding="utf-8"))["units"]
         assert units == [{"unit": "rpm", "description": ""}]

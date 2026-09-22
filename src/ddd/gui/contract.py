@@ -843,6 +843,11 @@ class Changes(_Request):
     changes: tuple[Change, ...] = Field(min_length=1)
     """Every file this edit changes; made all at once, or not at all."""
 
+    label: str = Field(min_length=1, max_length=120)
+    """What this edit is, as a noun phrase: "the unit of ValueA", "the rename of 'rpm' to
+    'RPM'". The page writes it, because only the screen that applies knows what it did, and an
+    undo of this edit offers to put back what it names."""
+
 
 class EditedFile(_Frozen):
     """One file an edit wrote, and the fingerprint to check it against next."""

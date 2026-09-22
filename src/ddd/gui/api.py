@@ -306,7 +306,9 @@ class Api:
         if isinstance(request, Reply):
             return request
         try:
-            revision, written = self.session.edit([_file_change(c) for c in request.changes])
+            revision, written = self.session.edit(
+                [_file_change(c) for c in request.changes], request.label
+            )
         except EditError as refusal:
             return _error(409 if refusal.code in REFUSALS else 500, refusal.code, str(refusal))
         return Reply(

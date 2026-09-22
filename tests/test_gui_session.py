@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+import ddd.gui.session as session_module
 from conftest import EXAMPLES, build_record, component, declare, project, write_tree
 from ddd.diagnostics import SeverityPolicy, UnknownCheckError
 from ddd.editing import (
@@ -23,7 +24,7 @@ from ddd.editing import (
     fingerprint,
 )
 from ddd.gui import session as module
-from ddd.gui.session import NoProjectError, NotInProjectError, Session, find_projects
+from ddd.gui.session import MAX_UNDO, NoProjectError, NotInProjectError, Session, find_projects
 from ddd.lsp.diagnostics import Run
 
 REGISTERING_PLUGIN = """
@@ -297,7 +298,7 @@ class TestFollowingTheDisk:
         session = opened_and_settled(shared)
         consumer = shared.parent / "b.ddd.json"
         monkeypatch.setattr(module, "run_project", saving_while_analysing(consumer, b'"rpm"'))
-        session.edit([unit_of_b(shared, "Hz")])
+        session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
         monkeypatch.undo()
         assert mismatches(session) == 2
         assert session.poll() is True
@@ -420,7 +421,7 @@ class TestReadingAndEditing:
             (Operation("set", "component.name", '"X"'),),
         )
         with pytest.raises(EditError) as refused:
-            session.edit([name])
+            session.edit([name], "the name of B")
         assert refused.value.code == UNREADABLE
         assert target.read_text(encoding="utf-8") == content
 
@@ -452,7 +453,7 @@ class TestReadingAndEditing:
     def test_an_edit_is_written_and_analysed_again(self, shared: Path) -> None:
         session = Session(shared.parent)
         session.open(shared)
-        revision, written = session.edit([unit_of_b(shared, "Hz")])
+        revision, written = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
         assert revision.number == 2
         assert [file.path for file in written] == [(shared.parent / "b.ddd.json").resolve()]
         assert {f.diagnostic.check for f in revision.findings} >= {"definition-mismatch"}
@@ -465,7 +466,10 @@ class TestReadingAndEditing:
         outside = tmp_path / "outside.ddd.json"
         outside.write_text("{}", encoding="utf-8")
         with pytest.raises(NotInProjectError):
-            session.edit([FileChange(outside, fingerprint(b"{}"), (Operation("set", "a", "1"),))])
+            session.edit(
+                [FileChange(outside, fingerprint(b"{}"), (Operation("set", "a", "1"),))],
+                "an edit outside the project",
+            )
         assert outside.read_text(encoding="utf-8") == "{}"
 
     def test_an_edit_from_a_stale_read_is_refused(self, shared: Path) -> None:
@@ -474,12 +478,12 @@ class TestReadingAndEditing:
         stale = unit_of_b(shared, "Hz")
         (shared.parent / "b.ddd.json").write_text("{}", encoding="utf-8")
         with pytest.raises(EditError) as refused:
-            session.edit([stale])
+            session.edit([stale], "the unit of Torque")
         assert refused.value.code == STALE
 
     def test_an_edit_needs_an_open_project(self, shared: Path) -> None:
         with pytest.raises(NoProjectError):
-            Session(shared.parent).edit([unit_of_b(shared, "Hz")])
+            Session(shared.parent).edit([unit_of_b(shared, "Hz")], "the unit of Torque")
 
 
 def adoption(project_file: Path, name: str = "units.ddd.json") -> list[FileChange]:
@@ -505,7 +509,7 @@ class TestCreatingAFile:
         session = Session(shared.parent)
         session.open(shared)
         units = (shared.parent / "units.ddd.json").resolve()
-        revision, written = session.edit(adoption(shared))
+        revision, written = session.edit(adoption(shared), "the vocabulary adopted")
         assert units.read_bytes() == b'{"units": ["rpm"]}'
         assert {file.path for file in written} == {units, shared.resolve()}
         described = {f.path.name: (f.kind, f.loaded) for f in revision.files}
@@ -516,7 +520,7 @@ class TestCreatingAFile:
         mode = stat.S_IMODE(shared.stat().st_mode)
         session = Session(shared.parent)
         session.open(shared)
-        session.edit(adoption(shared))
+        session.edit(adoption(shared), "the vocabulary adopted")
         assert stat.S_IMODE((shared.parent / "units.ddd.json").stat().st_mode) == mode
 
     def test_a_file_the_edit_does_not_include_is_not_created(self, shared: Path) -> None:
@@ -524,7 +528,7 @@ class TestCreatingAFile:
         session.open(shared)
         created, _ = adoption(shared)
         with pytest.raises(EditError) as refused:
-            session.edit([created])
+            session.edit([created], "the vocabulary adopted")
         assert refused.value.code == INVALID
         assert not (shared.parent / "units.ddd.json").exists()
 
@@ -539,7 +543,7 @@ class TestCreatingAFile:
         )
         before = shared.read_bytes()
         with pytest.raises(EditError) as refused:
-            session.edit([created, renamed])
+            session.edit([created, renamed], "the vocabulary adopted")
         assert refused.value.code == INVALID
         assert not (shared.parent / "units.ddd.json").exists()
         assert shared.read_bytes() == before
@@ -548,7 +552,7 @@ class TestCreatingAFile:
         session = Session(shared.parent)
         session.open(shared)
         with pytest.raises(EditError) as refused:
-            session.edit(adoption(shared, "vocabulary/units.ddd.json"))
+            session.edit(adoption(shared, "vocabulary/units.ddd.json"), "the vocabulary adopted")
         assert refused.value.code == INVALID
         assert not (shared.parent / "vocabulary").exists()
 
@@ -558,9 +562,112 @@ class TestCreatingAFile:
         edit = adoption(shared)
         shared.write_text(shared.read_text(encoding="utf-8") + " ", encoding="utf-8")
         with pytest.raises(EditError) as refused:
-            session.edit(edit)
+            session.edit(edit, "the vocabulary adopted")
         assert refused.value.code == STALE
         assert not (shared.parent / "units.ddd.json").exists()
+
+
+class TestUndoing:
+    """One stack per open project: what each edit replaced, walked back one edit at a time."""
+
+    def test_an_edit_is_pushed_with_the_label_it_was_applied_with(self, shared: Path) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        before = (shared.parent / "b.ddd.json").read_bytes()
+        session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        top = session.undoable
+        assert top is not None
+        assert (top.at, top.label) == (1, "the unit of Torque")
+        assert [file.before for file in top.files] == [before]
+
+    def test_an_undo_puts_the_files_back_and_analyses_again(self, shared: Path) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        b = shared.parent / "b.ddd.json"
+        before = b.read_bytes()
+        session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        revision = session.undo(1)
+        assert b.read_bytes() == before
+        assert revision.number == 3
+        assert session.undoable is None
+
+    def test_an_undo_walks_back_one_edit_at_a_time(self, shared: Path) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        b = shared.parent / "b.ddd.json"
+        first = b.read_bytes()
+        session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        second = b.read_bytes()
+        session.edit([unit_of_b(shared, "rad")], "the unit of Torque")
+        session.undo(2)
+        assert b.read_bytes() == second
+        session.undo(1)
+        assert b.read_bytes() == first
+
+    def test_anything_but_the_top_of_the_stack_is_refused(self, shared: Path) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        with pytest.raises(EditError) as refused:
+            session.undo(7)
+        assert refused.value.code == STALE
+        assert session.undoable is not None
+
+    def test_an_undo_with_nothing_to_undo_is_refused(self, shared: Path) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        with pytest.raises(EditError) as refused:
+            session.undo(1)
+        assert refused.value.code == STALE
+
+    def test_a_refused_undo_leaves_the_stack_as_it_was(self, shared: Path) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        b = shared.parent / "b.ddd.json"
+        session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        b.write_text('{"component": {"name": "B"}}', encoding="utf-8")
+        with pytest.raises(EditError) as refused:
+            session.undo(1)
+        assert refused.value.code == STALE
+        assert session.undoable is not None
+        assert b.read_text(encoding="utf-8") == '{"component": {"name": "B"}}'
+
+    def test_an_undo_takes_away_the_file_an_adoption_created(self, shared: Path) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        units = shared.parent / "units.ddd.json"
+        described = shared.read_bytes()
+        session.edit(adoption(shared), "the vocabulary adopted")
+        session.undo(1)
+        assert not units.exists()
+        assert shared.read_bytes() == described
+
+    def test_the_oldest_edit_falls_off_a_full_stack(self, shared: Path, monkeypatch) -> None:
+        monkeypatch.setattr(session_module, "MAX_UNDO", 2)
+        session = Session(shared.parent)
+        session.open(shared)
+        for unit in ("Hz", "rad", "rpm"):
+            session.edit([unit_of_b(shared, unit)], f"the unit of {unit}")
+        top = session.undoable
+        assert top is not None and top.at == 3
+        session.undo(3)
+        session.undo(2)
+        with pytest.raises(EditError):
+            session.undo(1)
+
+    def test_the_stack_holds_fifty_edits(self) -> None:
+        assert MAX_UNDO == 50
+
+    def test_opening_a_project_empties_the_stack(self, shared: Path) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        session.open(shared)
+        assert session.undoable is None
+
+    def test_an_undo_needs_an_open_project(self, shared: Path) -> None:
+        with pytest.raises(NoProjectError):
+            Session(shared.parent).undo(1)
 
 
 def test_the_demo_opens_clean() -> None:

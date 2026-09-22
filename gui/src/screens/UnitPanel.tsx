@@ -87,10 +87,14 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
   const [to, setTo] = useState<string | null>(null);
   const [typed, setTyped] = useState<string | undefined>(undefined);
   const [shown, setShown] = useState<UnitAction | null>(null);
-  // The one action refused, if any, and the revision it was refused at. As in `VariablePanel`,
-  // a reader who chooses again straight away would otherwise send the same stale fingerprints
-  // the server just refused; `shownRefusal` keeps it shown until a later revision arrives.
-  const [failed, setFailed] = useState<({ action: UnitAction } & Refused) | null>(null);
+  // The one action refused for a reason other than staleness, if any: cleared whenever the
+  // reader chooses again, exactly as before.
+  const [failed, setFailed] = useState<{ action: UnitAction; message: string } | null>(null);
+  // The one action refused because a file changed on disk, and the revision it happened at. As
+  // in `VariablePanel`, a reader who chooses again straight away would otherwise send the same
+  // stale fingerprints the server just refused; `shownRefusal` keeps it shown until a later
+  // revision arrives.
+  const [staleFailed, setStaleFailed] = useState<({ action: UnitAction } & Refused) | null>(null);
 
   const row = units.data?.units.find((entry) => entry.unit === name);
   const offered =
@@ -121,7 +125,10 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
     onMutate: () => setFailed(null),
     // Renamed, the unit is the new spelling now, and the tab opens its panel; removed, it is gone
     // as the reader asked. Neither is the unit disappearing that spec 5.4 has the tab announce.
+    // A success is a definite answer, so it also clears a stale wait left over from an earlier
+    // attempt at this same action - `onMutate` above only ever clears the other refusal.
     onSuccess: (_reply, action) => {
+      setStaleFailed(null);
       setShown(null);
       if (action === "rename" && to !== null) {
         moving.current = true;
@@ -131,7 +138,17 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
         onMoved(undefined);
       }
     },
-    onError: (error, action) => setFailed({ action, text: refusalOf(error), revision }),
+    // Stale is the one refusal that waits for a later revision rather than clearing; setting one
+    // kind clears the other, so an action never shows two different answers to the same Apply.
+    onError: (error, action) => {
+      if (error instanceof ApiError && error.code === "stale") {
+        setStaleFailed({ action, text: refusalOf(error), revision });
+        setFailed(null);
+      } else {
+        setFailed({ action, message: refusalOf(error) });
+        setStaleFailed(null);
+      }
+    },
     // An Apply changes the unit's places, the tab's rows and every plan, whose fingerprints the
     // edit spent: they are asked for again, and nothing can be applied until they answer. The
     // description saved is let go only then, so that the field goes from what was typed straight
@@ -149,9 +166,11 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
   const offer = (action: UnitAction): Offer => ({
     plan: plans[action].data ?? null,
     refusal:
-      failed !== null && failed.action === action
-        ? shownRefusal(failed, revision)
-        : (plans[action].error?.message ?? null),
+      staleFailed?.action === action
+        ? shownRefusal(staleFailed, revision)
+        : failed?.action === action
+          ? failed.message
+          : (plans[action].error?.message ?? null),
     pending: plans[action].isPlaceholderData,
   });
 
@@ -176,7 +195,10 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
       reply={reply.data}
       units={units.data}
       description={description ?? row.description ?? ""}
-      onDescription={setDescription}
+      onDescription={(text) => {
+        setDescription(text);
+        setFailed(null);
+      }}
       typed={typed ?? to ?? name}
       // Never the spelling chosen: opening the picker on it must still list everything.
       narrow={typed ?? ""}
@@ -185,6 +207,7 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
         // The unit's own spelling renames nothing: choosing it goes back to no rename at all.
         setTo(chosen === name ? null : chosen);
         setTyped(undefined);
+        setFailed(null);
       }}
       onPickerClosed={() => setTyped(undefined)}
       to={to}

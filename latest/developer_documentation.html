@@ -944,11 +944,24 @@ the declarations themselves; <code class="docutils literal notranslate"><span cl
 <code class="docutils literal notranslate"><span class="pre">ddd.lsp.edits.PROPAGATED_KEYS</span></code> and is the same endpoint the unit has always used.
 <code class="docutils literal notranslate"><span class="pre">ddd.value_identity.same_value</span></code> decides when two spellings are one value - a conversion
 through the models and an enum by its name, limits as the numbers they resolve to,
-everything else its canonical json text, anything the models refuse outright falling back
-to that text - so the panel’s values in play, <code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code> and what
-<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/settle</span></code> previews through <code class="docutils literal notranslate"><span class="pre">ddd.variables.narrowed</span></code> can never disagree about
-one. <code class="docutils literal notranslate"><span class="pre">ddd.lsp.edits.settle</span></code> itself is untouched, and still compares a declaration’s own
-text.</p>
+everything else its canonical json text, anything the models refuse outright falling back to
+that text - so the panel’s values in play, <code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code> and what
+<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/settle</span></code> previews can never disagree about one.</p>
+<p>Where a finding leads is answered once, in <code class="docutils literal notranslate"><span class="pre">ddd.finding_routes</span></code>, from the finding’s own
+check, file and pointer, together with the file’s own kind and whether it loaded: the
+variable a declaration is about, the unit a check such as <code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code> names, or the
+component the finding is filed on - and nothing for a finding with nowhere to go, a file
+that did not load or one of a kind the page has no screen for among them. <code class="docutils literal notranslate"><span class="pre">GET</span>
+<span class="pre">/api/state</span></code>, <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/variable</span></code> and <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/unit</span></code> all carry that answer on every
+finding they list. <code class="docutils literal notranslate"><span class="pre">ddd.finding_fixes</span></code> plans the one fix a finding has nowhere else to
+offer: a <code class="docutils literal notranslate"><span class="pre">missing-id</span></code> finding’s identity, from the same walk <code class="docutils literal notranslate"><span class="pre">ddd.identity.unstamped</span></code>
+gives <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span></code> and the language server’s own quick fix, written as the operations <code class="docutils literal notranslate"><span class="pre">POST</span>
+<span class="pre">/api/edit</span></code> takes rather than as a text edit; <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/fix</span></code> previews it, as <code class="docutils literal notranslate"><span class="pre">GET</span>
+<span class="pre">/api/settle</span></code> previews a settlement. <code class="docutils literal notranslate"><span class="pre">ddd.lsp.edits.settle</span></code> itself now compares what a
+value means rather than its own text, the same <code class="docutils literal notranslate"><span class="pre">ddd.value_identity.same_value</span></code> the panel’s
+values in play already read - which is why <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> no longer narrows a settlement of its
+own: <code class="docutils literal notranslate"><span class="pre">ddd.variables.narrowed</span></code> is gone, the rule read from <code class="docutils literal notranslate"><span class="pre">ddd.lsp.edits.settle</span></code> alone
+now.</p>
 <p>The edit engine learnt one thing for adoption: a change whose <code class="docutils literal notranslate"><span class="pre">fingerprint</span></code> is <code class="docutils literal notranslate"><span class="pre">null</span></code>
 creates its file, one <code class="docutils literal notranslate"><span class="pre">set</span></code> of the whole document at the root pointer, and is refused as
 <code class="docutils literal notranslate"><span class="pre">stale</span></code> if the file exists by the time the edit is made. It is staged and renamed into

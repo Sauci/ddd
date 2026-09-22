@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import {
   ApiError,
   getFile,
+  getFix,
   getGraph,
   getProjects,
   getSession,
@@ -88,6 +89,7 @@ describe("requests to the server", () => {
     await getUnits(fetchImpl);
     await getSettle("ValueA", "unit", '"%"', fetchImpl);
     await getSettle("ValueA", "unit", null, fetchImpl);
+    await getFix("a.ddd.json", "component.interface[0].definition", "missing-id", fetchImpl);
     await getUnit("°C", fetchImpl);
     await getUnitPlan({ action: "rename", unit: "RPM", to: "rpm" }, fetchImpl);
     await getUnitPlan({ action: "add", unit: "m/s" }, fetchImpl);
@@ -121,6 +123,10 @@ describe("requests to the server", () => {
       ["/api/units", { credentials: "same-origin" }],
       ["/api/settle?name=ValueA&key=unit&raw=%22%25%22", { credentials: "same-origin" }],
       ["/api/settle?name=ValueA&key=unit", { credentials: "same-origin" }],
+      [
+        "/api/fix?file=a.ddd.json&pointer=component.interface%5B0%5D.definition&check=missing-id",
+        { credentials: "same-origin" },
+      ],
       ["/api/unit?name=%C2%B0C", { credentials: "same-origin" }],
       ["/api/unit-plan?action=rename&unit=RPM&to=rpm", { credentials: "same-origin" }],
       ["/api/unit-plan?action=add&unit=m%2Fs", { credentials: "same-origin" }],

@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
+import type { MouseEvent } from "react";
 import { useState } from "react";
 import { getFile } from "../api/client";
 import type { State } from "../api/types";
-import { keyedFindings } from "../lib/findings";
+import { keyedFindings, leadsElsewhere, routeHref, routeOf } from "../lib/findings";
 import type { ComponentFile } from "../lib/formats";
 import { pointerOf, valueAt, within } from "../lib/pointer";
 import { asList, asText } from "../lib/values";
@@ -45,6 +46,21 @@ export function ComponentPage({ file, variable, state, stopped, onVariable }: Pr
   if (content.isPending) return <p className="quiet">Reading the file…</p>;
   if (content.isError) return <Banner tone="error">{content.error.message}</Banner>;
   if (content.data.error !== null) return <Banner tone="error">{content.data.error}</Banner>;
+
+  // Opens a variable declared in this very file without a reload - a third way to the same
+  // place the row's own selection and the unit cell's button already open, so it clears the
+  // same stale picker request and "no longer declared" notice they clear inline below.
+  const followVariable =
+    (name: string) =>
+    (event: MouseEvent<HTMLAnchorElement>): void => {
+      // A modified or secondary click asks the browser for a new tab or window.
+      const modified = event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
+      if (modified || event.button !== 0) return;
+      event.preventDefault();
+      setFocusPicker(null);
+      setUndeclared(null);
+      onVariable(name);
+    };
 
   const data = content.data.data;
   // The file parsed but is only checked against the schema here: it need not match
@@ -138,12 +154,30 @@ export function ComponentPage({ file, variable, state, stopped, onVariable }: Pr
           <p className="quiet">None.</p>
         ) : (
           <ul className="findings">
-            {keyedFindings(findings).map(([finding, key]) => (
-              <li key={key} className={finding.severity}>
-                <span className="check">{finding.check}</span>{" "}
-                <span className="message">{finding.message}</span>
-              </li>
-            ))}
+            {keyedFindings(findings).map(([finding, key]) => {
+              const href = leadsElsewhere(finding, file) ? routeHref(finding) : null;
+              const route = href === null ? null : routeOf(finding);
+              // A variable named by this very file's own route opens in place via
+              // `followVariable`; a unit's route leaves the component page, which nothing here
+              // can do in place, so it stays a plain address the browser follows.
+              const inThisFile =
+                route !== null && route.page === "component" && route.variable !== undefined
+                  ? route.variable
+                  : null;
+              const onClick = inThisFile === null ? undefined : followVariable(inThisFile);
+              return (
+                <li key={key} className={finding.severity}>
+                  <span className="check">{finding.check}</span>{" "}
+                  {href === null ? (
+                    <span className="message">{finding.message}</span>
+                  ) : (
+                    <a className="button link" href={href} onClick={onClick}>
+                      {finding.message}
+                    </a>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

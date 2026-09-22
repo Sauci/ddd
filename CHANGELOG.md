@@ -59,6 +59,18 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   declaration at once, with the lines each file will change shown on request, exactly as a
   unit already was.
 
+  A fourth tab, Findings, is a table of every finding of the project, worst first, each leading
+  to what it names - the variable's panel, the unit's, or the component's page - or saying
+  plainly when there is nowhere to go, as for a file that did not load or a types file the
+  interface has no page for yet.  A producing declaration without an identity is given one from
+  there, previewed like every other change.
+
+* **The editor's reconcile quick fix is no longer offered for a value that already means what
+  it would be set to.**  Taking the producing component's value, or spreading one declaration's
+  value to the rest, now writes nothing to a declaration that already states it, however
+  differently spelled: a conversion written over four lines and the same conversion written on
+  one are one value, as the checks have always counted them.
+
 * **The editor offers no unit to a declaration whose type fixes it.**  A declaration naming a
   declared type takes its `unit`, `conversion` and `limits` from the type, and the loader
   refuses one of them stated beside the `typename`.  A `definition-mismatch` on such a

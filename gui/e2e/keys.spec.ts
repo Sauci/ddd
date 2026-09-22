@@ -109,6 +109,25 @@ test("a limits row the panel opens by itself settles on the producer's range", a
   expect(valueA(gui.directory, CONTROLLER).limits).toEqual({ min: 0, max: 100 });
 });
 
+test("a change refused as stale can be applied again once the analysis has caught up", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await panel.getByRole("row", { name: /^limits/ }).click();
+  // The file changes under the page: the preview it is holding is against the old bytes.
+  driftMax(gui.directory, CONTROLLER, "ValueA", 60);
+  await panel.getByLabel("Max").fill("50");
+  await panel.getByRole("button", { name: /^Apply to/ }).click();
+  await expect(panel.getByText("A file changed on disk")).toBeVisible();
+
+  // The watcher catches up within a second; the sentence goes and Apply works.
+  await expect(panel.getByText("A file changed on disk")).toBeHidden({ timeout: 15000 });
+  await panel.getByLabel("Max").fill("50");
+  await panel.getByRole("button", { name: /^Apply to/ }).click();
+  await expect(panel.getByText("Nothing to change")).toBeVisible({ timeout: 15000 });
+});
+
 test("a range the two fields do not make offers no Apply, and changes nothing", async ({
   page,
   gui,

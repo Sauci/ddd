@@ -6,13 +6,16 @@
    Row, …): both are what this file selects on. */
 
 /* Button: the one action of a view (primary), any other (secondary), or a link (link). Its own
-   focus ring replaces the browser's outline, which would otherwise double up on a <button>. */
+   focus ring replaces the browser's outline, which would otherwise double up on a <button>; its
+   own text-decoration replaces the browser's default underline, which a plain <a> styled as one
+   of these - the Findings panel's Open, spec 5.2 - would otherwise carry. */
 .button {
   font: inherit;
   font-size: var(--text-small);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius);
   cursor: pointer;
+  text-decoration: none;
 }
 .button:focus-visible {
   outline: none;
@@ -53,13 +56,28 @@
   text-decoration: underline;
 }
 
-/* Chip: a short label on a tinted ground, in one of the page's three tones. */
+/* A plain <a> styled as one of these - the Findings panel's Open (spec 5.2), a finding's link on
+   a component's page or in a variable's panel - carries none of React Aria's data attributes, so
+   `.button:focus-visible`'s own outline: none above would otherwise leave it with no ring at all
+   for a reader tabbing through. Its focus ring and hover feedback come from the native
+   pseudo-classes instead, an anchor always has both. */
+a.button:focus-visible {
+  box-shadow: 0 0 0 3px var(--focus);
+}
+a.button.link:hover {
+  text-decoration: underline;
+}
+
+/* Chip: a short label on a tinted ground, in one of the page's three tones. A check's own name
+   is hyphenated (missing-id, duplicate-component, …), which a browser breaks at like a space
+   once the column holding it is narrow enough - one line is what a chip is. */
 .chip {
   display: inline-block;
   padding: 0 var(--space-2);
   border-radius: var(--radius-chip);
   font-size: var(--text-small);
   line-height: 1.7;
+  white-space: nowrap;
 }
 .chip.error {
   background: var(--error-ground);
@@ -372,6 +390,23 @@ tr.changing td {
 }
 .adopt-refusal {
   margin: var(--space-2) 0 0;
+}
+
+/* The Findings tab (spec 5.1, 5.2): the table has no fixed column widths, so pinning the file
+   column - quiet already - to one line, beside the chip's own rule above, leaves the message
+   column the only one that can still shrink; that is what makes it take the width the other two
+   leave and wrap there instead of overflowing. A note in a finding's panel indents under the
+   message it is about. */
+.react-aria-Table[aria-label="Findings"] .react-aria-Cell.quiet {
+  white-space: nowrap;
+}
+.panel-notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  list-style: none;
 }
 
 /* The project screen's tabs, moved out of app.css unchanged. */

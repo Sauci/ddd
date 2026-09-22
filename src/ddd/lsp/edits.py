@@ -59,6 +59,7 @@ from ddd.lsp.units import (
 )
 from ddd.models import definition_keys
 from ddd.models.objects import MEANING_KEYS
+from ddd.value_identity import same_value
 
 PROPAGATED_KEYS: Final = frozenset(
     {
@@ -134,8 +135,20 @@ every place a unit is stated, rather than one declaration to agree with another.
 """
 
 
-_WITHIN_DEFINITION: Final = re.compile(r"^component\.interface\[\d+\]\.definition")
+WITHIN_DEFINITION: Final = re.compile(r"^component\.interface\[\d+\]\.definition")
 """Anywhere inside one definition, however deep - the prefix names the definition."""
+
+
+WITHIN_DECLARATION: Final = re.compile(r"^component\.interface\[\d+\]")
+"""Anywhere inside one declaration, definition or not - the prefix names the declaration.
+
+:data:`WITHIN_DEFINITION` names the definition a key belongs to; this names the declaration a
+finding is about, which is broader by exactly the keys a declaration carries beside its
+definition - ``scope`` and ``condition``. ``missing-producer`` and ``local-conflict`` are filed
+on the declaration itself, and a ``condition-mismatch`` on the condition or, stating none, on
+the declaration too - none of them under ``definition``, so :data:`WITHIN_DEFINITION` would miss
+every one.
+"""
 
 
 def _keys_of(document: Document, definition: str) -> tuple[frozenset[str], frozenset[str]]:
@@ -237,7 +250,7 @@ def _on_the_declaration(
 ) -> list[dict[str, Any]]:
     """The actions on the declaration around the cursor: its keys brought into agreement with
     the other declarations of its object, and an identity where ``missing-id`` was reported."""
-    within = _WITHIN_DEFINITION.match(pointer)
+    within = WITHIN_DEFINITION.match(pointer)
     if within is None:
         return []
     definition = within.group()
@@ -417,7 +430,7 @@ def settle(
                 unsettled.append(Unsettled(site, "type", typename))
             continue
         stated = document.raw_at(f"{site.pointer}.{key}")
-        if stated == raw or (key in DEFERRED_KEYS and stated is None):
+        if _already(key, stated, raw) or (key in DEFERRED_KEYS and stated is None):
             continue
         accepted, required = _keys_of(document, site.pointer)
         if (raw is None and key in required) or (raw is not None and key not in accepted):
@@ -432,6 +445,21 @@ def _fixed_by(built: Index, typename: str, key: str, cache: dict[Path, Document]
     structure, which has no room for a unit, or a name no type of the project declares."""
     site = built.types.get(typename)
     return None if site is None else read(site.path, cache).raw_at(f"{site.pointer}.{key}")
+
+
+def _already(key: str, stated: str | None, raw: str | None) -> bool:
+    """Whether the declaration already says what the settlement would write.
+
+    By what the value means rather than by its json text. The text is the file's own layout,
+    and an edit writes a value in the *target* file's layout: comparing text would call a
+    declaration changed for spelling a conversion over four lines where the value came from a
+    file that writes it on one, and would go on asking for that change after every apply.
+    Removing a key compares as it always did - ``None`` against ``None`` is nothing to remove,
+    and a stated key has something to take out whatever it says.
+    """
+    if stated is None or raw is None:
+        return stated == raw
+    return same_value(key, stated) == same_value(key, raw)
 
 
 def _at_site(site: Site, name: str, cache: dict[Path, Document]) -> Document | None:
@@ -481,8 +509,10 @@ def _adopt(
 ) -> dict[str, Any] | None:
     """Take a value the others state and this declaration does not.
 
-    Only when they agree with each other about it. Two different answers is a question about
-    which one is right, and picking one silently is exactly the kind of help nobody asked for.
+    Only when they agree with each other about it - by what the value means, the rule
+    ``definition-mismatch`` compares by, so two declarations spelling one conversion
+    differently are one answer rather than two. Two different answers is a question about which
+    one is right, and picking one silently is exactly the kind of help nobody asked for.
 
     Written through :func:`_assign` rather than straight into the text, so that this direction
     is refused for a key the target's own kind does not have on the same terms as every other.
@@ -500,14 +530,22 @@ def _adopt(
             # readable others is not the unanimity the title would assert; withhold instead.
             return None
         targets.append(target)
-    stated = {
+    spelled = [
         raw
         for site, target in zip(others, targets, strict=True)
         if (raw := target.raw_at(f"{site.pointer}.{key}")) is not None
-    }
+    ]
+    # Counted by what each value means rather than by its json text: two files writing one
+    # conversion differently state one value, which is why the checker files nothing between
+    # them, and counting their spellings would withhold this action from declarations it calls
+    # settled. The text carried is the first spelling of the one value - they say the same
+    # thing, and it travels verbatim as every value here does.
+    stated: dict[str, str] = {}
+    for raw in spelled:
+        stated.setdefault(same_value(key, raw), raw)
     if len(stated) != 1:
         return None
-    edit = _assign(document, here.pointer, key, next(iter(stated)))
+    edit = _assign(document, here.pointer, key, next(iter(stated.values())))
     if edit is None:
         return None
     return {
@@ -713,7 +751,10 @@ def _assign(document: Document, definition: str, key: str, raw: str) -> dict[str
         return None
     existing = document.raw_at(f"{definition}.{key}")
     if existing is not None:
-        if existing == raw:
+        # The same question :func:`settle` asks of every declaration it reaches, asked through
+        # the same function: a value already meaning what would be written is nothing to write,
+        # and the two must not drift into two readings of "already says it".
+        if _already(key, existing, raw):
             return None
         return {"range": document.value_range_of(f"{definition}.{key}"), "newText": raw}
     return _insert(document, definition, key, raw)

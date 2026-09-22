@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ApiError, getSettle, getUnits, getVariable, postEdit } from "../api/client";
 import { VariablePanelView } from "../components/VariablePanelView";
+import { type Refused, shownRefusal } from "../lib/refusals";
 import { editOf, outsideVocabulary, textOf } from "../lib/units";
 import {
   keyRows,
@@ -72,7 +73,18 @@ export function VariablePanel({
   // the reader asks for, never where a row opens.
   const [edited, setEdited] = useState<{ min: string; max: string } | undefined>(undefined);
   const [changesShown, setChangesShown] = useState(false);
+  // A refusal for a reason other than staleness - a type fixing this key, a kind that cannot
+  // carry one, the engine's own rule - cleared whenever the reader chooses again, exactly as
+  // every other choice made here.
   const [refused, setRefused] = useState<string | null>(null);
+  // A refusal because a file changed on disk, the key it was refused for, and the revision it
+  // happened at. A reader who chooses again straight away would send the very fingerprints that
+  // were just refused, since the analysis has not caught up yet - so this is not cleared then,
+  // only read through `shownRefusal`, which keeps it shown until a later revision arrives. Kept
+  // with the key's own name, the way `UnitPanel` keeps it with the action it belongs to: the
+  // wait is about the settlement that was refused, so another row selected in the meantime must
+  // not be given its sentence, nor have its own Apply taken away by it.
+  const [stale, setStale] = useState<({ key: string | undefined } & Refused) | null>(null);
   // What the table actually offers to settle (`kind` aside): what a key remembered from a
   // previous variable, or forced by `focusPicker`, has to be checked against before it is shown.
   const rows =
@@ -144,18 +156,25 @@ export function VariablePanel({
     },
     // The value chosen stays chosen: the panel then says there is nothing left to change. Let
     // go, it fell back on the producer's value in the declarations still on screen, which are
-    // the ones the edit has just changed, and previewed undoing it.
+    // the ones the edit has just changed, and previewed undoing it. A success is a definite
+    // answer, so it clears both refusals, not only the one that clears on its own.
     onSuccess: () => {
       setTyped(undefined);
       setChangesShown(false);
       setRefused(null);
+      setStale(null);
     },
-    onError: (error) =>
-      setRefused(
-        error instanceof ApiError && error.code === "stale"
-          ? STALE
-          : `The change was refused: ${error.message}`,
-      ),
+    // Stale is the one refusal that waits for a later revision rather than clearing; setting one
+    // kind clears the other, so the panel never shows two different answers to the same Apply.
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === "stale") {
+        setStale({ key: selected, text: STALE, revision });
+        setRefused(null);
+      } else {
+        setRefused(`The change was refused: ${error.message}`);
+        setStale(null);
+      }
+    },
     // An Apply changes this variable's declarations, the units the project uses and the preview
     // it was made from, whose fingerprints the edit spent: those are asked for again, and Apply
     // stays unavailable until they answer. Everything else - the component's file, the canvas -
@@ -225,7 +244,9 @@ export function VariablePanel({
       // A settlement refused is about the value that was asked for; while the fields make no
       // value, nothing was asked, and the note is the whole of what the panel has to say.
       refusal={
-        refused ?? (broken !== null || preview.error === null ? null : preview.error.message)
+        (stale !== null && stale.key === selected ? shownRefusal(stale, revision) : null) ??
+        refused ??
+        (broken !== null || preview.error === null ? null : preview.error.message)
       }
       changesShown={changesShown}
       onChangesShown={setChangesShown}

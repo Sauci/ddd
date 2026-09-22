@@ -31,8 +31,11 @@ from ddd.editing import (
     EditError,
     FileChange,
     Operation,
+    fingerprint,
     parse_raw,
 )
+from ddd.finding_fixes import fixes_for
+from ddd.finding_routes import Route, route_of
 from ddd.graph import Module, graph_of
 from ddd.gui import contract
 from ddd.gui.session import (
@@ -71,7 +74,7 @@ from ddd.variables import (
     Planned,
     declarations_of,
     located_on,
-    narrowed,
+    planned,
     preview,
     refusal,
     units_in_use,
@@ -172,6 +175,8 @@ class Api:
             revision = self.session.wait(after, self.wait_seconds)
         if revision is None:
             raise NoProjectError("no project is open")
+        sources = {file.path.resolve(): file for file in revision.files}
+        cache: dict[Path, Document] = {}
         return Reply(
             200,
             contract.State(
@@ -192,7 +197,10 @@ class Api:
                     }
                     for file in revision.files
                 ],
-                findings=[_finding(filed) for filed in revision.findings],
+                findings=[
+                    _finding(filed, sources.get(filed.file.resolve()), cache)
+                    for filed in revision.findings
+                ],
             ).model_dump(mode="json"),
         )
 
@@ -318,9 +326,11 @@ class Api:
         if not name:
             return _error(400, "bad-request", "variable takes ?name=")
         built = revision.index
-        declared = () if built is None else declarations_of(built, name, {})
+        cache: dict[Path, Document] = {}
+        declared = () if built is None else declarations_of(built, name, cache)
         if built is None or not declared:
             return _undeclared(revision, name)
+        sources = {file.path.resolve(): file for file in revision.files}
         return Reply(
             200,
             contract.VariableReply(
@@ -343,7 +353,7 @@ class Api:
                 # fails here rather than reaching the page.
                 keys=[asdict(offer) for offer in offers(built, declared)],
                 findings=[
-                    _finding(filed)
+                    _finding(filed, sources.get(filed.file.resolve()), cache)
                     for filed in revision.findings
                     if located_on(declared, filed.file, filed.diagnostic)
                 ],
@@ -396,6 +406,7 @@ class Api:
         if built is None or (unit not in built.units and unit not in built.vocabulary):
             return _undeclared(revision, unit)
         cache: dict[Path, Document] = {}
+        sources = {file.path.resolve(): file for file in revision.files}
         return Reply(
             200,
             contract.UnitReply(
@@ -418,7 +429,7 @@ class Api:
                     for place in places_of(built, unit, cache)
                 ],
                 findings=[
-                    _finding(filed)
+                    _finding(filed, sources.get(filed.file.resolve()), cache)
                     for filed in revision.findings
                     if located_on_unit(built, unit, filed.file, filed.diagnostic)
                 ],
@@ -495,7 +506,6 @@ class Api:
         if settlement.unsettled:
             code, message = refusal(settlement.unsettled[0], name, key)
             return _error(409, code, message)
-        settlement = narrowed(settlement, key, declarations_of(built, name, cache))
         stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
         try:
             planned = preview(settlement, key, stamps)
@@ -506,6 +516,30 @@ class Api:
             contract.SettleReply(
                 revision=revision.number, changes=_planned_changes(planned)
             ).model_dump(mode="json"),
+        )
+
+    def _fix(self, query: Query, body: bytes | None) -> Reply:
+        revision = self._opened()
+        file, check = (_single(query.get(part)) for part in ("file", "check"))
+        pointer = _single(query.get("pointer"))
+        if not file or not check or pointer is None:
+            return _error(400, "bad-request", "fix takes ?file=, ?pointer= and ?check=")
+        wanted = Path(file).resolve()
+        source = next((f for f in revision.files if f.path.resolve() == wanted), None)
+        if source is None:
+            return _error(404, "not-found", f"{file} is not a file of the open project")
+        cache: dict[Path, Document] = {}
+        stamps = {f.path.resolve(): f.fingerprint for f in revision.files}
+        offered = []
+        for fix in fixes_for(check, source.path, pointer, cache):
+            try:
+                made = planned(fix.path, fix.operations, stamps)
+            except EditError as refused:
+                return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+            offered.append({"title": fix.title, "changes": _planned_changes([made])})
+        return Reply(
+            200,
+            contract.FixReply(revision=revision.number, fixes=offered).model_dump(mode="json"),
         )
 
     def _opened(self) -> Revision:
@@ -549,6 +583,7 @@ _ROUTES: Final[dict[str, tuple[str, Answer]]] = {
     "/api/variable": ("GET", Api._variable),
     "/api/units": ("GET", Api._units),
     "/api/settle": ("GET", Api._settle),
+    "/api/fix": ("GET", Api._fix),
     "/api/unit": ("GET", Api._unit),
     "/api/unit-plan": ("GET", Api._unit_plan),
 }
@@ -558,7 +593,15 @@ def _error(status: int, code: str, message: str) -> Reply:
     return Reply(status, {"error": code, "message": message})
 
 
-def _finding(filed: Filed) -> dict[str, Any]:
+def _finding(
+    filed: Filed, source: SourceFile | None, cache: dict[Path, Document]
+) -> dict[str, Any]:
+    """One finding as the page reads it, with where it leads.
+
+    ``source`` is the analysis's own record of the file the finding is filed on, or ``None``
+    for a finding filed on a file the analysis did not list - which leads nowhere, having no
+    kind to route by.
+    """
     # Kept as a function, unlike the answers _state/_checks/_session_body now build inline:
     # tests/test_gui_api.py imports it directly to check a note with no place is carried
     # without one.
@@ -577,7 +620,23 @@ def _finding(filed: Filed) -> dict[str, Any]:
             }
             for text, note in finding.notes
         ],
+        route=None
+        if source is None
+        else _route(
+            route_of(
+                finding.check,
+                filed.file,
+                "" if finding.location is None else finding.location.pointer,
+                source.kind,
+                source.loaded,
+                cache,
+            )
+        ),
     ).model_dump(mode="json")
+
+
+def _route(route: Route | None) -> dict[str, Any] | None:
+    return None if route is None else {"kind": route.kind, "name": route.name}
 
 
 def _module(file: SourceFile) -> Module:
@@ -597,10 +656,14 @@ def _module(file: SourceFile) -> Module:
 def _undeclared(revision: Revision, name: str) -> Reply:
     """The answer about ``name`` when no declaration of it was read.
 
-    That nothing declares it only while every file loaded: a file saved half-edited, as an editor
-    saves one being typed into, keeps the names only it declares out of every index until it
-    parses again, and a page told they are not declared would close their panels for good
-    (spec 5.5) rather than wait for the next save.
+    That nothing declares it only while every file loaded, and reads now as it did at that
+    analysis: a file saved half-edited, as an editor saves one being typed into, keeps the names
+    only it declares out of every index until it parses again, and a page told they are not
+    declared would close their panels for good (spec 5.5) rather than wait for the next save.
+
+    A file the analysis never loaded and a file it loaded that has since changed on disk - or
+    gone missing, which reads the same as changed - are two different statements: this answers
+    each file the one that is true of it, never the other.
     """
     unread = [file.path.name for file in revision.files if not file.loaded]
     if unread:
@@ -610,7 +673,29 @@ def _undeclared(revision: Revision, name: str) -> Reply:
             f"'{name}' is not declared in any file that loaded, "
             f"and {', '.join(unread)} did not load",
         )
+    changed = [file.path.name for file in revision.files if _changed_since(file)]
+    if changed:
+        return _error(
+            409,
+            UNREADABLE,
+            f"'{name}' is not declared in any file that has not changed since, "
+            f"and {', '.join(changed)} changed since it was read",
+        )
     return _error(404, "not-found", f"'{name}' is not declared in the open project")
+
+
+def _changed_since(file: SourceFile) -> bool:
+    """Whether ``file`` no longer reads as the analysis found it.
+
+    Read fresh and fingerprinted again, not compared by modification time: the same check an
+    edit's own fingerprint makes. A file gone missing since cannot be read at all, which counts
+    as changed rather than being guessed at either way.
+    """
+    try:
+        data = file.path.read_bytes()
+    except OSError:
+        return True
+    return fingerprint(data) != file.fingerprint
 
 
 def _unit_plan_of(

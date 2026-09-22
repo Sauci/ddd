@@ -3136,6 +3136,55 @@ class TestPropagating:
             "Remove the unit from 2 other declarations of 'Speed'"
         ]
 
+    def test_one_value_the_others_spell_differently_is_still_the_answer_they_agree_on(
+        self, tmp_path: Path
+    ) -> None:
+        """Two spellings of one conversion are one answer, not two.
+
+        The checker files nothing between those two declarations, so counting their spellings
+        would withhold the fix from declarations it calls settled. The declaration asked at is
+        one being written - a ``datatype`` whose ``conversion`` is not there yet, which is the
+        state the fix is for - so it is spelled out by hand: `declare` fills a conversion in for
+        every measurement.
+        """
+        without = {
+            "scope": "output",
+            "definition": {
+                "name": "Speed",
+                "datatype": "uint8",
+                "kind": "measurement",
+                "volatile": False,
+            },
+        }
+        offered, _ = self.offer(
+            tmp_path,
+            "a.ddd.json",
+            "component.interface[0].definition",
+            **{
+                "a.ddd.json": component("A", without),
+                "b.ddd.json": component(
+                    "B", declare("input", "Speed", conversion={"kind": "linear", "factor": 2})
+                ),
+                "c.ddd.json": component(
+                    "C", declare("input", "Speed", conversion={"factor": 2, "offset": 0})
+                ),
+            },
+        )
+        assert [action["title"] for action in offered] == [
+            # Taken first: a declaration the loader dropped is in nobody's producer list, so
+            # this reads as a consumer, which is offered somebody else's answer first.
+            "Take the conversion the other declarations of 'Speed' state",
+            "Remove the conversion from 2 other declarations of 'Speed'",
+        ]
+        take = offered[0]
+        (edits,) = take["edit"]["changes"].values()
+        rewritten = apply_edits(tmp_path / "a.ddd.json", edits)
+        # The first spelling the index lists, written verbatim as every value here is.
+        assert json.loads(rewritten)["component"]["interface"][0]["definition"]["conversion"] == {
+            "kind": "linear",
+            "factor": 2,
+        }
+
     def test_nothing_is_offered_when_everybody_already_agrees(self, tmp_path: Path) -> None:
         """A fix that changes nothing teaches a reader to stop looking at the lightbulb."""
         offered, _ = self.offer(
@@ -3148,6 +3197,26 @@ class TestPropagating:
             },
         )
         assert offered == []
+
+    def test_no_action_offers_to_rewrite_a_value_that_already_means_the_same(
+        self, tmp_path: Path
+    ) -> None:
+        """`ddd gui` has compared meaning since part 3; the editor now does too, so a lightbulb
+        that rewrote a line to the value it already had is gone."""
+        offered, _ = self.offer(
+            tmp_path,
+            "b.ddd.json",
+            "component.interface[0].definition.conversion",
+            **{
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", conversion={"kind": "linear", "factor": 2})
+                ),
+                "b.ddd.json": component(
+                    "B", declare("input", "Speed", conversion={"factor": 2, "offset": 0})
+                ),
+            },
+        )
+        assert [entry["title"] for entry in offered] == []
 
     def test_nothing_is_offered_when_nobody_else_declares_it(self, tmp_path: Path) -> None:
         offered, _ = self.offer(

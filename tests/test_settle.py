@@ -16,7 +16,9 @@ from ddd.diagnostics import DiagnosticBag
 from ddd.loading import load_workspace
 from ddd.lsp.edits import Settled, Settlement, Unsettled, settle
 from ddd.lsp.navigation import Index, Site, index
-from ddd.lsp.ranges import Document
+from ddd.lsp.ranges import Document, read
+
+DEFINITION = "component.interface[0].definition"
 
 
 def built(tmp_path: Path, **files: Any) -> Index:
@@ -214,3 +216,43 @@ class TestWhatRefuses:
         assert settled(idx, "unit", '"rpm"') == Settlement(
             (), (Unsettled(site_in(idx, "b.ddd.json"), "unreachable"),)
         )
+
+
+def test_a_declaration_spelling_the_value_differently_is_nothing_to_change(
+    tmp_path: Path,
+) -> None:
+    # An edit writes a value in the target file's own layout, so the producer's four-line
+    # conversion and a reader's one-line spelling of the same conversion are one value: a
+    # settlement that asked for the change anyway would ask for it again after every apply.
+    idx = built(
+        tmp_path,
+        **{
+            "a.ddd.json": component(
+                "A", declare("output", "Speed", conversion={"kind": "linear", "factor": 2})
+            ),
+            "b.ddd.json": component(
+                "B", declare("input", "Speed", conversion={"factor": 2, "offset": 0})
+            ),
+        },
+    )
+    raw = read(tmp_path / "a.ddd.json", {}).raw_at(f"{DEFINITION}.conversion")
+    assert raw is not None
+    assert settle(idx, "Speed", "conversion", raw, {}).changes == ()
+
+
+def test_a_declaration_meaning_something_else_still_changes(tmp_path: Path) -> None:
+    idx = built(
+        tmp_path,
+        **{
+            "a.ddd.json": component(
+                "A", declare("output", "Speed", conversion={"kind": "linear", "factor": 2})
+            ),
+            "b.ddd.json": component(
+                "B", declare("input", "Speed", conversion={"kind": "linear", "factor": 4})
+            ),
+        },
+    )
+    raw = read(tmp_path / "a.ddd.json", {}).raw_at(f"{DEFINITION}.conversion")
+    assert raw is not None
+    changed = settle(idx, "Speed", "conversion", raw, {}).changes
+    assert [change.site.path.name for change in changed] == ["b.ddd.json"]

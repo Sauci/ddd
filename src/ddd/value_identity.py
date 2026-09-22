@@ -3,17 +3,19 @@
 One rule, two callers that must not disagree about it. :mod:`ddd.variable_keys` groups the
 panel's rows by it - two conversions or two ranges of limits written differently are one row,
 one value in play, exactly as :mod:`ddd.analysis` treats them for ``definition-mismatch``.
-:mod:`ddd.variables` narrows a settlement by it - a declaration already stating a value that
-means what is being set to has nothing left to change, however differently the two are spelled.
+:func:`ddd.lsp.edits.settle` measures a settlement by it - a declaration already stating a value
+that means what is being set to has nothing left to change, however differently the two are
+spelled - which is the rule the language server and ``ddd gui`` both settle by.
 
 A small module of its own rather than living with the values it compares: the rule needs
 :func:`~ddd.models.conversion.conversion_interface_value` beside
 :class:`~ddd.models.objects.Limits`, and :mod:`ddd.models.objects` imports
 :mod:`ddd.models.conversion` back, so a home in :mod:`ddd.models.conversion` would close that
 cycle. It is no better off in a caller: :mod:`ddd.variable_keys` already imports
-:class:`~ddd.variables.Declared` from :mod:`ddd.variables`, so the rule put in
-:mod:`ddd.variable_keys` would close a cycle the moment :mod:`ddd.variables` imported it back to
-narrow a settlement. Neither caller depends on the other for it.
+:data:`~ddd.lsp.edits.DEFERRED_KEYS` from :mod:`ddd.lsp.edits`, so the rule put in
+:mod:`ddd.variable_keys` would close a cycle the moment :mod:`ddd.lsp.edits` compared by it, and
+put in :mod:`ddd.lsp.edits` what one value is would become the language server's to say rather
+than something the panel and the checker share.
 """
 
 from __future__ import annotations

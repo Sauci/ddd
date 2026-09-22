@@ -286,6 +286,13 @@ test("no page reports a violation of its content security policy", async ({ page
   const adoption = page.getByRole("complementary", { name: "Adopt a vocabulary" });
   await expect(adoption.getByText("units.ddd.json, new")).toBeVisible();
 
+  // The Findings tab (part 4): its table and the panel a row opens, on the page too - visited
+  // here, still on the project screen, rather than from the component page below, which carries
+  // no tabs of its own to follow back to it.
+  await page.getByRole("link", { name: "Findings" }).click();
+  await page.getByRole("row", { name: "definition-mismatch" }).first().click();
+  await expect(page.getByRole("complementary", { name: "definition-mismatch" })).toBeVisible();
+
   await page.getByRole("link", { name: "Table" }).click();
   await page.getByRole("button", { name: "Controller", exact: true }).click();
   await page.getByRole("button", { name: "Set the unit of ValueA" }).click();

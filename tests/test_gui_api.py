@@ -24,7 +24,7 @@ from conftest import (
 )
 from ddd import __version__
 from ddd.diagnostics import CHECKS
-from ddd.editing import UNVERIFIED, UNWRITABLE, EditError, fingerprint
+from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
 from ddd.gui.api import Api, Reply
 from ddd.gui.session import Session
 from ddd.variable_keys import KEY_ORDER
@@ -44,6 +44,16 @@ HALF_SAVED = {
     "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
     "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
     "b.ddd.json": json.dumps(component("B", declare("input", "Torque", unit="Nm")), indent=2)[:60],
+}
+
+# The project HALF_SAVED becomes once `b.ddd.json` is saved whole: opened this way first, then
+# broken exactly as HALF_SAVED is broken already (or removed outright) once the panel has read
+# it once, to reproduce the race the CI diagnosis found deterministically - no browser, no
+# timing, just a write landing between two requests of the same revision.
+RACE = {
+    "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+    "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+    "b.ddd.json": component("B", declare("input", "Torque", unit="Nm")),
 }
 
 # One unit stated three ways: by a variable, by a scalar type and by a structure member.
@@ -275,8 +285,10 @@ class TestState:
         filed = Filed(
             Path("a.ddd.json"), Diagnostic("schema", Severity.ERROR, "m", None, (("n", None),))
         )
-        assert _finding(filed)["notes"] == [{"message": "n", "file": None, "pointer": ""}]
-        assert _finding(filed)["pointer"] == ""
+        assert _finding(filed, None, {})["notes"] == [{"message": "n", "file": None, "pointer": ""}]
+        assert _finding(filed, None, {})["pointer"] == ""
+        # A file the analysis did not list has no kind to route by, so the finding leads nowhere.
+        assert _finding(filed, None, {})["route"] is None
 
     def test_asking_for_a_newer_revision_waits_for_one(self, api: Api, root: Path) -> None:
         threading.Timer(0.01, api.session.open, args=(root / "p.ddd.json",)).start()
@@ -296,6 +308,41 @@ class TestState:
     def test_the_state_needs_an_open_project(self, root: Path) -> None:
         reply = get(Api(Session(root), wait_seconds=0.01), "/api/state", after="0")
         assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+    def test_every_finding_says_where_it_leads(self, api: Api) -> None:
+        # The root fixture's two components declare Speed, and `a.ddd.json` states no id: every
+        # finding this project reports is about that declaration, and each says so.
+        findings = get(api, "/api/state").body["findings"]
+        assert findings
+        assert all(
+            finding["route"] == {"kind": "variable", "name": "Speed"} for finding in findings
+        )
+
+    def test_a_finding_on_a_file_that_did_not_load_leads_nowhere(self, tmp_path: Path) -> None:
+        state = get(opened(tmp_path, HALF_SAVED), "/api/state").body
+        half = next(
+            finding for finding in state["findings"] if finding["file"].endswith("b.ddd.json")
+        )
+        assert half["route"] is None
+
+    def test_an_unknown_unit_leads_to_its_unit(self, tmp_path: Path) -> None:
+        api = opened_example(tmp_path, "vocabulary", "project.ddd.json")
+        drifted = tmp_path / "vocabulary" / "pump.ddd.json"
+        drifted.write_text(
+            drifted.read_text(encoding="utf-8").replace('"unit": "kPa"', '"unit": "KPA"', 1),
+            encoding="utf-8",
+            newline="",
+        )
+        # Session has no `refresh`; `poll()` is what re-analyses the open project on demand when
+        # a file of it changed on disk (its own docstring, and the pattern the rest of this file
+        # uses), which is the same thing under a different name.
+        assert api.session.poll() is True
+        unknown = next(
+            finding
+            for finding in get(api, "/api/state").body["findings"]
+            if finding["check"] == "unknown-unit"
+        )
+        assert unknown["route"] == {"kind": "unit", "name": "KPA"}
 
 
 class TestFiles:
@@ -758,6 +805,15 @@ class TestVariable:
             ),
         ]
 
+    def test_a_panel_finding_carries_its_route(self, api: Api) -> None:
+        findings = get(api, "/api/variable", name="Speed").body["findings"]
+        # `a.ddd.json` states no id for Speed, so the panel has a finding to carry a route at
+        # all: asserted, or the `all` below would pass over an empty list saying nothing.
+        assert findings
+        assert all(
+            finding["route"] == {"kind": "variable", "name": "Speed"} for finding in findings
+        )
+
     def test_a_disagreement_is_among_its_findings_on_both_sides(self, api: Api, root: Path) -> None:
         assert post(api, "/api/edit", unit_edit(api, root, "%")).status == 200
         findings = get(api, "/api/variable", name="Speed").body["findings"]
@@ -791,6 +847,38 @@ class TestVariable:
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
         assert reply.body["message"] == (
             "'Torque' is not declared in any file that loaded, and b.ddd.json did not load"
+        )
+
+    def test_a_name_only_a_file_that_changed_since_declares_is_not_said_to_be_gone(
+        self, tmp_path: Path
+    ) -> None:
+        # The race itself: a file saved half-edited between the analysis and this request is
+        # still recorded loaded, with the fingerprint it had before the save. Answered "not
+        # declared", the page would close the panel for good instead of waiting out the second
+        # or so until the next analysis catches up.
+        api = opened(tmp_path, RACE)
+        assert get(api, "/api/variable", name="Torque").status == 200
+        write_tree(tmp_path, {"b.ddd.json": HALF_SAVED["b.ddd.json"]})
+        reply = get(api, "/api/variable", name="Torque")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"] == (
+            "'Torque' is not declared in any file that has not changed since, "
+            "and b.ddd.json changed since it was read"
+        )
+
+    def test_a_name_only_a_file_deleted_since_declares_is_not_said_to_be_gone(
+        self, tmp_path: Path
+    ) -> None:
+        # Gone missing since counts as changed: the fingerprint recorded at the analysis cannot
+        # be read back at all, which is answered the same as a file whose bytes moved on.
+        api = opened(tmp_path, RACE)
+        assert get(api, "/api/variable", name="Torque").status == 200
+        (tmp_path / "b.ddd.json").unlink()
+        reply = get(api, "/api/variable", name="Torque")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"] == (
+            "'Torque' is not declared in any file that has not changed since, "
+            "and b.ddd.json changed since it was read"
         )
 
     def test_a_project_the_analysis_could_not_read_cannot_say_what_it_declares(
@@ -1104,6 +1192,103 @@ class TestSettle:
         )
         assert json.loads(raw) == {"min": 0, "max": 100}
         assert get(api, "/api/settle", name="Speed", key="limits", raw=raw).body["changes"] == []
+
+
+class TestFix:
+    def test_a_missing_id_is_previewed_and_applied(self, tmp_path: Path) -> None:
+        # A second producing declaration without an id, so that stamping the first proves the
+        # fix is scoped to the pointer it was asked about rather than to every unstamped
+        # declaration the file holds.
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Speed", unit="rpm"),
+                    declare("output", "Torque", unit="Nm"),
+                ),
+            },
+        )
+        root = tmp_path
+        before = contents(root)
+        reply = get(
+            api,
+            "/api/fix",
+            file=posix(root, "a.ddd.json"),
+            pointer="component.interface[0].definition",
+            check="missing-id",
+        )
+        assert reply.status == 200
+        assert [fix["title"] for fix in reply.body["fixes"]] == ["Give 'Speed' an id"]
+        assert contents(root) == before, "a preview writes nothing"
+
+        (change,) = reply.body["fixes"][0]["changes"]
+        assert change["hunks"], "the reader is shown the line it would add"
+        edit = {"changes": [{f: change[f] for f in ("file", "fingerprint", "operations")}]}
+        assert post(api, "/api/edit", edit).status == 200
+        stamped = json.loads((root / "a.ddd.json").read_text(encoding="utf-8"))
+        assert len(stamped["component"]["interface"][0]["definition"]["id"]) == 12
+        # Named by the pointer alone: the declaration `/api/fix` was not asked about is left as
+        # it was, which a fixture with only one unstamped declaration could not have shown.
+        assert "id" not in stamped["component"]["interface"][1]["definition"]
+
+    def test_a_fix_the_engine_refuses_is_a_refusal_the_page_can_act_on(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # `fixes_for` and `planned` each read the file from disk, moments apart, inside the one
+        # request: an external rewrite or delete in that window is refused by `planned`, the way
+        # `_settle`/`_unit_plan` are, rather than crashing into a generic 500.
+        def refuse(*_: object) -> None:
+            raise EditError(UNREADABLE, "a.ddd.json can no longer be read as utf-8")
+
+        monkeypatch.setattr("ddd.gui.api.planned", refuse)
+        reply = get(
+            api,
+            "/api/fix",
+            file=posix(root, "a.ddd.json"),
+            pointer="component.interface[0].definition",
+            check="missing-id",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"] == "a.ddd.json can no longer be read as utf-8"
+
+    def test_a_finding_with_no_fix_answers_none(self, api: Api, root: Path) -> None:
+        reply = get(
+            api,
+            "/api/fix",
+            file=posix(root, "a.ddd.json"),
+            pointer="component.interface[0].definition",
+            check="definition-mismatch",
+        )
+        assert (reply.status, reply.body["fixes"]) == (200, [])
+
+    @pytest.mark.parametrize(
+        "query",
+        [{}, {"file": "a.ddd.json"}, {"file": "a.ddd.json", "pointer": "x"}],
+    )
+    def test_a_malformed_request_is_bad(self, api: Api, query: dict[str, str]) -> None:
+        assert get(api, "/api/fix", **query).status == 400
+
+    def test_a_file_of_no_project_is_not_found(self, api: Api, tmp_path: Path) -> None:
+        reply = get(
+            api,
+            "/api/fix",
+            file=(tmp_path / "elsewhere.ddd.json").resolve().as_posix(),
+            pointer="component.interface[0].definition",
+            check="missing-id",
+        )
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_fixing_needs_an_open_project(self, root: Path) -> None:
+        reply = get(
+            Api(Session(root)),
+            "/api/fix",
+            file=posix(root, "a.ddd.json"),
+            pointer="component.interface[0].definition",
+            check="missing-id",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
 
 
 def copied(tmp_path: Path, example: str, project_file: str) -> tuple[Api, Path]:

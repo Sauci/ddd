@@ -101,3 +101,16 @@ function driftNumber(
   writeFileSync(path, text, "utf8");
   return before;
 }
+
+/** A producing declaration's id taken away from outside, the way a description written before
+ * `ddd id` adopted ids states it - which is what `missing-id` reports; answers the file as it
+ * was before. */
+export function unstamp(directory: string, file: string, variable: string): Buffer {
+  const path = join(directory, file);
+  const before = readFileSync(path);
+  const text = before
+    .toString("utf8")
+    .replace(new RegExp(`("name": "${variable}"[\\s\\S]*?)\\n\\s*"id": "[^"]*",`), "$1");
+  writeFileSync(path, text, "utf8");
+  return before;
+}

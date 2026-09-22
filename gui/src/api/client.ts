@@ -9,6 +9,8 @@ import type {
   SessionInfo,
   SettleReply,
   State,
+  TypeReply,
+  TypesReply,
   UndoPreview,
   UndoReply,
   UnitReply,
@@ -143,6 +145,36 @@ function planQuery(plan: UnitPlanRequest): string {
   if (plan.action !== "adopt") parts.push(["unit", plan.unit]);
   if (plan.action === "rename") parts.push(["to", plan.to]);
   if (plan.action === "describe") parts.push(["description", plan.description]);
+  return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
+}
+
+export const getTypes = (fetchImpl: Fetch = fetch) =>
+  request<TypesReply>("/api/types", {}, fetchImpl);
+
+export const getType = (name: string, fetchImpl: Fetch = fetch) =>
+  request<TypeReply>(`/api/type?name=${encodeURIComponent(name)}`, {}, fetchImpl);
+
+/** One change to a type, as `GET /api/type-plan` takes it: what each action needs. */
+export type TypePlanRequest =
+  | { action: "set"; name: string; key: string; raw: string | null }
+  | { action: "rename"; name: string; to: string };
+
+export const getTypePlan = (plan: TypePlanRequest, fetchImpl: Fetch = fetch) =>
+  request<PlanReply>(`/api/type-plan?${typeQuery(plan)}`, {}, fetchImpl);
+
+/** A plan's query: the action and the type, then whichever of `key`, `raw` and `to` it takes.
+ * A `raw` of `null` is left out, which is how the server reads "leave the key out". */
+function typeQuery(plan: TypePlanRequest): string {
+  const parts: [string, string][] = [
+    ["action", plan.action],
+    ["name", plan.name],
+  ];
+  if (plan.action === "set") {
+    parts.push(["key", plan.key]);
+    if (plan.raw !== null) parts.push(["raw", plan.raw]);
+  } else {
+    parts.push(["to", plan.to]);
+  }
   return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
 }
 

@@ -1,4 +1,4 @@
-import type { UnitPlanRequest } from "../api/client";
+import type { TypePlanRequest, UnitPlanRequest } from "../api/client";
 import type { Finding, State, UndoneChange } from "../api/types";
 import { baseName, type ShownChange } from "./units";
 
@@ -18,6 +18,12 @@ export function unitLabel(plan: UnitPlanRequest): string {
   if (plan.action === "describe") return fitted(`the description of '${plan.unit}'`);
   if (plan.action === "add") return fitted(`'${plan.unit}' added to the vocabulary`);
   return fitted(`'${plan.unit}' removed from the vocabulary`);
+}
+
+/** What a change of one of the project's types is called when it comes to be undone. */
+export function typeLabel(plan: TypePlanRequest): string {
+  if (plan.action === "rename") return fitted(`the rename of '${plan.name}' to '${plan.to}'`);
+  return fitted(`the ${plan.key} of ${plan.name}`);
 }
 
 /**

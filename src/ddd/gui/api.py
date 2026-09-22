@@ -31,6 +31,7 @@ from ddd.editing import (
     EditError,
     FileChange,
     Operation,
+    fingerprint,
     parse_raw,
 )
 from ddd.finding_fixes import fixes_for
@@ -655,10 +656,14 @@ def _module(file: SourceFile) -> Module:
 def _undeclared(revision: Revision, name: str) -> Reply:
     """The answer about ``name`` when no declaration of it was read.
 
-    That nothing declares it only while every file loaded: a file saved half-edited, as an editor
-    saves one being typed into, keeps the names only it declares out of every index until it
-    parses again, and a page told they are not declared would close their panels for good
-    (spec 5.5) rather than wait for the next save.
+    That nothing declares it only while every file loaded, and reads now as it did at that
+    analysis: a file saved half-edited, as an editor saves one being typed into, keeps the names
+    only it declares out of every index until it parses again, and a page told they are not
+    declared would close their panels for good (spec 5.5) rather than wait for the next save.
+
+    A file the analysis never loaded and a file it loaded that has since changed on disk - or
+    gone missing, which reads the same as changed - are two different statements: this answers
+    each file the one that is true of it, never the other.
     """
     unread = [file.path.name for file in revision.files if not file.loaded]
     if unread:
@@ -668,7 +673,29 @@ def _undeclared(revision: Revision, name: str) -> Reply:
             f"'{name}' is not declared in any file that loaded, "
             f"and {', '.join(unread)} did not load",
         )
+    changed = [file.path.name for file in revision.files if _changed_since(file)]
+    if changed:
+        return _error(
+            409,
+            UNREADABLE,
+            f"'{name}' is not declared in any file that has not changed since, "
+            f"and {', '.join(changed)} changed since it was read",
+        )
     return _error(404, "not-found", f"'{name}' is not declared in the open project")
+
+
+def _changed_since(file: SourceFile) -> bool:
+    """Whether ``file`` no longer reads as the analysis found it.
+
+    Read fresh and fingerprinted again, not compared by modification time: the same check an
+    edit's own fingerprint makes. A file gone missing since cannot be read at all, which counts
+    as changed rather than being guessed at either way.
+    """
+    try:
+        data = file.path.read_bytes()
+    except OSError:
+        return True
+    return fingerprint(data) != file.fingerprint
 
 
 def _unit_plan_of(

@@ -46,6 +46,16 @@ HALF_SAVED = {
     "b.ddd.json": json.dumps(component("B", declare("input", "Torque", unit="Nm")), indent=2)[:60],
 }
 
+# The project HALF_SAVED becomes once `b.ddd.json` is saved whole: opened this way first, then
+# broken exactly as HALF_SAVED is broken already (or removed outright) once the panel has read
+# it once, to reproduce the race the CI diagnosis found deterministically - no browser, no
+# timing, just a write landing between two requests of the same revision.
+RACE = {
+    "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+    "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+    "b.ddd.json": component("B", declare("input", "Torque", unit="Nm")),
+}
+
 # One unit stated three ways: by a variable, by a scalar type and by a structure member.
 STATED_THREE_WAYS = {
     "p.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
@@ -837,6 +847,38 @@ class TestVariable:
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
         assert reply.body["message"] == (
             "'Torque' is not declared in any file that loaded, and b.ddd.json did not load"
+        )
+
+    def test_a_name_only_a_file_that_changed_since_declares_is_not_said_to_be_gone(
+        self, tmp_path: Path
+    ) -> None:
+        # The race itself: a file saved half-edited between the analysis and this request is
+        # still recorded loaded, with the fingerprint it had before the save. Answered "not
+        # declared", the page would close the panel for good instead of waiting out the second
+        # or so until the next analysis catches up.
+        api = opened(tmp_path, RACE)
+        assert get(api, "/api/variable", name="Torque").status == 200
+        write_tree(tmp_path, {"b.ddd.json": HALF_SAVED["b.ddd.json"]})
+        reply = get(api, "/api/variable", name="Torque")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"] == (
+            "'Torque' is not declared in any file that has not changed since, "
+            "and b.ddd.json changed since it was read"
+        )
+
+    def test_a_name_only_a_file_deleted_since_declares_is_not_said_to_be_gone(
+        self, tmp_path: Path
+    ) -> None:
+        # Gone missing since counts as changed: the fingerprint recorded at the analysis cannot
+        # be read back at all, which is answered the same as a file whose bytes moved on.
+        api = opened(tmp_path, RACE)
+        assert get(api, "/api/variable", name="Torque").status == 200
+        (tmp_path / "b.ddd.json").unlink()
+        reply = get(api, "/api/variable", name="Torque")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"] == (
+            "'Torque' is not declared in any file that has not changed since, "
+            "and b.ddd.json changed since it was read"
         )
 
     def test_a_project_the_analysis_could_not_read_cannot_say_what_it_declares(

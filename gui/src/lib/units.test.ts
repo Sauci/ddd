@@ -3,6 +3,7 @@ import type { PlannedChange, SettleReply, UnitsReply, VariableDeclaration } from
 import {
   baseName,
   consequence,
+  declaredUnits,
   editOf,
   enteredUnit,
   hunkLines,
@@ -125,7 +126,7 @@ group("reading what a declaration states", () => {
 
 group("what the picker lists", () => {
   test("its own units first, the producer's first, then the other units in use", () => {
-    const sections = pickerSections("ValueA", VALUE_A, FREE, "");
+    const sections = pickerSections("ValueA", declaredUnits(VALUE_A), FREE, "");
     expect(sections.map((section) => section.title)).toEqual([
       "Declared for ValueA",
       "Other units in this project",
@@ -144,7 +145,10 @@ group("what the picker lists", () => {
   test("a declaration without a unit is listed as no unit among its own", () => {
     const sections = pickerSections(
       "ValueA",
-      [declared("SensorHub", "produces", "%"), declared("Controller", "reads", null)],
+      declaredUnits([
+        declared("SensorHub", "produces", "%"),
+        declared("Controller", "reads", null),
+      ]),
       FREE,
       "",
     );
@@ -155,12 +159,12 @@ group("what the picker lists", () => {
   });
 
   test("a variable with no declarations lists no declared section", () => {
-    const sections = pickerSections("ValueA", [], FREE, "");
+    const sections = pickerSections("ValueA", declaredUnits([]), FREE, "");
     expect(sections.map((section) => section.id)).toEqual(["used", "none"]);
   });
 
   test("with a vocabulary, the project's units follow, described and counted", () => {
-    const sections = pickerSections("ValueA", VALUE_A, VOCABULARY, "");
+    const sections = pickerSections("ValueA", declaredUnits(VALUE_A), VOCABULARY, "");
     expect(sections[1]?.title).toBe("This project's units");
     expect(sections[1]?.choices.map((c) => [c.label, c.detail])).toEqual([
       ["rpm", "rotational speed · 1 variable"],
@@ -169,13 +173,13 @@ group("what the picker lists", () => {
   });
 
   test("typing narrows every section, regardless of case", () => {
-    const sections = pickerSections("ValueA", VALUE_A, FREE, "H");
+    const sections = pickerSections("ValueA", declaredUnits(VALUE_A), FREE, "H");
     expect(sections.map((section) => section.id)).toEqual(["used", "typed"]);
     expect(sections[0]?.choices.map((c) => c.label)).toEqual(["Hz"]);
   });
 
   test("what was typed is offered as typed unless it is listed exactly", () => {
-    const typed = pickerSections("ValueA", VALUE_A, VOCABULARY, "RPM");
+    const typed = pickerSections("ValueA", declaredUnits(VALUE_A), VOCABULARY, "RPM");
     expect(typed.at(-1)).toEqual({
       id: "typed",
       title: "As typed",
@@ -183,14 +187,16 @@ group("what the picker lists", () => {
         { id: "typed:RPM", unit: "RPM", label: "RPM", detail: "not one of this project's units" },
       ],
     });
-    expect(pickerSections("ValueA", VALUE_A, FREE, "kPa").at(-1)?.choices[0]?.detail).toBe("");
-    expect(pickerSections("ValueA", VALUE_A, FREE, "rpm").some((s) => s.id === "typed")).toBe(
-      false,
-    );
+    expect(
+      pickerSections("ValueA", declaredUnits(VALUE_A), FREE, "kPa").at(-1)?.choices[0]?.detail,
+    ).toBe("");
+    expect(
+      pickerSections("ValueA", declaredUnits(VALUE_A), FREE, "rpm").some((s) => s.id === "typed"),
+    ).toBe(false);
   });
 
   test("typing the no-unit label matches it exactly, so nothing is offered as typed", () => {
-    const sections = pickerSections("ValueA", VALUE_A, FREE, "no unit");
+    const sections = pickerSections("ValueA", declaredUnits(VALUE_A), FREE, "no unit");
     expect(sections.map((section) => section.id)).toEqual(["none"]);
     expect(sections[0]?.choices).toEqual([
       { id: "none:", unit: null, label: "no unit", detail: "" },
@@ -208,7 +214,7 @@ group("what the picker lists", () => {
     expect(unitLabel("rpm")).toBe("rpm");
     expect(unitLabel(null)).toBe("no unit");
     expect(unitLabel(null)).toBe(
-      pickerSections("ValueA", VALUE_A, FREE, "").at(-1)?.choices[0]?.label,
+      pickerSections("ValueA", declaredUnits(VALUE_A), FREE, "").at(-1)?.choices[0]?.label,
     );
   });
 });
@@ -216,7 +222,7 @@ group("what the picker lists", () => {
 group("what Enter chooses with no entry of the list focused", () => {
   /** The picker as it stands while `text` is typed into it, and what Enter makes of that text. */
   const entered = (text: string, units: UnitsReply = FREE) =>
-    enteredUnit(pickerSections("ValueA", VALUE_A, units, text), text);
+    enteredUnit(pickerSections("ValueA", declaredUnits(VALUE_A), units, text), text);
 
   test("a unit an entry states exactly is that entry's unit", () => {
     expect(entered("rpm")).toBe("rpm");
@@ -238,7 +244,7 @@ group("what Enter chooses with no entry of the list focused", () => {
     expect(entered("kPa", VOCABULARY)).toBe("kPa");
     expect(entered(" rpm")).toBe(" rpm");
     expect(entered("No Unit")).toBe("No Unit");
-    const typed = pickerSections("ValueA", VALUE_A, FREE, "RPM").at(-1)?.choices[0];
+    const typed = pickerSections("ValueA", declaredUnits(VALUE_A), FREE, "RPM").at(-1)?.choices[0];
     expect(entered("RPM")).toBe(typed?.unit);
   });
 
@@ -249,7 +255,7 @@ group("what Enter chooses with no entry of the list focused", () => {
 
   test("the text is read against the entries, not against what they were narrowed by", () => {
     // Before anything is typed, the field shows the chosen unit and the list is not narrowed.
-    const unnarrowed = pickerSections("ValueA", VALUE_A, FREE, "");
+    const unnarrowed = pickerSections("ValueA", declaredUnits(VALUE_A), FREE, "");
     expect(enteredUnit(unnarrowed, "%")).toBe("%");
     expect(enteredUnit(unnarrowed, "no unit")).toBeNull();
     expect(enteredUnit(unnarrowed, "kPa")).toBe("kPa");

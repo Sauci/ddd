@@ -1,12 +1,19 @@
-import type { UnitsReply, VariableReply } from "../api/types";
+import type { UnitsReply, VariableKeyOffer } from "../api/types";
 import { pickerSections, rawOf } from "../lib/units";
-import { chooserSections, enteredValue, offerOf } from "../lib/variableKeys";
+import { chooserSections, enteredValue } from "../lib/variableKeys";
 import { ComboBox } from "../ui/ComboBox";
 import { UnitPicker } from "./UnitPicker";
 
 export interface KeyChooserProps {
-  variable: VariableReply;
-  /** Which key is being settled. */
+  /** The key's offer, as the panel's own answer carries it. */
+  offer: VariableKeyOffer;
+  /** Whose key it is - a variable's name or a type's - for the field's label and the first
+   * section's title. */
+  owner: string;
+  /** What already states a unit, for the unit picker's first section: every declaration's for a
+   * variable, the one value it states for a type. */
+  inPlay: ReadonlyMap<string | null, string[]>;
+  /** Which key is being chosen. */
   keyName: string;
   units: UnitsReply;
   /** What the field reads: what is being typed, else the value settled on. */
@@ -31,14 +38,13 @@ export interface KeyChooserProps {
 /** One key's chooser (spec 5.2): the values in play, state nothing, and the field the key takes.
  * A picture of its props. */
 export function KeyChooser(props: KeyChooserProps) {
-  const { variable, keyName, units } = props;
-  const offer = offerOf(variable, keyName);
-  if (offer === undefined) return null;
+  const { keyName, units } = props;
+  const offer = props.offer;
   if (offer.editor === "unit") {
     return (
       <UnitPicker
-        label={`Unit of ${variable.name}`}
-        sections={pickerSections(variable.name, variable.declarations, units, props.narrow)}
+        label={`Unit of ${props.owner}`}
+        sections={pickerSections(props.owner, props.inPlay, units, props.narrow)}
         typed={props.typed}
         onTyped={props.onTyped}
         onPick={(unit) => props.onChosen(rawOf(unit))}
@@ -50,11 +56,11 @@ export function KeyChooser(props: KeyChooserProps) {
       />
     );
   }
-  const sections = chooserSections(variable, keyName, props.narrow);
+  const sections = chooserSections(offer, props.owner, keyName, props.narrow);
   return (
     <div className="key-chooser">
       <ComboBox
-        label={`${label(keyName)} of ${variable.name}`}
+        label={`${label(keyName)} of ${props.owner}`}
         inputValue={props.typed}
         onInputChange={props.onTyped}
         sections={sections}

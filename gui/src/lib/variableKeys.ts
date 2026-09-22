@@ -275,17 +275,16 @@ export function labelOfRaw(_variable: VariableReply, key: string, raw: string | 
 
 /** Every section a key's chooser lists, narrowed to what was typed (spec 5.2). */
 export function chooserSections(
-  variable: VariableReply,
+  offer: VariableKeyOffer,
+  owner: string,
   key: string,
   typed: string,
 ): ValueSection[] {
-  const offer = offerOf(variable, key);
-  if (offer === undefined) return [];
   const inPlay = offer.values.map((value) =>
     choice("declared", key, value.raw, who(value.components, value.producer)),
   );
   const listed: ValueSection[] = [
-    { id: "declared", title: `Declared for ${variable.name}`, choices: inPlay },
+    { id: "declared", title: `Declared for ${owner}`, choices: inPlay },
     {
       id: "project",
       title: NAMED[offer.editor === "name" ? key : offer.editor] ?? "",

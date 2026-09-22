@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { VariableReply } from "../api/types";
-import { labelOfRaw, limitsOf, startingRaw } from "../lib/variableKeys";
+import { declaredUnits } from "../lib/units";
+import { labelOfRaw, limitsOf, offerOf, startingRaw } from "../lib/variableKeys";
 import { DISAGREEING, FREE_UNITS, SHAPED } from "../stories/fixtures";
 import { KeyChooser } from "./KeyChooser";
 
@@ -20,9 +21,13 @@ function Field({ variable, keyName, open = false }: Props) {
   const [chosen, setChosen] = useState<string | null>(startingRaw(variable, keyName));
   const [typed, setTyped] = useState<string | undefined>(undefined);
   const [range, setRange] = useState(limitsOf(chosen));
+  const offer = offerOf(variable, keyName);
+  if (offer === undefined) return null;
   return (
     <KeyChooser
-      variable={variable}
+      offer={offer}
+      owner={variable.name}
+      inPlay={declaredUnits(variable.declarations)}
       keyName={keyName}
       units={FREE_UNITS}
       typed={typed ?? labelOfRaw(variable, keyName, chosen)}

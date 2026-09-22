@@ -54,26 +54,26 @@ function owner(declarations: readonly VariableDeclaration[]): VariableDeclaratio
   return declarations.find((entry) => entry.role === "produces") ?? declarations[0];
 }
 
-/** Every section the picker lists, narrowed to what was typed, in the order spec 5.3 gives. */
+/** The picker's sections: what already states this thing, then the project's vocabulary or the
+ * units it uses, then what was typed. `inPlay` is unit -> who states it, the owner's own first. */
 export function pickerSections(
-  name: string,
-  declarations: readonly VariableDeclaration[],
+  owner: string,
+  inPlay: ReadonlyMap<string | null, string[]>,
   units: UnitsReply,
   typed: string,
 ): UnitSection[] {
-  const declared = declaredUnits(declarations);
   const listed: UnitSection[] = [
     {
       id: "declared",
-      title: `Declared for ${name}`,
-      choices: [...declared].map(([unit, who]) => choice("declared", unit, who.join(", "))),
+      title: `Declared for ${owner}`,
+      choices: [...inPlay].map(([unit, who]) => choice("declared", unit, who.join(", "))),
     },
     units.vocabulary === null
       ? {
           id: "used",
           title: "Other units in this project",
           choices: units.used
-            .filter((used) => !declared.has(used.unit))
+            .filter((used) => !inPlay.has(used.unit))
             .map((used) => choice("used", used.unit, variables(used.variables))),
         }
       : {
@@ -220,7 +220,9 @@ function nonEmpty<T>(items: readonly T[]): [T, ...T[]] | null {
 }
 
 /** Each unit the declarations have, the owner's first, with the components having it. */
-function declaredUnits(declarations: readonly VariableDeclaration[]): Map<string | null, string[]> {
+export function declaredUnits(
+  declarations: readonly VariableDeclaration[],
+): Map<string | null, string[]> {
   const first = owner(declarations);
   const ordered = first === undefined ? [] : [first, ...declarations.filter((d) => d !== first)];
   const units = new Map<string | null, string[]>();

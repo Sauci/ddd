@@ -289,15 +289,15 @@ The commands
      - preview: serve a browser interface over one project's description files, on this
        computer by default, and open the browser on it. The project opens on a graph of
        its modules, an arrow per pair coloured by the worst disagreement between them,
-       with the component table and a Units tab - listing the project's units and
-       maintaining its vocabulary - one tab away; a variable's panel shows every key its
-       declarations share, says which of them they disagree about, and settles one on
-       every declaration at once. Every change is written into the files in their own
-       layout and checked the way ``ddd check`` checks them. ``-b DIR`` names a build
-       directory as for ``ddd lsp``, ``--host ADDRESS`` listens beyond this computer for a
-       container, ``--port N`` fixes the port and ``--no-browser`` only prints the
-       address. It serves until interrupted, and its options are not yet part of the
-       stable interface.
+       with the component table, a Units tab - listing the project's units and maintaining
+       its vocabulary - and a Findings tab of every finding, worst first, one tab away; a
+       variable's panel shows every key its declarations share, says which of them they
+       disagree about, and settles one on every declaration at once. Every change is
+       written into the files in their own layout and checked the way ``ddd check`` checks
+       them. ``-b DIR`` names a build directory as for ``ddd lsp``, ``--host ADDRESS``
+       listens beyond this computer for a container, ``--port N`` fixes the port and
+       ``--no-browser`` only prints the address. It serves until interrupted, and its
+       options are not yet part of the stable interface.
    * - ``ddd build-info FILE -o FILE``
      - record which project description a build runs DDD on and under which severity policy,
        the ``ddd-build.json`` the language server and ``ddd gui`` read; ``ddd_generate()``

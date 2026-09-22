@@ -888,11 +888,25 @@ the declarations themselves; ``GET /api/settle`` settles any of the twelve keys 
 ``ddd.lsp.edits.PROPAGATED_KEYS`` and is the same endpoint the unit has always used.
 ``ddd.value_identity.same_value`` decides when two spellings are one value - a conversion
 through the models and an enum by its name, limits as the numbers they resolve to,
-everything else its canonical json text, anything the models refuse outright falling back
-to that text - so the panel's values in play, ``definition-mismatch`` and what
-``GET /api/settle`` previews through ``ddd.variables.narrowed`` can never disagree about
-one. ``ddd.lsp.edits.settle`` itself is untouched, and still compares a declaration's own
-text.
+everything else its canonical json text, anything the models refuse outright falling back to
+that text - so the panel's values in play, ``definition-mismatch`` and what
+``GET /api/settle`` previews can never disagree about one.
+
+Where a finding leads is answered once, in ``ddd.finding_routes``, from the finding's own
+check, file and pointer, together with the file's own kind and whether it loaded: the
+variable a declaration is about, the unit a check such as ``unknown-unit`` names, or the
+component the finding is filed on - and nothing for a finding with nowhere to go, a file
+that did not load or one of a kind the page has no screen for among them. ``GET
+/api/state``, ``GET /api/variable`` and ``GET /api/unit`` all carry that answer on every
+finding they list. ``ddd.finding_fixes`` plans the one fix a finding has nowhere else to
+offer: a ``missing-id`` finding's identity, from the same walk ``ddd.identity.unstamped``
+gives ``ddd id`` and the language server's own quick fix, written as the operations ``POST
+/api/edit`` takes rather than as a text edit; ``GET /api/fix`` previews it, as ``GET
+/api/settle`` previews a settlement. ``ddd.lsp.edits.settle`` itself now compares what a
+value means rather than its own text, the same ``ddd.value_identity.same_value`` the panel's
+values in play already read - which is why ``ddd gui`` no longer narrows a settlement of its
+own: ``ddd.variables.narrowed`` is gone, the rule read from ``ddd.lsp.edits.settle`` alone
+now.
 
 The edit engine learnt one thing for adoption: a change whose ``fingerprint`` is ``null``
 creates its file, one ``set`` of the whole document at the root pointer, and is refused as

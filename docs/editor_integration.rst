@@ -108,13 +108,16 @@ file and ask again.
 **Quick fixes.** On a key the declarations of one object have to agree on - a ``unit``, a
 ``conversion``, a ``datatype`` - a ``definition-mismatch`` offers every way of reconciling
 it: take the producing component's value, spread this one to the others, or, when nobody
-else states the key, remove it. ``limits`` are the exception to the last: a declaration that
-leaves them out defers to the one that states them, which the checker counts as agreement, so
-only two stated ranges that differ are offered a fix. A declaration naming a declared type is
-an exception of its own: the type fixes its ``unit``, ``conversion`` and ``limits``, which may
-not be stated beside the ``typename``, so none of the three is offered to it, and spreading
-one of them to the other declarations leaves it out. The value is copied as source text rather
-than re-serialised, so the project's formatting survives the fix.
+else states the key, remove it - not to a declaration whose value already means what it
+would become: a conversion written over four lines and the same conversion written on one
+are one value, as the checks have always counted them. ``limits`` are the exception to the
+last: a declaration that leaves them out defers to the one that states them, which the
+checker counts as agreement, so only two stated ranges that differ are offered a fix. A
+declaration naming a declared type is an exception of its own: the type fixes its ``unit``,
+``conversion`` and ``limits``, which may not be stated beside the ``typename``, so none of
+the three is offered to it, and spreading one of them to the other declarations leaves it
+out. The value is copied as source text rather than re-serialised, so the project's
+formatting survives the fix.
 
 A ``missing-id`` offers one fix of its own: give this object an identity. It writes the same
 key ``ddd id --assign`` would write, in the same place, decided by the same code - the command

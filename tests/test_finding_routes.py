@@ -252,6 +252,13 @@ class TestRoutes:
         )
         assert route is None
 
+    def test_a_type_the_file_no_longer_holds_leads_nowhere(self, structures, cache) -> None:
+        # The analysis read the file; the pointer describes where the type was then.
+        route = route_of(
+            "type-kind", structures / "types.ddd.json", "types[99].datatype", "types", True, cache
+        )
+        assert route is None
+
     def test_a_file_that_broke_since_the_analysis_leads_nowhere_rather_than_failing(
         self, tmp_path: Path
     ) -> None:

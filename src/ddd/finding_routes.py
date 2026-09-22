@@ -27,9 +27,6 @@ UNIT_CHECKS: Final = frozenset({"unknown-unit"})
 COMPONENT_KIND: Final = "component"
 """The one file kind the page has a screen for; the rest are milestone 6's."""
 
-TYPES_KIND: Final = "types"
-"""The second file kind the page has a screen for, as of part 6."""
-
 WITHIN_TYPE: Final = re.compile(r"^(?:component\.)?types\[\d+\]")
 """The entry a pointer inside a type lies in: the type itself, one of its keys, or a member of
 it, all of which the same panel shows - whether the type was declared in a types file

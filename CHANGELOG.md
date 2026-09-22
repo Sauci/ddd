@@ -65,6 +65,16 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   interface has no page for yet.  A producing declaration without an identity is given one from
   there, previewed like every other change.
 
+  Every change the interface writes can be undone while the server runs, one change at a time,
+  from a button beside the project's name saying what it would put back - "Undo the unit of
+  ValueA", "Undo the vocabulary adopted".  Pressing it shows which files would be put back and,
+  on request, the exact lines; pressing again writes them, a file the change created taken away
+  with the rest.  The interface holds what each change replaced rather than a way to invert it,
+  so a file comes back exactly as its author wrote it; a file changed on disk since is refused
+  and named, and its change stays on the list to be undone once the file is put back.  The list
+  lives in the running server, is capped at fifty changes and ends when `ddd gui` does, which is
+  the one thing it leaves behind: nothing is written into the project for it.
+
 * **The editor's reconcile quick fix is no longer offered for a value that already means what
   it would be set to.**  Taking the producing component's value, or spreading one declaration's
   value to the rest, now writes nothing to a declaration that already states it, however

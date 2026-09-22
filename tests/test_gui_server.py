@@ -297,7 +297,8 @@ class TestWhatIsServed:
                         }
                     ],
                 }
-            ]
+            ],
+            "label": "the unit of Speed",
         }
         response, data = ask(
             server,
@@ -319,7 +320,7 @@ class TestWhatIsServed:
         def failing(api: Api, query: object, body: object) -> None:
             raise RuntimeError("a defect")
 
-        monkeypatch.setitem(api_module._ROUTES, "/api/session", ("GET", failing))
+        monkeypatch.setitem(api_module._ROUTES, "/api/session", {"GET": failing})
         response, data = ask(server, "GET", "/api/session")
         assert response.status == 500
         assert response.getheader("Cache-Control") == "no-store"
@@ -339,7 +340,7 @@ class TestWhatIsServed:
         def slipped(api: Api, query: object, body: object) -> Reply:
             return Reply(200, {"limit": float("nan")})
 
-        monkeypatch.setitem(api_module._ROUTES, "/api/session", ("GET", slipped))
+        monkeypatch.setitem(api_module._ROUTES, "/api/session", {"GET": slipped})
         response, data = ask(server, "GET", "/api/session")
         assert (response.status, json.loads(data)["error"]) == (500, "internal")
         assert "ValueError: Out of range float values are not JSON compliant" in (
@@ -352,7 +353,7 @@ class TestWhatIsServed:
         def gone(api: Api, query: object, body: object) -> None:
             raise ConnectionAbortedError("the tab was closed")
 
-        monkeypatch.setitem(api_module._ROUTES, "/api/session", ("GET", gone))
+        monkeypatch.setitem(api_module._ROUTES, "/api/session", {"GET": gone})
         with pytest.raises(http.client.RemoteDisconnected):
             ask(server, "GET", "/api/session")
         assert capsys.readouterr().err == ""
@@ -477,7 +478,8 @@ class TestEveryEndpointOnTheDemo:
                         }
                     ],
                 }
-            ]
+            ],
+            "label": "the unit of ValueA",
         }
         body = answered(server, "POST", "/api/edit", edit)
         after = controller.read_bytes()
@@ -521,7 +523,10 @@ class TestBlankParameters:
         assert change["operations"] == [
             {"op": "set", "pointer": "units[0].description", "raw": '""'}
         ]
-        edit = {"changes": [{key: change[key] for key in ("file", "fingerprint", "operations")}]}
+        edit = {
+            "changes": [{key: change[key] for key in ("file", "fingerprint", "operations")}],
+            "label": "the description of rpm",
+        }
         answered(server, "POST", "/api/edit", edit)
         units = json.loads((root / "units.ddd.json").read_text(encoding="utf-8"))["units"]
         assert units == [{"unit": "rpm", "description": ""}]

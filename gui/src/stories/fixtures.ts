@@ -5,6 +5,7 @@ import type {
   ProjectUnit,
   SettleReply,
   State,
+  UndoPreview,
   UnitReply,
   UnitsReply,
   VariableKeyCarried,
@@ -866,6 +867,7 @@ export const PROJECT_FINDINGS: State = {
     },
   ],
   findings: [UNKNOWN_RPM_FINDING, STORAGE_MISMATCH, DID_NOT_LOAD, MISSING_ID, UNKNOWN_RASTER],
+  undoable: null,
 };
 
 /** The one fix the tab offers: `missing-id`, previewed onto SensorHub's ValueA. */
@@ -917,4 +919,37 @@ export const NO_FINDINGS: State = {
     },
   ],
   findings: [],
+  undoable: null,
+};
+
+/** What `GET /api/undo` answers for an adoption: the project description put back a line, and
+ * the units file that edit created taken away again - the two shapes a change of an undo has. */
+export const UNDO_ADOPTION: UndoPreview = {
+  revision: 7,
+  at: 3,
+  label: "the vocabulary adopted",
+  changes: [
+    {
+      file: DEMO,
+      gone: false,
+      hunks: [
+        {
+          line: 6,
+          before: ['      "components/pump.ddd.json",', '      "units.ddd.json"'],
+          after: ['      "components/pump.ddd.json"'],
+        },
+      ],
+    },
+    {
+      file: "C:/work/demo/units.ddd.json",
+      gone: true,
+      hunks: [
+        {
+          line: 1,
+          before: ["{", '  "units": [', '    { "unit": "rpm", "description": "" }', "  ]", "}"],
+          after: [],
+        },
+      ],
+    },
+  ],
 };

@@ -1,19 +1,18 @@
-import type { PlannedChange } from "../api/types";
-import { baseName, hunkLines } from "../lib/units";
+import { baseName, hunkLines, type ShownChange } from "../lib/units";
 
 /**
- * The lines each file will get, as Show changes prints them: a variable's panel, a unit's and
- * the adoption's preview alike. A file the change creates has no line of its own yet, and is
- * named as new.
+ * The lines each file will get, as Show changes prints them: a variable's panel, a unit's, the
+ * adoption's preview and the undo strip alike. A file with no line of its own - one a change
+ * creates, or one an undo takes away - is named by what happens to it instead.
  */
-export function Changes({ changes }: { changes: readonly PlannedChange[] }) {
+export function Changes({ changes }: { changes: readonly ShownChange[] }) {
   return (
     <div className="changes">
       {changes.flatMap((change) =>
         change.hunks.map((hunk) => (
           <pre key={`${change.file} ${hunk.line}`} className="hunk">
             <span className="where">
-              {baseName(change.file)}, {change.fingerprint === null ? "new" : `line ${hunk.line}`}
+              {baseName(change.file)}, {change.note ?? `line ${hunk.line}`}
             </span>
             {hunkLines(hunk).map((line) => (
               <span key={line.key} className={line.sign === "-" ? "removed" : "added"}>

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ApiError, getSettle, getUnits, getVariable, postEdit } from "../api/client";
 import { VariablePanelView } from "../components/VariablePanelView";
 import { type Refused, shownRefusal } from "../lib/refusals";
+import { settleLabel } from "../lib/undo";
 import { editOf, outsideVocabulary, textOf } from "../lib/units";
 import {
   keyRows,
@@ -150,7 +151,10 @@ export function VariablePanel({
   };
   const apply = useMutation({
     mutationFn: () => {
-      const edit = preview.data === undefined ? null : editOf(preview.data);
+      const edit =
+        preview.data === undefined || selected === undefined
+          ? null
+          : editOf(preview.data, settleLabel(name, selected));
       if (edit === null) throw new Error("there is nothing to change");
       return postEdit(edit);
     },

@@ -918,3 +918,22 @@ only when the same edit's change to that description leaves the new file among i
 creates takes the mode, and where the process may set them the owner and group, of the
 project description beside it, so ``ddd gui`` running in a container leaves the developer a
 file of their own rather than root's.
+
+Undo is the same engine read backwards. ``ddd.editing.apply_changes`` answers a
+:class:`~ddd.editing.Written` per file - the bytes it held before, ``None`` for a file the
+edit created, and the fingerprint of the bytes it left - and ``ddd.editing.restore`` writes
+those back through the same staging, taking away again a file the edit created and, when one
+file of several cannot be written, writing the ones already put back forward to what the
+edit had left them. ``ddd.editing.unchanged`` is what says an edit may still be put back: a
+file whose bytes are no longer the ones it left is somebody else's now, and the whole undo
+is refused as ``stale`` rather than half of it applied. The session keeps one stack of
+``Undoable`` entries per open project, numbered as it pushes and capped at ``MAX_UNDO`` -
+fifty - entries, each labelled by the screen that applied it; ``POST /api/edit`` takes that
+label, because only the screen knows that the edit was "the rename of 'rpm' to 'RPM'".
+``GET /api/state`` carries ``Session.undoable``, the top of the stack, so the control
+appears without a request of its own, ``GET /api/undo`` previews it - the lines each file
+would get back, and no operations, since an undo is bytes the server is holding rather than
+an edit the page composes - and ``POST /api/undo`` calls ``Session.undo`` with the entry's
+own number, refusing one that is no longer the top so that two windows cannot put back each
+other's changes. The stack lives in the running server and nothing of it is written into the
+project.

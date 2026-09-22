@@ -9,6 +9,8 @@ import type {
   SessionInfo,
   SettleReply,
   State,
+  UndoPreview,
+  UndoReply,
   UnitReply,
   UnitsReply,
   VariableReply,
@@ -146,6 +148,12 @@ function planQuery(plan: UnitPlanRequest): string {
 
 export const postEdit = (changes: Changes, fetchImpl: Fetch = fetch) =>
   request<EditReply>("/api/edit", post(changes), fetchImpl);
+
+export const getUndo = (fetchImpl: Fetch = fetch) =>
+  request<UndoPreview>("/api/undo", {}, fetchImpl);
+
+export const postUndo = (at: number, fetchImpl: Fetch = fetch) =>
+  request<UndoReply>("/api/undo", post({ at }), fetchImpl);
 
 function post(body: unknown): RequestInit {
   return {

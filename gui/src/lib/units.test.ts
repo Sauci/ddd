@@ -1,5 +1,5 @@
 import { expect, describe as group, test } from "vitest";
-import type { SettleReply, UnitsReply, VariableDeclaration } from "../api/types";
+import type { PlannedChange, SettleReply, UnitsReply, VariableDeclaration } from "../api/types";
 import {
   baseName,
   consequence,
@@ -9,6 +9,7 @@ import {
   outsideVocabulary,
   pickerSections,
   rawOf,
+  shownChanges,
   textOf,
   unitLabel,
   unitOfDeclaration,
@@ -93,6 +94,13 @@ const ONE_FILE: SettleReply = {
 };
 const ONE_FILE_CHANGE = ONE_FILE.changes[0];
 if (ONE_FILE_CHANGE === undefined) throw new Error("ONE_FILE must have one change");
+
+const CREATED_FILE_CHANGE: PlannedChange = {
+  file: UNITS_FILE,
+  fingerprint: null,
+  operations: [{ op: "set", pointer: "", raw: '{"units": [{"unit": "%", "description": ""}]}' }],
+  hunks: [{ line: 1, before: [], after: ["{", '  "units": ['] }],
+};
 
 group("reading what a declaration states", () => {
   test.each([
@@ -262,6 +270,13 @@ group("what a preview says and sends", () => {
     expect(baseName("a.ddd.json")).toBe("a.ddd.json");
   });
 
+  test("names a file a change creates as new, and every other by its line", () => {
+    expect(shownChanges([ONE_FILE_CHANGE, CREATED_FILE_CHANGE])).toEqual([
+      { file: ONE_FILE_CHANGE.file, hunks: ONE_FILE_CHANGE.hunks, note: null },
+      { file: CREATED_FILE_CHANGE.file, hunks: CREATED_FILE_CHANGE.hunks, note: "new" },
+    ]);
+  });
+
   test("a hunk reads as its lines taken out, then its lines put in", () => {
     expect(hunkLines({ line: 14, before: ["a", "b"], after: ["c"] })).toEqual([
       { key: "-14", sign: "-", text: "a" },
@@ -271,7 +286,7 @@ group("what a preview says and sends", () => {
   });
 
   test("the edit a preview comes to is what POST /api/edit takes, hunks left behind", () => {
-    expect(editOf(ONE_FILE)).toEqual({
+    expect(editOf(ONE_FILE, "the unit of ValueA")).toEqual({
       changes: [
         {
           file: CONTROLLER,
@@ -279,8 +294,14 @@ group("what a preview says and sends", () => {
           operations: [{ op: "set", pointer: `${AT}.unit`, raw: '"%"' }],
         },
       ],
+      label: "the unit of ValueA",
     });
-    expect(editOf({ revision: 1, changes: [] })).toBeNull();
-    expect(editOf({ revision: 1, changes: [{ ...ONE_FILE_CHANGE, operations: [] }] })).toBeNull();
+    expect(editOf({ revision: 1, changes: [] }, "the unit of ValueA")).toBeNull();
+    expect(
+      editOf(
+        { revision: 1, changes: [{ ...ONE_FILE_CHANGE, operations: [] }] },
+        "the unit of ValueA",
+      ),
+    ).toBeNull();
   });
 });

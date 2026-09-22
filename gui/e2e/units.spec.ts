@@ -297,8 +297,16 @@ test("no page reports a violation of its content security policy", async ({ page
   await page.getByRole("button", { name: "Controller", exact: true }).click();
   await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
   const panel = page.getByRole("complementary", { name: "ValueA" });
-  await panel.getByRole("button", { name: "Show changes" }).click();
-  await expect(panel.locator(".hunk")).toBeVisible();
+
+  // The undo strip (part 5), whose Show changes prints the same hunks the panels do: settling
+  // ValueA's unit here - the journey drifted it at the very top - gives the session something
+  // to offer.
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  await page.getByRole("button", { name: "Undo the unit of ValueA" }).click();
+  const undone = page.getByRole("region", { name: "Undo" });
+  await undone.getByRole("button", { name: "Show changes" }).click();
+  await expect(undone.locator(".hunk")).toBeVisible();
+
   await panel.getByRole("combobox", { name: "Unit of ValueA" }).press("ArrowDown");
   await expect(page.getByRole("option", { name: "%", exact: true })).toBeVisible();
   await panel.getByRole("combobox", { name: "Unit of ValueA" }).press("Escape");

@@ -24,7 +24,17 @@ from typing import Any, Final
 
 from ddd.build_info import BuildInfo
 from ddd.diagnostics import CheckInfo, Diagnostic, Severity
-from ddd.editing import INVALID, EditError, FileChange, apply_changes, edited, fingerprint
+from ddd.editing import (
+    INVALID,
+    STALE,
+    EditError,
+    FileChange,
+    Written,
+    apply_changes,
+    edited,
+    fingerprint,
+    restore,
+)
 from ddd.ir import DataDictionary
 from ddd.loading import parse_json_text, resolve_path
 from ddd.lsp.diagnostics import Run, group_findings, run_build, run_project
@@ -41,6 +51,10 @@ SEARCH_DEPTH: Final = 4
 UNKNOWN: Final = (-1, -1)
 """The stamp of a file whose modification time and size were not taken before an analysis read
 it: a size no file has, so the next poll finds the file changed and analyses once more."""
+
+MAX_UNDO: Final = 50
+"""How many edits the stack keeps, the oldest falling off: a session that runs all day does not
+grow without bound, and fifty is far past what a reader walks back by hand."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +117,21 @@ class Revision:
 
 
 @dataclass(frozen=True, slots=True)
+class Undoable:
+    """One edit the interface made, as it would be put back."""
+
+    at: int
+    """What the session counted this edit as, and what an undo names: never reused, so an undo
+    asked for from one window cannot put back an edit another window made in between."""
+
+    label: str
+    """What the page said this edit was, e.g. ``"the unit of ValueA"``."""
+
+    files: tuple[Written, ...]
+    """Every file it wrote, as :func:`ddd.editing.restore` takes them."""
+
+
+@dataclass(frozen=True, slots=True)
 class FileContent:
     """A description file as the page reads it: parsed, or the reason it cannot be."""
 
@@ -148,6 +177,8 @@ class Session:
         self._lock = threading.Lock()
         self._published = threading.Condition()
         self._revision: Revision | None = None
+        self._stack: list[Undoable] = []
+        self._edits = 0
         self._signature: dict[Path, tuple[int, int] | None] = {}
         self._stopping = threading.Event()
         self._poller: threading.Thread | None = None
@@ -163,6 +194,7 @@ class Session:
         if not _is_project(path):
             raise ValueError(f"{project} is not a project description")
         with self._lock:
+            self._stack = []
             return self._publish(self._analysed(path), {})
 
     def wait(self, after: int, timeout: float) -> Revision | None:
@@ -214,21 +246,59 @@ class Session:
             return FileContent(target, fingerprint(data), None, f"{target} is not json: {error}")
         return FileContent(target, fingerprint(data), parsed, None)
 
-    def edit(self, changes: Sequence[FileChange]) -> tuple[Revision, dict[Path, str]]:
+    def edit(
+        self, changes: Sequence[FileChange], label: str
+    ) -> tuple[Revision, tuple[Written, ...]]:
         """Make an edit of description files of the open project, then analyse it again.
 
         A change without a fingerprint creates its file, and only the kind of file adopting a
         vocabulary writes: one beside the project description, in an edit whose change of that
         description includes it. Any other is refused before a file is touched.
+
+        ``label`` is what the page calls this edit - "the unit of ValueA" - and is what an undo
+        of it offers to put back.
         """
         with self._lock:
             revision = self._required()
             confined = [_confined(revision, pending, changes) for pending in changes]
             written = apply_changes(confined)
+            self._edits += 1
+            self._stack.append(Undoable(self._edits, label, written))
+            del self._stack[:-MAX_UNDO]
             # After the edit's own write, so the next poll does not take it for somebody else's,
             # and before the analysis, so a save landing while that runs is not taken for seen.
             stamps = _signature(self._signature)
             return self._publish(self._analysed(revision.project), stamps), written
+
+    def undo(self, at: int) -> Revision:
+        """Put the edit numbered ``at`` back, then analyse the project again and pop it.
+
+        Only the top of the stack: an ``at`` that is not it is refused as stale, which is what
+        keeps a second window from putting back an edit this one never saw. A refusal - a file
+        changed since, or one that could not be written - leaves the stack as it is, so the
+        reader may put that file back and ask again.
+        """
+        with self._lock:
+            revision = self._required()
+            top = self._stack[-1] if self._stack else None
+            if top is None or top.at != at:
+                raise EditError(STALE, f"edit {at} is not the one to undo any more")
+            restore(top.files)
+            # Stamped before the analysis, as an edit's own write is, and popped only once the
+            # files are back: a refused restore leaves the entry where it was.
+            stamps = _signature(self._signature)
+            self._stack.pop()
+            return self._publish(self._analysed(revision.project), stamps)
+
+    @property
+    def undoable(self) -> Undoable | None:
+        """The edit an undo would put back: the top of the stack, or ``None`` when it is
+        empty."""
+        with self._lock:
+            # Locked, unlike `revision`: `_revision` is only ever rebound whole, so one read of
+            # it is atomic, but `undo` mutates `_stack` in place with `.pop()` - an unlocked
+            # check-then-index here could see it emptied between the two.
+            return self._stack[-1] if self._stack else None
 
     def _poll_until_stopped(self) -> None:
         while not self._stopping.wait(self.poll_interval):

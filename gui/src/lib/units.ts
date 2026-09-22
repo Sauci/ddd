@@ -163,6 +163,24 @@ export function consequence(changes: readonly PlannedChange[]): string {
   return `Changes ${files.length} file${files.length === 1 ? "" : "s"}: ${files.join(", ")}`;
 }
 
+/** One file's lines as `Changes` prints them: what it changes, and the word standing where its
+ * line number would when it has none of its own - a file that is about to appear or go. */
+export interface ShownChange {
+  file: string;
+  hunks: readonly Hunk[];
+  note: string | null;
+}
+
+/** A preview's changes as `Changes` prints them: a file the change creates has no line of its
+ * own yet, and is named as new. */
+export function shownChanges(changes: readonly PlannedChange[]): ShownChange[] {
+  return changes.map(({ file, fingerprint, hunks }) => ({
+    file,
+    hunks,
+    note: fingerprint === null ? "new" : null,
+  }));
+}
+
 /** A file's own name, from the absolute posix path the api speaks. */
 export function baseName(file: string): string {
   return file.slice(file.lastIndexOf("/") + 1);
@@ -184,15 +202,16 @@ export function hunkLines(hunk: Hunk): HunkLine[] {
   ];
 }
 
-/** The edit a preview comes to, exactly as `POST /api/edit` takes it; `null` when it is none. */
-export function editOf(preview: SettleReply): Changes | null {
+/** The edit a preview comes to, exactly as `POST /api/edit` takes it, under the label an undo
+ * of it would offer; `null` when there is nothing to change. */
+export function editOf(preview: SettleReply, label: string): Changes | null {
   const changes = nonEmpty(
     preview.changes.flatMap(({ file, fingerprint, operations }) => {
       const made = nonEmpty(operations);
       return made === null ? [] : [{ file, fingerprint, operations: made }];
     }),
   );
-  return changes === null ? null : { changes };
+  return changes === null ? null : { changes, label };
 }
 
 function nonEmpty<T>(items: readonly T[]): [T, ...T[]] | null {

@@ -53,6 +53,7 @@ function state(findings: Finding[]): State {
       },
     ],
     findings,
+    undoable: null,
   };
 }
 
@@ -304,12 +305,14 @@ describe("the edit a chosen fix comes to", () => {
   };
 
   test("the one it names", () => {
-    expect(fixEdit(reply, "Give 'ValueA' an id")?.changes).toHaveLength(1);
+    const edit = fixEdit(reply, "Give 'ValueA' an id", "the identity of ValueA");
+    expect(edit?.changes).toHaveLength(1);
+    expect(edit?.label).toBe("the identity of ValueA");
   });
 
   test("nothing for a title the answer does not carry, or a fix that changes nothing", () => {
-    expect(fixEdit(reply, "Give 'ValueB' an id")).toBeNull();
-    expect(fixEdit({ revision: 7, fixes: [{ title: "t", changes: [] }] }, "t")).toBeNull();
+    expect(fixEdit(reply, "Give 'ValueB' an id", "the identity of ValueB")).toBeNull();
+    expect(fixEdit({ revision: 7, fixes: [{ title: "t", changes: [] }] }, "t", "t")).toBeNull();
   });
 
   test("nothing when the one file it would touch ends up with nothing to write", () => {
@@ -323,6 +326,7 @@ describe("the edit a chosen fix comes to", () => {
             { title: "t", changes: [{ file: TYPES, fingerprint: "b", operations: [], hunks: [] }] },
           ],
         },
+        "t",
         "t",
       ),
     ).toBeNull();

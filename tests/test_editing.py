@@ -20,6 +20,7 @@ from ddd.editing import (
     EditError,
     FileChange,
     Operation,
+    Written,
     apply_changes,
     edit_text,
     fingerprint,
@@ -31,6 +32,8 @@ from ddd.editing import (
     parse_raw,
     removal,
     replacement,
+    restore,
+    unchanged,
 )
 from ddd.lsp.ranges import Document
 
@@ -507,7 +510,10 @@ class TestWritingFiles:
         )
         assert a.read_bytes() == b'{"unit": "V"}'
         assert b.read_bytes() == b'{"unit": "A"}'
-        assert written == {a: fingerprint(b'{"unit": "V"}'), b: fingerprint(b'{"unit": "A"}')}
+        assert written == (
+            Written(a, b'{"unit": "rpm"}', fingerprint(b'{"unit": "V"}')),
+            Written(b, b'{"unit": "Hz"}', fingerprint(b'{"unit": "A"}')),
+        )
         assert not list(tmp_path.glob(f"*{STAGING_SUFFIX}"))
 
     def test_an_edited_file_keeps_its_permissions(self, tmp_path):
@@ -674,7 +680,7 @@ class TestCreatingAFile:
         path = tmp_path / "units.ddd.json"
         written = apply_changes([created(path, UNITS_FILE)])
         assert path.read_bytes() == UNITS_FILE.encode("utf-8")
-        assert written == {path: fingerprint(UNITS_FILE.encode("utf-8"))}
+        assert written == (Written(path, None, fingerprint(UNITS_FILE.encode("utf-8"))),)
         assert not list(tmp_path.glob(f"*{STAGING_SUFFIX}"))
 
     @pytest.mark.parametrize(
@@ -782,3 +788,119 @@ class TestCreatingAFile:
         )
         apply_changes([pending])
         assert stat.S_IMODE(path.stat().st_mode) == mode
+
+
+class TestPuttingAnEditBack:
+    """What ``ddd gui``'s undo is made of: the bytes an edit replaced, written back."""
+
+    def test_a_file_is_put_back_exactly_as_it_was(self, tmp_path):
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{\n  "unit": "rpm"\n}\n')
+        written = apply_changes([change(path, Operation("set", "unit", '"V"'))])
+        restore(written)
+        assert path.read_bytes() == b'{\n  "unit": "rpm"\n}\n'
+        assert not list(tmp_path.glob(f"*{STAGING_SUFFIX}"))
+
+    def test_a_created_file_is_taken_away_again(self, tmp_path):
+        path = tmp_path / "units.ddd.json"
+        written = apply_changes([created(path, UNITS_FILE)])
+        assert written == (Written(path, None, fingerprint(UNITS_FILE.encode("utf-8"))),)
+        restore(written)
+        assert not path.exists()
+
+    def test_a_file_that_changed_since_is_refused_before_anything_is_written(self, tmp_path):
+        a = tmp_path / "a.ddd.json"
+        b = tmp_path / "b.ddd.json"
+        a.write_bytes(b'{"x": 1}')
+        b.write_bytes(b'{"x": 1}')
+        written = apply_changes(
+            [change(a, Operation("set", "x", "2")), change(b, Operation("set", "x", "2"))]
+        )
+        b.write_bytes(b'{"x": 3}')
+        with pytest.raises(EditError) as refused:
+            restore(written)
+        assert refused.value.code == STALE
+        assert str(b) in str(refused.value)
+        # The first file was not touched: every file is checked before any is written.
+        assert a.read_bytes() == b'{"x": 2}'
+
+    def test_a_file_that_can_no_longer_be_read_is_refused(self, tmp_path):
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"x": 1}')
+        written = apply_changes([change(path, Operation("set", "x", "2"))])
+        path.unlink()
+        with pytest.raises(EditError) as refused:
+            restore(written)
+        assert refused.value.code == STALE
+
+    def test_unchanged_answers_the_bytes_the_edit_left(self, tmp_path):
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"x": 1}')
+        written = apply_changes([change(path, Operation("set", "x", "2"))])
+        assert unchanged(written[0]) == b'{"x": 2}'
+
+    def test_the_files_already_put_back_are_written_forward_when_one_cannot_be(
+        self, tmp_path, monkeypatch
+    ):
+        """The rollback of an undo, and the case that needs it most: an adoption's created file
+        is taken away first, so it has to be put there again when the second file refuses."""
+        units = tmp_path / "units.ddd.json"
+        project = tmp_path / "p.ddd.json"
+        project.write_bytes(b'{"project": {"includes": []}}')
+        written = apply_changes(
+            [
+                created(units, UNITS_FILE, project),
+                change(project, Operation("set", "project.includes", '["units.ddd.json"]')),
+            ]
+        )
+        real = editing._stage_and_replace
+
+        def failing(path, data, like):
+            if path == project:
+                raise OSError("disk full")
+            real(path, data, like)
+
+        monkeypatch.setattr(editing, "_stage_and_replace", failing)
+        with pytest.raises(EditError) as refused:
+            restore(written)
+        assert refused.value.code == UNWRITABLE
+        assert "written forward again" in str(refused.value)
+        assert units.read_bytes() == UNITS_FILE.encode("utf-8")
+
+    def test_a_file_that_cannot_be_written_forward_is_named(self, tmp_path, monkeypatch):
+        a = tmp_path / "a.ddd.json"
+        b = tmp_path / "b.ddd.json"
+        a.write_bytes(b'{"x": 1}')
+        b.write_bytes(b'{"x": 1}')
+        written = apply_changes(
+            [change(a, Operation("set", "x", "2")), change(b, Operation("set", "x", "2"))]
+        )
+        # b refuses at once; a's own put-back is let by, and its write forward refuses.
+        monkeypatch.setattr(editing, "_stage_and_replace", _refusing({b: 1, a: 2}))
+        with pytest.raises(EditError) as refused:
+            restore(written)
+        assert refused.value.code == UNWRITABLE
+        assert f"these could not be written forward again: {a}" in str(refused.value)
+
+    def test_a_restored_file_keeps_its_permissions(self, tmp_path):
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"a": 1}')
+        path.chmod(0o640)
+        mode = stat.S_IMODE(path.stat().st_mode)
+        restore(apply_changes([change(path, Operation("set", "a", "2"))]))
+        assert stat.S_IMODE(path.stat().st_mode) == mode
+
+
+def _refusing(after: dict[Path, int]):
+    """``_stage_and_replace`` that refuses a path once it has been asked for it that many
+    times: 1 refuses it outright, 2 lets the first write by and refuses the second."""
+    real = editing._stage_and_replace
+    seen: dict[Path, int] = {}
+
+    def staged(path, data, like):
+        seen[path] = seen.get(path, 0) + 1
+        if seen[path] >= after.get(path, seen[path] + 1):
+            raise OSError("disk full")
+        real(path, data, like)
+
+    return staged

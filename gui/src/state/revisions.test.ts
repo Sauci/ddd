@@ -8,6 +8,7 @@ const state = (revision: number): State => ({
   project: "/p.ddd.json",
   files: [],
   findings: [],
+  undoable: null,
 });
 const aborted = () => new DOMException("aborted", "AbortError");
 

@@ -2083,13 +2083,39 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 ## Progress log
 
+Executed on 2026-09-22 by subagent-driven development: an implementer per task, a reviewer after
+each, and a scoped re-review after every fix round. Duration and tokens are the implementer's; the
+review's follow in brackets. Six of the eleven tasks needed a fix round, and five of those six were
+found by a reviewer checking a claim against the code rather than by a failing test.
+
 | Task | Implementer | Duration | Tokens | Notes |
 | --- | --- | --- | --- | --- |
-| | | | | |
+| 1 One rule for what a value is | sonnet | 15 min [6 min] | 239 k [172 k] | Clean. No existing test pinned the old text comparison, which the reviewer verified by reading the suite rather than trusting the report. |
+| 2 Where a finding leads | sonnet | 5 + 9 min fix [8 + 3 min] | 103 k + 181 k [151 k + 97 k] | One fix round: the route matched only a pointer under a `definition`, so `missing-producer`, `local-conflict` and `condition-mismatch` - all filed on the declaration itself - led to the component's page instead of the variable's panel. |
+| 3 The state answers where each finding leads | sonnet | 13 min [6 min] | 178 k [136 k] | Clean. All three endpoints that answer findings carry the route, each building its lookup and its cache once. |
+| 4 The fix a finding carries | sonnet | 13 + 5 min fix [8 + 3 min] | 202 k + 237 k [146 k + 95 k] | One fix round: the endpoint would have answered 500 where every sibling answers 409 `unreadable`, for a file rewritten between the two reads of one request. |
+| 5 The page's logic | sonnet | 14 min [7 min] | 203 k [142 k] | Clean. The severity map's fourth entry was verified unreachable by construction rather than assumed. |
+| 6 The tab's pictures, and their stories | sonnet | 28 + 5 min fix [7 + 2 min] | 337 k + 382 k [156 k + 106 k] | One fix round: all four new fixtures showed real checks at severities they never report, and the stories are these components' only documentation. Two CSS defects were found by looking at the photographs. |
+| 7 The tab, and the lists that become links | sonnet | 24 + 14 min fix [5 + 4 min] | 325 k + 459 k [101 k + 125 k] | One fix round, reviewed on opus: a link tore the whole app down to move one page sideways, the new anchors had no focus ring, and a successful fix greeted the reader with a warning. |
+| 8 A stale refusal waits for the next revision | sonnet | 12 + 12 min fix [5 + 4 min] | 172 k + 276 k [122 k + 110 k] | One fix round: the wait had been put on every refusal, so a type-fixed one hid Apply until any file changed and carried forward to the next selection. |
+| 9 The journeys | sonnet | 28 min [9 min] | 294 k [161 k] | Clean. The reviewer said for each of the five which assertion fails if the feature reverts, and re-ran `ddd check` to confirm both examples report nothing unmodified. |
+| 10 The documentation | sonnet | 20 min [6 min] | 232 k [133 k] | Clean. Every claim on the developer page was traced to the module it names. |
+| 11 Milestone gate | sonnet | 14 min | 196 k | Every step green from a clean build; four photographs of the real application, each looked at. |
 
 ## Left open by the implementers
 
-_Filled in as the plan runs: anything found and not fixed, with why._
+- **One pattern, written twice.** `ddd.lsp.navigation` already held a private `_WITHIN_DECLARATION`
+  with the same regex and a near-identical read-the-name helper; the public one this branch added
+  to `ddd.lsp.edits` duplicates it. The ruling that put it there was made without knowing the first
+  existed. One public pattern, imported by both, is the honest shape.
+- `docs/editor_integration.rst` puts the same-value carve-out after a three-item list, which invites
+  a reader to think a removal is gated by it too; only taking and spreading compare values. The
+  changelog's parallel sentence names the two correctly.
+- Two tests reach a branch by an input the server cannot send: `routeLabel`'s fallback is driven
+  with a component route whose file the state does not list, and `_finding(filed, None, {})` proves
+  only that the `None` source does not crash, never that the route it answers is `None`.
+- `UnitPanel.offer()` short-circuits to `null` once a stale refusal's wait lapses, instead of
+  falling through to the plan's own error. Pre-existing; this branch only moved the wait into it.
 
 ## Rulings made while writing the plan
 
@@ -2098,3 +2124,14 @@ _Filled in as the plan runs: anything found and not fixed, with why._
 3. **`_WITHIN_DEFINITION` and `_unstamped` are made public** rather than copied. Which pointers name a declaration, and which declarations want an id, are each one rule; a second copy drifts the day the first changes. Cost if wrong: two more names in modules that were private, both documented.
 4. **A stale refusal is held by the page, not fixed in the server.** The server's refusal is right - the file did change - and the page's own sentence is what was untrue. Holding it until the next revision makes it true without the endpoint re-reading files the analysis is about to read anyway. Cost if wrong: the reader waits up to a second, which is the watcher's own period.
 5. **The findings tab has no filter.** The rows are worst first and grouped by file, which is the order a reader works through them, and the Table tab already carries the per-file counts. Cost if wrong: a project with hundreds of findings scrolls.
+
+### Taken while executing it
+
+6. **Task 6's panel body was described rather than written out**, its props given as code and its markup pointed at `UnitPanelView.tsx`. Why: the component is a picture of its props, its gate is the screenshot and the stories, and copying a 230-line neighbour into a plan rots the day that neighbour changes. Cost if wrong: a panel whose order or markup drifts from the Units tab's, which one fix round settles.
+7. **A route matches a pointer anywhere under `component.interface[N]`**, not only under its `definition`, while `WITHIN_DEFINITION` keeps its narrower meaning for the editor's actions and the identity fix. Why: `missing-producer`, `local-conflict` and `condition-mismatch` are all filed on the declaration itself and are all findings about a variable. Cost if wrong: a finding on a declaration's `scope` or `condition` opens the variable's panel, where that key is not shown.
+8. **`GET /api/fix` keeps the engine's refusal**, against the implementer's argument that nothing can raise. Why: `fixes_for` and `planned` each read the file inside the one request, so an external write between them is reachable, and answering 500 where every sibling answers 409 is the page losing a sentence it knows how to say. Cost if wrong: one branch and one test for a race nobody sees.
+9. **A fixture must be an answer the server could give.** Four stories showed real checks at severities those checks never report; they were set to their real defaults and the references remade. Why: these stories are the components' only documentation, and nothing about them needed the fabrication. Cost if wrong: the photographs' row order changed, which is what remaking them is for.
+10. **The panel's chip says the severity, not the check its title already carries.** Why: the chip's tone was the severity and its text was the check, so the panel said one word twice and never said which severity it was. Cost if wrong: a reader reads the severity instead of inferring it from a colour.
+11. **Five findings in Task 7 were fixed in one round**, three of them defects a reader meets: a link that reloaded the whole application although the callback for an in-place move was in scope, anchors with no keyboard focus ring, and a successful fix greeted by the warning meant for a finding somebody else fixed. Cost if wrong: a larger fix diff to re-review.
+12. **Only the stale refusal waits.** The wait had been attached to every refusal, which hid Apply until any file changed - indefinitely in a project nobody is editing - and carried a refusal forward onto the next selection. Cost if wrong: two pieces of state per panel where there was one.
+13. **`UnitsPage`'s adoption refusal was fixed too**, although Task 8 named three screens. Why: the point of the task is that the sentence is true wherever the page says it. Cost if wrong: a fourth screen changed in a task that named three.

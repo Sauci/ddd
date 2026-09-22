@@ -5,6 +5,7 @@ import type {
   ProjectUnit,
   SettleReply,
   State,
+  TypesReply,
   UndoPreview,
   UnitReply,
   UnitsReply,
@@ -953,3 +954,57 @@ export const UNDO_ADOPTION: UndoPreview = {
     },
   ],
 };
+
+/** Types modelled on examples/structures, as GET /api/types answers them - not transcribed from
+ * it: SensorCal_t's `uses: 0` here (the real example names it once) gives the table's zero-count
+ * blank-cell case a row to draw. */
+export const PROJECT_TYPES: TypesReply = {
+  revision: 7,
+  types: [
+    {
+      name: "DriverStatus_t",
+      kind: "external",
+      description: "The raw state of the vendor's sensor driver",
+      uses: 1,
+      findings: 0,
+    },
+    {
+      name: "Sample_t",
+      kind: "struct",
+      description: "One reading and the instant it was taken",
+      uses: 1,
+      findings: 0,
+    },
+    {
+      name: "SensorCal_t",
+      kind: "struct",
+      description: "What one sensor exposes to the calibration tool",
+      uses: 0,
+      findings: 0,
+    },
+    {
+      name: "Sensor_t",
+      kind: "struct",
+      description: "Everything one sensor measures",
+      uses: 2,
+      findings: 0,
+    },
+    {
+      name: "Status_t",
+      kind: "struct",
+      description: "Flags packed into one word, as c bitfields",
+      uses: 1,
+      findings: 1,
+    },
+    {
+      name: "Temperature_t",
+      kind: "scalar",
+      description: "A temperature as every component of this project agrees to see it",
+      uses: 3,
+      findings: 0,
+    },
+  ],
+};
+
+/** A project that declares none, for the story that says so. */
+export const NO_TYPES: TypesReply = { revision: 7, types: [] };

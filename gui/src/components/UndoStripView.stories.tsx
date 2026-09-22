@@ -1,0 +1,53 @@
+import { useState } from "react";
+import { UNDO_ADOPTION } from "../stories/fixtures";
+import { UndoStripView } from "./UndoStripView";
+
+export default { title: "Components / UndoStripView" };
+
+const REFUSED =
+  "demo.ddd.json changed on disk since it was written, so nothing can be put back. " +
+  "Put it back as it was, and this edit can be undone again.";
+
+/** The heading a project screen draws, laid out as App.tsx lays it out: the project's name, the
+ * control beside it, and the strip below them. */
+function Heading({
+  opened = false,
+  shown = false,
+  refusal = null,
+  reading = false,
+}: {
+  opened?: boolean;
+  shown?: boolean;
+  refusal?: string | null;
+  /** Still `GET /api/undo`'s answer waited for: no preview, and no refusal either. */
+  reading?: boolean;
+}) {
+  const [open, setOpen] = useState(opened);
+  const [changesShown, setChangesShown] = useState(shown);
+  return (
+    <div className="heading">
+      <h1>DemoDevice</h1>
+      <UndoStripView
+        label={`Undo ${UNDO_ADOPTION.label}`}
+        open={open}
+        onOpen={setOpen}
+        preview={reading ? null : refusal === null ? UNDO_ADOPTION : null}
+        changesShown={changesShown}
+        onChangesShown={setChangesShown}
+        onUndo={() => undefined}
+        refusal={refusal}
+        busy={false}
+      />
+    </div>
+  );
+}
+
+export const Closed = () => <Heading />;
+
+export const Open = () => <Heading opened />;
+
+export const Reading = () => <Heading opened reading />;
+
+export const ChangesShown = () => <Heading opened shown />;
+
+export const Refused = () => <Heading opened refusal={REFUSED} />;

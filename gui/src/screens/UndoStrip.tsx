@@ -70,7 +70,10 @@ export function UndoStrip({ state, stopped }: Props) {
           setRefused(null);
         }
       }}
-      preview={preview.data ?? null}
+      // The preview answers the top of the stack, which may no longer be this entry: another
+      // window can apply an edit between this page's last state and this answer. Until the
+      // preview names the entry the button does, it counts as not yet arrived.
+      preview={preview.data?.at === undoable?.at ? (preview.data ?? null) : null}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onUndo={() => undo.mutate()}

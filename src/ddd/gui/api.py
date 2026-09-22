@@ -780,7 +780,14 @@ def _undone_changes(entry: Undoable) -> list[dict[str, Any]]:
     """
     changes: list[dict[str, Any]] = []
     for file in entry.files:
-        current = unchanged(file).decode("utf-8-sig")
+        try:
+            current = unchanged(file).decode("utf-8-sig")
+        except EditError as refused:
+            # The page shows this sentence as it stands, and every other sentence it shows names a
+            # file by its own name rather than by the path the engine refuses with.
+            raise EditError(
+                refused.code, str(refused).replace(str(file.path), file.path.name, 1)
+            ) from None
         previous = "" if file.before is None else file.before.decode("utf-8-sig")
         changes.append(
             {

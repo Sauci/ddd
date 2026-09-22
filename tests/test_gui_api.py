@@ -842,7 +842,19 @@ class TestUndoing:
         b.write_text('{"component": {"name": "B", "interface": []}}', encoding="utf-8")
         reply = get(api, "/api/undo")
         assert (reply.status, reply.body["error"]) == (409, "stale")
-        assert "b.ddd.json" in reply.body["message"]
+        assert reply.body["message"] == "b.ddd.json changed on disk since it was written"
+
+    def test_a_preview_that_could_not_be_built_is_a_server_error(
+        self, api: Api, root: Path, monkeypatch
+    ) -> None:
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+
+        def unwritable(entry):
+            raise EditError(UNWRITABLE, "disk full")
+
+        monkeypatch.setattr("ddd.gui.api.unchanged", unwritable)
+        reply = get(api, "/api/undo")
+        assert (reply.status, reply.body["error"]) == (500, "unwritable")
 
     def test_an_undo_puts_the_files_back_and_answers_the_new_revision(
         self, api: Api, root: Path
@@ -861,6 +873,16 @@ class TestUndoing:
         reply = post(api, "/api/undo", {"at": 9})
         assert (reply.status, reply.body["error"]) == (409, "stale")
         assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
+
+    def test_an_undo_that_could_not_be_written_is_a_server_error(
+        self, api: Api, monkeypatch
+    ) -> None:
+        def unwritable(at):
+            raise EditError(UNWRITABLE, "disk full")
+
+        monkeypatch.setattr(api.session, "undo", unwritable)
+        reply = post(api, "/api/undo", {"at": 1})
+        assert (reply.status, reply.body["error"]) == (500, "unwritable")
 
     def test_an_undo_takes_a_number(self, api: Api) -> None:
         reply = post(api, "/api/undo", {})

@@ -4,9 +4,11 @@ import { UndoStripView } from "./UndoStripView";
 
 export default { title: "Components / UndoStripView" };
 
+// What UndoStrip's `refusalOf` builds from the api's own "stale" message (UndoStrip.tsx),
+// now that the api names the file by its own name rather than its full path.
 const REFUSED =
-  "demo.ddd.json changed on disk since it was written, so nothing can be put back. " +
-  "Put it back as it was, and this edit can be undone again.";
+  "demo.ddd.json changed on disk since it was written. " +
+  "Nothing was put back; the page shows the files as they are.";
 
 /** The heading a project screen draws, laid out as App.tsx lays it out: the project's name, the
  * control beside it, and the strip below them. */

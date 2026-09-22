@@ -275,8 +275,8 @@ class TestState:
         filed = Filed(
             Path("a.ddd.json"), Diagnostic("schema", Severity.ERROR, "m", None, (("n", None),))
         )
-        assert _finding(filed)["notes"] == [{"message": "n", "file": None, "pointer": ""}]
-        assert _finding(filed)["pointer"] == ""
+        assert _finding(filed, None, {})["notes"] == [{"message": "n", "file": None, "pointer": ""}]
+        assert _finding(filed, None, {})["pointer"] == ""
 
     def test_asking_for_a_newer_revision_waits_for_one(self, api: Api, root: Path) -> None:
         threading.Timer(0.01, api.session.open, args=(root / "p.ddd.json",)).start()
@@ -296,6 +296,40 @@ class TestState:
     def test_the_state_needs_an_open_project(self, root: Path) -> None:
         reply = get(Api(Session(root), wait_seconds=0.01), "/api/state", after="0")
         assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+    def test_every_finding_says_where_it_leads(self, api: Api, root: Path) -> None:
+        # The root fixture's two components declare Speed, and `a.ddd.json` states no id.
+        routes = {
+            (finding["check"], finding["route"] is None): finding["route"]
+            for finding in get(api, "/api/state").body["findings"]
+        }
+        assert routes[("missing-id", False)] == {"kind": "variable", "name": "Speed"}
+
+    def test_a_finding_on_a_file_that_did_not_load_leads_nowhere(self, tmp_path: Path) -> None:
+        state = get(opened(tmp_path, HALF_SAVED), "/api/state").body
+        half = next(
+            finding for finding in state["findings"] if finding["file"].endswith("b.ddd.json")
+        )
+        assert half["route"] is None
+
+    def test_an_unknown_unit_leads_to_its_unit(self, tmp_path: Path) -> None:
+        api = opened_example(tmp_path, "vocabulary", "project.ddd.json")
+        drifted = tmp_path / "vocabulary" / "pump.ddd.json"
+        drifted.write_text(
+            drifted.read_text(encoding="utf-8").replace('"unit": "kPa"', '"unit": "KPA"', 1),
+            encoding="utf-8",
+            newline="",
+        )
+        # Session has no `refresh`; `poll()` is what re-analyses the open project on demand when
+        # a file of it changed on disk (its own docstring, and the pattern the rest of this file
+        # uses), which is the same thing under a different name.
+        assert api.session.poll() is True
+        unknown = next(
+            finding
+            for finding in get(api, "/api/state").body["findings"]
+            if finding["check"] == "unknown-unit"
+        )
+        assert unknown["route"] == {"kind": "unit", "name": "KPA"}
 
 
 class TestFiles:
@@ -757,6 +791,12 @@ class TestVariable:
                 None,
             ),
         ]
+
+    def test_a_panel_finding_carries_its_route(self, api: Api) -> None:
+        findings = get(api, "/api/variable", name="Speed").body["findings"]
+        assert all(
+            finding["route"] == {"kind": "variable", "name": "Speed"} for finding in findings
+        )
 
     def test_a_disagreement_is_among_its_findings_on_both_sides(self, api: Api, root: Path) -> None:
         assert post(api, "/api/edit", unit_edit(api, root, "%")).status == 200

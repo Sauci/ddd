@@ -46,6 +46,7 @@ __all__ = [
     "FileContent",
     "Finding",
     "FindingCounts",
+    "FindingRoute",
     "Found",
     "FoundProject",
     "GraphDisagreement",
@@ -234,6 +235,17 @@ class Note(_Frozen):
     """Dotted path inside that file's json document, or ``""`` when the hint names no place."""
 
 
+class FindingRoute(_Frozen):
+    """What the page can open for a finding."""
+
+    kind: Literal["variable", "unit", "component"]
+    """Which screen: a variable's panel, a unit's panel, or the component's own page."""
+
+    name: str | None
+    """The variable's name or the unit's spelling; ``None`` for a component, which the
+    finding's own ``file`` already names."""
+
+
 class Finding(_Frozen):
     """A single finding, filed on the file it is shown on: both sides of a disagreement are
     filed, one finding per file."""
@@ -255,6 +267,11 @@ class Finding(_Frozen):
 
     notes: tuple[Note, ...]
     """Additional hints, e.g. the site a definition disagrees with."""
+
+    route: FindingRoute | None
+    """Where pressing this finding leads, or ``None`` when the page has nothing to open: its
+    file did not load, its file is not a component and has no screen yet, or it names no place
+    at all."""
 
 
 class State(_Frozen):

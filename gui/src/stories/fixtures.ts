@@ -26,6 +26,7 @@ const MISMATCH: Finding = {
   message: "Controller states rpm and ×1, SensorHub states % and ×0.5",
   pointer: "component.interface[0].definition.unit",
   notes: [],
+  route: null,
 };
 
 /** One declaration's part of a key's answer: it may carry the key, as every declaration below
@@ -538,6 +539,7 @@ const UNKNOWN: Finding = {
   message: "'RPM' is not a unit this project declares - did you mean 'rpm'?",
   pointer: "component.interface[3].definition.unit",
   notes: [],
+  route: null,
 };
 
 /** RPM's panel: where it is stated, and its finding, filed at each place. */

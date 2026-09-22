@@ -8,6 +8,7 @@ export type {
   EditReply,
   FileContent,
   Finding,
+  FindingRoute,
   Found,
   FoundProject,
   GraphDisagreement,

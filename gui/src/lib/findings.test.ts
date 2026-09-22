@@ -9,6 +9,7 @@ const finding = (overrides: Partial<Finding> = {}): Finding => ({
   message: "'ValueA' is declared differently",
   pointer: "component.interface[0].definition",
   notes: [],
+  route: null,
   ...overrides,
 });
 

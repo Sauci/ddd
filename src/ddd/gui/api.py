@@ -33,6 +33,7 @@ from ddd.editing import (
     Operation,
     parse_raw,
 )
+from ddd.finding_routes import Route, route_of
 from ddd.graph import Module, graph_of
 from ddd.gui import contract
 from ddd.gui.session import (
@@ -171,6 +172,8 @@ class Api:
             revision = self.session.wait(after, self.wait_seconds)
         if revision is None:
             raise NoProjectError("no project is open")
+        sources = {file.path.resolve(): file for file in revision.files}
+        cache: dict[Path, Document] = {}
         return Reply(
             200,
             contract.State(
@@ -191,7 +194,10 @@ class Api:
                     }
                     for file in revision.files
                 ],
-                findings=[_finding(filed) for filed in revision.findings],
+                findings=[
+                    _finding(filed, sources.get(filed.file.resolve()), cache)
+                    for filed in revision.findings
+                ],
             ).model_dump(mode="json"),
         )
 
@@ -317,9 +323,11 @@ class Api:
         if not name:
             return _error(400, "bad-request", "variable takes ?name=")
         built = revision.index
-        declared = () if built is None else declarations_of(built, name, {})
+        cache: dict[Path, Document] = {}
+        declared = () if built is None else declarations_of(built, name, cache)
         if built is None or not declared:
             return _undeclared(revision, name)
+        sources = {file.path.resolve(): file for file in revision.files}
         return Reply(
             200,
             contract.VariableReply(
@@ -342,7 +350,7 @@ class Api:
                 # fails here rather than reaching the page.
                 keys=[asdict(offer) for offer in offers(built, declared)],
                 findings=[
-                    _finding(filed)
+                    _finding(filed, sources.get(filed.file.resolve()), cache)
                     for filed in revision.findings
                     if located_on(declared, filed.file, filed.diagnostic)
                 ],
@@ -395,6 +403,7 @@ class Api:
         if built is None or (unit not in built.units and unit not in built.vocabulary):
             return _undeclared(revision, unit)
         cache: dict[Path, Document] = {}
+        sources = {file.path.resolve(): file for file in revision.files}
         return Reply(
             200,
             contract.UnitReply(
@@ -417,7 +426,7 @@ class Api:
                     for place in places_of(built, unit, cache)
                 ],
                 findings=[
-                    _finding(filed)
+                    _finding(filed, sources.get(filed.file.resolve()), cache)
                     for filed in revision.findings
                     if located_on_unit(built, unit, filed.file, filed.diagnostic)
                 ],
@@ -556,7 +565,15 @@ def _error(status: int, code: str, message: str) -> Reply:
     return Reply(status, {"error": code, "message": message})
 
 
-def _finding(filed: Filed) -> dict[str, Any]:
+def _finding(
+    filed: Filed, source: SourceFile | None, cache: dict[Path, Document]
+) -> dict[str, Any]:
+    """One finding as the page reads it, with where it leads.
+
+    ``source`` is the analysis's own record of the file the finding is filed on, or ``None``
+    for a finding filed on a file the analysis did not list - which leads nowhere, having no
+    kind to route by.
+    """
     # Kept as a function, unlike the answers _state/_checks/_session_body now build inline:
     # tests/test_gui_api.py imports it directly to check a note with no place is carried
     # without one.
@@ -575,7 +592,23 @@ def _finding(filed: Filed) -> dict[str, Any]:
             }
             for text, note in finding.notes
         ],
+        route=None
+        if source is None
+        else _route(
+            route_of(
+                finding.check,
+                filed.file,
+                "" if finding.location is None else finding.location.pointer,
+                source.kind,
+                source.loaded,
+                cache,
+            )
+        ),
     ).model_dump(mode="json")
+
+
+def _route(route: Route | None) -> dict[str, Any] | None:
+    return None if route is None else {"kind": route.kind, "name": route.name}
 
 
 def _module(file: SourceFile) -> Module:

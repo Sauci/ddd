@@ -24,7 +24,7 @@ from conftest import (
 )
 from ddd import __version__
 from ddd.diagnostics import CHECKS
-from ddd.editing import UNVERIFIED, UNWRITABLE, EditError, fingerprint
+from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
 from ddd.gui.api import Api, Reply
 from ddd.gui.session import Session
 from ddd.variable_keys import KEY_ORDER
@@ -1147,7 +1147,22 @@ class TestSettle:
 
 
 class TestFix:
-    def test_a_missing_id_is_previewed_and_applied(self, api: Api, root: Path) -> None:
+    def test_a_missing_id_is_previewed_and_applied(self, tmp_path: Path) -> None:
+        # A second producing declaration without an id, so that stamping the first proves the
+        # fix is scoped to the pointer it was asked about rather than to every unstamped
+        # declaration the file holds.
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Speed", unit="rpm"),
+                    declare("output", "Torque", unit="Nm"),
+                ),
+            },
+        )
+        root = tmp_path
         before = contents(root)
         reply = get(
             api,
@@ -1166,6 +1181,29 @@ class TestFix:
         assert post(api, "/api/edit", edit).status == 200
         stamped = json.loads((root / "a.ddd.json").read_text(encoding="utf-8"))
         assert len(stamped["component"]["interface"][0]["definition"]["id"]) == 12
+        # Named by the pointer alone: the declaration `/api/fix` was not asked about is left as
+        # it was, which a fixture with only one unstamped declaration could not have shown.
+        assert "id" not in stamped["component"]["interface"][1]["definition"]
+
+    def test_a_fix_the_engine_refuses_is_a_refusal_the_page_can_act_on(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # `fixes_for` and `planned` each read the file from disk, moments apart, inside the one
+        # request: an external rewrite or delete in that window is refused by `planned`, the way
+        # `_settle`/`_unit_plan` are, rather than crashing into a generic 500.
+        def refuse(*_: object) -> None:
+            raise EditError(UNREADABLE, "a.ddd.json can no longer be read as utf-8")
+
+        monkeypatch.setattr("ddd.gui.api.planned", refuse)
+        reply = get(
+            api,
+            "/api/fix",
+            file=posix(root, "a.ddd.json"),
+            pointer="component.interface[0].definition",
+            check="missing-id",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"] == "a.ddd.json can no longer be read as utf-8"
 
     def test_a_finding_with_no_fix_answers_none(self, api: Api, root: Path) -> None:
         reply = get(

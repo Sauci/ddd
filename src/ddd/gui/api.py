@@ -529,14 +529,12 @@ class Api:
             return _error(404, "not-found", f"{file} is not a file of the open project")
         cache: dict[Path, Document] = {}
         stamps = {f.path.resolve(): f.fingerprint for f in revision.files}
-        # No try here, unlike `_settle`/`_unit_plan`: those plan a change against declarations
-        # an earlier analysis recorded, so the file `planned` re-reads may have moved on since.
-        # Every `Fix` here names `source.path`, which `fixes_for` has just read successfully in
-        # this same request, and `stamps` carries its fingerprint (`source.fingerprint`, always
-        # a `str`) - so neither way `planned` raises `EditError` is reachable from this call.
         offered = []
         for fix in fixes_for(check, source.path, pointer, cache):
-            made = planned(fix.path, fix.operations, stamps)
+            try:
+                made = planned(fix.path, fix.operations, stamps)
+            except EditError as refused:
+                return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
             offered.append({"title": fix.title, "changes": _planned_changes([made])})
         return Reply(
             200,

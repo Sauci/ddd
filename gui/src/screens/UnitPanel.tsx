@@ -10,6 +10,7 @@ import {
 } from "../api/client";
 import { type Offer, type UnitAction, UnitPanelView } from "../components/UnitPanelView";
 import { offers, planEdit } from "../lib/projectUnits";
+import { type Refused, shownRefusal } from "../lib/refusals";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
 
@@ -86,7 +87,10 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
   const [to, setTo] = useState<string | null>(null);
   const [typed, setTyped] = useState<string | undefined>(undefined);
   const [shown, setShown] = useState<UnitAction | null>(null);
-  const [failed, setFailed] = useState<{ action: UnitAction; message: string } | null>(null);
+  // The one action refused, if any, and the revision it was refused at. As in `VariablePanel`,
+  // a reader who chooses again straight away would otherwise send the same stale fingerprints
+  // the server just refused; `shownRefusal` keeps it shown until a later revision arrives.
+  const [failed, setFailed] = useState<({ action: UnitAction } & Refused) | null>(null);
 
   const row = units.data?.units.find((entry) => entry.unit === name);
   const offered =
@@ -127,7 +131,7 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
         onMoved(undefined);
       }
     },
-    onError: (error, action) => setFailed({ action, message: refusalOf(error) }),
+    onError: (error, action) => setFailed({ action, text: refusalOf(error), revision }),
     // An Apply changes the unit's places, the tab's rows and every plan, whose fingerprints the
     // edit spent: they are asked for again, and nothing can be applied until they answer. The
     // description saved is let go only then, so that the field goes from what was typed straight
@@ -144,7 +148,10 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
   /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for. */
   const offer = (action: UnitAction): Offer => ({
     plan: plans[action].data ?? null,
-    refusal: failed?.action === action ? failed.message : (plans[action].error?.message ?? null),
+    refusal:
+      failed !== null && failed.action === action
+        ? shownRefusal(failed, revision)
+        : (plans[action].error?.message ?? null),
     pending: plans[action].isPlaceholderData,
   });
 
@@ -169,10 +176,7 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
       reply={reply.data}
       units={units.data}
       description={description ?? row.description ?? ""}
-      onDescription={(text) => {
-        setDescription(text);
-        setFailed(null);
-      }}
+      onDescription={setDescription}
       typed={typed ?? to ?? name}
       // Never the spelling chosen: opening the picker on it must still list everything.
       narrow={typed ?? ""}
@@ -181,7 +185,6 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
         // The unit's own spelling renames nothing: choosing it goes back to no rename at all.
         setTo(chosen === name ? null : chosen);
         setTyped(undefined);
-        setFailed(null);
       }}
       onPickerClosed={() => setTyped(undefined)}
       to={to}

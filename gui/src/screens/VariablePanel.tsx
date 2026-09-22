@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ApiError, getSettle, getUnits, getVariable, postEdit } from "../api/client";
 import { VariablePanelView } from "../components/VariablePanelView";
+import { type Refused, shownRefusal } from "../lib/refusals";
 import { editOf, outsideVocabulary, textOf } from "../lib/units";
 import {
   keyRows,
@@ -72,7 +73,11 @@ export function VariablePanel({
   // the reader asks for, never where a row opens.
   const [edited, setEdited] = useState<{ min: string; max: string } | undefined>(undefined);
   const [changesShown, setChangesShown] = useState(false);
-  const [refused, setRefused] = useState<string | null>(null);
+  // The one refused edit, if any, and the revision it was refused at. A reader who chooses
+  // again straight away sends the same stale fingerprints the server just refused, since the
+  // analysis has not caught up yet - so this is not cleared then, only read through
+  // `shownRefusal`, which keeps it shown until a later revision arrives.
+  const [refused, setRefused] = useState<Refused | null>(null);
   // What the table actually offers to settle (`kind` aside): what a key remembered from a
   // previous variable, or forced by `focusPicker`, has to be checked against before it is shown.
   const rows =
@@ -120,7 +125,6 @@ export function VariablePanel({
     setTyped(undefined);
     setEdited(undefined);
     setChangesShown(false);
-    setRefused(null);
   };
   // The unit cell of the component table hands the reader over to the unit's chooser, which is
   // what `focusPicker` has always asked for; it now says which row to open as well.
@@ -134,7 +138,6 @@ export function VariablePanel({
   const onRange = (next: { min: string; max: string }) => {
     setEdited(next);
     setTyped(undefined);
-    setRefused(null);
   };
   const apply = useMutation({
     mutationFn: () => {
@@ -151,11 +154,13 @@ export function VariablePanel({
       setRefused(null);
     },
     onError: (error) =>
-      setRefused(
-        error instanceof ApiError && error.code === "stale"
-          ? STALE
-          : `The change was refused: ${error.message}`,
-      ),
+      setRefused({
+        text:
+          error instanceof ApiError && error.code === "stale"
+            ? STALE
+            : `The change was refused: ${error.message}`,
+        revision,
+      }),
     // An Apply changes this variable's declarations, the units the project uses and the preview
     // it was made from, whose fingerprints the edit spent: those are asked for again, and Apply
     // stays unavailable until they answer. Everything else - the component's file, the canvas -
@@ -204,7 +209,6 @@ export function VariablePanel({
       onChosen={(raw) => {
         setChosen(raw);
         setTyped(undefined);
-        setRefused(null);
         // A range chosen from the list - one in play, or "state nothing", which empties them -
         // is settled on by writing it into the two fields, since they are what is applied.
         // It is the reader's own choice, so it counts as an edit of the fields.
@@ -225,7 +229,8 @@ export function VariablePanel({
       // A settlement refused is about the value that was asked for; while the fields make no
       // value, nothing was asked, and the note is the whole of what the panel has to say.
       refusal={
-        refused ?? (broken !== null || preview.error === null ? null : preview.error.message)
+        shownRefusal(refused, revision) ??
+        (broken !== null || preview.error === null ? null : preview.error.message)
       }
       changesShown={changesShown}
       onChangesShown={setChangesShown}

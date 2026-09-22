@@ -1,5 +1,5 @@
-import type { SettleReply, UnitsReply, VariableReply } from "../api/types";
-import { distinctFindings, keyedFindings } from "../lib/findings";
+import type { Finding, SettleReply, UnitsReply, VariableReply } from "../api/types";
+import { distinctFindings, keyedFindings, routeHref, routeOf } from "../lib/findings";
 import { consequence } from "../lib/units";
 import { describeVariable } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
@@ -39,12 +39,23 @@ export function VariablePanelView(props: VariablePanelViewProps) {
       />
       {variable.findings.length > 0 && (
         <ul className="panel-findings">
-          {keyedFindings(distinctFindings(variable.findings)).map(([finding, key]) => (
-            <li key={key}>
-              <Chip tone={finding.severity === "error" ? "error" : "warning"}>{finding.check}</Chip>{" "}
-              <span className="quiet">{finding.message}</span>
-            </li>
-          ))}
+          {keyedFindings(distinctFindings(variable.findings)).map(([finding, key]) => {
+            const href = namesThisVariable(finding, variable.name) ? null : routeHref(finding);
+            return (
+              <li key={key}>
+                <Chip tone={finding.severity === "error" ? "error" : "warning"}>
+                  {finding.check}
+                </Chip>{" "}
+                {href === null ? (
+                  <span className="quiet">{finding.message}</span>
+                ) : (
+                  <a className="button link" href={href}>
+                    {finding.message}
+                  </a>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
       {selected === undefined ? (
@@ -90,4 +101,11 @@ export function VariablePanelView(props: VariablePanelViewProps) {
       )}
     </Panel>
   );
+}
+
+/** Whether a finding's route names this very variable - the place already being looked at, so
+ * it stays text rather than becoming a link (spec 5.2). */
+function namesThisVariable(finding: Finding, name: string): boolean {
+  const route = routeOf(finding);
+  return route !== null && route.page === "component" && route.variable === name;
 }

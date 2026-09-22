@@ -1,10 +1,12 @@
-/** Which of the project screen's three tabs is open. */
-export type ProjectView = "graph" | "table" | "units";
+/** Which of the project screen's four tabs is open. */
+export type ProjectView = "graph" | "table" | "units" | "findings";
 
 export type Route =
   | { page: "start" }
-  | { page: "project"; view: Exclude<ProjectView, "units">; variable?: string }
+  | { page: "project"; view: "graph"; variable?: string }
+  | { page: "project"; view: "table" }
   | { page: "project"; view: "units"; unit?: string }
+  | { page: "project"; view: "findings" }
   | { page: "component"; file: string; variable?: string };
 
 /** The page an address shows; anything unknown is the start page. */
@@ -24,6 +26,7 @@ export function parseRoute(pathname: string, search: string): Route {
         ? { page: "project", view: "units" }
         : { page: "project", view: "units", unit };
     }
+    if (view === "findings") return { page: "project", view: "findings" };
     return variable === undefined
       ? { page: "project", view: "graph" }
       : { page: "project", view: "graph", variable };
@@ -53,6 +56,7 @@ export function hrefOf(route: Route): string {
           ? "/project?view=units"
           : `/project?view=units&unit=${encodeURIComponent(route.unit)}`;
       }
+      if (route.view === "findings") return "/project?view=findings";
       return variable === "" ? "/project" : `/project?${variable}`;
     case "component": {
       const file = `/component?file=${encodeURIComponent(route.file)}`;

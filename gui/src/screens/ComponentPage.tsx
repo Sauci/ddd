@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { getFile } from "../api/client";
-import type { State } from "../api/types";
-import { keyedFindings } from "../lib/findings";
+import type { Finding, State } from "../api/types";
+import { keyedFindings, routeHref, routeOf } from "../lib/findings";
 import type { ComponentFile } from "../lib/formats";
 import { pointerOf, valueAt, within } from "../lib/pointer";
 import { asList, asText } from "../lib/values";
@@ -138,12 +138,21 @@ export function ComponentPage({ file, variable, state, stopped, onVariable }: Pr
           <p className="quiet">None.</p>
         ) : (
           <ul className="findings">
-            {keyedFindings(findings).map(([finding, key]) => (
-              <li key={key} className={finding.severity}>
-                <span className="check">{finding.check}</span>{" "}
-                <span className="message">{finding.message}</span>
-              </li>
-            ))}
+            {keyedFindings(findings).map(([finding, key]) => {
+              const href = leadsElsewhere(finding, file) ? routeHref(finding) : null;
+              return (
+                <li key={key} className={finding.severity}>
+                  <span className="check">{finding.check}</span>{" "}
+                  {href === null ? (
+                    <span className="message">{finding.message}</span>
+                  ) : (
+                    <a className="button link" href={href}>
+                      {finding.message}
+                    </a>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -162,5 +171,15 @@ export function ComponentPage({ file, variable, state, stopped, onVariable }: Pr
         />
       )}
     </section>
+  );
+}
+
+/** Whether a finding's route leads somewhere other than this very component's page - a link to
+ * where the reader already is teaches nothing (spec 5.2). */
+function leadsElsewhere(finding: Finding, file: string): boolean {
+  const route = routeOf(finding);
+  return (
+    route !== null &&
+    !(route.page === "component" && route.file === file && route.variable === undefined)
   );
 }

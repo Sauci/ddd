@@ -3,6 +3,7 @@ import { type ReactNode, useCallback } from "react";
 import { getSession } from "../api/client";
 import { hrefOf } from "../lib/route";
 import { ComponentPage } from "../screens/ComponentPage";
+import { FindingsPage } from "../screens/FindingsPage";
 import { GraphPage } from "../screens/GraphPage";
 import { ProjectPage } from "../screens/ProjectPage";
 import { StartPage } from "../screens/StartPage";
@@ -18,6 +19,7 @@ const PROJECT_VIEWS = [
   ["graph", "Graph"],
   ["table", "Table"],
   ["units", "Units"],
+  ["findings", "Findings"],
 ] as const;
 
 export function App() {
@@ -94,6 +96,8 @@ export function App() {
           />
         ) : route.view === "units" ? (
           <UnitsPage state={state} unit={route.unit} stopped={stopped} onUnit={openUnit} />
+        ) : route.view === "findings" ? (
+          <FindingsPage state={state} stopped={stopped} onOpen={navigate} />
         ) : (
           <ProjectPage state={state} onComponent={openComponent} />
         )}

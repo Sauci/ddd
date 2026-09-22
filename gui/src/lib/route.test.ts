@@ -6,6 +6,7 @@ test.each([
   ["/project", "", { page: "project", view: "graph" }],
   ["/project", "?view=graph", { page: "project", view: "graph" }],
   ["/project", "?view=table", { page: "project", view: "table" }],
+  ["/project", "?view=findings", { page: "project", view: "findings" }],
   ["/project", "?view=sideways", { page: "project", view: "graph" }],
   ["/component", "?file=C%3A%2Fp%2Fa.ddd.json", { page: "component", file: "C:/p/a.ddd.json" }],
   ["/component", "", { page: "start" }],
@@ -18,6 +19,7 @@ test.each([
   [{ page: "start" }, "/"],
   [{ page: "project", view: "graph" }, "/project"],
   [{ page: "project", view: "table" }, "/project?view=table"],
+  [{ page: "project", view: "findings" }, "/project?view=findings"],
   [{ page: "component", file: "C:/p/a b.ddd.json" }, "/component?file=C%3A%2Fp%2Fa%20b.ddd.json"],
 ] as const)("%o is at %s", (route, href) => {
   expect(hrefOf(route)).toBe(href);
@@ -26,6 +28,7 @@ test.each([
 test.each([
   ["/project", "?variable=ValueA", { page: "project", view: "graph", variable: "ValueA" }],
   ["/project", "?view=table&variable=ValueA", { page: "project", view: "table" }],
+  ["/project", "?view=findings&variable=ValueA", { page: "project", view: "findings" }],
   [
     "/component",
     "?file=C%3A%2Fp%2Fa.ddd.json&variable=Value%20A",

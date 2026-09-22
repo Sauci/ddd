@@ -135,7 +135,7 @@ every place a unit is stated, rather than one declaration to agree with another.
 """
 
 
-_WITHIN_DEFINITION: Final = re.compile(r"^component\.interface\[\d+\]\.definition")
+WITHIN_DEFINITION: Final = re.compile(r"^component\.interface\[\d+\]\.definition")
 """Anywhere inside one definition, however deep - the prefix names the definition."""
 
 
@@ -238,7 +238,7 @@ def _on_the_declaration(
 ) -> list[dict[str, Any]]:
     """The actions on the declaration around the cursor: its keys brought into agreement with
     the other declarations of its object, and an identity where ``missing-id`` was reported."""
-    within = _WITHIN_DEFINITION.match(pointer)
+    within = WITHIN_DEFINITION.match(pointer)
     if within is None:
         return []
     definition = within.group()

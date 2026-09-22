@@ -11,6 +11,7 @@ import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
+import { UndoStrip } from "./UndoStrip";
 import { VariablePanel } from "./VariablePanel";
 
 interface Props {
@@ -85,7 +86,10 @@ export function ComponentPage({ file, variable, state, stopped, onVariable }: Pr
   return (
     <section className={variable === undefined ? undefined : "with-panel"}>
       <div>
-        <h1>{name}</h1>
+        <div className="heading">
+          <h1>{name}</h1>
+          <UndoStrip state={state} stopped={stopped} />
+        </div>
         {undeclared !== null && (
           <Banner tone="warning">
             {undeclared.name} is no longer declared in the open project.

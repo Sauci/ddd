@@ -7,6 +7,7 @@ import { FindingsPage } from "../screens/FindingsPage";
 import { GraphPage } from "../screens/GraphPage";
 import { ProjectPage } from "../screens/ProjectPage";
 import { StartPage } from "../screens/StartPage";
+import { UndoStrip } from "../screens/UndoStrip";
 import { UnitsPage } from "../screens/UnitsPage";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
@@ -75,7 +76,10 @@ export function App() {
   } else if (route.page === "project") {
     page = (
       <section>
-        <h1>{opened.name ?? opened.path}</h1>
+        <div className="heading">
+          <h1>{opened.name ?? opened.path}</h1>
+          <UndoStrip state={state} stopped={stopped} />
+        </div>
         <LinkTabs
           label="Project views"
           tabs={PROJECT_VIEWS.map(([view, label]) => ({

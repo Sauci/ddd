@@ -314,8 +314,8 @@ class Api:
             contract.EditReply(
                 revision=revision.number,
                 files=[
-                    {"path": path.as_posix(), "fingerprint": stamp}
-                    for path, stamp in written.items()
+                    {"path": file.path.as_posix(), "fingerprint": file.fingerprint}
+                    for file in written
                 ],
             ).model_dump(mode="json"),
         )

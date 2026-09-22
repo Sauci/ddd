@@ -622,13 +622,33 @@ class FileChange:
     may give it them; a file that exists keeps its own, whatever this says."""
 
 
+@dataclass(frozen=True, slots=True)
+class Written:
+    """One file an edit wrote: what it held before, and what it left.
+
+    What an undo is made of. The previous bytes rather than the inverse operations: the file
+    goes back to exactly what its author wrote, whatever the edit did to the layout around the
+    value it changed, and a file the edit created is one that simply had no bytes at all.
+    """
+
+    path: Path
+
+    before: bytes | None
+    """The bytes the file held before the edit; ``None`` for a file the edit created."""
+
+    fingerprint: str
+    """The fingerprint of the bytes the edit left, which says whether it may still be put back:
+    a file that has changed since is somebody else's now."""
+
+
 def fingerprint(data: bytes) -> str:
     """What says whether a file changed since it was read: the SHA-256 of its bytes, in hex."""
     return hashlib.sha256(data).hexdigest()
 
 
-def apply_changes(changes: Sequence[FileChange]) -> dict[Path, str]:
-    """Make every change or none of them, and hand back each file's new fingerprint.
+def apply_changes(changes: Sequence[FileChange]) -> tuple[Written, ...]:
+    """Make every change or none of them, and hand back what each file held before it and holds
+    now.
 
     Every file is checked against its fingerprint and edited in memory before anything is
     written, so a refusal leaves every file as it was. Each write is staged beside its file and
@@ -660,7 +680,48 @@ def apply_changes(changes: Sequence[FileChange]) -> dict[Path, str]:
                 UNWRITABLE, f"{pending.path} could not be written ({error}); {outcome}"
             ) from None
         written.append((pending.path, original))
-    return {pending.path: fingerprint(new) for pending, _, new in staged}
+    return tuple(
+        Written(pending.path, original, fingerprint(new)) for pending, original, new in staged
+    )
+
+
+def unchanged(entry: Written) -> bytes:
+    """The file's bytes as the edit left them, refusing one that has changed since.
+
+    What says whether an edit may still be put back: :func:`restore` checks every file with it
+    before writing anything, and ``ddd gui`` reads the lines of its preview from what it
+    answers.
+    """
+    try:
+        current = entry.path.read_bytes()
+    except OSError:
+        raise EditError(STALE, f"{entry.path} can no longer be read") from None
+    if fingerprint(current) != entry.fingerprint:
+        raise EditError(STALE, f"{entry.path} changed on disk since it was written")
+    return current
+
+
+def restore(written: Sequence[Written]) -> None:
+    """Put every file of an edit back where it was, or none of them.
+
+    Every file is checked against the fingerprint the edit left it at before anything is
+    written, so a refusal leaves every file as it stands. Each previous version is written
+    through the stage-and-rename :func:`apply_changes` uses, a file the edit created is taken
+    away again, and when one cannot be written the files already put back are written forward
+    to what the edit had left them - and the refusal names any that could not be.
+    """
+    ahead = [(entry, unchanged(entry)) for entry in written]
+    undone: list[tuple[Path, bytes]] = []
+    for entry, current in ahead:
+        if not _put_back(entry.path, entry.before):
+            lost = [path for path, forward in undone if not _put_back(path, forward)]
+            outcome = (
+                "these could not be written forward again: " + ", ".join(str(p) for p in lost)
+                if lost
+                else "the files already put back were written forward again"
+            )
+            raise EditError(UNWRITABLE, f"{entry.path} could not be put back; {outcome}")
+        undone.append((entry.path, current))
 
 
 def edited(pending: FileChange) -> tuple[bytes | None, bytes]:
@@ -743,13 +804,19 @@ def _keep_access(original: Path, staged: Path) -> None:
 
 
 def _put_back(path: Path, data: bytes | None) -> bool:
-    """Leave a file as it was before the edit - its bytes written back, or the file taken away
-    when the edit created it - and say whether that could be done."""
+    """Give a file the bytes it held at some earlier point - written back, or the file taken
+    away when it held none - and say whether that could be done.
+
+    Both directions of a rollback: the bytes a file held before an edit, and, for one an undo
+    has already taken away when something else refuses, the bytes that edit had left. A file
+    that is not there any more takes the access a new file gets, there being none of its own
+    left to copy.
+    """
     try:
         if data is None:
             path.unlink()
         else:
-            _stage_and_replace(path, data, path)
+            _stage_and_replace(path, data, path if path.exists() else None)
     except OSError:
         return False
     return True

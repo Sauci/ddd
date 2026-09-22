@@ -24,7 +24,7 @@ from typing import Any, Final
 
 from ddd.build_info import BuildInfo
 from ddd.diagnostics import CheckInfo, Diagnostic, Severity
-from ddd.editing import INVALID, EditError, FileChange, apply_changes, edited, fingerprint
+from ddd.editing import INVALID, EditError, FileChange, Written, apply_changes, edited, fingerprint
 from ddd.ir import DataDictionary
 from ddd.loading import parse_json_text, resolve_path
 from ddd.lsp.diagnostics import Run, group_findings, run_build, run_project
@@ -214,7 +214,7 @@ class Session:
             return FileContent(target, fingerprint(data), None, f"{target} is not json: {error}")
         return FileContent(target, fingerprint(data), parsed, None)
 
-    def edit(self, changes: Sequence[FileChange]) -> tuple[Revision, dict[Path, str]]:
+    def edit(self, changes: Sequence[FileChange]) -> tuple[Revision, tuple[Written, ...]]:
         """Make an edit of description files of the open project, then analyse it again.
 
         A change without a fingerprint creates its file, and only the kind of file adopting a

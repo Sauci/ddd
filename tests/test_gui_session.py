@@ -454,7 +454,7 @@ class TestReadingAndEditing:
         session.open(shared)
         revision, written = session.edit([unit_of_b(shared, "Hz")])
         assert revision.number == 2
-        assert list(written) == [(shared.parent / "b.ddd.json").resolve()]
+        assert [file.path for file in written] == [(shared.parent / "b.ddd.json").resolve()]
         assert {f.diagnostic.check for f in revision.findings} >= {"definition-mismatch"}
 
     def test_an_edit_outside_the_project_is_refused_and_nothing_is_written(
@@ -507,7 +507,7 @@ class TestCreatingAFile:
         units = (shared.parent / "units.ddd.json").resolve()
         revision, written = session.edit(adoption(shared))
         assert units.read_bytes() == b'{"units": ["rpm"]}'
-        assert set(written) == {units, shared.resolve()}
+        assert {file.path for file in written} == {units, shared.resolve()}
         described = {f.path.name: (f.kind, f.loaded) for f in revision.files}
         assert described["units.ddd.json"] == ("units", True)
 

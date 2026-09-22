@@ -7,6 +7,7 @@ import { FindingsPage } from "../screens/FindingsPage";
 import { GraphPage } from "../screens/GraphPage";
 import { ProjectPage } from "../screens/ProjectPage";
 import { StartPage } from "../screens/StartPage";
+import { TypesPage } from "../screens/TypesPage";
 import { UndoStrip } from "../screens/UndoStrip";
 import { UnitsPage } from "../screens/UnitsPage";
 import { Banner } from "../ui/Banner";
@@ -20,6 +21,7 @@ const PROJECT_VIEWS = [
   ["graph", "Graph"],
   ["table", "Table"],
   ["units", "Units"],
+  ["types", "Types"],
   ["findings", "Findings"],
 ] as const;
 
@@ -54,6 +56,17 @@ export function App() {
         unit === undefined
           ? { page: "project", view: "units" }
           : { page: "project", view: "units", unit },
+        { replace: true },
+      ),
+    [navigate],
+  );
+  // Selecting a type replaces the address, as selecting a unit does.
+  const openType = useCallback(
+    (type: string | undefined) =>
+      navigate(
+        type === undefined
+          ? { page: "project", view: "types" }
+          : { page: "project", view: "types", type },
         { replace: true },
       ),
     [navigate],
@@ -100,6 +113,14 @@ export function App() {
           />
         ) : route.view === "units" ? (
           <UnitsPage state={state} unit={route.unit} stopped={stopped} onUnit={openUnit} />
+        ) : route.view === "types" ? (
+          <TypesPage
+            state={state}
+            type={route.type}
+            stopped={stopped}
+            onType={openType}
+            onOpen={navigate}
+          />
         ) : route.view === "findings" ? (
           <FindingsPage state={state} stopped={stopped} onOpen={navigate} />
         ) : (

@@ -74,12 +74,28 @@ test.each([
 });
 
 test.each([
+  ["/project", "?view=types", { page: "project", view: "types" }],
+  [
+    "/project",
+    "?view=types&type=Temperature_t",
+    { page: "project", view: "types", type: "Temperature_t" },
+  ],
+  ["/project", "?view=types&type=%25", { page: "project", view: "types", type: "%" }],
+  ["/project", "?view=types&type=", { page: "project", view: "types" }],
+  ["/project", "?view=types&variable=ValueA", { page: "project", view: "types" }],
+  ["/project", "?type=Temperature_t", { page: "project", view: "graph" }],
+] as const)("%s%s carries the type %o", (pathname, search, route) => {
+  expect(parseRoute(pathname, search)).toEqual(route);
+});
+
+test.each([
   [{ page: "project", view: "types" }, "/project?view=types"],
   [
     { page: "project", view: "types", type: "Temperature_t" },
     "/project?view=types&type=Temperature_t",
   ],
   [{ page: "project", view: "types", type: "Sensor_t" }, "/project?view=types&type=Sensor_t"],
+  [{ page: "project", view: "types", type: "m/s_t" }, "/project?view=types&type=m%2Fs_t"],
 ] as const)("%o is at %s", (route, href) => {
   expect(hrefOf(route)).toBe(href);
 });

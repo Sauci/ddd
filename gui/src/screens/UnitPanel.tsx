@@ -11,6 +11,7 @@ import {
 import { type Offer, type UnitAction, UnitPanelView } from "../components/UnitPanelView";
 import { offers, planEdit } from "../lib/projectUnits";
 import { type Refused, shownRefusal } from "../lib/refusals";
+import { unitLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
 
@@ -103,22 +104,30 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
       : offers(row, units.data.vocabulary !== null);
   const draft =
     description !== undefined && description !== (row?.description ?? "") ? description : null;
-  const plans = {
-    describe: usePlan(
+  // Named before the plans that ask for them, so that applying one can say what it was: the
+  // label an undo of this edit will offer comes from the same request the preview was made
+  // from, rather than from a second reading of the panel's state.
+  const requests: Record<UnitAction, UnitPlanRequest | null> = {
+    describe:
       offered?.describe && draft !== null
         ? { action: "describe", unit: name, description: draft }
         : null,
-      revision,
-      true,
-    ),
-    add: usePlan(offered?.add ? { action: "add", unit: name } : null, revision),
-    remove: usePlan(offered?.remove ? { action: "remove", unit: name } : null, revision),
-    rename: usePlan(to === null ? null : { action: "rename", unit: name, to }, revision),
+    add: offered?.add ? { action: "add", unit: name } : null,
+    remove: offered?.remove ? { action: "remove", unit: name } : null,
+    rename: to === null ? null : { action: "rename", unit: name, to },
+  };
+  const plans = {
+    describe: usePlan(requests.describe, revision, true),
+    add: usePlan(requests.add, revision),
+    remove: usePlan(requests.remove, revision),
+    rename: usePlan(requests.rename, revision),
   };
   const apply = useMutation({
     mutationFn: (action: UnitAction) => {
       const plan = plans[action].data;
-      const edit = plan === undefined ? null : planEdit(plan);
+      const request = requests[action];
+      const edit =
+        plan === undefined || request === null ? null : planEdit(plan, unitLabel(request));
       if (edit === null) throw new Error("there is nothing to change");
       return postEdit(edit);
     },

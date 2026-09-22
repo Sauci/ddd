@@ -15,6 +15,7 @@ import {
 } from "../lib/findings";
 import { type Refused, shownRefusal } from "../lib/refusals";
 import type { Route } from "../lib/route";
+import { fixLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 
 interface Props {
@@ -72,7 +73,9 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
   const apply = useMutation({
     mutationFn: () => {
       const edit =
-        fixes.data === undefined || chosen === undefined ? null : fixEdit(fixes.data, chosen);
+        fixes.data === undefined || chosen === undefined || finding === undefined
+          ? null
+          : fixEdit(fixes.data, chosen, fixLabel(finding, chosen));
       if (edit === null) throw new Error("there is nothing to apply");
       return postEdit(edit);
     },

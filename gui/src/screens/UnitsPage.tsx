@@ -6,6 +6,7 @@ import { AdoptBannerView, AdoptPanelView } from "../components/AdoptBannerView";
 import { UnitsTableView } from "../components/UnitsTableView";
 import { planEdit, tabTitle } from "../lib/projectUnits";
 import { type Refused, shownRefusal } from "../lib/refusals";
+import { unitLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { refusalOf, UnitPanel, usePlan } from "./UnitPanel";
 
@@ -51,7 +52,10 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
   );
   const adopt = useMutation({
     mutationFn: () => {
-      const edit = adoption.data === undefined ? null : planEdit(adoption.data);
+      const edit =
+        adoption.data === undefined
+          ? null
+          : planEdit(adoption.data, unitLabel({ action: "adopt" }));
       if (edit === null) throw new Error("there is nothing to adopt");
       return postEdit(edit);
     },

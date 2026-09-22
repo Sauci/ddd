@@ -175,8 +175,8 @@ export function adoptionSentence(adoptable: number): string {
 /** The edit a plan comes to, exactly as `POST /api/edit` takes it - the `null` fingerprint of a
  * file it creates included - or `null` when there is nothing to change. A plan has the shape of
  * part 1's preview, and comes to its edit the same way. */
-export function planEdit(plan: PlanReply): Changes | null {
-  return editOf(plan);
+export function planEdit(plan: PlanReply, label: string): Changes | null {
+  return editOf(plan, label);
 }
 
 /** How many variables, types and structure members state a unit. */

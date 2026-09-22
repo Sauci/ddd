@@ -184,15 +184,16 @@ export function hunkLines(hunk: Hunk): HunkLine[] {
   ];
 }
 
-/** The edit a preview comes to, exactly as `POST /api/edit` takes it; `null` when it is none. */
-export function editOf(preview: SettleReply): Changes | null {
+/** The edit a preview comes to, exactly as `POST /api/edit` takes it, under the label an undo
+ * of it would offer; `null` when there is nothing to change. */
+export function editOf(preview: SettleReply, label: string): Changes | null {
   const changes = nonEmpty(
     preview.changes.flatMap(({ file, fingerprint, operations }) => {
       const made = nonEmpty(operations);
       return made === null ? [] : [{ file, fingerprint, operations: made }];
     }),
   );
-  return changes === null ? null : { changes };
+  return changes === null ? null : { changes, label };
 }
 
 function nonEmpty<T>(items: readonly T[]): [T, ...T[]] | null {

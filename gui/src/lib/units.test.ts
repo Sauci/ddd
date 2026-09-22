@@ -271,7 +271,7 @@ group("what a preview says and sends", () => {
   });
 
   test("the edit a preview comes to is what POST /api/edit takes, hunks left behind", () => {
-    expect(editOf(ONE_FILE)).toEqual({
+    expect(editOf(ONE_FILE, "the unit of ValueA")).toEqual({
       changes: [
         {
           file: CONTROLLER,
@@ -279,8 +279,14 @@ group("what a preview says and sends", () => {
           operations: [{ op: "set", pointer: `${AT}.unit`, raw: '"%"' }],
         },
       ],
+      label: "the unit of ValueA",
     });
-    expect(editOf({ revision: 1, changes: [] })).toBeNull();
-    expect(editOf({ revision: 1, changes: [{ ...ONE_FILE_CHANGE, operations: [] }] })).toBeNull();
+    expect(editOf({ revision: 1, changes: [] }, "the unit of ValueA")).toBeNull();
+    expect(
+      editOf(
+        { revision: 1, changes: [{ ...ONE_FILE_CHANGE, operations: [] }] },
+        "the unit of ValueA",
+      ),
+    ).toBeNull();
   });
 });

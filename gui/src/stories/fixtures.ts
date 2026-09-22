@@ -866,6 +866,7 @@ export const PROJECT_FINDINGS: State = {
     },
   ],
   findings: [UNKNOWN_RPM_FINDING, STORAGE_MISMATCH, DID_NOT_LOAD, MISSING_ID, UNKNOWN_RASTER],
+  undoable: null,
 };
 
 /** The one fix the tab offers: `missing-id`, previewed onto SensorHub's ValueA. */
@@ -917,4 +918,5 @@ export const NO_FINDINGS: State = {
     },
   ],
   findings: [],
+  undoable: null,
 };

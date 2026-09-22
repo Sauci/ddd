@@ -154,8 +154,9 @@ export function noRouteReason(finding: Finding, state: State): string {
   return "there is nothing at that place any more";
 }
 
-/** The edit the fix of that title comes to, exactly as `POST /api/edit` takes it. */
-export function fixEdit(reply: FixReply, title: string): Changes | null {
+/** The edit the fix of that title comes to, exactly as `POST /api/edit` takes it, under the
+ * label an undo of it would offer. */
+export function fixEdit(reply: FixReply, title: string, label: string): Changes | null {
   const chosen = reply.fixes.find((fix) => fix.title === title);
   if (chosen === undefined) return null;
   const changes = nonEmpty(
@@ -164,7 +165,7 @@ export function fixEdit(reply: FixReply, title: string): Changes | null {
       return made === null ? [] : [{ file, fingerprint, operations: made }];
     }),
   );
-  return changes === null ? null : { changes };
+  return changes === null ? null : { changes, label };
 }
 
 /** As `editOf` in `./units` narrows a preview's operations: `Changes`' own are a non-empty

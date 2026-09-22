@@ -100,7 +100,10 @@ describe("requests to the server", () => {
     );
     await getUnitPlan({ action: "adopt" }, fetchImpl);
     await postEdit(
-      { changes: [{ file: "a", fingerprint: "x", operations: [{ op: "remove", pointer: "a" }] }] },
+      {
+        changes: [{ file: "a", fingerprint: "x", operations: [{ op: "remove", pointer: "a" }] }],
+        label: "the unit of ValueA",
+      },
       fetchImpl,
     );
     expect(fetchImpl.mock.calls).toEqual([
@@ -142,7 +145,9 @@ describe("requests to the server", () => {
           credentials: "same-origin",
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: '{"changes":[{"file":"a","fingerprint":"x","operations":[{"op":"remove","pointer":"a"}]}]}',
+          body:
+            '{"changes":[{"file":"a","fingerprint":"x","operations":[{"op":"remove","pointer":"a"}]}],' +
+            '"label":"the unit of ValueA"}',
         },
       ],
     ]);

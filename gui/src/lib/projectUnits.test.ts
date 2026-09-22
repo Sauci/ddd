@@ -368,7 +368,7 @@ group("what a plan says and sends", () => {
         },
       ],
     };
-    expect(planEdit(adoption)).toEqual({
+    expect(planEdit(adoption, "the vocabulary adopted")).toEqual({
       changes: [
         {
           file: "C:/w/demo.ddd.json",
@@ -383,10 +383,11 @@ group("what a plan says and sends", () => {
           ],
         },
       ],
+      label: "the vocabulary adopted",
     });
   });
 
   test("a plan with nothing to change comes to no edit", () => {
-    expect(planEdit({ revision: 3, changes: [] })).toBeNull();
+    expect(planEdit({ revision: 3, changes: [] }, "the vocabulary adopted")).toBeNull();
   });
 });

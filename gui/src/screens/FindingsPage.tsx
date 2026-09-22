@@ -41,11 +41,14 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
   // A refused apply for a reason other than staleness, if any: cleared whenever the reader
   // chooses again, exactly as before this task.
   const [refused, setRefused] = useState<string | null>(null);
-  // A refused apply because a file changed on disk, and the revision it happened at. As in the
-  // variable and unit panels, a reader who chooses again straight away would otherwise send the
-  // same stale fingerprints the server just refused; `shownRefusal` keeps it shown until a later
-  // revision arrives.
-  const [stale, setStale] = useState<Refused | null>(null);
+  // A refused apply because a file changed on disk, the row it was made from, and the revision
+  // it happened at. As in the variable and unit panels, a reader who chooses again straight away
+  // would otherwise send the same stale fingerprints the server just refused; `shownRefusal`
+  // keeps it shown until a later revision arrives. Kept with the row's own key, the way
+  // `UnitPanel` keeps it with the action it belongs to: the wait is about the fix that was
+  // refused, so another finding selected in the meantime must not be given its sentence - the
+  // file it names need not even be one that finding is about.
+  const [stale, setStale] = useState<({ key: string | undefined } & Refused) | null>(null);
   // The finding whose panel closed because it is no longer among the next revision's rows - the
   // analysis moved on, or somebody else fixed it (spec 5.3) - named above the table until
   // another finding is selected or the reader leaves the tab. `UnitsPage`'s `gone` is the same
@@ -89,7 +92,7 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
     // kind clears the other, so the panel never shows two different answers to the same apply.
     onError: (error) => {
       if (error instanceof ApiError && error.code === "stale") {
-        setStale({ text: STALE, revision });
+        setStale({ key: selected, text: STALE, revision });
         setRefused(null);
       } else {
         setRefused(`The change was refused: ${error.message}`);
@@ -145,7 +148,10 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
               changesShown={changesShown}
               onChangesShown={setChangesShown}
               onApply={() => apply.mutate()}
-              refusal={shownRefusal(stale, revision) ?? refused}
+              refusal={
+                (stale !== null && stale.key === selected ? shownRefusal(stale, revision) : null) ??
+                refused
+              }
               busy={stopped || apply.isPending}
               onClose={() => select(undefined)}
             />

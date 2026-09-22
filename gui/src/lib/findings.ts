@@ -136,14 +136,22 @@ export function namesThisVariable(finding: Finding, name: string): boolean {
   return route !== null && route.page === "component" && route.variable === name;
 }
 
-/** Why a finding leads nowhere, in the words the panel says it. */
+/** Why a finding leads nowhere, in the words the panel says it.
+ *
+ * The three the server answers `null` for are said in its own terms (`ddd.finding_routes`): a
+ * file that did not load, a kind of file the page has no screen for, and a finding that names
+ * no place at all - a check about the project, whose pointer is empty. What is left is a
+ * finding that does name a place the file no longer has: a declaration moved since the
+ * analysis read it, or a unit no longer stated where it was. Neither is about the project, and
+ * neither is a sentence to guess at, so the reason says only what is certain of both. */
 export function noRouteReason(finding: Finding, state: State): string {
   const name = baseName(finding.file);
   const listed = state.files.find((file) => file.path === finding.file);
   if (listed === undefined) return `${name} is not a file of this project`;
   if (!listed.loaded) return `${name} did not load`;
   if (listed.kind !== "component") return `${name} is a ${listed.kind} file, which has no page yet`;
-  return "it is about the project rather than a place in a file";
+  if (finding.pointer === "") return "it is about the project rather than a place in a file";
+  return "there is nothing at that place any more";
 }
 
 /** The edit the fix of that title comes to, exactly as `POST /api/edit` takes it. */

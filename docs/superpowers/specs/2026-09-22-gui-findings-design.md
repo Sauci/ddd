@@ -105,8 +105,12 @@ point of the change, and the tests that pinned the old behaviour change with it.
 Two rough edges are fixed beside it, both found while part 3 ran:
 
 - A retry straight after a stale refusal can be refused again, because the plan it refetched still
-  carries the fingerprints of the analysis that was current when the file changed. A preview reads
-  the files it is about rather than trusting the last analysis's record of them.
+  carries the fingerprints of the analysis that was current when the file changed. The page waits
+  instead: the refusal is held, and the Apply under it withheld, until a revision later than the
+  one it was refused at arrives (`gui/src/lib/refusals.ts`). The watcher answers within a second,
+  so the retry goes through, and no endpoint is made to re-read the files the next analysis is
+  about to read anyway. Its one weakness, plainly: only a later revision takes the sentence down,
+  so a watcher that has stopped publishing leaves it standing.
 - `ddd.variables.preview` sorts `Path` objects, which order differently on Windows and Linux; it
   sorts by the posix spelling, as `ddd.lsp.units` already does.
 

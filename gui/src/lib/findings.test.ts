@@ -209,6 +209,23 @@ describe("why a finding leads nowhere", () => {
     );
   });
 
+  test("the declaration it names has moved since the analysis read the file", () => {
+    // The server answers no route for a pointer whose declaration the file no longer holds
+    // there - `ddd.finding_routes.route_of`. The file is a loaded component all the same, so
+    // the reason must not tell the reader it is a finding about the project.
+    const one = finding({ route: null });
+    expect(noRouteReason(one, state([one]))).toBe("there is nothing at that place any more");
+  });
+
+  test("the unit it was filed on is no longer stated there", () => {
+    const one = finding({
+      check: "unknown-unit",
+      pointer: "component.interface[2].definition.unit",
+      route: null,
+    });
+    expect(noRouteReason(one, state([one]))).toBe("there is nothing at that place any more");
+  });
+
   test("its file is not one the analysis listed", () => {
     const one = finding({ file: "C:/elsewhere.ddd.json", route: null });
     expect(noRouteReason(one, state([one]))).toBe(

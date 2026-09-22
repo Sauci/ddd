@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Finding, FixReply, State } from "../api/types";
 import { noRouteReason, routeHref, routeLabel } from "../lib/findings";
 import {
+  DID_NOT_LOAD,
   ID_FIX,
   MISSING_ID,
   PROJECT_FINDINGS,
@@ -55,11 +56,13 @@ function View({
   );
 }
 
-export const LeadsToAVariable = () => <View finding={MISSING_ID} state={PROJECT_FINDINGS} />;
+/** A finding with notes as well as a route: the declaration it was compared against, and the
+ * file that holds it. */
+export const LeadsToAVariable = () => <View finding={STORAGE_MISMATCH} state={PROJECT_FINDINGS} />;
 
 export const LeadsToAUnit = () => <View finding={UNKNOWN_RPM_FINDING} state={PROJECT_FINDINGS} />;
 
-export const LeadsNowhere = () => <View finding={STORAGE_MISMATCH} state={PROJECT_FINDINGS} />;
+export const LeadsNowhere = () => <View finding={DID_NOT_LOAD} state={PROJECT_FINDINGS} />;
 
 export const WithAFix = () => <View finding={MISSING_ID} state={PROJECT_FINDINGS} fixes={ID_FIX} />;
 

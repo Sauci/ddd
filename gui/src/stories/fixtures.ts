@@ -755,9 +755,10 @@ export const MISSING_ID: Finding = {
   route: { kind: "variable", name: "ValueA" },
 };
 
-/** RPM, stated by Controller's EngineSpeed and mirrored onto the type that also states it: leads
- * to its unit's panel, with a note for the other site. `unknown-unit`'s own default is error, and
- * it is the one check whose route is ever a unit's (`src/ddd/finding_routes.py`'s
+/** RPM, where Controller's EngineSpeed states it: leads to its unit's panel, which is where
+ * every other place stating it is listed - the check files one finding per place rather than
+ * noting the others here (`_check_units` in `src/ddd/analysis.py`). `unknown-unit`'s own default
+ * is error, and it is the one check whose route is ever a unit's (`src/ddd/finding_routes.py`'s
  * `UNIT_CHECKS`). */
 export const UNKNOWN_RPM_FINDING: Finding = {
   file: CONTROLLER,
@@ -765,45 +766,68 @@ export const UNKNOWN_RPM_FINDING: Finding = {
   severity: "error",
   message: "'RPM' is not a unit this project declares - did you mean 'rpm'?",
   pointer: "component.interface[3].definition.unit",
-  notes: [{ message: "Also stated by 'Speed_t'", file: TYPES, pointer: "types[0].unit" }],
+  notes: [],
   route: { kind: "unit", name: "RPM" },
 };
 
-/** UserInterface sharing its name with another component: not within a declaration, so it leads
- * to the component's own page rather than a variable's panel. `duplicate-component`'s own default
- * is error. */
-const DUPLICATE_COMPONENT: Finding = {
+/** UserInterface measuring in a raster no file of the project declares: filed on the component
+ * itself rather than inside a declaration, so it leads to the component's own page rather than
+ * to a variable's panel. `unknown-raster`'s own default is error. */
+const UNKNOWN_RASTER: Finding = {
   file: USER_INTERFACE,
-  check: "duplicate-component",
+  check: "unknown-raster",
   severity: "error",
-  message: "Another component in this project is also named 'UserInterface'",
-  pointer: "component.name",
+  message:
+    "component 'UserInterface' measures in '20ms', which is not a raster any file of this " +
+    "project declares - did you mean '10ms'?",
+  pointer: "component.raster",
   notes: [],
   route: { kind: "component", name: null },
 };
 
-/** Pump's ValueB, filed on a file that did not load: the row says so instead of leading nowhere
- * silently. `storage-mismatch`'s own default is warning. */
+/** Controller and SensorHub presenting ValueB differently in the a2l: the producer's value wins,
+ * and the finding is filed on the declaration that disagrees with it, with a note naming the one
+ * it was compared against. `storage-mismatch`'s own default is warning, and it compares the a2l
+ * keys alone (`_STORAGE_FIELDS` in `src/ddd/analysis.py`). */
 export const STORAGE_MISMATCH: Finding = {
-  file: PUMP,
+  file: CONTROLLER,
   check: "storage-mismatch",
   severity: "warning",
-  message: "'ValueB' is stored as uint16 here but uint8 elsewhere",
+  message:
+    "'ValueB': component 'Controller' specifies a different a2l format than 'SensorHub' " +
+    "(a2l format: '%6.2' != '%6.3'); the value of 'SensorHub' is used",
   pointer: "component.interface[1].definition",
   notes: [
     {
-      message: "Stored as uint8",
+      message: "reference declaration",
       file: SENSOR_HUB,
-      pointer: "component.interface[1].definition.datatype",
+      pointer: "component.interface[1].definition",
     },
   ],
+  route: { kind: "variable", name: "ValueB" },
+};
+
+/** Pump's file, which has no component name at all: a `schema` error is one of the four checks
+ * that mean a file did not load (`ddd.lsp.navigation.LOAD_CHECKS`), so the analysis read no
+ * document for the pointer to describe and the finding leads nowhere - the row says so instead
+ * of leading nowhere silently. The file's own entry says as much: `loaded: false`, and no name,
+ * since the key that names it is the one it is missing. */
+export const DID_NOT_LOAD: Finding = {
+  file: PUMP,
+  check: "schema",
+  severity: "error",
+  message: "Field required",
+  pointer: "component.name",
+  notes: [],
   route: null,
 };
 
 /** The project of spec 6's screenshots: every severity, every route a finding can lead to, and
- * one whose file did not load - pump.ddd.json, still listed as the analysis last read it. Worst
- * first: `unknown-unit` and `duplicate-component` (error), `storage-mismatch` (warning),
- * `missing-id` (info) - each check's own default severity, `src/ddd/diagnostics.py`. */
+ * one whose file did not load - pump.ddd.json, still listed as the analysis last read it. In the
+ * order `GET /api/state` answers, which is by file: controller's `unknown-unit` (error) and
+ * `storage-mismatch` (warning), pump's `schema` (error), sensor_hub's `missing-id` (info), and
+ * user_interface's `unknown-raster` (error) - each check's own default severity,
+ * `src/ddd/diagnostics.py`. The tab sorts them worst first. */
 export const PROJECT_FINDINGS: State = {
   revision: 7,
   project: DEMO,
@@ -814,7 +838,7 @@ export const PROJECT_FINDINGS: State = {
       name: "Controller",
       loaded: true,
       fingerprint: "a",
-      findings: { error: 1, warning: 0, info: 0 },
+      findings: { error: 1, warning: 1, info: 0 },
     },
     {
       path: PUMP,
@@ -822,7 +846,7 @@ export const PROJECT_FINDINGS: State = {
       name: null,
       loaded: false,
       fingerprint: "b",
-      findings: { error: 0, warning: 1, info: 0 },
+      findings: { error: 1, warning: 0, info: 0 },
     },
     {
       path: SENSOR_HUB,
@@ -841,7 +865,7 @@ export const PROJECT_FINDINGS: State = {
       findings: { error: 1, warning: 0, info: 0 },
     },
   ],
-  findings: [UNKNOWN_RPM_FINDING, DUPLICATE_COMPONENT, STORAGE_MISMATCH, MISSING_ID],
+  findings: [UNKNOWN_RPM_FINDING, STORAGE_MISMATCH, DID_NOT_LOAD, MISSING_ID, UNKNOWN_RASTER],
 };
 
 /** The one fix the tab offers: `missing-id`, previewed onto SensorHub's ValueA. */

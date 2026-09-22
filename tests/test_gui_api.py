@@ -277,6 +277,8 @@ class TestState:
         )
         assert _finding(filed, None, {})["notes"] == [{"message": "n", "file": None, "pointer": ""}]
         assert _finding(filed, None, {})["pointer"] == ""
+        # A file the analysis did not list has no kind to route by, so the finding leads nowhere.
+        assert _finding(filed, None, {})["route"] is None
 
     def test_asking_for_a_newer_revision_waits_for_one(self, api: Api, root: Path) -> None:
         threading.Timer(0.01, api.session.open, args=(root / "p.ddd.json",)).start()
@@ -297,13 +299,14 @@ class TestState:
         reply = get(Api(Session(root), wait_seconds=0.01), "/api/state", after="0")
         assert (reply.status, reply.body["error"]) == (409, "no-project")
 
-    def test_every_finding_says_where_it_leads(self, api: Api, root: Path) -> None:
-        # The root fixture's two components declare Speed, and `a.ddd.json` states no id.
-        routes = {
-            (finding["check"], finding["route"] is None): finding["route"]
-            for finding in get(api, "/api/state").body["findings"]
-        }
-        assert routes[("missing-id", False)] == {"kind": "variable", "name": "Speed"}
+    def test_every_finding_says_where_it_leads(self, api: Api) -> None:
+        # The root fixture's two components declare Speed, and `a.ddd.json` states no id: every
+        # finding this project reports is about that declaration, and each says so.
+        findings = get(api, "/api/state").body["findings"]
+        assert findings
+        assert all(
+            finding["route"] == {"kind": "variable", "name": "Speed"} for finding in findings
+        )
 
     def test_a_finding_on_a_file_that_did_not_load_leads_nowhere(self, tmp_path: Path) -> None:
         state = get(opened(tmp_path, HALF_SAVED), "/api/state").body
@@ -794,6 +797,9 @@ class TestVariable:
 
     def test_a_panel_finding_carries_its_route(self, api: Api) -> None:
         findings = get(api, "/api/variable", name="Speed").body["findings"]
+        # `a.ddd.json` states no id for Speed, so the panel has a finding to carry a route at
+        # all: asserted, or the `all` below would pass over an empty list saying nothing.
+        assert findings
         assert all(
             finding["route"] == {"kind": "variable", "name": "Speed"} for finding in findings
         )

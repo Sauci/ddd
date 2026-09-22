@@ -49,6 +49,11 @@ first of the original design's milestone 6 - the shared project files.
   up inside it. A type has no declarations, so reusing it means taking the offer and a label
   instead - a small decoupling, in the path of this work. The alternative is a second chooser that
   drifts from the first.
+- **The rename is the editor's rename.** `ddd.lsp.navigation` already renames a type: its
+  `renameable_at` answers `("type", name)` from a type's own `name` or from any `typename`, its
+  `rename_sites` gives every string to rewrite, and its `rename_problem` says why a name may not be
+  used. The tab asks those two the same questions the editor asks, so the two clients cannot
+  disagree about what a rename reaches or which names it refuses.
 - **Nothing is added or removed.** This part changes types that exist. Declaring a new one belongs
   with adding a declaration, which is the part after this.
 
@@ -89,16 +94,22 @@ findings are those filed inside it: `duplicate-type`, `unknown-type`, `type-kind
 
 ### 4.3 What changing one takes
 
-`src/ddd/type_plans.py`, the way `ddd.lsp.units` plans a unit's change:
+`src/ddd/type_plans.py`, the way `ddd.project_units` plans a unit's change:
 
 - `set_key(name, key, raw)` - a scalar's `datatype`, `unit`, `conversion` or `limits`, any type's
   `description`, an external's `header`. One file, one pointer.
 - `rename_type(name, to)` - the type's own `name` and every `typename` reaching it, across every
   file, in one edit.
 
-It sits beside the GUI rather than under `lsp/`. `ddd.lsp.units` is under `lsp/` because
-`ddd/lsp/server.py` imports its rename for the editor's own refactor; the language server has no
-type rename to share, and inventing one here would be a feature nobody asked for.
+Neither invents what the editor already knows. `rename_type` asks
+`ddd.lsp.navigation.rename_problem(index, to, "type")` whether the name may be used, and
+`rename_sites(index, "type", name)` which strings to rewrite - the type's own `name` pointer and
+every use `type_uses` holds. What it does not borrow is the editor's `rename_edits`, which answers
+text edits with ranges; the tab plans `ddd.editing` operations on json pointers instead, exactly as
+part 4's identity fix did rather than borrowing the language server's quick fix. `rename_edits`'s
+own `drifted` has no counterpart here either: it exists because an editor's buffer may have moved
+a declaration out from under the index, and the tab reads the disk the index described, with the
+edit engine's fingerprints refusing a file that changed since.
 
 ### 4.4 The endpoints
 
@@ -115,11 +126,13 @@ reads. `FindingRoute.kind` gains `"type"`.
 
 ### 4.5 What is refused, and what is merely reported
 
-Refused, before anything is written: a rename to a name `occupied` already records - another
-type's, an enum's, an enumerator's - answered with the phrase the index stores, so the reader is
-told what holds it rather than only that something does; a rename to something that is not an
-identifier; a `set` of a key the type does not have - a `datatype` on a structure, a `header` on a
-scalar; and the refusals every edit already has, `stale` first among them.
+A rename is refused for whatever `rename_problem` refuses it for, in that function's own words,
+which is more than a tab would have thought to check: a name that is not a usable c identifier or
+is too long, one spelling a base datatype, one c or a generated header reserves, one this project
+already declares as a variable, and one `occupied` records - another type's name, an enum's, an
+enumerator's - reported as "'X' is the name of the type 'X', which shares c's namespace with the
+variables". Beside it: a `set` of a key the type does not have, a `datatype` on a structure or a
+`header` on a scalar, and the refusals every edit already has, `stale` first among them.
 
 Not refused: a value that is legal json for its key but wrong for the project. A unit outside the
 vocabulary is written and then reported as `unknown-unit`; limits the datatype cannot hold are
@@ -187,7 +200,9 @@ proves the chooser's decoupling changed nothing a reader sees.
     over a project whose types file did not load;
   - `set_key` for every key of every kind, including the refusals for a key the kind does not have;
   - `rename_type` across a declaration and a nested member at once, the whole edit checked byte for
-    byte, and refused for a taken name, an occupied identifier and a spelling that is no identifier;
+    byte, and refused for each shape `rename_problem` refuses - a taken name, a base datatype's, a
+    reserved one, a variable's and a spelling that is no identifier - with its sentence carried
+    through to the page unchanged;
   - the route for a finding filed inside a type, and for one filed on a types file that did not
     load;
   - every refusal, and every `400`, `404` and `409`.
@@ -219,9 +234,12 @@ proves the chooser's decoupling changed nothing a reader sees.
   `unit` and `limits` are not; `ExternalType`, with its `header`; `StructType` and `Member`.
 - `examples/structures/types.ddd.json`: all three kinds, a member nesting another structure, a
   member carrying bits and an enum, and a member with dimensions.
+- `src/ddd/lsp/navigation.py` again: `renameable_at`, which already answers `("type", name)`;
+  `rename_sites`, which adds the type's own `name` to its uses; and `rename_problem`, whose five
+  refusals this tab reuses rather than re-deriving. `rename_edits` beside them answers text edits
+  with ranges, which is why the tab plans its own operations.
 - `src/ddd/project_units.py` and `src/ddd/lsp/units.py`: the pair this mirrors - what a tab reads,
-  and what changing one takes - and why the second is under `lsp/`: `ddd/lsp/server.py` imports its
-  rename.
+  and what changing one takes.
 - `src/ddd/gui/contract.py`: `FindingRoute`, which gains a kind, and `PlanReply`, which is reused
   as it stands.
 - `gui/src/components/KeyChooser.tsx`: takes a whole `VariableReply` today, which is what section 2

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from ddd.lsp.edits import WITHIN_DEFINITION
+from ddd.lsp.edits import WITHIN_DECLARATION
 from ddd.lsp.ranges import Document, read
 
 UNIT_CHECKS: Final = frozenset({"unknown-unit"})
@@ -62,10 +62,11 @@ def route_of(
         return Route("unit", stated) if isinstance(stated, str) and stated else None
     if kind != COMPONENT_KIND:
         return None
-    within = WITHIN_DEFINITION.match(pointer)
+    within = WITHIN_DECLARATION.match(pointer)
     if within is None:
         # Somewhere else in a component: its own page is what there is to open.
         return Route("component", None) if pointer else None
-    name = read(path, cache).value_at(f"{within.group()}.name")
+    declaration = within.group()
+    name = read(path, cache).value_at(f"{declaration}.definition.name")
     # The pointer is where the analysis found the declaration; the file may have moved on since.
     return Route("variable", name) if isinstance(name, str) else None

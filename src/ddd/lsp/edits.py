@@ -139,6 +139,18 @@ WITHIN_DEFINITION: Final = re.compile(r"^component\.interface\[\d+\]\.definition
 """Anywhere inside one definition, however deep - the prefix names the definition."""
 
 
+WITHIN_DECLARATION: Final = re.compile(r"^component\.interface\[\d+\]")
+"""Anywhere inside one declaration, definition or not - the prefix names the declaration.
+
+:data:`WITHIN_DEFINITION` names the definition a key belongs to; this names the declaration a
+finding is about, which is broader by exactly the keys a declaration carries beside its
+definition - ``scope`` and ``condition``. ``missing-producer`` and ``local-conflict`` are filed
+on the declaration itself, and a ``condition-mismatch`` on the condition or, stating none, on
+the declaration too - none of them under ``definition``, so :data:`WITHIN_DEFINITION` would miss
+every one.
+"""
+
+
 def _keys_of(document: Document, definition: str) -> tuple[frozenset[str], frozenset[str]]:
     """What the definition at that pointer accepts and must state, by its own ``kind``.
 

@@ -5,6 +5,7 @@ import type {
   ProjectUnit,
   SettleReply,
   State,
+  TypeReply,
   TypesReply,
   UndoPreview,
   UnitReply,
@@ -1008,3 +1009,194 @@ export const PROJECT_TYPES: TypesReply = {
 
 /** A project that declares none, for the story that says so. */
 export const NO_TYPES: TypesReply = { revision: 7, types: [] };
+
+// One type's own panel (spec 5.2), modelled on examples/structures/types.ddd.json - not
+// transcribed from it, as PROJECT_TYPES already is not: the same six types, the same names and
+// descriptions, Sensor_t's two components renamed to this file's own Windows-style paths.
+
+/** Sensor_t is declared by two components: Sensing produces Inlet, Monitoring reads it - the
+ * "Where it is used" table's two rows sharing one name, told apart by component and role. */
+const SENSING = "C:/work/demo/components/sensing.ddd.json";
+const MONITORING = "C:/work/demo/components/monitoring.ddd.json";
+
+/** Temperature_t: its four keys, each an `offer_for` offer - one carried, at most one value,
+ * `components: []` and `producer: false` since a type states a key itself, nothing "carries" it
+ * the way a declaration does. Used three times, each a structure member, never as a variable. */
+export const SCALAR_TYPE: TypeReply = {
+  revision: 7,
+  name: "Temperature_t",
+  kind: "scalar",
+  file: TYPES,
+  pointer: "types[0]",
+  description: "A temperature as every component of this project agrees to see it",
+  header: null,
+  keys: [
+    {
+      key: "datatype",
+      carried: [carried(true)],
+      values: [inPlay('"uint16"', [], false)],
+      disagrees: false,
+      editor: "datatype",
+      choices: DATATYPES,
+    },
+    {
+      key: "unit",
+      carried: [carried(false)],
+      values: [inPlay('"degC"', [], false)],
+      disagrees: false,
+      editor: "unit",
+      choices: [],
+    },
+    {
+      key: "conversion",
+      carried: [carried(true)],
+      values: [inPlay('{"factor": 0.1, "offset": -40}', [], false)],
+      disagrees: false,
+      editor: "none",
+      choices: [],
+    },
+    {
+      key: "limits",
+      carried: [carried(false)],
+      values: [inPlay('{"min": -40, "max": 150}', [], false)],
+      disagrees: false,
+      editor: "limits",
+      choices: [],
+    },
+  ],
+  uses: [
+    {
+      path: TYPES,
+      pointer: "types[2].members[0].typename",
+      kind: "member",
+      name: "Sample_t.value",
+      component: null,
+      role: null,
+    },
+    {
+      path: TYPES,
+      pointer: "types[4].members[3].typename",
+      kind: "member",
+      name: "Sensor_t.history",
+      component: null,
+      role: null,
+    },
+    {
+      path: TYPES,
+      pointer: "types[5].members[0].typename",
+      kind: "member",
+      name: "SensorCal_t.warnLimit",
+      component: null,
+      role: null,
+    },
+  ],
+  members: [],
+  findings: [],
+};
+
+/** Sensor_t: no keys - a structure fixes nothing a chooser edits - four members, the last with
+ * dimensions, and the two declarations naming it, produced by Sensing and read by Monitoring. */
+export const STRUCT_TYPE: TypeReply = {
+  revision: 7,
+  name: "Sensor_t",
+  kind: "struct",
+  file: TYPES,
+  pointer: "types[4]",
+  description: "Everything one sensor measures",
+  header: null,
+  keys: [],
+  uses: [
+    {
+      path: SENSING,
+      pointer: "component.interface[1].definition.typename",
+      kind: "variable",
+      name: "Inlet",
+      component: "Sensing",
+      role: "produces",
+    },
+    {
+      path: MONITORING,
+      pointer: "component.interface[0].definition.typename",
+      kind: "variable",
+      name: "Inlet",
+      component: "Monitoring",
+      role: "reads",
+    },
+  ],
+  members: [
+    {
+      name: "latest",
+      member: "value",
+      typename: "Sample_t",
+      datatype: null,
+      unit: null,
+      bits: null,
+      dimensions: [],
+    },
+    {
+      name: "status",
+      member: "value",
+      typename: "Status_t",
+      datatype: null,
+      unit: null,
+      bits: null,
+      dimensions: [],
+    },
+    {
+      name: "driver",
+      member: "value",
+      typename: "DriverStatus_t",
+      datatype: null,
+      unit: null,
+      bits: null,
+      dimensions: [],
+    },
+    {
+      name: "history",
+      member: "value",
+      typename: "Temperature_t",
+      datatype: null,
+      unit: null,
+      bits: null,
+      dimensions: ["8"],
+    },
+  ],
+  findings: [],
+};
+
+/** DriverStatus_t: an external type's own header, and its one use - Sensor_t's driver member. */
+export const EXTERNAL_TYPE: TypeReply = {
+  revision: 7,
+  name: "DriverStatus_t",
+  kind: "external",
+  file: TYPES,
+  pointer: "types[1]",
+  description: "The raw state of the vendor's sensor driver",
+  header: "driver_status.h",
+  keys: [],
+  uses: [
+    {
+      path: TYPES,
+      pointer: "types[4].members[2].typename",
+      kind: "member",
+      name: "Sensor_t.driver",
+      component: null,
+      role: null,
+    },
+  ],
+  members: [],
+  findings: [],
+};
+
+/** Temperature_t's unit changed to K: the panel's own preview, for the key-chosen stories. */
+export const SET_UNIT: PlanReply = {
+  revision: 7,
+  changes: [
+    {
+      file: TYPES,
+      fingerprint: "d4a3f1c6b2e5978a0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b",
+      operations: [{ op: "set", pointer: "types[0].unit", raw: '"K"' }],
+      hunks: [{ line: 9, before: ['      "unit": "degC",'], after: ['      "unit": "K",'] }],
+    },
+  ],
+};

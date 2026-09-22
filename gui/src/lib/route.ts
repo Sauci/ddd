@@ -6,6 +6,7 @@ export type Route =
   | { page: "project"; view: "graph"; variable?: string }
   | { page: "project"; view: "table" }
   | { page: "project"; view: "units"; unit?: string }
+  | { page: "project"; view: "types"; type?: string }
   | { page: "project"; view: "findings" }
   | { page: "component"; file: string; variable?: string };
 

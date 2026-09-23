@@ -244,9 +244,10 @@ describe("cellSentence", () => {
   });
 
   test("a map's cell names its row and its column, one-based, in physical", () => {
-    // [1][3] one-based is "element 2, 4"; 1.98 raw is 0.99 % through MapA's ×0.5 conversion -
-    // chosen to land on that exact physical reading, not a value MapA's own file states.
-    expect(cellSentence(MAP_A, 1, 3, 1.98, true)).toBe("Sets element 2, 4 of MapA to 0.99 %");
+    // [1][3] one-based is "element 2, 4"; 99 is the raw Task 3's own endpoint test plans onto
+    // that cell (tests/test_gui_api.py:2697), and 49.5 % is what it reads through MapA's ×0.5
+    // conversion - so the page's sentence and the server's test name the same cell change.
+    expect(cellSentence(MAP_A, 1, 3, 99, true)).toBe("Sets element 2, 4 of MapA to 49.5 %");
   });
 
   test("in raw, the count is written as typed, with no unit", () => {

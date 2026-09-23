@@ -32,13 +32,22 @@ WITHIN_TYPE: Final = re.compile(r"^(?:component\.)?types\[\d+\]")
 it, all of which the same panel shows - whether the type was declared in a types file
 (``types[i]``) or inline by a component (``component.types[i]``)."""
 
+WITHIN_INIT: Final = re.compile(r"^(component\.interface\[\d+\])\.definition\.init\b")
+"""A pointer inside a declaration's ``init``: the values grid is what opens on it.
+
+Measured: ``init-invalid`` is filed at ``component.interface[0].definition.init`` - the whole
+init, with no element index, because the check folds every value wrong in the same way into
+one finding. So the route names the object and the grid opens; which cell is wrong is not
+something the finding says.
+"""
+
 
 @dataclass(frozen=True, slots=True)
 class Route:
     """Where a finding leads."""
 
     kind: str
-    """``variable``, ``unit``, ``component`` or ``type``."""
+    """``variable``, ``unit``, ``component``, ``type`` or ``values``."""
 
     name: str | None
     """The variable's name, the unit's spelling or the type's name; ``None`` for a component,
@@ -78,6 +87,12 @@ def route_of(
         return Route("type", name) if isinstance(name, str) else None
     if kind != COMPONENT_KIND:
         return None
+    within_init = WITHIN_INIT.match(pointer)
+    if within_init is not None:
+        # Tried ahead of WITHIN_DECLARATION below, which a pointer inside an ``init`` also
+        # matches, being broader: caught here first or the values grid would never open.
+        name = read(path, cache).value_at(f"{within_init.group(1)}.definition.name")
+        return Route("values", name) if isinstance(name, str) else None
     within = WITHIN_DECLARATION.match(pointer)
     if within is None:
         # Somewhere else in a component: its own page is what there is to open.

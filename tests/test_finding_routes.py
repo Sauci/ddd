@@ -287,6 +287,68 @@ class TestRoutes:
             is None
         )
 
+    def test_a_finding_on_an_init_leads_to_that_object_s_values(
+        self, tmp_path: Path, cache
+    ) -> None:
+        # Measured: the analysis files an init-invalid at `…definition.init`, the declaration's
+        # own pointer with `.definition.init` after it and no element index.
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Bad",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[2],
+                        init=[1, 9999],
+                    ),
+                )
+            },
+        )
+        route = route_of(
+            "init-invalid",
+            tmp_path / "a.ddd.json",
+            "component.interface[0].definition.init",
+            "component",
+            True,
+            cache,
+        )
+        assert route == Route("values", "Bad")
+
+    def test_a_finding_elsewhere_in_the_declaration_still_leads_to_the_variable(
+        self, tmp_path: Path, cache
+    ) -> None:
+        # The init route must not swallow its neighbours: `missing-id` is filed at
+        # `…definition.name` on the same declaration and still opens the variable's panel.
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Bad",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[2],
+                        init=[1, 2],
+                    ),
+                )
+            },
+        )
+        route = route_of(
+            "missing-id",
+            tmp_path / "a.ddd.json",
+            "component.interface[0].definition.name",
+            "component",
+            True,
+            cache,
+        )
+        assert route == Route("variable", "Bad")
+
     def test_an_unknown_unit_whose_pointer_holds_no_string_leads_nowhere(
         self, tmp_path: Path
     ) -> None:

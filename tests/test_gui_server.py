@@ -591,6 +591,13 @@ class TestEveryEndpointOnTheDemo:
         )
         assert len(planned["changes"]) == 1
 
+    def test_the_values_of_a_curve_and_a_plan_of_one(self, demo) -> None:
+        server, _ = demo
+        answer = answered(server, "GET", "/api/values?name=CurveA")
+        assert answer["rows"] == [[1200, 900, 800, 750, 700, 650]]
+        planned = answered(server, "GET", "/api/value-plan?name=CurveA&at=%5B2%5D&raw=750")
+        assert len(planned["changes"]) == 1
+
 
 class TestBlankParameters:
     """A parameter given with no value reaches the api as the empty text: clearing a unit's

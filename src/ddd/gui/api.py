@@ -77,6 +77,7 @@ from ddd.lsp.units import (
     rename_unit,
     unit_project,
 )
+from ddd.object_values import ValueRefusalError, grid_of, set_cell
 from ddd.project_types import (
     SCALAR_KEYS,
     fixed_by,
@@ -139,6 +140,8 @@ DECLARATION_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
 """Which query parameters each action of ``GET /api/declaration-plan`` takes."""
 
 _NOTHING_LOADED: Final = "the open project did not load, so no interface of it can be changed"
+
+_NOTHING_RESOLVED: Final = "the open project did not resolve, so no object's values can be read"
 
 type Query = Mapping[str, Sequence[str]]
 
@@ -828,6 +831,91 @@ class Api:
             ).model_dump(mode="json"),
         )
 
+    def _values(self, query: Query, body: bytes | None) -> Reply:
+        name = _single(query.get("name"))
+        if not name:
+            return _error(400, "bad-request", "values takes ?name=")
+        revision = self._opened()
+        built, dictionary = revision.index, revision.dictionary
+        if built is None or dictionary is None:
+            return _error(409, UNREADABLE, _NOTHING_RESOLVED)
+        try:
+            grid = grid_of(dictionary, built, name)
+        except ValueRefusalError as refused:
+            # Measured: grid_of raises only "not-found" - an object with no shape answers an
+            # empty grid rather than being refused, so there is no second code to weigh here.
+            return _error(404, refused.code, refused.message)
+        sources = {file.path.resolve(): file for file in revision.files}
+        cache: dict[Path, Document] = {}
+        return Reply(
+            200,
+            contract.ValuesReply(
+                revision=revision.number,
+                name=grid.name,
+                kind=grid.kind,
+                datatype=grid.datatype,
+                unit=grid.unit,
+                conversion=grid.conversion.model_dump(mode="json"),
+                minimum=grid.minimum,
+                maximum=grid.maximum,
+                shape=grid.shape,
+                rows=grid.rows,
+                stated=grid.stated,
+                axes=[
+                    {
+                        "position": axis.position,
+                        "name": axis.name,
+                        "unit": axis.unit,
+                        "breakpoints": axis.breakpoints,
+                        "conversion": axis.conversion.model_dump(mode="json"),
+                    }
+                    for axis in grid.axes
+                ],
+                owner=grid.owner,
+                file=grid.file,
+                findings=[
+                    _finding(filed, sources.get(filed.file.resolve()), cache)
+                    for filed in revision.findings
+                    if filed.file.as_posix() == grid.file
+                    and filed.diagnostic.location is not None
+                    and filed.diagnostic.location.pointer.endswith(".definition.init")
+                ],
+            ).model_dump(mode="json"),
+        )
+
+    def _value_plan(self, query: Query, body: bytes | None) -> Reply:
+        name = _single(query.get("name"))
+        at = _single(query.get("at"))
+        raw_text = _single(query.get("raw"))
+        if not name or not at or not raw_text:
+            return _error(400, "bad-request", "value-plan takes ?name= and ?at= and ?raw=")
+        revision = self._opened()
+        built, dictionary = revision.index, revision.dictionary
+        if built is None or dictionary is None:
+            return _error(409, UNREADABLE, _NOTHING_RESOLVED)
+        try:
+            raw = _number(raw_text)
+            plan = set_cell(dictionary, built, name, at, raw, {})
+        except ValueRefusalError as refused:
+            # Unlike _values above, set_cell genuinely raises both codes - a name the project
+            # has not, and every other refusal - so both arms need a status, and both need a
+            # test reaching them: a ternary here would read the same but hide the untested one
+            # from the coverage gate, the same blind spot that let two earlier defects through.
+            if refused.code == "not-found":
+                return _error(404, refused.code, refused.message)
+            return _error(409, refused.code, refused.message)
+        stamps = {entry.path.resolve(): entry.fingerprint for entry in revision.files}
+        try:
+            planned = previewed(plan.edits, stamps)
+        except EditError as refused:
+            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+        return Reply(
+            200,
+            contract.PlanReply(
+                revision=revision.number, changes=_planned_changes(planned)
+            ).model_dump(mode="json"),
+        )
+
     def _opened(self) -> Revision:
         revision = self.session.revision
         if revision is None:
@@ -878,6 +966,8 @@ _ROUTES: Final[dict[str, dict[str, Answer]]] = {
     "/api/type-plan": {"GET": Api._type_plan},
     "/api/declarable": {"GET": Api._declarable},
     "/api/declaration-plan": {"GET": Api._declaration_plan},
+    "/api/values": {"GET": Api._values},
+    "/api/value-plan": {"GET": Api._value_plan},
 }
 
 
@@ -1098,6 +1188,22 @@ def _single(values: Sequence[str] | None) -> str | None:
 def _integer(values: Sequence[str] | None) -> int | None:
     text = _single(values)
     return int(text) if text is not None and text.isascii() and text.isdecimal() else None
+
+
+def _number(text: str) -> float:
+    """A raw count as the query spells it: a whole number where it is one, else a float.
+
+    ``json.loads`` rather than ``float``, so that ``750`` stays an ``int`` and is written back
+    as ``750`` rather than ``750.0`` - the file's own spelling, and the one the integer check
+    weighs.
+    """
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as malformed:
+        raise ValueRefusalError("invalid", f"'{text}' is not a number") from malformed
+    if not isinstance(value, int | float) or isinstance(value, bool):
+        raise ValueRefusalError("invalid", f"'{text}' is not a number")
+    return value
 
 
 def _validated[T: BaseModel](model: type[T], body: bytes | None) -> T | Reply:

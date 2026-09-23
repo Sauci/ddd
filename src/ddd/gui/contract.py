@@ -57,6 +57,7 @@ __all__ = [
     "GraphFlow",
     "GraphModule",
     "GraphReply",
+    "GridAxis",
     "Hunk",
     "KindForm",
     "Note",
@@ -87,6 +88,7 @@ __all__ = [
     "UnitReply",
     "UnitsReply",
     "UsedUnit",
+    "ValuesReply",
     "VariableDeclaration",
     "VariableKeyCarried",
     "VariableKeyOffer",
@@ -253,9 +255,9 @@ class Note(_Frozen):
 class FindingRoute(_Frozen):
     """What the page can open for a finding."""
 
-    kind: Literal["variable", "unit", "component", "type"]
-    """Which screen: a variable's panel, a unit's panel, the component's own page, or the
-    type's own panel on the Types tab."""
+    kind: Literal["variable", "unit", "component", "type", "values"]
+    """Which screen: a variable's panel, a unit's panel, the component's own page, the type's
+    own panel on the Types tab, or an object's values grid."""
 
     name: str | None
     """The variable's name, the unit's spelling or the type's name; ``None`` for a component,
@@ -929,6 +931,75 @@ class DeclarableReply(_Frozen):
     about the project rather than about any one key."""
 
 
+# --- GET /api/values, GET /api/value-plan ----------------------------------------------------
+
+
+class GridAxis(_Frozen):
+    """One axis a grid is laid against."""
+
+    position: str
+    """Which of ``axis``, ``x_axis`` or ``y_axis`` names it."""
+
+    name: str
+    unit: str
+
+    breakpoints: tuple[float, ...]
+    """Raw, as the axis's own producer writes them; the page reads them through
+    ``conversion``, which is the axis's and not the object's."""
+
+    conversion: dict[str, Any]
+    """The axis's own conversion, in the file format's own shape: left untyped rather than a
+    model, exactly as :attr:`DictionaryReply.dictionary` is, so its schema is not published
+    under ``$defs`` a second time."""
+
+
+class ValuesReply(_Frozen):
+    """What ``GET /api/values`` answers: one object's grid, and everything needed to read it."""
+
+    revision: int
+    """The revision this answer was read from."""
+
+    name: str
+    """The object named in the request."""
+
+    kind: str
+    datatype: str
+    unit: str
+
+    conversion: dict[str, Any]
+    """The object's own conversion, carried the same way :attr:`GridAxis.conversion` is."""
+
+    minimum: float
+    """The resolved physical limits. Shown, never enforced: nothing in the analysis weighs an
+    init against them, and refusing here would leave cells a person wrote by hand that this
+    cannot edit."""
+
+    maximum: float
+
+    shape: tuple[int, ...]
+    """Fully numeric, whatever a dimension is spelled with in the file."""
+
+    rows: tuple[tuple[float, ...], ...]
+    """Always rows: a one dimensional object is one row, so one shape serves both."""
+
+    stated: Literal["array", "scalar", "text", "none"]
+    """What the producer writes: the values themselves, one value standing for every element,
+    text - which is no grid - or nothing, which the startup code zeroes."""
+
+    axes: tuple[GridAxis, ...]
+    """One entry per axis this object references, in the order a grid lays them out."""
+
+    owner: str | None
+    """Component owning the object; ``None`` only when the project is inconsistent."""
+
+    file: str | None
+    """Absolute, posix-separated path of the producing declaration; ``None`` where nothing
+    produces it, which is a grid that can be read and not changed."""
+
+    findings: tuple[Finding, ...]
+    """Every finding filed on the object's own ``init``."""
+
+
 # --- GET /api/undo and POST /api/undo -------------------------------------------------------
 
 
@@ -1139,6 +1210,7 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (TypeReply, "serialization"),
     (DeclarableReply, "serialization"),
     (PlanReply, "serialization"),
+    (ValuesReply, "serialization"),
 )
 """Every request and response of spec section 6.5, with the schema pydantic builds for each:
 ``"validation"`` for a request, read for the shape a caller must send; ``"serialization"`` for

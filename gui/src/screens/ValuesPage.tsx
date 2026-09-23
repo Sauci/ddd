@@ -32,11 +32,11 @@ type Editing = { row: number; column: number; typed: string } | null;
  * from props - the raw/physical toggle, the cell being typed into and Show changes live here, the
  * way `ValuesGridView.stories.tsx`'s own `View` keeps them for a story.
  *
- * Two refusals are this screen's own rather than the component's: the object named by the route
- * is no longer produced by anything (`GET /api/values` answers `404 not-found`), or it has no
- * shape at all (a scalar's own `init`, reached by a finding filed on one or by typing the address
- * by hand) - `drawable` refuses that grid too, and a text-stated object is `ValuesGridView`'s own
- * sentence to say, not repeated here.
+ * Two refusals are this screen's own rather than the component's: `GET /api/values` refused the
+ * name - it is declared no longer, or its shape is more than a grid draws - or it has no shape at
+ * all (a scalar's own `init`, reached by a finding filed on one or by typing the address by hand)
+ * - `drawable` refuses that grid too, and a text-stated object is `ValuesGridView`'s own sentence
+ * to say, not repeated here. Each of them keeps the heading and the way back.
  */
 export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   const queries = useQueryClient();
@@ -123,11 +123,10 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
 
   if (values.isPending) return <p className="quiet">Reading the values…</p>;
   if (values.isError) {
-    if (!(values.error instanceof ApiError && values.error.code === "not-found")) {
-      return <Banner tone="error">{values.error.message}</Banner>;
-    }
-    // Removed from under the reader: nothing produces this name any more, so there is no grid -
-    // only the way back to where they came from (spec 5.4).
+    // Every refusal keeps the heading and the way back, not only the object removed from under
+    // the reader (spec 5.4): a grid this cannot draw - a shape of more dimensions than rows of
+    // cells - is reached by a typed address or by a finding filed on its own init, and a bare
+    // banner would leave the reader on a page holding nothing but the sentence.
     return (
       <section>
         <div className="heading">

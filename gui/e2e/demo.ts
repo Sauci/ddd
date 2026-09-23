@@ -128,3 +128,18 @@ export function writeBlockAInit(directory: string, values: readonly number[]): v
   );
   writeFileSync(path, text, "utf8");
 }
+
+/** BlockA given three dimensions, and an init nested to match with one value over uint8: a
+ * shape no grid draws, saved from outside the page the way every other drift here is. Legal
+ * DDD - the loader takes it and only `init-invalid` is reported - and the one shaped object of
+ * examples/demo whose declaration is easy to widen without touching anything that reads it. */
+export function widenBlockA(directory: string): void {
+  const path = join(directory, USER_INTERFACE);
+  const text = readFileSync(path, "utf8")
+    .replace(/("name": "BlockA"[\s\S]*?"dimensions": )\[[^\]]*\]/, "$1[2, 2, 2]")
+    .replace(
+      /("name": "BlockA"[\s\S]*?"init": )\[[\s\S]*?\]\s*(?=,\s*\n)/,
+      "$1[[[0, 12], [28, 52]], [[84, 124], [180, 9999]]]",
+    );
+  writeFileSync(path, text, "utf8");
+}

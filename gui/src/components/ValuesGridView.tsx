@@ -1,7 +1,14 @@
 import type { PlanReply, ValuesReply } from "../api/types";
 import { distinctFindings, keyedFindings } from "../lib/findings";
-import { cellSentence, columnHeader, physicalOf, rawOf, rowHeader } from "../lib/objectValues";
-import { shownChanges } from "../lib/units";
+import {
+  cellSentence,
+  columnHeader,
+  elementLabel,
+  physicalOf,
+  rawOf,
+  rowHeader,
+} from "../lib/objectValues";
+import { NO_UNIT, shownChanges } from "../lib/units";
 import { shortValue } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
@@ -24,14 +31,6 @@ export interface ValuesGridViewProps {
   onChangesShown: (shown: boolean) => void;
   onApply: () => void;
   onBack: () => void;
-}
-
-/** "element 3", "element 2, 4" - the same one-based phrase `cellSentence` itself builds for the
- * preview, repeated here only to name each cell for a reader who tabs to it directly rather than
- * arrowing through the grid; `cellSentence` is only ever called once, for the cell `editing`
- * names. */
-function elementLabel(row: number, column: number, shape: readonly number[]): string {
-  return shape.length === 1 ? `element ${column + 1}` : `element ${row + 1}, ${column + 1}`;
 }
 
 /** One column of the header row: the blank corner above the row labels, or one of
@@ -87,7 +86,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
   const meta = [
     reply.kind,
     reply.datatype,
-    reply.unit === "" ? "no unit" : reply.unit,
+    reply.unit === "" ? NO_UNIT : reply.unit,
     shortValue("conversion", JSON.stringify(reply.conversion)),
     `${reply.minimum} … ${reply.maximum}`,
   ].join(" · ");

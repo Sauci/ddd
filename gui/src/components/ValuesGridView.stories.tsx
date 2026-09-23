@@ -7,6 +7,7 @@ import {
   VALUES_CURVE,
   VALUES_CURVE_B,
   VALUES_MAP,
+  VALUES_SOFTWARE_LABEL,
   VALUES_VALUE_D,
 } from "../stories/fixtures";
 import { ValuesGridView } from "./ValuesGridView";
@@ -94,3 +95,6 @@ export const AnAbsentInitGreyed = () => <View reply={VALUES_VALUE_D} physical />
 // No object in examples/demo answers with `file: null`, so this is BlockA's own reply with its
 // producing declaration taken away - a story drawing its own props, not a server's real answer.
 export const AReadOnlyGrid = () => <View reply={{ ...VALUES_BLOCK, file: null }} physical />;
+
+// The fourth and last `stated`, with no picture until now: a text init draws no grid at all.
+export const ATextInit = () => <View reply={VALUES_SOFTWARE_LABEL} physical />;

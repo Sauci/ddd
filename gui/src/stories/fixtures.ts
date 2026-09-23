@@ -1497,6 +1497,26 @@ export const VALUES_VALUE_D: ValuesReply = {
   findings: [],
 };
 
+/** SoftwareLabel: initialised with text ("V1.2.3", `conversion: { kind: "string" }`) rather than
+ * a grid at all - ATextInit's own line, with no grid under it. */
+export const VALUES_SOFTWARE_LABEL: ValuesReply = {
+  revision: 1,
+  name: "SoftwareLabel",
+  kind: "value_block",
+  datatype: "uint8",
+  unit: "",
+  conversion: { kind: "string" },
+  minimum: 0,
+  maximum: 255,
+  shape: [16],
+  rows: [],
+  stated: "text",
+  axes: [],
+  owner: "Controller",
+  file: CONTROLLER,
+  findings: [],
+};
+
 /** CurveA's own element [2] (controller.ddd.json:205, currently 800, inline with the rest of its
  * row) set to 750 - ACellMidChange's preview, the same cell objectValues.test.ts's cellSentence
  * test pins (750 raw reads 7.5 ms). */

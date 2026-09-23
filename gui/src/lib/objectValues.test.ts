@@ -5,6 +5,7 @@ import {
   cellSentence,
   columnHeader,
   drawable,
+  elementLabel,
   physicalOf,
   rawOf,
   rowHeader,
@@ -234,6 +235,16 @@ describe("cellAt", () => {
 
   test("a map names its row and its column", () => {
     expect(cellAt(1, 3, [4, 6])).toBe("[1][3]");
+  });
+});
+
+describe("elementLabel", () => {
+  test("a single row names its element by the column alone, one-based", () => {
+    expect(elementLabel(0, 2, [6])).toBe("element 3");
+  });
+
+  test("a map names its row and its column, one-based", () => {
+    expect(elementLabel(1, 3, [4, 6])).toBe("element 2, 4");
   });
 });
 

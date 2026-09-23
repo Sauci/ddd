@@ -86,6 +86,12 @@ export function cellAt(row: number, column: number, shape: number[]): string {
   return shape.length === 1 ? `[${column}]` : `[${row}][${column}]`;
 }
 
+/** "element 3" for a single row, "element 2, 4" for a map - `cellAt`'s own one-based phrase,
+ * for a sentence rather than a pointer. */
+export function elementLabel(row: number, column: number, shape: number[]): string {
+  return shape.length === 1 ? `element ${column + 1}` : `element ${row + 1}, ${column + 1}`;
+}
+
 /** The sentence above the preview. */
 export function cellSentence(
   reply: ValuesReply,
@@ -94,8 +100,7 @@ export function cellSentence(
   raw: number,
   physical: boolean,
 ): string {
-  const element =
-    reply.shape.length === 1 ? `element ${column + 1}` : `element ${row + 1}, ${column + 1}`;
+  const element = elementLabel(row, column, reply.shape);
   const value = physical ? physicalReading(raw, reply) : String(raw);
   return `Sets ${element} of ${reply.name} to ${value}`;
 }

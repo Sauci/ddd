@@ -91,7 +91,7 @@ def declarations_of(built: Index, name: str, cache: dict[Path, Document]) -> tup
         found.append(
             Declared(
                 site=site,
-                component=_component_of(document, site.path),
+                component=component_of(document, site.path),
                 role=_role_of(document.value_at(f"{_entry(site)}.scope")),
                 stated=_stated(document, site.pointer, ("kind", *sorted(PROPAGATED_KEYS))),
                 type_name=type_name,
@@ -231,7 +231,8 @@ def _within(pointer: str, entry: str) -> bool:
     return pointer == entry or pointer.startswith((f"{entry}.", f"{entry}["))
 
 
-def _component_of(document: Document, path: Path) -> str:
+def component_of(document: Document, path: Path) -> str:
+    """The component's name, or ``path``'s own name when the file never states one."""
     named = document.value_at("component.name")
     return named if isinstance(named, str) else path.name.removesuffix(".ddd.json")
 

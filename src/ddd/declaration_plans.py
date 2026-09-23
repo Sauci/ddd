@@ -19,6 +19,7 @@ from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document, read
 from ddd.models.objects import definition_keys
 from ddd.variable_keys import KEY_ORDER, KeyOffer, offer_for
+from ddd.variables import component_of
 
 KINDS: Final = ("measurement", "parameter", "value_block", "curve", "map", "axis")
 """The six kinds a declaration may be, in the order the form offers them."""
@@ -59,7 +60,7 @@ def declarable(built: Index, file: Path, cache: dict[Path, Document]) -> tuple[D
             name=name,
             kind=built.kinds.get(name, ""),
             producer=(
-                _component_of(produced[0].path, cache)
+                component_of(read(produced[0].path, cache), produced[0].path)
                 if (produced := built.producers.get(name) or [])
                 else None
             ),
@@ -95,7 +96,3 @@ def form_for(built: Index, kind: str) -> tuple[KeyOffer, ...]:
         for key in KEY_ORDER
         if key in accepted
     )
-
-
-def _component_of(path: Path, cache: dict[Path, Document]) -> str:
-    return str(read(path, cache).value_at("component.name") or "")

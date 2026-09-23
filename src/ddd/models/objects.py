@@ -126,6 +126,36 @@ class ObjectKind(StrEnum):
         return self is not ObjectKind.MEASUREMENT
 
 
+class PointCounts(StrEnum):
+    """Where an interpolation object stores its number of axis points, if anywhere."""
+
+    NONE = "none"
+    """Nowhere: the object is its data and nothing else. What every project had before."""
+
+    LEADING = "leading"
+    """Ahead of the data, in the object's own datatype: x first, then y for a map.
+
+    What firmware whose interpolation routines learn a table's shape from the table itself
+    stores, and what ASAP2 describes by placing each axis's point count ahead of a curve or
+    map's values, or ahead of a shared axis's own points. An enumeration rather than a flag
+    so that another placement the format allows can join it without renaming the key.
+    """
+
+
+COUNTED_KINDS: Final = frozenset({ObjectKind.AXIS, ObjectKind.CURVE, ObjectKind.MAP})
+"""The kinds a point count describes: the ones with axis points."""
+
+
+def stored_counts[T](kind: ObjectKind, shape: tuple[T, ...]) -> tuple[T, ...]:
+    """The counts a counted object stores, in storage order, taken from its own shape.
+
+    Generic over the element so the same rule answers the numbers and the spellings: a map
+    is declared ``[y][x]`` and stores x first, so its counts are its shape reversed; an axis
+    and a curve have one dimension, which reversing leaves alone. Empty for every other kind.
+    """
+    return tuple(reversed(shape)) if kind in COUNTED_KINDS else ()
+
+
 class _Frozen(BaseModel):
     model_config = ConfigDict(
         frozen=True,

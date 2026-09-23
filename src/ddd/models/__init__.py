@@ -29,6 +29,7 @@ from ddd.models.conversion import (
     round_physical,
 )
 from ddd.models.objects import (
+    COUNTED_KINDS,
     STRING_DATATYPES,
     STRING_OBJECT_KINDS,
     A2lObjectOptions,
@@ -43,6 +44,7 @@ from ddd.models.objects import (
     Measurement,
     ObjectKind,
     Parameter,
+    PointCounts,
     Shape,
     ValueBlock,
     WrittenShape,
@@ -55,6 +57,7 @@ from ddd.models.objects import (
     refuse_string_misuse,
     resolve_export,
     spelled_dimensions,
+    stored_counts,
 )
 from ddd.models.project import Project, ProjectFile
 from ddd.models.rasters import RasterDeclaration, RastersFile
@@ -77,6 +80,7 @@ from ddd.models.units import Unit, UnitDeclaration, UnitsFile
 
 __all__ = [
     "BITS_PER_BYTE",
+    "COUNTED_KINDS",
     "C_IDENTIFIER_PATTERN",
     "C_KEYWORDS",
     "IDENTIFIER_MAX_LENGTH",
@@ -113,6 +117,7 @@ __all__ = [
     "MemberKind",
     "ObjectKind",
     "Parameter",
+    "PointCounts",
     "Project",
     "ProjectFile",
     "RasterDeclaration",
@@ -153,4 +158,5 @@ __all__ = [
     "resolve_export",
     "round_physical",
     "spelled_dimensions",
+    "stored_counts",
 ]

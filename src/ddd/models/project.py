@@ -7,6 +7,7 @@ from typing import Annotated, Any
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from ddd.models.common import FileRoot, Identifier, PluginName, hash_excluding_mappings
+from ddd.models.objects import PointCounts
 
 
 class Project(BaseModel):
@@ -48,6 +49,15 @@ class Project(BaseModel):
     dictionary so that a comparison over an archived dump still knows them. A plugin's
     settings are stated by one project file; a second file stating them is a ``schema``
     finding, the way a second file declaring a section is refused.
+    """
+
+    point_counts: PointCounts | None = None
+    """Where the project's curves, maps and axes store their point counts: ``"leading"``
+    ahead of the data, or ``"none"``. Unstated, it is ``"none"``.
+
+    The default a component's own ``point_counts`` overrides. It belongs to the firmware's
+    interpolation library, which is why it is stated here and not on each object; one project
+    file of a tree states it, and a second one stating another value is refused.
     """
 
     def __hash__(self) -> int:

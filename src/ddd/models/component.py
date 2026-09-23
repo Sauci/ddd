@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from ddd.models.common import FileRoot, Identifier, RasterName
 from ddd.models.constants import ConstantDeclaration
-from ddd.models.objects import AnyDataObject
+from ddd.models.objects import AnyDataObject, PointCounts
 from ddd.models.types import AnyType, check_distinct_type_names
 
 
@@ -107,6 +107,15 @@ class Component(BaseModel):
     exceptions, which state their own ``raster``. It applies to what this component
     produces and to nothing it reads - the raster follows the producer - and it reaches no
     calibration object, since no daq list carries one.
+    """
+
+    point_counts: PointCounts | None = None
+    """Where the curves, maps and axes this component defines store their point counts,
+    overriding the project's default.
+
+    It follows the producer, as ``raster`` does: the component that defines a table is the one
+    whose routines interpolate over it. It reaches nothing this component reads, and nothing
+    that is not a curve, a map or an axis.
     """
 
     interface: tuple[Declaration, ...]

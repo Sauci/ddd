@@ -315,6 +315,18 @@
           "description": "Default measurement raster for every variable this component produces.\n\nThe common case stated once: a component updates nearly all of its measurements in one\ntask, and repeating that on several hundred definitions would bury the handful of\nexceptions, which state their own ``raster``. It applies to what this component\nproduces and to nothing it reads - the raster follows the producer - and it reaches no\ncalibration object, since no daq list carries one.",
           "title": "Raster"
         },
+        "point_counts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PointCounts"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where the curves, maps and axes this component defines store their point counts,\noverriding the project's default.\n\nIt follows the producer, as ``raster`` does: the component that defines a table is the one\nwhose routines interpolate over it. It reaches nothing this component reads, and nothing\nthat is not a curve, a map or an axis."
+        },
         "interface": {
           "description": "The data interface: everything the component produces, consumes or keeps to itself.\n\nRequired with no default, so that a component with nothing to declare says so with an\nempty list rather than by a key that might merely have been forgotten - the same\nreasoning that makes ``volatile`` and ``kind`` required on a definition.",
           "items": {
@@ -1766,6 +1778,19 @@
       ],
       "title": "Parameter",
       "type": "object"
+    },
+    "PointCounts": {
+      "description": "Where an interpolation object stores its number of axis points, if anywhere.\n\n* ``none`` - Nowhere: the object is its data and nothing else. What every project had before.\n* ``leading`` - Ahead of the data, in the object's own datatype: x first, then y for a map. What firmware whose interpolation routines learn a table's shape from the table itself stores, and what ASAP2 describes by placing each axis's point count ahead of a curve or map's values, or ahead of a shared axis's own points. An enumeration rather than a flag so that another placement the format allows can join it without renaming the key.",
+      "enum": [
+        "none",
+        "leading"
+      ],
+      "enumDescriptions": [
+        "Nowhere: the object is its data and nothing else. What every project had before.",
+        "Ahead of the data, in the object's own datatype: x first, then y for a map. What firmware whose interpolation routines learn a table's shape from the table itself stores, and what ASAP2 describes by placing each axis's point count ahead of a curve or map's values, or ahead of a shared axis's own points. An enumeration rather than a flag so that another placement the format allows can join it without renaming the key."
+      ],
+      "title": "PointCounts",
+      "type": "string"
     },
     "ScalarType": {
       "additionalProperties": false,

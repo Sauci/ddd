@@ -36,6 +36,7 @@ from ddd.ir import (
 )
 from ddd.loading import LoadedComponent, LoadedRaster, LoadedType, Workspace
 from ddd.models import (
+    COUNTED_KINDS,
     MEMBER_OBJECT_KINDS,
     Axis,
     Conversion,
@@ -49,6 +50,7 @@ from ddd.models import (
     Map,
     Member,
     ObjectKind,
+    PointCounts,
     ScalarType,
     Scope,
     Shape,
@@ -387,6 +389,21 @@ def _resolved_raster(producer: DeclarationRef | None, definition: DataObject) ->
     return producer.owner.component.raster
 
 
+def _resolved_point_counts(
+    producer: DeclarationRef | None, definition: DataObject, default: PointCounts
+) -> PointCounts:
+    """Where a table keeps its point counts: its producing component's say, else the project's.
+
+    Only a curve, a map or an axis has counts to keep. The reader's component is not consulted,
+    for the reason it is not for a raster: the convention follows the code that defines the
+    table, and every reader of it is handed the same bytes.
+    """
+    if definition.kind not in COUNTED_KINDS:
+        return PointCounts.NONE
+    stated = producer.owner.component.point_counts if producer is not None else None
+    return stated if stated is not None else default
+
+
 @dataclass(frozen=True, slots=True)
 class Variable:
     """A resolved data object: one storage location plus all its users."""
@@ -413,6 +430,8 @@ class Variable:
     declarations: tuple[DeclarationRef, ...]
     condition: str | None
     extensions: dict[str, dict[str, Any]]
+    point_counts: PointCounts
+    """Where this table keeps its point counts; ``none`` for a kind that keeps none."""
 
     @property
     def is_local(self) -> bool:
@@ -453,6 +472,7 @@ class Variable:
             volatile=definition.volatile,
             section=definition.section,
             raster=self.raster,
+            point_counts=self.point_counts,
             condition=self.condition,
             references=definition.references,
             owner=self.producer.component_name if self.producer else None,
@@ -3360,6 +3380,7 @@ class _Analysis:
             declarations=tuple(refs),
             condition=reference.condition,
             extensions=resolve_blocks(self._plugins, definition.extensions, on_project=False),
+            point_counts=_resolved_point_counts(producer, definition, self._workspace.point_counts),
         )
 
     def _limits_reference(

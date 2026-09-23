@@ -34,7 +34,7 @@ implementation:
 
    $ ddd dump examples/demo/demo.ddd.json
    {
-     "format": 8,
+     "format": 9,
      "name": "DemoDevice",
      "description": "Demonstration project showing every kind of data object",
      "source": "demo.ddd.json",
@@ -118,6 +118,7 @@ and the dictionary hands the backends this:
      "init": [1200, 900, 800, 750, 700, 650],
      "section": null,
      "raster": null,
+     "point_counts": "none",
      "volatile": false,
      "condition": null,
      "references": { "axis": "AxisA" },
@@ -242,7 +243,7 @@ elided here for space):
      "description": "The resolved data of one project.",
      "properties": {
        "format": {
-         "default": 8,
+         "default": 9,
          "minimum": 1,
          "title": "Format",
          "type": "integer"

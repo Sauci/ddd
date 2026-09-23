@@ -191,7 +191,7 @@ class TestResolution:
         dictionary, _ = run_analysis(tree, opaque_project())
         assert dictionary is not None
         dumped = json.loads(dictionary.model_dump_json())
-        assert dumped["format"] == DICTIONARY_FORMAT == 8
+        assert dumped["format"] == DICTIONARY_FORMAT == 9
         member = dumped["types"][0]["members"][0]
         assert member["external"] == "Drv_t"
         assert member["header"] == "drv.h"

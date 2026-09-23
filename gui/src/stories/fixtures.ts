@@ -1,6 +1,9 @@
 import type {
+  DeclarableName,
+  DeclarableReply,
   Finding,
   FixReply,
+  KindForm,
   PlanReply,
   ProjectUnit,
   SettleReply,
@@ -11,6 +14,7 @@ import type {
   UnitReply,
   UnitsReply,
   VariableKeyCarried,
+  VariableKeyOffer,
   VariableKeyValue,
   VariableReply,
 } from "../api/types";
@@ -1215,4 +1219,117 @@ export const SET_UNIT: PlanReply = {
       hunks: [{ line: 9, before: ['      "unit": "degC",'], after: ['      "unit": "K",'] }],
     },
   ],
+};
+
+// Part 7's declare panel (spec 5.2): the real `GET /api/declarable` answer for examples/demo's
+// Controller, transcribed from .superpowers/sdd/2026-09-23-gui-declarations/declarable-
+// controller.json rather than written by hand.
+
+/** One key a new declaration may state, as the endpoint offers it: nothing is in play yet, so
+ * every key's `values` is empty and nothing disagrees. */
+function keyOffer(
+  key: string,
+  required: boolean,
+  editor: VariableKeyOffer["editor"],
+  choices: string[] = [],
+): VariableKeyOffer {
+  return { key, carried: [carried(required)], values: [], disagrees: false, editor, choices };
+}
+
+const TYPENAMES = ["DriverState_t", "SensorDiagnosis_t"];
+const AXES = ["AxisA", "AxisB"];
+
+/** The five keys every one of the six kinds offers alike: the storage a declaration names
+ * (`datatype` or `typename`), `unit`, a composed `conversion`, and `limits` - none of them
+ * required, and none of them a field `DeclarePanelView` draws (`keysOf`, `gui/src/lib/
+ * declarations.ts`). */
+const STORAGE_AND_UNIT_KEYS: VariableKeyOffer[] = [
+  keyOffer("datatype", false, "datatype", DATATYPES),
+  keyOffer("typename", false, "typename", TYPENAMES),
+  keyOffer("unit", false, "unit"),
+  keyOffer("conversion", false, "none"),
+  keyOffer("limits", false, "limits"),
+];
+
+/** What `examples/demo`'s Controller may declare: the nine names another component already
+ * produces and Controller does not yet read, and the six kinds a new name may take. */
+export const DECLARABLE: DeclarableReply = {
+  revision: 1,
+  file: CONTROLLER,
+  names: [
+    { name: "BlockA", kind: "value_block", producer: "UserInterface", scopes: ["input"] },
+    { name: "CurveB", kind: "curve", producer: "UserInterface", scopes: ["input"] },
+    { name: "Diagnosis", kind: "measurement", producer: "SensorHub", scopes: ["input"] },
+    { name: "FlagA", kind: "measurement", producer: "SensorHub", scopes: ["input"] },
+    { name: "ValueC", kind: "measurement", producer: "SensorHub", scopes: ["input"] },
+    { name: "ValueD", kind: "measurement", producer: "SensorHub", scopes: ["input"] },
+    { name: "ValueI", kind: "measurement", producer: "UserInterface", scopes: ["input"] },
+    { name: "ValueJ", kind: "measurement", producer: "EventLogger", scopes: ["input"] },
+    { name: "ValueK", kind: "measurement", producer: "EventLogger", scopes: ["input"] },
+  ] satisfies DeclarableName[],
+  kinds: [
+    {
+      kind: "measurement",
+      keys: [
+        ...STORAGE_AND_UNIT_KEYS,
+        keyOffer("dimensions", false, "none"),
+        keyOffer("volatile", true, "volatile"),
+      ],
+    },
+    {
+      kind: "parameter",
+      keys: [...STORAGE_AND_UNIT_KEYS, keyOffer("volatile", true, "volatile")],
+    },
+    {
+      kind: "value_block",
+      keys: [
+        ...STORAGE_AND_UNIT_KEYS,
+        keyOffer("dimensions", true, "none"),
+        keyOffer("volatile", true, "volatile"),
+      ],
+    },
+    {
+      kind: "curve",
+      keys: [
+        ...STORAGE_AND_UNIT_KEYS,
+        keyOffer("volatile", true, "volatile"),
+        keyOffer("axis", true, "name", AXES),
+      ],
+    },
+    {
+      kind: "map",
+      keys: [
+        ...STORAGE_AND_UNIT_KEYS,
+        keyOffer("volatile", true, "volatile"),
+        keyOffer("x_axis", true, "name", AXES),
+        keyOffer("y_axis", true, "name", AXES),
+      ],
+    },
+    {
+      kind: "axis",
+      keys: [
+        ...STORAGE_AND_UNIT_KEYS,
+        keyOffer("size", true, "size"),
+        keyOffer("volatile", true, "volatile"),
+        keyOffer("input", false, "name", [
+          "Diagnosis",
+          "FlagA",
+          "StateA",
+          "StateName",
+          "ValueA",
+          "ValueB",
+          "ValueC",
+          "ValueD",
+          "ValueE",
+          "ValueF",
+          "ValueG",
+          "ValueH",
+          "ValueI",
+          "ValueJ",
+          "ValueK",
+        ]),
+      ],
+    },
+  ] satisfies KindForm[],
+  scopes: ["output", "input", "local"],
 };

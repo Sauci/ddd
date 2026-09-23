@@ -508,6 +508,16 @@ tr.changing td {
   background: var(--ground);
 }
 
+/* DeclarePanelView: the name and scope fields, and - once a new name is typed - the kind and its
+   keys, stack with the same rhythm as a panel's other sections (.panel-offer's own margin-top),
+   each field's own gap the same as .dimensions-field's and .key-chooser's. */
+.declare-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
 /* Ladle only: a row of widgets with a gap, for a story that shows several at once. */
 .story-row {
   display: flex;

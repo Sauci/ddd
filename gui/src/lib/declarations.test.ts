@@ -31,7 +31,12 @@ const REPLY: DeclarableReply = {
   kinds: [
     {
       kind: "measurement",
-      keys: [offer("unit", false, "unit"), offer("volatile", true, "volatile")],
+      keys: [
+        offer("datatype", false, "datatype"),
+        offer("typename", false, "typename"),
+        offer("unit", false, "unit"),
+        offer("volatile", true, "volatile"),
+      ],
     },
     {
       kind: "value_block",
@@ -70,7 +75,19 @@ describe("which scopes a name may take", () => {
 
 describe("what a kind asks for", () => {
   test("required keys come first, in the server's order within each group", () => {
-    expect(keysOf("measurement", REPLY).map((key) => key.key)).toEqual(["volatile", "unit"]);
+    expect(keysOf("value_block", REPLY).map((key) => key.key)).toEqual(["dimensions", "volatile"]);
+  });
+
+  test("datatype and typename join the required keys - the storage a declaration names", () => {
+    expect(keysOf("measurement", REPLY).map((key) => key.key)).toEqual([
+      "volatile",
+      "datatype",
+      "typename",
+    ]);
+  });
+
+  test("unit is not storage, so it does not join them", () => {
+    expect(keysOf("measurement", REPLY).map((key) => key.key)).not.toContain("unit");
   });
 
   test("a kind the reply does not carry asks for nothing", () => {
@@ -89,12 +106,33 @@ describe("the definition the form has made", () => {
   });
 
   test("a stated optional key joins it", () => {
-    const raw = definitionOf("Pressure", "measurement", { volatile: "false", unit: '"%"' }, REPLY);
+    const raw = definitionOf(
+      "Pressure",
+      "measurement",
+      { volatile: "false", typename: '"Speed_t"' },
+      REPLY,
+    );
     expect(JSON.parse(raw ?? "")).toEqual({
       name: "Pressure",
       kind: "measurement",
       volatile: false,
-      unit: "%",
+      typename: "Speed_t",
+    });
+  });
+
+  test("a stated datatype carries the identity conversion with it", () => {
+    const raw = definitionOf(
+      "Pressure",
+      "measurement",
+      { volatile: "false", datatype: '"uint8"' },
+      REPLY,
+    );
+    expect(JSON.parse(raw ?? "")).toEqual({
+      name: "Pressure",
+      kind: "measurement",
+      volatile: false,
+      datatype: "uint8",
+      conversion: { kind: "identity" },
     });
   });
 

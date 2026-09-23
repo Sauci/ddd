@@ -23,17 +23,26 @@ export function scopesOf(typed: string, reply: DeclarableReply): string[] {
   return [...(chosenName(typed, reply.names)?.scopes ?? reply.scopes)];
 }
 
-/** The keys a kind asks for: the ones it must state first, each group in the server's order.
- * Required first because a form a reader fills top to bottom should ask for what it cannot do
- * without before what it can. */
+/** The keys a kind asks for when it is declared new: what a *loadable* declaration needs, not
+ * everything the kind accepts. `unit`, `limits` and a composed `conversion` are left for the key
+ * chooser to add afterwards, the way part 3 already leaves them for any other declaration - no
+ * kind requires them. Required keys first (`volatile` always, plus whichever of `dimensions`,
+ * `size`, `axis`, `x_axis` or `y_axis` this kind needs), then `datatype` and `typename` - the
+ * storage a declaration must name exactly one of - each group in the server's order. */
 export function keysOf(kind: string, reply: DeclarableReply): VariableKeyOffer[] {
   const keys = reply.kinds.find((entry) => entry.kind === kind)?.keys ?? [];
   const required = keys.filter((key) => key.carried[0]?.required === true);
-  return [...required, ...keys.filter((key) => key.carried[0]?.required !== true)];
+  const storage = keys.filter(
+    (key) =>
+      key.carried[0]?.required !== true && (key.key === "datatype" || key.key === "typename"),
+  );
+  return [...required, ...storage];
 }
 
 /** The definition the form has made, as json text - `null` while it could not be written:
- * no name, no kind, a required key unstated, or a value that is not json. */
+ * no name, no kind, a required key unstated, or a value that is not json. A stated `datatype`
+ * carries the identity `conversion` with it (`{"kind": "identity"}`) - the one answer the server
+ * requires be stated rather than composed, so `keysOf` offers no field for it. */
 export function definitionOf(
   name: string,
   kind: string,
@@ -54,6 +63,7 @@ export function definitionOf(
       return null;
     }
   }
+  if (definition.datatype !== undefined) definition.conversion = { kind: "identity" };
   return JSON.stringify(definition);
 }
 

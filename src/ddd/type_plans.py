@@ -25,6 +25,7 @@ from ddd.editing import Operation
 from ddd.lsp.navigation import Index, Site, rename_problem, rename_sites
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
+from ddd.project_types import kind_of
 
 SETTABLE: Final[Mapping[str, frozenset[str]]] = {
     "scalar": frozenset({"description", "datatype", "unit", "conversion", "limits"}),
@@ -74,8 +75,7 @@ def set_key(
     """
     site = _entry(built, name)
     document = read(site.path, cache)
-    kind = document.value_at(f"{site.pointer}.type")
-    allowed = SETTABLE.get(kind, frozenset()) if isinstance(kind, str) else frozenset()
+    allowed = SETTABLE.get(kind_of(built, name, cache), frozenset())
     if key not in allowed:
         raise TypeRefusalError("invalid", f"a type of this kind has no '{key}' to set")
     if raw is None and key in REQUIRED:

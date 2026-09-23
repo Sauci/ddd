@@ -21,7 +21,15 @@ from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
 from ddd.lsp.ranges import Document
-from ddd.project_types import fixed_by, located_in_type, members_of, row_of, type_rows, uses_of
+from ddd.project_types import (
+    fixed_by,
+    kind_of,
+    located_in_type,
+    members_of,
+    row_of,
+    type_rows,
+    uses_of,
+)
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 
@@ -151,6 +159,12 @@ class TestUses:
         assert uses_of(built, "Nothing_t", cache) == ()
         assert fixed_by(built, "Nothing_t", cache) == {}
         assert members_of(built, "Nothing_t", cache) == ()
+        assert kind_of(built, "Nothing_t", cache) == ""
+
+    def test_a_type_s_kind_is_what_its_own_entry_says(self, built, cache) -> None:
+        assert kind_of(built, "Temperature_t", cache) == "scalar"
+        assert kind_of(built, "DriverStatus_t", cache) == "external"
+        assert kind_of(built, "Sensor_t", cache) == "struct"
 
     def test_a_type_nothing_names_counts_no_uses(self, tmp_path, cache) -> None:
         # Its own project, because every type of examples/structures is named by something.

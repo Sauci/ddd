@@ -98,7 +98,7 @@ def type_rows(
         rows.append(
             TypeRow(
                 name=name,
-                kind=_string(built, name, "type", cache),
+                kind=kind_of(built, name, cache),
                 description=_string(built, name, "description", cache),
                 uses=len(built.type_uses.get(name, ())),
                 findings=sum(1 for found in filed if _within_entry(found, site)),
@@ -120,7 +120,7 @@ def row_of(
     filed = list(findings)
     return TypeRow(
         name=name,
-        kind=_string(built, name, "type", cache),
+        kind=kind_of(built, name, cache),
         description=_string(built, name, "description", cache),
         uses=len(built.type_uses.get(name, ())),
         findings=sum(1 for file, found in filed if located_in_type(built, name, file, found)),
@@ -183,13 +183,24 @@ def _within_entry(finding: Diagnostic, site: Site) -> bool:
     )
 
 
+def kind_of(built: Index, name: str, cache: dict[Path, Document]) -> str:
+    """What kind of type this is, as its own entry says it: ``scalar``, ``external`` or ``struct``.
+
+    ``""`` for a name the index does not hold, and for an entry whose file has drifted since the
+    analysis read it. Public because changing a type reads it too - which keys a kind lets the
+    interface set is :data:`ddd.type_plans.SETTABLE`'s answer, and a second module spelling out
+    where a kind is written would be a second place to keep in step.
+    """
+    return _string(built, name, "type", cache) if name in built.types else ""
+
+
 def fixed_by(built: Index, name: str, cache: dict[Path, Document]) -> dict[str, str]:
     """What the type states, as the json text it is written as, per key."""
     site = built.types.get(name)
     if site is None:
         return {}
     document = read(site.path, cache)
-    kind = _string(built, name, "type", cache)
+    kind = kind_of(built, name, cache)
     keys = ("description", *SCALAR_KEYS) if kind == "scalar" else ("description", "header")
     stated: dict[str, str] = {}
     for key in keys:
@@ -225,10 +236,9 @@ def _member(entry: dict[str, Any]) -> dict[str, Any]:
 def _string(built: Index, name: str, key: str, cache: dict[Path, Document]) -> str:
     """One string of a type's entry, or ``""`` where the entry no longer carries one.
 
-    Both callers already know ``name`` is one of ``built.types`` - :func:`type_rows` iterates
-    that mapping's own keys and :func:`fixed_by` has just checked - so unlike the public
-    functions of this module this one trusts its caller rather than repeating a guard no test
-    could ever make true.
+    Its callers have all established that ``name`` is one of ``built.types`` - :func:`kind_of`
+    checks, :func:`fixed_by` has just checked - so unlike the public functions of this module
+    this one trusts its caller rather than repeating a guard no test could ever make true.
     """
     site = built.types[name]
     value = read(site.path, cache).value_at(f"{site.pointer}.{key}")

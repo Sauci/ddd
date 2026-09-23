@@ -1499,7 +1499,7 @@ Found while running the plan and deliberately not fixed here.
   6's CI, and it predates this branch — `git diff 44b63de..HEAD -- gui/e2e/` was empty until task
   7. Filed as its own task rather than fixed here on a hunch. *Costs:* one flaky journey until it
   is done.
-- **`_error(409 if refused.code in REFUSALS else 500, …)`** (`src/ddd/gui/api.py:911`) is a
+- **`_error(409 if refused.code in REFUSALS else 500, …)`** (`src/ddd/gui/api.py:912`) is a
   conditional expression whose `500` arm no test reaches, copied verbatim from seven sibling call
   sites (383, 399, 552, 679, 719, 744, 826) that this part does not touch. Fixing it here would
   leave eight spellings of one idea. *Costs:* one unexercised arm, in company.

@@ -34,6 +34,12 @@ interface Props {
  * curve or a map over its axis or axes, or an axis itself. */
 const SHAPED_BY_KIND = new Set(["curve", "map", "axis"]);
 
+/** Whether this declaration's kind is one of those - a numeric table whose shape follows from
+ * the axes it refers to, which the file itself cannot resolve. */
+function shapedByKind(kind: string | undefined): kind is string {
+  return kind !== undefined && SHAPED_BY_KIND.has(kind);
+}
+
 /** The Shape column's text for one declaration, read from the file already open rather than
  * asked of the server: `State` carries no dictionary, only `revision`, `project`, `files`,
  * `findings` and `undoable`, so there is no second source and no request per row.
@@ -44,7 +50,7 @@ const SHAPED_BY_KIND = new Set(["curve", "map", "axis"]);
  * scalar - `dimensions` and a shaped kind both absent - is blank, `null`, and no button. */
 function shapeOf(kind: string | undefined, dimensions: readonly unknown[]): string | null {
   if (dimensions.length > 0) return dimensions.map(String).join(" × ");
-  return kind !== undefined && SHAPED_BY_KIND.has(kind) ? kind : null;
+  return shapedByKind(kind) ? kind : null;
 }
 
 /** One component: its declarations, the panel of the one selected, and the findings in it. */
@@ -122,16 +128,21 @@ export function ComponentPage({
       shape: shapeOf(kind, dimensions),
       // The shape is offered as a button only where the grid can draw what it opens, and shown
       // as plain text otherwise: a button that refused the moment it was pressed would be a
-      // button that lies (spec 5.1). Three ways this file itself can say so - a text init; a
-      // `typename` and no `datatype`, which is a structured declaration and is not in the
-      // dictionary at all, so the grid would answer that the project declares no such object;
-      // and more dimensions than a grid draws. A consumer's declaration cannot see its
-      // producer's init, so a text one elsewhere is offered anyway, and the grid it opens says
-      // so itself (`ValuesGridView`, `reply.stated`).
+      // button that lies (spec 5.1). A curve, a map or an axis is a numeric table whatever type
+      // it names - measured, a curve naming a scalar type resolves exactly as one stating its
+      // own storage does - so its kind alone is enough. Anything else has to state both a
+      // `dimensions` and a `datatype` of its own: `dimensions` beside a `typename` is a
+      // structured declaration, which `DataDictionary.objects` does not hold at all, so the
+      // grid would answer that the project declares no such object. A structure cannot be a
+      // numeric table, which is why every `typename` declaration of examples/ is a measurement
+      // or a parameter. More dimensions than two is more than a grid draws, whichever way in.
+      // A text init in this very file is text and not a grid; a consumer's declaration cannot
+      // see its producer's init, so a text one elsewhere is offered anyway, and the grid it
+      // opens says so itself (`ValuesGridView`, `reply.stated`).
       offered:
         typeof valueAt(data, `${at}.definition.init`) !== "string" &&
-        datatype !== undefined &&
-        dimensions.length <= 2,
+        dimensions.length <= 2 &&
+        (shapedByKind(kind) || (dimensions.length > 0 && datatype !== undefined)),
       own: findings.filter((finding) => within(finding.pointer, at)),
     };
   });

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator } from "@playwright/test";
-import { CONTROLLER, SENSOR_HUB, widenBlockA, writeBlockAInit } from "./demo";
+import { CONTROLLER, SENSOR_HUB, typeCurveA, widenBlockA, writeBlockAInit } from "./demo";
 import { expect, test } from "./fixtures";
 
 /** A declaration's own definition, read back from a file of the copy - the same untyped shape
@@ -250,4 +250,22 @@ test("a shape deeper than a grid is shown, not offered, and says so with a way b
   ).toBeVisible();
   await page.getByRole("button", { name: "Back to UserInterface" }).click();
   await expect(page.getByRole("grid", { name: "Declarations of UserInterface" })).toBeVisible();
+});
+
+// The other side of that rule, and the one nothing in examples/ has: a curve naming a type
+// rather than stating its own storage. It is still a numeric table - its shape follows from its
+// axis and the type it names is a scalar one - so it is still offered, and the grid it opens
+// draws exactly the readings it drew before the type was named.
+test("a curve naming a scalar type keeps its button, and its grid", async ({ page, gui }) => {
+  typeCurveA(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+
+  // The Type cell reads the type, since there is no datatype of its own to read.
+  await expect(page.getByRole("gridcell", { name: "Millis_t" })).toBeVisible();
+  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+
+  const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  await expect(grid.getByRole("rowheader")).toHaveText(["CurveA (ms)"]);
+  await expectRow(grid, ["12", "9", "8", "7.5", "7", "6.5"]);
 });

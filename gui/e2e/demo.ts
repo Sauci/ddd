@@ -129,6 +129,37 @@ export function writeBlockAInit(directory: string, values: readonly number[]): v
   writeFileSync(path, text, "utf8");
 }
 
+/** CurveA made to name a scalar type instead of stating its own storage, in the copy: the type
+ * declared on Controller itself, and the `datatype`, `unit` and `conversion` taken off the
+ * declaration, which the loader refuses beside a `typename`. Measured on the copy this writes:
+ * the project loads with no finding at all and CurveA resolves exactly as it did - uint16, ms,
+ * x0.01, the same six values, the same producing file - so the Shape column must keep offering
+ * it. Nothing in examples/ has this shape, which is how it was taken away unnoticed.
+ *
+ * Written whole rather than patched: this changes what the declaration is made of, not one
+ * value inside it, and no journey using it applies an edit whose hunks would move. */
+export function typeCurveA(directory: string): void {
+  const path = join(directory, CONTROLLER);
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  data.component.types = [
+    {
+      type: "scalar",
+      name: "Millis_t",
+      description: "A duration as every component of this project agrees to see it",
+      datatype: "uint16",
+      unit: "ms",
+      conversion: { factor: 0.01 },
+      limits: { min: 0, max: 655.35 },
+    },
+  ];
+  const curve = data.component.interface.find(
+    (declaration: { definition: { name: string } }) => declaration.definition.name === "CurveA",
+  ).definition;
+  for (const key of ["datatype", "unit", "conversion"]) delete curve[key];
+  curve.typename = "Millis_t";
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
 /** BlockA given three dimensions, and an init nested to match with one value over uint8: a
  * shape no grid draws, saved from outside the page the way every other drift here is. Legal
  * DDD - the loader takes it and only `init-invalid` is reported - and the one shaped object of

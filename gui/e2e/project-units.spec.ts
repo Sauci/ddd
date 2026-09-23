@@ -198,21 +198,25 @@ test("an apply made from a panel that is out of date is refused, and the panel s
     );
     await route.continue();
   });
-  // The server checks the disk for a change once a second (Session.poll_interval); only once it
-  // has does a plan asked for again carry the file's new fingerprint. The unit's description
-  // reads live from disk and updates well before that (the panel's next assertion), so this waits
-  // for the state a plan is computed from, not for what the panel already shows of the file.
-  const reanalysed = page.waitForResponse((response) => response.url().includes("/api/state"));
   await removing.getByRole("button", { name: "Remove from the vocabulary" }).click();
-  await expect(removing.getByRole("status").filter({ hasText: "changed on disk" })).toBeVisible();
+  const refused = removing.getByRole("status").filter({ hasText: "changed on disk" });
+  await expect(refused).toBeVisible();
   await expect(panel.getByRole("textbox", { name: "Description" })).toHaveValue(
     "temperature, degrees Celsius",
   );
   expect(entriesOf(units).map((entry) => entry.unit)).toContain("degC");
 
-  // Chosen again, once the server has caught up with the file as it now is, it is applied.
+  // Chosen again, once the server has caught up with the file as it now is, it is applied. The
+  // server checks the disk once a second (Session.poll_interval), and only a plan asked for
+  // after that carries the file's new fingerprint. The sentence is what says so: it is held
+  // until the analysis moves past the revision the edit was refused at, so its going is the
+  // page saying it has taken the newer one on board - and the preview goes with it until the
+  // plan asked for again answers, which is what puts the Apply back. Waiting instead on the
+  // response that carries that revision let this press land in the moment between the two,
+  // sending the very fingerprints the server had just refused; the same wait as keys.spec.ts's
+  // "a change refused as stale can be applied again once the analysis has caught up".
   await page.unroute("**/api/edit");
-  await reanalysed;
+  await expect(refused).toBeHidden({ timeout: 15000 });
   await removing.getByRole("button", { name: "Remove from the vocabulary" }).click();
   await expect
     .poll(() => entriesOf(units).map((entry) => entry.unit))

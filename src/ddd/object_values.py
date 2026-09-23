@@ -42,9 +42,10 @@ class ValueRefusalError(Exception):
     """A grid that cannot be shown or changed, and the code both clients refuse it with."""
 
     code: Literal["invalid", "not-found"]
-    """``not-found``: the project declares no object of that name. ``invalid``: the change
-    cannot be made - an element outside the shape, a value the datatype cannot hold, an object
-    whose init is text."""
+    """``not-found``: the project declares no object of that name. ``invalid``: the grid cannot
+    be drawn - a shape of more dimensions than rows of cells - or the change cannot be made: an
+    element outside the shape, a value the datatype cannot hold, an object whose init is text,
+    or no one declaration to write into."""
 
     message: str
     """The sentence the refusal is shown with."""
@@ -96,9 +97,13 @@ class Grid:
 
     axes: tuple[Axis, ...]
     owner: str | None
+    """The component the analysis reads the values from, and ``None`` where nothing produces
+    this object at all - which is what tells a read-only grid nothing produces from one that
+    more than one declaration does, where an owner is named and :attr:`file` is still ``None``."""
+
     file: str | None
-    """The producing declaration's path, posix-separated; ``None`` where nothing produces it,
-    which is a grid that can be read and not changed."""
+    """The producing declaration's path, resolved and posix-separated; ``None`` where there is
+    not exactly one producing declaration, which is a grid that can be read and not changed."""
 
     pointer: str | None
     """The producing declaration's own pointer - ``component.interface[N]`` - paired with
@@ -117,6 +122,14 @@ def grid_of(dictionary: DataDictionary, built: Index, name: str) -> Grid:
     if resolved is None:
         raise ValueRefusalError("not-found", f"the project declares no '{name}'")
     shape = tuple(resolved.shape)
+    if len(shape) > 2:
+        # `dimensions: [2, 3, 4]` is ordinary DDD - the loader takes it and no check reports
+        # it - and a grid is rows of cells and nothing deeper, which :attr:`Grid.rows`,
+        # :func:`_laid_out` and :func:`_element` all assume. Refused where the page can draw
+        # the sentence, rather than drawn a dimension short.
+        raise ValueRefusalError(
+            "invalid", f"'{name}' has {len(shape)} dimensions, and a grid draws at most two"
+        )
     stated, rows = _laid_out(resolved.init, shape)
     axes = tuple(
         Axis(
@@ -130,11 +143,18 @@ def grid_of(dictionary: DataDictionary, built: Index, name: str) -> Grid:
         if (named := resolved.references.get(position)) is not None and named in dictionary.by_name
     )
     sites = built.producers.get(name) or []
-    # A statement, not a ternary: coverage.py registers no branch at all for a conditional
-    # expression, which is exactly how `file`'s own `else None` arm went untested here before -
-    # an `if`/`else` leaves both arms visible to the 100 % gate.
-    if sites:
-        file: str | None = sites[0].path.as_posix()
+    # Exactly one, and a statement rather than a ternary: coverage.py registers no branch at
+    # all for a conditional expression, which is exactly how `file`'s own `else None` arm went
+    # untested here before - an `if`/`else` leaves both arms visible to the 100 % gate.
+    #
+    # Measured: the analysis's own producer - which `rows` and `owner` come from - and
+    # `Index.producers[0]` need not be the same declaration when two of them produce one name,
+    # so a file answered here could be a file whose numbers were never on screen. Nothing
+    # produces it, or more than one thing does, comes to the same grid: read it, do not write
+    # it. The values and the owner stay, because they are how a reader finds the second one.
+    if len(sites) == 1:
+        # Resolved, the spelling `ddd.variables` compares by and `_variable` publishes.
+        file: str | None = sites[0].path.resolve().as_posix()
         # `Site.pointer` for a producer is always `…interface[N].definition` - `index()` builds
         # every one of them with "definition" as the literal suffix - but a finding's own
         # pointer is the declaration's, with `.definition.init` (or another key) appended to
@@ -169,8 +189,12 @@ def _breakpoints(init: InitValue | None) -> tuple[float, ...]:
     which describes a breakpoint. Only the array arm does, and an axis is always one
     dimensional, so every element of it is a scalar rather than a further nested list -
     which the cast tells mypy, ``InitElement`` allowing nesting only a curve or a map states.
+
+    ``list | tuple``, as :func:`_laid_out` reads the very same value: one guard answering an
+    array's breakpoints and the other answering none for it would be two answers to what an
+    array is, and this is the side that fails open - an empty header over a grid of no cells.
     """
-    return tuple(cast(Iterable[float], init)) if isinstance(init, tuple) else ()
+    return tuple(cast(Iterable[float], init)) if isinstance(init, list | tuple) else ()
 
 
 def _laid_out(
@@ -191,7 +215,8 @@ def _laid_out(
         return "none", _filled(0, shape)
     if isinstance(init, list | tuple):
         # A grid is never more than one row of one more level - what Grid.rows itself
-        # assumes; InitElement's deeper nesting is for a shape this module does not draw.
+        # assumes; InitElement's deeper nesting is for a shape `grid_of` has already refused
+        # before anything reaches here.
         if len(shape) == 1:
             return "array", (tuple(cast(Iterable[float], init)),)
         return "array", tuple(tuple(cast(Iterable[float], row)) for row in init)
@@ -239,6 +264,15 @@ def set_cell(
     sites = built.producers.get(name) or []
     if not sites:
         raise ValueRefusalError("invalid", f"nothing produces '{name}', so it has no values to set")
+    if len(sites) > 1:
+        # The two causes of a read-only grid say different things, because only one of them is
+        # true at a time: here two declarations do produce it, and the refusal is that neither
+        # of them is *the* file - the analysis reads one of them for the values and the index
+        # need not name the same one first.
+        raise ValueRefusalError(
+            "invalid",
+            f"'{name}' is produced in more than one place, so there is no one file to set it in",
+        )
     found = _element(at, grid.shape)
     _acceptable(raw, Datatype(grid.datatype), name)
     site = sites[0]

@@ -2629,6 +2629,76 @@ class TestTheValuesGrid:
         reply = get(api, "/api/values", name="Nope")
         assert (reply.status, reply.body["error"]) == (404, "not-found")
 
+    def test_a_shape_of_more_than_two_dimensions_is_refused_rather_than_drawn(
+        self, tmp_path: Path
+    ) -> None:
+        # The other status this endpoint answers, and the reason it weighs the code at all:
+        # `dimensions: [2, 3, 4]` used to reach `ValuesReply` as a three level nest and come
+        # back 500 out of the server's blanket handler. A refusal, with the sentence the page
+        # renders, and 409 rather than 404 - the project does declare this object.
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output", "Cube", kind="value_block", datatype="uint8", dimensions=[2, 3, 4]
+                    ),
+                ),
+            },
+        )
+        reply = get(api, "/api/values", name="Cube")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "'Cube' has 3 dimensions, and a grid draws at most two"
+        plan = get(api, "/api/value-plan", name="Cube", at="[1][2][3]", raw="7")
+        assert (plan.status, plan.body["error"]) == (409, "invalid")
+
+    def test_a_name_two_declarations_produce_is_read_only(self, tmp_path: Path) -> None:
+        # The values come from the analysis's own producer and the file used to come from
+        # `Index.producers[0]`, which is a different choice: with the project listing b first,
+        # the reply showed A's numbers over b's file and an edit would have replaced a value
+        # that was never on screen. No one file to write into, so the grid opens read-only -
+        # the numbers and the owner still shown, since they are how the reader finds the
+        # second producer.
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "b.ddd.json", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Twin",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[3],
+                        init=[1, 2, 3],
+                    ),
+                ),
+                "b.ddd.json": component(
+                    "B",
+                    declare(
+                        "output",
+                        "Twin",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[3],
+                        init=[7, 8, 9],
+                    ),
+                ),
+            },
+        )
+        body = get(api, "/api/values", name="Twin").body
+        assert (body["rows"], body["owner"], body["file"]) == ([[1, 2, 3]], "A", None)
+        before = contents(tmp_path)
+        plan = get(api, "/api/value-plan", name="Twin", at="[0]", raw="5")
+        assert (plan.status, plan.body["error"]) == (409, "invalid")
+        assert plan.body["message"] == (
+            "'Twin' is produced in more than one place, so there is no one file to set it in"
+        )
+        assert contents(tmp_path) == before
+
     def test_a_project_that_did_not_load_has_no_dictionary(self, tmp_path) -> None:
         reply = get(unloaded(tmp_path), "/api/values", name="Anything")
         assert (reply.status, reply.body["error"]) == (409, "unreadable")

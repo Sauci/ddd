@@ -990,11 +990,12 @@ class ValuesReply(_Frozen):
     """One entry per axis this object references, in the order a grid lays them out."""
 
     owner: str | None
-    """Component owning the object; ``None`` only when the project is inconsistent."""
+    """Component owning the object; ``None`` only when nothing produces it at all, which is
+    what tells that read-only grid from the one more than one producer leaves."""
 
     file: str | None
-    """Absolute, posix-separated path of the producing declaration; ``None`` where nothing
-    produces it, which is a grid that can be read and not changed."""
+    """Absolute, posix-separated path of the producing declaration; ``None`` where there is not
+    exactly one of them, which is a grid that can be read and not changed."""
 
     findings: tuple[Finding, ...]
     """Every finding filed on the object's own ``init``."""

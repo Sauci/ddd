@@ -201,6 +201,88 @@ class TestWhatTheGridShows:
             "the project declares no 'Nope'",
         )
 
+    def test_a_shape_of_more_than_two_dimensions_is_refused(self, tmp_path) -> None:
+        # `dimensions: [2, 3, 4]` is ordinary DDD: the loader takes it and the analysis says
+        # nothing about it. A grid is rows of cells and nothing deeper, so drawing it would
+        # drop a dimension silently - measured, before this refusal: rows of 2 x 3 for a
+        # 2 x 3 x 4 object, a ValidationError out of the contract for a written nested init,
+        # and three indices unpacked into two names in set_cell.
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output", "Cube", kind="value_block", datatype="uint8", dimensions=[2, 3, 4]
+                    ),
+                ),
+            },
+        )
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        revision = session.revision
+        assert revision is not None and revision.dictionary is not None
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        try:
+            assert revision.dictionary.by_name["Cube"].shape == (2, 3, 4)
+            with pytest.raises(ValueRefusalError) as refused:
+                grid_of(revision.dictionary, built, "Cube")
+        finally:
+            session.stop()
+        assert (refused.value.code, refused.value.message) == (
+            "invalid",
+            "'Cube' has 3 dimensions, and a grid draws at most two",
+        )
+
+    def test_two_declarations_producing_one_name_leave_the_grid_read_only(self, tmp_path) -> None:
+        # Measured: the analysis's own producer and `Index.producers[0]` need not be the same
+        # declaration. With the project listing b first, `built.producers["Twin"]` is
+        # [b, a] while `rows` and `owner` are A's - so answering b's file here would send an
+        # edit into numbers the reader was never shown. There is no one file to write into, so
+        # the grid is read-only, exactly as it is for a name nothing produces; the values and
+        # the owner stay, because they are how a reader finds the second producer.
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "b.ddd.json", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Twin",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[3],
+                        init=[1, 2, 3],
+                    ),
+                ),
+                "b.ddd.json": component(
+                    "B",
+                    declare(
+                        "output",
+                        "Twin",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[3],
+                        init=[7, 8, 9],
+                    ),
+                ),
+            },
+        )
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        revision = session.revision
+        assert revision is not None and revision.dictionary is not None
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        try:
+            grid = grid_of(revision.dictionary, built, "Twin")
+        finally:
+            session.stop()
+        assert [site.path.name for site in built.producers["Twin"]] == ["b.ddd.json", "a.ddd.json"]
+        assert (grid.rows, grid.owner) == (((1, 2, 3),), "A")
+        assert (grid.file, grid.pointer) == (None, None)
+
     def test_an_object_nothing_produces_has_no_file_or_pointer(self, tmp_path) -> None:
         # `file=sites[0]... if sites else None` used to be a ternary whose `else None` arm no
         # test reached - invisible to the gate the same way as everywhere else on this branch.
@@ -227,6 +309,10 @@ class TestWhatTheGridShows:
             session.stop()
         assert (grid.file, grid.pointer) == (None, None)
         assert (grid.shape, grid.stated) == ((2,), "none")
+        # Measured, and read by the page: the analysis names no owner for a name nothing
+        # produces, which is what tells that read-only grid from the one a second producer
+        # leaves - where `owner` is named and `file` is still None.
+        assert grid.owner is None
 
     def test_only_the_three_axis_references_are_axes(self) -> None:
         assert AXIS_REFERENCES == ("axis", "x_axis", "y_axis")
@@ -409,6 +495,83 @@ class TestChangingOne:
         finally:
             session.stop()
         assert refused.value.message == "nothing produces 'Orphan', so it has no values to set"
+
+    def test_a_value_two_declarations_produce_cannot_be_set_either(self, tmp_path) -> None:
+        # The other half of the read-only grid above, and the reason its sentence cannot be
+        # the one beside it: two things do produce 'Twin', so "nothing produces" would be
+        # false. What is true is that neither of them is *the* file to write into.
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "b.ddd.json", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Twin",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[3],
+                        init=[1, 2, 3],
+                    ),
+                ),
+                "b.ddd.json": component(
+                    "B",
+                    declare(
+                        "output",
+                        "Twin",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[3],
+                        init=[7, 8, 9],
+                    ),
+                ),
+            },
+        )
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        revision = session.revision
+        assert revision is not None and revision.dictionary is not None
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        try:
+            with pytest.raises(ValueRefusalError) as refused:
+                set_cell(revision.dictionary, built, "Twin", "[0]", 5, {})
+        finally:
+            session.stop()
+        assert (refused.value.code, refused.value.message) == (
+            "invalid",
+            "'Twin' is produced in more than one place, so there is no one file to set it in",
+        )
+
+    def test_a_cell_of_a_three_dimensional_object_is_refused_before_it_is_unpacked(
+        self, tmp_path
+    ) -> None:
+        # `at=[1][2][3]` used to reach `row, column = found` and raise ValueError - a 500 out
+        # of the endpoint. grid_of refuses the shape first, so the refusal is the one the page
+        # renders and it says the same thing the grid itself says.
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output", "Cube", kind="value_block", datatype="uint8", dimensions=[2, 3, 4]
+                    ),
+                ),
+            },
+        )
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        revision = session.revision
+        assert revision is not None and revision.dictionary is not None
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        try:
+            with pytest.raises(ValueRefusalError) as refused:
+                set_cell(revision.dictionary, built, "Cube", "[1][2][3]", 7, {})
+        finally:
+            session.stop()
+        assert refused.value.message == "'Cube' has 3 dimensions, and a grid draws at most two"
 
     def test_a_shapeless_object_has_no_cell_to_change(self, demo) -> None:
         # ValueA is a plain scalar measurement with no dimensions at all - legal and common,

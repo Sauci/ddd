@@ -842,9 +842,13 @@ class Api:
         try:
             grid = grid_of(dictionary, built, name)
         except ValueRefusalError as refused:
-            # Measured: grid_of raises only "not-found" - an object with no shape answers an
-            # empty grid rather than being refused, so there is no second code to weigh here.
-            return _error(404, refused.code, refused.message)
+            # Both codes are reachable - a name the project has not, and a shape of more
+            # dimensions than a grid draws - so both arms need a status and a test reaching
+            # them. An `if`/`else` rather than a ternary: a conditional expression registers
+            # no branch at all with coverage.py, which is how an untested arm hid here before.
+            if refused.code == "not-found":
+                return _error(404, refused.code, refused.message)
+            return _error(409, refused.code, refused.message)
         sources = {file.path.resolve(): file for file in revision.files}
         cache: dict[Path, Document] = {}
         return Reply(
@@ -877,7 +881,7 @@ class Api:
                     _finding(filed, sources.get(filed.file.resolve()), cache)
                     for filed in revision.findings
                     if grid.pointer is not None
-                    and filed.file.as_posix() == grid.file
+                    and filed.file.resolve().as_posix() == grid.file
                     and filed.diagnostic.location is not None
                     and filed.diagnostic.location.pointer == f"{grid.pointer}.definition.init"
                 ],

@@ -100,12 +100,13 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   A component's table now gains a Shape column between Type and Unit, a button wherever
   there is a grid to open and plain text or nothing where there is not.  A curve, a map,
   an axis and any declaration shaped in one or two dimensions show their values there as
-  a grid, laid against their axes' breakpoints, each edge named with its axis and that
-  axis's unit; an object with no axis is laid over plain indices instead.  A shape of
-  more dimensions than that, and a declaration naming a structured type, are shown and
-  not offered: a grid draws rows of cells and nothing deeper, and a structure holds no
-  values of its own.  The readings switch between physical values and raw counts with a
-  toggle.  One cell is changed at a time: type a value, see what it would set, apply it,
+  a grid, laid against their axes' breakpoints, each edge named with its axis and, where
+  the readings are physical, that axis's unit; an object with no axis is laid over plain
+  indices instead.  A shape of more dimensions than that, and a declaration naming a
+  structured type, are shown and not offered: a grid draws rows of cells and nothing
+  deeper, and a structure holds no values of its own.  The readings switch between
+  physical values and raw counts with a toggle.  One cell is changed at a time: type a
+  value, see what it would set and which file that lands in, apply it,
   and put it back with the undo control already there - except an object that has no one
   producing declaration, because nothing produces it or because more than one thing
   does, whose grid opens read-only rather than being refused.  A physical value no raw count

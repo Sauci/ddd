@@ -40,6 +40,8 @@ __all__ = [
     "Changes",
     "CheckInfo",
     "ChecksReply",
+    "DeclarableName",
+    "DeclarableReply",
     "DictionaryReply",
     "EditReply",
     "EditedFile",
@@ -56,6 +58,7 @@ __all__ = [
     "GraphModule",
     "GraphReply",
     "Hunk",
+    "KindForm",
     "Note",
     "OpenProject",
     "OpenRequest",
@@ -874,6 +877,47 @@ class TypeReply(_Frozen):
     findings: tuple[Finding, ...]
 
 
+# --- GET /api/declarable ---------------------------------------------------------------------
+
+
+class DeclarableName(_Frozen):
+    """One variable a component could read, as its name field offers it."""
+
+    name: str
+    kind: str
+    """``measurement`` … ``axis``, or empty when no declaration of it states one."""
+
+    producer: str | None
+    """The component producing it; ``null`` when nothing does."""
+
+    scopes: tuple[str, ...]
+    """Which scopes this name may be declared with here, in the form's own order: reading
+    always, producing only while nothing produces it, and never a local beside another
+    declaration."""
+
+
+class KindForm(_Frozen):
+    """What one kind of object asks for when it is declared new."""
+
+    kind: str
+    keys: tuple[VariableKeyOffer, ...]
+    """One offer per key the kind accepts, with no value in play: the same shape a variable's
+    panel draws, so one chooser draws both."""
+
+
+class DeclarableReply(_Frozen):
+    """What ``GET /api/declarable`` answers: what this component may add to its interface."""
+
+    revision: int
+    file: str
+    """Absolute, posix-separated path of the component asked about."""
+
+    names: tuple[DeclarableName, ...]
+    kinds: tuple[KindForm, ...]
+    scopes: tuple[str, ...]
+    """What a name the project has never seen may be declared with."""
+
+
 # --- GET /api/undo and POST /api/undo -------------------------------------------------------
 
 
@@ -1082,6 +1126,7 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (UnitReply, "serialization"),
     (TypesReply, "serialization"),
     (TypeReply, "serialization"),
+    (DeclarableReply, "serialization"),
     (PlanReply, "serialization"),
 )
 """Every request and response of spec section 6.5, with the schema pydantic builds for each:

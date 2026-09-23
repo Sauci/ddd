@@ -2298,3 +2298,257 @@ class TestTheTypesTab:
         monkeypatch.setattr("ddd.gui.api.previewed", refuse)
         reply = get(api, "/api/type-plan", action="rename", name="Sensor_t", to="Probe_t")
         assert (reply.status, reply.body["error"]) == (409, "unverified")
+
+
+class TestWhatAComponentMayAdd:
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> tuple[Api, Path]:
+        return copied(tmp_path, "demo", "demo.ddd.json")
+
+    def controller(self, root: Path) -> str:
+        return (root / "components" / "controller.ddd.json").as_posix()
+
+    def test_the_names_it_may_read_come_with_their_producer_and_scopes(self, demo) -> None:
+        api, root = demo
+        body = get(api, "/api/declarable", file=self.controller(root)).body
+        names = {entry["name"]: entry for entry in body["names"]}
+        # Measured against examples/demo: Controller declares 14 of the project's 23 names.
+        assert sorted(names) == [
+            "BlockA",
+            "CurveB",
+            "Diagnosis",
+            "FlagA",
+            "ValueC",
+            "ValueD",
+            "ValueI",
+            "ValueJ",
+            "ValueK",
+        ]
+        assert (names["ValueC"]["producer"], names["ValueC"]["kind"]) == (
+            "SensorHub",
+            "measurement",
+        )
+        # Every one of them is produced by something, so reading is all any of them may be.
+        assert names["ValueC"]["scopes"] == ["input"]
+
+    def test_the_kinds_carry_the_form_each_one_asks_for(self, demo) -> None:
+        api, root = demo
+        body = get(api, "/api/declarable", file=self.controller(root)).body
+        forms = {entry["kind"]: entry for entry in body["kinds"]}
+        assert list(forms) == ["measurement", "parameter", "value_block", "curve", "map", "axis"]
+        required = {
+            key["key"] for key in forms["value_block"]["keys"] if key["carried"][0]["required"]
+        }
+        assert required == {"volatile", "dimensions"}
+        editors = {key["key"]: key["editor"] for key in forms["axis"]["keys"]}
+        assert (editors["size"], editors["unit"], editors["input"]) == ("size", "unit", "name")
+
+    def test_a_name_the_project_has_never_seen_may_take_any_scope(self, demo) -> None:
+        api, root = demo
+        body = get(api, "/api/declarable", file=self.controller(root)).body
+        assert body["scopes"] == ["output", "input", "local"]
+
+    def test_without_a_file_it_says_so(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/declarable")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply.body["message"] == "declarable takes ?file="
+
+    def test_a_file_outside_the_project_is_not_found(self, demo, tmp_path) -> None:
+        api, _ = demo
+        reply = get(api, "/api/declarable", file=(tmp_path / "x.ddd.json").as_posix())
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_a_file_of_the_project_that_is_not_a_component_is_refused(self, demo) -> None:
+        api, root = demo
+        reply = get(api, "/api/declarable", file=(root / "demo.ddd.json").as_posix())
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "demo.ddd.json is not a component of the open project"
+
+    def test_a_project_that_did_not_load_offers_nothing_to_add_to(self, tmp_path) -> None:
+        # Measured: `unloaded` leaves one file in the revision, p.ddd.json, kind "project" and
+        # loaded False - so it passes the project check and fails the component one.
+        api = unloaded(tmp_path)
+        reply = get(api, "/api/declarable", file=(tmp_path / "p.ddd.json").as_posix())
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "p.ddd.json is not a component of the open project"
+
+
+class TestPlanningAChangeOfAnInterface:
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> tuple[Api, Path]:
+        return copied(tmp_path, "demo", "demo.ddd.json")
+
+    def controller(self, root: Path) -> str:
+        return (root / "components" / "controller.ddd.json").as_posix()
+
+    def test_reading_a_variable_is_previewed_then_written(self, demo) -> None:
+        api, root = demo
+        before = contents(root)
+        preview = get(
+            api,
+            "/api/declaration-plan",
+            action="read",
+            file=self.controller(root),
+            name="ValueC",
+            scope="input",
+        ).body
+        assert contents(root) == before  # a plan writes nothing
+        assert [Path(change["file"]).name for change in preview["changes"]] == [
+            "controller.ddd.json"
+        ]
+        assert applied(api, preview, "reading ValueC").status == 200
+        written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
+        assert '"name": "ValueC"' in written
+
+    def test_declaring_a_new_object_takes_the_definition_as_json(self, demo) -> None:
+        api, root = demo
+        # `datatype` needs a `conversion` beside it - declaration_plans.declare_object now
+        # validates the composed definition against the models, which is exactly the rule
+        # tests/test_declaration_plans.py::TestDeclaringSomethingNew::
+        # test_a_stated_datatype_with_no_conversion_is_refused_rather_than_planned pins for
+        # this same definition minus the conversion.
+        definition = json.dumps(
+            {
+                "name": "Pressure",
+                "kind": "measurement",
+                "datatype": "uint16",
+                "conversion": {"kind": "identity"},
+                "volatile": False,
+            }
+        )
+        preview = get(
+            api,
+            "/api/declaration-plan",
+            action="declare",
+            file=self.controller(root),
+            scope="output",
+            definition=definition,
+        ).body
+        assert len(preview["changes"]) == 1
+        assert applied(api, preview, "declaring Pressure").status == 200
+        written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
+        assert '"name": "Pressure"' in written and '"id"' in written
+
+    def test_removing_a_declaration_previews_its_going(self, demo) -> None:
+        api, root = demo
+        preview = get(
+            api,
+            "/api/declaration-plan",
+            action="remove",
+            file=self.controller(root),
+            name="ValueA",
+        ).body
+        # `Hunk` carries whole lines under `before`/`after` (tests/test_gui_api.py already
+        # reads it this way at TestEdit's "Hz" -> "rpm" assertions), not a per-line kind/text
+        # breakdown - a removal's deleted lines are `before` with no `after` to match.
+        removed = [
+            line
+            for change in preview["changes"]
+            for hunk in change["hunks"]
+            for line in hunk["before"]
+        ]
+        assert any('"name": "ValueA"' in text for text in removed)
+        assert applied(api, preview, "removing ValueA").status == 200
+        written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
+        assert '"name": "ValueA"' not in written
+
+    def test_an_action_that_is_not_one_of_the_three_says_which_are(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/declaration-plan", action="invent")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply.body["message"] == (
+            "declaration-plan takes ?action= one of read, declare, remove"
+        )
+
+    def test_an_action_missing_a_parameter_says_which_it_takes(self, demo) -> None:
+        api, root = demo
+        reply = get(api, "/api/declaration-plan", action="read", file=self.controller(root))
+        assert reply.status == 400
+        assert reply.body["message"] == "read takes ?file= and ?name= and ?scope="
+
+    @pytest.mark.parametrize("definition", ["{not json", "[1, 2]"])
+    def test_a_definition_that_is_not_a_json_object_is_refused(self, demo, definition) -> None:
+        api, root = demo
+        reply = get(
+            api,
+            "/api/declaration-plan",
+            action="declare",
+            file=self.controller(root),
+            scope="output",
+            definition=definition,
+        )
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "the definition is not json"
+
+    def test_a_refusal_carries_the_module_s_own_code_and_sentence(self, demo) -> None:
+        api, root = demo
+        reply = get(
+            api,
+            "/api/declaration-plan",
+            action="read",
+            file=self.controller(root),
+            name="ValueA",
+            scope="input",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "this component already declares 'ValueA'"
+
+    def test_a_name_the_project_has_not_is_not_found(self, demo) -> None:
+        api, root = demo
+        reply = get(
+            api,
+            "/api/declaration-plan",
+            action="read",
+            file=self.controller(root),
+            name="Nope",
+            scope="input",
+        )
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_a_file_outside_the_project_is_not_found(self, demo, tmp_path) -> None:
+        api, _ = demo
+        reply = get(
+            api,
+            "/api/declaration-plan",
+            action="remove",
+            file=(tmp_path / "x.ddd.json").as_posix(),
+            name="ValueA",
+        )
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_a_project_that_did_not_load_has_nothing_to_plan_against(self, tmp_path) -> None:
+        # The answer /api/type-plan already gives: measured, `unloaded`'s revision has
+        # `index is None` and one file, p.ddd.json, which `_source` accepts - so the guard that
+        # answers here is the missing index, not the missing file.
+        api = unloaded(tmp_path)
+        reply = get(
+            api,
+            "/api/declaration-plan",
+            action="remove",
+            file=(tmp_path / "p.ddd.json").as_posix(),
+            name="ValueA",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_a_preview_the_engine_refuses_is_a_refusal_the_page_can_act_on(
+        self, demo, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The same pattern as TestTheTypesTab's equivalent, over /api/declaration-plan's own
+        # call to `previewed`: a stale fingerprint or any other engine refusal reaches the page
+        # exactly as /api/unit-plan and /api/type-plan already answer it.
+        api, root = demo
+
+        def refuse(*_: object) -> None:
+            raise EditError(UNVERIFIED, "does not read back")
+
+        monkeypatch.setattr("ddd.gui.api.previewed", refuse)
+        reply = get(
+            api,
+            "/api/declaration-plan",
+            action="read",
+            file=self.controller(root),
+            name="ValueC",
+            scope="input",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "unverified")

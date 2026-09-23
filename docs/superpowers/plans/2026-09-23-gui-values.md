@@ -1481,8 +1481,8 @@ Co-Authored-By: <model that wrote it> <noreply@anthropic.com>"
 | 5 | `f944a8a`, `345eed6`, `4eddfd1` | The picture, eleven stories, eleven screenshots. A blank map found a React Aria keying bug no gate could see. |
 | 6 | `827448b`, `e09c88a` | The screen, the address, the Shape column. The back link named the producer and returned somewhere else. |
 | 7 | `207641b` | Seven journeys, three clean runs of sixty-four. |
-| 8 | | |
-| 9 | | |
+| 8 | `da170a7`, `8c316d6` | The changelog and the developer page. Review found it naming one write path where `set_cell` has two; fixed, with the read-only grid named too. |
+| 9 | | The gate, clean: 3903 Python and 333 Vitest tests, 86 screenshots, 64 journeys three times, sphinx under `-W`. Driven by hand over a copy; the grid, the apply-undo cycle on disk, the row labels, the plain-text shape and the back link all held. |
 
 ## Left open
 

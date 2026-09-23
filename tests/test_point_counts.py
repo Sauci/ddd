@@ -141,6 +141,59 @@ class TestTheStoredCounts:
         assert stored_counts(kind, shape) == counts
 
 
+class TestTheObjectValidation:
+    """``leading`` names where a curve, map or axis stores its points; nothing else has any."""
+
+    @pytest.mark.parametrize(
+        ("kind", "extra"),
+        [
+            (ObjectKind.PARAMETER, {}),
+            (ObjectKind.MEASUREMENT, {}),
+            (ObjectKind.VALUE_BLOCK, {"shape": (4,), "dimensions": (4,)}),
+        ],
+    )
+    def test_leading_is_refused_on_a_kind_with_no_counts(
+        self, kind: ObjectKind, extra: dict[str, Any]
+    ) -> None:
+        with pytest.raises(ValidationError, match="point_counts"):
+            ResolvedObject(
+                name="X",
+                kind=kind,
+                datatype="uint8",
+                conversion={"kind": "identity"},
+                limits={"min": 0, "max": 255},
+                point_counts=PointCounts.LEADING,
+                **extra,
+            )
+
+    def test_leading_is_accepted_on_an_axis(self) -> None:
+        entry = ResolvedObject(
+            name="AX",
+            kind=ObjectKind.AXIS,
+            datatype="uint16",
+            conversion={"kind": "identity"},
+            limits={"min": 0, "max": 65535},
+            shape=(4,),
+            point_counts=PointCounts.LEADING,
+        )
+        assert entry.point_counts is PointCounts.LEADING
+
+    def test_a_dump_carrying_the_bad_value_is_a_finding_not_a_crash(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(tree, files(declare("local", "K", kind="parameter", init=1)))
+        assert dictionary is not None, messages(bag)
+        dumped = dictionary.model_dump(mode="json")
+        for entry in dumped["objects"]:
+            if entry["name"] == "K":
+                entry["point_counts"] = "leading"
+        target = tree / "bad.json"
+        target.write_text(json.dumps(dumped), encoding="utf-8")
+        bag = DiagnosticBag()
+        again = load_dictionary(target, bag)
+        assert again is None
+        assert checks(bag) == ["schema"]
+        assert "point_counts" in messages(bag)
+
+
 def files(
     *declarations: dict[str, Any], default: str | None = None, **extra: Any
 ) -> dict[str, Any]:
@@ -280,6 +333,28 @@ class TestTheFindings:
             in messages(bag)
         )
 
+    def test_a_maps_y_axis_disagreeing_is_a_warning(self, tree: Path) -> None:
+        """The x axis agrees with the map; only y disagrees, which a check of x alone would miss."""
+        tree_files = {
+            "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json", point_counts="leading"),
+            "a.ddd.json": component(
+                "A",
+                declare("input", "AY", "uint16", kind="axis", size=11),
+                axis("AX", 8),
+                table("M"),
+            ),
+            "b.ddd.json": component(
+                "B", declare("output", "AY", "uint16", kind="axis", size=11), point_counts="none"
+            ),
+        }
+        dictionary, bag = run_analysis(tree, tree_files)
+        assert dictionary is not None, messages(bag)
+        assert checks(bag) == ["point-counts-mismatch"]
+        assert (
+            "'M' stores its point counts 'leading', but its axis 'AY' stores them 'none'"
+            in messages(bag)
+        )
+
     def test_agreement_is_not_a_finding(self, tree: Path) -> None:
         dictionary, bag = run_analysis(tree, files(*TABLES, default="leading"))
         assert dictionary is not None, messages(bag)
@@ -348,6 +423,13 @@ class TestTheC:
         assert views["M"].point_counts == (2, 3)
         assert views["AX"].point_counts == (2,)
 
+    def test_a_counted_float_table_stores_its_count_in_its_own_type(self, tree: Path) -> None:
+        source = generated(
+            tree,
+            files(axis("AX", 3, "float32", init=[1.0, 2.0, 3.0]), default="leading"),
+        )["ddd_globals.c"]
+        assert "const float AX[1 + (3)] = { 3.0F, 1.0F, 2.0F, 3.0F };" in source
+
     def test_an_uncounted_view_has_its_dimensions_and_no_counts(self, tree: Path) -> None:
         dictionary, bag = run_analysis(
             tree, files(declare("local", "V", kind="value_block", dimensions=[4]))
@@ -403,6 +485,13 @@ class TestTheA2l:
         assert layout(text, "RL_AXIS_COUNTED_SWORD") == [
             "NO_AXIS_PTS_X 1 SWORD",
             "AXIS_PTS_X 2 SWORD INDEX_INCR DIRECT",
+        ]
+
+    def test_a_counted_float_axis_states_its_own_a2l_type(self, tree: Path) -> None:
+        text = a2l(tree, files(axis("AX", 8, "float32"), default="leading"))
+        assert layout(text, "RL_AXIS_COUNTED_FLOAT32_IEEE") == [
+            "NO_AXIS_PTS_X 1 FLOAT32_IEEE",
+            "AXIS_PTS_X 2 FLOAT32_IEEE INDEX_INCR DIRECT",
         ]
 
     def test_objects_of_one_kind_and_type_share_a_layout(self, tree: Path) -> None:

@@ -37,6 +37,7 @@ from ddd.models.component import Scope
 from ddd.models.constants import ConstantDeclaration
 from ddd.models.conversion import Conversion, EnumConversion
 from ddd.models.objects import (
+    COUNTED_KINDS,
     A2lObjectOptions,
     Dimension,
     InitValue,
@@ -281,6 +282,16 @@ class ResolvedObject(_Frozen):
     @model_validator(mode="after")
     def _dimensions_spell_the_shape(self) -> ResolvedObject:
         _check_dimensions_match(self.shape, self.dimensions)
+        return self
+
+    @model_validator(mode="after")
+    def _point_counts_describe_a_counted_kind(self) -> ResolvedObject:
+        if self.point_counts is not PointCounts.NONE and self.kind not in COUNTED_KINDS:
+            msg = (
+                f"point_counts is '{self.point_counts.value}', but '{self.kind.value}' has no "
+                "axis points to count; only an axis, a curve or a map can hold one"
+            )
+            raise ValueError(msg)
         return self
 
 

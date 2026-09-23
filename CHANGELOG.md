@@ -102,12 +102,15 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   an axis and any declaration shaped in one or two dimensions show their values there as
   a grid, laid against their axes' breakpoints, each edge named with its axis and, where
   the readings are physical, that axis's unit; an object with no axis is laid over plain
-  indices instead.  A shape of more dimensions than that, and a declaration naming a
-  structured type, are shown and not offered: a grid draws rows of cells and nothing
-  deeper, and a structure holds no values of its own.  The readings switch between
-  physical values and raw counts with a toggle.  One cell is changed at a time: type a
-  value, see what it would set and which file that lands in, apply it,
-  and put it back with the undo control already there - except an object that has no one
+  indices instead.  A curve, a map and an axis are offered whatever type they name,
+  their shape following from their axes; anything else has to state both its own
+  dimensions and its own datatype, so a dimensioned declaration naming a structured
+  type is shown and not offered, and so is a shape of more dimensions than two: a
+  structure holds no values of its own, and a grid draws rows of cells and nothing
+  deeper.  The readings switch between physical values and raw counts with a toggle.
+  One cell is changed at a time: type a value, see what it would set and which file
+  that lands in, apply it, and put it back with the undo control already there -
+  except an object that has no one
   producing declaration, because nothing produces it or because more than one thing
   does, whose grid opens read-only rather than being refused.  A physical value no raw count
   represents is stored as the count nearest it and then shown as what was

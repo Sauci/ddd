@@ -299,8 +299,10 @@ The commands
        takes one away. Its table's Shape column opens the page of a curve, a map, an
        axis or any other declaration shaped in one or two dimensions: its values as a
        grid, laid against its axes' breakpoints or plain indices and named with the axis
-       on each edge, in physical or in raw by a toggle. A deeper shape, and a
-       declaration naming a structured type, are shown there and not offered. One cell
+       on each edge, in physical or in raw by a toggle. A curve, a map and an axis are
+       offered whatever type they name; anything else states its own dimensions and its
+       own datatype, so a dimensioned declaration naming a structured type is shown
+       there and not offered, and so is a deeper shape. One cell
        is changed at a time, previewed - in a sentence naming what it sets and the
        producing file it lands in - and applied like every other change here, and put
        back by the same undo. A Types tab lists the types the project declares, with

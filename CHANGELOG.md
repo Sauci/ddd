@@ -102,9 +102,10 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   an axis and any declaration with a shape show their values there as a grid, laid
   against their axes' breakpoints; an object with no axis is laid over plain indices
   instead.  The readings switch between physical values and raw counts with a toggle.
-  One cell is changed at a time: type a value, see the one line the file will change,
-  apply it, and put it back with the undo control already there.  A physical value no
-  raw count represents is stored as the count nearest it and then shown as what was
+  One cell is changed at a time: type a value, see what it would set, apply it, and put
+  it back with the undo control already there - except an object nothing produces,
+  whose grid opens read-only rather than being refused.  A physical value no raw count
+  represents is stored as the count nearest it and then shown as what was
   stored - typing `12.004` into a `uint16` at ×0.01 stores `1200`, and the grid then
   reads `12`.  A value outside the object's declared limits - shown beside its kind and
   datatype - is stored rather than refused: `limits-out-of-range` weighs the limits

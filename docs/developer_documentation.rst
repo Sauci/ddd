@@ -929,8 +929,9 @@ remove one.
 ``ddd.object_values`` sits beside ``ddd.declaration_plans`` and ``ddd.type_plans``: what
 one object's grid shows - its kind, datatype, unit, conversion, resolved limits, shape,
 values and the breakpoints of the axes it is laid against - and what changing one cell of
-it takes, a single edit-engine ``set`` at the element's own pointer into the file that
-produces it.
+it takes: an edit-engine ``set`` at the element's own pointer where the file already holds
+an array, or of the whole ``init`` where it states one value for every element or none at
+all, written into the file that produces it either way.
 
 The edit engine learnt one thing for adoption: a change whose ``fingerprint`` is ``null``
 creates its file, one ``set`` of the whole document at the root pointer, and is refused as

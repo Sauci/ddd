@@ -1475,6 +1475,28 @@ export const VALUES_CURVE_B: ValuesReply = {
   findings: [],
 };
 
+/** ValueD: SensorHub's own real absent init - a measurement declared with `dimensions: [8]` and
+ * no `init` at all (sensor_hub.ddd.json), so the startup code zeroes it - AnAbsentInitGreyed's
+ * own "nothing is stated" note. No unit, the identity conversion, and no axis: a plain shaped
+ * measurement, not a curve or a map. */
+export const VALUES_VALUE_D: ValuesReply = {
+  revision: 1,
+  name: "ValueD",
+  kind: "measurement",
+  datatype: "uint16",
+  unit: "",
+  conversion: { kind: "identity" },
+  minimum: 0,
+  maximum: 65535,
+  shape: [8],
+  rows: [[0, 0, 0, 0, 0, 0, 0, 0]],
+  stated: "none",
+  axes: [],
+  owner: "SensorHub",
+  file: SENSOR_HUB,
+  findings: [],
+};
+
 /** CurveA's own element [2] (controller.ddd.json:205, currently 800, inline with the rest of its
  * row) set to 750 - ACellMidChange's preview, the same cell objectValues.test.ts's cellSentence
  * test pins (750 raw reads 7.5 ms). */

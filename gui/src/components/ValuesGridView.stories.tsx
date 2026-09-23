@@ -7,6 +7,7 @@ import {
   VALUES_CURVE,
   VALUES_CURVE_B,
   VALUES_MAP,
+  VALUES_VALUE_D,
 } from "../stories/fixtures";
 import { ValuesGridView } from "./ValuesGridView";
 
@@ -85,3 +86,11 @@ export const ARefusedCell = () => (
     refusal="200 does not fit into sint8 (-128 .. 127)"
   />
 );
+
+// Spec 6's own list, beyond the brief's: an absent init greyed, and a grid nothing produces.
+
+export const AnAbsentInitGreyed = () => <View reply={VALUES_VALUE_D} physical />;
+
+// No object in examples/demo answers with `file: null`, so this is BlockA's own reply with its
+// producing declaration taken away - a story drawing its own props, not a server's real answer.
+export const AReadOnlyGrid = () => <View reply={{ ...VALUES_BLOCK, file: null }} physical />;

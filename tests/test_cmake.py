@@ -684,6 +684,51 @@ target_include_directories(alone PRIVATE "{output.as_posix()}")
         assert '#include "ddd_globals.h"' in (output / "ddd_layout.h").read_text(encoding="utf-8")
         self.compile_alone(tmp_path, output)
 
+    def test_a_table_keeping_its_counts_compiles_with_them_in_front(self, tmp_path: Path) -> None:
+        """The flat declaration, its initialiser and the extern in the component header agree
+        with one another under the full warning set - ``-Wconversion`` included, which is what
+        a count spelled as a constant's name meets - and a static assertion pins the size and
+        the first elements to what the a2l's NO_AXIS_PTS_X / NO_AXIS_PTS_Y say."""
+        (tmp_path / "k.ddd.json").write_text(
+            json.dumps({"constants": [{"name": "NX", "value": 8}]}), encoding="utf-8"
+        )
+        (tmp_path / "t.ddd.json").write_text(
+            json.dumps(
+                {
+                    "component": {
+                        "name": "T",
+                        "interface": [
+                            declare("output", "AX", "uint16", kind="axis", size="NX"),
+                            declare("output", "AY", "uint16", kind="axis", size=11),
+                            declare("output", "M", "uint32", kind="map", x_axis="AX", y_axis="AY"),
+                        ],
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        description = tmp_path / "project.ddd.json"
+        description.write_text(
+            json.dumps(
+                {
+                    "project": {
+                        "name": "P",
+                        "includes": ["k.ddd.json", "t.ddd.json"],
+                        "point_counts": "leading",
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        output = self.generated(tmp_path, description)
+        (output / "check_counts.c").write_text(
+            '#include "T.h"\n'
+            '_Static_assert(sizeof M == (2 + 8 * 11) * sizeof(uint32_t), "counts ahead of M");\n'
+            '_Static_assert(sizeof AX == (1 + 8) * sizeof(uint16_t), "count ahead of AX");\n',
+            encoding="utf-8",
+        )
+        self.compile_alone(tmp_path, output)
+
 
 class TestAHandWrittenProject:
     def write(self, tmp_path: Path) -> Path:

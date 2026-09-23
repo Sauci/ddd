@@ -2642,6 +2642,12 @@ class TestTheValuesGrid:
         # the same declaration, unread and unidentified, also files `unused-output` (at the
         # bare declaration) and `missing-id` (at `…definition.name`) - neither pointer ends
         # `.definition.init`, so neither is carried here.
+        #
+        # `Second` is declared beside it, in the same file, with its own bad value: a pointer
+        # ending `.definition.init` is not enough to tell the two objects' findings apart, both
+        # answer at `…interface[N].definition.init` for their own N - fix round 1's own defect,
+        # reproduced here so it stays fixed. `Bad`'s own request must not carry `Second`'s
+        # finding, and `Second`'s must not carry `Bad`'s.
         api = opened(
             tmp_path,
             {
@@ -2656,12 +2662,24 @@ class TestTheValuesGrid:
                         dimensions=[2],
                         init=[1, 9999],
                     ),
+                    declare(
+                        "output",
+                        "Second",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[2],
+                        init=[2, 8888],
+                    ),
                 ),
             },
         )
-        body = get(api, "/api/values", name="Bad").body
-        assert [(f["check"], f["pointer"]) for f in body["findings"]] == [
+        first = get(api, "/api/values", name="Bad").body["findings"]
+        assert [(f["check"], f["pointer"]) for f in first] == [
             ("init-invalid", "component.interface[0].definition.init")
+        ]
+        second = get(api, "/api/values", name="Second").body["findings"]
+        assert [(f["check"], f["pointer"]) for f in second] == [
+            ("init-invalid", "component.interface[1].definition.init")
         ]
 
     def test_setting_a_cell_is_previewed_then_written(self, demo) -> None:

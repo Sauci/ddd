@@ -100,6 +100,12 @@ class Grid:
     """The producing declaration's path, posix-separated; ``None`` where nothing produces it,
     which is a grid that can be read and not changed."""
 
+    pointer: str | None
+    """The producing declaration's own pointer - ``component.interface[N]`` - paired with
+    :attr:`file` and ``None`` for the same reason. A finding about this object's ``init`` is
+    filed at this pointer with ``.definition.init`` appended, which is how
+    :mod:`ddd.gui.api` tells one object's own finding from another's in the same file."""
+
 
 def grid_of(dictionary: DataDictionary, built: Index, name: str) -> Grid:
     """One object's grid, read from the resolved dictionary and the index.
@@ -124,6 +130,19 @@ def grid_of(dictionary: DataDictionary, built: Index, name: str) -> Grid:
         if (named := resolved.references.get(position)) is not None and named in dictionary.by_name
     )
     sites = built.producers.get(name) or []
+    # A statement, not a ternary: coverage.py registers no branch at all for a conditional
+    # expression, which is exactly how `file`'s own `else None` arm went untested here before -
+    # an `if`/`else` leaves both arms visible to the 100 % gate.
+    if sites:
+        file: str | None = sites[0].path.as_posix()
+        # `Site.pointer` for a producer is always `…interface[N].definition` - `index()` builds
+        # every one of them with "definition" as the literal suffix - but a finding's own
+        # pointer is the declaration's, with `.definition.init` (or another key) appended to
+        # it; stripped here so the two spellings share one convention rather than two.
+        pointer: str | None = sites[0].pointer.removesuffix(".definition")
+    else:
+        file = None
+        pointer = None
     return Grid(
         name=name,
         kind=str(resolved.kind),
@@ -137,7 +156,8 @@ def grid_of(dictionary: DataDictionary, built: Index, name: str) -> Grid:
         stated=stated,
         axes=axes,
         owner=resolved.owner,
-        file=sites[0].path.as_posix() if sites else None,
+        file=file,
+        pointer=pointer,
     )
 
 

@@ -876,9 +876,10 @@ class Api:
                 findings=[
                     _finding(filed, sources.get(filed.file.resolve()), cache)
                     for filed in revision.findings
-                    if filed.file.as_posix() == grid.file
+                    if grid.pointer is not None
+                    and filed.file.as_posix() == grid.file
                     and filed.diagnostic.location is not None
-                    and filed.diagnostic.location.pointer.endswith(".definition.init")
+                    and filed.diagnostic.location.pointer == f"{grid.pointer}.definition.init"
                 ],
             ).model_dump(mode="json"),
         )

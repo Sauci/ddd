@@ -44,6 +44,7 @@ class TestWhatTheGridShows:
         assert grid.axes[0].breakpoints == (0, 3200, 6400, 12800, 19200, 32000)
         assert grid.owner == "Controller"
         assert grid.file is not None and grid.file.endswith("controller.ddd.json")
+        assert grid.pointer == "component.interface[12]"
 
     def test_a_map_is_rows_of_its_y_axis_and_columns_of_its_x(self, demo) -> None:
         # The order the file already uses: MapA's shape is (4, 6), which is AxisB by AxisA.
@@ -199,6 +200,33 @@ class TestWhatTheGridShows:
             "not-found",
             "the project declares no 'Nope'",
         )
+
+    def test_an_object_nothing_produces_has_no_file_or_pointer(self, tmp_path) -> None:
+        # `file=sites[0]... if sites else None` used to be a ternary whose `else None` arm no
+        # test reached - invisible to the gate the same way as everywhere else on this branch.
+        # Ghost is declared as an input only, produced by nobody, and still resolves: reading
+        # it is a grid that can be shown, and `file`/`pointer` say there is nothing to write.
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("input", "Ghost", kind="value_block", dimensions=[2])
+                ),
+            },
+        )
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        revision = session.revision
+        assert revision is not None and revision.dictionary is not None
+        assert "Ghost" in revision.dictionary.by_name
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        try:
+            grid = grid_of(revision.dictionary, built, "Ghost")
+        finally:
+            session.stop()
+        assert (grid.file, grid.pointer) == (None, None)
+        assert (grid.shape, grid.stated) == ((2,), "none")
 
     def test_only_the_three_axis_references_are_axes(self) -> None:
         assert AXIS_REFERENCES == ("axis", "x_axis", "y_axis")

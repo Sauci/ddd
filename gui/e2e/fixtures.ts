@@ -16,6 +16,8 @@ interface Example {
 const DEMO: Example = { directory: "demo", project: "demo.ddd.json" };
 /** The example with a units file, which part 2's journeys rename and describe units in. */
 const VOCABULARY: Example = { directory: "vocabulary", project: "project.ddd.json" };
+/** The example with all three kinds of type, which part 6's journeys change. */
+const STRUCTURES: Example = { directory: "structures", project: "project.ddd.json" };
 
 export interface Gui {
   /** The address ddd gui printed, token included. */
@@ -87,13 +89,20 @@ function terminated(child: ChildProcess): Promise<void> {
   });
 }
 
-export const test = base.extend<{ gui: Gui; bareGui: Gui; vocabularyGui: Gui }>({
+export const test = base.extend<{
+  gui: Gui;
+  bareGui: Gui;
+  vocabularyGui: Gui;
+  structuresGui: Gui;
+}>({
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
   gui: async ({}, use, testInfo) => started(DEMO, true, use, testInfo),
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
   bareGui: async ({}, use, testInfo) => started(DEMO, false, use, testInfo),
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
   vocabularyGui: async ({}, use, testInfo) => started(VOCABULARY, true, use, testInfo),
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
+  structuresGui: async ({}, use, testInfo) => started(STRUCTURES, true, use, testInfo),
 });
 
 export { expect } from "@playwright/test";

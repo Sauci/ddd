@@ -293,6 +293,21 @@ test("no page reports a violation of its content security policy", async ({ page
   await page.getByRole("row", { name: "definition-mismatch" }).first().click();
   await expect(page.getByRole("complementary", { name: "definition-mismatch" })).toBeVisible();
 
+  // The Types tab (part 6), on the page too - visited here for the same reason as Findings
+  // above, while the project's own tabs are still there to follow it from. The demo's only two
+  // types are DriverState_t and SensorDiagnosis_t, neither a scalar, so neither offers part 1's
+  // chooser; a rename is the one write path every kind of type offers, and its own preview is
+  // what stands in for it here.
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "SensorDiagnosis_t", exact: true }).click();
+  const diagnosis = page.getByRole("complementary", { name: "SensorDiagnosis_t" });
+  await diagnosis
+    .getByRole("textbox", { name: "Rename SensorDiagnosis_t to" })
+    .fill("SensorDiagnostics_t");
+  await diagnosis.getByRole("button", { name: "Show changes" }).click();
+  // The type's own entry and the declaration naming it both change: two hunks, one file.
+  await expect(diagnosis.locator(".hunk")).toHaveCount(2);
+
   await page.getByRole("link", { name: "Table" }).click();
   await page.getByRole("button", { name: "Controller", exact: true }).click();
   await page.getByRole("button", { name: "Set the unit of ValueA" }).click();

@@ -237,7 +237,13 @@ class TestDeclaringSomethingNew:
             demo,
             CONTROLLER,
             "output",
-            {"name": "Pressure", "kind": "measurement", "datatype": "uint16", "volatile": False},
+            {
+                "name": "Pressure",
+                "kind": "measurement",
+                "datatype": "uint16",
+                "conversion": {"kind": "identity"},
+                "volatile": False,
+            },
             cache,
         )
         written = json.loads(plan.edits[0].operations[0].raw or "")
@@ -250,7 +256,13 @@ class TestDeclaringSomethingNew:
                 demo,
                 CONTROLLER,
                 scope,
-                {"name": "Pressure", "kind": "measurement", "volatile": False},
+                {
+                    "name": "Pressure",
+                    "kind": "measurement",
+                    "datatype": "uint16",
+                    "conversion": {"kind": "identity"},
+                    "volatile": False,
+                },
                 cache,
             )
             written = json.loads(plan.edits[0].operations[0].raw or "")
@@ -344,6 +356,51 @@ class TestDeclaringSomethingNew:
                 cache,
             )
         assert refused.value.message == "an id is this server's to mint, not the page's"
+
+    def test_a_stated_datatype_with_no_conversion_is_refused_rather_than_planned(
+        self, demo, cache
+    ) -> None:
+        # The one rule none of the checks above can see: `datatype` and `conversion` cross two
+        # keys, which `definition_keys`' required set cannot express - only the models catch
+        # it, and they have to catch it here, before a plan is made, or `declare_object` would
+        # hand back a plan whose own file then fails to load.
+        with pytest.raises(DeclarationRefusalError) as refused:
+            declare_object(
+                demo,
+                CONTROLLER,
+                "output",
+                {
+                    "name": "Pressure",
+                    "kind": "measurement",
+                    "datatype": "uint16",
+                    "volatile": False,
+                },
+                cache,
+            )
+        assert (refused.value.code, refused.value.message) == (
+            "invalid",
+            "a 'datatype' comes with a 'conversion': the identity "
+            '({"kind": "identity"}) is an answer to state, not a default to fall into',
+        )
+
+    def test_a_stated_datatype_with_its_conversion_is_planned(self, demo, cache) -> None:
+        # The same definition, complete - the models have nothing left to refuse, so this is
+        # the plan the test above's definition was one key away from.
+        plan = declare_object(
+            demo,
+            CONTROLLER,
+            "output",
+            {
+                "name": "Pressure",
+                "kind": "measurement",
+                "datatype": "uint16",
+                "conversion": {"kind": "identity"},
+                "volatile": False,
+            },
+            cache,
+        )
+        written = json.loads(plan.edits[0].operations[0].raw or "")
+        assert written["definition"]["conversion"] == {"kind": "identity"}
 
     def test_what_is_written_parses_and_loads(self, demo, cache, tmp_path) -> None:
         # The end of the verb's promise: a file the loader reads back without a complaint.

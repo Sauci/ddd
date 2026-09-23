@@ -17,12 +17,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal
 
+from pydantic import TypeAdapter, ValidationError
+
 from ddd.editing import Operation
 from ddd.identity import new_id
 from ddd.lsp.navigation import Index, rename_problem
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
-from ddd.models.objects import definition_keys
+from ddd.models.objects import AnyDataObject, definition_keys
 from ddd.variable_keys import KEY_ORDER, KeyOffer, offer_for
 from ddd.variables import component_of
 
@@ -120,8 +122,8 @@ class DeclarationRefusalError(Exception):
 
     code: Literal["invalid", "not-found"]
     """``invalid``: the change cannot be made - a name that may not be used, a key the kind has
-    not, a required key left out, a scope this name may not take. ``not-found``: the file
-    declares no interface, or no declaration of that name."""
+    not, a required key left out, a scope this name may not take, a value the models themselves
+    refuse. ``not-found``: the file declares no interface, or no declaration of that name."""
 
     message: str
     """The sentence the refusal is shown with."""
@@ -159,6 +161,16 @@ def read_object(
     return _appended(here, entries, scope, definition)
 
 
+_DEFINITION: Final[TypeAdapter[AnyDataObject]] = TypeAdapter(AnyDataObject)
+"""Built once: compiling a discriminated union's schema is not free, and :func:`declare_object`
+asks it once per call.
+
+The same union :class:`~ddd.models.component.Declaration` validates a file's own ``definition``
+against - asked here, before a definition is planned, rather than only once the file it was
+written into is read back.
+"""
+
+
 def declare_object(
     built: Index,
     file: Path,
@@ -173,6 +185,11 @@ def declare_object(
     namespace a rename guards, so it gets the same answers rather than a second set derived
     here. A producing declaration is stamped with a fresh id, after its ``name``, where every
     stamped declaration of the examples carries one.
+
+    Stamped, the definition is asked of :data:`_DEFINITION` - a rule crossing two keys, a
+    ``datatype`` wanting a ``conversion`` among them, is not something a key-by-key check above
+    can see, and is refused in the model's own sentence rather than left for the file it is
+    written into to refuse back.
     """
     here, entries = _interface(file, cache)
     name, kind = definition.get("name"), definition.get("kind")
@@ -195,6 +212,10 @@ def declare_object(
     stated = dict(definition)
     if scope == "output":
         stated = {"name": stated.pop("name"), "id": new_id(), **stated}
+    try:
+        _DEFINITION.validate_python(stated)
+    except ValidationError as error:
+        raise DeclarationRefusalError("invalid", _model_problem(error)) from error
     return _appended(here, entries, scope, stated)
 
 
@@ -226,6 +247,21 @@ def _statable(kind: str) -> frozenset[str]:
     """
     accepted, _ = definition_keys(kind)
     return frozenset({"name", "kind", "description"}) | (accepted & frozenset(KEY_ORDER))
+
+
+def _model_problem(error: ValidationError) -> str:
+    """One sentence naming the first way the models refuse a definition the checks above did not.
+
+    A rule crossing two keys - :func:`~ddd.models.objects.check_conversion_stated` and its
+    neighbours - already raises one english sentence, which is what a page can act on; pydantic
+    wraps it as ``"Value error, <that sentence>"``, so it is unwrapped here rather than shown
+    wrapped. A key's value of the wrong shape - nothing above checks that ``datatype`` names a
+    real one, or that ``volatile`` is a boolean - has no such sentence to unwrap, and is shown
+    as pydantic states it.
+    """
+    first = error.errors(include_url=False)[0]
+    cause = first.get("ctx", {}).get("error")
+    return str(cause) if isinstance(cause, Exception) else first["msg"]
 
 
 def _interface(file: Path, cache: dict[Path, Document]) -> tuple[Path, list[object]]:

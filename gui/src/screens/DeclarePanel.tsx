@@ -10,6 +10,7 @@ import type { DeclarableReply } from "../api/types";
 import { DeclarePanelView } from "../components/DeclarePanelView";
 import { definitionOf, dimensionsRaw, type Mode, modeOf, scopesOf } from "../lib/declarations";
 import { planEdit } from "../lib/projectUnits";
+import { declareLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
 import { refusalOf } from "./UnitPanel";
@@ -24,15 +25,6 @@ interface Props {
   onClose: () => void;
   /** Applied: the component page selects the new declaration's variable. */
   onDeclared: (name: string) => void;
-}
-
-/** What this declaration is called when it comes to be undone - the verb the mode settled on,
- * naming the variable and the component it joins: "reading ValueC into Controller", "declaring
- * Pressure in Controller". */
-function declareLabel(mode: Mode, typed: string, component: string): string {
-  return mode === "read"
-    ? `reading ${typed} into ${component}`
-    : `declaring ${typed} in ${component}`;
 }
 
 /** The plan to ask for from what the form currently says, `null` while there is nothing complete

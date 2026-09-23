@@ -1,5 +1,6 @@
 import type { TypePlanRequest, UnitPlanRequest } from "../api/client";
 import type { Finding, State, UndoneChange } from "../api/types";
+import type { Mode } from "./declarations";
 import { baseName, type ShownChange } from "./units";
 
 /** The longest label `POST /api/edit` takes; see `Changes.label` in src/ddd/gui/contract.py. */
@@ -24,6 +25,15 @@ export function unitLabel(plan: UnitPlanRequest): string {
 export function typeLabel(plan: TypePlanRequest): string {
   if (plan.action === "rename") return fitted(`the rename of '${plan.name}' to '${plan.to}'`);
   return fitted(`the ${plan.key} of ${plan.name}`);
+}
+
+/** What a declaration added to a component's interface is called when it comes to be undone -
+ * the verb the mode settled on, naming the variable and the component it joins: "reading ValueC
+ * into Controller", "declaring Pressure in Controller". */
+export function declareLabel(mode: Mode, typed: string, component: string): string {
+  return mode === "read"
+    ? fitted(`reading ${typed} into ${component}`)
+    : fitted(`declaring ${typed} in ${component}`);
 }
 
 /**

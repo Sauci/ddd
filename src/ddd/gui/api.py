@@ -902,10 +902,10 @@ class Api:
             raw = _number(raw_text)
             plan = set_cell(dictionary, built, name, at, raw, {})
         except ValueRefusalError as refused:
-            # Unlike _values above, set_cell genuinely raises both codes - a name the project
-            # has not, and every other refusal - so both arms need a status, and both need a
-            # test reaching them: a ternary here would read the same but hide the untested one
-            # from the coverage gate, the same blind spot that let two earlier defects through.
+            # Both codes again, as in _values above - a name the project has not, and every
+            # other refusal - so both arms need a status and a test reaching them: a ternary
+            # here would read the same but hide an untested arm from the coverage gate, the
+            # same blind spot that let two earlier defects through.
             if refused.code == "not-found":
                 return _error(404, refused.code, refused.message)
             return _error(409, refused.code, refused.message)

@@ -3564,6 +3564,7 @@ class _Analysis:
             reference = variable.producer or variable.declarations[0]
             if variable.point_counts is PointCounts.LEADING:
                 datatype = variable.definition.datatype
+                assert datatype is not None
                 for count in stored_counts(variable.definition.kind, variable.shape):
                     if datatype is Datatype.BOOLEAN or (
                         datatype.is_integer and count > datatype.raw_max

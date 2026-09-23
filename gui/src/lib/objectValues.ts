@@ -57,33 +57,34 @@ function columnAxis(reply: ValuesReply) {
   return axisOf(reply, "x_axis") ?? axisOf(reply, "axis");
 }
 
-/** What an object or an axis is called beside its own numbers: `AxisA (Hz)`, or the bare name
- * where it carries no unit. Spec 5.2 labels both edges of every grid it draws, because the
- * header converts by the axis's rule and the values by the object's - two different units, and
- * nothing else on the screen says which belongs to which. */
-function labelled(name: string, unit: string): string {
-  return unit === "" ? name : `${name} (${unit})`;
+/** What an object or an axis is called beside its own numbers: `AxisA (Hz)` over the readings
+ * its conversion makes, and the bare `AxisA` over raw counts - which are counts and not Hz, so
+ * a unit there would be a label the numbers under it contradict. Spec 5.2 labels both edges of
+ * every grid it draws, because the header converts by the axis's rule and the values by the
+ * object's - two different units, and nothing else on the screen says which belongs to which. */
+function labelled(name: string, unit: string, physical: boolean): string {
+  return physical && unit !== "" ? `${name} (${unit})` : name;
 }
 
 /** The label in the corner, above the row labels (spec 5.2): the axis the rows are laid
  * against for a map - `AxisB (%)` - and the axis the columns are laid against for a single
  * row, where `AxisA (Hz)` sits over `CurveA (ms)`. `""` for a grid laid against indices. */
-export function cornerLabel(reply: ValuesReply): string {
+export function cornerLabel(reply: ValuesReply, physical: boolean): string {
   if (reply.shape.length === 1) {
     const columns = columnAxis(reply);
-    return columns === undefined ? "" : labelled(columns.name, columns.unit);
+    return columns === undefined ? "" : labelled(columns.name, columns.unit, physical);
   }
   const rows = axisOf(reply, "y_axis");
-  return rows === undefined ? "" : labelled(rows.name, rows.unit);
+  return rows === undefined ? "" : labelled(rows.name, rows.unit, physical);
 }
 
 /** The label above the column header, naming the axis the columns are laid against - spec
  * 5.2's `AxisA (Hz) →` over a map, whose own corner is taken by the rows' axis. `""` for a
  * single row, whose corner names that axis itself, and for columns laid against indices. */
-export function columnAxisLabel(reply: ValuesReply): string {
+export function columnAxisLabel(reply: ValuesReply, physical: boolean): string {
   if (reply.shape.length === 1) return "";
   const columns = columnAxis(reply);
-  return columns === undefined ? "" : labelled(columns.name, columns.unit);
+  return columns === undefined ? "" : labelled(columns.name, columns.unit, physical);
 }
 
 /** Why this grid cannot be written, or `null` where it can be: the two sentences
@@ -142,7 +143,7 @@ export function rowHeader(reply: ValuesReply, physical: boolean): string[] {
   if (axis !== undefined && axis.breakpoints.length > 0) {
     return axis.breakpoints.map((raw) => reading(raw, axis.conversion, physical));
   }
-  if (reply.shape.length === 1) return [labelled(reply.name, reply.unit)];
+  if (reply.shape.length === 1) return [labelled(reply.name, reply.unit, physical)];
   return indices(reply.shape[0] ?? 0);
 }
 

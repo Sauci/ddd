@@ -14,7 +14,7 @@ import {
   typedNumber,
   typedRefusal,
 } from "../lib/objectValues";
-import { NO_UNIT, shownChanges } from "../lib/units";
+import { consequence, NO_UNIT, shownChanges } from "../lib/units";
 import { shortValue } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
@@ -86,7 +86,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
     // The corner names an edge of the grid (spec 5.2): the axis the rows are laid against for
     // a map, the axis the columns are laid against for a single row - `AxisA (Hz)` over
     // `CurveA (ms)`. Blank only where that edge is the plain indices.
-    { id: "corner", label: cornerLabel(reply), isRowHeader: true, index: -1 },
+    { id: "corner", label: cornerLabel(reply, physical), isRowHeader: true, index: -1 },
     ...columnLabels.map((label, index) => ({
       id: `col:${index}`,
       label,
@@ -120,7 +120,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
   // for it, and ahead of whatever refusal came back for an earlier value: that one is about a
   // number no longer in the cell.
   const refused = editing === null ? null : (typedRefusal(editing.typed) ?? refusal);
-  const columnAxis = columnAxisLabel(reply);
+  const columnAxis = columnAxisLabel(reply, physical);
   const readOnly = readOnlyNote(reply);
   return (
     <section>
@@ -224,8 +224,15 @@ export function ValuesGridView(props: ValuesGridViewProps) {
             </p>
           )}
           {plan !== null && raw !== null && (
+            // What it sets, and the file it lands in - the way `renameConsequence` folds
+            // `consequence()` into its own sentence, and for the same reason every sibling
+            // write path names its files: an object's numbers live in its producer's file,
+            // which need not be the one the reader opened the grid from (spec 5.3's ValueB
+            // on Controller, whose numbers are SensorHub's), and learning that should not
+            // take opening Show changes.
             <p className="consequence">
-              {cellSentence(reply, editing.row, editing.column, raw, physical)}
+              {cellSentence(reply, editing.row, editing.column, raw, physical)}.{" "}
+              {consequence(plan.changes)}
             </p>
           )}
           {plan !== null && plan.changes.length > 0 && (

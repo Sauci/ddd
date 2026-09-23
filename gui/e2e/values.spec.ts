@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator } from "@playwright/test";
-import { CONTROLLER, writeBlockAInit } from "./demo";
+import { CONTROLLER, SENSOR_HUB, widenBlockA, writeBlockAInit } from "./demo";
 import { expect, test } from "./fixtures";
 
 /** A declaration's own definition, read back from a file of the copy - the same untyped shape
@@ -44,8 +44,10 @@ test("a curve is read against its axis, raw and physical", async ({ page, gui })
   await expectRow(grid, ["12", "9", "8", "7.5", "7", "6.5"]);
 
   await page.getByRole("button", { name: "Raw" }).click();
+  // The same two labels, without their units: these readings are counts, and `(Hz)` over
+  // `0, 3200, 6400` or `(ms)` beside `1200, 900, 800` would be a label the numbers contradict.
   await expect(grid.getByRole("columnheader")).toHaveText([
-    "AxisA (Hz)",
+    "AxisA",
     "0",
     "3200",
     "6400",
@@ -53,6 +55,7 @@ test("a curve is read against its axis, raw and physical", async ({ page, gui })
     "19200",
     "32000",
   ]);
+  await expect(grid.getByRole("rowheader")).toHaveText(["CurveA"]);
   await expectRow(grid, ["1200", "900", "800", "750", "700", "650"]);
 });
 
@@ -63,6 +66,10 @@ test("a cell changed is written to the producer's file", async ({ page, gui }) =
 
   await page.getByRole("textbox", { name: "element 3" }).fill("7.5");
   await expect(page.getByText("Sets element 3 of CurveA to 7.5 ms")).toBeVisible();
+  // Named before Show changes is opened, as spec 5.3 asks and as every sibling write path
+  // already does: an object's numbers live in its producer's file, which the reader is not
+  // always looking at.
+  await expect(page.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
   await page.getByRole("button", { name: "Show changes" }).click();
   await expect(page.getByText('"init": [1200, 900, 750, 750, 700, 650],')).toBeVisible();
 
@@ -70,6 +77,21 @@ test("a cell changed is written to the producer's file", async ({ page, gui }) =
   await expect
     .poll(() => readFileSync(join(gui.directory, CONTROLLER), "utf8"))
     .toContain('"init": [1200, 900, 750, 750, 700, 650]');
+});
+
+test("a reader's page names the producer's file, not its own", async ({ page, gui }) => {
+  // Spec 5.3's own example: ValueB on Controller is an `input`, its numbers live in SensorHub,
+  // and the preview names sensor_hub.ddd.json. Nothing is applied here - the sentence before
+  // Apply is the whole subject.
+  const before = readFileSync(join(gui.directory, SENSOR_HUB));
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Show the values of ValueB" }).click();
+
+  await page.getByRole("textbox", { name: "element 1" }).fill("1");
+  await expect(page.getByText("Sets element 1 of ValueB to 1 V")).toBeVisible();
+  await expect(page.getByText("Changes 1 file: sensor_hub.ddd.json")).toBeVisible();
+  expect(readFileSync(join(gui.directory, SENSOR_HUB)).equals(before)).toBe(true);
 });
 
 test("a map's cell names its row and its column", async ({ page, gui }) => {
@@ -85,6 +107,7 @@ test("a map's cell names its row and its column", async ({ page, gui }) => {
   await expect(page.getByText("AxisA (Hz) →")).toBeVisible();
 
   await page.getByRole("button", { name: "Raw" }).click();
+  await expect(page.getByText("AxisA →")).toBeVisible();
   await page.getByRole("textbox", { name: "element 2, 4" }).fill("50");
   await expect(page.getByText("Sets element 2, 4 of MapA to 50")).toBeVisible();
   await page.getByRole("button", { name: "Apply to 1 file" }).click();
@@ -199,4 +222,32 @@ test("a finding on an object's init leads to its grid, not its panel", async ({ 
   // The finding the reader followed is drawn on the grid too, which is what carrying it
   // through `ValuesReply.findings` is for - and what this journey rendered without asserting.
   await expect(page.getByText("init value 9999 does not fit into uint8 (0 .. 255)")).toBeVisible();
+});
+
+// A shape no grid draws, reached the only two ways there are to reach it - the address, and a
+// finding on its own init - since the Shape column offers no button for one. Both the refusal
+// and the way out of it are the subject: a refusal that left the reader on an empty page with
+// a sentence would be its own dead end.
+test("a shape deeper than a grid is shown, not offered, and says so with a way back", async ({
+  page,
+  gui,
+}) => {
+  widenBlockA(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Table" }).click();
+  await page.getByRole("button", { name: "UserInterface", exact: true }).click();
+
+  // Plain text in the Shape column, not a button onto a grid that refuses the moment it opens.
+  await expect(page.getByRole("button", { name: "Show the values of BlockA" })).toHaveCount(0);
+  await expect(page.getByRole("gridcell", { name: "2 × 2 × 2" })).toBeVisible();
+
+  await page
+    .getByRole("link", { name: "init value 9999 does not fit into uint8 (0 .. 255)" })
+    .click();
+  await expect(page.getByRole("heading", { name: "BlockA", level: 1 })).toBeVisible();
+  await expect(
+    page.getByText("'BlockA' has 3 dimensions, and a grid draws at most two"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Back to UserInterface" }).click();
+  await expect(page.getByRole("grid", { name: "Declarations of UserInterface" })).toBeVisible();
 });

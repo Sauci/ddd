@@ -277,6 +277,12 @@ describe("rowHeader", () => {
     expect(rowHeader(CURVE_A, true)).toEqual(["CurveA (ms)"]);
   });
 
+  test("in raw the row keeps the object's name and drops its unit", () => {
+    // The cells there hold 1200, 900, 800 - counts, not milliseconds - so `(ms)` beside them
+    // would be a label the numbers under it contradict.
+    expect(rowHeader(CURVE_A, false)).toEqual(["CurveA"]);
+  });
+
   test("an object with no unit is labelled by its bare name", () => {
     expect(rowHeader(BLOCK_A, true)).toEqual(["BlockA"]);
   });
@@ -296,35 +302,44 @@ describe("rowHeader", () => {
 
 describe("cornerLabel", () => {
   test("a curve names the axis its columns are laid against", () => {
-    expect(cornerLabel(CURVE_A)).toBe("AxisA (Hz)");
+    expect(cornerLabel(CURVE_A, true)).toBe("AxisA (Hz)");
+  });
+
+  test("in raw it keeps the axis's name and drops its unit", () => {
+    // The header under it reads 0, 3200, 6400 - AxisA's own counts, which are not Hz.
+    expect(cornerLabel(CURVE_A, false)).toBe("AxisA");
   });
 
   test("a map names the axis its rows are laid against", () => {
     // Spec 5.2's map sketch: AxisB (%) down the side, AxisA (Hz) across the top - the one
     // reading that tells a reader which unit belongs to which edge.
-    expect(cornerLabel(MAP_A)).toBe("AxisB (%)");
+    expect(cornerLabel(MAP_A, true)).toBe("AxisB (%)");
   });
 
   test("a grid laid against indices alone names nothing", () => {
-    expect(cornerLabel(BLOCK_A)).toBe("");
+    expect(cornerLabel(BLOCK_A, true)).toBe("");
   });
 
   test("a two dimensional grid with no y axis names nothing either", () => {
-    expect(cornerLabel(VALUE_K)).toBe("");
+    expect(cornerLabel(VALUE_K, true)).toBe("");
   });
 });
 
 describe("columnAxisLabel", () => {
   test("a map names its x axis above the columns", () => {
-    expect(columnAxisLabel(MAP_A)).toBe("AxisA (Hz)");
+    expect(columnAxisLabel(MAP_A, true)).toBe("AxisA (Hz)");
+  });
+
+  test("in raw that name carries no unit either", () => {
+    expect(columnAxisLabel(MAP_A, false)).toBe("AxisA");
   });
 
   test("a single row says nothing above it - its own corner names the axis", () => {
-    expect(columnAxisLabel(CURVE_A)).toBe("");
+    expect(columnAxisLabel(CURVE_A, true)).toBe("");
   });
 
   test("a two dimensional grid with no x axis says nothing", () => {
-    expect(columnAxisLabel(VALUE_K)).toBe("");
+    expect(columnAxisLabel(VALUE_K, true)).toBe("");
   });
 });
 

@@ -19,6 +19,9 @@ interface Props {
   preview?: PlanReply | null;
   shown?: boolean;
   refusal?: string;
+  /** What the Rename field starts on: the type's own name, unless a scenario means to show it
+   * already typed - a refusal only ever appears with the offending name still in the field. */
+  renameTo?: string | null;
 }
 
 /** The panel over one scenario's fixtures, with its own selection, typing, description and
@@ -26,13 +29,20 @@ interface Props {
  *
  * As in VariablePanel.tsx: `typed` stays `undefined` until the reader edits the field, so it
  * shows the label of the type's own value until one is chosen. */
-function PanelStory({ reply, on, preview = null, shown = false, refusal }: Props) {
+function PanelStory({
+  reply,
+  on,
+  preview = null,
+  shown = false,
+  refusal,
+  renameTo: renameSeed = null,
+}: Props) {
   const [selected, setSelected] = useState<string | undefined>(on);
   const [typed, setTyped] = useState<string | undefined>(undefined);
   const [chosen, setChosen] = useState<string | null | undefined>(undefined);
   const [range, setRange] = useState({ min: "", max: "" });
   const [description, setDescription] = useState(reply.description);
-  const [renameTo, setRenameTo] = useState<string | null>(null);
+  const [renameTo, setRenameTo] = useState<string | null>(renameSeed);
   const [changesShown, setChangesShown] = useState(shown);
   const select = (key: string | undefined) => {
     setSelected(key);
@@ -48,6 +58,7 @@ function PanelStory({ reply, on, preview = null, shown = false, refusal }: Props
       selected={selected}
       onSelect={select}
       typed={typed ?? startingLabel(reply, selected, chosen)}
+      narrow={typed ?? ""}
       onTyped={setTyped}
       onChosen={(raw) => {
         setChosen(raw);
@@ -109,6 +120,7 @@ export const AnExternal = () => <PanelStory reply={EXTERNAL_TYPE} />;
 export const RenameRefused = () => (
   <PanelStory
     reply={SCALAR_TYPE}
+    renameTo="Sample_t"
     refusal="'Sample_t' is the name of the type 'Sample_t', which shares c's namespace with the variables"
   />
 );

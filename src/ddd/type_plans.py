@@ -67,15 +67,21 @@ def set_key(
     """What setting one key of a type takes: one operation, at that type's own entry.
 
     ``raw`` is the json text the key is set to, or ``None`` to leave the key out - which a key
-    the models require refuses rather than writing a file that would not load.
+    the models require refuses rather than writing a file that would not load. A key already
+    left out answers no edit at all rather than a removal: there is nothing to remove, and a
+    reader who has only selected the row - not typed anything - must not be refused before they
+    have done anything.
     """
     site = _entry(built, name)
-    kind = read(site.path, cache).value_at(f"{site.pointer}.type")
+    document = read(site.path, cache)
+    kind = document.value_at(f"{site.pointer}.type")
     allowed = SETTABLE.get(kind, frozenset()) if isinstance(kind, str) else frozenset()
     if key not in allowed:
         raise TypeRefusalError("invalid", f"a type of this kind has no '{key}' to set")
     if raw is None and key in REQUIRED:
         raise TypeRefusalError("invalid", f"'{key}' is required, so it cannot be left out")
+    if raw is None and document.value_at(f"{site.pointer}.{key}") is None:
+        return TypePlan(())
     operation = (
         Operation("remove", f"{site.pointer}.{key}")
         if raw is None

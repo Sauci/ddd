@@ -21,7 +21,7 @@ from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
 from ddd.lsp.ranges import Document
-from ddd.project_types import fixed_by, located_in_type, members_of, type_rows, uses_of
+from ddd.project_types import fixed_by, located_in_type, members_of, row_of, type_rows, uses_of
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 
@@ -79,6 +79,19 @@ class TestRows:
         assert rows["Temperature_t"].findings == 1
         assert rows["Sample_t"].findings == 0
 
+    def test_row_of_answers_the_one_row_type_rows_would(self, built, cache) -> None:
+        # `_type` pulls a single row through `row_of` rather than `type_rows`' whole table; the
+        # two must still agree; a type the finding is inside and one it is not, so both of
+        # `located_in_type`'s outcomes are exercised on this path too.
+        findings = [
+            (site.path, _finding("unknown-unit", site.pointer + ".unit"))
+            for name, site in built.types.items()
+            if name == "Temperature_t"
+        ]
+        rows = {row.name: row for row in type_rows(built, findings, cache)}
+        assert row_of(built, "Temperature_t", findings, cache) == rows["Temperature_t"]
+        assert row_of(built, "Sample_t", findings, cache) == rows["Sample_t"]
+
     def test_a_finding_elsewhere_or_on_no_type_locates_nothing(self, built) -> None:
         # `type_rows` only ever asks about a finding already paired with the type's own file,
         # so a mismatch is exercised directly here rather than through it.
@@ -87,6 +100,14 @@ class TestRows:
         finding = _finding("unknown-unit", f"{temperature.pointer}.unit")
         assert not located_in_type(built, "Temperature_t", elsewhere, finding)
         assert not located_in_type(built, "Nothing_t", temperature.path, finding)
+
+    def test_a_finding_with_no_location_locates_nothing(self, built) -> None:
+        # A check about the project rather than a place in a file files no location at all - a
+        # real input, unlike the mismatches above, and one this suite otherwise never hands
+        # `located_in_type`, so its `location is None` arm goes untested by everything else here.
+        temperature = built.types["Temperature_t"]
+        finding = Diagnostic("missing-producer", Severity.ERROR, "message")
+        assert not located_in_type(built, "Temperature_t", temperature.path, finding)
 
 
 class TestUses:

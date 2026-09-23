@@ -6,11 +6,12 @@ from pathlib import Path
 
 import pytest
 
+from conftest import project, scalar_type, types, write_tree
 from ddd.diagnostics import DiagnosticBag
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
 from ddd.lsp.ranges import Document
-from ddd.type_plans import TypeRefusalError, rename_type, set_key
+from ddd.type_plans import TypePlan, TypeRefusalError, rename_type, set_key
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 
@@ -38,6 +39,20 @@ class TestSettingAKey:
         plan = set_key(built, "Temperature_t", "limits", None, cache)
         (edit,) = plan.edits
         assert [(o.op, o.pointer) for o in edit.operations] == [("remove", "types[0].limits")]
+
+    def test_a_key_the_entry_does_not_carry_is_an_empty_plan(self, tmp_path, cache) -> None:
+        # examples/structures offers no fixture for this: its one scalar, Temperature_t, has
+        # every optional key - description, unit, limits - already filled in, so a key genuinely
+        # missing from an entry needs a project built for it, measured rather than assumed.
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(scalar_type("Spare_t")),
+            },
+        )
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        assert set_key(built, "Spare_t", "limits", None, cache) == TypePlan(())
 
     @pytest.mark.parametrize(
         ("name", "key"),

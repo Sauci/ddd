@@ -82,17 +82,48 @@ class Use:
 def type_rows(
     built: Index, findings: Iterable[tuple[Path, Diagnostic]], cache: dict[Path, Document]
 ) -> tuple[TypeRow, ...]:
-    """Every type the project declares, by name, with what it is and how much it has to fix."""
-    filed = list(findings)
-    return tuple(
-        TypeRow(
-            name=name,
-            kind=_string(built, name, "type", cache),
-            description=_string(built, name, "description", cache),
-            uses=len(built.type_uses.get(name, ())),
-            findings=sum(1 for file, found in filed if located_in_type(built, name, file, found)),
+    """Every type the project declares, by name, with what it is and how much it has to fix.
+
+    Every finding's file is resolved once, grouped into ``by_path``, rather than once per
+    (type, finding) pair through :func:`located_in_type`: the same answer, but O(types +
+    findings) resolves instead of O(types x findings) with two each.
+    """
+    by_path: dict[Path, list[Diagnostic]] = {}
+    for file, found in findings:
+        by_path.setdefault(file.resolve(), []).append(found)
+    rows = []
+    for name in sorted(built.types):
+        site = built.types[name]
+        filed = by_path.get(site.path.resolve(), ())
+        rows.append(
+            TypeRow(
+                name=name,
+                kind=_string(built, name, "type", cache),
+                description=_string(built, name, "description", cache),
+                uses=len(built.type_uses.get(name, ())),
+                findings=sum(1 for found in filed if _within_entry(found, site)),
+            )
         )
-        for name in sorted(built.types)
+    return tuple(rows)
+
+
+def row_of(
+    built: Index,
+    name: str,
+    findings: Iterable[tuple[Path, Diagnostic]],
+    cache: dict[Path, Document],
+) -> TypeRow:
+    """One type's own row: what :func:`type_rows` would answer for ``name`` alone, without
+    building every other type's row alongside it - what ``GET /api/type`` pulls one of from its
+    whole table today. Trusts ``name`` is one of ``built.types``, as the api checks before it
+    asks, the way :func:`type_rows`' own comprehension does by never naming one it did not."""
+    filed = list(findings)
+    return TypeRow(
+        name=name,
+        kind=_string(built, name, "type", cache),
+        description=_string(built, name, "description", cache),
+        uses=len(built.type_uses.get(name, ())),
+        findings=sum(1 for file, found in filed if located_in_type(built, name, file, found)),
     )
 
 
@@ -136,11 +167,19 @@ def located_in_type(built: Index, name: str, file: Path, finding: Diagnostic) ->
     ``unknown-unit``, ``type-kind``, ``duplicate-type``, ``init-invalid`` or
     ``limits-out-of-range``, and anything else a check files at a pointer under it."""
     site = built.types.get(name)
-    location = finding.location
-    if site is None or location is None or site.path.resolve() != file.resolve():
+    if site is None or site.path.resolve() != file.resolve():
         return False
-    return location.pointer == site.pointer or location.pointer.startswith(
-        (f"{site.pointer}.", f"{site.pointer}[")
+    return _within_entry(finding, site)
+
+
+def _within_entry(finding: Diagnostic, site: Site) -> bool:
+    """Whether a finding's own location lands inside that entry: its own pointer, or a key, a
+    member or an enumerator nested under it. ``False`` for a finding with no location at all - a
+    check about the project rather than a place in a file."""
+    location = finding.location
+    return location is not None and (
+        location.pointer == site.pointer
+        or location.pointer.startswith((f"{site.pointer}.", f"{site.pointer}["))
     )
 
 

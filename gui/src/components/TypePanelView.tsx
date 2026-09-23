@@ -18,6 +18,8 @@ export interface TypePanelViewProps {
   onSelect: (key: string | undefined) => void;
   /** Everything the chooser needs, passed through as the variable panel passes it. */
   typed: string;
+  /** What narrows the list: "" unless the reader is typing (`KeyChooser`'s own prop doc). */
+  narrow: string;
   onTyped: (text: string) => void;
   onChosen: (raw: string | null) => void;
   onPickerClosed: () => void;
@@ -118,7 +120,7 @@ export function TypePanelView(props: TypePanelViewProps) {
               keyName={selectedRow.key}
               units={units}
               typed={props.typed}
-              narrow=""
+              narrow={props.narrow}
               onTyped={props.onTyped}
               onChosen={props.onChosen}
               onPickerClosed={props.onPickerClosed}
@@ -211,9 +213,8 @@ export function TypePanelView(props: TypePanelViewProps) {
               </tr>
             </thead>
             <tbody>
-              {memberRows(type).map((row, at) => {
-                const member = type.members[at];
-                const typename = member?.typename ?? null;
+              {memberRows(type).map((row) => {
+                const typename = row.typename;
                 return (
                   <tr key={row.id}>
                     <td>{row.name}</td>

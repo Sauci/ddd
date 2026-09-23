@@ -66,6 +66,10 @@ export interface TypeMemberRow {
   name: string;
   member: string;
   type: string;
+  /** The type it names, for a link to that type's own panel; `null` when it carries a datatype
+   * of its own, the way `type`'s text already reads. Carried on the row itself so a reader of
+   * it never has to pair it back up with `reply.members` by position. */
+  typename: string | null;
   unit: string;
   bits: string;
   dimensions: string;
@@ -78,6 +82,7 @@ export function memberRows(reply: TypeReply): TypeMemberRow[] {
     name: member.name,
     member: member.member,
     type: member.typename ?? member.datatype ?? "",
+    typename: member.typename,
     unit: member.unit ?? "",
     bits: member.bits === null ? "" : String(member.bits),
     dimensions: member.dimensions.join(" × "),

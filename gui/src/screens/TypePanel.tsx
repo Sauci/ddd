@@ -270,6 +270,10 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
           ? ""
           : fieldLabel(offer?.editor, selected, target))
       }
+      // Never the target: opening the list on the value already chosen must still list
+      // everything, not just the entries that happen to contain it (spec 5.3, as `VariablePanel`
+      // narrows too).
+      narrow={typed ?? ""}
       onTyped={setTyped}
       onChosen={(raw) => {
         setChosen(raw);

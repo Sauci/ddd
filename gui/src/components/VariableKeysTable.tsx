@@ -74,20 +74,27 @@ export function VariableKeysTable({
                 <Cell className={also(cell.quiet ? "quiet" : "")}>
                   {cell.text}
                   {type !== null && href !== null && (
-                    <a
-                      className="button link"
-                      href={href}
-                      onClick={(event: MouseEvent<HTMLAnchorElement>) => {
-                        // A modified or secondary click asks the browser for a new tab or window.
-                        const modified =
-                          event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
-                        if (modified || event.button !== 0) return;
-                        event.preventDefault();
-                        onOpenType(type);
-                      }}
-                    >
-                      , from {type}
-                    </a>
+                    <>
+                      {/* Coloured and sized to match the link right after it - `.button.link`'s
+                          own rule - so a screen reader announces the type's name alone, not the
+                          punctuation introducing it, without moving a single rendered pixel. */}
+                      <span className="cell-from">{", from "}</span>
+                      <a
+                        className="button link"
+                        href={href}
+                        onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+                          // A modified or secondary click asks the browser for a new tab or
+                          // window.
+                          const modified =
+                            event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
+                          if (modified || event.button !== 0) return;
+                          event.preventDefault();
+                          onOpenType(type);
+                        }}
+                      >
+                        {type}
+                      </a>
+                    </>
                   )}
                   {cell.changing && <span className="tag">will change</span>}
                 </Cell>

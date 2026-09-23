@@ -2257,7 +2257,7 @@ class TestTheTypesTab:
             for finding in get(api, "/api/state").body["findings"]
             if finding["route"] is not None and finding["route"]["kind"] == "type"
         }
-        assert routes
+        assert routes == {"type-kind": {"kind": "type", "name": "DriverStatus_t"}}
 
     def test_the_types_of_a_project_that_declares_none_are_empty(self, api: Api) -> None:
         # The `api` fixture's project has no types file at all.

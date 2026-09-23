@@ -69,6 +69,7 @@ from ddd.project_types import (
     fixed_by,
     located_in_type,
     members_of,
+    row_of,
     type_rows,
     uses_of,
 )
@@ -567,11 +568,7 @@ class Api:
             return _undeclared(revision, name)
         cache: dict[Path, Document] = {}
         site = built.types[name]
-        row = next(
-            row
-            for row in type_rows(built, [(f.file, f.diagnostic) for f in revision.findings], cache)
-            if row.name == name
-        )
+        row = row_of(built, name, [(f.file, f.diagnostic) for f in revision.findings], cache)
         stated = fixed_by(built, name, cache)
         header = stated.get("header")
         sources = {file.path.resolve(): file for file in revision.files}

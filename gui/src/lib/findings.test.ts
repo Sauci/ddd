@@ -16,6 +16,7 @@ import {
 
 const SENSOR_HUB = "C:/work/demo/components/sensor_hub.ddd.json";
 const TYPES = "C:/work/demo/types.ddd.json";
+const UNITS = "C:/work/demo/units.ddd.json";
 
 function finding(fields: Partial<Finding> = {}): Finding {
   return {
@@ -203,9 +204,25 @@ describe("why a finding leads nowhere", () => {
   });
 
   test("the page has no screen for that kind of file", () => {
-    const one = finding({ file: TYPES, check: "duplicate-type", route: null });
-    expect(noRouteReason(one, state([one]))).toBe(
-      "types.ddd.json is a types file, which has no page yet",
+    // Not a types file: the server now routes every pointer inside a type's own entry to that
+    // type (`ddd.finding_routes`), so a `duplicate-type` finding can no longer have a null
+    // route. A vocabulary's `duplicate-unit` is filed the same way inside a units file - which,
+    // unlike a type's entry, still has no page of its own - and so is still routed nowhere.
+    const one = finding({ file: UNITS, check: "duplicate-unit", pointer: "units[1]", route: null });
+    const withUnits = state([one]);
+    withUnits.files = [
+      ...withUnits.files,
+      {
+        path: UNITS,
+        kind: "units",
+        name: null,
+        loaded: true,
+        fingerprint: "c",
+        findings: { error: 1, warning: 0, info: 0 },
+      },
+    ];
+    expect(noRouteReason(one, withUnits)).toBe(
+      "units.ddd.json is a units file, which has no page yet",
     );
   });
 

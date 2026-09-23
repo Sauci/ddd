@@ -255,8 +255,8 @@ class FindingRoute(_Frozen):
     type's own panel on the Types tab."""
 
     name: str | None
-    """The variable's name or the unit's spelling; ``None`` for a component, which the
-    finding's own ``file`` already names."""
+    """The variable's name, the unit's spelling or the type's name; ``None`` for a component,
+    which the finding's own ``file`` already names."""
 
 
 class Finding(_Frozen):
@@ -851,10 +851,12 @@ class TypeReply(_Frozen):
     name: str
     kind: str
     file: str
-    """Absolute, posix-separated path of the types file declaring it."""
+    """Absolute, posix-separated path of the file declaring it: a types file, or a component
+    that declares it inline alongside its interface."""
 
     pointer: str
-    """Dotted path of its entry, ``types[i]``."""
+    """Dotted path of its entry: ``types[i]`` in a types file, or ``component.types[i]`` in a
+    component that declares it inline."""
 
     description: str
     header: str | None

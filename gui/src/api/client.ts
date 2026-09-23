@@ -1,5 +1,6 @@
 import type {
   Changes,
+  DeclarableReply,
   EditReply,
   FileContent,
   FixReply,
@@ -175,6 +176,31 @@ function typeQuery(plan: TypePlanRequest): string {
   } else {
     parts.push(["to", plan.to]);
   }
+  return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
+}
+
+export const getDeclarable = (file: string, fetchImpl: Fetch = fetch) =>
+  request<DeclarableReply>(`/api/declarable?file=${encodeURIComponent(file)}`, {}, fetchImpl);
+
+/** One change to a component's interface, as `GET /api/declaration-plan` takes it. */
+export type DeclarationPlanRequest =
+  | { action: "read"; file: string; name: string; scope: string }
+  | { action: "declare"; file: string; scope: string; definition: string }
+  | { action: "remove"; file: string; name: string };
+
+export const getDeclarationPlan = (plan: DeclarationPlanRequest, fetchImpl: Fetch = fetch) =>
+  request<PlanReply>(`/api/declaration-plan?${declarationQuery(plan)}`, {}, fetchImpl);
+
+/** A plan's query: the action and the file, then whichever of `name`, `scope` and `definition`
+ * the action takes - the same three sets the server's DECLARATION_PLANS names. */
+function declarationQuery(plan: DeclarationPlanRequest): string {
+  const parts: [string, string][] = [
+    ["action", plan.action],
+    ["file", plan.file],
+  ];
+  if (plan.action === "read") parts.push(["name", plan.name], ["scope", plan.scope]);
+  else if (plan.action === "remove") parts.push(["name", plan.name]);
+  else parts.push(["scope", plan.scope], ["definition", plan.definition]);
   return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
 }
 

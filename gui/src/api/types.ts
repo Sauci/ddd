@@ -5,6 +5,8 @@
 export type {
   Change,
   Changes,
+  DeclarableName,
+  DeclarableReply,
   EditReply,
   FileContent,
   Finding,
@@ -18,6 +20,7 @@ export type {
   GraphModule,
   GraphReply,
   Hunk,
+  KindForm,
   Note,
   Operation,
   PlannedChange,

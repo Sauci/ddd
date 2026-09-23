@@ -785,6 +785,7 @@ class Api:
                     for kind in KINDS
                 ),
                 scopes=SCOPES,
+                constants=tuple(sorted(built.constants)),
             ).model_dump(mode="json"),
         )
 

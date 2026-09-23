@@ -45,6 +45,7 @@ const REPLY: DeclarableReply = {
     },
   ],
   scopes: ["output", "input", "local"],
+  constants: ["TREND_SAMPLES"],
 } as DeclarableReply;
 
 describe("which of the two verbs the name field has landed on", () => {

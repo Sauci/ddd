@@ -580,6 +580,10 @@ class TestEveryEndpointOnTheDemo:
         answer = answered(server, "GET", f"/api/declarable?file={quote(controller)}")
         assert [entry["name"] for entry in answer["names"]][:2] == ["BlockA", "CurveB"]
         assert next(form["kind"] for form in answer["kinds"]) == "measurement"
+        # Every field of the reply crosses the wire, `constants` included - empty here because
+        # examples/demo declares none, but present, which is what the page reads a value
+        # block's dimension rows from.
+        assert answer["constants"] == []
         planned = answered(
             server,
             "GET",

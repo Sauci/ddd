@@ -156,7 +156,12 @@ export function DeclarePanelView(props: DeclarePanelViewProps) {
                 <DimensionsField
                   key={key.key}
                   rows={props.dimensions}
-                  constants={key.choices}
+                  // The reply's own field, not `key.choices`: `offer_for` answers `dimensions`
+                  // with `editor: "none"` and no choices at all, because the variable's panel
+                  // shares that answer and does not edit the key. The project's constants are
+                  // what a size may name, so the server states them once, beside the names and
+                  // the kinds.
+                  constants={reply.constants}
                   owner={props.typed}
                   busy={props.busy}
                   onRows={props.onDimensions}

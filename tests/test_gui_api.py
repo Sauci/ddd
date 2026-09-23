@@ -2348,6 +2348,31 @@ class TestWhatAComponentMayAdd:
         body = get(api, "/api/declarable", file=self.controller(root)).body
         assert body["scopes"] == ["output", "input", "local"]
 
+    def test_the_project_s_constants_come_with_it_for_a_value_block_s_dimensions(
+        self, tmp_path
+    ) -> None:
+        # Review finding: the panel used to read these off the `dimensions` offer, which
+        # `variable_keys` answers with `editor: "none"` and no choices - the variable's panel
+        # shares that answer, so the field could never offer what spec 2 says a dimension may
+        # name. examples/vocabulary is the example that declares any: one in the project's own
+        # constants file and one inside the component, both of which a size may name.
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        body = get(api, "/api/declarable", file=(root / "pump.ddd.json").as_posix()).body
+        assert body["constants"] == ["PRESSURE_CELLS", "TREND_SAMPLES"]
+        dimensions = next(
+            key
+            for form in body["kinds"]
+            if form["kind"] == "value_block"
+            for key in form["keys"]
+            if key["key"] == "dimensions"
+        )
+        assert (dimensions["editor"], dimensions["choices"]) == ("none", [])
+
+    def test_a_project_declaring_no_constants_offers_none(self, demo) -> None:
+        api, root = demo
+        body = get(api, "/api/declarable", file=self.controller(root)).body
+        assert body["constants"] == []
+
     def test_without_a_file_it_says_so(self, demo) -> None:
         api, _ = demo
         reply = get(api, "/api/declarable")

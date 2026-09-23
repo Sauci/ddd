@@ -917,6 +917,17 @@ class DeclarableReply(_Frozen):
     scopes: tuple[str, ...]
     """What a name the project has never seen may be declared with."""
 
+    constants: tuple[str, ...]
+    """Every constant the project declares, by name, sorted: what a ``dimensions`` row offers
+    beside a whole number typed.
+
+    Its own field rather than the ``choices`` of the ``dimensions`` offer, which ``KeyOffer``
+    leaves empty: ``variable_keys`` answers the same offer to a variable's panel, where
+    ``dimensions`` is the key that panel deliberately does not edit, and widening a shared
+    answer to serve one caller would change what the other is told. A value block's shape is
+    the one place this form asks for a size per dimension, and the names it may use are a fact
+    about the project rather than about any one key."""
+
 
 # --- GET /api/undo and POST /api/undo -------------------------------------------------------
 

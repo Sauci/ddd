@@ -1332,4 +1332,7 @@ export const DECLARABLE: DeclarableReply = {
     },
   ] satisfies KindForm[],
   scopes: ["output", "input", "local"],
+  // Measured: `examples/demo` declares no constants, so a dimension of BlockC is a number
+  // typed and nothing else. `DimensionsField`'s own stories carry the other case.
+  constants: [],
 };

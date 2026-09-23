@@ -999,6 +999,38 @@ class TestTheDocumentedAddressMapRecipe:
         # round rather than chasing its own tail" - the page's own sentence about this flow.
         assert "no work to do" in build(tmp_path / "build")
 
+    def test_two_file_local_statics_of_one_name_do_not_collide(self, tmp_path: Path) -> None:
+        """Two translation units, each with its own ``static int cntr_50ms_decimate_5`` - the
+        report this recipe was fixed for. Without ``--extern-only`` the listing carries both
+        under the same name, and ``load_address_map`` refuses a symbol named twice with two
+        addresses; kept to global symbols only, the file-local statics never reach the map."""
+        source = self.write(tmp_path)
+        for suffix, function in (("a", "bump_a"), ("b", "bump_b")):
+            (source / f"statics_{suffix}.c").write_text(
+                "static int cntr_50ms_decimate_5 = 1;\n"
+                "\n"
+                f"int {function}(void)\n"
+                "{\n"
+                "    return cntr_50ms_decimate_5++;\n"
+                "}\n",
+                encoding="utf-8",
+            )
+        listing = source / "CMakeLists.txt"
+        text = listing.read_text(encoding="utf-8")
+        marker = "add_executable(firmware.elf main.c)"
+        assert marker in text
+        text = text.replace(
+            marker, marker + "\ntarget_sources(firmware.elf PRIVATE statics_a.c statics_b.c)"
+        )
+        listing.write_text(text, encoding="utf-8")
+
+        configure(source, tmp_path / "build")
+        build(tmp_path / "build")  # links with every address 0, then writes the map
+        build(tmp_path / "build")  # regenerates from the map - the run the duplicate used to fail
+        generated = tmp_path / "build" / "ddd" / "firmware.elf"
+        extracted = json.loads((generated / "addresses.json").read_text(encoding="utf-8"))
+        assert "cntr_50ms_decimate_5" not in extracted
+
 
 class TestAKeywordGivenNoValue:
     """``ADDRESS_MAP ${DDD_MAP}`` with ``DDD_MAP`` unset is the ordinary CMake mistake.

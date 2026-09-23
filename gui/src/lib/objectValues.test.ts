@@ -3,12 +3,17 @@ import type { ValuesReply } from "../api/types";
 import {
   cellAt,
   cellSentence,
+  columnAxisLabel,
   columnHeader,
+  cornerLabel,
   drawable,
   elementLabel,
   physicalOf,
   rawOf,
+  readOnlyNote,
   rowHeader,
+  typedNumber,
+  typedRefusal,
 } from "./objectValues";
 
 // Every fixture below is `GET /api/values?name=…` against examples/demo, read verbatim off a
@@ -142,6 +147,45 @@ const VALUE_A: ValuesReply = {
   findings: [],
 };
 
+/** CurveX over AxisX, an axis stating a size and no init at all: measured on a project of
+ * those two declarations alone, which answers the curve's own three numbers and an axis with
+ * `breakpoints: []`. `test_an_axis_with_no_init_gives_no_breakpoints` states the intent on the
+ * Python side - "the grid degrades to indices, not a crash" - and this is the half that did
+ * not: a header of no columns, so a row of no value cells. */
+const CURVE_X: ValuesReply = {
+  revision: 1,
+  name: "CurveX",
+  kind: "curve",
+  datatype: "uint8",
+  unit: "",
+  conversion: { kind: "identity" },
+  minimum: 0,
+  maximum: 255,
+  shape: [3],
+  rows: [[1, 2, 3]],
+  stated: "array",
+  axes: [
+    {
+      position: "axis",
+      name: "AxisX",
+      unit: "",
+      breakpoints: [],
+      conversion: { kind: "identity" },
+    },
+  ],
+  owner: "A",
+  file: "/repo/a.ddd.json",
+  findings: [],
+};
+
+/** The same degradation down a map's side: MapA with both its axes' breakpoints taken away,
+ * built from the reply above it rather than measured - the way `AReadOnlyGrid` is built from
+ * BlockA's own answer - because no example pairs a map with two empty axes. */
+const MAP_WITHOUT_BREAKPOINTS: ValuesReply = {
+  ...MAP_A,
+  axes: MAP_A.axes.map((axis) => ({ ...axis, breakpoints: [] })),
+};
+
 /** SoftwareLabel: a shaped object initialised with text - no grid either, the other way. */
 const SOFTWARE_LABEL: ValuesReply = {
   revision: 1,
@@ -201,8 +245,21 @@ describe("columnHeader", () => {
     expect(columnHeader(CURVE_A, false)).toEqual(["0", "3200", "6400", "12800", "19200", "32000"]);
   });
 
+  test("MapA reads its x axis, AxisA, and not its y", () => {
+    // The x/y assignment itself, in words rather than in a picture: MapA's rows are AxisB's
+    // readings (below) and its columns AxisA's - swapping the two would draw a plausible grid
+    // with every number in the wrong cell, and only this and the row test say which is which.
+    expect(columnHeader(MAP_A, true)).toEqual(["0", "800", "1600", "3200", "4800", "8000"]);
+  });
+
   test("BlockA, against no axis, is the column indices", () => {
     expect(columnHeader(BLOCK_A, true)).toEqual(["0", "1", "2", "3", "4", "5", "6", "7"]);
+  });
+
+  test("an axis that states no breakpoints falls back to the indices", () => {
+    // Not `[]`: a header of no columns draws a row of no value cells, so the curve's three
+    // numbers would be invisible and uneditable.
+    expect(columnHeader(CURVE_X, true)).toEqual(["0", "1", "2"]);
   });
 
   test("a shapeless object draws no columns at all", () => {
@@ -215,16 +272,119 @@ describe("rowHeader", () => {
     expect(rowHeader(MAP_A, true)).toEqual(["0", "30", "70", "100"]);
   });
 
-  test("CurveA, one row and no y axis, is one empty label", () => {
-    expect(rowHeader(CURVE_A, true)).toEqual([""]);
+  test("CurveA, one row and no y axis, is labelled with the object itself", () => {
+    // Spec 5.2's own sketch: `CurveA (ms)` beside its values, under `AxisA (Hz)` above them.
+    expect(rowHeader(CURVE_A, true)).toEqual(["CurveA (ms)"]);
+  });
+
+  test("an object with no unit is labelled by its bare name", () => {
+    expect(rowHeader(BLOCK_A, true)).toEqual(["BlockA"]);
   });
 
   test("ValueK, two dimensional against no axis, is the row indices", () => {
     expect(rowHeader(VALUE_K, true)).toEqual(["0", "1", "2"]);
   });
 
+  test("a y axis that states no breakpoints falls back to the row indices", () => {
+    expect(rowHeader(MAP_WITHOUT_BREAKPOINTS, true)).toEqual(["0", "1", "2", "3"]);
+  });
+
   test("a shapeless object draws no rows at all", () => {
     expect(rowHeader(VALUE_A, true)).toEqual([]);
+  });
+});
+
+describe("cornerLabel", () => {
+  test("a curve names the axis its columns are laid against", () => {
+    expect(cornerLabel(CURVE_A)).toBe("AxisA (Hz)");
+  });
+
+  test("a map names the axis its rows are laid against", () => {
+    // Spec 5.2's map sketch: AxisB (%) down the side, AxisA (Hz) across the top - the one
+    // reading that tells a reader which unit belongs to which edge.
+    expect(cornerLabel(MAP_A)).toBe("AxisB (%)");
+  });
+
+  test("a grid laid against indices alone names nothing", () => {
+    expect(cornerLabel(BLOCK_A)).toBe("");
+  });
+
+  test("a two dimensional grid with no y axis names nothing either", () => {
+    expect(cornerLabel(VALUE_K)).toBe("");
+  });
+});
+
+describe("columnAxisLabel", () => {
+  test("a map names its x axis above the columns", () => {
+    expect(columnAxisLabel(MAP_A)).toBe("AxisA (Hz)");
+  });
+
+  test("a single row says nothing above it - its own corner names the axis", () => {
+    expect(columnAxisLabel(CURVE_A)).toBe("");
+  });
+
+  test("a two dimensional grid with no x axis says nothing", () => {
+    expect(columnAxisLabel(VALUE_K)).toBe("");
+  });
+});
+
+describe("typedNumber", () => {
+  test("a decimal comma is not a number, rather than the whole part of one", () => {
+    // `parseFloat("1,5")` is 1: half the world's decimal separator, silently planning a write
+    // of a value the reader did not type.
+    expect(typedNumber("1,5")).toBeNaN();
+  });
+
+  test("a numeric prefix is not a number either", () => {
+    expect(typedNumber("7abc")).toBeNaN();
+  });
+
+  test("an empty cell is nothing typed, not zero", () => {
+    expect(typedNumber("  ")).toBeNaN();
+  });
+
+  test("a number with space around it is that number", () => {
+    expect(typedNumber(" 12 ")).toBe(12);
+  });
+
+  test("a fractional number reads whole", () => {
+    expect(typedNumber("7.5")).toBe(7.5);
+  });
+});
+
+describe("typedRefusal", () => {
+  test("what is not wholly a number is refused in the grid's own voice", () => {
+    expect(typedRefusal("1,5")).toBe("'1,5' is not a number");
+  });
+
+  test("a number is not refused", () => {
+    expect(typedRefusal("7.5")).toBeNull();
+  });
+
+  test("an empty cell is not refused - nothing has been typed yet", () => {
+    expect(typedRefusal("")).toBeNull();
+  });
+});
+
+describe("readOnlyNote", () => {
+  test("a grid with a producing file has nothing to say", () => {
+    expect(readOnlyNote(CURVE_A)).toBeNull();
+  });
+
+  test("a name nothing produces has no declaration to write into", () => {
+    // `owner` is null only where nothing produces it at all, which
+    // `test_an_object_nothing_produces_has_no_file_or_pointer` pins on the Python side.
+    expect(readOnlyNote({ ...BLOCK_A, file: null, owner: null })).toBe(
+      "nothing produces 'BlockA', so it has no values to set",
+    );
+  });
+
+  test("a name more than one declaration produces has no single one", () => {
+    // The other cause of the same read-only grid, and `set_cell`'s own second sentence: the
+    // owner is named - these are its numbers - and there is still no file to write into.
+    expect(readOnlyNote({ ...BLOCK_A, file: null })).toBe(
+      "'BlockA' is produced in more than one place, so there is no one file to set it in",
+    );
   });
 });
 

@@ -28,8 +28,11 @@ test("a curve is read against its axis, raw and physical", async ({ page, gui })
   await page.getByRole("button", { name: "Show the values of CurveA" }).click();
 
   const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  // Spec 5.2's own sketch, labels and all: `AxisA (Hz)` over the breakpoints, `CurveA (ms)`
+  // beside the values - the header converting by the axis's rule and the values by the
+  // object's, which is the one thing that says which unit belongs to which edge.
   await expect(grid.getByRole("columnheader")).toHaveText([
-    "",
+    "AxisA (Hz)",
     "0",
     "800",
     "1600",
@@ -37,11 +40,12 @@ test("a curve is read against its axis, raw and physical", async ({ page, gui })
     "4800",
     "8000",
   ]);
+  await expect(grid.getByRole("rowheader")).toHaveText(["CurveA (ms)"]);
   await expectRow(grid, ["12", "9", "8", "7.5", "7", "6.5"]);
 
   await page.getByRole("button", { name: "Raw" }).click();
   await expect(grid.getByRole("columnheader")).toHaveText([
-    "",
+    "AxisA (Hz)",
     "0",
     "3200",
     "6400",
@@ -75,6 +79,10 @@ test("a map's cell names its row and its column", async ({ page, gui }) => {
 
   const grid = page.getByRole("grid", { name: "Values of MapA" });
   await expect(grid.getByRole("rowheader")).toHaveText(["0", "30", "70", "100"]);
+  // Spec 5.2's map sketch: AxisB (%) down the side, in the corner above its own readings, and
+  // AxisA (Hz) across the top, above the columns it lays them against.
+  await expect(grid.getByRole("columnheader").first()).toHaveText("AxisB (%)");
+  await expect(page.getByText("AxisA (Hz) →")).toBeVisible();
 
   await page.getByRole("button", { name: "Raw" }).click();
   await page.getByRole("textbox", { name: "element 2, 4" }).fill("50");
@@ -107,11 +115,43 @@ test("a value the datatype cannot hold is refused, and nothing is written", asyn
   await page.getByRole("button", { name: "Show the values of CurveA" }).click();
   await page.getByRole("button", { name: "Raw" }).click();
 
+  // Not a number at all first: a decimal comma is what half the world types, and reading the
+  // numeric prefix of it would plan a write of 1 with no refusal at all.
+  await page.getByRole("textbox", { name: "element 1" }).fill("1,5");
+  await expect(page.getByText("'1,5' is not a number")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+
   await page.getByRole("textbox", { name: "element 1" }).fill("70000");
   await expect(page.getByText("70000 does not fit into uint16 (0 .. 65535)")).toBeVisible();
   await expect(page.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
 
   expect(readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+});
+
+test("Enter settles what was typed and writes nothing", async ({ page, gui }) => {
+  // Spec 5.3: "Type, press Enter, and the grid shows … the sentence … then `Show changes` and
+  // `Apply to 1 file` … No cell writes on its own." Enter used to apply, so a reader finishing
+  // a number the way every other field in this interface trains them to wrote the file without
+  // ever pressing Apply. The preview still standing afterwards is itself the evidence: an
+  // apply clears the cell being edited, and the offer with it.
+  const before = readFileSync(join(gui.directory, CONTROLLER));
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+
+  const cell = page.getByRole("textbox", { name: "element 3" });
+  await cell.fill("7.5");
+  await cell.press("Enter");
+  await expect(page.getByText("Sets element 3 of CurveA to 7.5 ms")).toBeVisible();
+  const apply = page.getByRole("button", { name: "Apply to 1 file" });
+  await expect(apply).toBeVisible();
+  expect(readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+
+  // And the button that does write still writes, from the very same settled cell.
+  await apply.click();
+  await expect
+    .poll(() => readFileSync(join(gui.directory, CONTROLLER), "utf8"))
+    .toContain('"init": [1200, 900, 750, 750, 700, 650]');
 });
 
 test("a cell changed is put back", async ({ page, gui }) => {
@@ -156,4 +196,7 @@ test("a finding on an object's init leads to its grid, not its panel", async ({ 
   await expect(page.getByRole("button", { name: "Back to UserInterface" })).toBeVisible();
   const grid = page.getByRole("grid", { name: "Values of BlockA" });
   await expectRow(grid, ["0", "12", "28", "52", "84", "124", "180", "9999"]);
+  // The finding the reader followed is drawn on the grid too, which is what carrying it
+  // through `ValuesReply.findings` is for - and what this journey rendered without asserting.
+  await expect(page.getByText("init value 9999 does not fit into uint8 (0 .. 255)")).toBeVisible();
 });

@@ -3,11 +3,16 @@ import type { PlanReply, ValuesReply } from "../api/types";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import {
   cellSentence,
+  columnAxisLabel,
   columnHeader,
+  cornerLabel,
   elementLabel,
   physicalOf,
   rawOf,
+  readOnlyNote,
   rowHeader,
+  typedNumber,
+  typedRefusal,
 } from "../lib/objectValues";
 import { NO_UNIT, shownChanges } from "../lib/units";
 import { shortValue } from "../lib/variableKeys";
@@ -37,13 +42,12 @@ export interface ValuesGridViewProps {
   busy: boolean;
   onPhysical: (physical: boolean) => void;
   onEditing: (editing: { row: number; column: number; typed: string } | null) => void;
-  onEntered: () => void;
   onChangesShown: (shown: boolean) => void;
   onApply: () => void;
   onBack: () => void;
 }
 
-/** One column of the header row: the blank corner above the row labels, or one of
+/** One column of the header row: the corner above the row labels, or one of
  * `columnHeader`'s own readings, at `index` into each row's own cells - `-1` for the corner,
  * which no row's cells are ever read at. React Aria's Table wants both the header and every
  * row built from the same `columns`, rather than each row laying out its own cells by a
@@ -79,7 +83,10 @@ export function ValuesGridView(props: ValuesGridViewProps) {
   // sharing one made the header lose its own columns entirely, which is what a multi-row grid
   // (AMapWithBothHeaders, the one story more than one row) found and no single-row story could.
   const headerColumns: HeaderColumn[] = [
-    { id: "corner", label: "", isRowHeader: true, index: -1 },
+    // The corner names an edge of the grid (spec 5.2): the axis the rows are laid against for
+    // a map, the axis the columns are laid against for a single row - `AxisA (Hz)` over
+    // `CurveA (ms)`. Blank only where that edge is the plain indices.
+    { id: "corner", label: cornerLabel(reply), isRowHeader: true, index: -1 },
     ...columnLabels.map((label, index) => ({
       id: `col:${index}`,
       label,
@@ -103,12 +110,18 @@ export function ValuesGridView(props: ValuesGridViewProps) {
   // What `editing.typed` would write, as a raw count: `null` while nothing is being edited or
   // what is typed is not a number - the same gate the screen itself keys its value-plan query
   // on, so `plan` and this either agree or `plan` is still null.
-  const typed = editing === null ? Number.NaN : Number.parseFloat(editing.typed);
+  const typed = editing === null ? Number.NaN : typedNumber(editing.typed);
   const raw = Number.isNaN(typed)
     ? null
     : physical
       ? rawOf(typed, reply.conversion, reply.datatype)
       : typed;
+  // What was typed is refused here rather than by the server, which is never asked for a plan
+  // for it, and ahead of whatever refusal came back for an earlier value: that one is about a
+  // number no longer in the cell.
+  const refused = editing === null ? null : (typedRefusal(editing.typed) ?? refusal);
+  const columnAxis = columnAxisLabel(reply);
+  const readOnly = readOnlyNote(reply);
   return (
     <section>
       <div className="heading">
@@ -141,6 +154,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
               Raw
             </Button>
           </fieldset>
+          {columnAxis !== "" && <p className="values-axis">{columnAxis} →</p>}
           <div className="values-table">
             <Table aria-label={`Values of ${reply.name}`}>
               <TableHeader columns={headerColumns}>
@@ -170,11 +184,13 @@ export function ValuesGridView(props: ValuesGridViewProps) {
                             onChange={(event) =>
                               props.onEditing({ row, column: at, typed: event.target.value })
                             }
+                            // Enter settles what was typed and nothing more: the preview is
+                            // already below the grid, and spec 5.3 is explicit that no cell
+                            // writes on its own - only Apply writes. Taken here all the same,
+                            // so a habit of finishing a number with Enter reaches neither the
+                            // table's own keyboard navigation nor anything around it.
                             onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                props.onEntered();
-                              }
+                              if (event.key === "Enter") event.preventDefault();
                             }}
                           />
                         </Cell>
@@ -187,9 +203,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
           </div>
           {reply.stated === "none" && <p className="quiet">Nothing is stated.</p>}
           {reply.stated === "scalar" && <p className="quiet">Stated once, for every cell.</p>}
-          {reply.file === null && (
-            <p className="quiet">{`nothing produces '${reply.name}', so it has no values to set`}</p>
-          )}
+          {readOnly !== null && <p className="quiet">{readOnly}</p>}
         </>
       )}
       {reply.findings.length > 0 && (
@@ -204,9 +218,9 @@ export function ValuesGridView(props: ValuesGridViewProps) {
       )}
       {editing !== null && (
         <section className="panel-offer" aria-label="Set the cell">
-          {refusal !== null && (
+          {refused !== null && (
             <p className="panel-refusal" role="status">
-              {refusal}
+              {refused}
             </p>
           )}
           {plan !== null && raw !== null && (

@@ -110,19 +110,28 @@ export function ComponentPage({
     const at = pointerOf(["component", "interface", index]);
     const text = (pointer: string) => asText(valueAt(data, `${at}.${pointer}`));
     const kind = text("definition.kind");
+    const datatype = text("definition.datatype");
+    const dimensions = asList(valueAt(data, `${at}.definition.dimensions`));
     return {
       id: at,
       name: text("definition.name") ?? `declaration ${index + 1}`,
       scope: text("scope"),
       kind,
-      type: text("definition.datatype") ?? text("definition.typename"),
+      type: datatype ?? text("definition.typename"),
       unit: text("definition.unit") ?? "",
-      // Shown as plain text rather than offered where this very file states a text init: a
-      // button that opened a grid and immediately refused would be a button that lies. A
-      // consumer's declaration cannot see the producer's init, so elsewhere it is offered
-      // anyway, and the grid it opens says so itself (`ValuesGridView`, `reply.stated`).
-      shape: shapeOf(kind, asList(valueAt(data, `${at}.definition.dimensions`))),
-      textInit: typeof valueAt(data, `${at}.definition.init`) === "string",
+      shape: shapeOf(kind, dimensions),
+      // The shape is offered as a button only where the grid can draw what it opens, and shown
+      // as plain text otherwise: a button that refused the moment it was pressed would be a
+      // button that lies (spec 5.1). Three ways this file itself can say so - a text init; a
+      // `typename` and no `datatype`, which is a structured declaration and is not in the
+      // dictionary at all, so the grid would answer that the project declares no such object;
+      // and more dimensions than a grid draws. A consumer's declaration cannot see its
+      // producer's init, so a text one elsewhere is offered anyway, and the grid it opens says
+      // so itself (`ValuesGridView`, `reply.stated`).
+      offered:
+        typeof valueAt(data, `${at}.definition.init`) !== "string" &&
+        datatype !== undefined &&
+        dimensions.length <= 2,
       own: findings.filter((finding) => within(finding.pointer, at)),
     };
   });
@@ -187,9 +196,7 @@ export function ComponentPage({
                 <Cell>{row.type}</Cell>
                 <Cell>
                   {row.shape !== null &&
-                    (row.textInit ? (
-                      row.shape
-                    ) : (
+                    (row.offered ? (
                       <Button
                         variant="link"
                         aria-label={`Show the values of ${row.name}`}
@@ -198,6 +205,8 @@ export function ComponentPage({
                       >
                         {row.shape}
                       </Button>
+                    ) : (
+                      row.shape
                     ))}
                 </Cell>
                 <Cell>

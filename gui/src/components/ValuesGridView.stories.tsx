@@ -48,7 +48,6 @@ function View({
       onPhysical={setPhysical}
       editing={editing}
       onEditing={setEditing}
-      onEntered={() => undefined}
       plan={plan}
       refusal={refusal}
       changesShown={changesShown}
@@ -107,8 +106,10 @@ export const AnAbsentInitGreyed = () => <View reply={VALUES_VALUE_D} backTo="Sen
 
 // No object in examples/demo answers with `file: null`, so this is BlockA's own reply with its
 // producing declaration taken away - a story drawing its own props, not a server's real answer.
+// `owner` goes with it: the analysis names no owner for a name nothing produces, and that is
+// what tells this grid from the one two producers leave, which keeps its owner and its numbers.
 export const AReadOnlyGrid = () => (
-  <View reply={{ ...VALUES_BLOCK, file: null }} backTo="UserInterface" physical />
+  <View reply={{ ...VALUES_BLOCK, file: null, owner: null }} backTo="UserInterface" physical />
 );
 
 // The fourth and last `stated`, with no picture until now: a text init draws no grid at all.

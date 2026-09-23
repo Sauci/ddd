@@ -535,6 +535,14 @@ tr.changing td {
   color: var(--ink-quiet);
   font-size: var(--text-small);
 }
+/* The x axis's own name above a map's columns - spec 5.2's `AxisA (Hz) →`, where the corner
+   under it is taken by the y axis's. The two edges of a grid are two different objects with two
+   different units, and these labels are the only thing that says which belongs to which. */
+.values-axis {
+  margin: 0 0 var(--space-1);
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
 .values-toggle {
   display: flex;
   gap: var(--space-2);

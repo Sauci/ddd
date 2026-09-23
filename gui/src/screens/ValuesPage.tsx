@@ -3,7 +3,7 @@ import { useState } from "react";
 import { ApiError, getValuePlan, getValues, postEdit } from "../api/client";
 import type { State } from "../api/types";
 import { ValuesGridView } from "../components/ValuesGridView";
-import { cellAt, drawable, rawOf } from "../lib/objectValues";
+import { cellAt, drawable, rawOf, typedNumber } from "../lib/objectValues";
 import { planEdit } from "../lib/projectUnits";
 import { type Refused, shownRefusal } from "../lib/refusals";
 import { valueLabel } from "../lib/undo";
@@ -73,7 +73,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // What `editing.typed` would write, as a raw count: `null` while nothing is being edited or
   // what is typed is not a number - the same gate `ValuesGridView` itself keys its own sentence
   // on, so the two either agree or the plan below is still not asked for.
-  const typed = editing === null ? Number.NaN : Number.parseFloat(editing.typed);
+  const typed = editing === null ? Number.NaN : typedNumber(editing.typed);
   const raw =
     values.data === undefined || Number.isNaN(typed)
       ? null
@@ -174,9 +174,6 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
       onEditing={(next) => {
         setEditing(next);
         setFailed(null);
-      }}
-      onEntered={() => {
-        if (plan.data !== undefined && plan.data.changes.length > 0) apply.mutate();
       }}
       onChangesShown={setChangesShown}
       onApply={() => apply.mutate()}

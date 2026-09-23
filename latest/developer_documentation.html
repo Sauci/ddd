@@ -949,19 +949,30 @@ that text - so the panel’s values in play, <code class="docutils literal notra
 <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/settle</span></code> previews can never disagree about one.</p>
 <p>Where a finding leads is answered once, in <code class="docutils literal notranslate"><span class="pre">ddd.finding_routes</span></code>, from the finding’s own
 check, file and pointer, together with the file’s own kind and whether it loaded: the
-variable a declaration is about, the unit a check such as <code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code> names, or the
-component the finding is filed on - and nothing for a finding with nowhere to go, a file
-that did not load or one of a kind the page has no screen for among them. <code class="docutils literal notranslate"><span class="pre">GET</span>
-<span class="pre">/api/state</span></code>, <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/variable</span></code> and <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/unit</span></code> all carry that answer on every
-finding they list. <code class="docutils literal notranslate"><span class="pre">ddd.finding_fixes</span></code> plans the one fix a finding has nowhere else to
-offer: a <code class="docutils literal notranslate"><span class="pre">missing-id</span></code> finding’s identity, from the same walk <code class="docutils literal notranslate"><span class="pre">ddd.identity.unstamped</span></code>
-gives <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span></code> and the language server’s own quick fix, written as the operations <code class="docutils literal notranslate"><span class="pre">POST</span>
-<span class="pre">/api/edit</span></code> takes rather than as a text edit; <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/fix</span></code> previews it, as <code class="docutils literal notranslate"><span class="pre">GET</span>
-<span class="pre">/api/settle</span></code> previews a settlement. <code class="docutils literal notranslate"><span class="pre">ddd.lsp.edits.settle</span></code> itself now compares what a
-value means rather than its own text, the same <code class="docutils literal notranslate"><span class="pre">ddd.value_identity.same_value</span></code> the panel’s
-values in play already read - which is why <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> no longer narrows a settlement of its
-own: <code class="docutils literal notranslate"><span class="pre">ddd.variables.narrowed</span></code> is gone, the rule read from <code class="docutils literal notranslate"><span class="pre">ddd.lsp.edits.settle</span></code> alone
-now.</p>
+variable a declaration is about, the unit a check such as <code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code> names, the type
+an entry declares, or the component the finding is filed on - and nothing for a finding
+with nowhere to go, a file that did not load or one of a kind the page has no screen for
+among them. <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/state</span></code>, <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/variable</span></code>, <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/unit</span></code> and <code class="docutils literal notranslate"><span class="pre">GET</span>
+<span class="pre">/api/type</span></code> all carry that answer on every finding they list. <code class="docutils literal notranslate"><span class="pre">ddd.finding_fixes</span></code> plans
+the one fix a finding has nowhere else to offer: a <code class="docutils literal notranslate"><span class="pre">missing-id</span></code> finding’s identity, from
+the same walk <code class="docutils literal notranslate"><span class="pre">ddd.identity.unstamped</span></code> gives <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span></code> and the language server’s own
+quick fix, written as the operations <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/edit</span></code> takes rather than as a text edit;
+<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/fix</span></code> previews it, as <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/settle</span></code> previews a settlement.
+<code class="docutils literal notranslate"><span class="pre">ddd.lsp.edits.settle</span></code> itself now compares what a value means rather than its own text,
+the same <code class="docutils literal notranslate"><span class="pre">ddd.value_identity.same_value</span></code> the panel’s values in play already read - which
+is why <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> no longer narrows a settlement of its own: <code class="docutils literal notranslate"><span class="pre">ddd.variables.narrowed</span></code> is
+gone, the rule read from <code class="docutils literal notranslate"><span class="pre">ddd.lsp.edits.settle</span></code> alone now.</p>
+<p>The types a project declares are read by <code class="docutils literal notranslate"><span class="pre">ddd.project_types</span></code> and changed by
+<code class="docutils literal notranslate"><span class="pre">ddd.type_plans</span></code>, the pair <code class="docutils literal notranslate"><span class="pre">ddd.project_units</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd.lsp.units</span></code> already make for
+units. Neither indexes anything new: <code class="docutils literal notranslate"><span class="pre">ddd.lsp.navigation.Index</span></code> records every type’s
+entry, every declaration and member naming one, and every c identifier the project has
+spent, and what a type <em>says</em> is read from the document at its entry. A rename is the
+editor’s rename - <code class="docutils literal notranslate"><span class="pre">rename_sites</span></code> says which strings it rewrites and <code class="docutils literal notranslate"><span class="pre">rename_problem</span></code>
+why a name may not be used, so the tab and the editor cannot disagree - planned as
+edit-engine operations rather than the text edits <code class="docutils literal notranslate"><span class="pre">rename_edits</span></code> answers, the way the
+identity fix does. <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/types</span></code> lists them, <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/type</span></code> answers one with its
+uses and its members, and <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/type-plan</span></code> previews a change of either kind as
+<code class="docutils literal notranslate"><span class="pre">PlanReply</span></code>, which the page applies through <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/edit</span></code> and the undo puts back.</p>
 <p>The edit engine learnt one thing for adoption: a change whose <code class="docutils literal notranslate"><span class="pre">fingerprint</span></code> is <code class="docutils literal notranslate"><span class="pre">null</span></code>
 creates its file, one <code class="docutils literal notranslate"><span class="pre">set</span></code> of the whole document at the root pointer, and is refused as
 <code class="docutils literal notranslate"><span class="pre">stale</span></code> if the file exists by the time the edit is made. It is staged and renamed into
@@ -972,6 +983,24 @@ only when the same edit’s change to that description leaves the new file among
 creates takes the mode, and where the process may set them the owner and group, of the
 project description beside it, so <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> running in a container leaves the developer a
 file of their own rather than root’s.</p>
+<p>Undo is the same engine read backwards. <code class="docutils literal notranslate"><span class="pre">ddd.editing.apply_changes</span></code> answers a
+<code class="xref py py-class docutils literal notranslate"><span class="pre">Written</span></code> per file - the bytes it held before, <code class="docutils literal notranslate"><span class="pre">None</span></code> for a file the
+edit created, and the fingerprint of the bytes it left - and <code class="docutils literal notranslate"><span class="pre">ddd.editing.restore</span></code> writes
+those back through the same staging, taking away again a file the edit created and, when one
+file of several cannot be written, writing the ones already put back forward to what the
+edit had left them. <code class="docutils literal notranslate"><span class="pre">ddd.editing.unchanged</span></code> is what says an edit may still be put back: a
+file whose bytes are no longer the ones it left is somebody else’s now, and the whole undo
+is refused as <code class="docutils literal notranslate"><span class="pre">stale</span></code> rather than half of it applied. The session keeps one stack of
+<code class="docutils literal notranslate"><span class="pre">Undoable</span></code> entries per open project, numbered as it pushes and capped at <code class="docutils literal notranslate"><span class="pre">MAX_UNDO</span></code> -
+fifty - entries, each labelled by the screen that applied it; <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/edit</span></code> takes that
+label, because only the screen knows that the edit was “the rename of ‘rpm’ to ‘RPM’”.
+<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/state</span></code> carries <code class="docutils literal notranslate"><span class="pre">Session.undoable</span></code>, the top of the stack, so the control
+appears without a request of its own, <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/undo</span></code> previews it - the lines each file
+would get back, and no operations, since an undo is bytes the server is holding rather than
+an edit the page composes - and <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/undo</span></code> calls <code class="docutils literal notranslate"><span class="pre">Session.undo</span></code> with the entry’s
+own number, refusing one that is no longer the top so that two windows cannot put back each
+other’s changes. The stack lives in the running server and nothing of it is written into the
+project.</p>
 </section>
 </section>
 

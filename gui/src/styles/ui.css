@@ -223,6 +223,20 @@ tr.changing td {
   color: var(--ok);
 }
 
+/* DimensionsField: a value block's shape (Task 5), one field per dimension with a Remove
+   beside it and an Add a dimension under them. */
+.dimensions-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.dimension-row {
+  display: flex;
+  align-items: end;
+  gap: var(--space-2);
+}
+
 /* ComboBox: a labelled field that opens a popover of sectioned choices, and takes any typed
    text. The popover's width tracks the field's through React Aria's own --trigger-width. */
 .combo {

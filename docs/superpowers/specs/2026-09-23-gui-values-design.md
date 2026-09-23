@@ -144,9 +144,8 @@ same pairing `ddd.project_types` and `ddd.type_plans` use.
 - **A value outside the object's limits is not refused.** Measured: `limits-out-of-range`
   (`analysis.py:2640`) weighs the *limits* against the *storage*, and nothing weighs an init
   against the limits - so refusing here would make the grid stricter than `ddd check`, and a file
-  a person wrote by hand would have cells the interface could not edit. The grid says the value is
-  shows the declared range beside the kind and the datatype, and stores the value; it does not
-  mark the cell.
+  a person wrote by hand would have cells the interface could not edit. The grid shows the declared
+  range beside the kind and the datatype and stores the value; it does not mark the cell.
 - `not-found`: the project declares no object of that name.
 - `unreadable`: a file the change has to see did not load, or the project has no dictionary.
 - A name nothing produces answers its grid read-only rather than refusing: there is no declaration

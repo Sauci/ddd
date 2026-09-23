@@ -150,9 +150,17 @@ def _breakpoints(init: InitValue | None) -> tuple[float, ...]:
 def _laid_out(
     init: InitValue | None, shape: tuple[int, ...]
 ) -> tuple[Literal["array", "scalar", "text", "none"], tuple[tuple[float, ...], ...]]:
-    """What the producer states, and the rows it comes to."""
+    """What the producer states, and the rows it comes to.
+
+    A shapeless object - a plain measurement or parameter, most of a project - has no cell
+    for a value to sit in: ``stated`` still says whether the producer wrote one or nothing,
+    but ``rows`` is always empty for it, never reaching :func:`_filled`, which assumes at
+    least one dimension to index.
+    """
     if isinstance(init, str):
         return "text", ()
+    if not shape:
+        return ("none" if init is None else "scalar"), ()
     if init is None:
         return "none", _filled(0, shape)
     if isinstance(init, list | tuple):

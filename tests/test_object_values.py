@@ -140,6 +140,52 @@ class TestWhatTheGridShows:
         grid = grid_of(dictionary, built, "CurveA")
         assert (grid.minimum, grid.maximum) == (0.0, 655.35)
 
+    def test_a_shapeless_object_has_an_empty_shape_and_no_rows(self, demo) -> None:
+        # ValueA is a plain scalar measurement: shape () is normal for most of a project -
+        # sensor_hub states its init as 0 - and a shapeless object has no cell for a value
+        # to sit in, so the empty grid is the answer, not a crash and not a refusal.
+        dictionary, built = demo
+        grid = grid_of(dictionary, built, "ValueA")
+        assert grid.shape == ()
+        assert grid.rows == ()
+        assert grid.stated == "scalar"
+
+    def test_a_shapeless_object_with_no_init_says_none_too(self, demo) -> None:
+        # The same shapeless case, the other way its producer can leave init: ValueC states
+        # none at all, so it draws the same "none" a shaped object with no init draws -
+        # shape alone does not collapse that distinction, only rows.
+        dictionary, built = demo
+        grid = grid_of(dictionary, built, "ValueC")
+        assert (grid.shape, grid.rows, grid.stated) == ((), (), "none")
+
+    def test_an_axis_with_no_init_gives_no_breakpoints(self, tmp_path) -> None:
+        # An axis's own producer may state no init at all, legal like any other object's -
+        # and the curve over it still reads: the grid degrades to indices, not a crash.
+        from conftest import component, declare, project, write_tree
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "AxisX", kind="axis", size=3),
+                    declare("local", "CurveX", kind="curve", axis="AxisX", init=[1, 2, 3]),
+                ),
+            },
+        )
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        revision = session.revision
+        assert revision is not None and revision.dictionary is not None
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        try:
+            grid = grid_of(revision.dictionary, built, "CurveX")
+        finally:
+            session.stop()
+        assert [(a.position, a.name) for a in grid.axes] == [("axis", "AxisX")]
+        assert grid.axes[0].breakpoints == ()
+
     def test_a_name_the_project_has_not_is_not_found(self, demo) -> None:
         from ddd.object_values import ValueRefusalError
 

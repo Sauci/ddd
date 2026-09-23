@@ -97,16 +97,5 @@ def form_for(built: Index, kind: str) -> tuple[KeyOffer, ...]:
     )
 
 
-def _statable(kind: str) -> frozenset[str]:
-    """What a definition sent here may state: what the form can offer, and nothing else.
-
-    ``definition_keys`` accepts more - ``id``, ``init``, ``a2l``, ``extensions``, ``raster``
-    and ``section`` among them. The form offers none of those: ``id`` is this module's to mint,
-    and the rest belong to whoever writes the file by hand.
-    """
-    accepted, _ = definition_keys(kind)
-    return frozenset({"name", "kind", "description"}) | (accepted & frozenset(KEY_ORDER))
-
-
 def _component_of(path: Path, cache: dict[Path, Document]) -> str:
     return str(read(path, cache).value_at("component.name") or "")

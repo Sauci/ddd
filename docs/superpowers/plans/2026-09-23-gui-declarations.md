@@ -256,7 +256,7 @@ export function DimensionsField(props: DimensionsFieldProps): JSX.Element;
 
 **Interfaces:**
 - Consumes: `ddd.lsp.navigation.Index` (`declarations: dict[str, list[Site]]`, `producers: dict[str, list[Site]]`, `kinds: dict[str, str]`), `ddd.lsp.ranges.read(path, cache) -> Document`, `ddd.models.objects.definition_keys(kind) -> (accepted, required)`, `ddd.variable_keys.KEY_ORDER`, `KeyOffer`, `offer_for(built, key, raw, *, required)`.
-- Produces: `KINDS`, `SCOPES`, `CARRIED_BY_A_READER`, `INTERFACE`, `Declarable`, `declarable`, `scopes_for`, `form_for`, and the private `_statable` and `_component_of` that Task 2 also uses.
+- Produces: `KINDS`, `SCOPES`, `CARRIED_BY_A_READER`, `INTERFACE`, `Declarable`, `declarable`, `scopes_for`, `form_for`, and the private `_component_of`. **`_statable` belongs to Task 2**, beside its only caller: the coverage gate is per-task, and a helper nothing in this task calls cannot be covered here.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -482,17 +482,6 @@ def form_for(built: Index, kind: str) -> tuple[KeyOffer, ...]:
     )
 
 
-def _statable(kind: str) -> frozenset[str]:
-    """What a definition sent here may state: what the form can offer, and nothing else.
-
-    ``definition_keys`` accepts more - ``id``, ``init``, ``a2l``, ``extensions``, ``raster``
-    and ``section`` among them. The form offers none of those: ``id`` is this module's to mint,
-    and the rest belong to whoever writes the file by hand.
-    """
-    accepted, _ = definition_keys(kind)
-    return frozenset({"name", "kind", "description"}) | (accepted & frozenset(KEY_ORDER))
-
-
 def _component_of(path: Path, cache: dict[Path, Document]) -> str:
     return str(read(path, cache).value_at("component.name") or "")
 ```
@@ -523,8 +512,8 @@ Co-Authored-By: <model that wrote it> <noreply@anthropic.com>"
 - Test: `tests/test_declaration_plans.py` (append)
 
 **Interfaces:**
-- Consumes: Task 1's `KINDS`, `SCOPES`, `CARRIED_BY_A_READER`, `INTERFACE`, `scopes_for`, `_statable`; `ddd.editing.Operation`, `ddd.identity.new_id`, `ddd.lsp.navigation.rename_problem`, `ddd.lsp.units.PlannedEdit`.
-- Produces: `DeclarationPlan`, `DeclarationRefusalError`, `read_object`, `declare_object`, `remove_declaration`. Task 3 calls all three and turns the refusal into a 404 or a 409.
+- Consumes: Task 1's `KINDS`, `SCOPES`, `CARRIED_BY_A_READER`, `INTERFACE`, `scopes_for`, `_component_of`; `ddd.editing.Operation`, `ddd.identity.new_id`, `ddd.lsp.navigation.rename_problem`, `ddd.lsp.units.PlannedEdit`.
+- Produces: `DeclarationPlan`, `DeclarationRefusalError`, `read_object`, `declare_object`, `remove_declaration`, and the private `_statable`, `_interface` and `_appended`. Task 3 calls the three verbs and turns the refusal into a 404 or a 409.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -915,6 +904,17 @@ def remove_declaration(
             operation = Operation("remove", f"{INTERFACE}[{position}]")
             return DeclarationPlan((PlannedEdit(here, (operation,)),))
     raise DeclarationRefusalError("not-found", f"{here.name} declares no '{name}'")
+
+
+def _statable(kind: str) -> frozenset[str]:
+    """What a definition sent here may state: what the form can offer, and nothing else.
+
+    ``definition_keys`` accepts more - ``id``, ``init``, ``a2l``, ``extensions``, ``raster``
+    and ``section`` among them. The form offers none of those: ``id`` is this module's to mint,
+    and the rest belong to whoever writes the file by hand.
+    """
+    accepted, _ = definition_keys(kind)
+    return frozenset({"name", "kind", "description"}) | (accepted & frozenset(KEY_ORDER))
 
 
 def _interface(file: Path, cache: dict[Path, Document]) -> tuple[Path, list[object]]:

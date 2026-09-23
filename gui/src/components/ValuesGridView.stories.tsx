@@ -16,6 +16,7 @@ export default { title: "Components / ValuesGridView" };
 
 interface Props {
   reply: ValuesReply;
+  backTo: string;
   physical: boolean;
   editing?: { row: number; column: number; typed: string };
   plan?: PlanReply | null;
@@ -28,6 +29,7 @@ interface Props {
  * changes - kept as ValuesPage.tsx keeps them. */
 function View({
   reply,
+  backTo,
   physical: initialPhysical,
   editing: initialEditing,
   plan = null,
@@ -41,6 +43,7 @@ function View({
   return (
     <ValuesGridView
       reply={reply}
+      backTo={backTo}
       physical={physical}
       onPhysical={setPhysical}
       editing={editing}
@@ -57,21 +60,30 @@ function View({
   );
 }
 
-export const ACurveAgainstItsAxis = () => <View reply={VALUES_CURVE} physical />;
+export const ACurveAgainstItsAxis = () => (
+  <View reply={VALUES_CURVE} backTo="Controller" physical />
+);
 
-export const ACurveInRawCounts = () => <View reply={VALUES_CURVE} physical={false} />;
+export const ACurveInRawCounts = () => (
+  <View reply={VALUES_CURVE} backTo="Controller" physical={false} />
+);
 
-export const AMapWithBothHeaders = () => <View reply={VALUES_MAP} physical />;
+export const AMapWithBothHeaders = () => <View reply={VALUES_MAP} backTo="Controller" physical />;
 
-export const AnAxisOnItsOwn = () => <View reply={VALUES_AXIS} physical />;
+export const AnAxisOnItsOwn = () => <View reply={VALUES_AXIS} backTo="Controller" physical />;
 
-export const AValueBlockOverIndices = () => <View reply={VALUES_BLOCK} physical />;
+export const AValueBlockOverIndices = () => (
+  <View reply={VALUES_BLOCK} backTo="UserInterface" physical />
+);
 
-export const AScalarInitStatedOnce = () => <View reply={VALUES_CURVE_B} physical />;
+export const AScalarInitStatedOnce = () => (
+  <View reply={VALUES_CURVE_B} backTo="UserInterface" physical />
+);
 
 export const ACellMidChange = () => (
   <View
     reply={VALUES_CURVE}
+    backTo="Controller"
     physical
     editing={{ row: 0, column: 2, typed: "7.5" }}
     plan={CURVE_CELL_PLAN}
@@ -82,6 +94,7 @@ export const ACellMidChange = () => (
 export const ARefusedCell = () => (
   <View
     reply={VALUES_MAP}
+    backTo="Controller"
     physical={false}
     editing={{ row: 0, column: 0, typed: "200" }}
     refusal="200 does not fit into sint8 (-128 .. 127)"
@@ -90,11 +103,13 @@ export const ARefusedCell = () => (
 
 // Spec 6's own list, beyond the brief's: an absent init greyed, and a grid nothing produces.
 
-export const AnAbsentInitGreyed = () => <View reply={VALUES_VALUE_D} physical />;
+export const AnAbsentInitGreyed = () => <View reply={VALUES_VALUE_D} backTo="SensorHub" physical />;
 
 // No object in examples/demo answers with `file: null`, so this is BlockA's own reply with its
 // producing declaration taken away - a story drawing its own props, not a server's real answer.
-export const AReadOnlyGrid = () => <View reply={{ ...VALUES_BLOCK, file: null }} physical />;
+export const AReadOnlyGrid = () => (
+  <View reply={{ ...VALUES_BLOCK, file: null }} backTo="UserInterface" physical />
+);
 
 // The fourth and last `stated`, with no picture until now: a text init draws no grid at all.
-export const ATextInit = () => <View reply={VALUES_SOFTWARE_LABEL} physical />;
+export const ATextInit = () => <View reply={VALUES_SOFTWARE_LABEL} backTo="Controller" physical />;

@@ -15,6 +15,9 @@ import { refusalOf } from "./UnitPanel";
 interface Props {
   /** The object whose values this grid shows - the route's own `variable`. */
   name: string;
+  /** The file the route was opened from - the route's own `file`, not necessarily the object's
+   * own producer (spec 5.4): what names and is returned to by "Back to". */
+  file: string;
   state: State | null;
   stopped: boolean;
   onBack: () => void;
@@ -35,9 +38,14 @@ type Editing = { row: number; column: number; typed: string } | null;
  * by hand) - `drawable` refuses that grid too, and a text-stated object is `ValuesGridView`'s own
  * sentence to say, not repeated here.
  */
-export function ValuesPage({ name, state, stopped, onBack }: Props) {
+export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   const queries = useQueryClient();
   const revision = state?.revision;
+  // The component named by the file the route carries - "Back to" both says and returns to the
+  // same place, which the object's own owner cannot always promise (spec 5.4). Resolved once,
+  // for every branch below to share, from `State.files`' own `name` - the answer to `GET
+  // /api/state` already carries it, so this asks the server for nothing new.
+  const backTo = state?.files.find((entry) => entry.path === file)?.name ?? "component";
   const values = useQuery({
     queryKey: ["values", name, revision],
     queryFn: () => getValues(name),
@@ -118,14 +126,14 @@ export function ValuesPage({ name, state, stopped, onBack }: Props) {
     if (!(values.error instanceof ApiError && values.error.code === "not-found")) {
       return <Banner tone="error">{values.error.message}</Banner>;
     }
-    // Removed from under the reader: nothing produces this name any more, so there is no grid
-    // and no owner to say - only the way back to where they came from (spec 5.4).
+    // Removed from under the reader: nothing produces this name any more, so there is no grid -
+    // only the way back to where they came from (spec 5.4).
     return (
       <section>
         <div className="heading">
           <h1>{name}</h1>
           <Button variant="link" onPress={onBack}>
-            Back to component
+            Back to {backTo}
           </Button>
         </div>
         <Banner tone="error">{values.error.message}</Banner>
@@ -142,7 +150,7 @@ export function ValuesPage({ name, state, stopped, onBack }: Props) {
         <div className="heading">
           <h1>{reply.name}</h1>
           <Button variant="link" onPress={onBack}>
-            Back to {reply.owner ?? "component"}
+            Back to {backTo}
           </Button>
         </div>
         <p className="quiet">{`'${reply.name}' has no cell for a value to sit in`}</p>
@@ -150,34 +158,29 @@ export function ValuesPage({ name, state, stopped, onBack }: Props) {
     );
   }
   return (
-    <>
-      <div className="heading">
-        <UndoStrip state={state} stopped={stopped} />
-      </div>
-      <ValuesGridView
-        reply={reply}
-        physical={physical}
-        editing={editing}
-        plan={plan.data ?? null}
-        refusal={
-          shownRefusal(staleFailed, revision) ??
-          failed ??
-          (plan.isError ? plan.error.message : null)
-        }
-        changesShown={changesShown}
-        busy={stopped || apply.isPending}
-        onPhysical={setPhysical}
-        onEditing={(next) => {
-          setEditing(next);
-          setFailed(null);
-        }}
-        onEntered={() => {
-          if (plan.data !== undefined && plan.data.changes.length > 0) apply.mutate();
-        }}
-        onChangesShown={setChangesShown}
-        onApply={() => apply.mutate()}
-        onBack={onBack}
-      />
-    </>
+    <ValuesGridView
+      reply={reply}
+      backTo={backTo}
+      undoStrip={<UndoStrip state={state} stopped={stopped} />}
+      physical={physical}
+      editing={editing}
+      plan={plan.data ?? null}
+      refusal={
+        shownRefusal(staleFailed, revision) ?? failed ?? (plan.isError ? plan.error.message : null)
+      }
+      changesShown={changesShown}
+      busy={stopped || apply.isPending}
+      onPhysical={setPhysical}
+      onEditing={(next) => {
+        setEditing(next);
+        setFailed(null);
+      }}
+      onEntered={() => {
+        if (plan.data !== undefined && plan.data.changes.length > 0) apply.mutate();
+      }}
+      onChangesShown={setChangesShown}
+      onApply={() => apply.mutate()}
+      onBack={onBack}
+    />
   );
 }

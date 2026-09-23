@@ -137,6 +137,7 @@ export function App() {
       <ValuesPage
         key={route.variable}
         name={route.variable}
+        file={route.file}
         state={state}
         stopped={stopped}
         onBack={() => navigate({ page: "component", file: route.file })}

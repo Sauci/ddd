@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { PlanReply, ValuesReply } from "../api/types";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import {
@@ -17,6 +18,15 @@ import { Changes } from "./Changes";
 
 export interface ValuesGridViewProps {
   reply: ValuesReply;
+  /** The component the "Back to" link returns to and names - resolved by the screen from
+   * `state.files`, since the object's own producer (`reply.owner`) can differ from the file the
+   * reader opened the grid from (spec 5.4: AxisA read from UserInterface's page is produced by
+   * Controller, and the way back is to UserInterface). */
+  backTo: string;
+  /** The undo control, drawn in this very heading row beside the back link (spec 5.2's "the undo
+   * strip where it always is") rather than in a row of its own - omitted where nothing hosts one,
+   * which is every story but the ones about undoing. */
+  undoStrip?: ReactNode;
   /** Reading in physical values rather than raw counts. */
   physical: boolean;
   /** The cell being typed into, and its text; `null` when none is. */
@@ -60,7 +70,7 @@ interface GridRow {
  * holds no state - the raw/physical toggle, the cell being typed into, Show changes and busy all
  * live in the screen behind it. */
 export function ValuesGridView(props: ValuesGridViewProps) {
-  const { reply, physical, editing, plan, refusal, changesShown, busy } = props;
+  const { reply, backTo, undoStrip, physical, editing, plan, refusal, changesShown, busy } = props;
   const columnLabels = columnHeader(reply, physical);
   const rowLabels = rowHeader(reply, physical);
   // Ids of their own, distinct from either's own label text and from each other's: a map's row
@@ -103,8 +113,9 @@ export function ValuesGridView(props: ValuesGridViewProps) {
     <section>
       <div className="heading">
         <h1>{reply.name}</h1>
+        {undoStrip}
         <Button variant="link" onPress={props.onBack}>
-          Back to {reply.owner ?? "component"}
+          Back to {backTo}
         </Button>
       </div>
       <p className="values-meta">{meta}</p>

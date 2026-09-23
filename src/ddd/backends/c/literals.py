@@ -5,8 +5,16 @@ from __future__ import annotations
 import re
 
 from ddd.backends.c.types import C_TYPE, LITERAL_SUFFIX
-from ddd.ir import ResolvedObject
-from ddd.models import Datatype, InitValue, broadcast
+from ddd.ir import ResolvedInstance, ResolvedObject
+from ddd.models import (
+    Datatype,
+    InitValue,
+    PointCounts,
+    broadcast,
+    flatten,
+    format_shape,
+    stored_counts,
+)
 
 _MAX_VALUES_PER_LINE = 8
 _INDENT = "    "
@@ -72,6 +80,22 @@ def c_string_literal(text: str) -> str:
     return f'"{escaped}"'
 
 
+def _flat_braces(parts: tuple[str, ...], indent: int = 0) -> str:
+    """Lay a flat list of already-rendered parts out as a c initialiser: one line up to
+    ``_MAX_VALUES_PER_LINE`` values, then wrapped - the layout a flat run of values gets
+    whether it came from a one-dimensional init or from a table's counts and values together.
+    """
+    if len(parts) <= _MAX_VALUES_PER_LINE:
+        return "{ " + ", ".join(parts) + " }"
+    pad = _INDENT * (indent + 1)
+    closing_pad = _INDENT * indent
+    lines = [
+        pad + ", ".join(parts[start : start + _MAX_VALUES_PER_LINE])
+        for start in range(0, len(parts), _MAX_VALUES_PER_LINE)
+    ]
+    return "{\n" + ",\n".join(lines) + "\n" + closing_pad + "}"
+
+
 def c_initializer(value: InitValue, datatype: Datatype, indent: int = 0) -> str:
     """Render a (possibly nested) init value as a c initialiser."""
     if isinstance(value, str):
@@ -88,21 +112,52 @@ def c_initializer(value: InitValue, datatype: Datatype, indent: int = 0) -> str:
         body = ",\n".join(f"{pad}{part}" for part in parts)
         return "{\n" + body + "\n" + closing_pad + "}"
 
-    if len(parts) <= _MAX_VALUES_PER_LINE:
-        return "{ " + ", ".join(parts) + " }"
-    lines = [
-        pad + ", ".join(parts[start : start + _MAX_VALUES_PER_LINE])
-        for start in range(0, len(parts), _MAX_VALUES_PER_LINE)
-    ]
-    return "{\n" + ",\n".join(lines) + "\n" + closing_pad + "}"
+    return _flat_braces(tuple(parts), indent)
 
 
 def c_type(entry: ResolvedObject) -> str:
     return C_TYPE[entry.datatype]
 
 
+def _counted(entry: ResolvedObject | ResolvedInstance) -> bool:
+    """Whether the object stores its point counts ahead of its data.
+
+    A structured variable never does: it is no table, and it carries no such field."""
+    return isinstance(entry, ResolvedObject) and entry.point_counts is PointCounts.LEADING
+
+
+def storage_suffix(entry: ResolvedObject | ResolvedInstance) -> str:
+    """The array suffix the object is declared with: its shape, or the flat storage of a table
+    that keeps its counts in front of its values.
+
+    Flat because the counts and the values are one run of one type in memory - which is what
+    the routine reading them is handed - and a ``[y][x]`` array has no room in front of it.
+    Each dimension is parenthesised because it may be a constant's name, and a constant is a
+    macro whose expansion nobody here controls.
+    """
+    spelled = entry.spelled_shape
+    if not _counted(entry):
+        return format_shape(spelled)
+    product = " * ".join(f"({dimension})" for dimension in spelled)
+    return f"[{len(spelled)} + {product}]"
+
+
 def initializer_of(entry: ResolvedObject) -> str | None:
-    """The initialiser of an object, or ``None`` for implicit zero initialisation."""
+    """The initialiser of an object, or ``None`` for implicit zero initialisation.
+
+    A table keeping its counts in front always has one, since the counts cannot be left to the
+    startup code: the counts, each by the constant's name when its axis is sized by one, then
+    the values in the row order the nested form would have used - or nothing more, when no
+    ``init`` was given, which leaves the rest zero exactly as an absent initialiser would.
+    """
+    if _counted(entry):
+        counts = [
+            count if isinstance(count, str) else c_literal(count, entry.datatype)
+            for count in stored_counts(entry.kind, entry.spelled_shape)
+        ]
+        values = [] if entry.init is None else flatten(broadcast(entry.init, entry.shape))
+        flat = (*counts, *(c_literal(value, entry.datatype) for value in values))
+        return _flat_braces(flat)
     if entry.init is None:
         return None
     return c_initializer(broadcast(entry.init, entry.shape), entry.datatype)

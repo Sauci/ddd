@@ -13,6 +13,7 @@ from ddd.backends.c.literals import (
     guard_name,
     initializer_of,
     sanitize_comment,
+    storage_suffix,
 )
 from ddd.backends.c.options import COptions
 from ddd.backends.c.types import C_TYPE, needs_stdbool, needs_stdint
@@ -24,7 +25,15 @@ from ddd.ir import (
     ResolvedObject,
     ResolvedStruct,
 )
-from ddd.models import Datatype, EnumConversion, ObjectKind, Scope, format_shape
+from ddd.models import (
+    Datatype,
+    EnumConversion,
+    ObjectKind,
+    PointCounts,
+    Scope,
+    format_shape,
+    stored_counts,
+)
 
 UNRESOLVED_GROUP = "<unresolved>"
 
@@ -65,6 +74,16 @@ class ObjectView:
     the toolchain's business and therefore the templates', exactly like the rest of the
     house style.
     """
+
+    dimensions: tuple[int | str, ...] = ()
+    """The object's shape as the description spells it, in declaration order: ``(11, 8)`` or
+    ``("NY", "NX")`` for a map, ``()`` for a scalar. What ``array_suffix`` was rendered from,
+    so a template computing anything from the shape does not parse the suffix back apart."""
+
+    point_counts: tuple[int | str, ...] = ()
+    """The counts a table stores ahead of its values, in storage order - x, then y - spelled
+    like ``dimensions``; ``()`` for every object that stores none. When it is not empty,
+    ``array_suffix`` and ``initializer`` already describe the flat storage."""
 
     extensions: dict[str, dict[str, Any]] = field(default_factory=dict)
     """The blocks of the project's plugins, keyed by plugin name, exactly as the dictionary
@@ -569,8 +588,9 @@ def _view(
         kind=entry.kind,
         c_type=c_type,
         datatype=datatype,
-        # The spelled shape, so an array dimensioned by a constant is declared by its name.
-        array_suffix=format_shape(entry.spelled_shape),
+        # The spelled shape, so an array dimensioned by a constant is declared by its name; a
+        # table keeping its counts in front is declared flat.
+        array_suffix=storage_suffix(entry),
         constant=entry.is_calibration,
         volatile=entry.volatile,
         initializer=initializer,
@@ -579,6 +599,12 @@ def _view(
         owner=entry.owner or UNRESOLVED_GROUP,
         consumers=entry.consumers,
         section=entry.section,
+        dimensions=tuple(entry.spelled_shape),
+        point_counts=(
+            stored_counts(entry.kind, entry.spelled_shape)
+            if isinstance(entry, ResolvedObject) and entry.point_counts is PointCounts.LEADING
+            else ()
+        ),
         extensions=entry.extensions,
     )
 

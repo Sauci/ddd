@@ -15,18 +15,33 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from conftest import checks, component, declare, messages, project, run_analysis, write_tree
+from conftest import (
+    checks,
+    component,
+    declare,
+    messages,
+    project,
+    render_files,
+    run_analysis,
+    write_tree,
+)
+from ddd.backends.c.model import build_code_model
+from ddd.backends.c.options import COptions
 from ddd.diagnostics import DiagnosticBag
 from ddd.ir import DataDictionary, ResolvedObject
 from ddd.loading import load_dictionary, load_workspace
 from ddd.models import ComponentFile, ObjectKind, PointCounts, ProjectFile, stored_counts
 
 
-def axis(name: str = "AX", size: int | str = 4, datatype: str = "uint16", **extra: Any) -> dict[str, Any]:
+def axis(
+    name: str = "AX", size: int | str = 4, datatype: str = "uint16", **extra: Any
+) -> dict[str, Any]:
     return declare("local", name, datatype, kind="axis", size=size, **extra)
 
 
-def curve(name: str = "C", over: str = "AX", datatype: str = "uint16", **extra: Any) -> dict[str, Any]:
+def curve(
+    name: str = "C", over: str = "AX", datatype: str = "uint16", **extra: Any
+) -> dict[str, Any]:
     return declare("local", name, datatype, kind="curve", axis=over, **extra)
 
 
@@ -56,7 +71,9 @@ class TestTheDescription:
 
 class TestTheProjectDefault:
     def test_an_unstated_default_is_none(self, tree: Path) -> None:
-        write_tree(tree, {"project.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A")})
+        write_tree(
+            tree, {"project.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A")}
+        )
         workspace = load_workspace(tree / "project.ddd.json", DiagnosticBag())
         assert workspace is not None
         assert workspace.point_counts is PointCounts.NONE
@@ -116,12 +133,16 @@ class TestTheStoredCounts:
             (ObjectKind.PARAMETER, (), ()),
         ],
     )
-    def test_x_comes_first(self, kind: ObjectKind, shape: tuple[Any, ...], counts: tuple[Any, ...]) -> None:
+    def test_x_comes_first(
+        self, kind: ObjectKind, shape: tuple[Any, ...], counts: tuple[Any, ...]
+    ) -> None:
         """A map is declared ``[y][x]`` and stores x then y: an 8 by 11 map begins ``8, 11``."""
         assert stored_counts(kind, shape) == counts
 
 
-def files(*declarations: dict[str, Any], default: str | None = None, **extra: Any) -> dict[str, Any]:
+def files(
+    *declarations: dict[str, Any], default: str | None = None, **extra: Any
+) -> dict[str, Any]:
     stated = {"point_counts": default} if default is not None else {}
     return {
         "project.ddd.json": project("P", "a.ddd.json", **stated),
@@ -149,7 +170,9 @@ class TestTheResolution:
         assert resolved(dictionary, "M").point_counts is PointCounts.NONE
 
     @pytest.mark.parametrize(("default", "override"), [("leading", "none"), ("none", "leading")])
-    def test_a_component_overrides_the_default(self, tree: Path, default: str, override: str) -> None:
+    def test_a_component_overrides_the_default(
+        self, tree: Path, default: str, override: str
+    ) -> None:
         dictionary, bag = run_analysis(tree, files(*TABLES, default=default, point_counts=override))
         assert dictionary is not None, messages(bag)
         assert resolved(dictionary, "M").point_counts is PointCounts(override)
@@ -157,7 +180,11 @@ class TestTheResolution:
     def test_it_reaches_no_other_kind(self, tree: Path) -> None:
         dictionary, bag = run_analysis(
             tree,
-            files(declare("local", "X"), declare("local", "K", kind="parameter", init=1), default="leading"),
+            files(
+                declare("local", "X"),
+                declare("local", "K", kind="parameter", init=1),
+                default="leading",
+            ),
         )
         assert dictionary is not None, messages(bag)
         assert resolved(dictionary, "X").point_counts is PointCounts.NONE
@@ -212,7 +239,12 @@ class TestTheFindings:
         """The y count is the one that overflows here, which a check of x alone would miss."""
         _, bag = run_analysis(
             tree,
-            files(axis("AX", 8, "sint8"), axis("AY", 200, "sint16"), table("M", datatype="sint8"), default="leading"),
+            files(
+                axis("AX", 8, "sint8"),
+                axis("AY", 200, "sint16"),
+                table("M", datatype="sint8"),
+                default="leading",
+            ),
         )
         assert bag.has_errors
         assert checks(bag) == ["point-counts-unrepresentable"]
@@ -242,9 +274,88 @@ class TestTheFindings:
         dictionary, bag = run_analysis(tree, tree_files)
         assert dictionary is not None, messages(bag)
         assert checks(bag) == ["point-counts-mismatch"]
-        assert "'C' stores its point counts 'leading', but its axis 'AX' stores them 'none'" in messages(bag)
+        assert (
+            "'C' stores its point counts 'leading', but its axis 'AX' stores them 'none'"
+            in messages(bag)
+        )
 
     def test_agreement_is_not_a_finding(self, tree: Path) -> None:
         dictionary, bag = run_analysis(tree, files(*TABLES, default="leading"))
         assert dictionary is not None, messages(bag)
         assert checks(bag) == []
+
+
+def generated(tree: Path, tree_files: dict[str, Any]) -> dict[str, str]:
+    dictionary, bag = run_analysis(tree, tree_files)
+    assert dictionary is not None, messages(bag)
+    return {file.path.name: file.content for file in render_files(dictionary, tree / "gen")}
+
+
+class TestTheC:
+    def test_a_counted_map_is_a_flat_array_with_its_counts_first(self, tree: Path) -> None:
+        source = generated(
+            tree,
+            files(
+                axis("AX", 2),
+                axis("AY", 3),
+                table("M", init=[[1, 2], [3, 4], [5, 6]]),
+                default="leading",
+            ),
+        )["ddd_globals.c"]
+        assert "const uint16_t M[2 + (3) * (2)] = { 2U, 3U, 1U, 2U, 3U, 4U, 5U, 6U };" in source
+
+    def test_a_counted_axis_and_curve_carry_one_count(self, tree: Path) -> None:
+        source = generated(
+            tree, files(axis("AX", 2, init=[10, 20]), curve("C"), default="leading")
+        )["ddd_globals.c"]
+        assert "const uint16_t AX[1 + (2)] = { 2U, 10U, 20U };" in source
+        assert "const uint16_t C[1 + (2)] = { 2U };" in source
+
+    def test_a_count_spelled_by_a_constant_is_written_by_name(self, tree: Path) -> None:
+        tree_files = files(axis("AX", "NX"), axis("AY", "NY"), table("M"), default="leading")
+        tree_files["project.ddd.json"]["project"]["includes"].append("k.ddd.json")
+        tree_files["k.ddd.json"] = {
+            "constants": [{"name": "NX", "value": 8}, {"name": "NY", "value": 11}]
+        }
+        source = generated(tree, tree_files)["ddd_globals.c"]
+        assert "const uint16_t M[2 + (NY) * (NX)] = { NX, NY };" in source
+
+    def test_the_component_header_declares_the_storage(self, tree: Path) -> None:
+        header = generated(tree, files(axis("AX", 2), default="leading"))["A.h"]
+        assert "uint16_t AX[1 + (2)]" in header
+
+    def test_an_uncounted_project_is_unchanged(self, tree: Path) -> None:
+        """A project that never states the key generates what it generated before."""
+        stated = generated(
+            tree / "a", files(axis("AX", 2), axis("AY", 3), table("M"), default="none")
+        )
+        unstated = generated(tree / "b", files(axis("AX", 2), axis("AY", 3), table("M")))
+        assert stated == unstated
+        assert "const uint16_t M[3][2];" in unstated["ddd_globals.c"]
+
+    def test_the_view_offers_the_dimensions_and_the_counts(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree, files(axis("AX", 2), axis("AY", 3), table("M"), default="leading")
+        )
+        assert dictionary is not None, messages(bag)
+        views = {
+            view.name: view
+            for group in build_code_model(dictionary, COptions(), "test").groups
+            for view in group.variables
+        }
+        assert views["M"].dimensions == (3, 2)
+        assert views["M"].point_counts == (2, 3)
+        assert views["AX"].point_counts == (2,)
+
+    def test_an_uncounted_view_has_its_dimensions_and_no_counts(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree, files(declare("local", "V", kind="value_block", dimensions=[4]))
+        )
+        assert dictionary is not None, messages(bag)
+        views = {
+            view.name: view
+            for group in build_code_model(dictionary, COptions(), "test").groups
+            for view in group.variables
+        }
+        assert views["V"].dimensions == (4,)
+        assert views["V"].point_counts == ()

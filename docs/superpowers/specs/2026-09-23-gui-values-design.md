@@ -133,9 +133,18 @@ same pairing `ddd.project_types` and `ddd.type_plans` use.
 
 ### 4.5 What is refused
 
-- `invalid`: a count the datatype cannot hold (`conversion_range`); a value outside the object's
-  resolved limits; an `at` that is not an element of the shape; an object whose init is a string;
-  an object with no shape at all.
+- `invalid`, in the words the init check itself uses, and for the reasons it uses them: a
+  fractional value under an integer datatype; a value outside `datatype.raw_min … raw_max`; a
+  value that `datatype.rounds_to_zero`; a value that is not `0`, `1` or a bool under `boolean`.
+  These come from `Datatype`'s own public properties, which is where `analysis._check_init`
+  (`analysis.py:2536`) gets them - not from a second copy of the rule.
+- `invalid` also for an `at` that is not an element of the shape, an object whose init is a
+  string, and an object with no shape at all.
+- **A value outside the object's limits is not refused.** Measured: `limits-out-of-range`
+  (`analysis.py:2640`) weighs the *limits* against the *storage*, and nothing weighs an init
+  against the limits - so refusing here would make the grid stricter than `ddd check`, and a file
+  a person wrote by hand would have cells the interface could not edit. The grid says the value is
+  outside the declared range and stores it.
 - `not-found`: the project declares no object of that name.
 - `unreadable`: a file the change has to see did not load, or the project has no dictionary.
 - A name nothing produces answers its grid read-only rather than refusing: there is no declaration
@@ -265,6 +274,13 @@ Every figure below was read from the code or computed with it, not recalled.
   `round_physical` rather than by hand: `AxisA` is `0, 800, 1600, 3200, 4800, 8000` Hz, `AxisB` is
   `0, 30, 70, 100` %, `CurveA` is `12, 9, 8, 7.5, 7, 6.5` ms, and `MapA`'s first row is
   `10, 12, 14, 15, 16, 15`.
+- `src/ddd/analysis.py:2536` `_check_init` and `:2640` `_check_limits_fit`: what an init value is
+  actually refused for - the datatype's range, a fraction under an integer type, a float rounding
+  to zero, a non-bool under `boolean` - and what is *not* weighed against it, the object's limits.
+- `src/ddd/models/common.py:303` `Datatype.info`, carrying `raw_min`, `raw_max`, `is_float` and
+  `is_signed`: `uint16` is `0 … 65535`, `sint8` is `-128 … 127`. `conversion_range` answers the
+  *physical* bound instead - `(0.0, 655.35)` for `CurveA` - which is why the refusal uses the
+  datatype's own range and not that.
 - `src/ddd/models/conversion.py:32`: the `ConversionRule` protocol - `to_physical`, `to_raw`,
   `describe` - with `:128` `LinearConversion.to_raw` returning `(physical - offset) / factor`, a
   float; `:353` `round_physical`; `:398` `physical_range`; `:425` `raw_reading`, whose docstring

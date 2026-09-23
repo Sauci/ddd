@@ -19,11 +19,13 @@ from typing import Final, Literal
 
 from pydantic import TypeAdapter, ValidationError
 
+from ddd.analysis import _PRODUCER_KEYS
 from ddd.editing import Operation
 from ddd.identity import new_id
 from ddd.lsp.navigation import Index, rename_problem
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
+from ddd.models.component import Scope
 from ddd.models.objects import AnyDataObject, definition_keys
 from ddd.variable_keys import KEY_ORDER, KeyOffer, offer_for
 from ddd.variables import component_of
@@ -34,13 +36,32 @@ KINDS: Final = ("measurement", "parameter", "value_block", "curve", "map", "axis
 SCOPES: Final = ("output", "input", "local")
 """``ddd.models.component.Scope``'s three values, in the order the form offers them."""
 
-CARRIED_BY_A_READER: Final = frozenset({"id", "init"})
+PRODUCING_SCOPES: Final = frozenset(scope.value for scope in Scope if scope.is_producer)
+"""The scopes that own what they declare, and whose declaration is therefore stamped.
+
+:attr:`ddd.models.component.Scope.is_producer` decides it - ``output`` and ``local`` - rather
+than a comparison against ``"output"`` alone: a local owns its object exclusively, so
+``missing-id`` fires on an unstamped local exactly as it does on an unstamped output, and
+:data:`ddd.identity._PRODUCING` names the same pair. Spelled as the raw strings a description
+carries, the way :mod:`ddd.identity` spells them, because a scope arrives here as the text a
+page sent and is checked against :data:`SCOPES` rather than parsed into a :class:`Scope`.
+"""
+
+CARRIED_BY_A_READER: Final = frozenset(key for key, _, _ in _PRODUCER_KEYS)
 """What a reader does not copy from the producer it reads.
 
-Measured across examples/demo, examples/structures and examples/vocabulary: for every variable
-more than one component declares, a reader's definition is the producer's without these two,
-and with nothing of its own. ``id`` is the producer's identity - :mod:`ddd.identity` stamps
-only a producing declaration - and ``init`` is the owner's initial value.
+Derived from :data:`ddd.analysis._PRODUCER_KEYS` rather than restated beside it: that tuple is
+where the project decides which keys only a producing declaration may state - ``init``,
+``section``, ``raster``, ``id`` and ``extensions`` - and it names, per key, the check a
+consumer stating one earns. Copying any of them into an ``input`` would write the finding this
+verb exists to avoid, and reading the rule where it is decided means a sixth key added there
+is dropped here the moment it exists. The same reasoning :func:`definition_keys` already uses
+about the models, applied to the analysis.
+
+Read through a name private to :mod:`ddd.analysis` because nothing outside it had needed the
+set before. A copy is what let a reader carry ``section`` and ``raster`` into an ``input``,
+which no measurement across the examples could show: every producer there stating one is
+``local``, and a local is never declarable elsewhere.
 """
 
 INTERFACE: Final = "component.interface"
@@ -144,6 +165,11 @@ def read_object(
     construction rather than by a later check. A name nothing produces is read from the one
     declaration there is: there is no owner's definition to copy, and the alternative is
     refusing the very repair the reader came for.
+
+    That repair is what a :data:`PRODUCING_SCOPES` scope means here - ``scopes_for`` offers
+    ``output`` exactly while nothing produces the name - so the declaration written is stamped,
+    as :func:`declare_object` stamps one. Without it the verb would trade a ``missing-producer``
+    for a ``missing-id``, which is not a repair.
     """
     here, entries = _interface(file, cache)
     sites = built.declarations.get(name)
@@ -158,6 +184,8 @@ def read_object(
     if not isinstance(stated, dict):
         raise DeclarationRefusalError("not-found", f"the project declares no '{name}'")
     definition = {key: value for key, value in stated.items() if key not in CARRIED_BY_A_READER}
+    if scope in PRODUCING_SCOPES:
+        definition = _stamped(name, definition)
     return _appended(here, entries, scope, definition)
 
 
@@ -183,8 +211,8 @@ def declare_object(
     Refused before a file is touched for a name the project may not use, in
     :func:`~ddd.lsp.navigation.rename_problem`'s own sentence - a new declaration lands in the
     namespace a rename guards, so it gets the same answers rather than a second set derived
-    here. A producing declaration is stamped with a fresh id, after its ``name``, where every
-    stamped declaration of the examples carries one.
+    here. A declaration whose scope is one of :data:`PRODUCING_SCOPES` is stamped with a fresh
+    id, after its ``name``, where every stamped declaration of the examples carries one.
 
     Stamped, the definition is asked of :data:`_DEFINITION` - a rule crossing two keys, a
     ``datatype`` wanting a ``conversion`` among them, is not something a key-by-key check above
@@ -210,8 +238,8 @@ def declare_object(
     if missing := sorted(required - set(definition)):
         raise DeclarationRefusalError("invalid", f"a {kind} must state '{missing[0]}'")
     stated = dict(definition)
-    if scope == "output":
-        stated = {"name": stated.pop("name"), "id": new_id(), **stated}
+    if scope in PRODUCING_SCOPES:
+        stated = _stamped(name, stated)
     try:
         _DEFINITION.validate_python(stated)
     except ValidationError as error:
@@ -236,6 +264,18 @@ def remove_declaration(
             operation = Operation("remove", f"{INTERFACE}[{position}]")
             return DeclarationPlan((PlannedEdit(here, (operation,)),))
     raise DeclarationRefusalError("not-found", f"{here.name} declares no '{name}'")
+
+
+def _stamped(name: str, definition: Mapping[str, object]) -> dict[str, object]:
+    """That definition with a fresh identity after its ``name``, where the examples spell one.
+
+    The name is passed rather than read out of the definition, because both callers already
+    hold it as a checked string - ``declare_object`` from the page's own json, ``read_object``
+    as the name it was asked for - while what the definition holds is whatever text the file
+    has now, which may have moved on since the index was built.
+    """
+    rest = {key: value for key, value in definition.items() if key != "name"}
+    return {"name": name, "id": new_id(), **rest}
 
 
 def _statable(kind: str) -> frozenset[str]:

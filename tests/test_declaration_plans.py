@@ -9,10 +9,14 @@ from pathlib import Path
 import pytest
 
 from conftest import component, declare, project, write_tree
+from ddd.analysis import _PRODUCER_KEYS, analyze
 from ddd.declaration_plans import (
+    CARRIED_BY_A_READER,
     KINDS,
+    PRODUCING_SCOPES,
     SCOPES,
     Declarable,
+    DeclarationPlan,
     DeclarationRefusalError,
     declarable,
     declare_object,
@@ -27,9 +31,26 @@ from ddd.identity import OBJECT_ID_LENGTH
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
 from ddd.lsp.ranges import Document
+from ddd.models.component import Scope
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 CONTROLLER = EXAMPLES / "demo" / "components" / "controller.ddd.json"
+
+TAG_PLUGIN = '''
+"""The smallest plugin that gives a definition an ``extensions`` block to state."""
+
+from pydantic import BaseModel, ConfigDict
+
+from ddd.plugins import Plugin
+
+
+class Tag(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    tag: str
+
+
+PLUGIN = Plugin(name="tag", object_model=Tag)
+'''
 
 
 @pytest.fixture
@@ -40,8 +61,43 @@ def demo() -> Index:
 
 
 @pytest.fixture
+def copied_demo(tmp_path: Path) -> tuple[Index, Path]:
+    """A writable copy of examples/demo and its index, for a test that applies what it plans.
+
+    The example itself is never written to, so a plan made against ``CONTROLLER`` cannot be
+    applied where it points; a plan made against the copy can.
+    """
+    root = tmp_path / "demo"
+    shutil.copytree(EXAMPLES / "demo", root)
+    workspace = load_workspace(root / "demo.ddd.json", DiagnosticBag())
+    assert workspace is not None
+    return index(workspace), root
+
+
+@pytest.fixture
 def cache() -> dict[Path, Document]:
     return {}
+
+
+def checks_after(base: Path, plan: DeclarationPlan, root: str = "p.ddd.json") -> list[str]:
+    """Every check the project reports once that plan has been written into it.
+
+    The whole of what these verbs promise, in one helper: ``ddd gui`` writes the files a person
+    writes by hand, so whether it kept the promise is whatever ``ddd check`` says about what it
+    wrote - not whether the loader could parse it back. ``DiagnosticBag.sorted`` is how a bag is
+    read, and the bag carries the loader's findings and the analysis' alike.
+    """
+    (edit,) = plan.edits
+    edit.path.write_text(
+        edit_text(edit.path.read_text(encoding="utf-8"), edit.operations),
+        encoding="utf-8",
+        newline="",
+    )
+    bag = DiagnosticBag()
+    workspace = load_workspace(base / root, bag)
+    if workspace is not None:
+        analyze(workspace, bag)
+    return [finding.check for finding in bag.sorted]
 
 
 class TestWhatMayBeRead:
@@ -132,13 +188,30 @@ class TestWhatAKindAsksFor:
         assert form_for(demo, "nonsense") == ()
 
 
+class TestWhatOnlyAProducerMayState:
+    """The two sets this module derives rather than restates, pinned where they are derived."""
+
+    def test_a_reader_drops_exactly_the_keys_the_analysis_reserves(self) -> None:
+        # Not a list written out here: the set is read from `_PRODUCER_KEYS`, so a sixth key
+        # added there fails nothing and is dropped at once, and a copy written beside it fails
+        # this.
+        reserved = {key for key, _, _ in _PRODUCER_KEYS}
+        assert reserved == CARRIED_BY_A_READER
+        assert sorted(reserved) == ["extensions", "id", "init", "raster", "section"]
+
+    def test_a_local_is_a_producer_as_much_as_an_output_is(self) -> None:
+        producing = {scope.value for scope in Scope if scope.is_producer}
+        assert producing == PRODUCING_SCOPES
+        assert sorted(producing) == ["local", "output"]
+
+
 class TestReadingWhatTheProjectHas:
     def test_a_reader_carries_the_producer_s_definition_without_its_id_and_init(
         self, demo, cache, tmp_path
     ) -> None:
-        # The rule this whole verb rests on, measured rather than assumed: across every
-        # variable more than one component of examples/demo declares, a reader's definition is
-        # the producer's less `id` and `init`, with nothing of its own.
+        # What the rule comes to on examples/demo, where `id` and `init` are the only two of
+        # the five its producers state: a reader's definition is ValueC's less those two, with
+        # nothing of its own. The test below is the one that says where the five come from.
         plan = read_object(demo, CONTROLLER, "ValueC", "input", cache)
         (edit,) = plan.edits
         (operation,) = edit.operations
@@ -156,6 +229,60 @@ class TestReadingWhatTheProjectHas:
         assert written["definition"] == {
             key: value for key, value in stated.items() if key not in {"id", "init"}
         }
+
+    def test_a_reader_carries_none_of_the_five_keys_only_a_producer_may_state(
+        self, tmp_path, cache
+    ) -> None:
+        # Review finding: the rule above was measured across the examples, where every producer
+        # stating a `section`, a `raster` or an `extensions` block is `local` - and a local is
+        # never declarable elsewhere, so the measurement could not see them. A producer stating
+        # all five, which the examples have nowhere, is what says whether the set is right.
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project(
+                    "P",
+                    "rasters.ddd.json",
+                    "sections.ddd.json",
+                    "a.ddd.json",
+                    "b.ddd.json",
+                    plugins=["tag_plugin.py"],
+                ),
+                "rasters.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
+                "sections.ddd.json": {
+                    "sections": [{"section": ".fast_ram", "access": "read-write", "alignment": 4}]
+                },
+                "tag_plugin.py": TAG_PLUGIN,
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Sig",
+                        id="aaaaaaaaaaaa",
+                        init=0,
+                        section=".fast_ram",
+                        raster="10ms",
+                        extensions={"tag": {"tag": "t"}},
+                    ),
+                ),
+                "b.ddd.json": component("B"),
+            },
+        )
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        producer = json.loads((tmp_path / "a.ddd.json").read_text(encoding="utf-8"))
+        stated = producer["component"]["interface"][0]["definition"]
+        # The fixture states all five, so this cannot pass on a producer that states fewer.
+        assert set(stated) >= CARRIED_BY_A_READER
+        plan = read_object(built, tmp_path / "b.ddd.json", "Sig", "input", cache)
+        written = json.loads(plan.edits[0].operations[0].raw or "")
+        assert set(written["definition"]) & CARRIED_BY_A_READER == set()
+        assert written["definition"] == {
+            key: value for key, value in stated.items() if key not in CARRIED_BY_A_READER
+        }
+        # And the point of dropping them: each one carried would be a finding of its own -
+        # `consumer-storage`, `consumer-raster`, `consumer-identity`, `consumer-extension` -
+        # on the file `ddd gui` has just written.
+        assert checks_after(tmp_path, plan) == []
 
     def test_the_edit_writes_a_declaration_the_file_can_be_read_back_from(
         self, demo, cache
@@ -207,6 +334,28 @@ class TestReadingWhatTheProjectHas:
         written = json.loads(plan.edits[0].operations[0].raw or "")
         assert written["definition"]["unit"] == "rpm"
 
+    def test_reading_a_name_nothing_produces_as_its_producer_repairs_it_outright(
+        self, tmp_path, cache
+    ) -> None:
+        # Review finding: `scopes_for` offers `output` first for a name nothing produces, and
+        # the page defaults to the first - so this is the repair of a `missing-producer`, and
+        # an unstamped one would trade that error for a `missing-id` instead of ending it.
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "Orphan", unit="rpm")),
+                "b.ddd.json": component("B"),
+            },
+        )
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        assert scopes_for(built, "Orphan")[0] == "output"
+        plan = read_object(built, tmp_path / "b.ddd.json", "Orphan", "output", cache)
+        written = json.loads(plan.edits[0].operations[0].raw or "")
+        assert list(written["definition"])[:2] == ["name", "id"]
+        assert len(written["definition"]["id"]) == OBJECT_ID_LENGTH
+        assert checks_after(tmp_path, plan) == []
+
     def test_an_owner_the_file_no_longer_declares_since_the_index_was_built_is_not_found(
         self, tmp_path, cache
     ) -> None:
@@ -250,8 +399,13 @@ class TestDeclaringSomethingNew:
         assert list(written["definition"])[:2] == ["name", "id"]
         assert len(written["definition"]["id"]) == OBJECT_ID_LENGTH
 
-    def test_a_reader_and_a_local_are_not_stamped(self, demo, cache) -> None:
-        for scope in ("input", "local"):
+    def test_a_local_is_stamped_too_and_only_a_reader_is_not(self, demo, cache) -> None:
+        # Review finding: this used to pin `local` as unstamped, which `Scope.is_producer` and
+        # `identity._PRODUCING` both contradict - a local owns its object exclusively, and
+        # `scopes_for` offers it for every brand new name, so an unstamped one would be a
+        # `missing-id` the moment it was written.
+        stamped = {}
+        for scope in SCOPES:
             plan = declare_object(
                 demo,
                 CONTROLLER,
@@ -266,7 +420,8 @@ class TestDeclaringSomethingNew:
                 cache,
             )
             written = json.loads(plan.edits[0].operations[0].raw or "")
-            assert "id" not in written["definition"]
+            stamped[scope] = "id" in written["definition"]
+        assert stamped == {"output": True, "input": False, "local": True}
 
     def test_a_name_the_project_refuses_is_refused_in_the_editor_s_own_words(
         self, demo, cache
@@ -402,12 +557,27 @@ class TestDeclaringSomethingNew:
         written = json.loads(plan.edits[0].operations[0].raw or "")
         assert written["definition"]["conversion"] == {"kind": "identity"}
 
-    def test_what_is_written_parses_and_loads(self, demo, cache, tmp_path) -> None:
-        # The end of the verb's promise: a file the loader reads back without a complaint.
+    @pytest.mark.parametrize(
+        ("scope", "reported"),
+        [("local", []), ("output", ["unused-output"]), ("input", ["missing-producer"])],
+    )
+    def test_what_is_written_says_nothing_about_itself_to_the_checks(
+        self, copied_demo, cache, scope, reported
+    ) -> None:
+        # Review finding: this used to load the result and stop there, which is what let three
+        # bugs through - a file can parse perfectly and still be a finding. A pristine
+        # examples/demo analyses with nothing reported, so whatever is reported here is this
+        # declaration's doing, and each of the three answers below is a statement about how
+        # complete the *project* now is, never about the shape of what was written: an object
+        # only this component may touch completes it, a producer nobody reads yet is the
+        # consumer spec 2 says to add with the second verb, and a reader with no producer is
+        # the same sentence the other way round. Nothing here is a `missing-id`, a `schema` or
+        # a `consumer-*`, which are the ways a written file is wrong in itself.
+        built, root = copied_demo
         plan = declare_object(
-            demo,
-            CONTROLLER,
-            "output",
+            built,
+            root / "components" / "controller.ddd.json",
+            scope,
             {
                 "name": "Pressure",
                 "kind": "axis",
@@ -419,15 +589,7 @@ class TestDeclaringSomethingNew:
             },
             cache,
         )
-        after = edit_text(CONTROLLER.read_text(encoding="utf-8"), plan.edits[0].operations)
-        written = tmp_path / "demo"
-        shutil.copytree(EXAMPLES / "demo", written)
-        (written / "components" / "controller.ddd.json").write_text(after, encoding="utf-8")
-        bag = DiagnosticBag()
-        load_workspace(written / "demo.ddd.json", bag)
-        # A pristine examples/demo loads with nothing reported, so anything here is this
-        # declaration's doing. `DiagnosticBag.sorted` is how a bag is read.
-        assert [finding.check for finding in bag.sorted] == []
+        assert checks_after(root, plan, "demo.ddd.json") == reported
 
 
 class TestRemovingADeclaration:

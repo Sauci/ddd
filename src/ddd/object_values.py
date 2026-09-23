@@ -227,10 +227,15 @@ def set_cell(
         operation = Operation("set", f"{site.pointer}.init{at}", json.dumps(raw))
     else:
         rows = [list(row) for row in grid.rows]
-        # A one dimensional object is one row, so its only index is the column.
-        row, column = (0, found[0]) if len(grid.shape) == 1 else found
+        whole: list[float] | list[list[float]]
+        if len(grid.shape) == 1:
+            # A one dimensional object is one row, so its only index is the column.
+            row, column = 0, found[0]
+            whole = rows[0]
+        else:
+            row, column = found
+            whole = rows
         rows[row][column] = raw
-        whole = rows[0] if len(grid.shape) == 1 else rows
         operation = Operation("set", f"{site.pointer}.init", json.dumps(whole))
     return ValuePlan((PlannedEdit(site.path, (operation,)),))
 

@@ -237,6 +237,37 @@ class TestChangingOne:
         assert operation.pointer.endswith(".definition.init")
         assert json.loads(operation.raw or "") == [200, 200, 200, 200, 111, 200]
 
+    def test_a_two_dimensional_cell_is_written_into_the_whole_array(self, tmp_path) -> None:
+        # The whole-array branch's two dimensional arm needs an object that is both two
+        # dimensional and not yet a written array - nothing in examples/demo is both: MapA is
+        # two dimensional but its init is already an array, and CurveB's init is a scalar but
+        # it is one dimensional. Plane, the same fixture
+        # test_a_two_dimensional_object_with_no_init_is_a_grid_of_zeros already builds, is both.
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output", "Plane", kind="value_block", datatype="uint8", dimensions=[2, 3]
+                    ),
+                ),
+            },
+        )
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        revision = session.revision
+        assert revision is not None and revision.dictionary is not None
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        try:
+            plan = set_cell(revision.dictionary, built, "Plane", "[1][2]", 7, {})
+        finally:
+            session.stop()
+        (operation,) = plan.edits[0].operations
+        assert operation.pointer.endswith(".definition.init")
+        assert json.loads(operation.raw or "") == [[0, 0, 0], [0, 0, 7]]
+
     def test_the_change_goes_to_the_producer_s_own_file(self, demo) -> None:
         # BlockA is produced by UserInterface, and that is where its values live, whichever
         # component's page the reader came from.

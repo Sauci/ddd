@@ -509,8 +509,9 @@ tr.changing td {
 }
 
 /* DeclarePanelView: the name and scope fields, and - once a new name is typed - the kind and its
-   keys, stack with the same rhythm as a panel's other sections (.panel-offer's own margin-top),
-   each field's own gap the same as .dimensions-field's and .key-chooser's. */
+   keys, stack with the same rhythm as a panel's other sections: .panel-offer's own margin-top,
+   and a gap a step wider than .dimensions-field's and .key-chooser's - those separate the parts
+   of one field (a shape's rows, a chooser and its range), this one separates distinct fields. */
 .declare-fields {
   display: flex;
   flex-direction: column;

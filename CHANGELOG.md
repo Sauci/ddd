@@ -60,10 +60,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   unit already was.
 
   A fourth tab, Findings, is a table of every finding of the project, worst first, each leading
-  to what it names - the variable's panel, the unit's, or the component's page - or saying
-  plainly when there is nowhere to go, as for a file that did not load or a types file the
-  interface has no page for yet.  A producing declaration without an identity is given one from
-  there, previewed like every other change.
+  to what it names - the variable's panel, the unit's, the type's, or the component's page - or
+  saying plainly when there is nowhere to go, as for a file that did not load.  A producing
+  declaration without an identity is given one from there, previewed like every other change.
 
   Every change the interface writes can be undone while the server runs, one change at a time,
   from a button beside the project's name saying what it would put back - "Undo the unit of
@@ -74,6 +73,16 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   and named, and its change stays on the list to be undone once the file is put back.  The list
   lives in the running server, is capped at fifty changes and ends when `ddd gui` does, which is
   the one thing it leaves behind: nothing is written into the project for it.
+
+  A fifth tab, Types, is every type the project declares - scalars, structures and the
+  external ones a vendor's header defines - with what each fixes, what it is used by, and
+  the findings filed on it.  What a scalar type fixes is changed from there, previewed like
+  every other change and undone the same way; a type is renamed everywhere it is named, its
+  own entry and every declaration and member spelling it, in one all-or-nothing edit, and a
+  name that c or the project has already spent is refused before anything is written, in the
+  same words the editor refuses it with.  A finding filed on a type's entry now leads to the
+  type it is about, and a declaration whose datatype, unit, conversion or limits a type
+  fixes says which type, and takes the reader there.
 
 * **The editor's reconcile quick fix is no longer offered for a value that already means what
   it would be set to.**  Taking the producing component's value, or spreading one declaration's

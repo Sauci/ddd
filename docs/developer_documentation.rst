@@ -894,19 +894,32 @@ that text - so the panel's values in play, ``definition-mismatch`` and what
 
 Where a finding leads is answered once, in ``ddd.finding_routes``, from the finding's own
 check, file and pointer, together with the file's own kind and whether it loaded: the
-variable a declaration is about, the unit a check such as ``unknown-unit`` names, or the
-component the finding is filed on - and nothing for a finding with nowhere to go, a file
-that did not load or one of a kind the page has no screen for among them. ``GET
-/api/state``, ``GET /api/variable`` and ``GET /api/unit`` all carry that answer on every
-finding they list. ``ddd.finding_fixes`` plans the one fix a finding has nowhere else to
-offer: a ``missing-id`` finding's identity, from the same walk ``ddd.identity.unstamped``
-gives ``ddd id`` and the language server's own quick fix, written as the operations ``POST
-/api/edit`` takes rather than as a text edit; ``GET /api/fix`` previews it, as ``GET
-/api/settle`` previews a settlement. ``ddd.lsp.edits.settle`` itself now compares what a
-value means rather than its own text, the same ``ddd.value_identity.same_value`` the panel's
-values in play already read - which is why ``ddd gui`` no longer narrows a settlement of its
-own: ``ddd.variables.narrowed`` is gone, the rule read from ``ddd.lsp.edits.settle`` alone
-now.
+variable a declaration is about, the unit a check such as ``unknown-unit`` names, the type
+an entry declares, or the component the finding is filed on - and nothing for a finding
+with nowhere to go, a file that did not load or one of a kind the page has no screen for
+among them. ``GET /api/state``, ``GET /api/variable``, ``GET /api/unit`` and ``GET
+/api/type`` all carry that answer on every finding they list. ``ddd.finding_fixes`` plans
+the one fix a finding has nowhere else to offer: a ``missing-id`` finding's identity, from
+the same walk ``ddd.identity.unstamped`` gives ``ddd id`` and the language server's own
+quick fix, written as the operations ``POST /api/edit`` takes rather than as a text edit;
+``GET /api/fix`` previews it, as ``GET /api/settle`` previews a settlement.
+``ddd.lsp.edits.settle`` itself now compares what a value means rather than its own text,
+the same ``ddd.value_identity.same_value`` the panel's values in play already read - which
+is why ``ddd gui`` no longer narrows a settlement of its own: ``ddd.variables.narrowed`` is
+gone, the rule read from ``ddd.lsp.edits.settle`` alone now.
+
+The types a project declares are read by ``ddd.project_types`` and changed by
+``ddd.type_plans``, the pair ``ddd.project_units`` and ``ddd.lsp.units`` already make for
+units. Neither indexes anything new: ``ddd.lsp.navigation.Index`` records every type's
+entry, every declaration and member naming one, and every c identifier the project has
+spent, and what a type *says* is read from the document at its entry. A rename is the
+editor's rename - ``rename_sites`` says which strings it rewrites and ``rename_problem``
+why a name may not be used, so the tab and the editor cannot disagree - planned as
+edit-engine operations rather than the text edits ``rename_edits`` answers, the way part
+4's identity fix is. ``GET /api/types`` lists them, ``GET /api/type`` answers one with its
+uses and its members, and ``GET /api/type-plan`` previews a change of either kind as
+``PlanReply``, which the page applies through ``POST /api/edit`` and part 5's stack puts
+back.
 
 The edit engine learnt one thing for adoption: a change whose ``fingerprint`` is ``null``
 creates its file, one ``set`` of the whole document at the root pointer, and is refused as

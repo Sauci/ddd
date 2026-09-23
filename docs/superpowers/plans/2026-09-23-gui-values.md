@@ -325,6 +325,33 @@ class TestWhatTheGridShows:
         session.stop()
         assert (grid.stated, grid.rows) == ("none", ((0, 0, 0, 0),))
 
+    def test_a_two_dimensional_object_with_no_init_is_a_grid_of_zeros(self, tmp_path) -> None:
+        # The other arm of the same filling: a shape with two dimensions, which nothing in
+        # examples/demo pairs with a scalar or an absent init.
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output", "Plane", kind="value_block", datatype="uint8", dimensions=[2, 3]
+                    ),
+                ),
+            },
+        )
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        revision = session.revision
+        assert revision is not None and revision.dictionary is not None
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        try:
+            grid = grid_of(revision.dictionary, built, "Plane")
+        finally:
+            session.stop()
+        assert (grid.stated, grid.shape) == ("none", (2, 3))
+        assert grid.rows == ((0, 0, 0), (0, 0, 0))
+
     def test_the_resolved_limits_travel_with_it(self, demo) -> None:
         dictionary, built = demo
         grid = grid_of(dictionary, built, "CurveA")
@@ -516,7 +543,7 @@ def _filled(scalar: float, shape: tuple[int, ...]) -> tuple[tuple[float, ...], .
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python -m pytest tests/test_object_values.py -q --no-cov`
-Expected: PASS, 10 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 5: Run the gate**
 

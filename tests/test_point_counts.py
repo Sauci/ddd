@@ -359,3 +359,67 @@ class TestTheC:
         }
         assert views["V"].dimensions == (4,)
         assert views["V"].point_counts == ()
+
+
+def a2l(tree: Path, tree_files: dict[str, Any]) -> str:
+    return generated(tree, tree_files)["P.a2l"]
+
+
+def layout(text: str, name: str) -> list[str]:
+    """The lines of one record layout, stripped."""
+    start = text.index(f"/begin RECORD_LAYOUT {name}\n")
+    end = text.index("/end RECORD_LAYOUT", start)
+    return [line.strip() for line in text[start:end].splitlines()[1:] if line.strip()]
+
+
+class TestTheA2l:
+    def test_a_counted_map_has_both_counts_ahead_of_its_values(self, tree: Path) -> None:
+        text = a2l(
+            tree,
+            files(
+                axis("AX", 8, "uint32"),
+                axis("AY", 11, "uint32"),
+                table("M", datatype="uint32"),
+                default="leading",
+            ),
+        )
+        assert layout(text, "RL_MAP_COUNTED_ULONG") == [
+            "NO_AXIS_PTS_X 1 ULONG",
+            "NO_AXIS_PTS_Y 2 ULONG",
+            "FNC_VALUES 3 ULONG ROW_DIR DIRECT",
+        ]
+        assert "MAP 0x00000000 RL_MAP_COUNTED_ULONG" in text
+
+    def test_a_counted_curve_has_one_count(self, tree: Path) -> None:
+        text = a2l(tree, files(axis("AX", 8), curve("C"), default="leading"))
+        assert layout(text, "RL_CURVE_COUNTED_UWORD") == [
+            "NO_AXIS_PTS_X 1 UWORD",
+            "FNC_VALUES 2 UWORD ROW_DIR DIRECT",
+        ]
+
+    def test_a_counted_axis_has_its_count_ahead_of_its_points(self, tree: Path) -> None:
+        text = a2l(tree, files(axis("AX", 8, "sint16"), default="leading"))
+        assert layout(text, "RL_AXIS_COUNTED_SWORD") == [
+            "NO_AXIS_PTS_X 1 SWORD",
+            "AXIS_PTS_X 2 SWORD INDEX_INCR DIRECT",
+        ]
+
+    def test_objects_of_one_kind_and_type_share_a_layout(self, tree: Path) -> None:
+        text = a2l(tree, files(axis("AX", 8), axis("AY", 11), default="leading"))
+        assert text.count("/begin RECORD_LAYOUT RL_AXIS_COUNTED_UWORD") == 1
+
+    def test_a_mixed_project_keeps_the_plain_layouts_for_the_rest(self, tree: Path) -> None:
+        tree_files = {
+            "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json", point_counts="leading"),
+            "a.ddd.json": component("A", axis("AX", 8)),
+            "b.ddd.json": component("B", axis("BX", 8), point_counts="none"),
+        }
+        text = a2l(tree, tree_files)
+        assert "RL_AXIS_COUNTED_UWORD" in text
+        assert layout(text, "RL_AXIS_UWORD") == ["AXIS_PTS_X 1 UWORD INDEX_INCR DIRECT"]
+
+    def test_no_static_record_layout_is_written(self, tree: Path) -> None:
+        """A tool removing points compacts the data behind the new count, which is what a
+        routine computing ``y * nx + x`` from the stored count expects."""
+        text = a2l(tree, files(axis("AX", 8), default="leading"))
+        assert "STATIC_RECORD_LAYOUT" not in text

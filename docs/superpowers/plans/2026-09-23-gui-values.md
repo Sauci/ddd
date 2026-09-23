@@ -1482,7 +1482,8 @@ Co-Authored-By: <model that wrote it> <noreply@anthropic.com>"
 | 6 | `827448b`, `e09c88a` | The screen, the address, the Shape column. The back link named the producer and returned somewhere else. |
 | 7 | `207641b` | Seven journeys, three clean runs of sixty-four. |
 | 8 | `da170a7`, `8c316d6` | The changelog and the developer page. Review found it naming one write path where `set_cell` has two; fixed, with the read-only grid named too. |
-| 9 | | The gate, clean: 3903 Python and 333 Vitest tests, 86 screenshots, 64 journeys three times, sphinx under `-W`. Driven by hand over a copy; the grid, the apply-undo cycle on disk, the row labels, the plain-text shape and the back link all held. |
+| 9 | `f2e73ce` | The gate, clean: 3903 Python and 333 Vitest tests, 86 screenshots, 64 journeys three times, sphinx under `-W`. Driven by hand over a copy; the grid, the apply-undo cycle on disk, the row labels, the plain-text shape and the back link all held. |
+| review | `898975c`, `04710f9`, `cef0c91`, `f3bc7cb`, `bd096f8`, `707d086`, `26568d0`, `23bb2dd`, `03956c3`, `a2b3847`, `c2e13f8` | The whole-branch review's one Critical and nine Importants, in three rounds. The grid could write into a file whose numbers were never shown; a three-dimensional object 500'd; an axis with no breakpoints drew no cells at all; Enter wrote; `1,5` planned a write of `1`; the axes were never named. Final gate, run again on the tip: **3909 Python, 358 Vitest, 86 screenshots unmoved, 68 journeys, sphinx clean.** |
 
 ## Left open
 

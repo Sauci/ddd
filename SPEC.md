@@ -257,6 +257,9 @@ rasters files and/or other (sub-)projects, and names the plugins the project run
 - `"extensions"` (optional): the settings of those plugins, keyed by plugin name - so
   each key matches `[a-z][a-z0-9_]*`, and one that does not is `schema`
   ([section 3.11](#311-plugins)).
+- `"point_counts"` (optional): `"none"` or `"leading"`, the default for every curve, map and
+  axis of the project; `"none"` when no project file states it. A component overrides it for
+  the curves, maps and axes it defines.
 
 An entry of `includes` that names an existing file **shall** be read as that file, whatever
 characters it contains; only an entry naming no file is read as a pattern. The two readings
@@ -293,6 +296,8 @@ The top level key `"component"` is required, and it contains the following eleme
 - `"raster"` (optional): the measurement raster every measurement this component produces
   is updated in, unless its definition states one of its own
   ([section 3.10](#310-measurement-rasters)); it applies to nothing the component reads.
+- `"point_counts"` (optional): `"none"` or `"leading"`, overriding the project's default for
+  the curves, maps and axes this component defines; it applies to nothing the component reads.
 - `"interface"` (required): the data interface, a list of declarations, each declaring one
   data object. The key is required with no default, so that a component with nothing to
   declare states an empty list rather than omitting a key that might merely have been
@@ -1924,7 +1929,7 @@ themselves, `IF_DATA` for CCP, and A2L *import* for migration and merging are *p
 ### 5.3 Data dictionary
 
 `ddd dump` publishes the resolved project as one JSON document, the contract between the
-checking front end and every backend, DDD's own and a project's. Its `format` is `8`: a
+checking front end and every backend, DDD's own and a project's. Its `format` is `9`: a
 whole number of at least 1, written as a number and not as text, of which a reader
 **shall** refuse a higher one and reads a lower one with the defaults of that format
 ([section 4.1](#41-comparing-two-deliveries)). A dictionary is read under the JSON rules a
@@ -1952,8 +1957,9 @@ own, else its component's default), `volatile`,
 `condition` (the producer's), `references` (the objects this one names, keyed by the role it
 names them in - `axis` for a curve, `x_axis` and `y_axis` for a map, `input` for an axis -
 and `{}` on an object that names none), `owner` (the component producing it, `null` only
-where no component does, which a consistent project has none of), `consumers`, `local` and
-`a2l` with `export` resolved to a boolean. An instance records `name`, `id`, `extensions`, `type`,
+where no component does, which a consistent project has none of), `consumers`, `local`,
+`point_counts` (`"none"` or `"leading"`, resolved for a curve, a map or an axis, `"none"`
+for every other kind) and `a2l` with `export` resolved to a boolean. An instance records `name`, `id`, `extensions`, `type`,
 `kind`, `description`, `shape`, `dimensions`, `volatile`, `section`, `raster`, `condition`,
 `owner`, `consumers`, `local` and `a2l`; a leaf records `path`, `instance`, `instance_id`,
 `kind`, `datatype`, `description`, `unit`, `conversion`, `limits`, `shape`, `dimensions`,

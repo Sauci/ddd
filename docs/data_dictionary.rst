@@ -179,12 +179,50 @@ plugin's own backend. See :doc:`plugins` for what a plugin does with them.
    own, or an inconsistent project generated with ``ddd generate --force``; the c backend
    files such an object under ``<unresolved>``. Every other field is always present.
 
+Point counts ahead of a table
+-----------------------------
+
+Some firmware stores the number of axis points *inside* every curve, map and axis, ahead of
+its data, in the object's own type - a 16 by 16 ``uint32`` map begins with its two counts::
+
+   8093841c  10000000 10000000 00000000 ...     a 16 x 16 map of uint32
+             nx = 16  ny = 16   then the 256 values
+
+``point_counts`` says whether an object is stored that way. It takes ``"none"``, the
+ordinary layout, or ``"leading"``. It may be stated once, on the project, as the default for
+every curve, map and axis; a component may state it again to override that default for the
+curves, maps and axes *it defines* - the producing declaration, exactly as a component's
+:doc:`raster <file_formats/rasters>` does. A reader of the object never influences it.
+
+A table resolved to ``"leading"`` is declared flat, counts first, in its own datatype:
+
+.. code-block:: c
+
+   const uint32_t M[2 + (16) * (16)] = { 16U, 16U, ... };
+
+and the a2l describes it with a record layout of its own, the counts ahead of the values it
+governs:
+
+.. code-block:: text
+
+   /begin RECORD_LAYOUT RL_MAP_COUNTED_ULONG
+     NO_AXIS_PTS_X 1 ULONG
+     NO_AXIS_PTS_Y 2 ULONG
+     FNC_VALUES 3 ULONG ROW_DIR DIRECT
+   /end RECORD_LAYOUT
+
+Two :doc:`consistency checks <consistency_checks>` come with the setting:
+``point-counts-unrepresentable`` refuses a table whose datatype cannot hold one of its
+counts, and ``point-counts-mismatch`` warns when a curve or a map resolves to one convention
+and one of its axes to the other. From format 9 on, every resolved object carries the
+``point_counts`` it was given, ``"none"`` for every kind but a curve, a map or an axis.
+
 The format field
 ----------------
 
 A dumped dictionary is meant to be archived next to a delivery and read back by a later
 version of DDD, possibly years later. The ``format`` field stamps the shape of the document
-- currently ``8`` - and changes only when that shape changes, not with every release of the
+- currently ``9`` - and changes only when that shape changes, not with every release of the
 tool.
 
 It exists so that a later reader can say *this file is newer than I understand* rather than
@@ -194,7 +232,7 @@ one that is newer:
 .. code-block:: text
 
    $ ddd compare baseline.json demo.ddd.json
-   baseline.json#format: error[schema]: in the baseline: this dictionary is in format 9, and this DDD understands up to 8; use a newer DDD to read it
+   baseline.json#format: error[schema]: in the baseline: this dictionary is in format 10, and this DDD understands up to 9; use a newer DDD to read it
    1 error
 
 Refusing is the only safe answer: reading the file anyway would compare a delivery against

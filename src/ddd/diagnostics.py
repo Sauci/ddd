@@ -227,7 +227,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "an object of the baseline is gone and somebody read it",
                comparison=True),
         _check("changed-interface", Severity.ERROR,
-               "kind, datatype, unit, scaling, shape, axes or locality of an object changed",
+               "kind, datatype, unit, scaling, shape, axes, locality or where a table keeps "
+               "its point counts changed",
                comparison=True),
         _check("reused-name", Severity.ERROR,
                "a name of the baseline now belongs to a different object",

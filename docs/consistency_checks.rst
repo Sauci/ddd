@@ -721,8 +721,9 @@ registry can be read in one place.
    * - ``changed-interface``
      - error
      - the kind, datatype, unit, scaling, shape, axes or locality of an object changed, or
-       the layout a released structure fixed for its consumers: the width of a bitfield, the
-       order of the members, or the type a structured variable names. Scaling compares an
+       where a table keeps its point counts, or the layout a released structure fixed for
+       its consumers: the width of a bitfield, the order of the members, or the type a
+       structured variable names. Scaling compares an
        enum by its name and its ordered enumerators, whose descriptions are documentation
        and are not compared.
    * - ``reused-name``

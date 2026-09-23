@@ -225,11 +225,11 @@ Test first, as every change here is.
 - **c:** the suffix and initialiser of a counted axis, curve and map; constant-spelled sizes and
   counts; `init: null`; `dimensions` and `point_counts` on counted and uncounted objects; an
   unchanged output for a project that never states the key.
-- **CMake:** compiles a project with a counted map and checks with `sizeof` and a read of the
-  first elements that the counts sit where the a2l says.
+- **CMake:** compiles a project with a counted map and checks with `sizeof` that the counts
+  sit ahead of the data; `tests/test_point_counts.py::TestTheC` covers the values and order.
 - **a2l:** the three layouts, their names shared between objects of one kind and type, and a
   mixed project.
-- **compare:** a changed convention reports `changed-storage`.
+- **compare:** a changed convention reports `changed-interface`.
 - Coverage stays at 100 %.
 
 ## 9 Out of scope

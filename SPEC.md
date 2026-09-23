@@ -1528,9 +1528,10 @@ compile:
 
 - `removed-object`: an object is gone that a component read.
 - `changed-interface`: kind, datatype, unit, scaling, shape, referenced objects, locality,
-  the width of a bitfield, the `type` a structured variable names or the order of a
-  structure's members changed. Scaling is the conversion, compared by its kind and by its
-  parameters, and an enum by its name together with its enumerators in order; a description,
+  where a table keeps its point counts, the width of a bitfield, the `type` a structured
+  variable names or the order of a structure's members changed. Scaling is the conversion,
+  compared by its kind and by its parameters, and an enum by its name together with its
+  enumerators in order; a description,
   of an object or of an enumerator, is documentation and is never compared. An enum inside a
   project compares by its name alone ([section 4](#4-consistency-checks)), because
   `enum-conflict` owns the enumerators there and reporting them twice said nothing; a
@@ -1810,10 +1811,14 @@ ASAM MCD-2 MC output containing:
   and no `MATRIX_DIM`; a string measurement is the `UBYTE` or `SBYTE` array it is, with its
   `MATRIX_DIM` and an `ANNOTATION` labelled `string` saying that the format has no string
   measurement, which no version of it has.
-- `RECORD_LAYOUT` per datatype and storage category - the two things a record layout can
-  describe, the values of an object and the points of an axis; maps are stored row wise, that is the
-  C declaration is `[y][x]` and the A2L index mode is `ROW_DIR`. An axis layout states
-  `INDEX_INCR DIRECT` and a value layout `ROW_DIR DIRECT`.
+- `RECORD_LAYOUT` per datatype and storage category - the values of an object, the points of
+  an axis, or, when a curve, map or axis resolves `point_counts` to `leading`, its own count
+  ahead of that same data; maps are stored row wise, that is the C declaration is `[y][x]`
+  and the A2L index mode is `ROW_DIR`. An axis layout states `INDEX_INCR DIRECT` and a value
+  layout `ROW_DIR DIRECT`. A counted layout states `NO_AXIS_PTS_X` (and, for a map,
+  `NO_AXIS_PTS_Y`) ahead of `FNC_VALUES` or `AXIS_PTS_X`, each in the object's own datatype,
+  matching the C declaration that puts the counts first; no `STATIC_RECORD_LAYOUT` is
+  written for one, since a tool removing points compacts the data behind the new count.
 - `AXIS_DESCR` with `COM_AXIS` and `AXIS_PTS_REF` for the axis of a curve or map.
 - `COMPU_METHOD` shared between objects with the same conversion, unit and default display
   format - an integer and a float object under one conversion therefore share a method
@@ -1867,7 +1872,9 @@ state (`ddd generate a2l --byte-order little|big`, default little, emitted as
 and a tool reading multi byte values under the wrong one misreads every value.
 
 Generated identifiers are deterministic: record layouts `RL_VALUES_<TYPE>` and
-`RL_AXIS_<TYPE>` per datatype and storage category, computation methods `CM_<enum>`,
+`RL_AXIS_<TYPE>` per datatype and storage category, or, for one whose objects resolve
+`point_counts` to `leading`, `RL_MAP_COUNTED_<TYPE>`, `RL_CURVE_COUNTED_<TYPE>` and
+`RL_AXIS_COUNTED_<TYPE>`; computation methods `CM_<enum>`,
 `CM_LIN_<unit>` and `CM_IDENT_<unit>`, the unit slugged into identifier characters with
 `_2`, `_3` appended on a collision, and one `COMPU_VTAB` named `VTAB_<enum>` per enum a
 record refers to. The suffix is added when the generated name collides - two linear

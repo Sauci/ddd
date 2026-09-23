@@ -192,7 +192,10 @@ its data, in the object's own type - a 16 by 16 ``uint32`` map begins with its t
 ordinary layout, or ``"leading"``. It may be stated once, on the project, as the default for
 every curve, map and axis; a component may state it again to override that default for the
 curves, maps and axes *it defines* - the producing declaration, exactly as a component's
-:doc:`raster <file_formats/rasters>` does. A reader of the object never influences it.
+:doc:`raster <file_formats/rasters>` does. A reader of the object never influences it. A
+component read on its own - a standalone ``ddd dump``, ``list`` or ``generate`` of a
+component file - has no project to take a default from, so its tables resolve to
+``"none"`` unless the component states the key itself.
 
 A table resolved to ``"leading"`` is declared flat, counts first, in its own datatype:
 

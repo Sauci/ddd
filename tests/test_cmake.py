@@ -687,8 +687,9 @@ target_include_directories(alone PRIVATE "{output.as_posix()}")
     def test_a_table_keeping_its_counts_compiles_with_them_in_front(self, tmp_path: Path) -> None:
         """The flat declaration, its initialiser and the extern in the component header agree
         with one another under the full warning set - ``-Wconversion`` included, which is what
-        a count spelled as a constant's name meets - and a static assertion pins the size and
-        the first elements to what the a2l's NO_AXIS_PTS_X / NO_AXIS_PTS_Y say."""
+        a count spelled as a constant's name meets - and a static assertion pins the size the
+        counts add ahead of the data. ``tests/test_point_counts.py::TestTheC`` is what checks
+        the values and their order."""
         (tmp_path / "k.ddd.json").write_text(
             json.dumps({"constants": [{"name": "NX", "value": 8}]}), encoding="utf-8"
         )

@@ -973,6 +973,11 @@ edit-engine operations rather than the text edits <code class="docutils literal 
 identity fix does. <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/types</span></code> lists them, <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/type</span></code> answers one with its
 uses and its members, and <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/type-plan</span></code> previews a change of either kind as
 <code class="docutils literal notranslate"><span class="pre">PlanReply</span></code>, which the page applies through <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/edit</span></code> and the undo puts back.</p>
+<p><code class="docutils literal notranslate"><span class="pre">ddd.declaration_plans</span></code> sits beside <code class="docutils literal notranslate"><span class="pre">ddd.type_plans</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd.project_units</span></code>: a
+component may add a declaration of a variable the project already declares or of a new
+object of one of the six kinds, and its three verbs take a file, a name and a scope to
+read one; a file, a scope and a definition to declare one; and a file and a name to
+remove one.</p>
 <p>The edit engine learnt one thing for adoption: a change whose <code class="docutils literal notranslate"><span class="pre">fingerprint</span></code> is <code class="docutils literal notranslate"><span class="pre">null</span></code>
 creates its file, one <code class="docutils literal notranslate"><span class="pre">set</span></code> of the whole document at the root pointer, and is refused as
 <code class="docutils literal notranslate"><span class="pre">stale</span></code> if the file exists by the time the edit is made. It is staged and renamed into

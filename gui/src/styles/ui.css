@@ -223,6 +223,24 @@ tr.changing td {
   color: var(--ok);
 }
 
+/* DimensionsField: a value block's shape, one field per dimension with a Remove beside it and
+   an Add a dimension under them. A fieldset for the group semantics, with its default border,
+   margin and padding cleared - the frame here is the panel's, not a nested one of its own. */
+.dimensions-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.dimension-row {
+  display: flex;
+  align-items: end;
+  gap: var(--space-2);
+}
+
 /* ComboBox: a labelled field that opens a popover of sectioned choices, and takes any typed
    text. The popover's width tracks the field's through React Aria's own --trigger-width. */
 .combo {
@@ -488,6 +506,17 @@ tr.changing td {
 }
 .key-range input:disabled {
   background: var(--ground);
+}
+
+/* DeclarePanelView: the name and scope fields, and - once a new name is typed - the kind and its
+   keys, stack with the same rhythm as a panel's other sections: .panel-offer's own margin-top,
+   and a gap a step wider than .dimensions-field's and .key-chooser's - those separate the parts
+   of one field (a shape's rows, a chooser and its range), this one separates distinct fields. */
+.declare-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
 }
 
 /* Ladle only: a row of widgets with a gap, for a story that shows several at once. */

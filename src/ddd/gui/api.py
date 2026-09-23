@@ -23,6 +23,18 @@ from typing import Any, Final
 from pydantic import BaseModel, ValidationError
 
 from ddd import __version__
+from ddd.declaration_plans import (
+    KINDS,
+    SCOPES,
+    DeclarationPlan,
+    DeclarationRefusalError,
+    declarable,
+    declare_object,
+    form_for,
+    read_object,
+    remove_declaration,
+    scopes_for,
+)
 from ddd.diagnostics import CHECKS
 from ddd.editing import (
     INVALID,
@@ -48,6 +60,7 @@ from ddd.gui.session import (
     Session,
     SourceFile,
     Undoable,
+    _source,
     find_projects,
 )
 from ddd.lsp.edits import PROPAGATED_KEYS, settle
@@ -117,6 +130,15 @@ TYPE_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
 }
 """What each change of a type takes, beside the action itself. ``set`` takes ``raw`` too, which
 may be absent: leaving a key out is what its absence means."""
+
+DECLARATION_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
+    "read": ("file", "name", "scope"),
+    "declare": ("file", "scope", "definition"),
+    "remove": ("file", "name"),
+}
+"""Which query parameters each action of ``GET /api/declaration-plan`` takes."""
+
+_NOTHING_LOADED: Final = "the open project did not load, so no interface of it can be changed"
 
 type Query = Mapping[str, Sequence[str]]
 
@@ -723,6 +745,89 @@ class Api:
             contract.FixReply(revision=revision.number, fixes=offered).model_dump(mode="json"),
         )
 
+    def _declarable(self, query: Query, body: bytes | None) -> Reply:
+        path = _single(query.get("file"))
+        if not path:
+            return _error(400, "bad-request", "declarable takes ?file=")
+        revision = self._opened()
+        try:
+            file = _source(revision, Path(path))
+        except NotInProjectError as outside:
+            return _error(404, "not-found", str(outside))
+        built = revision.index
+        if built is None:
+            return _error(409, UNREADABLE, _NOTHING_LOADED)
+        if not any(entry.path == file and entry.kind == "component" for entry in revision.files):
+            return _error(409, "invalid", f"{file.name} is not a component of the open project")
+        cache: dict[Path, Document] = {}
+        return Reply(
+            200,
+            contract.DeclarableReply(
+                revision=revision.number,
+                file=file.as_posix(),
+                names=tuple(
+                    contract.DeclarableName(
+                        name=entry.name,
+                        kind=entry.kind,
+                        producer=entry.producer,
+                        scopes=scopes_for(built, entry.name),
+                    )
+                    for entry in declarable(built, file, cache)
+                ),
+                kinds=tuple(
+                    # `asdict`, exactly as `_variable` already converts its offers: the
+                    # dataclasses of `ddd.variable_keys` are the contract's models field for
+                    # field, and the contract validates what comes out, so a name that drifts
+                    # apart fails here rather than reaching the page.
+                    contract.KindForm(
+                        kind=kind, keys=[asdict(offer) for offer in form_for(built, kind)]
+                    )
+                    for kind in KINDS
+                ),
+                scopes=SCOPES,
+                constants=tuple(sorted(built.constants)),
+            ).model_dump(mode="json"),
+        )
+
+    def _declaration_plan(self, query: Query, body: bytes | None) -> Reply:
+        action = _single(query.get("action")) or ""
+        takes = DECLARATION_PLANS.get(action)
+        if takes is None:
+            return _error(
+                400,
+                "bad-request",
+                f"declaration-plan takes ?action= one of {', '.join(DECLARATION_PLANS)}",
+            )
+        given = {part: value for part in takes if (value := _single(query.get(part))) is not None}
+        if len(given) < len(takes):
+            wanted = " and ".join(f"?{part}=" for part in takes)
+            return _error(400, "bad-request", f"{action} takes {wanted}")
+        revision = self._opened()
+        try:
+            file = _source(revision, Path(given["file"]))
+        except NotInProjectError as outside:
+            return _error(404, "not-found", str(outside))
+        built = revision.index
+        if built is None:
+            return _error(409, UNREADABLE, _NOTHING_LOADED)
+        cache: dict[Path, Document] = {}
+        try:
+            plan = _declaration_plan_of(action, built, file, given, cache)
+        except DeclarationRefusalError as refused:
+            status = 404 if refused.code == "not-found" else 409
+            return _error(status, refused.code, refused.message)
+        stamps = {entry.path.resolve(): entry.fingerprint for entry in revision.files}
+        try:
+            planned = previewed(plan.edits, stamps)
+        except EditError as refused:
+            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+        return Reply(
+            200,
+            contract.PlanReply(
+                revision=revision.number, changes=_planned_changes(planned)
+            ).model_dump(mode="json"),
+        )
+
     def _opened(self) -> Revision:
         revision = self.session.revision
         if revision is None:
@@ -771,6 +876,8 @@ _ROUTES: Final[dict[str, dict[str, Answer]]] = {
     "/api/types": {"GET": Api._types},
     "/api/type": {"GET": Api._type},
     "/api/type-plan": {"GET": Api._type_plan},
+    "/api/declarable": {"GET": Api._declarable},
+    "/api/declaration-plan": {"GET": Api._declaration_plan},
 }
 
 
@@ -913,6 +1020,27 @@ def _type_plan_of(
     if action == "set":
         return set_key(built, given["name"], given["key"], raw, cache)
     return rename_type(built, given["name"], given["to"], cache)
+
+
+def _declaration_plan_of(
+    action: str,
+    built: Index,
+    file: Path,
+    given: Mapping[str, str],
+    cache: dict[Path, Document],
+) -> DeclarationPlan:
+    """The plan ``action`` names, over the parameters :data:`DECLARATION_PLANS` says it takes."""
+    if action == "read":
+        return read_object(built, file, given["name"], given["scope"], cache)
+    if action == "remove":
+        return remove_declaration(built, file, given["name"], cache)
+    try:
+        definition = json.loads(given["definition"])
+    except json.JSONDecodeError as malformed:
+        raise DeclarationRefusalError("invalid", "the definition is not json") from malformed
+    if not isinstance(definition, dict):
+        raise DeclarationRefusalError("invalid", "the definition is not json")
+    return declare_object(built, file, given["scope"], definition, cache)
 
 
 def _planned_changes(planned: Sequence[Planned]) -> list[dict[str, Any]]:

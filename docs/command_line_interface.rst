@@ -293,7 +293,10 @@ The commands
        maintaining its vocabulary - and a Findings tab of every finding, worst first,
        one tab away; a variable's panel shows every key its declarations share, says
        which of them they disagree about, and settles one on every declaration at
-       once. A Types tab lists the types the project declares, with what each
+       once. A component's page adds a declaration to its interface - a variable
+       already declared, carrying the producer's keys where there is one and the
+       project's own where there is not, or a new object of one of six kinds - and
+       takes one away. A Types tab lists the types the project declares, with what each
        fixes and what names it; what a scalar type fixes is changed there, and
        renaming one rewrites every declaration and member naming it in one edit.
        Every change is written into the files in their own layout and checked

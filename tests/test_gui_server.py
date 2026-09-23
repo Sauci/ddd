@@ -574,6 +574,23 @@ class TestEveryEndpointOnTheDemo:
         }
         assert disagreeing == {"controller.ddd.json", "sensor_hub.ddd.json"}
 
+    def test_the_declarable_names_and_a_plan_of_one(self, demo) -> None:
+        server, root = demo
+        controller = (root / "components" / "controller.ddd.json").as_posix()
+        answer = answered(server, "GET", f"/api/declarable?file={quote(controller)}")
+        assert [entry["name"] for entry in answer["names"]][:2] == ["BlockA", "CurveB"]
+        assert next(form["kind"] for form in answer["kinds"]) == "measurement"
+        # Every field of the reply crosses the wire, `constants` included - empty here because
+        # examples/demo declares none, but present, which is what the page reads a value
+        # block's dimension rows from.
+        assert answer["constants"] == []
+        planned = answered(
+            server,
+            "GET",
+            f"/api/declaration-plan?action=read&file={quote(controller)}&name=ValueC&scope=input",
+        )
+        assert len(planned["changes"]) == 1
+
 
 class TestBlankParameters:
     """A parameter given with no value reaches the api as the empty text: clearing a unit's

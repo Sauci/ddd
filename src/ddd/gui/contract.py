@@ -40,6 +40,8 @@ __all__ = [
     "Changes",
     "CheckInfo",
     "ChecksReply",
+    "DeclarableName",
+    "DeclarableReply",
     "DictionaryReply",
     "EditReply",
     "EditedFile",
@@ -56,6 +58,7 @@ __all__ = [
     "GraphModule",
     "GraphReply",
     "Hunk",
+    "KindForm",
     "Note",
     "OpenProject",
     "OpenRequest",
@@ -874,6 +877,58 @@ class TypeReply(_Frozen):
     findings: tuple[Finding, ...]
 
 
+# --- GET /api/declarable ---------------------------------------------------------------------
+
+
+class DeclarableName(_Frozen):
+    """One variable a component could read, as its name field offers it."""
+
+    name: str
+    kind: str
+    """``measurement`` … ``axis``, or empty when no declaration of it states one."""
+
+    producer: str | None
+    """The component producing it; ``null`` when nothing does."""
+
+    scopes: tuple[str, ...]
+    """Which scopes this name may be declared with here, in the form's own order: reading
+    always, producing only while nothing produces it, and never a local beside another
+    declaration."""
+
+
+class KindForm(_Frozen):
+    """What one kind of object asks for when it is declared new."""
+
+    kind: str
+    keys: tuple[VariableKeyOffer, ...]
+    """One offer per key the kind accepts, with no value in play: the same shape a variable's
+    panel draws, so one chooser draws both."""
+
+
+class DeclarableReply(_Frozen):
+    """What ``GET /api/declarable`` answers: what this component may add to its interface."""
+
+    revision: int
+    file: str
+    """Absolute, posix-separated path of the component asked about."""
+
+    names: tuple[DeclarableName, ...]
+    kinds: tuple[KindForm, ...]
+    scopes: tuple[str, ...]
+    """What a name the project has never seen may be declared with."""
+
+    constants: tuple[str, ...]
+    """Every constant the project declares, by name, sorted: what a ``dimensions`` row offers
+    beside a whole number typed.
+
+    Its own field rather than the ``choices`` of the ``dimensions`` offer, which ``KeyOffer``
+    leaves empty: ``variable_keys`` answers the same offer to a variable's panel, where
+    ``dimensions`` is the key that panel deliberately does not edit, and widening a shared
+    answer to serve one caller would change what the other is told. A value block's shape is
+    the one place this form asks for a size per dimension, and the names it may use are a fact
+    about the project rather than about any one key."""
+
+
 # --- GET /api/undo and POST /api/undo -------------------------------------------------------
 
 
@@ -1082,6 +1137,7 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (UnitReply, "serialization"),
     (TypesReply, "serialization"),
     (TypeReply, "serialization"),
+    (DeclarableReply, "serialization"),
     (PlanReply, "serialization"),
 )
 """Every request and response of spec section 6.5, with the schema pydantic builds for each:

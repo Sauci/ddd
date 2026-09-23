@@ -1,4 +1,5 @@
 import type { SettleReply, UnitsReply, VariableReply } from "../api/types";
+import { removalSentence } from "../lib/declarations";
 import { distinctFindings, keyedFindings, namesThisVariable, routeHref } from "../lib/findings";
 import { consequence, declaredUnits, shownChanges } from "../lib/units";
 import { describeVariable, offerOf } from "../lib/variableKeys";
@@ -7,6 +8,7 @@ import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
 import { Changes } from "./Changes";
 import { KeyChooser, type KeyChooserProps } from "./KeyChooser";
+import type { Offer } from "./UnitPanelView";
 import { VariableKeysTable } from "./VariableKeysTable";
 
 export interface VariablePanelViewProps
@@ -24,12 +26,25 @@ export interface VariablePanelViewProps
   changesShown: boolean;
   onChangesShown: (shown: boolean) => void;
   onApply: () => void;
+  /** What removing this declaration from this component would take, and how to act on it.
+   * Absent on a screen that offers no removal - the graph's panel, where no one component is
+   * in view. */
+  removal?:
+    | {
+        offer: Offer;
+        /** Which component the removal would take it from, for the sentence and the label. */
+        from: string;
+        shown: boolean;
+        onShown: (shown: boolean) => void;
+        onRemove: () => void;
+      }
+    | undefined;
   onClose: () => void;
 }
 
 /** One variable's panel, drawn from what the api answered: a picture of its props. */
 export function VariablePanelView(props: VariablePanelViewProps) {
-  const { variable, units, preview, refusal, selected } = props;
+  const { variable, units, preview, refusal, selected, removal } = props;
   const changes = preview?.changes ?? [];
   const offer = selected === undefined ? undefined : offerOf(variable, selected);
   return (
@@ -86,26 +101,62 @@ export function VariablePanelView(props: VariablePanelViewProps) {
           />
         )
       )}
-      {refusal !== null ? (
-        <p className="panel-refusal" role="status">
-          {refusal}
-        </p>
-      ) : (
-        selected !== undefined &&
-        preview !== null && <p className="consequence">{consequence(changes)}</p>
-      )}
-      {refusal === null && changes.length > 0 && (
-        <>
-          {props.changesShown && <Changes changes={shownChanges(changes)} />}
-          <div className="panel-actions">
-            <Button variant="link" onPress={() => props.onChangesShown(!props.changesShown)}>
-              {props.changesShown ? "Hide changes" : "Show changes"}
-            </Button>
-            <Button variant="primary" isDisabled={props.busy} onPress={props.onApply}>
-              Apply to {changes.length} file{changes.length === 1 ? "" : "s"}
-            </Button>
-          </div>
-        </>
+      {/* No `panel-offer` class here (unlike the removal section below): `.consequence` and
+          `.panel-refusal` already carry the rhythm's own margin-top (ui.css), and adding a
+          second one on top would move every `VariablePanelView` screenshot reference. This
+          section exists so a reader - and a locator - can tell this block's "Show changes" from
+          the removal offer's own, below. */}
+      <section aria-label="Settle the key">
+        {refusal !== null ? (
+          <p className="panel-refusal" role="status">
+            {refusal}
+          </p>
+        ) : (
+          selected !== undefined &&
+          preview !== null && <p className="consequence">{consequence(changes)}</p>
+        )}
+        {refusal === null && changes.length > 0 && (
+          <>
+            {props.changesShown && <Changes changes={shownChanges(changes)} />}
+            <div className="panel-actions">
+              <Button variant="link" onPress={() => props.onChangesShown(!props.changesShown)}>
+                {props.changesShown ? "Hide changes" : "Show changes"}
+              </Button>
+              <Button variant="primary" isDisabled={props.busy} onPress={props.onApply}>
+                Apply to {changes.length} file{changes.length === 1 ? "" : "s"}
+              </Button>
+            </div>
+          </>
+        )}
+      </section>
+      {removal !== undefined && (
+        <section className="panel-offer" aria-label="Remove the declaration">
+          <p className="consequence">{removalSentence(variable, removal.from)}</p>
+          {removal.offer.refusal !== null && (
+            <p className="panel-refusal" role="status">
+              {removal.offer.refusal}
+            </p>
+          )}
+          {removal.offer.refusal === null &&
+            removal.offer.plan !== null &&
+            removal.offer.plan.changes.length > 0 && (
+              <>
+                {removal.shown && <Changes changes={shownChanges(removal.offer.plan.changes)} />}
+                <div className="panel-actions">
+                  <Button variant="link" onPress={() => removal.onShown(!removal.shown)}>
+                    {removal.shown ? "Hide changes" : "Show changes"}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    isDisabled={props.busy || removal.offer.pending}
+                    onPress={removal.onRemove}
+                  >
+                    Remove from {removal.from}
+                  </Button>
+                </div>
+              </>
+            )}
+        </section>
       )}
     </Panel>
   );

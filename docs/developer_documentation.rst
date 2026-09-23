@@ -920,6 +920,12 @@ identity fix does. ``GET /api/types`` lists them, ``GET /api/type`` answers one 
 uses and its members, and ``GET /api/type-plan`` previews a change of either kind as
 ``PlanReply``, which the page applies through ``POST /api/edit`` and the undo puts back.
 
+``ddd.declaration_plans`` sits beside ``ddd.type_plans`` and ``ddd.project_units``: a
+component may add a declaration of a variable the project already declares or of a new
+object of one of the six kinds, and its three verbs take a file, a name and a scope to
+read one; a file, a scope and a definition to declare one; and a file and a name to
+remove one.
+
 The edit engine learnt one thing for adoption: a change whose ``fingerprint`` is ``null``
 creates its file, one ``set`` of the whole document at the root pointer, and is refused as
 ``stale`` if the file exists by the time the edit is made. It is staged and renamed into

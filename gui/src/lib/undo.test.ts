@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Finding, UndoneChange } from "../api/types";
 import {
+  declareLabel,
   fixLabel,
+  removeLabel,
   settleLabel,
   shownUndo,
   typeLabel,
@@ -46,6 +48,17 @@ describe("what an edit is called", () => {
     expect(typeLabel({ action: "rename", name: "Sensor_t", to: "Probe_t" })).toBe(
       "the rename of 'Sensor_t' to 'Probe_t'",
     );
+  });
+
+  it("names a declaration added to a component's interface", () => {
+    expect(declareLabel("read", "ValueC", "Controller")).toBe("reading ValueC into Controller");
+    expect(declareLabel("declare", "Pressure", "Controller")).toBe(
+      "declaring Pressure in Controller",
+    );
+  });
+
+  it("names a declaration taken out of a component's interface", () => {
+    expect(removeLabel("ValueB", "Controller")).toBe("removing ValueB from Controller");
   });
 
   it("names the declaration an identity was given to", () => {

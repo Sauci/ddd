@@ -11,6 +11,7 @@ import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
+import { DeclarePanel } from "./DeclarePanel";
 import { UndoStrip } from "./UndoStrip";
 import { VariablePanel } from "./VariablePanel";
 
@@ -35,6 +36,10 @@ export function ComponentPage({ file, variable, state, stopped, onVariable, onOp
   // above the table until another variable is selected or the reader leaves this page - for
   // another component's page as well.
   const [undeclared, setUndeclared] = useState<{ file: string; name: string } | null>(null);
+  // The add-a-declaration form is open. The panel slot holds one panel at a time (part 6's task
+  // 9 lesson): opening this one clears any selected variable, and selecting a variable - by any
+  // of the table's own three ways to one - closes this one.
+  const [adding, setAdding] = useState(false);
   if (undeclared !== null && undeclared.file !== file) setUndeclared(null);
   const content = useQuery({
     queryKey: ["file", file, state?.revision],
@@ -64,6 +69,7 @@ export function ComponentPage({ file, variable, state, stopped, onVariable, onOp
       event.preventDefault();
       setFocusPicker(null);
       setUndeclared(null);
+      setAdding(false);
       onVariable(name);
     };
 
@@ -88,11 +94,21 @@ export function ComponentPage({ file, variable, state, stopped, onVariable, onOp
   const selected = new Set(rows.filter((row) => row.name === variable).map((row) => row.id));
 
   return (
-    <section className={variable === undefined ? undefined : "with-panel"}>
+    <section className={variable === undefined && !adding ? undefined : "with-panel"}>
       <div>
         <div className="heading">
           <h1>{name}</h1>
           <UndoStrip state={state} stopped={stopped} />
+          <Button
+            variant="secondary"
+            isDisabled={stopped}
+            onPress={() => {
+              setAdding(true);
+              onVariable(undefined);
+            }}
+          >
+            Add a declaration
+          </Button>
         </div>
         {undeclared !== null && (
           <Banner tone="warning">
@@ -107,6 +123,7 @@ export function ComponentPage({ file, variable, state, stopped, onVariable, onOp
             const key = keys === "all" ? undefined : [...keys][0];
             setFocusPicker(null);
             setUndeclared(null);
+            setAdding(false);
             onVariable(rows.find((row) => row.id === key)?.name);
           }}
         >
@@ -140,6 +157,7 @@ export function ComponentPage({ file, variable, state, stopped, onVariable, onOp
                     onPress={() => {
                       setFocusPicker((request) => (request ?? 0) + 1);
                       setUndeclared(null);
+                      setAdding(false);
                       onVariable(row.name);
                     }}
                   >
@@ -193,6 +211,7 @@ export function ComponentPage({ file, variable, state, stopped, onVariable, onOp
         <VariablePanel
           key={variable}
           name={variable}
+          file={file}
           revision={state?.revision}
           stopped={stopped}
           focusPicker={focusPicker}
@@ -202,6 +221,20 @@ export function ComponentPage({ file, variable, state, stopped, onVariable, onOp
             onVariable(undefined);
           }}
           onOpenType={onOpenType}
+        />
+      )}
+      {adding && (
+        <DeclarePanel
+          file={file}
+          component={name}
+          revision={state?.revision}
+          stopped={stopped}
+          onClose={() => setAdding(false)}
+          onDeclared={(declared) => {
+            setAdding(false);
+            setUndeclared(null);
+            onVariable(declared);
+          }}
         />
       )}
     </section>

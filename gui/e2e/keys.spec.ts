@@ -33,7 +33,10 @@ test("a conversion drifted from outside is carried back from the producer", asyn
   const field = panel.getByRole("combobox", { name: "Conversion of ValueA" });
   await expect(field).toHaveValue("linear ×0.5");
   await expect(panel.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
-  await panel.getByRole("button", { name: "Show changes" }).click();
+  // Scoped to the key chooser's own region: the removal offer beside it (part 7) carries a
+  // second "Show changes" of its own.
+  const settle = panel.getByRole("region", { name: "Settle the key" });
+  await settle.getByRole("button", { name: "Show changes" }).click();
   await expect(panel.locator(".hunk .added")).toContainText("0.5");
 
   await panel.getByRole("button", { name: "Apply to 1 file" }).click();
@@ -81,7 +84,12 @@ test("a limits row the panel opens by itself settles on the producer's range", a
   await expect(panel.getByLabel("Min")).toHaveValue("0");
   await expect(panel.getByLabel("Max")).toHaveValue("100");
   await expect(panel.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
-  await panel.getByRole("button", { name: "Show changes" }).click();
+  // Scoped to the key chooser's own region, as above: the removal offer carries a "Show
+  // changes" of its own too.
+  await panel
+    .getByRole("region", { name: "Settle the key" })
+    .getByRole("button", { name: "Show changes" })
+    .click();
   await expect(panel.locator(".hunk .added")).toContainText('"max": 100');
   // Nothing is written until Apply, and both files still state the limits they had.
   expect(valueA(gui.directory, SENSOR_HUB).limits).toEqual({ min: 0, max: 100 });

@@ -262,6 +262,9 @@ function Canvas({
         <VariablePanel
           key={variable}
           name={variable}
+          // No one component is in view on this screen, so there is no file to offer a removal
+          // from - Task 7's optional prop on `VariablePanelView` then draws no offer at all.
+          file={undefined}
           revision={revision}
           stopped={stopped}
           focusPicker={null}

@@ -1,6 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
 import {
   ApiError,
+  getDeclarable,
+  getDeclarationPlan,
   getFile,
   getFix,
   getGraph,
@@ -109,6 +111,19 @@ describe("requests to the server", () => {
     await getTypePlan({ action: "set", name: "Temperature_t", key: "unit", raw: '"K"' }, fetchImpl);
     await getTypePlan({ action: "set", name: "Temperature_t", key: "unit", raw: null }, fetchImpl);
     await getTypePlan({ action: "rename", name: "Sensor_t", to: "Probe_t" }, fetchImpl);
+    await getDeclarable("/tmp/c.ddd.json", fetchImpl);
+    await getDeclarationPlan(
+      { action: "read", file: "/tmp/c.ddd.json", name: "ValueC", scope: "input" },
+      fetchImpl,
+    );
+    await getDeclarationPlan(
+      { action: "remove", file: "/tmp/c.ddd.json", name: "ValueA" },
+      fetchImpl,
+    );
+    await getDeclarationPlan(
+      { action: "declare", file: "/tmp/c.ddd.json", scope: "output", definition: '{"name":"P"}' },
+      fetchImpl,
+    );
     await postEdit(
       {
         changes: [{ file: "a", fingerprint: "x", operations: [{ op: "remove", pointer: "a" }] }],
@@ -159,6 +174,19 @@ describe("requests to the server", () => {
       ],
       ["/api/type-plan?action=set&name=Temperature_t&key=unit", { credentials: "same-origin" }],
       ["/api/type-plan?action=rename&name=Sensor_t&to=Probe_t", { credentials: "same-origin" }],
+      ["/api/declarable?file=%2Ftmp%2Fc.ddd.json", { credentials: "same-origin" }],
+      [
+        "/api/declaration-plan?action=read&file=%2Ftmp%2Fc.ddd.json&name=ValueC&scope=input",
+        { credentials: "same-origin" },
+      ],
+      [
+        "/api/declaration-plan?action=remove&file=%2Ftmp%2Fc.ddd.json&name=ValueA",
+        { credentials: "same-origin" },
+      ],
+      [
+        "/api/declaration-plan?action=declare&file=%2Ftmp%2Fc.ddd.json&scope=output&definition=%7B%22name%22%3A%22P%22%7D",
+        { credentials: "same-origin" },
+      ],
       [
         "/api/edit",
         {

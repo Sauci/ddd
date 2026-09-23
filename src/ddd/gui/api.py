@@ -14,6 +14,7 @@ never a hand-assembled ``dict`` - so the shape answered here and the shape
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
@@ -63,6 +64,15 @@ from ddd.lsp.units import (
     rename_unit,
     unit_project,
 )
+from ddd.project_types import (
+    SCALAR_KEYS,
+    fixed_by,
+    located_in_type,
+    members_of,
+    row_of,
+    type_rows,
+    uses_of,
+)
 from ddd.project_units import (
     adoptable,
     description_of,
@@ -71,7 +81,8 @@ from ddd.project_units import (
     previewed,
     unit_rows,
 )
-from ddd.variable_keys import offers
+from ddd.type_plans import REQUIRED, TypePlan, TypeRefusalError, rename_type, set_key
+from ddd.variable_keys import offer_for, offers
 from ddd.variables import (
     Planned,
     declarations_of,
@@ -99,6 +110,13 @@ UNIT_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
 }
 """The changes ``GET /api/unit-plan`` previews, each with the parameters it takes besides
 ``action``."""
+
+TYPE_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
+    "set": ("name", "key"),
+    "rename": ("name", "to"),
+}
+"""What each change of a type takes, beside the action itself. ``set`` takes ``raw`` too, which
+may be absent: leaving a key out is what its absence means."""
 
 type Query = Mapping[str, Sequence[str]]
 
@@ -504,7 +522,134 @@ class Api:
             return _error(status, refused.code, refused.message)
         stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
         try:
-            planned = previewed(plan, stamps)
+            planned = previewed(plan.edits, stamps)
+        except EditError as refused:
+            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+        return Reply(
+            200,
+            contract.PlanReply(
+                revision=revision.number, changes=_planned_changes(planned)
+            ).model_dump(mode="json"),
+        )
+
+    def _types(self, query: Query, body: bytes | None) -> Reply:
+        revision = self._opened()
+        built = revision.index
+        cache: dict[Path, Document] = {}
+        rows = (
+            ()
+            if built is None
+            else type_rows(built, [(f.file, f.diagnostic) for f in revision.findings], cache)
+        )
+        return Reply(
+            200,
+            contract.TypesReply(
+                revision=revision.number,
+                types=[
+                    {
+                        "name": row.name,
+                        "kind": row.kind,
+                        "description": row.description,
+                        "uses": row.uses,
+                        "findings": row.findings,
+                    }
+                    for row in rows
+                ],
+            ).model_dump(mode="json"),
+        )
+
+    def _type(self, query: Query, body: bytes | None) -> Reply:
+        revision = self._opened()
+        name = _single(query.get("name"))
+        if not name:
+            return _error(400, "bad-request", "type takes ?name=")
+        built = revision.index
+        if built is None or name not in built.types:
+            return _undeclared(revision, name)
+        cache: dict[Path, Document] = {}
+        site = built.types[name]
+        row = row_of(built, name, [(f.file, f.diagnostic) for f in revision.findings], cache)
+        stated = fixed_by(built, name, cache)
+        header = stated.get("header")
+        sources = {file.path.resolve(): file for file in revision.files}
+        return Reply(
+            200,
+            contract.TypeReply(
+                revision=revision.number,
+                name=name,
+                kind=row.kind,
+                file=site.path.resolve().as_posix(),
+                pointer=site.pointer,
+                description=row.description,
+                header=None if header is None else json.loads(header),
+                keys=[
+                    asdict(offer_for(built, key, stated.get(key), required=key in REQUIRED))
+                    for key in SCALAR_KEYS
+                ]
+                if row.kind == "scalar"
+                else [],
+                uses=[
+                    {
+                        "path": use.site.path.resolve().as_posix(),
+                        "pointer": use.site.pointer,
+                        "kind": use.kind,
+                        "name": use.name,
+                        "component": use.component,
+                        "role": use.role,
+                    }
+                    for use in uses_of(built, name, cache)
+                ],
+                members=[
+                    {
+                        "name": member["name"],
+                        "member": member["member"],
+                        "typename": member.get("typename"),
+                        "datatype": member.get("datatype"),
+                        "unit": member.get("unit"),
+                        "bits": member.get("bits"),
+                        "dimensions": member.get("dimensions", ()),
+                    }
+                    for member in members_of(built, name, cache)
+                ],
+                findings=[
+                    _finding(filed, sources.get(filed.file.resolve()), cache)
+                    for filed in revision.findings
+                    if located_in_type(built, name, filed.file, filed.diagnostic)
+                ],
+            ).model_dump(mode="json"),
+        )
+
+    def _type_plan(self, query: Query, body: bytes | None) -> Reply:
+        revision = self._opened()
+        action = _single(query.get("action")) or ""
+        takes = TYPE_PLANS.get(action)
+        if takes is None:
+            return _error(
+                400, "bad-request", f"type-plan takes ?action= one of {', '.join(TYPE_PLANS)}"
+            )
+        given = {part: value for part in takes if (value := _single(query.get(part))) is not None}
+        if len(given) < len(takes) or given.get("name") == "":
+            wanted = " and ".join(f"?{part}=" for part in takes)
+            return _error(400, "bad-request", f"{action} takes {wanted}")
+        built = revision.index
+        if built is None:
+            unread = [file.path.name for file in revision.files if not file.loaded]
+            return _error(
+                409,
+                UNREADABLE,
+                f"{', '.join(unread) or revision.project.name} did not load, "
+                "so no type of the project can be changed",
+            )
+        cache: dict[Path, Document] = {}
+        raw = _single(query.get("raw")) or None
+        try:
+            plan = _type_plan_of(action, built, given, raw, cache)
+        except TypeRefusalError as refused:
+            status = 404 if refused.code == "not-found" else 409
+            return _error(status, refused.code, refused.message)
+        stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
+        try:
+            planned = previewed(plan.edits, stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
@@ -623,6 +768,9 @@ _ROUTES: Final[dict[str, dict[str, Answer]]] = {
     "/api/fix": {"GET": Api._fix},
     "/api/unit": {"GET": Api._unit},
     "/api/unit-plan": {"GET": Api._unit_plan},
+    "/api/types": {"GET": Api._types},
+    "/api/type": {"GET": Api._type},
+    "/api/type-plan": {"GET": Api._type_plan},
 }
 
 
@@ -752,6 +900,19 @@ def _unit_plan_of(
     if action == "remove":
         return remove_unit(built, project, given["unit"], cache)
     return adopt_units(built, project, cache)
+
+
+def _type_plan_of(
+    action: str,
+    built: Index,
+    given: Mapping[str, str],
+    raw: str | None,
+    cache: dict[Path, Document],
+) -> TypePlan:
+    """The plan ``action`` names, over the parameters :data:`TYPE_PLANS` says it takes."""
+    if action == "set":
+        return set_key(built, given["name"], given["key"], raw, cache)
+    return rename_type(built, given["name"], given["to"], cache)
 
 
 def _planned_changes(planned: Sequence[Planned]) -> list[dict[str, Any]]:

@@ -12,7 +12,7 @@ with the lines it changes, computed without writing anything.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -20,7 +20,7 @@ from typing import Final
 from ddd.diagnostics import Diagnostic
 from ddd.lsp.navigation import Index, Site, UnitSite
 from ddd.lsp.ranges import Document, read
-from ddd.lsp.units import UnitPlan
+from ddd.lsp.units import PlannedEdit
 from ddd.variables import Planned, declarations_of, hunks, planned
 
 UNIT_CHECKS: Final = frozenset({"unknown-unit", "duplicate-unit"})
@@ -139,9 +139,15 @@ def adoptable(built: Index | None, has_vocabulary: bool) -> int | None:
     return 0 if built is None else len(built.units)
 
 
-def previewed(plan: UnitPlan, fingerprints: Mapping[Path, str]) -> tuple[Planned, ...]:
+def previewed(
+    edits: Sequence[PlannedEdit], fingerprints: Mapping[Path, str]
+) -> tuple[Planned, ...]:
     """The edit a plan comes to, file by file in the plan's order, and the lines it changes in
     each - made by the edit engine in memory and never written.
+
+    Takes a plan's edits rather than the plan itself, so that a :class:`~ddd.type_plans.TypePlan`
+    and a :class:`~ddd.lsp.units.UnitPlan` - two different dataclasses sharing one shape - are
+    both previewed by the one function, instead of each tab writing its own copy of it.
 
     A file the plan changes carries the fingerprint the analysis read it at, from
     ``fingerprints`` (keyed by resolved path), exactly as :func:`ddd.variables.preview` has it.
@@ -152,7 +158,7 @@ def previewed(plan: UnitPlan, fingerprints: Mapping[Path, str]) -> tuple[Planned
         Planned(edit.path, None, edit.operations, hunks("", edit.operations[0].raw or ""))
         if edit.creates
         else planned(edit.path, edit.operations, fingerprints)
-        for edit in plan.edits
+        for edit in edits
     )
 
 

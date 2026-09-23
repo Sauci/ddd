@@ -63,12 +63,17 @@ __all__ = [
     "PlanReply",
     "PlannedChange",
     "PlannedOperation",
+    "ProjectType",
     "ProjectUnit",
     "RefusedBuild",
     "SessionInfo",
     "SettleReply",
     "SourceFile",
     "State",
+    "TypeMember",
+    "TypeReply",
+    "TypeUse",
+    "TypesReply",
     "UndoPreview",
     "UndoReply",
     "UndoRequest",
@@ -245,12 +250,13 @@ class Note(_Frozen):
 class FindingRoute(_Frozen):
     """What the page can open for a finding."""
 
-    kind: Literal["variable", "unit", "component"]
-    """Which screen: a variable's panel, a unit's panel, or the component's own page."""
+    kind: Literal["variable", "unit", "component", "type"]
+    """Which screen: a variable's panel, a unit's panel, the component's own page, or the
+    type's own panel on the Types tab."""
 
     name: str | None
-    """The variable's name or the unit's spelling; ``None`` for a component, which the
-    finding's own ``file`` already names."""
+    """The variable's name, the unit's spelling or the type's name; ``None`` for a component,
+    which the finding's own ``file`` already names."""
 
 
 class Finding(_Frozen):
@@ -770,6 +776,104 @@ class PlanReply(_Frozen):
     at line 1 that is the whole of it."""
 
 
+# --- GET /api/types, GET /api/type -----------------------------------------------------------
+
+
+class ProjectType(_Frozen):
+    """One row of the Types tab."""
+
+    name: str
+    """The type's name, as its entry spells it."""
+
+    kind: str
+    """``scalar``, ``external`` or ``struct``; ``""`` for an entry whose file has drifted."""
+
+    description: str
+    """What the entry says it is; ``""`` where it says nothing."""
+
+    uses: int
+    """How many declarations and structure members name it."""
+
+    findings: int
+    """How many findings are filed inside its entry."""
+
+
+class TypesReply(_Frozen):
+    """What ``GET /api/types`` answers: every type the project declares, sorted by name."""
+
+    revision: int
+    types: tuple[ProjectType, ...]
+
+
+class TypeUse(_Frozen):
+    """One place a type is named."""
+
+    path: str
+    """Absolute, posix-separated path of the file naming it."""
+
+    pointer: str
+    """Dotted path of the ``typename`` inside that file."""
+
+    kind: Literal["variable", "member"]
+    """A declaration's ``typename``, or a structure member's."""
+
+    name: str
+    """The variable's name, or ``Sensor_t.latest`` for a member."""
+
+    component: str | None
+    """The component declaring the variable; ``None`` for a member."""
+
+    role: str | None
+    """``produces``, ``reads`` or ``local``; ``None`` for a member."""
+
+
+class TypeMember(_Frozen):
+    """One member of a structure, as its panel lists it."""
+
+    name: str
+    member: Literal["value", "bits"]
+    """Whether it holds a value or a field of bits."""
+
+    typename: str | None
+    """The type it names, or ``None`` when it carries a datatype of its own."""
+
+    datatype: str | None
+    unit: str | None
+    bits: int | None
+    dimensions: tuple[str, ...]
+    """Each dimension as text: an integer, or the name of a declared constant."""
+
+
+class TypeReply(_Frozen):
+    """What ``GET /api/type`` answers: one type's panel."""
+
+    revision: int
+    name: str
+    kind: str
+    file: str
+    """Absolute, posix-separated path of the file declaring it: a types file, or a component
+    that declares it inline alongside its interface."""
+
+    pointer: str
+    """Dotted path of its entry: ``types[i]`` in a types file, or ``component.types[i]`` in a
+    component that declares it inline."""
+
+    description: str
+    header: str | None
+    """An external type's header; ``None`` for the other two kinds."""
+
+    keys: tuple[VariableKeyOffer, ...]
+    """What a scalar fixes - ``datatype``, ``unit``, ``conversion``, ``limits`` - in that order,
+    each offering what part 3's chooser draws. Empty for a structure and an external, which fix
+    nothing a chooser edits."""
+
+    uses: tuple[TypeUse, ...]
+    members: tuple[TypeMember, ...]
+    """A structure's members in the file's order; empty for the other two kinds."""
+
+    findings: tuple[Finding, ...]
+
+
 # --- GET /api/undo and POST /api/undo -------------------------------------------------------
 
 
@@ -976,6 +1080,8 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (SettleReply, "serialization"),
     (FixReply, "serialization"),
     (UnitReply, "serialization"),
+    (TypesReply, "serialization"),
+    (TypeReply, "serialization"),
     (PlanReply, "serialization"),
 )
 """Every request and response of spec section 6.5, with the schema pydantic builds for each:

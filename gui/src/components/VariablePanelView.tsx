@@ -1,7 +1,7 @@
 import type { SettleReply, UnitsReply, VariableReply } from "../api/types";
 import { distinctFindings, keyedFindings, namesThisVariable, routeHref } from "../lib/findings";
-import { consequence, shownChanges } from "../lib/units";
-import { describeVariable } from "../lib/variableKeys";
+import { consequence, declaredUnits, shownChanges } from "../lib/units";
+import { describeVariable, offerOf } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
@@ -10,12 +10,14 @@ import { KeyChooser, type KeyChooserProps } from "./KeyChooser";
 import { VariableKeysTable } from "./VariableKeysTable";
 
 export interface VariablePanelViewProps
-  extends Omit<KeyChooserProps, "keyName" | "variable" | "units"> {
+  extends Omit<KeyChooserProps, "keyName" | "units" | "offer" | "owner" | "inPlay"> {
   variable: VariableReply;
   units: UnitsReply;
   /** The key whose chooser is open, or `undefined` - the panel then shows the table alone. */
   selected: string | undefined;
   onSelect: (key: string | undefined) => void;
+  /** Following a fixed key to the type that fixes it, without a reload. */
+  onOpenType: (name: string) => void;
   preview: SettleReply | null;
   /** Why the chosen value cannot be applied, or why applying it was refused. */
   refusal: string | null;
@@ -29,6 +31,7 @@ export interface VariablePanelViewProps
 export function VariablePanelView(props: VariablePanelViewProps) {
   const { variable, units, preview, refusal, selected } = props;
   const changes = preview?.changes ?? [];
+  const offer = selected === undefined ? undefined : offerOf(variable, selected);
   return (
     <Panel title={variable.name} meta={describeVariable(variable)} onClose={props.onClose}>
       <VariableKeysTable
@@ -36,6 +39,7 @@ export function VariablePanelView(props: VariablePanelViewProps) {
         preview={preview}
         selected={selected}
         onSelect={props.onSelect}
+        onOpenType={props.onOpenType}
       />
       {variable.findings.length > 0 && (
         <ul className="panel-findings">
@@ -61,22 +65,26 @@ export function VariablePanelView(props: VariablePanelViewProps) {
       {selected === undefined ? (
         <p className="quiet">Select a key to settle it on every declaration.</p>
       ) : (
-        <KeyChooser
-          variable={variable}
-          keyName={selected}
-          units={units}
-          typed={props.typed}
-          narrow={props.narrow}
-          onTyped={props.onTyped}
-          onChosen={props.onChosen}
-          onPickerClosed={props.onPickerClosed}
-          range={props.range}
-          onRange={props.onRange}
-          note={props.note}
-          busy={props.busy}
-          focus={props.focus}
-          pickerTrigger={props.pickerTrigger}
-        />
+        offer !== undefined && (
+          <KeyChooser
+            offer={offer}
+            owner={variable.name}
+            inPlay={declaredUnits(variable.declarations)}
+            keyName={selected}
+            units={units}
+            typed={props.typed}
+            narrow={props.narrow}
+            onTyped={props.onTyped}
+            onChosen={props.onChosen}
+            onPickerClosed={props.onPickerClosed}
+            range={props.range}
+            onRange={props.onRange}
+            note={props.note}
+            busy={props.busy}
+            focus={props.focus}
+            pickerTrigger={props.pickerTrigger}
+          />
+        )
       )}
       {refusal !== null ? (
         <p className="panel-refusal" role="status">

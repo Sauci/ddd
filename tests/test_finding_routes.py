@@ -5,8 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from conftest import component, declare, project, scalar_type, types, write_tree
+import pytest
+
+from conftest import EXAMPLES, component, declare, project, scalar_type, types, write_tree
 from ddd.finding_routes import Route, route_of
+from ddd.lsp.ranges import Document
 
 DEFINITION = "component.interface[0].definition"
 
@@ -14,6 +17,21 @@ DEFINITION = "component.interface[0].definition"
 def built(tmp_path: Path, **files: Any) -> Path:
     write_tree(tmp_path, {"p.ddd.json": project("P", *files), **files})
     return tmp_path
+
+
+@pytest.fixture
+def structures() -> Path:
+    return EXAMPLES / "structures"
+
+
+@pytest.fixture
+def demo() -> Path:
+    return EXAMPLES / "demo"
+
+
+@pytest.fixture
+def cache() -> dict[Path, Document]:
+    return {}
 
 
 class TestRoutes:
@@ -129,6 +147,63 @@ class TestRoutes:
         route = route_of("unknown-unit", root / "t.ddd.json", "types[0].unit", "types", True, {})
         assert route == Route(kind="unit", name="degC")
 
+    def test_a_finding_inside_a_type_leads_to_that_type(self, structures, cache) -> None:
+        route = route_of(
+            "type-kind", structures / "types.ddd.json", "types[0].datatype", "types", True, cache
+        )
+        assert route == Route("type", "Temperature_t")
+
+    def test_a_finding_inside_a_member_leads_to_the_structure_holding_it(
+        self, structures, cache
+    ) -> None:
+        route = route_of(
+            "init-invalid",
+            structures / "types.ddd.json",
+            "types[3].members[1].conversion.enumerators[0].value",
+            "types",
+            True,
+            cache,
+        )
+        assert route == Route("type", "Status_t")
+
+    def test_a_unit_stated_by_a_type_still_leads_to_the_unit(self, structures, cache) -> None:
+        # The one route that crosses the file kinds, as part 4 settled it: a unit's panel lists
+        # every place stating it, a scalar type's included.
+        route = route_of(
+            "unknown-unit", structures / "types.ddd.json", "types[0].unit", "types", True, cache
+        )
+        assert route == Route("unit", "degC")
+
+    def test_a_finding_on_a_types_file_naming_no_type_leads_nowhere(self, structures, cache):
+        assert route_of("schema", structures / "types.ddd.json", "", "types", True, cache) is None
+
+    def test_a_types_file_that_did_not_load_leads_nowhere(self, structures, cache) -> None:
+        assert (
+            route_of("type-kind", structures / "types.ddd.json", "types[0]", "types", False, cache)
+            is None
+        )
+
+    def test_a_finding_inside_a_component_declared_type_leads_to_that_type(
+        self, demo, cache
+    ) -> None:
+        # A component may declare its own types, inline, alongside naming a standalone types
+        # file: `SensorHub` in examples/demo does, declaring `DriverState_t` and
+        # `SensorDiagnosis_t` at `component.types[0]` and `component.types[1]`.
+        # `Index.types` holds a type the same way wherever it was declared, so the type's own
+        # panel is still the better destination than the component's - even though the file's
+        # kind is `component`, not `types`. Measured against the real file with a scratch probe
+        # rather than guessed: `component.types[1].members[0].typename` is the `driver` member
+        # of `SensorDiagnosis_t`, referencing `DriverState_t`.
+        route = route_of(
+            "unknown-type",
+            demo / "components" / "sensor_hub.ddd.json",
+            "component.types[1].members[0].typename",
+            "component",
+            True,
+            cache,
+        )
+        assert route == Route("type", "SensorDiagnosis_t")
+
     def test_a_finding_on_a_component_file_naming_no_declaration_leads_to_the_component(
         self, tmp_path: Path
     ) -> None:
@@ -145,16 +220,6 @@ class TestRoutes:
             tmp_path, **{"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}
         )
         assert route_of("json-syntax", root / "a.ddd.json", "", "component", False, {}) is None
-
-    def test_a_finding_on_a_file_the_gui_has_no_page_for_leads_nowhere(
-        self, tmp_path: Path
-    ) -> None:
-        # A types, units, constants, sections or rasters file has no screen of its own yet.
-        root = built(tmp_path, **{"t.ddd.json": types(scalar_type("Speed_t", unit="rpm"))})
-        assert (
-            route_of("duplicate-type", root / "t.ddd.json", "types[0].name", "types", True, {})
-            is None
-        )
 
     def test_a_finding_naming_no_place_leads_nowhere(self, tmp_path: Path) -> None:
         # No check in `analysis.py` files without a location - every `self._bag.add(...)` call
@@ -184,6 +249,13 @@ class TestRoutes:
             "component",
             True,
             {},
+        )
+        assert route is None
+
+    def test_a_type_the_file_no_longer_holds_leads_nowhere(self, structures, cache) -> None:
+        # The analysis read the file; the pointer describes where the type was then.
+        route = route_of(
+            "type-kind", structures / "types.ddd.json", "types[99].datatype", "types", True, cache
         )
         assert route is None
 

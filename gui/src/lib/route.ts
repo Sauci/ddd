@@ -1,11 +1,12 @@
-/** Which of the project screen's four tabs is open. */
-export type ProjectView = "graph" | "table" | "units" | "findings";
+/** Which of the project screen's five tabs is open. */
+export type ProjectView = "graph" | "table" | "units" | "types" | "findings";
 
 export type Route =
   | { page: "start" }
   | { page: "project"; view: "graph"; variable?: string }
   | { page: "project"; view: "table" }
   | { page: "project"; view: "units"; unit?: string }
+  | { page: "project"; view: "types"; type?: string }
   | { page: "project"; view: "findings" }
   | { page: "component"; file: string; variable?: string };
 
@@ -25,6 +26,12 @@ export function parseRoute(pathname: string, search: string): Route {
       return unit === undefined
         ? { page: "project", view: "units" }
         : { page: "project", view: "units", unit };
+    }
+    if (view === "types") {
+      const type = query.get("type") || undefined;
+      return type === undefined
+        ? { page: "project", view: "types" }
+        : { page: "project", view: "types", type };
     }
     if (view === "findings") return { page: "project", view: "findings" };
     return variable === undefined
@@ -55,6 +62,11 @@ export function hrefOf(route: Route): string {
         return route.unit === undefined
           ? "/project?view=units"
           : `/project?view=units&unit=${encodeURIComponent(route.unit)}`;
+      }
+      if (route.view === "types") {
+        return route.type === undefined
+          ? "/project?view=types"
+          : `/project?view=types&type=${encodeURIComponent(route.type)}`;
       }
       if (route.view === "findings") return "/project?view=findings";
       return variable === "" ? "/project" : `/project?${variable}`;

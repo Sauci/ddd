@@ -4,6 +4,7 @@ import {
   fixLabel,
   settleLabel,
   shownUndo,
+  typeLabel,
   undoAction,
   undoButton,
   undoConsequence,
@@ -36,6 +37,15 @@ describe("what an edit is called", () => {
     expect(unitLabel({ action: "add", unit: "rpm" })).toBe("'rpm' added to the vocabulary");
     expect(unitLabel({ action: "remove", unit: "rpm" })).toBe("'rpm' removed from the vocabulary");
     expect(unitLabel({ action: "adopt" })).toBe("the vocabulary adopted");
+  });
+
+  it("names a change of a type", () => {
+    expect(typeLabel({ action: "set", name: "Temperature_t", key: "unit", raw: '"K"' })).toBe(
+      "the unit of Temperature_t",
+    );
+    expect(typeLabel({ action: "rename", name: "Sensor_t", to: "Probe_t" })).toBe(
+      "the rename of 'Sensor_t' to 'Probe_t'",
+    );
   });
 
   it("names the declaration an identity was given to", () => {

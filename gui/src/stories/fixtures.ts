@@ -5,6 +5,8 @@ import type {
   ProjectUnit,
   SettleReply,
   State,
+  TypeReply,
+  TypesReply,
   UndoPreview,
   UnitReply,
   UnitsReply,
@@ -950,6 +952,267 @@ export const UNDO_ADOPTION: UndoPreview = {
           after: [],
         },
       ],
+    },
+  ],
+};
+
+/** Types modelled on examples/structures, as GET /api/types answers them - not transcribed from
+ * it: SensorCal_t's `uses: 0` here (the real example names it once) gives the table's zero-count
+ * blank-cell case a row to draw. */
+export const PROJECT_TYPES: TypesReply = {
+  revision: 7,
+  types: [
+    {
+      name: "DriverStatus_t",
+      kind: "external",
+      description: "The raw state of the vendor's sensor driver",
+      uses: 1,
+      findings: 0,
+    },
+    {
+      name: "Sample_t",
+      kind: "struct",
+      description: "One reading and the instant it was taken",
+      uses: 1,
+      findings: 0,
+    },
+    {
+      name: "SensorCal_t",
+      kind: "struct",
+      description: "What one sensor exposes to the calibration tool",
+      uses: 0,
+      findings: 0,
+    },
+    {
+      name: "Sensor_t",
+      kind: "struct",
+      description: "Everything one sensor measures",
+      uses: 2,
+      findings: 0,
+    },
+    {
+      name: "Status_t",
+      kind: "struct",
+      description: "Flags packed into one word, as c bitfields",
+      uses: 1,
+      findings: 1,
+    },
+    {
+      name: "Temperature_t",
+      kind: "scalar",
+      description: "A temperature as every component of this project agrees to see it",
+      uses: 3,
+      findings: 0,
+    },
+  ],
+};
+
+/** A project that declares none, for the story that says so. */
+export const NO_TYPES: TypesReply = { revision: 7, types: [] };
+
+// One type's own panel (spec 5.2), modelled on examples/structures/types.ddd.json - not
+// transcribed from it, as PROJECT_TYPES already is not: the same six types, the same names and
+// descriptions, Sensor_t's two components renamed to this file's own Windows-style paths.
+
+/** Sensor_t is declared by two components: Sensing produces Inlet, Monitoring reads it - the
+ * "Where it is used" table's two rows sharing one name, told apart by component and role. */
+const SENSING = "C:/work/demo/components/sensing.ddd.json";
+const MONITORING = "C:/work/demo/components/monitoring.ddd.json";
+
+/** Temperature_t: its four keys, each an `offer_for` offer - one carried, at most one value,
+ * `components: []` and `producer: false` since a type states a key itself, nothing "carries" it
+ * the way a declaration does. Used three times, each a structure member, never as a variable. */
+export const SCALAR_TYPE: TypeReply = {
+  revision: 7,
+  name: "Temperature_t",
+  kind: "scalar",
+  file: TYPES,
+  pointer: "types[0]",
+  description: "A temperature as every component of this project agrees to see it",
+  header: null,
+  keys: [
+    {
+      key: "datatype",
+      carried: [carried(true)],
+      values: [inPlay('"uint16"', [], false)],
+      disagrees: false,
+      editor: "datatype",
+      choices: DATATYPES,
+    },
+    {
+      key: "unit",
+      carried: [carried(false)],
+      values: [inPlay('"degC"', [], false)],
+      disagrees: false,
+      editor: "unit",
+      choices: [],
+    },
+    {
+      key: "conversion",
+      carried: [carried(true)],
+      values: [inPlay('{"factor": 0.1, "offset": -40}', [], false)],
+      disagrees: false,
+      editor: "none",
+      choices: [],
+    },
+    {
+      key: "limits",
+      carried: [carried(false)],
+      values: [inPlay('{"min": -40, "max": 150}', [], false)],
+      disagrees: false,
+      editor: "limits",
+      choices: [],
+    },
+  ],
+  uses: [
+    {
+      path: TYPES,
+      pointer: "types[2].members[0].typename",
+      kind: "member",
+      name: "Sample_t.value",
+      component: null,
+      role: null,
+    },
+    {
+      path: TYPES,
+      pointer: "types[4].members[3].typename",
+      kind: "member",
+      name: "Sensor_t.history",
+      component: null,
+      role: null,
+    },
+    {
+      path: TYPES,
+      pointer: "types[5].members[0].typename",
+      kind: "member",
+      name: "SensorCal_t.warnLimit",
+      component: null,
+      role: null,
+    },
+  ],
+  members: [],
+  findings: [],
+};
+
+/** Sensor_t filed as the second of two types sharing its name - Sensing's own inline types list,
+ * left over from before types.ddd.json existed, still declares one too. The panel's Findings
+ * section (part 4) needs a type carrying a real finding to be drawn at all; the table's own
+ * fixture already counts one against Status_t (`PROJECT_TYPES`), so a structure carrying one
+ * here is the same story told in full. */
+const DUPLICATE_SENSOR: Finding = {
+  file: TYPES,
+  check: "duplicate-type",
+  severity: "error",
+  message: "type 'Sensor_t' is already declared",
+  pointer: "types[4]",
+  notes: [{ message: "first declared here", file: SENSING, pointer: "component.types[0]" }],
+  route: { kind: "type", name: "Sensor_t" },
+};
+
+/** Sensor_t: no keys - a structure fixes nothing a chooser edits - four members, the last with
+ * dimensions, the two declarations naming it, produced by Sensing and read by Monitoring, and
+ * one finding. */
+export const STRUCT_TYPE: TypeReply = {
+  revision: 7,
+  name: "Sensor_t",
+  kind: "struct",
+  file: TYPES,
+  pointer: "types[4]",
+  description: "Everything one sensor measures",
+  header: null,
+  keys: [],
+  uses: [
+    {
+      path: SENSING,
+      pointer: "component.interface[1].definition.typename",
+      kind: "variable",
+      name: "Inlet",
+      component: "Sensing",
+      role: "produces",
+    },
+    {
+      path: MONITORING,
+      pointer: "component.interface[0].definition.typename",
+      kind: "variable",
+      name: "Inlet",
+      component: "Monitoring",
+      role: "reads",
+    },
+  ],
+  members: [
+    {
+      name: "latest",
+      member: "value",
+      typename: "Sample_t",
+      datatype: null,
+      unit: null,
+      bits: null,
+      dimensions: [],
+    },
+    {
+      name: "status",
+      member: "value",
+      typename: "Status_t",
+      datatype: null,
+      unit: null,
+      bits: null,
+      dimensions: [],
+    },
+    {
+      name: "driver",
+      member: "value",
+      typename: "DriverStatus_t",
+      datatype: null,
+      unit: null,
+      bits: null,
+      dimensions: [],
+    },
+    {
+      name: "history",
+      member: "value",
+      typename: "Temperature_t",
+      datatype: null,
+      unit: null,
+      bits: null,
+      dimensions: ["8"],
+    },
+  ],
+  findings: [DUPLICATE_SENSOR],
+};
+
+/** DriverStatus_t: an external type's own header, and its one use - Sensor_t's driver member. */
+export const EXTERNAL_TYPE: TypeReply = {
+  revision: 7,
+  name: "DriverStatus_t",
+  kind: "external",
+  file: TYPES,
+  pointer: "types[1]",
+  description: "The raw state of the vendor's sensor driver",
+  header: "driver_status.h",
+  keys: [],
+  uses: [
+    {
+      path: TYPES,
+      pointer: "types[4].members[2].typename",
+      kind: "member",
+      name: "Sensor_t.driver",
+      component: null,
+      role: null,
+    },
+  ],
+  members: [],
+  findings: [],
+};
+
+/** Temperature_t's unit changed to K: the panel's own preview, for the key-chosen stories. */
+export const SET_UNIT: PlanReply = {
+  revision: 7,
+  changes: [
+    {
+      file: TYPES,
+      fingerprint: "d4a3f1c6b2e5978a0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b",
+      operations: [{ op: "set", pointer: "types[0].unit", raw: '"K"' }],
+      hunks: [{ line: 9, before: ['      "unit": "degC",'], after: ['      "unit": "K",'] }],
     },
   ],
 };

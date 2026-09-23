@@ -2122,3 +2122,179 @@ class TestUnitPlan:
     def test_planning_needs_an_open_project(self, root: Path) -> None:
         reply = get(Api(Session(root)), "/api/unit-plan", action="adopt")
         assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+
+class TestTheTypesTab:
+    """The three endpoints over a copy of examples/structures, and what applying a plan writes."""
+
+    @pytest.fixture
+    def structures(self, tmp_path: Path) -> tuple[Api, Path]:
+        return copied(tmp_path, "structures", "project.ddd.json")
+
+    def test_every_type_is_a_row_with_its_kind_and_uses(self, structures) -> None:
+        api, _ = structures
+        body = get(api, "/api/types").body
+        rows = {row["name"]: row for row in body["types"]}
+        assert [row["name"] for row in body["types"]] == sorted(rows)
+        assert (rows["Temperature_t"]["kind"], rows["Temperature_t"]["uses"]) == ("scalar", 3)
+        assert rows["DriverStatus_t"]["kind"] == "external"
+        assert rows["Sample_t"]["kind"] == "struct"
+
+    def test_a_scalar_answers_what_it_fixes_as_offers(self, structures) -> None:
+        api, _ = structures
+        body = get(api, "/api/type", name="Temperature_t").body
+        assert (body["kind"], body["header"]) == ("scalar", None)
+        assert body["description"].startswith("A temperature as every component")
+        offers = {offer["key"]: offer for offer in body["keys"]}
+        assert list(offers) == ["datatype", "unit", "conversion", "limits"]
+        assert offers["unit"]["values"][0]["raw"] == '"degC"'
+        assert offers["unit"]["editor"] == "unit"
+        assert offers["datatype"]["carried"][0]["required"] is True
+        assert offers["limits"]["carried"][0]["required"] is False
+        assert body["members"] == []
+
+    def test_a_structure_answers_its_members_and_no_offers(self, structures) -> None:
+        api, _ = structures
+        body = get(api, "/api/type", name="Sensor_t").body
+        assert body["keys"] == []
+        assert [member["name"] for member in body["members"]] == [
+            "latest",
+            "status",
+            "driver",
+            "history",
+        ]
+        assert body["members"][3]["dimensions"] == ["8"]
+        assert body["members"][0]["typename"] == "Sample_t"
+
+    def test_an_external_answers_its_header(self, structures) -> None:
+        api, _ = structures
+        body = get(api, "/api/type", name="DriverStatus_t").body
+        assert (body["kind"], body["header"]) == ("external", "driver_status.h")
+        assert body["keys"] == []
+
+    def test_the_uses_carry_the_component_and_the_role(self, structures) -> None:
+        api, _ = structures
+        body = get(api, "/api/type", name="Sensor_t").body
+        assert [
+            (use["kind"], use["name"], use["component"], use["role"]) for use in body["uses"]
+        ] == [
+            ("variable", "Inlet", "Sensing", "produces"),
+            ("variable", "Inlet", "Monitoring", "reads"),
+        ]
+
+    def test_a_type_is_asked_for_by_name(self, structures) -> None:
+        api, _ = structures
+        reply = get(api, "/api/type")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+
+    def test_a_type_the_project_does_not_declare_is_not_found(self, structures) -> None:
+        api, _ = structures
+        reply = get(api, "/api/type", name="Nothing_t")
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_setting_a_unit_is_previewed_then_written(self, structures) -> None:
+        api, root = structures
+        before = contents(root)
+        preview = get(
+            api, "/api/type-plan", action="set", name="Temperature_t", key="unit", raw='"K"'
+        ).body
+        assert contents(root) == before
+        assert [Path(change["file"]).name for change in preview["changes"]] == ["types.ddd.json"]
+        assert applied(api, preview, "the unit of Temperature_t").status == 200
+        assert '"unit": "K"' in (root / "types.ddd.json").read_text(encoding="utf-8")
+
+    def test_renaming_rewrites_the_type_and_every_name_reaching_it(self, structures) -> None:
+        api, root = structures
+        preview = get(api, "/api/type-plan", action="rename", name="Sensor_t", to="Probe_t").body
+        assert [Path(change["file"]).name for change in preview["changes"]] == [
+            "monitoring.ddd.json",
+            "sensing.ddd.json",
+            "types.ddd.json",
+        ]
+        assert applied(api, preview, "the rename of 'Sensor_t' to 'Probe_t'").status == 200
+        for name in ("monitoring.ddd.json", "sensing.ddd.json", "types.ddd.json"):
+            text = (root / name).read_text(encoding="utf-8")
+            assert "Sensor_t" not in text
+        assert get(api, "/api/type", name="Probe_t").status == 200
+
+    @pytest.mark.parametrize(
+        ("to", "says"),
+        [("Sample_t", "shares c's namespace"), ("uint16", "spells a base datatype")],
+    )
+    def test_a_rename_that_may_not_be_made_is_refused_in_the_editor_s_words(
+        self, structures, to, says
+    ) -> None:
+        api, _ = structures
+        reply = get(api, "/api/type-plan", action="rename", name="Temperature_t", to=to)
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert says in reply.body["message"]
+
+    def test_a_plan_takes_the_parameters_its_action_names(self, structures) -> None:
+        api, _ = structures
+        assert get(api, "/api/type-plan", action="set", name="Temperature_t").status == 400
+        assert get(api, "/api/type-plan", action="dance", name="Temperature_t").status == 400
+        assert get(api, "/api/type-plan", name="Temperature_t", to="X_t").status == 400
+
+    def test_a_finding_inside_a_type_carries_its_route(self, structures) -> None:
+        api, root = structures
+        # A unit no vocabulary lists is not reported here. Naming the external DriverStatus_t
+        # directly - rather than through a structure member - is a type-kind, and the refusal's
+        # own note ("declared here") points at the type's entry, so the mirrored copy of the
+        # finding is filed there and routes to it. Drift the file rather than inventing a
+        # finding: replacing the typename with "Sample_t" (a structure, as the brief for this
+        # test first suggested) instead produces a definition-mismatch between the two
+        # components declaring 'Inlet', filed on their two declarations - neither of which is
+        # inside a type's own entry - so it never routes to "type"; DriverStatus_t is the
+        # substitution that actually lands a finding there.
+        broken = (root / "sensing.ddd.json").read_text(encoding="utf-8")
+        (root / "sensing.ddd.json").write_text(
+            broken.replace('"typename": "Sensor_t"', '"typename": "DriverStatus_t"', 1),
+            encoding="utf-8",
+        )
+        api.session.poll()
+        routes = {
+            finding["check"]: finding["route"]
+            for finding in get(api, "/api/state").body["findings"]
+            if finding["route"] is not None and finding["route"]["kind"] == "type"
+        }
+        assert routes == {"type-kind": {"kind": "type", "name": "DriverStatus_t"}}
+
+    def test_the_types_of_a_project_that_declares_none_are_empty(self, api: Api) -> None:
+        # The `api` fixture's project has no types file at all.
+        assert get(api, "/api/types").body["types"] == []
+
+    def test_a_project_the_analysis_could_not_read_has_no_types(self, tmp_path: Path) -> None:
+        body = get(unloaded(tmp_path), "/api/types").body
+        assert body["types"] == []
+
+    def test_a_project_the_analysis_could_not_read_cannot_answer_a_type(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(unloaded(tmp_path), "/api/type", name="Temperature_t")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_a_project_the_analysis_could_not_read_plans_no_type_change(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(
+            unloaded(tmp_path), "/api/type-plan", action="rename", name="Temperature_t", to="X_t"
+        )
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"].startswith("p.ddd.json did not load")
+
+    def test_a_type_the_project_neither_declares_cannot_be_changed(self, structures) -> None:
+        api, _ = structures
+        reply = get(api, "/api/type-plan", action="rename", name="Nothing_t", to="X_t")
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_a_type_preview_the_engine_refuses_is_a_refusal_the_page_can_act_on(
+        self, structures, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        api, _ = structures
+
+        def refuse(*_: object) -> None:
+            raise EditError(UNVERIFIED, "does not read back")
+
+        monkeypatch.setattr("ddd.gui.api.previewed", refuse)
+        reply = get(api, "/api/type-plan", action="rename", name="Sensor_t", to="Probe_t")
+        assert (reply.status, reply.body["error"]) == (409, "unverified")

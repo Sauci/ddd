@@ -3,8 +3,9 @@
 ``ddd gui`` lists what the analysis reported and, until now, left the reader to work out where
 to go: a sentence about a variable's declarations says nothing about which screen settles them.
 This answers what the page can open for one finding - the variable whose declaration it is
-about, the unit it names, or the component it is filed on - and answers nothing where the page
-has nothing to open, so that a row can say why instead of leading somewhere useless.
+about, the unit it names, the type its entry declares, or the component it is filed on - and
+answers nothing where the page has nothing to open, so that a row can say why instead of
+leading somewhere useless.
 
 Pure: no GUI and no HTTP. :mod:`ddd.gui.api` turns a route into the shape ``GET /api/state``
 answers, and nothing else reads them.
@@ -12,6 +13,7 @@ answers, and nothing else reads them.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -25,17 +27,22 @@ UNIT_CHECKS: Final = frozenset({"unknown-unit"})
 COMPONENT_KIND: Final = "component"
 """The one file kind the page has a screen for; the rest are milestone 6's."""
 
+WITHIN_TYPE: Final = re.compile(r"^(?:component\.)?types\[\d+\]")
+"""The entry a pointer inside a type lies in: the type itself, one of its keys, or a member of
+it, all of which the same panel shows - whether the type was declared in a types file
+(``types[i]``) or inline by a component (``component.types[i]``)."""
+
 
 @dataclass(frozen=True, slots=True)
 class Route:
     """Where a finding leads."""
 
     kind: str
-    """``variable``, ``unit`` or ``component``."""
+    """``variable``, ``unit``, ``component`` or ``type``."""
 
     name: str | None
-    """The variable's name or the unit's spelling; ``None`` for a component, which the finding's
-    own file already names."""
+    """The variable's name, the unit's spelling or the type's name; ``None`` for a component,
+    which the finding's own file already names."""
 
 
 def route_of(
@@ -60,6 +67,15 @@ def route_of(
         # 2's panel lists all three: the one route that does not care which file it was on.
         stated = read(path, cache).value_at(pointer)
         return Route("unit", stated) if isinstance(stated, str) and stated else None
+    within_type = WITHIN_TYPE.match(pointer)
+    if within_type is not None:
+        # A pointer anywhere inside an entry - its own keys, a member's, an enumerator's - is
+        # about the type that entry declares, which is what the panel opens on. Tried ahead of
+        # the kind check below and the component branch it guards: a component may declare a
+        # type inline, at `component.types[i]`, and that pointer cannot collide with one of its
+        # own declarations, which always starts `component.interface[`.
+        name = read(path, cache).value_at(f"{within_type.group()}.name")
+        return Route("type", name) if isinstance(name, str) else None
     if kind != COMPONENT_KIND:
         return None
     within = WITHIN_DECLARATION.match(pointer)

@@ -8,6 +8,9 @@ import {
   getSession,
   getSettle,
   getState,
+  getType,
+  getTypePlan,
+  getTypes,
   getUndo,
   getUnit,
   getUnitPlan,
@@ -101,6 +104,11 @@ describe("requests to the server", () => {
       fetchImpl,
     );
     await getUnitPlan({ action: "adopt" }, fetchImpl);
+    await getTypes(fetchImpl);
+    await getType("Temperature_t", fetchImpl);
+    await getTypePlan({ action: "set", name: "Temperature_t", key: "unit", raw: '"K"' }, fetchImpl);
+    await getTypePlan({ action: "set", name: "Temperature_t", key: "unit", raw: null }, fetchImpl);
+    await getTypePlan({ action: "rename", name: "Sensor_t", to: "Probe_t" }, fetchImpl);
     await postEdit(
       {
         changes: [{ file: "a", fingerprint: "x", operations: [{ op: "remove", pointer: "a" }] }],
@@ -143,6 +151,14 @@ describe("requests to the server", () => {
         { credentials: "same-origin" },
       ],
       ["/api/unit-plan?action=adopt", { credentials: "same-origin" }],
+      ["/api/types", { credentials: "same-origin" }],
+      ["/api/type?name=Temperature_t", { credentials: "same-origin" }],
+      [
+        "/api/type-plan?action=set&name=Temperature_t&key=unit&raw=%22K%22",
+        { credentials: "same-origin" },
+      ],
+      ["/api/type-plan?action=set&name=Temperature_t&key=unit", { credentials: "same-origin" }],
+      ["/api/type-plan?action=rename&name=Sensor_t&to=Probe_t", { credentials: "same-origin" }],
       [
         "/api/edit",
         {

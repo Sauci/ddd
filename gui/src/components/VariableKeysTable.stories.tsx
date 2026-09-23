@@ -21,6 +21,7 @@ function View({ variable, preview = null, initialSelected }: Props) {
       preview={preview}
       selected={selected}
       onSelect={setSelected}
+      onOpenType={() => undefined}
     />
   );
 }

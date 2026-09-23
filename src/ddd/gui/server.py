@@ -46,6 +46,14 @@ port: a browser sends every cookie of 127.0.0.1 to every port, so under one name
 MAX_BODY: Final = 1024 * 1024
 """The largest request body accepted; an edit of a description file is a few hundred bytes."""
 
+IDLE_SECONDS: Final = 30
+"""How long a connection that carries nothing is kept open before it is closed.
+
+Longer than any gap a page of this server leaves: the slowest thing it does is wait for a
+revision, and the connection that waits is never idle - the server is holding the answer, and
+the page asks again the moment it arrives. A tab that has gone away leaves its connections
+behind, and this is what takes their threads back."""
+
 CONTENT_TYPES: Final = {
     ".css": "text/css; charset=utf-8",
     ".html": "text/html; charset=utf-8",
@@ -137,11 +145,24 @@ class GuiServer(ThreadingHTTPServer):
 
     def handle_error(self, request: Any, client_address: Any) -> None:
         """A page that went away mid-answer - a reload, a closed tab - is not an error to print."""
-        if not isinstance(sys.exc_info()[1], ConnectionError):
+        if not isinstance(sys.exc_info()[1], ConnectionError | TimeoutError):
             super().handle_error(request, client_address)
 
 
 class _Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+    """Keep the connection open for the next request, rather than closing after every answer.
+
+    A page asks this server twenty-odd times to open a panel, and under HTTP/1.0 each ask cost a
+    connection of its own. On windows that ran the machine out of the ports it hands connections:
+    a suite of browser journeys, all of them against 127.0.0.1, was refused one with
+    ``ERR_NO_BUFFER_SPACE`` at a point that moved from run to run. The same twenty asks now share
+    the handful of connections the browser keeps. Every answer here carries a ``Content-Length``,
+    which is what lets the page tell one from the next on a connection it reads twice."""
+
+    timeout = IDLE_SECONDS
+    """Applied to the socket, so a connection nobody is using does not hold its thread."""
+
     def do_GET(self) -> None:  # the name the base class dispatches GET to
         self._answer("GET")
 
@@ -162,11 +183,12 @@ class _Handler(BaseHTTPRequestHandler):
         the page then said the server was not answering - or, waiting for a revision, that it
         had stopped - about a server that was running. The traceback still goes to the terminal,
         where whoever reads the page's message is sent. A page that went away mid-answer is let
-        go as before: there is nobody left to answer, and nothing worth printing.
+        go as before: there is nobody left to answer, and nothing worth printing, whether it
+        closed the connection or only stopped reading it.
         """
         try:
             self._route(method)
-        except ConnectionError:
+        except (ConnectionError, TimeoutError):
             raise
         except Exception:
             print(f"ddd gui: {method} {urlsplit(self.path).path} failed:", file=sys.stderr)

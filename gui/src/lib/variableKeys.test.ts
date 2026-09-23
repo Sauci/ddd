@@ -168,12 +168,26 @@ describe("the rows of the table", () => {
     ]);
   });
 
-  test("a value a type fixes names the type", () => {
+  test("a value a type fixes names the type, linked to its panel", () => {
     const of = variable([offer("unit", { values: [value('"rpm"', ["SensorHub"], true)] })]);
     const sensorHub = of.declarations[0];
     if (sensorHub === undefined) throw new Error("fixture must have a first declaration");
     of.declarations[0] = { ...sensorHub, type: "Speed_t", fixed: { unit: '"rpm"' } };
-    expect(keyRows(of, null)[1]?.cells[0]).toMatchObject({ text: "rpm", from: "Speed_t" });
+    expect(keyRows(of, null)[1]?.cells[0]).toMatchObject({
+      text: "rpm",
+      from: "Speed_t",
+      href: "/project?view=types&type=Speed_t",
+    });
+  });
+
+  test("a value stated outright carries no such link", () => {
+    // SensorHub's own declaration states its unit directly and names no type - `from` and
+    // `href` stay `null` together, the way `label` and `href` do in `FindingPanelView`.
+    const of = variable(
+      [offer("unit", { values: [value('"%"', ["SensorHub"], true)] })],
+      [{ unit: '"%"' }],
+    );
+    expect(keyRows(of, null)[1]?.cells[0]).toMatchObject({ text: "%", from: null, href: null });
   });
 
   test("the declarations a preview writes into are marked on that key's row alone", () => {
@@ -415,12 +429,11 @@ describe("the panel's line under the name", () => {
 describe("what a key's chooser lists", () => {
   test("the values in play come first, the producer's marked", () => {
     const sections = chooserSections(
-      variable([
-        offer("unit", {
-          editor: "unit",
-          values: [value('"%"', ["SensorHub"], true), value('"rpm"', ["Controller"], false)],
-        }),
-      ]),
+      offer("unit", {
+        editor: "unit",
+        values: [value('"%"', ["SensorHub"], true), value('"rpm"', ["Controller"], false)],
+      }),
+      "ValueA",
       "unit",
       "",
     );
@@ -432,18 +445,17 @@ describe("what a key's chooser lists", () => {
   });
 
   test("state nothing is offered unless a declaration requires the key", () => {
-    const optional = chooserSections(variable([offer("unit", { editor: "unit" })]), "unit", "");
+    const optional = chooserSections(offer("unit", { editor: "unit" }), "ValueA", "unit", "");
     expect(optional.some((section) => section.id === "nothing")).toBe(true);
     const required = chooserSections(
-      variable([
-        offer("volatile", {
-          editor: "volatile",
-          carried: [
-            { allowed: true, required: true },
-            { allowed: true, required: true },
-          ],
-        }),
-      ]),
+      offer("volatile", {
+        editor: "volatile",
+        carried: [
+          { allowed: true, required: true },
+          { allowed: true, required: true },
+        ],
+      }),
+      "ValueA",
       "volatile",
       "",
     );
@@ -452,13 +464,12 @@ describe("what a key's chooser lists", () => {
 
   test("an editor that names things lists what the project has, what is in play left out", () => {
     const sections = chooserSections(
-      variable([
-        offer("axis", {
-          editor: "name",
-          choices: ["AxisA", "AxisB"],
-          values: [value('"AxisA"', ["SensorHub"], true)],
-        }),
-      ]),
+      offer("axis", {
+        editor: "name",
+        choices: ["AxisA", "AxisB"],
+        values: [value('"AxisA"', ["SensorHub"], true)],
+      }),
+      "ValueA",
       "axis",
       "",
     );
@@ -473,7 +484,7 @@ describe("what a key's chooser lists", () => {
 
   test("each naming editor says what it is naming", () => {
     const titles = (key: string, editor: VariableKeyOffer["editor"], choices: string[]) =>
-      chooserSections(variable([offer(key, { editor, choices })]), key, "").map((s) => s.title);
+      chooserSections(offer(key, { editor, choices }), "ValueA", key, "").map((s) => s.title);
     // Nothing is in play in any of these, so "Declared for ValueA" has nothing to list and is
     // left out (spec 5.2's "nothing else"): the naming section itself is the first to survive.
     expect(titles("input", "name", ["ValueE"])[0]).toBe("This project's measurements");
@@ -485,7 +496,8 @@ describe("what a key's chooser lists", () => {
 
   test("a conversion offers what is in play and nothing else", () => {
     const sections = chooserSections(
-      variable([offer("conversion", { values: [value("{}", ["SensorHub"], true)] })]),
+      offer("conversion", { values: [value("{}", ["SensorHub"], true)] }),
+      "ValueA",
       "conversion",
       "",
     );
@@ -494,13 +506,15 @@ describe("what a key's chooser lists", () => {
 
   test("what is typed narrows the list, and a size may be typed outright", () => {
     const narrowed = chooserSections(
-      variable([offer("size", { editor: "size", choices: ["CELLS", "ROWS"] })]),
+      offer("size", { editor: "size", choices: ["CELLS", "ROWS"] }),
+      "ValueA",
       "size",
       "RO",
     );
     expect(narrowed.flatMap((section) => section.choices.map((c) => c.label))).toEqual(["ROWS"]);
     const typed = chooserSections(
-      variable([offer("size", { editor: "size", choices: ["CELLS"] })]),
+      offer("size", { editor: "size", choices: ["CELLS"] }),
+      "ValueA",
       "size",
       "12",
     );
@@ -510,7 +524,8 @@ describe("what a key's chooser lists", () => {
 
   test("a name that is no name of this project is not offered as typed", () => {
     const sections = chooserSections(
-      variable([offer("axis", { editor: "name", choices: ["AxisA"] })]),
+      offer("axis", { editor: "name", choices: ["AxisA"] }),
+      "ValueA",
       "axis",
       "Wheel",
     );
@@ -520,31 +535,35 @@ describe("what a key's chooser lists", () => {
 
 describe("what a field's text chooses", () => {
   test("an entry spelling the text exactly", () => {
-    const of = variable([offer("datatype", { editor: "datatype", choices: ["uint8", "uint16"] })]);
-    expect(enteredValue(chooserSections(of, "datatype", "uint16"), "datatype", "uint16")).toBe(
-      '"uint16"',
-    );
+    const of = offer("datatype", { editor: "datatype", choices: ["uint8", "uint16"] });
+    expect(
+      enteredValue(chooserSections(of, "ValueA", "datatype", "uint16"), "datatype", "uint16"),
+    ).toBe('"uint16"');
     // Unnarrowed, so the list still holds uint8 too: this one is found past an entry that
     // does not spell the text, not merely as the list's only choice.
-    expect(enteredValue(chooserSections(of, "datatype", ""), "datatype", "uint16")).toBe(
+    expect(enteredValue(chooserSections(of, "ValueA", "datatype", ""), "datatype", "uint16")).toBe(
       '"uint16"',
     );
   });
 
   test("state nothing, by the label the list gives it", () => {
-    const of = variable([offer("unit", { editor: "unit" })]);
-    expect(enteredValue(chooserSections(of, "unit", ""), "unit", "state nothing")).toBeNull();
+    const of = offer("unit", { editor: "unit" });
+    expect(
+      enteredValue(chooserSections(of, "ValueA", "unit", ""), "unit", "state nothing"),
+    ).toBeNull();
   });
 
   test("a whole number for a size, and nothing at all for a field left empty", () => {
-    const of = variable([offer("size", { editor: "size", choices: [] })]);
-    expect(enteredValue(chooserSections(of, "size", "12"), "size", "12")).toBe("12");
-    expect(enteredValue(chooserSections(of, "size", " "), "size", " ")).toBeUndefined();
+    const of = offer("size", { editor: "size", choices: [] });
+    expect(enteredValue(chooserSections(of, "ValueA", "size", "12"), "size", "12")).toBe("12");
+    expect(enteredValue(chooserSections(of, "ValueA", "size", " "), "size", " ")).toBeUndefined();
   });
 
   test("a name this project does not declare chooses nothing", () => {
-    const of = variable([offer("axis", { editor: "name", choices: ["AxisA"] })]);
-    expect(enteredValue(chooserSections(of, "axis", "Wheel"), "axis", "Wheel")).toBeUndefined();
+    const of = offer("axis", { editor: "name", choices: ["AxisA"] });
+    expect(
+      enteredValue(chooserSections(of, "ValueA", "axis", "Wheel"), "axis", "Wheel"),
+    ).toBeUndefined();
   });
 });
 
@@ -568,7 +587,8 @@ describe("the value a chooser starts on", () => {
   test("a key the answer does not carry offers nothing", () => {
     expect(offerOf(variable([offer("unit")]), "nonsense")).toBeUndefined();
     expect(startingRaw(variable([offer("unit")]), "nonsense")).toBeNull();
-    expect(chooserSections(variable([offer("unit")]), "nonsense", "")).toEqual([]);
+    // chooserSections no longer looks a key up itself (Task 6): it now takes the offer
+    // directly, and a caller that finds none from offerOf - covered above - does not call it.
   });
 });
 

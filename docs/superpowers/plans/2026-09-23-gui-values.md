@@ -1474,20 +1474,95 @@ Co-Authored-By: <model that wrote it> <noreply@anthropic.com>"
 
 | Task | Commit | Notes |
 | --- | --- | --- |
-| 1 | | |
-| 2 | | |
-| 3 | | |
-| 4 | | |
-| 5 | | |
-| 6 | | |
-| 7 | | |
+| 1 | `94a5902`, `63d664e` | The grid. A shapeless object crashed on `shape[0]`; fixed, and `_breakpoints`' untested arm with it. |
+| 2 | `91ba005`, `6500bbf` | The cell plan. Two conditional expressions hid a two-dimensional arm from the gate; it has a `Plane` test now. |
+| 3 | `e1a4446`, `4496adc` | The contract, the endpoints, the route. The findings filter showed every object in a file its neighbours' findings. |
+| 4 | `6132f29`, `9a7a7fc` | The client and `objectValues.ts`. A conversion travels as a dict, so the lib takes one. |
+| 5 | `f944a8a`, `345eed6`, `4eddfd1` | The picture, eleven stories, eleven screenshots. A blank map found a React Aria keying bug no gate could see. |
+| 6 | `827448b`, `e09c88a` | The screen, the address, the Shape column. The back link named the producer and returned somewhere else. |
+| 7 | `207641b` | Seven journeys, three clean runs of sixty-four. |
 | 8 | | |
 | 9 | | |
 
 ## Left open
 
-Filled in as the plan runs: anything found and deliberately not fixed here, with what it costs.
+Found while running the plan and deliberately not fixed here.
+
+- **`namesThisVariable` is blind to `view`** (`gui/src/lib/findings.ts:140`), so a finding on an
+  object's `init` shown inside that variable's own panel renders as plain text instead of a link
+  to the grid. The Shape column and the findings list both reach the same grid, so nothing is
+  unreachable. Widening the check is its own subject. *Costs:* one path to the grid missing where
+  two others work.
+- **A pre-existing `page.waitForResponse` in `gui/e2e/skeleton.spec.ts:220`**, inside the graph
+  canvas's drag journey, which failed once under load during this work and passed alone and on
+  every rerun. It is the pattern this plan's own constraints forbid and the one that broke part
+  6's CI, and it predates this branch — `git diff 44b63de..HEAD -- gui/e2e/` was empty until task
+  7. Filed as its own task rather than fixed here on a hunch. *Costs:* one flaky journey until it
+  is done.
+- **`_error(409 if refused.code in REFUSALS else 500, …)`** (`src/ddd/gui/api.py:911`) is a
+  conditional expression whose `500` arm no test reaches, copied verbatim from seven sibling call
+  sites (383, 399, 552, 679, 719, 744, 826) that this part does not touch. Fixing it here would
+  leave eight spellings of one idea. *Costs:* one unexercised arm, in company.
+- **The grid does not mark a cell outside the object's limits**, it only shows the limits. That is
+  what §4.5 asks for and what the changelog now says; a reader who wants the outliers pointed out
+  has to look. *Costs:* a value a person would want flagged is only shown.
 
 ## Rulings
 
-Filled in as the plan runs: every decision taken against the plan's text, why, and what it costs if wrong.
+Every decision taken against this plan's own text, with what it costs if wrong. Most of them are
+corrections to the plan: nine of the eleven below are places where the plan was wrong about the
+code and the code won.
+
+- **Task 2 refuses a shapeless object** before it can crash, which no task asked for. Task 1's
+  `IndexError` on `ValueA` proved the hole. *Costs:* one message nobody specified.
+- **`_values` answers `404` with no conditional.** The plan wrote
+  `404 if refused.code == "not-found" else 409`, but `grid_of` raises only `not-found`, so that
+  arm was dead — and a conditional expression registers **no branch at all** with coverage.py, so
+  the 100 % gate could not see it. *Costs:* a status that reads worse for a refusal that cannot
+  happen.
+- **`_value_plan` gained the test its `404` never had**, and its test name
+  `test_an_object_with_no_shape_is_refused` was corrected to say what it asserts — `200` and an
+  empty grid. *Costs:* one test and one name more than the plan asked for.
+- **`Grid` gained a `pointer`, matched by equality.** The plan's filter matched every finding in
+  the file whose pointer ended `.definition.init`, so each of `controller.ddd.json`'s fourteen
+  objects showed the others' findings. *Costs:* an element-level init finding, if one is ever
+  emitted, would not reach the grid.
+- **The plan's own formula for that pointer was wrong, and the implementer's correction stood.**
+  `sites[0].pointer` already ends `.definition`, so appending `.definition.init` would have
+  matched nothing and silently emptied `findings` for every object — a worse bug than the one
+  being fixed. *Costs:* one assumption to re-check if `index()` ever gains a second writer.
+- **`physicalOf` and `rawOf` take `Record<string, unknown>`.** The plan declared a narrow
+  `Conversion` type that `tsc --strict` refuses to accept a reply's own conversion into
+  (`TS2741`), because a conversion travels as `dict[str, Any]`. *Costs:* the lib takes a wider
+  type than it needs.
+- **`cellSentence`'s map test pins `raw = 99`, not `1.98`.** The plan pinned
+  `Sets element 2, 4 of MapA to 0.99 %`, which the page cannot produce: `MapA` is `sint8`, so
+  `rawOf` rounds and a reader typing `0.99` gets raw `2`. *Costs:* none; the new pair is the one
+  task 3's endpoint test already writes.
+- **Spec §6's "an absent one greyed" was owed and is now shipped**, along with a read-only grid
+  and a text-stated one; this plan had substituted a raw-counts story for it, and that story is
+  kept as well. §6's list is a minimum, not a cap. *Costs:* three stories and three screenshots
+  more than the plan asked for.
+- **The "initialised with text" sentence lives in the component, not the screen** — a ruling made
+  one way and then reversed when the component turned out to say it already. The screen keeps the
+  `404` and the shapeless case. *Costs:* two states answered in two files, each with a picture or
+  a test.
+- **The Shape column reads the file alone**, as the plan wanted, and the plan's instruction to
+  *stop* if that were not enough was settled before task 6 ran: a `curve`, `map` or `axis` carries
+  no `dimensions` and reads its kind's word, `State` carries no dictionary to fall back on, and a
+  consumer's declaration cannot see its producer's text init — so `StateName` on UserInterface's
+  page offers a button onto a grid that says it is text. That is intended. *Costs:* one press
+  that answers with a sentence.
+- **The back link names the component the reader came from**, resolved from `state.files`, not the
+  object's producer: `AxisA` opened from UserInterface's page used to read "Back to Controller"
+  and return to UserInterface. The undo strip moved into that same heading row, where every other
+  screen has it. *Costs:* none found; the screenshots did not move.
+- **A seventh journey was added** for a finding leading to a grid, the one path neither a unit
+  test nor a screenshot can reach. *Costs:* one journey beyond the plan's six.
+- **The changelog does not claim the grid marks a value outside the limits**, because it does not;
+  this plan asked for that sentence and for every sentence to be true, and could not have both.
+  *Costs:* a changelog that says less than the plan imagined.
+- **Three small fix rounds were verified by hand instead of by a dispatched re-review** — a single
+  test literal, two named refactors with a picture, and a props change whose eighty-six unmoved
+  screenshots proved the DOM identical. *Costs:* a seat of review on changes the whole-branch
+  review sees again anyway.

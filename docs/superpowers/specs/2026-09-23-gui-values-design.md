@@ -155,12 +155,16 @@ same pairing `ddd.project_types` and `ddd.type_plans` use.
 
 ### 5.1 The way in
 
-The component's table gains a **Shape** column between Type and Unit: `6` for `CurveA`, `4 × 6`
-for `MapA`, `8` for `BlockA`, blank for a scalar object. It is a **button** where the grid can
-draw the object - `Show the values of CurveA`, the way the Unit cell is already a button - and
-plain text where it cannot, which is an object whose init is a string: `SoftwareLabel` is shaped
-`16` and holds `"V1.2.3"`, so its shape is shown and not offered. A grid that refused the moment
-it opened would be a button that lies.
+The component's table gains a **Shape** column between Type and Unit, read from the file the page
+already has rather than from a request per row: `8` for `BlockA` and `16` for `SoftwareLabel`,
+which state their `dimensions`, and the kind's own word - `curve`, `map`, `axis` - for `CurveA`,
+`MapA` and `AxisA`, which state none, taking their shape from an axis the file cannot see. Blank
+for a scalar object. It is a **button** where the grid can draw the object - `Show the values of
+CurveA`, the way the Unit cell is already a button - and plain text where it cannot, which is an
+object whose init is a string in this very file: `SoftwareLabel` is shaped `16` and holds
+`"V1.2.3"`, so its shape is shown and not offered. A grid that refused the moment it opened would
+be a button that lies. A *consumer's* declaration cannot see its producer's init, so `StateName`
+on UserInterface's page is offered and answers with the grid's own sentence about text.
 
 ### 5.2 The grid
 

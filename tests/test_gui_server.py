@@ -8,6 +8,7 @@ import shutil
 import socket
 import sys
 import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Final
@@ -358,10 +359,32 @@ class TestWhatIsServed:
             ask(server, "GET", "/api/session")
         assert capsys.readouterr().err == ""
 
+    def test_a_page_that_stops_reading_mid_answer_is_let_go_too(
+        self, server, monkeypatch, capsys
+    ) -> None:
+        """A connection left open is given up on rather than held, so the socket carries a
+        deadline now - and a page that stopped reading trips it the way a closed tab trips the
+        one above. Neither is a defect of this server's, and neither is printed."""
+
+        def stalled(api: Api, query: object, body: object) -> None:
+            raise TimeoutError("the page stopped reading")
+
+        monkeypatch.setitem(api_module._ROUTES, "/api/session", {"GET": stalled})
+        with pytest.raises(http.client.RemoteDisconnected):
+            ask(server, "GET", "/api/session")
+        assert capsys.readouterr().err == ""
+
     def test_a_page_that_went_away_mid_answer_is_not_reported(self, server, capsys) -> None:
         try:
             raise ConnectionResetError("the tab was closed")
         except ConnectionResetError:
+            server.handle_error(None, ("127.0.0.1", 1))
+        assert capsys.readouterr().err == ""
+
+    def test_a_page_that_stopped_reading_is_not_reported_either(self, server, capsys) -> None:
+        try:
+            raise TimeoutError("the page stopped reading")
+        except TimeoutError:
             server.handle_error(None, ("127.0.0.1", 1))
         assert capsys.readouterr().err == ""
 
@@ -374,6 +397,63 @@ class TestWhatIsServed:
 
     def test_the_installed_pages_are_looked_for_beside_the_package(self) -> None:
         assert static_directory() == Path(ddd.__file__).parent / "gui" / "static"
+
+
+class TestOneConnectionCarriesManyAsks:
+    """Opening a panel asks this server twenty-odd times. Under HTTP/1.0 each ask cost a
+    connection of its own, and a suite of browser journeys against 127.0.0.1 ran a windows
+    machine out of the ports to make them with, at a point that moved from run to run."""
+
+    @staticmethod
+    def again(connection: http.client.HTTPConnection, server: GuiServer, path: str, **sent: str):
+        """One more ask down a connection already open."""
+        headers = {"Host": f"127.0.0.1:{server.port}", **sent}
+        connection.request("GET", path, headers=headers)
+        response = connection.getresponse()
+        return response, response.read()
+
+    def test_a_redirect_a_page_and_the_api_are_answered_down_the_same_one(self, server) -> None:
+        # The redirect answers with no body at all, and the page with bytes that are not json:
+        # the three shapes a connection read twice has to tell apart, in the order a browser
+        # meets them. Each says how long it is, which is what lets it be told from the next.
+        signed_in = {"Cookie": f"{cookie(server)}={server.token}"}
+        connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
+        try:
+            asked = [
+                self.again(connection, server, f"/open?token={server.token}"),
+                self.again(connection, server, "/", **signed_in),
+                self.again(connection, server, "/api/session", **signed_in),
+                self.again(connection, server, "/api/nothing", **signed_in),
+            ]
+        finally:
+            connection.close()
+        assert [response.status for response, _ in asked] == [303, 200, 200, 404]
+        assert [response.version for response, _ in asked] == [11, 11, 11, 11]
+        assert [response.will_close for response, _ in asked] == [False] * 4
+        assert asked[1][1] == b"stand-in"
+        assert json.loads(asked[2][1])["version"] == ddd.__version__
+
+    def test_a_connection_nobody_is_using_is_closed(self, server, monkeypatch) -> None:
+        # Its own deadline rather than IDLE_SECONDS: what is asserted is that the socket carries
+        # one at all, and a test that waits half a minute to say so asserts nothing more.
+        monkeypatch.setattr(module._Handler, "timeout", 0.05)
+        signed_in = {"Cookie": f"{cookie(server)}={server.token}"}
+        connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
+        try:
+            assert self.again(connection, server, "/api/session", **signed_in)[0].status == 200
+            # Asked for until it is refused rather than after a fixed wait, which on a loaded
+            # machine is a coin toss either way.
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                try:
+                    self.again(connection, server, "/api/session", **signed_in)
+                except (http.client.HTTPException, OSError):
+                    break
+                time.sleep(0.05)
+            else:
+                pytest.fail("the connection was held open")
+        finally:
+            connection.close()
 
 
 def answered(

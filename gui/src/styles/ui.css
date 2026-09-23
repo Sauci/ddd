@@ -223,12 +223,16 @@ tr.changing td {
   color: var(--ok);
 }
 
-/* DimensionsField: a value block's shape (Task 5), one field per dimension with a Remove
-   beside it and an Add a dimension under them. */
+/* DimensionsField: a value block's shape, one field per dimension with a Remove beside it and
+   an Add a dimension under them. A fieldset for the group semantics, with its default border,
+   margin and padding cleared - the frame here is the panel's, not a nested one of its own. */
 .dimensions-field {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  border: 0;
+  margin: 0;
+  padding: 0;
 }
 
 .dimension-row {

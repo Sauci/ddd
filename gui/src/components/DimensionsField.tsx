@@ -17,10 +17,7 @@ export interface DimensionsFieldProps {
 export function DimensionsField({ rows, constants, owner, busy, onRows }: DimensionsFieldProps) {
   const shown = rows.length === 0 ? [""] : rows;
   return (
-    // A div, not a fieldset: a fieldset's own border and padding would frame the rows, and
-    // Task 6's panel wants only the boundary a screen reader needs, not a border of its own.
-    // biome-ignore lint/a11y/useSemanticElements: see above
-    <div className="dimensions-field" role="group" aria-label={`Dimensions of ${owner}`}>
+    <fieldset className="dimensions-field" aria-label={`Dimensions of ${owner}`}>
       {shown.map((row, index) => (
         // The index is the identity here: a dimension has no name, and two of the same size
         // are two different dimensions of one shape.
@@ -55,7 +52,7 @@ export function DimensionsField({ rows, constants, owner, busy, onRows }: Dimens
       <Button variant="link" isDisabled={busy} onPress={() => onRows([...shown, ""])}>
         Add a dimension
       </Button>
-    </div>
+    </fieldset>
   );
 }
 

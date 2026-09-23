@@ -139,16 +139,20 @@ same pairing `ddd.project_types` and `ddd.type_plans` use.
   These come from `Datatype`'s own public properties, which is where `analysis._check_init`
   (`analysis.py:2536`) gets them - not from a second copy of the rule.
 - `invalid` also for an `at` that is not an element of the shape, an object whose init is a
-  string, and an object with no shape at all.
+  string, an object with no shape at all, and an object of **more than two dimensions**, which
+  this grid does not draw - it says so rather than drawing a wrong one.
 - **A value outside the object's limits is not refused.** Measured: `limits-out-of-range`
   (`analysis.py:2640`) weighs the *limits* against the *storage*, and nothing weighs an init
   against the limits - so refusing here would make the grid stricter than `ddd check`, and a file
   a person wrote by hand would have cells the interface could not edit. The grid says the value is
-  outside the declared range and stores it.
+  shows the declared range beside the kind and the datatype, and stores the value; it does not
+  mark the cell.
 - `not-found`: the project declares no object of that name.
 - `unreadable`: a file the change has to see did not load, or the project has no dictionary.
 - A name nothing produces answers its grid read-only rather than refusing: there is no declaration
-  to write into, and the page says so.
+  to write into, and the page says so. So does a name **more than one** declaration produces: the
+  values shown are the ones the analysis resolved, and no one file can be said to hold them, so
+  the grid shows them and declines to write. Each says which of the two it is.
 - `stale` and `unwritable` arrive from the edit engine, as they do today.
 
 ## 5 The screen

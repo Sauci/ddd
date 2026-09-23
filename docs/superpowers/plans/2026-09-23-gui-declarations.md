@@ -940,7 +940,7 @@ def _appended(
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python -m pytest tests/test_declaration_plans.py -q --no-cov`
-Expected: PASS, 25 tests.
+Expected: PASS, 27 tests - Task 1's 8 and this task's 19.
 
 - [ ] **Step 5: Run the gate**
 
@@ -1748,7 +1748,7 @@ Co-Authored-By: <model that wrote it> <noreply@anthropic.com>"
 - Modify: `gui/src/styles/ui.css`
 
 **Interfaces:**
-- Consumes: `gui/src/lib/declarations.ts`'s `dimensionsRaw` (Task 4); the existing `ComboBox` of `gui/src/ui/`, and `Button`.
+- Consumes: the existing `ComboBox` of `gui/src/ui/ComboBox.tsx` and `Button` of `gui/src/ui/Button.tsx`. It takes `rows: string[]` and emits `rows`; turning those into json is Task 8's, through `dimensionsRaw`.
 - Produces: `DimensionsField` and `DimensionsFieldProps`, which Task 6's panel draws for a `dimensions` key.
 
 **Why this is its own component.** `EDITORS` spells `dimensions` as `none` (`src/ddd/variable_keys.py:54`), so the key chooser offers no field for it - deliberately, because settling a shape across declarations that already state one is the hazardous act. A value block *requires* `dimensions`, so a form that cannot state it cannot declare one of the six kinds. Stating a required key once, on a declaration that does not exist yet, settles nothing, so this is the `size` field repeated: a `Dimension` is a whole number of at least 1 or the name of a constant the project declares (`src/ddd/models/objects.py:685`), which is exactly what a `size` is.
@@ -2261,9 +2261,11 @@ Co-Authored-By: <model that wrote it> <noreply@anthropic.com>"
 - Consumes: Task 4's `getDeclarationPlan`; Task 7's new `VariablePanelView` props; the panel's existing `apply` mutation, `failed`/`staleFailed` state and `shownRefusal`.
 - Produces: nothing later tasks read.
 
+**This task owns the `file` prop, both halves.** Measured: `VariablePanel`'s `Props` (`gui/src/screens/VariablePanel.tsx:19`) has no `file` today - it is `name`, `revision`, `stopped`, `focusPicker`, `onClose`, `onUndeclared`, `onOpenType`. Add `file: string | undefined` to it **and** pass `file={file}` from `gui/src/screens/ComponentPage.tsx`, which Task 8 has already changed by the time this runs. It is `undefined` on the project screen's own panel, where no one component is in view and no removal is offered - which is what Task 7's `removal: Offer | null` is for.
+
 - [ ] **Step 1: Ask for the removal's plan**
 
-Only when the panel is on a component's page - it takes the file it is on as a prop already, or gains one:
+Only when the panel is on a component's page, which is what the new `file` prop says:
 
 ```tsx
   const removal = useQuery({
@@ -2318,7 +2320,7 @@ Against a copy of `examples/demo`, driving the compiled pages through the real `
 3. **`a value block is declared with the shape it is given`** - type `BlockB`, kind `value_block`, add two dimensions `4` and `8`, Apply, and assert `"dimensions": [4, 8]` reaches the file. This is the journey that exercises Task 5's field.
 4. **`a curve is declared against an axis the project has`** - type `CurveC`, kind `curve`, and open the `axis` chooser: it offers `AxisA` and `AxisB`, the demo's two axes, because `EDITORS` spells `axis` as `name` and `_choices` fills it from the project's objects of that kind. Choose `AxisA`, Apply, and assert `"axis": "AxisA"` reaches the file. This is the journey that exercises the object-reference chooser, which is the one part of the form nothing else covers.
 5. **`a name the project already has is refused in its own words`** - type `ValueA` and assert the panel says `'ValueA' is already declared by this project` and that **nothing is written**: the file's bytes before and after are equal.
-6. **`a declaration is removed and put back`** - open `ValueJ` on Controller's page (a reader, so removing it leaves the producer alone), check the sentence names who is left, Remove, assert the row is gone from the table and the name is gone from the file, then press Undo and assert the file is byte-for-byte what it was.
+6. **`a declaration is removed and put back`** - open `ValueB` on Controller's page and remove it. Measured: Controller declares `ValueB` as an `input`, SensorHub produces it and UserInterface also reads it, so the sentence reads `Removes ValueB from Controller; SensorHub and UserInterface still declare it.` Assert the row is gone from the table and the name is gone from the file, then press Undo and assert the file is byte-for-byte what it was.
 
 Journey 6's byte comparison is the point of it: `const before = readFileSync(file); … await expect.poll(() => readFileSync(file).equals(before)).toBe(true);` - the shape `undo.spec.ts` already uses.
 

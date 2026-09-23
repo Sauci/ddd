@@ -144,6 +144,31 @@ class TestBetweenDeliveries:
         assert "error[changed-interface]" in err
         assert code == EXIT_FINDINGS
 
+    def test_a_changed_point_counts_convention_is_a_changed_layout(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A table switching where it keeps its counts changes its c layout, so the example's
+        own tuple has to catch it exactly as it catches a changed datatype or unit."""
+
+        def axis_project(base: Path, name: str, point_counts: str) -> str:
+            write_tree(
+                base,
+                {
+                    f"{name}.ddd.json": project(
+                        "P", f"{name}-a.ddd.json", plugins=[str(PLUGIN)], point_counts=point_counts
+                    ),
+                    f"{name}-a.ddd.json": component("A", stamped("AX", 1, 1, kind="axis", size=4)),
+                },
+            )
+            return str(base / f"{name}.ddd.json")
+
+        before = axis_project(tree, "old", "none")
+        after = axis_project(tree, "new", "leading")
+        code = main(["compare", before, after, "-W", "missing-id=ignore"])
+        err = capsys.readouterr().err
+        assert "layout/version-not-bumped" in err
+        assert code == EXIT_FINDINGS
+
     def test_a_changed_unit_is_a_changed_layout(self, tree: Path, capsys) -> None:
         code, err = compared(
             tree, (stamped("X", 1, 1, unit="s"),), (stamped("X", 1, 1, unit="ms"),), capsys

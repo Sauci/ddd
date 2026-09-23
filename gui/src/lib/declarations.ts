@@ -78,7 +78,8 @@ export function dimensionsRaw(rows: string[]): string | null {
 }
 
 /** The sentence above the preview, which is what tells reading from declaring apart before
- * anything is written. */
+ * anything is written. A new name with no kind chosen yet still needs its own sentence - not the
+ * one below, which would otherwise interpolate an empty kind. */
 export function declareSentence(
   typed: string,
   kind: string,
@@ -92,6 +93,7 @@ export function declareSentence(
     const whose = producer === null || producer === undefined ? "this project" : producer;
     return `Reads ${typed} as ${whose} declares it.`;
   }
+  if (kind === "") return `Choose a kind for ${typed}.`;
   const role = ROLE[scope] ?? scope;
   return `Declares ${typed}, a ${kind} this component ${role}.`;
 }

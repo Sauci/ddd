@@ -178,6 +178,10 @@ describe("the sentence that tells reading from declaring", () => {
     );
   });
 
+  test("a new name with no kind chosen yet asks for one, not a sentence with a blank in it", () => {
+    expect(declareSentence("Pressure", "", "input", REPLY)).toBe("Choose a kind for Pressure.");
+  });
+
   test("a new name names the kind and the scope", () => {
     expect(declareSentence("Pressure", "measurement", "output", REPLY)).toBe(
       "Declares Pressure, a measurement this component produces.",

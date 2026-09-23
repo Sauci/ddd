@@ -10,6 +10,7 @@ import { StartPage } from "../screens/StartPage";
 import { TypesPage } from "../screens/TypesPage";
 import { UndoStrip } from "../screens/UndoStrip";
 import { UnitsPage } from "../screens/UnitsPage";
+import { ValuesPage } from "../screens/ValuesPage";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { LinkTabs } from "../ui/LinkTabs";
@@ -129,6 +130,18 @@ export function App() {
         )}
       </section>
     );
+  } else if ("view" in route) {
+    // The values grid is its own page, not a panel this file's own screen can open in place: a
+    // reader's address bar, a bookmark or a finding's link all reach it the same way.
+    page = (
+      <ValuesPage
+        key={route.variable}
+        name={route.variable}
+        state={state}
+        stopped={stopped}
+        onBack={() => navigate({ page: "component", file: route.file })}
+      />
+    );
   } else {
     page = (
       <ComponentPage
@@ -143,6 +156,9 @@ export function App() {
               : { page: "component", file: route.file, variable },
             { replace: true },
           )
+        }
+        onValues={(variable) =>
+          navigate({ page: "component", file: route.file, variable, view: "values" })
         }
         onOpenType={(type) => navigate({ page: "project", view: "types", type })}
       />

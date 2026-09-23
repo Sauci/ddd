@@ -8,7 +8,8 @@ export type Route =
   | { page: "project"; view: "units"; unit?: string }
   | { page: "project"; view: "types"; type?: string }
   | { page: "project"; view: "findings" }
-  | { page: "component"; file: string; variable?: string };
+  | { page: "component"; file: string; variable?: string }
+  | { page: "component"; file: string; variable: string; view: "values" };
 
 /** The page an address shows; anything unknown is the start page. */
 export function parseRoute(pathname: string, search: string): Route {
@@ -40,6 +41,9 @@ export function parseRoute(pathname: string, search: string): Route {
   }
   const file = query.get("file");
   if (pathname === "/component" && file) {
+    if (query.get("view") === "values" && variable !== undefined) {
+      return { page: "component", file, variable, view: "values" };
+    }
     return variable === undefined
       ? { page: "component", file }
       : { page: "component", file, variable };
@@ -72,7 +76,8 @@ export function hrefOf(route: Route): string {
       return variable === "" ? "/project" : `/project?${variable}`;
     case "component": {
       const file = `/component?file=${encodeURIComponent(route.file)}`;
-      return variable === "" ? file : `${file}&${variable}`;
+      const address = variable === "" ? file : `${file}&${variable}`;
+      return "view" in route ? `${address}&view=values` : address;
     }
   }
 }

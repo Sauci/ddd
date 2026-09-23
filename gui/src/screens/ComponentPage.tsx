@@ -21,14 +21,42 @@ interface Props {
   state: State | null;
   stopped: boolean;
   onVariable: (variable: string | undefined) => void;
+  /** Opening the values grid of a shaped declaration - its own page, not a panel this screen
+   * can show in place (spec 5.4). */
+  onValues: (variable: string) => void;
   /** Following a fixed key of the open variable's panel to the type that fixes it - the
    * project's Types tab, which leaves this page: the type is the project's, not the
    * component's. */
   onOpenType: (name: string) => void;
 }
 
+/** The kinds whose definition states no `dimensions` at all and reads its own word instead - a
+ * curve or a map over its axis or axes, or an axis itself. */
+const SHAPED_BY_KIND = new Set(["curve", "map", "axis"]);
+
+/** The Shape column's text for one declaration, read from the file already open rather than
+ * asked of the server: `State` carries no dictionary, only `revision`, `project`, `files`,
+ * `findings` and `undoable`, so there is no second source and no request per row.
+ *
+ * A `dimensions` on the definition is spelled the way the file spells each entry - `16`, or
+ * `4 × 2` for more than one - exactly as a type member's own dimensions are (`projectTypes.ts`).
+ * A curve, a map or an axis carries no `dimensions` at all, and reads its kind's own word; a
+ * scalar - `dimensions` and a shaped kind both absent - is blank, `null`, and no button. */
+function shapeOf(kind: string | undefined, dimensions: readonly unknown[]): string | null {
+  if (dimensions.length > 0) return dimensions.map(String).join(" × ");
+  return kind !== undefined && SHAPED_BY_KIND.has(kind) ? kind : null;
+}
+
 /** One component: its declarations, the panel of the one selected, and the findings in it. */
-export function ComponentPage({ file, variable, state, stopped, onVariable, onOpenType }: Props) {
+export function ComponentPage({
+  file,
+  variable,
+  state,
+  stopped,
+  onVariable,
+  onValues,
+  onOpenType,
+}: Props) {
   // A new number on every unit cell press, even a second press of the same cell, so the
   // picker's focus request always changes; null when a row selects its variable without one.
   const [focusPicker, setFocusPicker] = useState<number | null>(null);
@@ -81,13 +109,20 @@ export function ComponentPage({ file, variable, state, stopped, onVariable, onOp
   const rows = asList(valueAt(data, "component.interface")).map((_, index) => {
     const at = pointerOf(["component", "interface", index]);
     const text = (pointer: string) => asText(valueAt(data, `${at}.${pointer}`));
+    const kind = text("definition.kind");
     return {
       id: at,
       name: text("definition.name") ?? `declaration ${index + 1}`,
       scope: text("scope"),
-      kind: text("definition.kind"),
+      kind,
       type: text("definition.datatype") ?? text("definition.typename"),
       unit: text("definition.unit") ?? "",
+      // Shown as plain text rather than offered where this very file states a text init: a
+      // button that opened a grid and immediately refused would be a button that lies. A
+      // consumer's declaration cannot see the producer's init, so elsewhere it is offered
+      // anyway, and the grid it opens says so itself (`ValuesGridView`, `reply.stated`).
+      shape: shapeOf(kind, asList(valueAt(data, `${at}.definition.dimensions`))),
+      textInit: typeof valueAt(data, `${at}.definition.init`) === "string",
       own: findings.filter((finding) => within(finding.pointer, at)),
     };
   });
@@ -132,6 +167,7 @@ export function ComponentPage({ file, variable, state, stopped, onVariable, onOp
             <Column isRowHeader>Name</Column>
             <Column>Kind</Column>
             <Column>Type</Column>
+            <Column>Shape</Column>
             <Column>Unit</Column>
             <Column>Findings</Column>
           </TableHeader>
@@ -149,6 +185,21 @@ export function ComponentPage({ file, variable, state, stopped, onVariable, onOp
                 <Cell>{row.name}</Cell>
                 <Cell>{row.kind}</Cell>
                 <Cell>{row.type}</Cell>
+                <Cell>
+                  {row.shape !== null &&
+                    (row.textInit ? (
+                      row.shape
+                    ) : (
+                      <Button
+                        variant="link"
+                        aria-label={`Show the values of ${row.name}`}
+                        isDisabled={stopped}
+                        onPress={() => onValues(row.name)}
+                      >
+                        {row.shape}
+                      </Button>
+                    ))}
+                </Cell>
                 <Cell>
                   <Button
                     variant="link"
@@ -185,9 +236,15 @@ export function ComponentPage({ file, variable, state, stopped, onVariable, onOp
               const route = href === null ? null : routeOf(finding);
               // A variable named by this very file's own route opens in place via
               // `followVariable`; a unit's route leaves the component page, which nothing here
-              // can do in place, so it stays a plain address the browser follows.
+              // can do in place, so it stays a plain address the browser follows. A values route
+              // also leaves this page, for the grid rather than the panel `onVariable` alone can
+              // open - `followVariable` cannot say `view=values`, so it stays a plain address
+              // too, the same as a unit's.
               const inThisFile =
-                route !== null && route.page === "component" && route.variable !== undefined
+                route !== null &&
+                route.page === "component" &&
+                route.variable !== undefined &&
+                !("view" in route)
                   ? route.variable
                   : null;
               const onClick = inThisFile === null ? undefined : followVariable(inThisFile);

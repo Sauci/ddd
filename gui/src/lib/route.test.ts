@@ -99,3 +99,28 @@ test.each([
 ] as const)("%o is at %s", (route, href) => {
   expect(hrefOf(route)).toBe(href);
 });
+
+test.each([
+  [
+    "/component",
+    "?file=C%3A%2Fp%2Fa.ddd.json&variable=CurveA&view=values",
+    { page: "component", file: "C:/p/a.ddd.json", variable: "CurveA", view: "values" },
+  ],
+  [
+    // No variable, so there is nothing to open a grid on: today's plain component page.
+    "/component",
+    "?file=C%3A%2Fp%2Fa.ddd.json&view=values",
+    { page: "component", file: "C:/p/a.ddd.json" },
+  ],
+] as const)("%s%s carries the values view %o", (pathname, search, route) => {
+  expect(parseRoute(pathname, search)).toEqual(route);
+});
+
+test.each([
+  [
+    { page: "component", file: "C:/p/a.ddd.json", variable: "CurveA", view: "values" },
+    "/component?file=C%3A%2Fp%2Fa.ddd.json&variable=CurveA&view=values",
+  ],
+] as const)("%o is at %s", (route, href) => {
+  expect(hrefOf(route)).toBe(href);
+});

@@ -2029,14 +2029,18 @@ Co-Authored-By: <model that wrote it> <noreply@anthropic.com>"
 - Produces: two new props on `VariablePanelViewProps`:
 
 ```ts
-  /** What removing this declaration from this component would take; `null` on a screen that
-   * offers no removal - the graph's panel, where no one component is in view. */
-  removal: Offer | null;
-  /** Which component the removal would take it from, for the sentence and the label. */
-  removeFrom: string | null;
-  removalShown: boolean;
-  onRemovalShown: (shown: boolean) => void;
-  onRemove: () => void;
+  /** What removing this declaration from this component would take, and how to act on it.
+   * **Optional**: absent on a screen that offers no removal - the graph's panel, where no one
+   * component is in view - so `VariablePanel.tsx` keeps compiling until Task 9 supplies it.
+   * The five parts are only ever meaningful together, which is why they travel as one. */
+  removal?: {
+    offer: Offer;
+    /** Which component the removal would take it from, for the sentence and the label. */
+    from: string;
+    shown: boolean;
+    onShown: (shown: boolean) => void;
+    onRemove: () => void;
+  };
 ```
 
 - [ ] **Step 1: Add the offer to the view**
@@ -2044,10 +2048,10 @@ Co-Authored-By: <model that wrote it> <noreply@anthropic.com>"
 At the end of the panel, after the key chooser's own actions and before `</Panel>`:
 
 ```tsx
-      {props.removal !== null && props.removeFrom !== null && (
+      {props.removal !== undefined && (
         <section className="panel-offer" aria-label="Remove the declaration">
-          <p className="consequence">{removalSentence(variable, props.removeFrom)}</p>
-          {props.removal.refusal !== null && (
+          <p className="consequence">{removalSentence(variable, props.removal.from)}</p>
+          {props.removal.offer.refusal !== null && (
             <p className="panel-refusal" role="status">
               {props.removal.refusal}
             </p>
@@ -2157,7 +2161,7 @@ cd gui && npm run lint && npm run typecheck && npm test && npm run ladle:build
 cd .. && UPDATE=1 docker compose run --rm gui-screenshots && docker compose run --rm gui-screenshots
 ```
 
-Expected: two new references. **Part 3's five existing `variablepanelview` references must come out unchanged** - the offer is drawn only when `removal` is not `null`, and those stories pass `null`. If any of them moves, the offer is rendering where it should not; fix that rather than updating the reference.
+Expected: two new references. **Part 3's existing `variablepanelview` references must come out unchanged** - the offer is drawn only when `removal` is not `null`, and those stories pass `null`. If any of them moves, the offer is rendering where it should not; fix that rather than updating the reference.
 
 - [ ] **Step 4: Commit**
 

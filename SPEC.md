@@ -1366,6 +1366,9 @@ Errors:
   or a non-zero initial value rounds to zero in a floating point datatype, or a string init
   is not printable ASCII, leaves no room for its terminator, or is written on an object that
   is not a string.
+- `point-counts-unrepresentable`: a table stores its point counts in a datatype that cannot
+  hold them - a `boolean` table, or an integer one whose range stops short of a count. Only
+  a counted table is checked; a float holds any count a shape can have.
 - `unknown-reference`, `reference-kind`: a curve, map or axis refers to an object that does
   not exist or has the wrong kind. A structured object ([section 3.3.2](#332-naming-a-declared-type))
   is the wrong kind for the `input` of an axis as well, although an instance of a structure
@@ -1434,6 +1437,9 @@ Warnings:
   version 1.6.1 cannot carry. The check fires only for an object the A2L carries, the
   closure over references included ([section 5.2](#52-a2l)), and the emitted file writes
   every dimension out regardless, which a 1.7 reader accepts.
+- `point-counts-mismatch`: a curve or a map stores its point counts one way and one of its
+  axes the other. The A2L describes each as resolved; an interpolation routine is unlikely
+  to read both.
 - `address-missing`: an object the A2L carries has no entry in the address map the run was
   given. It fires only when a map with at least one entry is supplied: without a map, or
   with an empty one, every address is zero by construction, which is the run a build makes

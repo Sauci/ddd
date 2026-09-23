@@ -73,6 +73,7 @@ from ddd.models import (
     refuse_string_misuse,
     resolve_export,
     spelled_dimensions,
+    stored_counts,
 )
 from ddd.plugins import resolve_blocks, run_check_hooks
 
@@ -862,6 +863,7 @@ class _Analysis:
             )
             for name, refs in plain
         ]
+        self._check_point_counts(variables)
         instances = [
             self._build_instance(name, refs, owners[name], self._effective[name])
             for name, refs in structured
@@ -3548,6 +3550,43 @@ class _Analysis:
                     by_name[name][0].location("definition.name"),
                     notes=[("other variable", by_name[first][0].location("definition"))],
                 )
+
+    def _check_point_counts(self, variables: list[Variable]) -> None:
+        """A counted table's type holds its counts, and a table agrees with its axes.
+
+        The first is an error because the c initialiser would otherwise overflow in silence:
+        a ``boolean`` has no room for a count, and a ``uint8`` axis of 300 points writes 44.
+        A float holds any count a shape can have. The second is a warning: ASAP2 describes a
+        mix, one record layout per object, but an interpolation routine reads one convention.
+        """
+        by_name = {variable.name: variable for variable in variables}
+        for variable in variables:
+            reference = variable.producer or variable.declarations[0]
+            if variable.point_counts is PointCounts.LEADING:
+                datatype = variable.definition.datatype
+                for count in stored_counts(variable.definition.kind, variable.shape):
+                    if datatype is Datatype.BOOLEAN or (
+                        datatype.is_integer and count > datatype.raw_max
+                    ):
+                        self._bag.add(
+                            "point-counts-unrepresentable",
+                            f"'{variable.name}' stores its point count {count} as "
+                            f"{datatype.value}, which cannot hold it",
+                            reference.location("definition"),
+                        )
+                        break
+            for key, axis_name in variable.definition.references.items():
+                if key == "input":
+                    continue
+                axis = by_name.get(axis_name)
+                if axis is not None and axis.point_counts is not variable.point_counts:
+                    self._bag.add(
+                        "point-counts-mismatch",
+                        f"'{variable.name}' stores its point counts "
+                        f"'{variable.point_counts.value}', but its axis '{axis_name}' stores "
+                        f"them '{axis.point_counts.value}'",
+                        reference.location("definition"),
+                    )
 
 
 PRODUCER_KEYS: Final = (

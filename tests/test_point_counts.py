@@ -189,3 +189,62 @@ class TestTheResolution:
         again = load_dictionary(target, DiagnosticBag())
         assert again is not None
         assert {entry.point_counts for entry in again.objects} == {PointCounts.NONE}
+
+
+class TestTheFindings:
+    def test_a_boolean_table_cannot_hold_a_count(self, tree: Path) -> None:
+        _, bag = run_analysis(tree, files(axis("AX", 2, "boolean"), default="leading"))
+        assert bag.has_errors
+        assert checks(bag) == ["point-counts-unrepresentable"]
+        assert "'AX' stores its point count 2 as boolean" in messages(bag)
+
+    def test_the_widest_count_a_type_holds_is_accepted(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(tree, files(axis("AX", 255, "uint8"), default="leading"))
+        assert dictionary is not None, messages(bag)
+        assert checks(bag) == []
+
+    def test_one_more_is_refused(self, tree: Path) -> None:
+        _, bag = run_analysis(tree, files(axis("AX", 256, "uint8"), default="leading"))
+        assert bag.has_errors
+        assert checks(bag) == ["point-counts-unrepresentable"]
+
+    def test_a_map_is_checked_on_both_counts(self, tree: Path) -> None:
+        """The y count is the one that overflows here, which a check of x alone would miss."""
+        _, bag = run_analysis(
+            tree,
+            files(axis("AX", 8, "sint8"), axis("AY", 200, "sint16"), table("M", datatype="sint8"), default="leading"),
+        )
+        assert bag.has_errors
+        assert checks(bag) == ["point-counts-unrepresentable"]
+        assert "'M' stores its point count 200 as sint8" in messages(bag)
+
+    def test_a_float_always_holds_a_count(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(tree, files(axis("AX", 300, "float32"), default="leading"))
+        assert dictionary is not None, messages(bag)
+        assert checks(bag) == []
+
+    def test_an_uncounted_boolean_table_is_not_a_finding(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(tree, files(axis("AX", 2, "boolean")))
+        assert dictionary is not None, messages(bag)
+        assert checks(bag) == []
+
+    def test_a_table_and_its_axis_disagreeing_is_a_warning(self, tree: Path) -> None:
+        """A defines the curve and reads the axis B defines; B states the other convention."""
+        tree_files = {
+            "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json", point_counts="leading"),
+            "a.ddd.json": component(
+                "A", declare("input", "AX", "uint16", kind="axis", size=8), curve("C")
+            ),
+            "b.ddd.json": component(
+                "B", declare("output", "AX", "uint16", kind="axis", size=8), point_counts="none"
+            ),
+        }
+        dictionary, bag = run_analysis(tree, tree_files)
+        assert dictionary is not None, messages(bag)
+        assert checks(bag) == ["point-counts-mismatch"]
+        assert "'C' stores its point counts 'leading', but its axis 'AX' stores them 'none'" in messages(bag)
+
+    def test_agreement_is_not_a_finding(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(tree, files(*TABLES, default="leading"))
+        assert dictionary is not None, messages(bag)
+        assert checks(bag) == []

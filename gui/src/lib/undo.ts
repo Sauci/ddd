@@ -36,6 +36,13 @@ export function declareLabel(mode: Mode, typed: string, component: string): stri
     : fitted(`declaring ${typed} in ${component}`);
 }
 
+/** What a declaration taken out of a component's interface is called when it comes to be
+ * undone - the variable and the component it leaves, the same two names `declareLabel` joins
+ * the other way. */
+export function removeLabel(name: string, component: string): string {
+  return fitted(`removing ${name} from ${component}`);
+}
+
 /**
  * What a fix applied from the Findings tab is called.
  *

@@ -211,6 +211,7 @@ export function ComponentPage({ file, variable, state, stopped, onVariable, onOp
         <VariablePanel
           key={variable}
           name={variable}
+          file={file}
           revision={state?.revision}
           stopped={stopped}
           focusPicker={focusPicker}

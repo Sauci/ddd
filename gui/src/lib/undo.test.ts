@@ -3,6 +3,7 @@ import type { Finding, UndoneChange } from "../api/types";
 import {
   declareLabel,
   fixLabel,
+  removeLabel,
   settleLabel,
   shownUndo,
   typeLabel,
@@ -54,6 +55,10 @@ describe("what an edit is called", () => {
     expect(declareLabel("declare", "Pressure", "Controller")).toBe(
       "declaring Pressure in Controller",
     );
+  });
+
+  it("names a declaration taken out of a component's interface", () => {
+    expect(removeLabel("ValueB", "Controller")).toBe("removing ValueB from Controller");
   });
 
   it("names the declaration an identity was given to", () => {

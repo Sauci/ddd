@@ -1,9 +1,18 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ApiError, getSettle, getUnits, getVariable, postEdit } from "../api/client";
+import {
+  ApiError,
+  getDeclarationPlan,
+  getSettle,
+  getUnits,
+  getVariable,
+  postEdit,
+} from "../api/client";
+import type { Offer } from "../components/UnitPanelView";
 import { VariablePanelView } from "../components/VariablePanelView";
+import { planEdit } from "../lib/projectUnits";
 import { type Refused, shownRefusal } from "../lib/refusals";
-import { settleLabel } from "../lib/undo";
+import { removeLabel, settleLabel } from "../lib/undo";
 import { editOf, outsideVocabulary, textOf } from "../lib/units";
 import {
   keyRows,
@@ -18,6 +27,10 @@ import { Panel } from "../ui/Panel";
 
 interface Props {
   name: string;
+  /** The component page this panel is open from, absolute and posix-separated - `undefined` on
+   * the project screen's own panel, where no one component is in view and so no removal is
+   * offered. */
+  file: string | undefined;
   revision: number | undefined;
   stopped: boolean;
   /** A new value on every request to focus the picker; `null` asks for no focus. */
@@ -36,6 +49,7 @@ const STALE =
 /** One variable's panel: its keys, what each declaration says of them, and a key to settle. */
 export function VariablePanel({
   name,
+  file,
   revision,
   stopped,
   focusPicker,
@@ -63,6 +77,19 @@ export function VariablePanel({
     queryFn: () => getUnits(),
     placeholderData: (previous) => previous,
   });
+  // What removing this declaration from `file` would take - asked for only on a component's
+  // page, which is what `file` being stated says; the project screen's own panel offers no
+  // removal, and asks for no plan.
+  const removal = useQuery({
+    queryKey: ["declaration-plan", "remove", file, name, revision],
+    queryFn:
+      file === undefined ? skipToken : () => getDeclarationPlan({ action: "remove", file, name }),
+  });
+  // Which component the removal would take the declaration from - this file's own name among
+  // the variable's declarations - for the offer's sentence and the label its undo would carry.
+  // `undefined` before the variable has loaded, or on the project screen, where `file` matches
+  // none of them because there is none to match.
+  const from = variable.data?.declarations.find((entry) => entry.path === file)?.component;
   // The reader's own choice of key, kept as a tri-state the way `chosen` below is: `undefined`
   // until they choose, `null` once they let a row go, a string for the key they picked.
   const [picked, setPicked] = useState<string | null | undefined>(undefined);
@@ -90,6 +117,11 @@ export function VariablePanel({
   // wait is about the settlement that was refused, so another row selected in the meantime must
   // not be given its sentence, nor have its own Apply taken away by it.
   const [stale, setStale] = useState<({ key: string | undefined } & Refused) | null>(null);
+  // The removal's own "Show changes", refusal and stale wait - the same three the key chooser
+  // keeps for settling, kept apart because the two write paths must not answer for each other.
+  const [removalShown, setRemovalShown] = useState(false);
+  const [removalRefused, setRemovalRefused] = useState<string | null>(null);
+  const [removalStale, setRemovalStale] = useState<Refused | null>(null);
   // What the table actually offers to settle (`kind` aside): what a key remembered from a
   // previous variable, or forced by `focusPicker`, has to be checked against before it is shown.
   const rows =
@@ -162,6 +194,13 @@ export function VariablePanel({
       if (edit === null) throw new Error("there is nothing to change");
       return postEdit(edit);
     },
+    // The two write paths must not answer for each other (part 6's task 9 lesson): settling a
+    // key is about to change the very file a removal offer beside it reads, so starting one
+    // leaves neither the other's refusal nor its open diff on screen.
+    onMutate: () => {
+      setRemovalRefused(null);
+      setRemovalShown(false);
+    },
     // The value chosen stays chosen: the panel then says there is nothing left to change. Let
     // go, it fell back on the producer's value in the declarations still on screen, which are
     // the ones the edit has just changed, and previewed undoing it. A success is a definite
@@ -185,15 +224,73 @@ export function VariablePanel({
     },
     // An Apply changes this variable's declarations, the units the project uses and the preview
     // it was made from, whose fingerprints the edit spent: those are asked for again, and Apply
-    // stays unavailable until they answer. Everything else - the component's file, the canvas -
-    // is keyed by revision, and moves on with the state the edit made.
+    // stays unavailable until they answer. It changes the same file the removal offer beside it
+    // reads and the component's own table lists, so a success of either write path asks for all
+    // four again - only the canvas is left keyed by revision alone, moving on with the edit made.
     onSettled: () =>
       Promise.all([
-        queries.invalidateQueries({ queryKey: ["variable", name] }),
+        queries.invalidateQueries({ queryKey: ["variable"] }),
         queries.invalidateQueries({ queryKey: ["units"] }),
         queries.invalidateQueries({ queryKey: ["settle", name] }),
+        queries.invalidateQueries({ queryKey: ["file"] }),
+        queries.invalidateQueries({ queryKey: ["declarable"] }),
+        queries.invalidateQueries({ queryKey: ["declaration-plan"] }),
       ]),
   });
+  const remove = useMutation({
+    mutationFn: () => {
+      const edit =
+        removal.data === undefined || file === undefined || from === undefined
+          ? null
+          : planEdit(removal.data, removeLabel(name, from));
+      if (edit === null) throw new Error("there is nothing to change");
+      return postEdit(edit);
+    },
+    // Removing takes the whole declaration, so whatever the key chooser was showing is moot:
+    // `select` is the very function letting a row go already calls, and closes the chooser the
+    // same way, taking its refusal with it - the other half of the same part 6 lesson above.
+    onMutate: () => select(undefined),
+    // A success is a definite answer, so it clears both of this offer's own refusals too, not
+    // only the one that clears on its own, mirroring `apply`'s onSuccess.
+    onSuccess: () => {
+      setRemovalRefused(null);
+      setRemovalStale(null);
+      setRemovalShown(false);
+    },
+    // Stale is the one refusal that waits for a later revision rather than clearing; setting one
+    // kind clears the other, so the offer never shows two different answers to the same attempt.
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === "stale") {
+        setRemovalStale({ text: STALE, revision });
+        setRemovalRefused(null);
+      } else {
+        setRemovalRefused(`The change was refused: ${error.message}`);
+        setRemovalStale(null);
+      }
+    },
+    // Removing changes the same four queries a settle does, the variable's declarations chief
+    // among them: with none of this file's left, `GET /api/variable` answers no declarations,
+    // `undeclared` above turns true, and the effect near the top closes the panel through
+    // `onUndeclared` - the path the component page already names above its table, so there is
+    // nothing more to write here for that.
+    onSettled: () =>
+      Promise.all([
+        queries.invalidateQueries({ queryKey: ["variable"] }),
+        queries.invalidateQueries({ queryKey: ["file"] }),
+        queries.invalidateQueries({ queryKey: ["declarable"] }),
+        queries.invalidateQueries({ queryKey: ["declaration-plan"] }),
+      ]),
+  });
+  // What the removal offers, drawn the same way `UnitPanel`'s own actions are: the plan asked
+  // for, why it - or applying it - was refused, and whether the plan shown is a placeholder.
+  const removalOffer: Offer = {
+    plan: removal.data ?? null,
+    refusal:
+      removalStale !== null
+        ? shownRefusal(removalStale, revision)
+        : (removalRefused ?? removal.error?.message ?? null),
+    pending: removal.isPlaceholderData,
+  };
 
   if (undeclared) return null;
   if (variable.isError) {
@@ -260,7 +357,21 @@ export function VariablePanel({
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => apply.mutate()}
-      busy={stopped || apply.isPending}
+      // Left out on the project screen's own panel (`file` is `undefined` there, and so is
+      // `from`, since nothing in `variable.declarations` can match a file that names none):
+      // Task 7's optional prop then draws no offer at all.
+      removal={
+        file === undefined || from === undefined
+          ? undefined
+          : {
+              offer: removalOffer,
+              from,
+              shown: removalShown,
+              onShown: setRemovalShown,
+              onRemove: () => remove.mutate(),
+            }
+      }
+      busy={stopped || apply.isPending || remove.isPending}
       focus={focusPicker}
       onClose={onClose}
     />

@@ -84,6 +84,18 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   type it is about, and a declaration whose datatype, unit, conversion or limits a type
   fixes says which type, and takes the reader there.
 
+  A component's page can now add a declaration to its interface.  Choosing a variable
+  another component already declares adds it with the producer's own definition, less its
+  `id` and its `init`, so the new reader agrees with it by construction.  Choosing a name
+  nothing declares instead adds a new object of one of the six kinds, asking for what a
+  loadable declaration needs - the kind's required keys, and exactly one of `datatype` or
+  `typename`, with the identity `conversion` written in once a `datatype` is chosen; a
+  scope of `output` stamps it with a fresh `id`.  A unit, limits or a richer conversion
+  are left for the variable's own panel afterwards, where a reader already knows to find
+  them.  Removing a declaration is offered from that panel too, saying first who is left
+  reading it, or that nothing else declares it any longer.  All three are previewed before
+  anything is written, and undone the same way as every other change.
+
 * **The editor's reconcile quick fix is no longer offered for a value that already means what
   it would be set to.**  Taking the producing component's value, or spreading one declaration's
   value to the rest, now writes nothing to a declaration that already states it, however

@@ -95,3 +95,29 @@ export function declareSentence(
   const role = ROLE[scope] ?? scope;
   return `Declares ${typed}, a ${kind} this component ${role}.`;
 }
+
+/** What removing one declaration leaves behind, from what the panel already holds: the other
+ * components declaring the variable, and what they do with it. */
+export function removalSentence(
+  variable: { name: string; declarations: { component: string; role: string }[] },
+  from: string,
+): string {
+  const others = variable.declarations.filter((entry) => entry.component !== from);
+  const readers = others.filter((entry) => entry.role === "reads").map((entry) => entry.component);
+  if (others.length === 0) {
+    return `Removes ${variable.name}, which no other component declares.`;
+  }
+  if (readers.length === 0) {
+    const names = others.map((e) => e.component);
+    const verb = names.length === 1 ? "declares" : "declare";
+    return `Removes ${variable.name} from ${from}; ${listed(names)} still ${verb} it.`;
+  }
+  const verb = readers.length === 1 ? "reads" : "read";
+  return `Removes ${variable.name} from ${from}; ${listed(readers)} still ${verb} it.`;
+}
+
+/** "A", "A and B", "A, B and C" - the way every sentence of this interface lists names. */
+function listed(names: string[]): string {
+  if (names.length <= 1) return names.join("");
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}

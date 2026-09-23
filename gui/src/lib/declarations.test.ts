@@ -7,6 +7,7 @@ import {
   dimensionsRaw,
   keysOf,
   modeOf,
+  removalSentence,
   scopesOf,
 } from "./declarations";
 
@@ -190,6 +191,58 @@ describe("the sentence that tells reading from declaring", () => {
   test("a scope the roles do not name is spelled as given", () => {
     expect(declareSentence("Pressure", "measurement", "mystery", REPLY)).toBe(
       "Declares Pressure, a measurement this component mystery.",
+    );
+  });
+});
+
+describe("what removing a declaration leaves behind", () => {
+  const declaredBy = (...entries: [string, string][]) => ({
+    name: "ValueA",
+    declarations: entries.map(([component, role]) => ({ component, role })),
+  });
+
+  test("the only declaration leaves nothing", () => {
+    expect(removalSentence(declaredBy(["Controller", "reads"]), "Controller")).toBe(
+      "Removes ValueA, which no other component declares.",
+    );
+  });
+
+  test("the readers left behind are named", () => {
+    const variable = declaredBy(
+      ["SensorHub", "produces"],
+      ["Controller", "reads"],
+      ["UserInterface", "reads"],
+    );
+    expect(removalSentence(variable, "SensorHub")).toBe(
+      "Removes ValueA from SensorHub; Controller and UserInterface still read it.",
+    );
+  });
+
+  test("with no reader left, the components that remain are named instead", () => {
+    const variable = declaredBy(["SensorHub", "produces"], ["Controller", "reads"]);
+    expect(removalSentence(variable, "Controller")).toBe(
+      "Removes ValueA from Controller; SensorHub still declares it.",
+    );
+  });
+
+  test("one name is listed without an and", () => {
+    const variable = declaredBy(["SensorHub", "produces"], ["Controller", "reads"]);
+    expect(removalSentence(variable, "SensorHub")).toBe(
+      "Removes ValueA from SensorHub; Controller still reads it.",
+    );
+  });
+
+  // Not in the brief: with no reader left, its two given tests only ever leave one other
+  // declarer behind ("SensorHub still declares it"), which never exercises the plural verb the
+  // singular form's own ternary implies exists - left uncovered against the 100% branch gate.
+  test("with no reader left, more than one declarer keeps the plural verb", () => {
+    const variable = declaredBy(
+      ["SensorHub", "produces"],
+      ["Pump", "produces"],
+      ["Controller", "local"],
+    );
+    expect(removalSentence(variable, "SensorHub")).toBe(
+      "Removes ValueA from SensorHub; Pump and Controller still declare it.",
     );
   });
 });

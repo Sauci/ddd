@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { SettleReply, UnitsReply, VariableReply } from "../api/types";
+import type { PlanReply, SettleReply, UnitsReply, VariableReply } from "../api/types";
 import { outsideVocabulary, textOf } from "../lib/units";
 import { labelOfRaw, limitsNote, limitsOf, limitsRaw, startingRaw } from "../lib/variableKeys";
 import {
@@ -15,9 +15,65 @@ import {
   SHAPED,
   VOCABULARY,
 } from "../stories/fixtures";
+import type { Offer } from "./UnitPanelView";
 import { VariablePanelView } from "./VariablePanelView";
 
 export default { title: "Components / VariablePanelView" };
+
+// The removal offer's own plans, local to this file rather than the shared fixtures module:
+// both take SensorHub's declaration of ValueA out of sensor_hub.ddd.json (DISAGREEING and
+// FIXED_BY_TYPE both declare it at component.interface[2]), the two scenarios differing only in
+// what removalSentence then has left to say.
+
+/** DISAGREEING's own SensorHub declaration removed, leaving Controller and UserInterface - both
+ * readers - behind. */
+const REMOVAL_WITH_READERS_LEFT: PlanReply = {
+  revision: 7,
+  changes: [
+    {
+      file: "C:/work/demo/components/sensor_hub.ddd.json",
+      fingerprint: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+      operations: [{ op: "remove", pointer: "component.interface[2]", raw: null }],
+      hunks: [
+        {
+          line: 12,
+          before: [
+            "        {",
+            '          "scope": "output",',
+            '          "definition": { "name": "ValueA", "kind": "measurement", "unit": "%" }',
+            "        },",
+          ],
+          after: [],
+        },
+      ],
+    },
+  ],
+};
+
+/** FIXED_BY_TYPE's own SensorHub declaration removed - the only one it has, so nothing is left
+ * declaring it afterwards. */
+const REMOVAL_WITH_NOTHING_LEFT: PlanReply = {
+  revision: 7,
+  changes: [
+    {
+      file: "C:/work/demo/components/sensor_hub.ddd.json",
+      fingerprint: "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3",
+      operations: [{ op: "remove", pointer: "component.interface[2]", raw: null }],
+      hunks: [
+        {
+          line: 12,
+          before: [
+            "        {",
+            '          "scope": "output",',
+            '          "definition": { "name": "ValueA", "typename": "Speed_t" }',
+            "        },",
+          ],
+          after: [],
+        },
+      ],
+    },
+  ],
+};
 
 interface Props {
   variable: VariableReply;
@@ -30,6 +86,10 @@ interface Props {
   chosen?: string | null;
   changesShown?: boolean;
   pickerOpen?: boolean;
+  /** What removing the variable from a component would take, and which component that is; left
+   * out for a story that shows no removal offer at all - the way a screen with no component in
+   * view never offers one either. */
+  removal?: { from: string; offer: Offer };
 }
 
 /** The panel over one scenario's fixtures, with its own selection, choice, draft and Show
@@ -47,12 +107,14 @@ function View({
   chosen: initialChosen,
   changesShown: initialChangesShown = false,
   pickerOpen = false,
+  removal,
 }: Props) {
   const [selected, setSelected] = useState<string | undefined>(initialSelected);
   const [chosen, setChosen] = useState<string | null | undefined>(initialChosen);
   const [typed, setTyped] = useState<string | undefined>(undefined);
   const [edited, setEdited] = useState<{ min: string; max: string } | undefined>(undefined);
   const [changesShown, setChangesShown] = useState(initialChangesShown);
+  const [removalShown, setRemovalShown] = useState(false);
   // As in VariablePanel.tsx: for `limits` the two fields are the value, so what they say and
   // what would be applied are one thing, and a pair that is no range says so and offers none.
   // Derived here as the screen derives it - a story that seeded the fields instead would draw
@@ -118,6 +180,11 @@ function View({
       busy={false}
       focus={pickerOpen ? 1 : null}
       pickerTrigger={pickerOpen ? "focus" : "input"}
+      removal={removal?.offer ?? null}
+      removeFrom={removal?.from ?? null}
+      removalShown={removalShown}
+      onRemovalShown={setRemovalShown}
+      onRemove={() => undefined}
       onClose={() => undefined}
     />
   );
@@ -187,4 +254,28 @@ export const NameChosen = () => (
 
 export const NotOnThisKind = () => (
   <View variable={MIXED_KINDS} units={FREE_UNITS} preview={null} selected="dimensions" />
+);
+
+export const WithARemovalAndReadersLeft = () => (
+  <View
+    variable={DISAGREEING}
+    units={FREE_UNITS}
+    preview={null}
+    removal={{
+      from: "SensorHub",
+      offer: { plan: REMOVAL_WITH_READERS_LEFT, refusal: null, pending: false },
+    }}
+  />
+);
+
+export const WithARemovalAndNothingLeft = () => (
+  <View
+    variable={FIXED_BY_TYPE}
+    units={FREE_UNITS}
+    preview={null}
+    removal={{
+      from: "SensorHub",
+      offer: { plan: REMOVAL_WITH_NOTHING_LEFT, refusal: null, pending: false },
+    }}
+  />
 );

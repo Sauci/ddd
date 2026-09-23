@@ -1,4 +1,5 @@
 import type { SettleReply, UnitsReply, VariableReply } from "../api/types";
+import { removalSentence } from "../lib/declarations";
 import { distinctFindings, keyedFindings, namesThisVariable, routeHref } from "../lib/findings";
 import { consequence, declaredUnits, shownChanges } from "../lib/units";
 import { describeVariable, offerOf } from "../lib/variableKeys";
@@ -7,6 +8,7 @@ import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
 import { Changes } from "./Changes";
 import { KeyChooser, type KeyChooserProps } from "./KeyChooser";
+import type { Offer } from "./UnitPanelView";
 import { VariableKeysTable } from "./VariableKeysTable";
 
 export interface VariablePanelViewProps
@@ -24,6 +26,14 @@ export interface VariablePanelViewProps
   changesShown: boolean;
   onChangesShown: (shown: boolean) => void;
   onApply: () => void;
+  /** What removing this declaration from this component would take; `null` on a screen that
+   * offers no removal - the graph's panel, where no one component is in view. */
+  removal: Offer | null;
+  /** Which component the removal would take it from, for the sentence and the label. */
+  removeFrom: string | null;
+  removalShown: boolean;
+  onRemovalShown: (shown: boolean) => void;
+  onRemove: () => void;
   onClose: () => void;
 }
 
@@ -106,6 +116,37 @@ export function VariablePanelView(props: VariablePanelViewProps) {
             </Button>
           </div>
         </>
+      )}
+      {props.removal !== null && props.removeFrom !== null && (
+        <section className="panel-offer" aria-label="Remove the declaration">
+          <p className="consequence">{removalSentence(variable, props.removeFrom)}</p>
+          {props.removal.refusal !== null && (
+            <p className="panel-refusal" role="status">
+              {props.removal.refusal}
+            </p>
+          )}
+          {props.removal.refusal === null &&
+            props.removal.plan !== null &&
+            props.removal.plan.changes.length > 0 && (
+              <>
+                {props.removalShown && (
+                  <Changes changes={shownChanges(props.removal.plan.changes)} />
+                )}
+                <div className="panel-actions">
+                  <Button variant="link" onPress={() => props.onRemovalShown(!props.removalShown)}>
+                    {props.removalShown ? "Hide changes" : "Show changes"}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    isDisabled={props.busy || props.removal.pending}
+                    onPress={props.onRemove}
+                  >
+                    Remove from {props.removeFrom}
+                  </Button>
+                </div>
+              </>
+            )}
+        </section>
       )}
     </Panel>
   );

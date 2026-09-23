@@ -4,6 +4,7 @@ import type { Locator, Page } from "@playwright/test";
 
 export const CONTROLLER = join("components", "controller.ddd.json");
 export const SENSOR_HUB = join("components", "sensor_hub.ddd.json");
+export const USER_INTERFACE = join("components", "user_interface.ddd.json");
 /** The files of examples/vocabulary the journeys change, in its copy: the component stating its
  * units, and the units file listing them. */
 export const PUMP = "pump.ddd.json";
@@ -113,4 +114,17 @@ export function unstamp(directory: string, file: string, variable: string): Buff
     .replace(new RegExp(`("name": "${variable}"[\\s\\S]*?)\\n\\s*"id": "[^"]*",`), "$1");
   writeFileSync(path, text, "utf8");
   return before;
+}
+
+/** BlockA's own array `init` in the copy's user_interface.ddd.json, replaced from outside with
+ * the values given - part 7's own fixture for a finding that leads to the values grid: an
+ * out-of-range element the analysis reports as `init-invalid`, whose route opens BlockA's own
+ * grid rather than its variable panel. */
+export function writeBlockAInit(directory: string, values: readonly number[]): void {
+  const path = join(directory, USER_INTERFACE);
+  const text = readFileSync(path, "utf8").replace(
+    /("name": "BlockA"[\s\S]*?"init": )\[[\s\S]*?\]/,
+    `$1${JSON.stringify(values)}`,
+  );
+  writeFileSync(path, text, "utf8");
 }

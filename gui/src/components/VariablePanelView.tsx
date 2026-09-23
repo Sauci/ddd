@@ -101,27 +101,34 @@ export function VariablePanelView(props: VariablePanelViewProps) {
           />
         )
       )}
-      {refusal !== null ? (
-        <p className="panel-refusal" role="status">
-          {refusal}
-        </p>
-      ) : (
-        selected !== undefined &&
-        preview !== null && <p className="consequence">{consequence(changes)}</p>
-      )}
-      {refusal === null && changes.length > 0 && (
-        <>
-          {props.changesShown && <Changes changes={shownChanges(changes)} />}
-          <div className="panel-actions">
-            <Button variant="link" onPress={() => props.onChangesShown(!props.changesShown)}>
-              {props.changesShown ? "Hide changes" : "Show changes"}
-            </Button>
-            <Button variant="primary" isDisabled={props.busy} onPress={props.onApply}>
-              Apply to {changes.length} file{changes.length === 1 ? "" : "s"}
-            </Button>
-          </div>
-        </>
-      )}
+      {/* No `panel-offer` class here (unlike the removal section below): `.consequence` and
+          `.panel-refusal` already carry the rhythm's own margin-top (ui.css), and adding a
+          second one on top would move every `VariablePanelView` screenshot reference. This
+          section exists so a reader - and a locator - can tell this block's "Show changes" from
+          the removal offer's own, below. */}
+      <section aria-label="Settle the key">
+        {refusal !== null ? (
+          <p className="panel-refusal" role="status">
+            {refusal}
+          </p>
+        ) : (
+          selected !== undefined &&
+          preview !== null && <p className="consequence">{consequence(changes)}</p>
+        )}
+        {refusal === null && changes.length > 0 && (
+          <>
+            {props.changesShown && <Changes changes={shownChanges(changes)} />}
+            <div className="panel-actions">
+              <Button variant="link" onPress={() => props.onChangesShown(!props.changesShown)}>
+                {props.changesShown ? "Hide changes" : "Show changes"}
+              </Button>
+              <Button variant="primary" isDisabled={props.busy} onPress={props.onApply}>
+                Apply to {changes.length} file{changes.length === 1 ? "" : "s"}
+              </Button>
+            </div>
+          </>
+        )}
+      </section>
       {removal !== undefined && (
         <section className="panel-offer" aria-label="Remove the declaration">
           <p className="consequence">{removalSentence(variable, removal.from)}</p>

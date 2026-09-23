@@ -19,7 +19,12 @@ test("a disagreement written from outside is resolved from the component page", 
   await expect(panel.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
   // Filed on both of the files it concerns, the disagreement is still one sentence here.
   await expect(panel.getByText("is declared differently by component 'Controller'")).toHaveCount(1);
-  await panel.getByRole("button", { name: "Show changes" }).click();
+  // Scoped to the key chooser's own region: the removal offer beside it (part 7) carries a
+  // second "Show changes" of its own.
+  await panel
+    .getByRole("region", { name: "Settle the key" })
+    .getByRole("button", { name: "Show changes" })
+    .click();
   await expect(panel.getByText('"unit": "rpm"')).toBeVisible();
 
   await panel.getByRole("button", { name: "Apply to 1 file" }).click();
@@ -48,7 +53,12 @@ test("a unit typed and confirmed with Enter is the unit chosen, listed or not", 
   await picker.press("Enter");
   await expect(picker).toHaveValue("rpm");
   await expect(panel.getByText("Changes 1 file: sensor_hub.ddd.json")).toBeVisible();
-  await panel.getByRole("button", { name: "Show changes" }).click();
+  // Scoped to the key chooser's own region: the removal offer beside it (part 7) carries a
+  // second "Show changes" of its own.
+  await panel
+    .getByRole("region", { name: "Settle the key" })
+    .getByRole("button", { name: "Show changes" })
+    .click();
   await expect(added).toHaveText(['+ "unit": "rpm",']);
 
   // In no list at all: taken exactly as typed.

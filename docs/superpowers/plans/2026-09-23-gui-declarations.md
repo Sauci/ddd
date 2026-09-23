@@ -1901,6 +1901,8 @@ Co-Authored-By: <model that wrote it> <noreply@anthropic.com>"
 - Create: `gui/src/components/DeclarePanelView.tsx`, `gui/src/components/DeclarePanelView.stories.tsx`
 - Modify: `gui/src/stories/fixtures.ts`, `gui/src/styles/ui.css`
 
+**This task also amends `gui/src/lib/declarations.ts`**, which Task 4 wrote: `keysOf` must answer the keys a loadable declaration needs (see below), and `definitionOf` must write the identity `conversion` whenever a `datatype` is stated. Change its tests with it.
+
 **Interfaces:**
 - Consumes: Task 4's `declarations.ts`; Task 5's `DimensionsField`; the existing `Panel`, `Button`, `ComboBox`, `Changes`, `KeyChooser`, and `shownChanges`/`consequence` from `gui/src/lib/units.ts`.
 - Produces:
@@ -1914,6 +1916,9 @@ export interface DeclarePanelViewProps {
   scope: string;
   /** The json text of each key the form has stated, by key. */
   values: Record<string, string>;
+  /** What is being typed into each key's field, by key; a key absent means "not typing", and
+   * the committed value from `values` shows instead. */
+  typed_: Record<string, string | undefined>;
   /** A value block's rows, kept apart because `dimensions` has no chooser. */
   dimensions: string[];
   plan: PlanReply | null;
@@ -1924,6 +1929,7 @@ export interface DeclarePanelViewProps {
   onKind: (kind: string) => void;
   onScope: (scope: string) => void;
   onValue: (key: string, raw: string) => void;
+  onTyped_: (key: string, text: string | undefined) => void;
   onDimensions: (rows: string[]) => void;
   onChangesShown: (shown: boolean) => void;
   onApply: () => void;
@@ -1939,7 +1945,20 @@ It holds no state and asks for nothing: every value comes from its props and eve
 1. `<Panel title="Add a declaration" onClose={props.onClose}>`.
 2. **The name field**: one `ComboBox` labelled `Name`, offering `reply.names` in a section headed `This project's variables`, taking whatever is typed. Each choice's secondary text is `${entry.kind} from ${entry.producer ?? "no producer"}`.
 3. **The scope field**: a `ComboBox` labelled `Scope`, its choices `scopesOf(props.typed, props.reply)` worded as the page words them - `produces`, `reads`, `keeps to itself`.
-4. **When `modeOf(props.typed, props.reply.names) === "declare"`**: a `ComboBox` labelled `Kind` over `reply.kinds.map((entry) => entry.kind)`, and then, for each key of `keysOf(props.kind, props.reply)`, either `<DimensionsField>` when `key.key === "dimensions"` or a `<KeyChooser>` for every other key, each with `owner={props.typed}` and `offer={key}`.
+4. **When `modeOf(props.typed, props.reply.names) === "declare"`**: a `ComboBox` labelled `Kind` over `reply.kinds.map((entry) => entry.kind)`, and then, for each key of `keysOf(props.kind, props.reply)`, either `<DimensionsField>` when `key.key === "dimensions"` or a `<KeyChooser>` for every other key, each with `owner={props.typed}`, `offer={key}`, `typed={props.typed_[key.key] ?? labelOfRaw(...)}` and `narrow={props.typed_[key.key] ?? ""}` - the pattern `gui/src/components/KeyChooser.stories.tsx:20-50` already uses, where a `typed` of `undefined` means "not typing" and the committed value shows instead.
+
+**What the form asks for, and what it does not.** `keysOf` answers the keys a *loadable* declaration needs, not every key the kind accepts. Measured against the real server rather than derived from `definition_keys`, which cannot see a cross-field validator:
+
+| Definition | Answer |
+| --- | --- |
+| `{name, kind: measurement, volatile}` | refused: `storage is named exactly once: 'datatype' for a base datatype, 'typename' for a type the project declares` |
+| `+ datatype, no conversion` | refused: `a 'datatype' comes with a 'conversion': the identity ({"kind": "identity"}) is an answer to state, not a default to fall into` |
+| `+ datatype + conversion` | planned |
+| `+ typename instead` | planned |
+
+So the form asks for: the kind's own required keys (`volatile` always, plus `dimensions`, `size`, `axis`, or `x_axis` and `y_axis`), **exactly one of `datatype` or `typename`**, and **`conversion` as the identity whenever a `datatype` is chosen** - written by `definitionOf`, not chosen in a field, because the identity is the one answer the rule demands be stated rather than composed.
+
+`unit`, `limits` and a richer `conversion` are **not** in this form. No kind requires any of them, and spec §3's reason for keeping a composed `conversion` out - "a second loader's worth of form, and a text editor writes them better than a panel would… part 3's chooser is where a reader already knows to add one afterwards" - applies to them unchanged. This is what keeps `KeyChooser`'s `units: UnitsReply` and its `range`/`onRange` out of this view: the `unit` and `limits` editors never appear in it.
 5. `<p className="consequence">{declareSentence(props.typed, props.kind, props.scope, props.reply)}</p>`.
 6. The refusal, `plan`, `Show changes` and `Apply`, written exactly as `UnitPanelView`'s `panel-offer` writes them:
 

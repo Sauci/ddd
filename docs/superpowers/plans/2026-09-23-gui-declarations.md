@@ -2060,19 +2060,22 @@ At the end of the panel, after the key chooser's own actions and before `</Panel
             props.removal.plan !== null &&
             props.removal.plan.changes.length > 0 && (
               <>
-                {props.removalShown && (
-                  <Changes changes={shownChanges(props.removal.plan.changes)} />
+                {props.removal.shown && (
+                  <Changes changes={shownChanges(props.removal.offer.plan.changes)} />
                 )}
                 <div className="panel-actions">
-                  <Button variant="link" onPress={() => props.onRemovalShown(!props.removalShown)}>
-                    {props.removalShown ? "Hide changes" : "Show changes"}
+                  <Button
+                    variant="link"
+                    onPress={() => props.removal?.onShown(!props.removal.shown)}
+                  >
+                    {props.removal.shown ? "Hide changes" : "Show changes"}
                   </Button>
                   <Button
                     variant="secondary"
-                    isDisabled={props.busy || props.removal.pending}
-                    onPress={props.onRemove}
+                    isDisabled={props.busy || props.removal.offer.pending}
+                    onPress={props.removal.onRemove}
                   >
-                    Remove from {props.removeFrom}
+                    Remove from {props.removal.from}
                   </Button>
                 </div>
               </>
@@ -2281,10 +2284,10 @@ Co-Authored-By: <model that wrote it> <noreply@anthropic.com>"
 - Modify: `gui/src/screens/VariablePanel.tsx`
 
 **Interfaces:**
-- Consumes: Task 4's `getDeclarationPlan`; Task 7's new `VariablePanelView` props; the panel's existing `apply` mutation, `failed`/`staleFailed` state and `shownRefusal`.
+- Consumes: Task 4's `getDeclarationPlan`; Task 7's optional `removal` prop on `VariablePanelView`, which is one object `{ offer, from, shown, onShown, onRemove }` - **read the committed `gui/src/components/VariablePanelView.tsx` and match it, rather than this plan's earlier sketch**; the panel's existing `apply` mutation, `failed`/`staleFailed` state and `shownRefusal`; and `declareLabel`'s neighbours in `gui/src/lib/undo.ts`, which is where a removal's own label belongs.
 - Produces: nothing later tasks read.
 
-**This task owns the `file` prop, both halves.** Measured: `VariablePanel`'s `Props` (`gui/src/screens/VariablePanel.tsx:19`) has no `file` today - it is `name`, `revision`, `stopped`, `focusPicker`, `onClose`, `onUndeclared`, `onOpenType`. Add `file: string | undefined` to it **and** pass `file={file}` from `gui/src/screens/ComponentPage.tsx`, which Task 8 has already changed by the time this runs. It is `undefined` on the project screen's own panel, where no one component is in view and no removal is offered - which is what Task 7's `removal: Offer | null` is for.
+**This task owns the `file` prop, both halves.** Measured: `VariablePanel`'s `Props` (`gui/src/screens/VariablePanel.tsx:19`) has no `file` today - it is `name`, `revision`, `stopped`, `focusPicker`, `onClose`, `onUndeclared`, `onOpenType`. Add `file: string | undefined` to it **and** pass `file={file}` from `gui/src/screens/ComponentPage.tsx`, which Task 8 has already changed by the time this runs. It is `undefined` on the project screen's own panel, where no one component is in view and no removal is offered - which is what Task 7's optional `removal` prop is for: leave it out and no offer is drawn.
 
 - [ ] **Step 1: Ask for the removal's plan**
 

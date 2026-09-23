@@ -46,6 +46,15 @@ const SCOPE_WORDS: Record<string, string> = {
   local: "keeps to itself",
 };
 
+/** What the scope field settles on from its text: the scope whose word spells it exactly - so
+ * confirming an untouched field with Enter, or typing a word out by hand, lands on the same raw
+ * scope picking it would - else the text itself, a scope the roles do not name spelled as given
+ * (`declareSentence`'s own fallback). Without this, `onEnter`/`onInputChange` would feed the
+ * field's worded text back as the raw value the rest of the form reads `props.scope` as. */
+function scopeOf(scopes: string[], text: string): string {
+  return scopes.find((scope) => (SCOPE_WORDS[scope] ?? scope) === text) ?? text;
+}
+
 const NOTHING = "state nothing";
 
 /** The label a key's field shows for its committed value, `shortValue`'s own wording - the same
@@ -76,6 +85,7 @@ const NOTHING_IN_PLAY = new Map<string | null, string[]>();
 export function DeclarePanelView(props: DeclarePanelViewProps) {
   const { reply } = props;
   const mode = modeOf(props.typed, reply.names);
+  const scopeChoices = scopesOf(props.typed, reply);
   return (
     <Panel title="Add a declaration" onClose={props.onClose}>
       <div className="declare-fields">
@@ -102,12 +112,12 @@ export function DeclarePanelView(props: DeclarePanelViewProps) {
         <ComboBox
           label="Scope"
           inputValue={SCOPE_WORDS[props.scope] ?? props.scope}
-          onInputChange={props.onScope}
+          onInputChange={(text) => props.onScope(scopeOf(scopeChoices, text))}
           sections={[
             {
               id: "scopes",
               title: "Scope",
-              choices: scopesOf(props.typed, reply).map((scope) => ({
+              choices: scopeChoices.map((scope) => ({
                 id: scope,
                 label: SCOPE_WORDS[scope] ?? scope,
                 detail: "",
@@ -115,7 +125,7 @@ export function DeclarePanelView(props: DeclarePanelViewProps) {
             },
           ]}
           onPick={props.onScope}
-          onEnter={props.onScope}
+          onEnter={(text) => props.onScope(scopeOf(scopeChoices, text))}
           onClose={() => undefined}
           isDisabled={props.busy}
         />

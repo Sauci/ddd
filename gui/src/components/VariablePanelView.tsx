@@ -26,20 +26,25 @@ export interface VariablePanelViewProps
   changesShown: boolean;
   onChangesShown: (shown: boolean) => void;
   onApply: () => void;
-  /** What removing this declaration from this component would take; `null` on a screen that
-   * offers no removal - the graph's panel, where no one component is in view. */
-  removal: Offer | null;
-  /** Which component the removal would take it from, for the sentence and the label. */
-  removeFrom: string | null;
-  removalShown: boolean;
-  onRemovalShown: (shown: boolean) => void;
-  onRemove: () => void;
+  /** What removing this declaration from this component would take, and how to act on it.
+   * Absent on a screen that offers no removal - the graph's panel, where no one component is
+   * in view. */
+  removal?:
+    | {
+        offer: Offer;
+        /** Which component the removal would take it from, for the sentence and the label. */
+        from: string;
+        shown: boolean;
+        onShown: (shown: boolean) => void;
+        onRemove: () => void;
+      }
+    | undefined;
   onClose: () => void;
 }
 
 /** One variable's panel, drawn from what the api answered: a picture of its props. */
 export function VariablePanelView(props: VariablePanelViewProps) {
-  const { variable, units, preview, refusal, selected } = props;
+  const { variable, units, preview, refusal, selected, removal } = props;
   const changes = preview?.changes ?? [];
   const offer = selected === undefined ? undefined : offerOf(variable, selected);
   return (
@@ -117,31 +122,29 @@ export function VariablePanelView(props: VariablePanelViewProps) {
           </div>
         </>
       )}
-      {props.removal !== null && props.removeFrom !== null && (
+      {removal !== undefined && (
         <section className="panel-offer" aria-label="Remove the declaration">
-          <p className="consequence">{removalSentence(variable, props.removeFrom)}</p>
-          {props.removal.refusal !== null && (
+          <p className="consequence">{removalSentence(variable, removal.from)}</p>
+          {removal.offer.refusal !== null && (
             <p className="panel-refusal" role="status">
-              {props.removal.refusal}
+              {removal.offer.refusal}
             </p>
           )}
-          {props.removal.refusal === null &&
-            props.removal.plan !== null &&
-            props.removal.plan.changes.length > 0 && (
+          {removal.offer.refusal === null &&
+            removal.offer.plan !== null &&
+            removal.offer.plan.changes.length > 0 && (
               <>
-                {props.removalShown && (
-                  <Changes changes={shownChanges(props.removal.plan.changes)} />
-                )}
+                {removal.shown && <Changes changes={shownChanges(removal.offer.plan.changes)} />}
                 <div className="panel-actions">
-                  <Button variant="link" onPress={() => props.onRemovalShown(!props.removalShown)}>
-                    {props.removalShown ? "Hide changes" : "Show changes"}
+                  <Button variant="link" onPress={() => removal.onShown(!removal.shown)}>
+                    {removal.shown ? "Hide changes" : "Show changes"}
                   </Button>
                   <Button
                     variant="secondary"
-                    isDisabled={props.busy || props.removal.pending}
-                    onPress={props.onRemove}
+                    isDisabled={props.busy || removal.offer.pending}
+                    onPress={removal.onRemove}
                   >
-                    Remove from {props.removeFrom}
+                    Remove from {removal.from}
                   </Button>
                 </div>
               </>

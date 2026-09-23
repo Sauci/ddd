@@ -180,11 +180,17 @@ function View({
       busy={false}
       focus={pickerOpen ? 1 : null}
       pickerTrigger={pickerOpen ? "focus" : "input"}
-      removal={removal?.offer ?? null}
-      removeFrom={removal?.from ?? null}
-      removalShown={removalShown}
-      onRemovalShown={setRemovalShown}
-      onRemove={() => undefined}
+      removal={
+        removal === undefined
+          ? undefined
+          : {
+              offer: removal.offer,
+              from: removal.from,
+              shown: removalShown,
+              onShown: setRemovalShown,
+              onRemove: () => undefined,
+            }
+      }
       onClose={() => undefined}
     />
   );

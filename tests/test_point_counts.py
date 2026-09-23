@@ -27,7 +27,8 @@ from conftest import (
 )
 from ddd.backends.c.model import build_code_model
 from ddd.backends.c.options import COptions
-from ddd.diagnostics import DiagnosticBag
+from ddd.compare import compare
+from ddd.diagnostics import DiagnosticBag, SeverityPolicy
 from ddd.ir import DataDictionary, ResolvedObject
 from ddd.loading import load_dictionary, load_workspace
 from ddd.models import ComponentFile, ObjectKind, PointCounts, ProjectFile, stored_counts
@@ -423,3 +424,23 @@ class TestTheA2l:
         routine computing ``y * nx + x`` from the stored count expects."""
         text = a2l(tree, files(axis("AX", 8), default="leading"))
         assert "STATIC_RECORD_LAYOUT" not in text
+
+
+class TestCompare:
+    def test_a_changed_convention_is_a_changed_interface(self, tree: Path) -> None:
+        old, bag = run_analysis(tree / "old", files(axis("AX", 8)))
+        assert old is not None, messages(bag)
+        new, bag = run_analysis(tree / "new", files(axis("AX", 8), default="leading"))
+        assert new is not None, messages(bag)
+        verdict = DiagnosticBag(SeverityPolicy.from_strings(()))
+        compare(old, new, verdict)
+        assert checks(verdict) == ["changed-interface"]
+        assert "point_counts" in messages(verdict)
+
+    def test_an_unchanged_convention_is_not_a_finding(self, tree: Path) -> None:
+        old, _ = run_analysis(tree / "old", files(axis("AX", 8), default="leading"))
+        new, _ = run_analysis(tree / "new", files(axis("AX", 8), default="leading"))
+        assert old is not None and new is not None
+        verdict = DiagnosticBag(SeverityPolicy.from_strings(()))
+        compare(old, new, verdict)
+        assert checks(verdict) == []

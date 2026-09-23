@@ -29,10 +29,11 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from ddd.diagnostics import DiagnosticBag, Location
-from ddd.ir import Comparable, DataDictionary, ResolvedInstance, ResolvedLeaf
+from ddd.ir import Comparable, DataDictionary, ResolvedInstance, ResolvedLeaf, ResolvedObject
 from ddd.models import (
     Conversion,
     EnumConversion,
+    PointCounts,
     conversion_identity,
     format_number,
     format_shape,
@@ -270,6 +271,11 @@ def _uniform(value: object) -> object:
     return repeated.pop() if len(repeated) == 1 else collapsed
 
 
+def _point_counts(entry: Comparable) -> str:
+    """The convention of a plain object; a structure member is never a table, so ``none``."""
+    return entry.point_counts.value if isinstance(entry, ResolvedObject) else PointCounts.NONE.value
+
+
 # Change any of these and the consumers of the object are wrong, whether or not they still
 # compile: a widened datatype breaks the abi, a rescaled conversion falsifies every value,
 # and an object turning local takes itself out of reach.
@@ -302,6 +308,10 @@ _INTERFACE_FIELDS: tuple[ComparedField[Comparable], ...] = (
         lambda o: o.written_shape,
         lambda o: format_shape(o.spelled_shape) or "scalar",
     ),
+    # Where a table keeps its point counts is layout, for the reason a bitfield's width is:
+    # the size every reader declares changes, and the data moves behind the counts, so every
+    # reader and every interpolation over it reads the wrong element whether or not it compiles.
+    ComparedField("point_counts", _point_counts, _point_counts),
     # ``references`` is compared by hand below rather than from this table, for the reason
     # ``limits`` is: the answer is not a property of the entry alone. A referent is named, and
     # two deliveries name it differently the moment it is renamed - so the comparison resolves

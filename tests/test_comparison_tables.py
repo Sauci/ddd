@@ -116,10 +116,6 @@ _NOT_COMPARED_RESOLVED: dict[str, str] = {
     "extensions": "a plugin's block is compared by that plugin's compare hook and by nothing "
     "built in: putting it in a table would turn the commit that stamps a project into a "
     "changed-interface on every object, and DDD does not know what a change inside one means",
-    "point_counts": "reporting a changed convention as changed-interface is a decision the "
-    "spec already states, but wiring it needs a table entry ResolvedLeaf can answer too - it "
-    "has none, and _bucket_key reads both readings of a table off every entry regardless of "
-    "its own kind. That is a task of its own, not a line added to this one's tables",
 }
 
 # A leaf is a Comparable like a plain object and is compared with the same tables, minus the

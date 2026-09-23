@@ -296,9 +296,11 @@ The commands
        once. A component's page adds a declaration to its interface - a variable
        already declared, carrying the producer's keys where there is one and the
        project's own where there is not, or a new object of one of six kinds - and
-       takes one away. Its table's Shape column opens a curve's, a map's, an axis's or
-       any other shaped declaration's own page: its values as a grid, laid against its
-       axes' breakpoints or plain indices, in physical or in raw by a toggle. One cell
+       takes one away. Its table's Shape column opens the page of a curve, a map, an
+       axis or any other declaration shaped in one or two dimensions: its values as a
+       grid, laid against its axes' breakpoints or plain indices and named with the axis
+       on each edge, in physical or in raw by a toggle. A deeper shape, and a
+       declaration naming a structured type, are shown there and not offered. One cell
        is changed at a time, previewed and applied like every other change here, and
        put back by the same undo. A Types tab lists the types the project declares, with
        what each fixes and what names it; what a scalar type fixes is changed there, and

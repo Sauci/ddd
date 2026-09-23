@@ -18,7 +18,7 @@ import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Final, cast
+from typing import Any, Final
 
 from pydantic import BaseModel, ValidationError
 
@@ -754,17 +754,11 @@ class Api:
             file = _source(revision, Path(path))
         except NotInProjectError as outside:
             return _error(404, "not-found", str(outside))
+        built = revision.index
+        if built is None:
+            return _error(409, UNREADABLE, _NOTHING_LOADED)
         if not any(entry.path == file and entry.kind == "component" for entry in revision.files):
             return _error(409, "invalid", f"{file.name} is not a component of the open project")
-        # A "component"-kind entry only ever appears in `revision.files` once the analysis
-        # built an index: `Session._analysed` covers no file beyond the project's own root
-        # while the index stays `None`, because `load_workspace` fails the whole read only
-        # when the root itself is unusable, and reports every other problem instead of
-        # stopping there (measured: tests/test_lsp.py::TestRuns pairs a root that cannot be
-        # read with both `index is None` and `covered == {that root}`). So `revision.index`
-        # is never `None` past the check above, and `cast` says so without adding a branch no
-        # test could ever take the other way of.
-        built = cast(Index, revision.index)
         cache: dict[Path, Document] = {}
         return Reply(
             200,

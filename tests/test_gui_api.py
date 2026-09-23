@@ -2365,13 +2365,17 @@ class TestWhatAComponentMayAdd:
         assert (reply.status, reply.body["error"]) == (409, "invalid")
         assert reply.body["message"] == "demo.ddd.json is not a component of the open project"
 
-    def test_a_project_that_did_not_load_offers_nothing_to_add_to(self, tmp_path) -> None:
-        # Measured: `unloaded` leaves one file in the revision, p.ddd.json, kind "project" and
-        # loaded False - so it passes the project check and fails the component one.
+    def test_a_project_that_did_not_load_has_nothing_to_add_to(self, tmp_path) -> None:
+        # Measured: `unloaded` leaves one file in the revision, p.ddd.json, kind "project", with
+        # `index is None` - so it passes `_source` and is refused for the missing index before
+        # the component check ever runs, the same answer `/api/declaration-plan` gives for the
+        # same project.
         api = unloaded(tmp_path)
         reply = get(api, "/api/declarable", file=(tmp_path / "p.ddd.json").as_posix())
-        assert (reply.status, reply.body["error"]) == (409, "invalid")
-        assert reply.body["message"] == "p.ddd.json is not a component of the open project"
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"] == (
+            "the open project did not load, so no interface of it can be changed"
+        )
 
 
 class TestPlanningAChangeOfAnInterface:

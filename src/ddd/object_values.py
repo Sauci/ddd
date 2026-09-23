@@ -14,12 +14,18 @@ as the name of a constant.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Final, Literal, cast
 
+from ddd.editing import Operation
 from ddd.ir import DataDictionary
 from ddd.lsp.navigation import Index
+from ddd.lsp.ranges import Document, read
+from ddd.lsp.units import PlannedEdit
+from ddd.models.common import Datatype
 from ddd.models.conversion import Conversion
 from ddd.models.objects import InitValue
 
@@ -176,3 +182,94 @@ def _filled(scalar: float, shape: tuple[int, ...]) -> tuple[tuple[float, ...], .
     if len(shape) == 1:
         return (tuple([scalar] * shape[0]),)
     return tuple(tuple([scalar] * shape[1]) for _ in range(shape[0]))
+
+
+@dataclass(frozen=True, slots=True)
+class ValuePlan:
+    """Everything one change of a value takes: one edit, on the producer's file."""
+
+    edits: tuple[PlannedEdit, ...]
+
+
+def set_cell(
+    dictionary: DataDictionary,
+    built: Index,
+    name: str,
+    at: str,
+    raw: float,
+    cache: dict[Path, Document],
+) -> ValuePlan:
+    """What setting one element takes.
+
+    One ``set`` at the element's own pointer - ``…definition.init[2]`` for a curve,
+    ``…init[1][3]`` for a map - so that changing one cell of a sixteen by sixteen map changes
+    one line rather than reprinting two hundred and fifty six numbers. Where the array is not
+    written yet, because the producer states one value for every element or states none at
+    all, the whole ``init`` is written instead and the preview shows the object gaining it.
+
+    A shapeless object - a plain measurement or a parameter, most of a project - has no cell
+    for a value to sit in, the same as :func:`grid_of` finds when it lays one out; refused
+    here before ``at`` is checked against the empty shape, rather than left to crash on one.
+    """
+    grid = grid_of(dictionary, built, name)
+    if not grid.shape:
+        raise ValueRefusalError("invalid", f"'{name}' has no cell for a value to sit in")
+    if grid.stated == "text":
+        raise ValueRefusalError("invalid", f"'{name}' is initialised with text, not with a grid")
+    sites = built.producers.get(name) or []
+    if not sites:
+        raise ValueRefusalError("invalid", f"nothing produces '{name}', so it has no values to set")
+    found = _element(at, grid.shape)
+    _acceptable(raw, Datatype(grid.datatype), name)
+    site = sites[0]
+    written = read(site.path, cache).value_at(f"{site.pointer}.init")
+    if isinstance(written, list):
+        operation = Operation("set", f"{site.pointer}.init{at}", json.dumps(raw))
+    else:
+        rows = [list(row) for row in grid.rows]
+        # A one dimensional object is one row, so its only index is the column.
+        row, column = (0, found[0]) if len(grid.shape) == 1 else found
+        rows[row][column] = raw
+        whole = rows[0] if len(grid.shape) == 1 else rows
+        operation = Operation("set", f"{site.pointer}.init", json.dumps(whole))
+    return ValuePlan((PlannedEdit(site.path, (operation,)),))
+
+
+def _element(at: str, shape: tuple[int, ...]) -> tuple[int, ...]:
+    """The indices ``at`` names - ``[2]``, or ``[1][3]`` - checked against the shape."""
+    parts = [piece for piece in at.replace("]", "").split("[") if piece != ""]
+    if len(parts) != len(shape) or not all(piece.isdecimal() for piece in parts):
+        raise ValueRefusalError("invalid", f"'{at}' is not an element of this object")
+    found = tuple(int(piece) for piece in parts)
+    if any(index >= size for index, size in zip(found, shape, strict=True)):
+        raise ValueRefusalError("invalid", f"'{at}' is past the end of this object")
+    return found
+
+
+def _acceptable(raw: float, datatype: Datatype, name: str) -> None:
+    """What an init value is refused for, in the words the check refuses it with.
+
+    Read from :class:`~ddd.models.common.Datatype`'s own properties, which is where
+    ``ddd.analysis``'s own init check reads them: the rule a value is written by and the rule
+    it is read back by cannot then drift apart. The object's limits are deliberately not
+    weighed - nothing in the analysis weighs an init against them, and a grid stricter than
+    ``ddd check`` would leave cells a person wrote by hand that it could not edit.
+    """
+    if datatype is Datatype.BOOLEAN:
+        if not isinstance(raw, bool) and raw not in (0, 1):
+            raise ValueRefusalError("invalid", f"{raw!r} is not a valid bool")
+        return
+    if datatype.is_integer and isinstance(raw, float):
+        raise ValueRefusalError(
+            "invalid",
+            f"{raw!r} is written as a fractional number, but '{name}' has the integer "
+            f"datatype {datatype.value}",
+        )
+    info = datatype.info
+    if not info.raw_min <= raw <= info.raw_max:
+        raise ValueRefusalError(
+            "invalid",
+            f"{raw} does not fit into {datatype.value} ({info.raw_min} .. {info.raw_max})",
+        )
+    if datatype.rounds_to_zero(raw):
+        raise ValueRefusalError("invalid", f"{raw} rounds to zero in {datatype.value}")

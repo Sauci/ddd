@@ -2455,7 +2455,7 @@ class _Analysis:
         if not ref.scope.is_producer:
             # Reported where the claim is written rather than where it is overruled: the
             # producer may be in a file this author has never opened, and the fix is here.
-            for key, check, what in _PRODUCER_KEYS:
+            for key, check, what in PRODUCER_KEYS:
                 if getattr(definition, key) not in (None, {}):
                     self._bag.add(
                         check,
@@ -3529,7 +3529,7 @@ class _Analysis:
                 )
 
 
-_PRODUCER_KEYS: Final = (
+PRODUCER_KEYS: Final = (
     ("init", "consumer-storage", "the initial value"),
     ("section", "consumer-storage", "the memory section"),
     ("raster", "consumer-raster", "the measurement raster"),
@@ -3539,7 +3539,13 @@ _PRODUCER_KEYS: Final = (
 """The keys only a producing declaration may state, with the check a consumer stating one
 earns and how the finding names the key. One rule, five keys: what an object starts as,
 where it lives, which event updates it, which earlier delivery it continues, and what a
-plugin knows about it are all decided by the component that produces it."""
+plugin knows about it are all decided by the component that produces it.
+
+Public because the writer of an interface derives from it: ``ddd gui`` writes a reader by
+carrying the producer's definition, and what it must leave behind is exactly this set
+(:data:`ddd.declaration_plans.CARRIED_BY_A_READER`). Stated once here rather than twice, so
+that the rule a declaration is written by and the check it is read back by cannot drift apart
+- a sixth key added to this tuple is one the writer drops the moment it exists."""
 
 
 def close_units(unit: str, vocabulary: Sequence[str]) -> tuple[str, ...]:

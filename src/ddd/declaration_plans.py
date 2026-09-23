@@ -19,7 +19,7 @@ from typing import Final, Literal
 
 from pydantic import TypeAdapter, ValidationError
 
-from ddd.analysis import _PRODUCER_KEYS
+from ddd.analysis import PRODUCER_KEYS
 from ddd.editing import Operation
 from ddd.identity import new_id
 from ddd.lsp.navigation import Index, rename_problem
@@ -47,10 +47,10 @@ carries, the way :mod:`ddd.identity` spells them, because a scope arrives here a
 page sent and is checked against :data:`SCOPES` rather than parsed into a :class:`Scope`.
 """
 
-CARRIED_BY_A_READER: Final = frozenset(key for key, _, _ in _PRODUCER_KEYS)
+CARRIED_BY_A_READER: Final = frozenset(key for key, _, _ in PRODUCER_KEYS)
 """What a reader does not copy from the producer it reads.
 
-Derived from :data:`ddd.analysis._PRODUCER_KEYS` rather than restated beside it: that tuple is
+Derived from :data:`ddd.analysis.PRODUCER_KEYS` rather than restated beside it: that tuple is
 where the project decides which keys only a producing declaration may state - ``init``,
 ``section``, ``raster``, ``id`` and ``extensions`` - and it names, per key, the check a
 consumer stating one earns. Copying any of them into an ``input`` would write the finding this
@@ -58,10 +58,10 @@ verb exists to avoid, and reading the rule where it is decided means a sixth key
 is dropped here the moment it exists. The same reasoning :func:`definition_keys` already uses
 about the models, applied to the analysis.
 
-Read through a name private to :mod:`ddd.analysis` because nothing outside it had needed the
-set before. A copy is what let a reader carry ``section`` and ``raster`` into an ``input``,
-which no measurement across the examples could show: every producer there stating one is
-``local``, and a local is never declarable elsewhere.
+One concept named once, the way :func:`ddd.variables.component_of` is: a copy is what let a
+reader carry ``section`` and ``raster`` into an ``input``, which no measurement across the
+examples could show - every producer there stating one is ``local``, and a local is never
+declarable elsewhere.
 """
 
 INTERFACE: Final = "component.interface"

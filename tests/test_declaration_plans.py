@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from conftest import component, declare, project, write_tree
-from ddd.analysis import _PRODUCER_KEYS, analyze
+from ddd.analysis import PRODUCER_KEYS, analyze
 from ddd.declaration_plans import (
     CARRIED_BY_A_READER,
     KINDS,
@@ -192,10 +192,10 @@ class TestWhatOnlyAProducerMayState:
     """The two sets this module derives rather than restates, pinned where they are derived."""
 
     def test_a_reader_drops_exactly_the_keys_the_analysis_reserves(self) -> None:
-        # Not a list written out here: the set is read from `_PRODUCER_KEYS`, so a sixth key
-        # added there fails nothing and is dropped at once, and a copy written beside it fails
-        # this.
-        reserved = {key for key, _, _ in _PRODUCER_KEYS}
+        # Not a list written out here: the set is read from `PRODUCER_KEYS`, the analysis' own
+        # public name for it, so a sixth key added there fails nothing and is dropped at once,
+        # and a copy written beside it fails this.
+        reserved = {key for key, _, _ in PRODUCER_KEYS}
         assert reserved == CARRIED_BY_A_READER
         assert sorted(reserved) == ["extensions", "id", "init", "raster", "section"]
 

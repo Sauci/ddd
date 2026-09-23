@@ -101,9 +101,11 @@ Both are added to `docs/consistency_checks.rst` with the rest.
 
 ### `ddd compare`
 
-`point_counts` joins the storage fields of an object (`_STORAGE_FIELDS`, `compare.py:331`), so a
-table whose convention changes between two deliveries is reported as `changed-storage`: its size
-and the offset of its data have moved even though its interface has not.
+`point_counts` joins the interface fields of an object (`_INTERFACE_FIELDS`, `compare.py:276`),
+so a table whose convention changes between two deliveries is reported as `changed-interface`,
+an error. Every reader compiles against a different declaration and reads its data at a
+different offset, which is the rule that file already applies to the width of a bitfield: "the
+c the consumers compile against is a different structure either way".
 
 ## 4 The c backend
 

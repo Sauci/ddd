@@ -133,8 +133,11 @@ export function ValuesGridView(props: ValuesGridViewProps) {
     <section
       onPaste={(event) => {
         // A read-only grid has nothing to paste into, and says so via `readOnly` below rather
-        // than by planning a refusal for a table it could never write (spec 4.3).
-        if (readOnly !== null) return;
+        // than by planning a refusal for a table it could never write (spec 4.3). A grid with
+        // an apply in flight takes nothing either: every input and Apply are disabled while
+        // `busy`, so a cell cannot be typed into, and a paste taken here would be cleared
+        // without a word by that apply's own `onSuccess` the moment it landed.
+        if (readOnly !== null || busy) return;
         // A cell is a text field: without this the browser also drops the whole block into
         // whichever one has focus.
         event.preventDefault();

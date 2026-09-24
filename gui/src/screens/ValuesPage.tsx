@@ -42,7 +42,7 @@ type Editing = { row: number; column: number; typed: string } | null;
  * A cell typed into and a table pasted are two ways to reach the same mutation (spec 3's "a
  * paste is a second way to reach `init`"), so only one owns the preview, the sentence and Apply
  * at a time: `pastedRows` and `editing` are cleared by each other's own action, and `shownPlan`/
- * `shownRefusal`/`label` below choose between the two once, rather than at each prop.
+ * `shownSentence`/`label` below choose between the two once, rather than at each prop.
  */
 export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   const queries = useQueryClient();
@@ -123,7 +123,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // failure either way. A typed cell's own refusal is `ValuesGridView`'s to find, from `editing`
   // directly (`typedRefusal`), so it is not repeated here - repeating it would only recompute
   // the same sentence a second time for no reader to see any sooner.
-  const shownRefusal = pasting
+  const shownSentence = pasting
     ? (pasteRefusal ??
       staleRefusal(staleFailed, revision) ??
       failed ??
@@ -216,7 +216,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
       physical={physical}
       editing={editing}
       plan={shownPlan}
-      refusal={shownRefusal}
+      refusal={shownSentence}
       changesShown={changesShown}
       busy={stopped || apply.isPending}
       onPhysical={setPhysical}

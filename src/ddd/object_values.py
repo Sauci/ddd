@@ -378,8 +378,8 @@ def _no_single_producer(name: str, sites: Sequence[object]) -> str:
     """Why a read-only grid cannot take a table, in the words part 8 refuses a cell with.
 
     Both sentences are ``set_cell``'s own, word for word, and the page's ``readOnlyNote``
-    reproduces the same two: one condition said three ways in one interface is three things for
-    a reader to reconcile, and this is the one of the three nothing else was spelling.
+    spells the same two: one condition said in three places wants one wording, and the
+    multi-producer one here was the only one of the three saying it differently.
     """
     if not sites:
         return f"nothing produces '{name}', so it has no values to set"

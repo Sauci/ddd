@@ -136,6 +136,26 @@ function table(rows: number, columns: number): string {
   return `${rows} row${rows === 1 ? "" : "s"} of ${columns}`;
 }
 
+/** `6 and 3`, `6, 3 and 9` - a list as a sentence says it, commas between all but the last and
+ * `and` before that one. `join(" and ")` reads for two and turns three into `6 and 3 and 9`.
+ * Called only where there are at least two, since one width is no ragged block - so the tail
+ * is taken by `slice`, which has no first element to fall back from. */
+function listed(numbers: number[]): string {
+  const all = numbers.map(String);
+  return `${all.slice(0, -1).join(", ")} and ${all.slice(-1).join("")}`;
+}
+
+/** A comma before exactly three digits at the end of a cell - `1,200`, which an English
+ * spreadsheet writes for twelve hundred and a French one for one and a fifth. Two digits are no
+ * grouping (`1,25`) and neither are four (`1,2345`), so both stay decimals. */
+const GROUPED = /,\d{3}$/;
+
+/** The first cell whose comma could be a thousands separator, or `undefined` where no cell's
+ * could. Trimmed, because a cell padded by the spreadsheet is the same number. */
+function groupedCell(cells: string[][]): string | undefined {
+  return cells.flat().find((cell) => GROUPED.test(cell.trim()));
+}
+
 /** Whether a comma is this block's decimal separator: only where no cell states a point and no
  * cell states two commas, so `1,5` reads as one and a half and `1.234,56` never does. */
 function commaIsDecimal(cells: string[][]): boolean {
@@ -159,8 +179,10 @@ export function pasted(text: string, reply: ValuesReply, physical: boolean): Pas
   const cells = celled(text);
   const widths = new Set(cells.map((row) => row.length));
   if (widths.size > 1) {
-    const said = [...widths].join(" and ");
-    return { rows: null, refusal: `this is not a table: its rows are ${said} values long` };
+    return {
+      rows: null,
+      refusal: `this is not a table: its rows are ${listed([...widths])} values long`,
+    };
   }
   // Every row is the same length by now, so the widest is the width - and taking it this way
   // needs no index into `cells`, which would carry a fallback nothing can reach: a split on a
@@ -183,6 +205,24 @@ export function pasted(text: string, reply: ValuesReply, physical: boolean): Pas
       rows: null,
       refusal: "this mixes '.' and ',' as decimal separators, so it is not clear what it means",
     };
+  }
+  // The one comma nothing can decide, refused rather than read: `1,200` is twelve hundred from
+  // a spreadsheet that groups thousands and one and a fifth from one that writes decimals with
+  // a comma, and both are ordinary. Read either way it stores a calibration nobody typed - a
+  // thousand times too small, or a thousand times too large - and says nothing, which is the
+  // guessing this whole rule exists to refuse. Only where the comma would otherwise be the
+  // decimal separator: a block that states a point elsewhere has already said what its commas
+  // are, and `mixesSeparators` above answers that one.
+  if (decimal) {
+    const grouped = groupedCell(values);
+    if (grouped !== undefined) {
+      return {
+        rows: null,
+        refusal:
+          `the comma in '${grouped}' could be a decimal point or a thousands separator, so it ` +
+          "is not clear what it means; paste the block with no thousands separators",
+      };
+    }
   }
   const read: number[][] = [];
   for (const row of values) {

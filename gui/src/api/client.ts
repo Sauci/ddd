@@ -240,13 +240,31 @@ export interface ValuesPlanRequest {
   raw: readonly number[];
 }
 
-export const getValuesPlan = (plan: ValuesPlanRequest, fetchImpl: Fetch = fetch) =>
-  request<PlanReply>(
+/** What one address may carry. `BaseHTTPRequestHandler` reads the request line with
+ * `readline(65537)` and answers **414** to anything longer than 65536 bytes, and `ddd gui`'s
+ * own server is one of those (`GuiServer`, a `ThreadingHTTPServer`). The line is `GET `, the
+ * address, ` HTTP/1.1` and a CRLF, so the address itself has 65521 bytes of it - and every byte
+ * of an encoded address is ascii, so its length in characters is its length in bytes. */
+const ADDRESS_LIMIT = 65536 - "GET ".length - " HTTP/1.1\r\n".length;
+
+export const getValuesPlan = async (plan: ValuesPlanRequest, fetchImpl: Fetch = fetch) => {
+  const address =
     `/api/values-plan?name=${encodeURIComponent(plan.name)}` +
-      `&raw=${encodeURIComponent(plan.raw.join(","))}`,
-    {},
-    fetchImpl,
-  );
+    `&raw=${encodeURIComponent(plan.raw.join(","))}`;
+  // Refused before it is asked for, rather than sent and answered 414: a count costs its own
+  // digits plus the three of the `%2C` before it, which is about 8 000 whole counts and about
+  // 2 500 that carry decimals, `rawOf` answering an unrounded double for a float datatype. The
+  // shape of the block cannot bound this - the object's own shape is what makes it large - and
+  // the alternative is a reader meeting `Request-URI Too Long` under the grid, which is true
+  // and tells them nothing about their table.
+  if (address.length > ADDRESS_LIMIT) {
+    throw new Error(
+      `'${plan.name}' has too many values to plan in one request: its counts need ` +
+        `${address.length} characters of address, and ddd gui reads at most ${ADDRESS_LIMIT}`,
+    );
+  }
+  return request<PlanReply>(address, {}, fetchImpl);
+};
 
 function post(body: unknown): RequestInit {
   return {

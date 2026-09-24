@@ -235,4 +235,18 @@ describe("requests to the server", () => {
       ],
     ]);
   });
+
+  test("a table whose counts outgrow one address is refused, and nothing is asked", async () => {
+    // The server reads a request line of at most 65536 bytes and answers 414 beyond it, which
+    // the grid would show as `Request-URI Too Long` - true, and no use to a reader holding a
+    // table. Nine thousand five-digit counts cost five characters each and three more for the
+    // `%2C` before them, which is past the line on its own.
+    const calls = recorded();
+    const raw = Array.from({ length: 9000 }, () => 12345);
+    await expect(getValuesPlan({ name: "Huge", raw }, calls.fetch)).rejects.toThrow(
+      "'Huge' has too many values to plan in one request: its counts need 72028 characters " +
+        "of address, and ddd gui reads at most 65521",
+    );
+    expect(calls.urls).toEqual([]);
+  });
 });

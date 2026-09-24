@@ -296,8 +296,10 @@ test("a value the datatype cannot hold names every offender", async ({ page, gui
   await paste(page, MAP_A_OVER_RANGE);
   await expect(
     page.getByText(
-      "element 1, 1, element 1, 3 and element 1, 6 of 'MapA' are refused: " +
-        "200 does not fit into sint8 (-128 .. 127)",
+      "3 elements of 'MapA' are refused: " +
+        "element 1, 1 because 200 does not fit into sint8 (-128 .. 127); " +
+        "element 1, 3 because 300 does not fit into sint8 (-128 .. 127); " +
+        "element 1, 6 because 400 does not fit into sint8 (-128 .. 127)",
     ),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);

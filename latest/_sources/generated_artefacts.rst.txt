@@ -782,6 +782,27 @@ deposits its values with ``FNC_VALUES ... ROW_DIR``, meaning row wise, which is 
 out a multidimensional array. Both use ``DIRECT`` addressing, since the generated c
 declaration is the array itself and not a pointer to it.
 
+A curve, map or axis whose ``point_counts`` resolves to ``leading`` deposits differently: one
+``NO_AXIS_PTS_X`` (and, for a map, ``NO_AXIS_PTS_Y``) ahead of the data, each in the object's
+own datatype, in a layout of its own -
+
+.. code-block:: text
+
+       /begin RECORD_LAYOUT RL_MAP_COUNTED_ULONG
+         NO_AXIS_PTS_X 1 ULONG
+         NO_AXIS_PTS_Y 2 ULONG
+         FNC_VALUES 3 ULONG ROW_DIR DIRECT
+       /end RECORD_LAYOUT
+
+matching the c declaration that puts the counts first. No ``STATIC_RECORD_LAYOUT`` is written:
+without it, a tool that lets an engineer remove points compacts the data behind the new count,
+which is what a routine computing ``y * nx + x`` from the stored count expects, and
+``STATIC_RECORD_LAYOUT`` would say the shape never changes. A curve or map that references its
+axis with ``COM_AXIS`` still carries its own ``NO_AXIS_PTS_X``, one for its axis' points -
+redundant with the axis' own count, but the image stores it, and the only other truthful
+description of those bytes would be ``RESERVED``. An object that never states the key, or
+states ``none``, keeps the plain ``RL_VALUES_<T>`` and ``RL_AXIS_<T>`` unchanged.
+
 The records share a skeleton. A measurement is written as its name, its long identifier, the
 a2l datatype, the compu method, a resolution and an accuracy field, and the lower and upper
 physical limits:

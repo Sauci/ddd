@@ -221,6 +221,36 @@
         <span class="k">return</span> <span class="bp">self</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">ObjectKind</span><span class="o">.</span><span class="n">MEASUREMENT</span>
 
 
+<span class="k">class</span><span class="w"> </span><span class="nc">PointCounts</span><span class="p">(</span><span class="n">StrEnum</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Where an interpolation object stores its number of axis points, if anywhere."""</span>
+
+    <span class="n">NONE</span> <span class="o">=</span> <span class="s2">"none"</span>
+<span class="w">    </span><span class="sd">"""Nowhere: the object is its data and nothing else. What every project had before."""</span>
+
+    <span class="n">LEADING</span> <span class="o">=</span> <span class="s2">"leading"</span>
+<span class="w">    </span><span class="sd">"""Ahead of the data, in the object's own datatype: x first, then y for a map.</span>
+
+<span class="sd">    What firmware whose interpolation routines learn a table's shape from the table itself</span>
+<span class="sd">    stores, and what ASAP2 describes by placing each axis's point count ahead of a curve or</span>
+<span class="sd">    map's values, or ahead of a shared axis's own points. An enumeration rather than a flag</span>
+<span class="sd">    so that another placement the format allows can join it without renaming the key.</span>
+<span class="sd">    """</span>
+
+
+<span class="n">COUNTED_KINDS</span><span class="p">:</span> <span class="n">Final</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">({</span><span class="n">ObjectKind</span><span class="o">.</span><span class="n">AXIS</span><span class="p">,</span> <span class="n">ObjectKind</span><span class="o">.</span><span class="n">CURVE</span><span class="p">,</span> <span class="n">ObjectKind</span><span class="o">.</span><span class="n">MAP</span><span class="p">})</span>
+<span class="sd">"""The kinds a point count describes: the ones with axis points."""</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">stored_counts</span><span class="p">[</span><span class="n">T</span><span class="p">](</span><span class="n">kind</span><span class="p">:</span> <span class="n">ObjectKind</span><span class="p">,</span> <span class="n">shape</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">T</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">T</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""The counts a counted object stores, in storage order, taken from its own shape.</span>
+
+<span class="sd">    Generic over the element so the same rule answers the numbers and the spellings: a map</span>
+<span class="sd">    is declared ``[y][x]`` and stores x first, so its counts are its shape reversed; an axis</span>
+<span class="sd">    and a curve have one dimension, which reversing leaves alone. Empty for every other kind.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">reversed</span><span class="p">(</span><span class="n">shape</span><span class="p">))</span> <span class="k">if</span> <span class="n">kind</span> <span class="ow">in</span> <span class="n">COUNTED_KINDS</span> <span class="k">else</span> <span class="p">()</span>
+
+
 <span class="k">class</span><span class="w"> </span><span class="nc">_Frozen</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
     <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span>
         <span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>

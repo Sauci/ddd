@@ -296,7 +296,7 @@ an alias, the alias is the key that belongs in the json file - <code class="docu
 <p><code class="docutils literal notranslate"><span class="pre">project</span></code> is the top level key that makes this a project file rather than a component
 or a types file; DDD decides what a file is from that key alone, so exactly one of them
 appears here.</p>
-<div class="graphviz"><img src="_images/graphviz-016fc3d85dfb8d0e6a47b56002db319c74ac79e7.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<div class="graphviz"><img src="_images/graphviz-9fff27b5c329d9fb42b5cf843734c857818a6b03.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -310,7 +310,7 @@ appears here.</p>
       shape=plain
    ];
    edge [dir=both];
-   &quot;ddd.models.project.Project&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Project&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;includes&lt;/td&gt;&lt;td port=&quot;includes&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;plugins&lt;/td&gt;&lt;td port=&quot;plugins&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;extensions&lt;/td&gt;&lt;td port=&quot;extensions&quot;&gt;dict[str, dict[str, Any]]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+   &quot;ddd.models.project.Project&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Project&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;includes&lt;/td&gt;&lt;td port=&quot;includes&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;plugins&lt;/td&gt;&lt;td port=&quot;plugins&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;extensions&lt;/td&gt;&lt;td port=&quot;extensions&quot;&gt;dict[str, dict[str, Any]]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;point_counts&lt;/td&gt;&lt;td port=&quot;point_counts&quot;&gt;PointCounts | None&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.project.Project&amp;#xA;&amp;#xA;A project is a named list of components and/or sub-projects.&amp;#xA;&quot;];
    &quot;ddd.models.project.ProjectFile&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ProjectFile&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;schema_reference&lt;/td&gt;&lt;td port=&quot;schema_reference&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;project&lt;/td&gt;&lt;td port=&quot;project&quot;&gt;Project&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.project.ProjectFile&amp;#xA;&amp;#xA;Root object of a ``*.ddd.json`` project description.&amp;#xA;&amp;#xA;``project`` is the top level \
@@ -344,6 +344,15 @@ so exactly one of them&amp;#xA;appears here.&amp;#xA;&quot;];
 <span class="w">      </span><span class="p">}</span>
 <span class="w">   </span><span class="p">},</span>
 <span class="w">   </span><span class="nt">"$defs"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"PointCounts"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Where an interpolation object stores its number of axis points, if anywhere."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"enum"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="s2">"none"</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">"leading"</span>
+<span class="w">         </span><span class="p">],</span>
+<span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"PointCounts"</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
+<span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"Project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"A project is a named list of components and/or sub-projects."</span><span class="p">,</span>
@@ -391,6 +400,18 @@ so exactly one of them&amp;#xA;appears here.&amp;#xA;&quot;];
 <span class="w">               </span><span class="p">},</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Extensions"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="nt">"point_counts"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/PointCounts"</span>
+<span class="w">                  </span><span class="p">},</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"null"</span>
+<span class="w">                  </span><span class="p">}</span>
+<span class="w">               </span><span class="p">],</span>
+<span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Where the project's curves, maps and axes store their point counts: ``\"leading\"``\nahead of the data, or ``\"none\"``. Unstated, it is ``\"none\"``.\n\nThe default a component's own ``point_counts`` overrides. It belongs to the firmware's\ninterpolation library, which is why it is stated here and not on each object; one project\nfile of a tree states it, and a second one stating another value is refused."</span>
 <span class="w">            </span><span class="p">}</span>
 <span class="w">         </span><span class="p">},</span>
 <span class="w">         </span><span class="nt">"required"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
@@ -426,7 +447,7 @@ so exactly one of them&amp;#xA;appears here.&amp;#xA;&quot;];
 <dt class="sig sig-object py" id="ddd.models.Project">
 <span class="property"><span class="pre">pydantic</span> <span class="pre">model</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Project</span></span><a class="reference internal" href="_modules/ddd/models/project.html#Project"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ddd.models.Project" title="Link to this definition"></a></dt>
 <dd><p>A project is a named list of components and/or sub-projects.</p>
-<div class="graphviz"><img src="_images/graphviz-59f905183abe852a2c96410fbfe7a1dc6063b366.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<div class="graphviz"><img src="_images/graphviz-18d5a0449ba79e451bb3ab61a5d1f134ef50b64f.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -440,7 +461,7 @@ so exactly one of them&amp;#xA;appears here.&amp;#xA;&quot;];
       shape=plain
    ];
    edge [dir=both];
-   &quot;ddd.models.project.Project&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Project&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;includes&lt;/td&gt;&lt;td port=&quot;includes&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;plugins&lt;/td&gt;&lt;td port=&quot;plugins&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;extensions&lt;/td&gt;&lt;td port=&quot;extensions&quot;&gt;dict[str, dict[str, Any]]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+   &quot;ddd.models.project.Project&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Project&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;includes&lt;/td&gt;&lt;td port=&quot;includes&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;plugins&lt;/td&gt;&lt;td port=&quot;plugins&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;extensions&lt;/td&gt;&lt;td port=&quot;extensions&quot;&gt;dict[str, dict[str, Any]]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;point_counts&lt;/td&gt;&lt;td port=&quot;point_counts&quot;&gt;PointCounts | None&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.project.Project&amp;#xA;&amp;#xA;A project is a named list of components and/or sub-projects.&amp;#xA;&quot;];
 }" class="graphviz" /></div>
 <p><details  class="autodoc_pydantic_collapsable_json">
@@ -492,6 +513,29 @@ so exactly one of them&amp;#xA;appears here.&amp;#xA;&quot;];
 <span class="w">         </span><span class="p">},</span>
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Extensions"</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"point_counts"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/PointCounts"</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"null"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">         </span><span class="p">],</span>
+<span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Where the project's curves, maps and axes store their point counts: ``\"leading\"``\nahead of the data, or ``\"none\"``. Unstated, it is ``\"none\"``.\n\nThe default a component's own ``point_counts`` overrides. It belongs to the firmware's\ninterpolation library, which is why it is stated here and not on each object; one project\nfile of a tree states it, and a second one stating another value is refused."</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">   </span><span class="p">},</span>
+<span class="w">   </span><span class="nt">"$defs"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"PointCounts"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Where an interpolation object stores its number of axis points, if anywhere."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"enum"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="s2">"none"</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">"leading"</span>
+<span class="w">         </span><span class="p">],</span>
+<span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"PointCounts"</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">      </span><span class="p">}</span>
 <span class="w">   </span><span class="p">},</span>
 <span class="w">   </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
@@ -509,6 +553,7 @@ so exactly one of them&amp;#xA;appears here.&amp;#xA;&quot;];
 <li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">includes</span> <span class="pre">(tuple[str,</span> <span class="pre">...])</span></code></p></li>
 <li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">name</span> <span class="pre">(str)</span></code></p></li>
 <li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">plugins</span> <span class="pre">(tuple[str,</span> <span class="pre">...])</span></code></p></li>
+<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">point_counts</span> <span class="pre">(ddd.models.objects.PointCounts</span> <span class="pre">|</span> <span class="pre">None)</span></code></p></li>
 </ul>
 </dd>
 </dl>
@@ -575,6 +620,21 @@ settings are stated by one project file; a second file stating them is a <code c
 finding, the way a second file declaring a section is refused.</p>
 </dd></dl>
 
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="ddd.models.Project.point_counts">
+<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">point_counts</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">PointCounts</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#ddd.models.Project.point_counts" title="Link to this definition"></a></dt>
+<dd><p>Where the project’s curves, maps and axes store their point counts: <code class="docutils literal notranslate"><span class="pre">&quot;leading&quot;</span></code>
+ahead of the data, or <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code>. Unstated, it is <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code>.</p>
+<p>The default a component’s own <code class="docutils literal notranslate"><span class="pre">point_counts</span></code> overrides. It belongs to the firmware’s
+interpolation library, which is why it is stated here and not on each object; one project
+file of a tree states it, and a second one stating another value is refused.</p>
+<p>Where the project’s curves, maps and axes store their point counts: <code class="docutils literal notranslate"><span class="pre">&quot;leading&quot;</span></code>
+ahead of the data, or <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code>. Unstated, it is <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code>.</p>
+<p>The default a component’s own <code class="docutils literal notranslate"><span class="pre">point_counts</span></code> overrides. It belongs to the firmware’s
+interpolation library, which is why it is stated here and not on each object; one project
+file of a tree states it, and a second one stating another value is refused.</p>
+</dd></dl>
+
 </dd></dl>
 
 </section>
@@ -587,7 +647,7 @@ finding, the way a second file declaring a section is refused.</p>
 <p><code class="docutils literal notranslate"><span class="pre">component</span></code> is the top level key that makes this a component file rather than a project
 or a types file; DDD decides what a file is from that key alone, so exactly one of them
 appears here.</p>
-<div class="graphviz"><img src="_images/graphviz-492ca49527bb782631972528ae05ffaa91d39627.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<div class="graphviz"><img src="_images/graphviz-69273cd62d353877ecd4b57d6a0b1817ed30a1d5.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -601,7 +661,7 @@ appears here.</p>
       shape=plain
    ];
    edge [dir=both];
-   &quot;ddd.models.component.Component&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Component&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;Optional[str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;interface&lt;/td&gt;&lt;td port=&quot;interface&quot;&gt;tuple[Declaration, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;types&lt;/td&gt;&lt;td port=&quot;types&quot;&gt;Optional[tuple[StructType | ScalarType | ExternalType, ...]]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;constants&lt;/td&gt;&lt;td port=&quot;constants&quot;&gt;Optional[tuple[ConstantDeclaration, ...]]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+   &quot;ddd.models.component.Component&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Component&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;Optional[str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;point_counts&lt;/td&gt;&lt;td port=&quot;point_counts&quot;&gt;PointCounts | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;interface&lt;/td&gt;&lt;td port=&quot;interface&quot;&gt;tuple[Declaration, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;types&lt;/td&gt;&lt;td port=&quot;types&quot;&gt;Optional[tuple[StructType | ScalarType | ExternalType, ...]]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;constants&lt;/td&gt;&lt;td port=&quot;constants&quot;&gt;Optional[tuple[ConstantDeclaration, ...]]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.component.Component&amp;#xA;&amp;#xA;The interface specification of one software component.&amp;#xA;&quot;];
    &quot;ddd.models.component.Declaration&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Declaration&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;scope&lt;/td&gt;&lt;td port=&quot;scope&quot;&gt;Scope&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;definition&lt;/td&gt;&lt;td port=&quot;definition&quot;&gt;Measurement | Parameter | ValueBlock | Curve | Map | Axis&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.component.Declaration&amp;#xA;&amp;#xA;One entry of the ``interface`` list of a component.&amp;#xA;&quot;];
@@ -1130,6 +1190,18 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Default measurement raster for every variable this component produces.\n\nThe common case stated once: a component updates nearly all of its measurements in one\ntask, and repeating that on several hundred definitions would bury the handful of\nexceptions, which state their own ``raster``. It applies to what this component\nproduces and to nothing it reads - the raster follows the producer - and it reaches no\ncalibration object, since no daq list carries one."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Raster"</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="nt">"point_counts"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/PointCounts"</span>
+<span class="w">                  </span><span class="p">},</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"null"</span>
+<span class="w">                  </span><span class="p">}</span>
+<span class="w">               </span><span class="p">],</span>
+<span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Where the curves, maps and axes this component defines store their point counts,\noverriding the project's default.\n\nIt follows the producer, as ``raster`` does: the component that defines a table is the one\nwhose routines interpolate over it. It reaches nothing this component reads, and nothing\nthat is not a curve, a map or an axis."</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"interface"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The data interface: everything the component produces, consumes or keeps to itself.\n\nRequired with no default, so that a component with nothing to declare says so with an\nempty list rather than by a key that might merely have been forgotten - the same\nreasoning that makes ``volatile`` and ``kind`` required on a definition."</span><span class="p">,</span>
@@ -2562,6 +2634,15 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Parameter"</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
 <span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"PointCounts"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Where an interpolation object stores its number of axis points, if anywhere."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"enum"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="s2">"none"</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">"leading"</span>
+<span class="w">         </span><span class="p">],</span>
+<span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"PointCounts"</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
+<span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"ScalarType"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"A name for what a number means, so components agree by naming rather than by copying.\n\nThree components consuming an engine speed each used to write out the datatype, the unit,\nthe scaling and the limits, leaving DDD to notice when one of them was wrong.  If all three\nsay ``Speed_t`` instead, there is nothing left to disagree about - which is checking turned\ninto construction.\n\nIt fixes exactly the four things that make two declarations interchangeable, and nothing\nelse.  ``kind``, ``dimensions``, ``init``, ``volatile`` and ``a2l`` stay on the variable:\nthey are properties of one object rather than of the type, and two measurements of the same\ntype may well differ in whether an interrupt writes one of them."</span><span class="p">,</span>
@@ -2957,7 +3038,7 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <dt class="sig sig-object py" id="ddd.models.Component">
 <span class="property"><span class="pre">pydantic</span> <span class="pre">model</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Component</span></span><a class="reference internal" href="_modules/ddd/models/component.html#Component"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ddd.models.Component" title="Link to this definition"></a></dt>
 <dd><p>The interface specification of one software component.</p>
-<div class="graphviz"><img src="_images/graphviz-fdf5d3e965f5e74bcb1f29968f9d9bb1ab2056b2.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<div class="graphviz"><img src="_images/graphviz-a5dfdf11660a13febb64b3cf4aefa0a4d3454514.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -2971,7 +3052,7 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
       shape=plain
    ];
    edge [dir=both];
-   &quot;ddd.models.component.Component&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Component&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;Optional[str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;interface&lt;/td&gt;&lt;td port=&quot;interface&quot;&gt;tuple[Declaration, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;types&lt;/td&gt;&lt;td port=&quot;types&quot;&gt;Optional[tuple[StructType | ScalarType | ExternalType, ...]]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;constants&lt;/td&gt;&lt;td port=&quot;constants&quot;&gt;Optional[tuple[ConstantDeclaration, ...]]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+   &quot;ddd.models.component.Component&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Component&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;Optional[str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;point_counts&lt;/td&gt;&lt;td port=&quot;point_counts&quot;&gt;PointCounts | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;interface&lt;/td&gt;&lt;td port=&quot;interface&quot;&gt;tuple[Declaration, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;types&lt;/td&gt;&lt;td port=&quot;types&quot;&gt;Optional[tuple[StructType | ScalarType | ExternalType, ...]]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;constants&lt;/td&gt;&lt;td port=&quot;constants&quot;&gt;Optional[tuple[ConstantDeclaration, ...]]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.component.Component&amp;#xA;&amp;#xA;The interface specification of one software component.&amp;#xA;&quot;];
    &quot;ddd.models.component.Declaration&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Declaration&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;scope&lt;/td&gt;&lt;td port=&quot;scope&quot;&gt;Scope&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;definition&lt;/td&gt;&lt;td port=&quot;definition&quot;&gt;Measurement | Parameter | ValueBlock | Curve | Map | Axis&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.component.Declaration&amp;#xA;&amp;#xA;One entry of the ``interface`` list of a component.&amp;#xA;&quot;];
@@ -3192,6 +3273,18 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Default measurement raster for every variable this component produces.\n\nThe common case stated once: a component updates nearly all of its measurements in one\ntask, and repeating that on several hundred definitions would bury the handful of\nexceptions, which state their own ``raster``. It applies to what this component\nproduces and to nothing it reads - the raster follows the producer - and it reaches no\ncalibration object, since no daq list carries one."</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Raster"</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"point_counts"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/PointCounts"</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"null"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">         </span><span class="p">],</span>
+<span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Where the curves, maps and axes this component defines store their point counts,\noverriding the project's default.\n\nIt follows the producer, as ``raster`` does: the component that defines a table is the one\nwhose routines interpolate over it. It reaches nothing this component reads, and nothing\nthat is not a curve, a map or an axis."</span>
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"interface"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The data interface: everything the component produces, consumes or keeps to itself.\n\nRequired with no default, so that a component with nothing to declare says so with an\nempty list rather than by a key that might merely have been forgotten - the same\nreasoning that makes ``volatile`` and ``kind`` required on a definition."</span><span class="p">,</span>
@@ -4897,6 +4990,15 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Parameter"</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
 <span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"PointCounts"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Where an interpolation object stores its number of axis points, if anywhere."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"enum"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="s2">"none"</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">"leading"</span>
+<span class="w">         </span><span class="p">],</span>
+<span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"PointCounts"</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
+<span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"ScalarType"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"A name for what a number means, so components agree by naming rather than by copying.\n\nThree components consuming an engine speed each used to write out the datatype, the unit,\nthe scaling and the limits, leaving DDD to notice when one of them was wrong.  If all three\nsay ``Speed_t`` instead, there is nothing left to disagree about - which is checking turned\ninto construction.\n\nIt fixes exactly the four things that make two declarations interchangeable, and nothing\nelse.  ``kind``, ``dimensions``, ``init``, ``volatile`` and ``a2l`` stay on the variable:\nthey are properties of one object rather than of the type, and two measurements of the same\ntype may well differ in whether an interrupt writes one of them."</span><span class="p">,</span>
@@ -5281,6 +5383,7 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">description</span> <span class="pre">(str)</span></code></p></li>
 <li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">interface</span> <span class="pre">(tuple[ddd.models.component.Declaration,</span> <span class="pre">...])</span></code></p></li>
 <li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">name</span> <span class="pre">(str)</span></code></p></li>
+<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">point_counts</span> <span class="pre">(ddd.models.objects.PointCounts</span> <span class="pre">|</span> <span class="pre">None)</span></code></p></li>
 <li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">raster</span> <span class="pre">(str</span> <span class="pre">|</span> <span class="pre">None)</span></code></p></li>
 <li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">types</span> <span class="pre">(tuple[ddd.models.types.StructType</span> <span class="pre">|</span> <span class="pre">ddd.models.types.ScalarType</span> <span class="pre">|</span> <span class="pre">ddd.models.types.ExternalType,</span> <span class="pre">...]</span> <span class="pre">|</span> <span class="pre">None)</span></code></p></li>
 </ul>
@@ -5313,6 +5416,21 @@ task, and repeating that on several hundred definitions would bury the handful o
 exceptions, which state their own <code class="docutils literal notranslate"><span class="pre">raster</span></code>. It applies to what this component
 produces and to nothing it reads - the raster follows the producer - and it reaches no
 calibration object, since no daq list carries one.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="ddd.models.Component.point_counts">
+<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">point_counts</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">PointCounts</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#ddd.models.Component.point_counts" title="Link to this definition"></a></dt>
+<dd><p>Where the curves, maps and axes this component defines store their point counts,
+overriding the project’s default.</p>
+<p>It follows the producer, as <code class="docutils literal notranslate"><span class="pre">raster</span></code> does: the component that defines a table is the one
+whose routines interpolate over it. It reaches nothing this component reads, and nothing
+that is not a curve, a map or an axis.</p>
+<p>Where the curves, maps and axes this component defines store their point counts,
+overriding the project’s default.</p>
+<p>It follows the producer, as <code class="docutils literal notranslate"><span class="pre">raster</span></code> does: the component that defines a table is the one
+whose routines interpolate over it. It reaches nothing this component reads, and nothing
+that is not a curve, a map or an axis.</p>
 </dd></dl>
 
 <dl class="py attribute pydantic_field">
@@ -14389,7 +14507,7 @@ measurement or a value block, <code class="docutils literal notranslate"><span c
 <dl class="field-list simple">
 <dt class="field-odd">Constraints<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>func</strong> = &lt;function within_64_bits at 0x7f8dd5ba9800&gt;</p></li>
+<li><p><strong>func</strong> = &lt;function within_64_bits at 0x7fef62391a80&gt;</p></li>
 <li><p><strong>json_schema_input_type</strong> = PydanticUndefined</p></li>
 </ul>
 </dd>
@@ -14403,7 +14521,7 @@ measurement or a value block, <code class="docutils literal notranslate"><span c
 <dl class="field-list simple">
 <dt class="field-odd">Constraints<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>func</strong> = &lt;function within_64_bits at 0x7f8dd5ba9800&gt;</p></li>
+<li><p><strong>func</strong> = &lt;function within_64_bits at 0x7fef62391a80&gt;</p></li>
 <li><p><strong>json_schema_input_type</strong> = PydanticUndefined</p></li>
 </ul>
 </dd>

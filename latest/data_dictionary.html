@@ -67,6 +67,7 @@
 <li class="toctree-l1"><a class="reference internal" href="data_contracts.html">Data contracts</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Data dictionary</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#what-is-already-resolved">What is already resolved</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#point-counts-ahead-of-a-table">Point counts ahead of a table</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-format-field">The format field</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#consuming-it-from-another-tool">Consuming it from another tool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#reference">Reference</a><ul>
@@ -141,7 +142,7 @@ ddd<span class="w"> </span>schema<span class="w"> </span>dictionary<span class="
 </div>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd dump examples/demo/demo.ddd.json
 {
-  "format": 8,
+  "format": 9,
   "name": "DemoDevice",
   "description": "Demonstration project showing every kind of data object",
   "source": "demo.ddd.json",
@@ -217,6 +218,7 @@ demo project declares <code class="docutils literal notranslate"><span class="pr
 <span class="w">  </span><span class="nt">"init"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">1200</span><span class="p">,</span><span class="w"> </span><span class="mi">900</span><span class="p">,</span><span class="w"> </span><span class="mi">800</span><span class="p">,</span><span class="w"> </span><span class="mi">750</span><span class="p">,</span><span class="w"> </span><span class="mi">700</span><span class="p">,</span><span class="w"> </span><span class="mi">650</span><span class="p">],</span>
 <span class="w">  </span><span class="nt">"section"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"raster"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"point_counts"</span><span class="p">:</span><span class="w"> </span><span class="s2">"none"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"condition"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"references"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"axis"</span><span class="p">:</span><span class="w"> </span><span class="s2">"AxisA"</span><span class="w"> </span><span class="p">},</span>
@@ -275,17 +277,52 @@ own, or an inconsistent project generated with <code class="docutils literal not
 files such an object under <code class="docutils literal notranslate"><span class="pre">&lt;unresolved&gt;</span></code>. Every other field is always present.</p>
 </div>
 </section>
+<section id="point-counts-ahead-of-a-table">
+<h2>Point counts ahead of a table<a class="headerlink" href="#point-counts-ahead-of-a-table" title="Link to this heading"></a></h2>
+<p>Some firmware stores the number of axis points <em>inside</em> every curve, map and axis, ahead of
+its data, in the object’s own type - a 16 by 16 <code class="docutils literal notranslate"><span class="pre">uint32</span></code> map begins with its two counts:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="mi">8093841</span><span class="n">c</span>  <span class="mi">10000000</span> <span class="mi">10000000</span> <span class="mi">00000000</span> <span class="o">...</span>     <span class="n">a</span> <span class="mi">16</span> <span class="n">x</span> <span class="mi">16</span> <span class="nb">map</span> <span class="n">of</span> <span class="n">uint32</span>
+          <span class="n">nx</span> <span class="o">=</span> <span class="mi">16</span>  <span class="n">ny</span> <span class="o">=</span> <span class="mi">16</span>   <span class="n">then</span> <span class="n">the</span> <span class="mi">256</span> <span class="n">values</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">point_counts</span></code> says whether an object is stored that way. It takes <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code>, the
+ordinary layout, or <code class="docutils literal notranslate"><span class="pre">&quot;leading&quot;</span></code>. It may be stated once, on the project, as the default for
+every curve, map and axis; a component may state it again to override that default for the
+curves, maps and axes <em>it defines</em> - the producing declaration, exactly as a component’s
+<a class="reference internal" href="file_formats/rasters.html"><span class="doc">raster</span></a> does. A reader of the object never influences it. A
+component read on its own - a standalone <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span></code> or <code class="docutils literal notranslate"><span class="pre">generate</span></code> of a
+component file - has no project to take a default from, so its tables resolve to
+<code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code> unless the component states the key itself.</p>
+<p>A table resolved to <code class="docutils literal notranslate"><span class="pre">&quot;leading&quot;</span></code> is declared flat, counts first, in its own datatype:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="k">const</span><span class="w"> </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">M</span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="mi">16</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="mi">16</span><span class="p">)]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">16U</span><span class="p">,</span><span class="w"> </span><span class="mi">16U</span><span class="p">,</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">};</span>
+</pre></div>
+</div>
+<p>and the a2l describes it with a record layout of its own, the counts ahead of the values it
+governs:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin RECORD_LAYOUT RL_MAP_COUNTED_ULONG
+  NO_AXIS_PTS_X 1 ULONG
+  NO_AXIS_PTS_Y 2 ULONG
+  FNC_VALUES 3 ULONG ROW_DIR DIRECT
+/end RECORD_LAYOUT
+</pre></div>
+</div>
+<p>Two <a class="reference internal" href="consistency_checks.html"><span class="doc">consistency checks</span></a> come with the setting:
+<code class="docutils literal notranslate"><span class="pre">point-counts-unrepresentable</span></code> refuses a table whose datatype cannot hold one of its
+counts, and <code class="docutils literal notranslate"><span class="pre">point-counts-mismatch</span></code> warns when a curve or a map resolves to one convention
+and one of its axes to the other. From format 9 on, every resolved object carries the
+<code class="docutils literal notranslate"><span class="pre">point_counts</span></code> it was given, <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code> for every kind but a curve, a map or an axis.</p>
+</section>
 <section id="the-format-field">
 <h2>The format field<a class="headerlink" href="#the-format-field" title="Link to this heading"></a></h2>
 <p>A dumped dictionary is meant to be archived next to a delivery and read back by a later
 version of DDD, possibly years later. The <code class="docutils literal notranslate"><span class="pre">format</span></code> field stamps the shape of the document
-- currently <code class="docutils literal notranslate"><span class="pre">8</span></code> - and changes only when that shape changes, not with every release of the
+- currently <code class="docutils literal notranslate"><span class="pre">9</span></code> - and changes only when that shape changes, not with every release of the
 tool.</p>
 <p>It exists so that a later reader can say <em>this file is newer than I understand</em> rather than
 misread it. DDD accepts a dictionary whose format is the one it knows or older, and refuses
 one that is newer:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare baseline.json demo.ddd.json
-baseline.json#format: error[schema]: in the baseline: this dictionary is in format 9, and this DDD understands up to 8; use a newer DDD to read it
+baseline.json#format: error[schema]: in the baseline: this dictionary is in format 10, and this DDD understands up to 9; use a newer DDD to read it
 1 error
 </pre></div>
 </div>
@@ -329,7 +366,7 @@ elided here for space):</p>
 <span class="w">  </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The resolved data of one project."</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">9</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Format"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
@@ -469,7 +506,7 @@ than half way through a jinja template.</p>
 <p>What <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> writes and every backend reads. Unlike the description files, this one
 is produced rather than authored: every derived property is already worked out, so a
 consumer never has to repeat the resolution and two consumers can never disagree about it.</p>
-<div class="graphviz"><img src="_images/graphviz-676f806eb330f3ba90d6b52ec70f96066faf4d37.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<div class="graphviz"><img src="_images/graphviz-1bae40a9ddabe0a63100e211c63b78afd3bfad7a.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -507,7 +544,7 @@ reaches the a2l as an object per member rather than as an a2l&amp;#xA;structure,
 object in every respect&amp;#xA;but its name, which is a path rather than an identifier.&amp;#xA;&quot;];
    &quot;ddd.ir.DataDictionary&quot;:leaves:e -&gt; &quot;ddd.ir.ResolvedLeaf&quot;:_root:w   [arrowhead=crownone,
       arrowtail=nonenone];
-   &quot;ddd.ir.ResolvedObject&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedObject&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;id&lt;/td&gt;&lt;td port=&quot;id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;extensions&lt;/td&gt;&lt;td port=&quot;extensions&quot;&gt;dict[str, dict[str, Any]]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion | StringConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;init&lt;/td&gt;&lt;td port=&quot;init&quot;&gt;InitValue | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;references&lt;/td&gt;&lt;td port=&quot;references&quot;&gt;dict[str, str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+   &quot;ddd.ir.ResolvedObject&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedObject&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;id&lt;/td&gt;&lt;td port=&quot;id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;extensions&lt;/td&gt;&lt;td port=&quot;extensions&quot;&gt;dict[str, dict[str, Any]]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion | StringConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;init&lt;/td&gt;&lt;td port=&quot;init&quot;&gt;InitValue | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;point_counts&lt;/td&gt;&lt;td port=&quot;point_counts&quot;&gt;PointCounts&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;references&lt;/td&gt;&lt;td port=&quot;references&quot;&gt;dict[str, str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.ir.ResolvedObject&amp;#xA;&amp;#xA;One data object, with every derived property already worked out.&amp;#xA;&quot;];
    &quot;ddd.ir.DataDictionary&quot;:objects:e -&gt; &quot;ddd.ir.ResolvedObject&quot;:_root:w   [arrowhead=crownone,
       arrowtail=nonenone];
@@ -600,7 +637,7 @@ document has nothing to do with.&amp;#xA;&quot;];
 <span class="w">   </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">9</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Version of this document format, raised only when the shape of the document changes.\n\nStamped so that a dictionary archived next to a delivery can be read back years later by\na version of DDD that can say \"this file is newer than I understand\" rather than misread\nit. It does not follow the version of the tool.\n\nA whole number of at least 1, and strictly that: ``\"9\"``, ``9.0`` and ``0`` are not\nversions any DDD ever wrote, and the check that refuses a dictionary from a newer DDD has\nno version to compare them with."</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Format"</span><span class="p">,</span>
@@ -1089,6 +1126,15 @@ document has nothing to do with.&amp;#xA;&quot;];
 <span class="w">            </span><span class="s2">"axis"</span>
 <span class="w">         </span><span class="p">],</span>
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ObjectKind"</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"PointCounts"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Where an interpolation object stores its number of axis points, if anywhere."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"enum"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="s2">"none"</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">"leading"</span>
+<span class="w">         </span><span class="p">],</span>
+<span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"PointCounts"</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"ResolvedComponent"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
@@ -1785,6 +1831,11 @@ document has nothing to do with.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Measurement raster the producing component updates the object in; ``null`` when the\nproject named none. Empty in a dictionary from format 4 or older."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Raster"</span>
 <span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="nt">"point_counts"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/PointCounts"</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="s2">"none"</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Whether this curve, map or axis stores its point counts ahead of its data: its\nproducing component's ``point_counts``, else the project's. ``none`` for every other kind,\nand in a dictionary from format 8 or older, which never stored any."</span>
+<span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Generate the object ``volatile``: stated by every declaration, on every kind.\n\nCalibration data carries it as ``const volatile``, which is what a value the calibration\ntool changes in a running ecu needs - see the field of the same name on the authored\ndefinition. The default is kept although a definition may no longer omit it, so that a\ndictionary dumped by an older DDD still reads back: an older document is read with the\ndefaults of the format it states, which is what the ``format`` key of this document is\nfor."</span><span class="p">,</span>
@@ -2005,7 +2056,7 @@ document has nothing to do with.&amp;#xA;&quot;];
 </dl>
 <dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="ddd.ir.DataDictionary.format">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">format</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Annotated</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Field</span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">ge</span></span><span class="o"><span class="pre">=</span></span><span class="m"><span class="pre">1</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="n"><span class="pre">strict</span></span><span class="o"><span class="pre">=</span></span><span class="k"><span class="pre">True</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">8</span></span><a class="headerlink" href="#ddd.ir.DataDictionary.format" title="Link to this definition"></a></dt>
+<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">format</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Annotated</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Field</span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">ge</span></span><span class="o"><span class="pre">=</span></span><span class="m"><span class="pre">1</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="n"><span class="pre">strict</span></span><span class="o"><span class="pre">=</span></span><span class="k"><span class="pre">True</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">9</span></span><a class="headerlink" href="#ddd.ir.DataDictionary.format" title="Link to this definition"></a></dt>
 <dd><p>Version of this document format, raised only when the shape of the document changes.</p>
 <p>Stamped so that a dictionary archived next to a delivery can be read back years later by
 a version of DDD that can say “this file is newer than I understand” rather than misread
@@ -2154,7 +2205,7 @@ were given, without the project file that stated them.</p>
 <dt class="sig sig-object py" id="ddd.ir.ResolvedObject">
 <span class="property"><span class="pre">pydantic</span> <span class="pre">model</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ResolvedObject</span></span><a class="reference internal" href="_modules/ddd/ir.html#ResolvedObject"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ddd.ir.ResolvedObject" title="Link to this definition"></a></dt>
 <dd><p>One data object, with every derived property already worked out.</p>
-<div class="graphviz"><img src="_images/graphviz-f7d16582f34bf1eb628eafb5a86ed737c5ca9cb5.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<div class="graphviz"><img src="_images/graphviz-13485eb99304bcd3704f964d7305ce61d2d4d6e0.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -2168,7 +2219,7 @@ were given, without the project file that stated them.</p>
       shape=plain
    ];
    edge [dir=both];
-   &quot;ddd.ir.ResolvedObject&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedObject&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;id&lt;/td&gt;&lt;td port=&quot;id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;extensions&lt;/td&gt;&lt;td port=&quot;extensions&quot;&gt;dict[str, dict[str, Any]]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion | StringConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;init&lt;/td&gt;&lt;td port=&quot;init&quot;&gt;InitValue | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;references&lt;/td&gt;&lt;td port=&quot;references&quot;&gt;dict[str, str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+   &quot;ddd.ir.ResolvedObject&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedObject&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;id&lt;/td&gt;&lt;td port=&quot;id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;extensions&lt;/td&gt;&lt;td port=&quot;extensions&quot;&gt;dict[str, dict[str, Any]]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion | StringConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;init&lt;/td&gt;&lt;td port=&quot;init&quot;&gt;InitValue | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;point_counts&lt;/td&gt;&lt;td port=&quot;point_counts&quot;&gt;PointCounts&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;references&lt;/td&gt;&lt;td port=&quot;references&quot;&gt;dict[str, str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.ir.ResolvedObject&amp;#xA;&amp;#xA;One data object, with every derived property already worked out.&amp;#xA;&quot;];
    &quot;ddd.models.conversion.EnumConversion&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;EnumConversion&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;Literal['enum']&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;enumerators&lt;/td&gt;&lt;td port=&quot;enumerators&quot;&gt;tuple[Enumerator, ...]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.conversion.EnumConversion&amp;#xA;&amp;#xA;A verbal conversion table; the raw value *is* the physical value.&amp;#xA;&amp;#xA;Accepts \
@@ -2365,6 +2416,11 @@ out.&amp;#xA;&quot;];
 <span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Measurement raster the producing component updates the object in; ``null`` when the\nproject named none. Empty in a dictionary from format 4 or older."</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Raster"</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"point_counts"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/PointCounts"</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="s2">"none"</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Whether this curve, map or axis stores its point counts ahead of its data: its\nproducing component's ``point_counts``, else the project's. ``none`` for every other kind,\nand in a dictionary from format 8 or older, which never stored any."</span>
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
@@ -2728,6 +2784,15 @@ out.&amp;#xA;&quot;];
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ObjectKind"</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"PointCounts"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Where an interpolation object stores its number of axis points, if anywhere."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"enum"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="s2">"none"</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">"leading"</span>
+<span class="w">         </span><span class="p">],</span>
+<span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"PointCounts"</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
+<span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"StringConversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Bytes read as text: each element of the array holds one character code.\n\nStated on a ``uint8`` or ``sint8`` array of one dimension; the rules sit beside the\ndatatype because the same pair is written in three places. ``kind`` is required here,\nunlike on the other three kinds: a string has no key of its own to be inferred from,\nand ``{}`` is the identity.\n\nThe two mappings are the identity on one byte, so that the derived limits of a string\nare the raw range of its datatype - which is what the a2l record states - and nothing\nthat ranges a conversion has to know that a string exists. A byte has no reading of its\nown, so no reading is produced for it, as for the identity."</span><span class="p">,</span>
@@ -2775,6 +2840,7 @@ out.&amp;#xA;&quot;];
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.local" title="ddd.ir.ResolvedObject.local"><code class="xref py py-obj docutils literal notranslate"><span class="pre">local</span> <span class="pre">(bool)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.name" title="ddd.ir.ResolvedObject.name"><code class="xref py py-obj docutils literal notranslate"><span class="pre">name</span> <span class="pre">(str)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.owner" title="ddd.ir.ResolvedObject.owner"><code class="xref py py-obj docutils literal notranslate"><span class="pre">owner</span> <span class="pre">(str</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.point_counts" title="ddd.ir.ResolvedObject.point_counts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">point_counts</span> <span class="pre">(ddd.models.objects.PointCounts)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.raster" title="ddd.ir.ResolvedObject.raster"><code class="xref py py-obj docutils literal notranslate"><span class="pre">raster</span> <span class="pre">(str</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.references" title="ddd.ir.ResolvedObject.references"><code class="xref py py-obj docutils literal notranslate"><span class="pre">references</span> <span class="pre">(dict[str,</span> <span class="pre">str])</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.section" title="ddd.ir.ResolvedObject.section"><code class="xref py py-obj docutils literal notranslate"><span class="pre">section</span> <span class="pre">(str</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
@@ -2913,6 +2979,17 @@ toolchain’s defaults.</p>
 project named none. Empty in a dictionary from format 4 or older.</p>
 <p>Measurement raster the producing component updates the object in; <code class="docutils literal notranslate"><span class="pre">null</span></code> when the
 project named none. Empty in a dictionary from format 4 or older.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="ddd.ir.ResolvedObject.point_counts">
+<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">point_counts</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">PointCounts</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">PointCounts.NONE</span></span><a class="headerlink" href="#ddd.ir.ResolvedObject.point_counts" title="Link to this definition"></a></dt>
+<dd><p>Whether this curve, map or axis stores its point counts ahead of its data: its
+producing component’s <code class="docutils literal notranslate"><span class="pre">point_counts</span></code>, else the project’s. <code class="docutils literal notranslate"><span class="pre">none</span></code> for every other kind,
+and in a dictionary from format 8 or older, which never stored any.</p>
+<p>Whether this curve, map or axis stores its point counts ahead of its data: its
+producing component’s <code class="docutils literal notranslate"><span class="pre">point_counts</span></code>, else the project’s. <code class="docutils literal notranslate"><span class="pre">none</span></code> for every other kind,
+and in a dictionary from format 8 or older, which never stored any.</p>
 </dd></dl>
 
 <dl class="py attribute pydantic_field">

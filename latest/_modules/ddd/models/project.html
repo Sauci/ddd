@@ -102,6 +102,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">StringConstraints</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileRoot</span><span class="p">,</span> <span class="n">Identifier</span><span class="p">,</span> <span class="n">PluginName</span><span class="p">,</span> <span class="n">hash_excluding_mappings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.objects</span><span class="w"> </span><span class="kn">import</span> <span class="n">PointCounts</span>
 
 
 <div class="viewcode-block" id="Project">
@@ -145,6 +146,15 @@
 <span class="sd">    dictionary so that a comparison over an archived dump still knows them. A plugin's</span>
 <span class="sd">    settings are stated by one project file; a second file stating them is a ``schema``</span>
 <span class="sd">    finding, the way a second file declaring a section is refused.</span>
+<span class="sd">    """</span>
+
+    <span class="n">point_counts</span><span class="p">:</span> <span class="n">PointCounts</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Where the project's curves, maps and axes store their point counts: ``"leading"``</span>
+<span class="sd">    ahead of the data, or ``"none"``. Unstated, it is ``"none"``.</span>
+
+<span class="sd">    The default a component's own ``point_counts`` overrides. It belongs to the firmware's</span>
+<span class="sd">    interpolation library, which is why it is stated here and not on each object; one project</span>
+<span class="sd">    file of a tree states it, and a second one stating another value is refused.</span>
 <span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>

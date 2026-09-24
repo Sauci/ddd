@@ -200,9 +200,9 @@ them together with everything else.
      - an object of the baseline is gone and somebody read it
    * - error
      - ``changed-interface``
-     - kind, datatype, unit, scaling, shape, axes or locality of an object changed, or the
-       layout a released structure fixed: a bitfield's width, the order of the members, or
-       the type a structured variable names
+     - kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point
+       counts changed, or the layout a released structure fixed: a bitfield's width, the
+       order of the members, or the type a structured variable names
    * - error
      - ``reused-name``
      - a name of the baseline now names a different object

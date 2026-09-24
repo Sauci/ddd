@@ -104,7 +104,7 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileRoot</span><span class="p">,</span> <span class="n">Identifier</span><span class="p">,</span> <span class="n">RasterName</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConstantDeclaration</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.objects</span><span class="w"> </span><span class="kn">import</span> <span class="n">AnyDataObject</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.objects</span><span class="w"> </span><span class="kn">import</span> <span class="n">AnyDataObject</span><span class="p">,</span> <span class="n">PointCounts</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">AnyType</span><span class="p">,</span> <span class="n">check_distinct_type_names</span>
 
 
@@ -207,6 +207,15 @@
 <span class="sd">    exceptions, which state their own ``raster``. It applies to what this component</span>
 <span class="sd">    produces and to nothing it reads - the raster follows the producer - and it reaches no</span>
 <span class="sd">    calibration object, since no daq list carries one.</span>
+<span class="sd">    """</span>
+
+    <span class="n">point_counts</span><span class="p">:</span> <span class="n">PointCounts</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Where the curves, maps and axes this component defines store their point counts,</span>
+<span class="sd">    overriding the project's default.</span>
+
+<span class="sd">    It follows the producer, as ``raster`` does: the component that defines a table is the one</span>
+<span class="sd">    whose routines interpolate over it. It reaches nothing this component reads, and nothing</span>
+<span class="sd">    that is not a curve, a map or an axis.</span>
 <span class="sd">    """</span>
 
     <span class="n">interface</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Declaration</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>

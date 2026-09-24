@@ -175,6 +175,12 @@ path relative to this file or a dotted module name imported from the environment
 <td><p>Settings for each named <a class="reference internal" href="../plugins.html"><span class="doc">plugin</span></a>, keyed by plugin name and validated
 against its own model.</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">point_counts</span></code></p></td>
+<td><p>none</p></td>
+<td><p>Where the project’s curves, maps and axes store their point counts by default:
+<code class="docutils literal notranslate"><span class="pre">&quot;leading&quot;</span></code> ahead of the data, or <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code>. A component’s own <code class="docutils literal notranslate"><span class="pre">point_counts</span></code>
+overrides it for what that component defines.</p></td>
+</tr>
 </tbody>
 </table>
 <p>The identifier rule is tighter than what a c compiler would accept, and deliberately so:

@@ -152,21 +152,21 @@ a project has written into its build files keeps meaning what it meant.</p>
 <p>The authoritative list is the one the tool prints itself, which is also how the tables further
 down should be read after a DDD upgrade:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd checks
-file-not-found         error    a referenced file does not exist (fixed)
-json-syntax            error    a file is not valid json (fixed)
-file-kind              error    the top level key of a file names no description kind, or several (fixed)
-file-extension         error    a description file is not named '*.ddd.json'
-schema                 error    a file does not match the DDD contract (fixed)
-include-cycle          error    projects include each other recursively (fixed)
-include-depth          error    a project's include tree goes more than 64 levels deep (fixed)
-include-empty          error    an include pattern matches no file
-plugin-not-found       error    a project names a plugin that cannot be found (fixed)
-plugin-invalid         error    a plugin module does not expose a well formed PLUGIN, or two plugins claim one name (fixed)
-duplicate-component    error    two different files declare the same component name
-duplicate-type         error    two different files declare the same type name
-duplicate-unit         error    a unit is declared more than once, in one file or across files
-duplicate-section      error    a memory section is declared more than once, in one file or across files
-duplicate-constant     error    a constant is declared more than once, in one file or across files
+file-not-found                error    a referenced file does not exist (fixed)
+json-syntax                   error    a file is not valid json (fixed)
+file-kind                     error    the top level key of a file names no description kind, or several (fixed)
+file-extension                error    a description file is not named '*.ddd.json'
+schema                        error    a file does not match the DDD contract (fixed)
+include-cycle                 error    projects include each other recursively (fixed)
+include-depth                 error    a project's include tree goes more than 64 levels deep (fixed)
+include-empty                 error    an include pattern matches no file
+plugin-not-found              error    a project names a plugin that cannot be found (fixed)
+plugin-invalid                error    a plugin module does not expose a well formed PLUGIN, or two plugins claim one name (fixed)
+duplicate-component           error    two different files declare the same component name
+duplicate-type                error    two different files declare the same type name
+duplicate-unit                error    a unit is declared more than once, in one file or across files
+duplicate-section             error    a memory section is declared more than once, in one file or across files
+duplicate-constant            error    a constant is declared more than once, in one file or across files
 ...
 </pre></div>
 </div>
@@ -723,6 +723,12 @@ one initialiser that are wrong in the same way are one finding, which names how 
 there are and what else is among them: a table typed one datatype too narrow is one
 mistake, not one per element.</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">point-counts-unrepresentable</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a table stores its point counts in a datatype that cannot hold them: a <code class="docutils literal notranslate"><span class="pre">boolean</span></code>
+table, or an integer one whose range stops short of a count. Only a counted table is
+checked; a float holds any count.</p></td>
+</tr>
 </tbody>
 </table>
 </section>
@@ -794,7 +800,12 @@ exported, the closure over references included, so an object kept out of the a2l
 own is still reported where an exported axis names it as its <code class="docutils literal notranslate"><span class="pre">input</span></code>. The extra
 dimensions are written out and only a 1.7 reader understands them.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">address-missing</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">point-counts-mismatch</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>a curve or a map stores its point counts one way and one of its axes the other. The a2l
+describes each as resolved; the interpolation routine is unlikely to read both.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">address-missing</span></code></p></td>
 <td><p>warning</p></td>
 <td><p>an object that reaches the a2l has no entry in the map <code class="docutils literal notranslate"><span class="pre">--address-map</span></code> was given, so
 its <code class="docutils literal notranslate"><span class="pre">ECU_ADDRESS</span></code> stays 0. A map produced from a linker output legitimately lacks the
@@ -874,8 +885,9 @@ registry can be read in one place.</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">changed-interface</span></code></p></td>
 <td><p>error</p></td>
 <td><p>the kind, datatype, unit, scaling, shape, axes or locality of an object changed, or
-the layout a released structure fixed for its consumers: the width of a bitfield, the
-order of the members, or the type a structured variable names. Scaling compares an
+where a table keeps its point counts, or the layout a released structure fixed for
+its consumers: the width of a bitfield, the order of the members, or the type a
+structured variable names. Scaling compares an
 enum by its name and its ordered enumerators, whose descriptions are documentation
 and are not compared.</p></td>
 </tr>

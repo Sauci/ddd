@@ -443,12 +443,12 @@ that says where a value comes from.</p></td>
 </tr>
 </tbody>
 </table>
-<p><code class="docutils literal notranslate"><span class="pre">.kind</span></code>, <code class="docutils literal notranslate"><span class="pre">.c_type</span></code>, <code class="docutils literal notranslate"><span class="pre">.datatype</span></code>, <code class="docutils literal notranslate"><span class="pre">.array_suffix</span></code>, <code class="docutils literal notranslate"><span class="pre">.qualifier</span></code>, <code class="docutils literal notranslate"><span class="pre">.initializer</span></code>
-and <code class="docutils literal notranslate"><span class="pre">.extensions</span></code> are there as well, for a template that would rather lay the declaration
-out itself than take <code class="docutils literal notranslate"><span class="pre">.definition</span></code> whole - <code class="docutils literal notranslate"><span class="pre">.extensions</span></code> being the resolved block of
-every <a class="reference internal" href="plugins.html"><span class="doc">plugin</span></a> the project loads, keyed by plugin name, for a template that
-renders what a plugin decided. <code class="docutils literal notranslate"><span class="pre">.c_type</span></code> and <code class="docutils literal notranslate"><span class="pre">.datatype</span></code> are the same type in two
-vocabularies:
+<p><code class="docutils literal notranslate"><span class="pre">.kind</span></code>, <code class="docutils literal notranslate"><span class="pre">.c_type</span></code>, <code class="docutils literal notranslate"><span class="pre">.datatype</span></code>, <code class="docutils literal notranslate"><span class="pre">.array_suffix</span></code>, <code class="docutils literal notranslate"><span class="pre">.qualifier</span></code>, <code class="docutils literal notranslate"><span class="pre">.initializer</span></code>,
+<code class="docutils literal notranslate"><span class="pre">.dimensions</span></code>, <code class="docutils literal notranslate"><span class="pre">.point_counts</span></code> and <code class="docutils literal notranslate"><span class="pre">.extensions</span></code> are there as well, for a template that
+would rather lay the declaration out itself than take <code class="docutils literal notranslate"><span class="pre">.definition</span></code> whole - <code class="docutils literal notranslate"><span class="pre">.extensions</span></code>
+being the resolved block of every <a class="reference internal" href="plugins.html"><span class="doc">plugin</span></a> the project loads, keyed by plugin
+name, for a template that renders what a plugin decided. <code class="docutils literal notranslate"><span class="pre">.c_type</span></code> and <code class="docutils literal notranslate"><span class="pre">.datatype</span></code> are the
+same type in two vocabularies:
 the ISO spelling (<code class="docutils literal notranslate"><span class="pre">uint16_t</span></code>) that <code class="docutils literal notranslate"><span class="pre">.definition</span></code> and the example templates use, and the
 description’s own (<code class="docutils literal notranslate"><span class="pre">uint16</span></code>). A project whose platform header already provides the
 description’s names - AUTOSAR’s <code class="docutils literal notranslate"><span class="pre">Platform_Types.h</span></code> spells them exactly - renders
@@ -456,8 +456,16 @@ description’s names - AUTOSAR’s <code class="docutils literal notranslate"><
 structure member of another structure or of an external type, the two fields agree, because
 that spelling was the project’s own to begin with. <code class="docutils literal notranslate"><span class="pre">.array_suffix</span></code> spells each dimension as the project spells it - a
 dimension stated as a <a class="reference internal" href="file_formats/constants.html"><span class="doc">declared constant</span></a> renders as that
-name, <code class="docutils literal notranslate"><span class="pre">[PRESSURE_CELLS]</span></code>, in <code class="docutils literal notranslate"><span class="pre">.definition</span></code> and <code class="docutils literal notranslate"><span class="pre">.declaration(...)</span></code> alike - while
-<code class="docutils literal notranslate"><span class="pre">.initializer</span></code> lays its braces out over the resolved numeric shape. <code class="docutils literal notranslate"><span class="pre">.qualifier</span></code> is derived rather than stored, from the two answers a
+name, <code class="docutils literal notranslate"><span class="pre">[PRESSURE_CELLS]</span></code>, in <code class="docutils literal notranslate"><span class="pre">.definition</span></code> and <code class="docutils literal notranslate"><span class="pre">.declaration(...)</span></code> alike; for a table
+whose point counts are stored <code class="docutils literal notranslate"><span class="pre">leading</span></code>, it is instead the flat suffix that has room for
+the counts ahead of the values, such as <code class="docutils literal notranslate"><span class="pre">[1</span> <span class="pre">+</span> <span class="pre">(8)]</span></code> for an axis of 8 points. <code class="docutils literal notranslate"><span class="pre">.dimensions</span></code> is the shape <code class="docutils literal notranslate"><span class="pre">.array_suffix</span></code> was rendered from, in declaration
+order and in the project’s own spelling, so a template computing anything from the shape does
+not have to parse the suffix back apart. <code class="docutils literal notranslate"><span class="pre">.point_counts</span></code> is the counts such a table stores
+ahead of its values, in storage order - x, then y - and spelled like <code class="docutils literal notranslate"><span class="pre">.dimensions</span></code>; empty
+for every object that stores none. <code class="docutils literal notranslate"><span class="pre">.initializer</span></code> lays its braces out over the resolved
+numeric shape - or, again for a table with leading counts, over the counts followed by the
+values, which is always present even when the description gives no <code class="docutils literal notranslate"><span class="pre">init</span></code>, since the
+counts can never be left to implicit zero initialisation. <code class="docutils literal notranslate"><span class="pre">.qualifier</span></code> is derived rather than stored, from the two answers a
 declaration can give about who writes the object: <code class="docutils literal notranslate"><span class="pre">.constant</span></code> is true for calibration data,
 which the software never writes and which is therefore generated <code class="docutils literal notranslate"><span class="pre">const</span></code>, and <code class="docutils literal notranslate"><span class="pre">.volatile</span></code>
 is what the description states on the definition, on every kind, to say that something

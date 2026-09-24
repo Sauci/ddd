@@ -2,7 +2,7 @@
 <area shape="rect" id="node1" title="ddd.ir.ResolvedObject
 
 One data object, with every derived property already worked out.
-" alt="" coords="5,61,671,677"/>
+" alt="" coords="5,47,680,691"/>
 <area shape="rect" id="node2" title="ddd.models.conversion.EnumConversion
 
 A verbal conversion table; the raw value *is* the physical value.
@@ -15,7 +15,7 @@ Accepts both the explicit form::
 and the mapping shorthand::
 
  &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;, &quot;enumerators&quot;: {&quot;STATE_OFF&quot;: 0}}
-" alt="" coords="815,5,1080,117"/>
+" alt="" coords="824,5,1089,117"/>
 <area shape="rect" id="node3" title="ddd.models.conversion.IdentityConversion
 
 ``physical == raw``; stated like any other conversion, ``{}`` its shortest spelling.
@@ -23,11 +23,11 @@ and the mapping shorthand::
 Not a default: a definition naming storage by ``datatype`` states this one where raw and
 physical are the same number, so that the claim is written down rather than left to
 silence.
-" alt="" coords="862,165,1033,221"/>
+" alt="" coords="871,165,1042,221"/>
 <area shape="rect" id="node4" title="ddd.models.conversion.LinearConversion
 
 ``physical = raw * factor + offset``, the scaling of a fixed point value.
-" alt="" coords="864,269,1031,381"/>
+" alt="" coords="873,269,1040,381"/>
 <area shape="rect" id="node5" title="ddd.models.conversion.StringConversion
 
 Bytes read as text: each element of the array holds one character code.
@@ -41,20 +41,20 @@ The two mappings are the identity on one byte, so that the derived limits of a s
 are the raw range of its datatype &#45; which is what the a2l record states &#45; and nothing
 that ranges a conversion has to know that a string exists. A byte has no reading of its
 own, so no reading is produced for it, as for the identity.
-" alt="" coords="869,429,1026,485"/>
+" alt="" coords="878,429,1035,485"/>
 <area shape="rect" id="node6" title="ddd.models.objects.A2lObjectOptions
 
 What a declaration asks of the a2l backend. Only that backend interprets it.
 
 Nothing here changes the generated c or the meaning of the object; a project that
 generates no a2l can leave the whole block out.
-" alt="" coords="829,667,1066,779"/>
+" alt="" coords="838,667,1075,779"/>
 <area shape="rect" id="node7" title="ddd.models.objects.Limits
 
 Physical lower/upper limit of a data object.
-" alt="" coords="863,534,1032,618"/>
+" alt="" coords="872,534,1041,618"/>
 <area shape="rect" id="node8" title="ddd.models.conversion.Enumerator
 
 One named value of an enum conversion, and what that value means.
-" alt="" coords="1224,91,1341,203"/>
+" alt="" coords="1233,91,1351,203"/>
 </map>

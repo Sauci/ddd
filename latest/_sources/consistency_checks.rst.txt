@@ -43,21 +43,21 @@ down should be read after a DDD upgrade:
 .. code-block:: text
 
    $ ddd checks
-   file-not-found         error    a referenced file does not exist (fixed)
-   json-syntax            error    a file is not valid json (fixed)
-   file-kind              error    the top level key of a file names no description kind, or several (fixed)
-   file-extension         error    a description file is not named '*.ddd.json'
-   schema                 error    a file does not match the DDD contract (fixed)
-   include-cycle          error    projects include each other recursively (fixed)
-   include-depth          error    a project's include tree goes more than 64 levels deep (fixed)
-   include-empty          error    an include pattern matches no file
-   plugin-not-found       error    a project names a plugin that cannot be found (fixed)
-   plugin-invalid         error    a plugin module does not expose a well formed PLUGIN, or two plugins claim one name (fixed)
-   duplicate-component    error    two different files declare the same component name
-   duplicate-type         error    two different files declare the same type name
-   duplicate-unit         error    a unit is declared more than once, in one file or across files
-   duplicate-section      error    a memory section is declared more than once, in one file or across files
-   duplicate-constant     error    a constant is declared more than once, in one file or across files
+   file-not-found                error    a referenced file does not exist (fixed)
+   json-syntax                   error    a file is not valid json (fixed)
+   file-kind                     error    the top level key of a file names no description kind, or several (fixed)
+   file-extension                error    a description file is not named '*.ddd.json'
+   schema                        error    a file does not match the DDD contract (fixed)
+   include-cycle                 error    projects include each other recursively (fixed)
+   include-depth                 error    a project's include tree goes more than 64 levels deep (fixed)
+   include-empty                 error    an include pattern matches no file
+   plugin-not-found              error    a project names a plugin that cannot be found (fixed)
+   plugin-invalid                error    a plugin module does not expose a well formed PLUGIN, or two plugins claim one name (fixed)
+   duplicate-component           error    two different files declare the same component name
+   duplicate-type                error    two different files declare the same type name
+   duplicate-unit                error    a unit is declared more than once, in one file or across files
+   duplicate-section             error    a memory section is declared more than once, in one file or across files
+   duplicate-constant            error    a constant is declared more than once, in one file or across files
    ...
 
 The ``(fixed)`` marker means the severity of that check cannot be changed; the reason is in
@@ -593,6 +593,11 @@ or an a2l file that does not do what the description says - or that does not com
        one initialiser that are wrong in the same way are one finding, which names how many
        there are and what else is among them: a table typed one datatype too narrow is one
        mistake, not one per element.
+   * - ``point-counts-unrepresentable``
+     - error
+     - a table stores its point counts in a datatype that cannot hold them: a ``boolean``
+       table, or an integer one whose range stops short of a count. Only a counted table is
+       checked; a float holds any count.
 
 Warnings
 ~~~~~~~~
@@ -650,6 +655,10 @@ it is either a smell or a decision somebody should have taken consciously.
        exported, the closure over references included, so an object kept out of the a2l on its
        own is still reported where an exported axis names it as its ``input``. The extra
        dimensions are written out and only a 1.7 reader understands them.
+   * - ``point-counts-mismatch``
+     - warning
+     - a curve or a map stores its point counts one way and one of its axes the other. The a2l
+       describes each as resolved; the interpolation routine is unlikely to read both.
    * - ``address-missing``
      - warning
      - an object that reaches the a2l has no entry in the map ``--address-map`` was given, so
@@ -712,8 +721,9 @@ registry can be read in one place.
    * - ``changed-interface``
      - error
      - the kind, datatype, unit, scaling, shape, axes or locality of an object changed, or
-       the layout a released structure fixed for its consumers: the width of a bitfield, the
-       order of the members, or the type a structured variable names. Scaling compares an
+       where a table keeps its point counts, or the layout a released structure fixed for
+       its consumers: the width of a bitfield, the order of the members, or the type a
+       structured variable names. Scaling compares an
        enum by its name and its ordered enumerators, whose descriptions are documentation
        and are not compared.
    * - ``reused-name``

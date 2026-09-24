@@ -875,6 +875,24 @@ stored in increasing index order, one after the other; a parameter, value block,
 deposits its values with <code class="docutils literal notranslate"><span class="pre">FNC_VALUES</span> <span class="pre">...</span> <span class="pre">ROW_DIR</span></code>, meaning row wise, which is how c lays
 out a multidimensional array. Both use <code class="docutils literal notranslate"><span class="pre">DIRECT</span></code> addressing, since the generated c
 declaration is the array itself and not a pointer to it.</p>
+<p>A curve, map or axis whose <code class="docutils literal notranslate"><span class="pre">point_counts</span></code> resolves to <code class="docutils literal notranslate"><span class="pre">leading</span></code> deposits differently: one
+<code class="docutils literal notranslate"><span class="pre">NO_AXIS_PTS_X</span></code> (and, for a map, <code class="docutils literal notranslate"><span class="pre">NO_AXIS_PTS_Y</span></code>) ahead of the data, each in the object’s
+own datatype, in a layout of its own -</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin RECORD_LAYOUT RL_MAP_COUNTED_ULONG
+  NO_AXIS_PTS_X 1 ULONG
+  NO_AXIS_PTS_Y 2 ULONG
+  FNC_VALUES 3 ULONG ROW_DIR DIRECT
+/end RECORD_LAYOUT
+</pre></div>
+</div>
+<p>matching the c declaration that puts the counts first. No <code class="docutils literal notranslate"><span class="pre">STATIC_RECORD_LAYOUT</span></code> is written:
+without it, a tool that lets an engineer remove points compacts the data behind the new count,
+which is what a routine computing <code class="docutils literal notranslate"><span class="pre">y</span> <span class="pre">*</span> <span class="pre">nx</span> <span class="pre">+</span> <span class="pre">x</span></code> from the stored count expects, and
+<code class="docutils literal notranslate"><span class="pre">STATIC_RECORD_LAYOUT</span></code> would say the shape never changes. A curve or map that references its
+axis with <code class="docutils literal notranslate"><span class="pre">COM_AXIS</span></code> still carries its own <code class="docutils literal notranslate"><span class="pre">NO_AXIS_PTS_X</span></code>, one for its axis’ points -
+redundant with the axis’ own count, but the image stores it, and the only other truthful
+description of those bytes would be <code class="docutils literal notranslate"><span class="pre">RESERVED</span></code>. An object that never states the key, or
+states <code class="docutils literal notranslate"><span class="pre">none</span></code>, keeps the plain <code class="docutils literal notranslate"><span class="pre">RL_VALUES_&lt;T&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">RL_AXIS_&lt;T&gt;</span></code> unchanged.</p>
 <p>The records share a skeleton. A measurement is written as its name, its long identifier, the
 a2l datatype, the compu method, a resolution and an accuracy field, and the lower and upper
 physical limits:</p>

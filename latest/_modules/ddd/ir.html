@@ -131,7 +131,15 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.component</span><span class="w"> </span><span class="kn">import</span> <span class="n">Scope</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConstantDeclaration</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.conversion</span><span class="w"> </span><span class="kn">import</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">EnumConversion</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.objects</span><span class="w"> </span><span class="kn">import</span> <span class="n">A2lObjectOptions</span><span class="p">,</span> <span class="n">Dimension</span><span class="p">,</span> <span class="n">InitValue</span><span class="p">,</span> <span class="n">Limits</span><span class="p">,</span> <span class="n">ObjectKind</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.objects</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">COUNTED_KINDS</span><span class="p">,</span>
+    <span class="n">A2lObjectOptions</span><span class="p">,</span>
+    <span class="n">Dimension</span><span class="p">,</span>
+    <span class="n">InitValue</span><span class="p">,</span>
+    <span class="n">Limits</span><span class="p">,</span>
+    <span class="n">ObjectKind</span><span class="p">,</span>
+    <span class="n">PointCounts</span><span class="p">,</span>
+<span class="p">)</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_check_dimensions_match</span><span class="p">(</span><span class="n">shape</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">dimensions</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
@@ -314,6 +322,11 @@
 <span class="w">    </span><span class="sd">"""Measurement raster the producing component updates the object in; ``null`` when the</span>
 <span class="sd">    project named none. Empty in a dictionary from format 4 or older."""</span>
 
+    <span class="n">point_counts</span><span class="p">:</span> <span class="n">PointCounts</span> <span class="o">=</span> <span class="n">PointCounts</span><span class="o">.</span><span class="n">NONE</span>
+<span class="w">    </span><span class="sd">"""Whether this curve, map or axis stores its point counts ahead of its data: its</span>
+<span class="sd">    producing component's ``point_counts``, else the project's. ``none`` for every other kind,</span>
+<span class="sd">    and in a dictionary from format 8 or older, which never stored any."""</span>
+
     <span class="n">volatile</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
 <span class="w">    </span><span class="sd">"""Generate the object ``volatile``: stated by every declaration, on every kind.</span>
 
@@ -375,6 +388,16 @@
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_dimensions_spell_the_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ResolvedObject</span><span class="p">:</span>
         <span class="n">_check_dimensions_match</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_point_counts_describe_a_counted_kind</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ResolvedObject</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">point_counts</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">PointCounts</span><span class="o">.</span><span class="n">NONE</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">kind</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">COUNTED_KINDS</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"point_counts is '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">point_counts</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">', but '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">kind</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">' has no "</span>
+                <span class="s2">"axis points to count; only an axis, a curve or a map can hold one"</span>
+            <span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span></div>
 
 
@@ -738,7 +761,7 @@
 <span class="sd">"""</span>
 
 
-<span class="n">DICTIONARY_FORMAT</span> <span class="o">=</span> <span class="mi">8</span>
+<span class="n">DICTIONARY_FORMAT</span> <span class="o">=</span> <span class="mi">9</span>
 <span class="sd">"""Version of the dictionary format itself.</span>
 
 <span class="sd">A dumped dictionary is meant to be archived next to a delivery and read back by a later</span>
@@ -749,6 +772,9 @@
 <span class="sd">Format 8 added the ``string`` conversion kind and the string spelling of ``init``, and</span>
 <span class="sd">widened a constant's ``value`` from a whole number of at least 1 to any number. A format 7</span>
 <span class="sd">dictionary carries none of them, and reads back unchanged.</span>
+
+<span class="sd">Format 9 added ``point_counts`` to every object. A format 8 dictionary carries none, and reads</span>
+<span class="sd">back with ``none`` everywhere, which is the layout it described.</span>
 <span class="sd">"""</span>
 
 

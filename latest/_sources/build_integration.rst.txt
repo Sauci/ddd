@@ -583,7 +583,7 @@ symbol lister prints something else needs its own reader of that output.
 .. code-block:: cmake
 
    # cmake/AddressMap.cmake - NM, IMAGE and OUTPUT come from the -D arguments above.
-   execute_process(COMMAND "${NM}" --defined-only --format=posix "${IMAGE}"
+   execute_process(COMMAND "${NM}" --defined-only --extern-only --format=posix "${IMAGE}"
                    OUTPUT_VARIABLE listing
                    COMMAND_ERROR_IS_FATAL ANY)
    string(REGEX REPLACE "\r?\n" ";" lines "${listing}")
@@ -602,6 +602,10 @@ regenerates - the map is one of the generation's dependencies - and re-renders t
 the addresses in it. The c sources of that second run are byte identical, so nothing is
 recompiled, nothing is relinked, and the flow settles after one extra round rather than
 chasing its own tail.
+
+``--extern-only`` keeps the file-local statics out: every object a dictionary describes is a
+global, and two translation units each defining a ``static`` of one name would otherwise hand
+the map one symbol at two addresses, which ``load_address_map`` refuses.
 
 Two things such a script has to get right. A structured object's members are addressed under
 their access path, ``Inlet.latest`` rather than ``Inlet``, which a symbol lister does not

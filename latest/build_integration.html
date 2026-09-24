@@ -676,7 +676,7 @@ the very path <code class="docutils literal notranslate"><span class="pre">ADDRE
 rather than a file to copy: this one reads the <code class="docutils literal notranslate"><span class="pre">nm</span></code> of binutils, and a toolchain whose
 symbol lister prints something else needs its own reader of that output.</p>
 <div class="highlight-cmake notranslate"><div class="highlight"><pre><span></span><span class="c"># cmake/AddressMap.cmake - NM, IMAGE and OUTPUT come from the -D arguments above.</span>
-<span class="nb">execute_process</span><span class="p">(</span><span class="s">COMMAND</span><span class="w"> </span><span class="s2">"${NM}"</span><span class="w"> </span><span class="s">--defined-only</span><span class="w"> </span><span class="s">--format=posix</span><span class="w"> </span><span class="s2">"${IMAGE}"</span>
+<span class="nb">execute_process</span><span class="p">(</span><span class="s">COMMAND</span><span class="w"> </span><span class="s2">"${NM}"</span><span class="w"> </span><span class="s">--defined-only</span><span class="w"> </span><span class="s">--extern-only</span><span class="w"> </span><span class="s">--format=posix</span><span class="w"> </span><span class="s2">"${IMAGE}"</span>
 <span class="w">                </span><span class="s">OUTPUT_VARIABLE</span><span class="w"> </span><span class="s">listing</span>
 <span class="w">                </span><span class="s">COMMAND_ERROR_IS_FATAL</span><span class="w"> </span><span class="s">ANY</span><span class="p">)</span>
 <span class="nb">string</span><span class="p">(</span><span class="s">REGEX</span><span class="w"> </span><span class="s">REPLACE</span><span class="w"> </span><span class="s2">"\r?\n"</span><span class="w"> </span><span class="s2">";"</span><span class="w"> </span><span class="s">lines</span><span class="w"> </span><span class="s2">"${listing}"</span><span class="p">)</span>
@@ -696,6 +696,9 @@ regenerates - the map is one of the generation’s dependencies - and re-renders
 the addresses in it. The c sources of that second run are byte identical, so nothing is
 recompiled, nothing is relinked, and the flow settles after one extra round rather than
 chasing its own tail.</p>
+<p><code class="docutils literal notranslate"><span class="pre">--extern-only</span></code> keeps the file-local statics out: every object a dictionary describes is a
+global, and two translation units each defining a <code class="docutils literal notranslate"><span class="pre">static</span></code> of one name would otherwise hand
+the map one symbol at two addresses, which <code class="docutils literal notranslate"><span class="pre">load_address_map</span></code> refuses.</p>
 <p>Two things such a script has to get right. A structured object’s members are addressed under
 their access path, <code class="docutils literal notranslate"><span class="pre">Inlet.latest</span></code> rather than <code class="docutils literal notranslate"><span class="pre">Inlet</span></code>, which a symbol lister does not
 print: a project with structured objects adds the member offsets itself, from the type

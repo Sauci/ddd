@@ -934,13 +934,14 @@ an array, or of the whole ``init`` where it states one value for every element o
 all, written into the file that produces it either way. ``set_values`` sits beside
 ``set_cell`` for a whole table pasted at once. The shape is checked here too, because
 the page that already checked it is not this function's only caller, and every element
-is weighed by the same ``_acceptable``, a refusal naming every one that fails rather
-than the first. It always plans one ``set`` of the whole ``init`` regardless of what the
-file held before - one line for a curve, whose ``init`` sits on a line of its own, and
-one line per row for a map, whose ``init`` is written a row to a line. A shape of more
-than two dimensions is refused rather than drawn a dimension short, a grid being rows
-of cells and nothing deeper; and a name that is not produced by exactly one declaration
-answers its grid read-only, because the values and the owner are the analysis's own
+is weighed by the same ``_acceptable``, a refusal naming up to five that fail and,
+beyond that, how many more, rather than stopping at the first. It always plans one
+``set`` of the whole ``init`` regardless of what the file held before - one line for a
+curve, whose ``init`` sits on a line of its own, and one line per row for a map, whose
+``init`` is written a row to a line. A shape of more than two dimensions is refused
+rather than drawn a dimension short, a grid being rows of cells and nothing deeper; and
+a name that is not produced by exactly one declaration answers its grid read-only,
+because the values and the owner are the analysis's own
 producer's and ``Index.producers`` need not name that same declaration first.
 
 The edit engine learnt one thing for adoption: a change whose ``fingerprint`` is ``null``

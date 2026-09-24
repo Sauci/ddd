@@ -308,10 +308,11 @@ The commands
        back by the same undo. A table copied from a spreadsheet is pasted anywhere in
        the grid to replace every value of the object at once - the object's own shape,
        or exactly one row and one column larger for the header pasted along with it -
-       previewed and undone the same way. A Types tab lists the types the project
-       declares, with what each fixes and what names it; what a scalar type fixes is
-       changed there, and renaming one rewrites every declaration and member naming it
-       in one edit.
+       previewed and undone the same way. Its header is discarded unread, so one naming
+       a different axis is caught only by that preview, not by the paste itself. A Types
+       tab lists the types the project declares, with what each fixes and what names it;
+       what a scalar type fixes is changed there, and renaming one rewrites every
+       declaration and member naming it in one edit.
        Every change is written into the files in their own layout and checked
        the way ``ddd check`` checks them. A change applied here can be undone while
        the server runs, from a button beside the project's name naming what it would

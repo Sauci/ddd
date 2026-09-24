@@ -113,6 +113,141 @@ export function typedRefusal(text: string): string | null {
   return `'${text}' is not a number`;
 }
 
+/** A pasted block, read against the object the grid is showing. Exactly one of the two fields is
+ * set, so a reader narrows on `refusal === null` and needs no fallback for the other. */
+export type Pasted = { rows: number[][]; refusal: null } | { rows: null; refusal: string };
+
+/** The block as a spreadsheet writes it: rows by newline, cells by tab, a trailing newline
+ * dropped because every spreadsheet adds one. */
+function celled(text: string): string[][] {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n");
+  return lines.map((line) => line.split("\t"));
+}
+
+/** The rows and columns the object itself takes, as a table is counted. The `= 0` is defensive
+ * and nothing tests it: a shapeless reply reaches neither caller, since `ValuesPage` answers
+ * "has no cell for a value to sit in" before it draws a grid at all - and the test that used to
+ * cover it pinned `Paste 1 row of 0 values…`, a sentence no reader can reach. A destructuring
+ * default is no branch to v8's coverage, so the gate is not hiding one here either. */
+function wanted(reply: ValuesReply): [number, number] {
+  const [first = 0, second] = reply.shape;
+  return second === undefined ? [1, first] : [first, second];
+}
+
+/** `1 row of 6`, `4 rows of 6` - how a block is counted, the same spelling `_table` uses in
+ * `object_values.py`. The word "values" is left to whichever sentence wants it. */
+function table(rows: number, columns: number): string {
+  return `${rows} row${rows === 1 ? "" : "s"} of ${columns}`;
+}
+
+/** `6 and 3`, `6, 3 and 9` - a list as a sentence says it, commas between all but the last and
+ * `and` before that one. `join(" and ")` reads for two and turns three into `6 and 3 and 9`.
+ * Called only where there are at least two, since one width is no ragged block - so the tail
+ * is taken by `slice`, which has no first element to fall back from. */
+function listed(numbers: number[]): string {
+  const all = numbers.map(String);
+  return `${all.slice(0, -1).join(", ")} and ${all.slice(-1).join("")}`;
+}
+
+/** A comma before exactly three digits at the end of a cell - `1,200`, which an English
+ * spreadsheet writes for twelve hundred and a French one for one and a fifth. Two digits are no
+ * grouping (`1,25`) and neither are four (`1,2345`), so both stay decimals. */
+const GROUPED = /,\d{3}$/;
+
+/** The first cell whose comma could be a thousands separator, or `undefined` where no cell's
+ * could. Trimmed, because a cell padded by the spreadsheet is the same number. */
+function groupedCell(cells: string[][]): string | undefined {
+  return cells.flat().find((cell) => GROUPED.test(cell.trim()));
+}
+
+/** Whether a comma is this block's decimal separator: only where no cell states a point and no
+ * cell states two commas, so `1,5` reads as one and a half and `1.234,56` never does. */
+function commaIsDecimal(cells: string[][]): boolean {
+  const all = cells.flat();
+  if (all.some((cell) => cell.includes("."))) return false;
+  return all.every((cell) => (cell.match(/,/g) ?? []).length <= 1);
+}
+
+/** Whether two *different* cells disagree about the separator, which is the one case worth its
+ * own sentence. A single cell holding both - `1.234,56` - is not a block that mixes them; it is
+ * a cell that is not a number, and saying so names the cell a reader has to go and fix. */
+function mixesSeparators(cells: string[][]): boolean {
+  const all = cells.flat();
+  return (
+    all.some((cell) => cell.includes(".") && !cell.includes(",")) &&
+    all.some((cell) => cell.includes(",") && !cell.includes("."))
+  );
+}
+
+export function pasted(text: string, reply: ValuesReply, physical: boolean): Pasted {
+  const cells = celled(text);
+  const widths = new Set(cells.map((row) => row.length));
+  if (widths.size > 1) {
+    return {
+      rows: null,
+      refusal: `this is not a table: its rows are ${listed([...widths])} values long`,
+    };
+  }
+  // Every row is the same length by now, so the widest is the width - and taking it this way
+  // needs no index into `cells`, which would carry a fallback nothing can reach: a split on a
+  // non-empty separator always answers at least one row.
+  const width = Math.max(0, ...widths);
+  const [rows, columns] = wanted(reply);
+  const header = cells.length === rows + 1 && width === columns + 1;
+  if (!header && (cells.length !== rows || width !== columns)) {
+    return {
+      rows: null,
+      refusal:
+        `expected ${table(rows, columns)}, or ${table(rows + 1, columns + 1)} with a header; ` +
+        `got ${table(cells.length, width)}`,
+    };
+  }
+  const values = header ? cells.slice(1).map((row) => row.slice(1)) : cells;
+  const decimal = commaIsDecimal(values);
+  if (mixesSeparators(values)) {
+    return {
+      rows: null,
+      refusal: "this mixes '.' and ',' as decimal separators, so it is not clear what it means",
+    };
+  }
+  // The one comma nothing can decide, refused rather than read: `1,200` is twelve hundred from
+  // a spreadsheet that groups thousands and one and a fifth from one that writes decimals with
+  // a comma, and both are ordinary. Read either way it stores a calibration nobody typed - a
+  // thousand times too small, or a thousand times too large - and says nothing, which is the
+  // guessing this whole rule exists to refuse. Only where the comma would otherwise be the
+  // decimal separator: a block that states a point elsewhere has already said what its commas
+  // are, and `mixesSeparators` above answers that one.
+  if (decimal) {
+    const grouped = groupedCell(values);
+    if (grouped !== undefined) {
+      return {
+        rows: null,
+        refusal:
+          `the comma in '${grouped}' could be a decimal point or a thousands separator, so it ` +
+          "is not clear what it means; paste the block with no thousands separators",
+      };
+    }
+  }
+  const read: number[][] = [];
+  for (const row of values) {
+    const counts: number[] = [];
+    for (const cell of row) {
+      const typed = typedNumber(decimal ? cell.replace(",", ".") : cell);
+      if (Number.isNaN(typed)) return { rows: null, refusal: `'${cell}' is not a number` };
+      counts.push(physical ? rawOf(typed, reply.conversion, reply.datatype) : typed);
+    }
+    read.push(counts);
+  }
+  return { rows: read, refusal: null };
+}
+
+/** The line under the grid saying what shape a paste wants - the only way the feature is
+ * discoverable, and the hint that stops the commonest refusal before it happens. */
+export function pasteHint(reply: ValuesReply): string {
+  const [rows, columns] = wanted(reply);
+  return `Paste ${table(rows, columns)} values from a spreadsheet to replace them all.`;
+}
+
 /** One breakpoint, in physical or in raw, as a column or a row header shows it. */
 function reading(raw: number, conversion: Conversion, physical: boolean): string {
   return String(physical ? physicalOf(raw, conversion) : raw);
@@ -175,4 +310,11 @@ export function cellSentence(
 function physicalReading(raw: number, reply: ValuesReply): string {
   const value = physicalOf(raw, reply.conversion);
   return reply.unit === "" ? String(value) : `${value} ${reply.unit}`;
+}
+
+/** The sentence above a pasted table's preview, as `cellSentence` is a cell's: what is about to
+ * happen, so that a reader who pasted physical values and sees raw counts in the hunks is told
+ * the two are one change and not two. */
+export function pasteSentence(reply: ValuesReply): string {
+  return `Replaces every value of ${reply.name}`;
 }

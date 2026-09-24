@@ -2653,6 +2653,8 @@ class TestTheValuesGrid:
         assert reply.body["message"] == "'Cube' has 3 dimensions, and a grid draws at most two"
         plan = get(api, "/api/value-plan", name="Cube", at="[1][2][3]", raw="7")
         assert (plan.status, plan.body["error"]) == (409, "invalid")
+        plans = get(api, "/api/values-plan", name="Cube", raw="7")
+        assert (plans.status, plans.body["error"]) == (409, "invalid")
 
     def test_a_name_two_declarations_produce_is_read_only(self, tmp_path: Path) -> None:
         # The values come from the analysis's own producer and the file used to come from
@@ -2697,6 +2699,11 @@ class TestTheValuesGrid:
         assert plan.body["message"] == (
             "'Twin' is produced in more than one place, so there is no one file to set it in"
         )
+        plans = get(api, "/api/values-plan", name="Twin", raw="1,2,3")
+        assert (plans.status, plans.body["error"]) == (409, "invalid")
+        # The same sentence as the cell's above, not a second spelling of the same condition:
+        # a reader who pastes and a reader who types are told the one thing that is true.
+        assert plans.body["message"] == plan.body["message"]
         assert contents(tmp_path) == before
 
     def test_a_project_that_did_not_load_has_no_dictionary(self, tmp_path) -> None:
@@ -2824,3 +2831,105 @@ class TestTheValuesGrid:
         monkeypatch.setattr("ddd.gui.api.previewed", refuse)
         reply = get(api, "/api/value-plan", name="CurveA", at="[2]", raw="750")
         assert (reply.status, reply.body["error"]) == (409, "unverified")
+
+    def test_a_pasted_curve_is_previewed_then_written(self, demo) -> None:
+        api, root = demo
+        before = contents(root)
+        preview = get(api, "/api/values-plan", name="CurveA", raw="1300,950,850,800,750,700").body
+        assert contents(root) == before
+        assert [Path(c["file"]).name for c in preview["changes"]] == ["controller.ddd.json"]
+        assert applied(api, preview, "the values of CurveA").status == 200
+        written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
+        assert '"init": [1300, 950, 850, 800, 750, 700]' in written
+
+    def test_a_pasted_map_is_folded_by_the_shape_the_server_knows(self, demo) -> None:
+        # Every row, not the first and the last alone: a fold that got those two right and
+        # scrambled the two between them would have passed, which is the one thing this test -
+        # the only one whose subject is `_folded` itself - is here to catch.
+        api, root = demo
+        counts = ",".join(str(n) for n in range(1, 25))
+        preview = get(api, "/api/values-plan", name="MapA", raw=counts).body
+        assert applied(api, preview, "the values of MapA").status == 200
+        written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
+        assert "[1, 2, 3, 4, 5, 6]," in written
+        assert "[7, 8, 9, 10, 11, 12]," in written
+        assert "[13, 14, 15, 16, 17, 18]," in written
+        assert "[19, 20, 21, 22, 23, 24]" in written
+
+    def test_a_list_of_the_wrong_length_says_what_it_wanted(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/values-plan", name="CurveA", raw="1,2,3")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == ("'CurveA' takes 1 row of 6 values, and this is 1 row of 3")
+
+    def test_a_two_dimensional_name_given_the_wrong_count_is_laid_out_as_one_row(
+        self, demo
+    ) -> None:
+        # `_folded`'s wrong-length arm for a two-dimensional name: every other wrong-count test
+        # here names a one- or three-dimensional object, which takes the `len(shape) != 2` half
+        # of the same `or` and leaves the length half unexercised for a shape that has one.
+        # One row of 23 is what the reader is told they pasted, which is what they did.
+        api, _ = demo
+        counts = ",".join(str(n) for n in range(1, 24))
+        reply = get(api, "/api/values-plan", name="MapA", raw=counts)
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "'MapA' takes 4 rows of 6 values, and this is 1 row of 23"
+
+    def test_a_name_the_project_has_not_is_not_found_for_a_values_plan(self, demo) -> None:
+        # Named distinctly from TestTheValuesGrid's own /api/values test above (and
+        # /api/value-plan's own "_for_a_plan" test below): two methods of the same name in one
+        # class would shadow one another, silently dropping the first from the suite.
+        api, _ = demo
+        reply = get(api, "/api/values-plan", name="Nope", raw="1")
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_without_its_parameters_it_says_which_it_takes(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/values-plan", name="CurveA")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply.body["message"] == "values-plan takes ?name= and ?raw="
+
+    def test_a_count_that_is_not_a_number_is_refused(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/values-plan", name="CurveA", raw="1200,900,lots,750,700,650")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "'lots' is not a number"
+
+    def test_a_project_that_did_not_load_has_nothing_to_plan_values_of(self, tmp_path) -> None:
+        # Named distinctly from TestTheValuesGrid's own /api/values test above, for the same
+        # reason as the "not-found" rename just above it.
+        reply = get(unloaded(tmp_path), "/api/values-plan", name="Anything", raw="1")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_a_values_plan_the_engine_refuses_is_a_refusal_the_page_can_act_on(
+        self, demo, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The same pattern as test_a_plan_the_engine_refuses_is_a_refusal_the_page_can_act_on
+        # above, over /api/values-plan's own call to `previewed` - its own line in this
+        # handler, and the coverage gate cannot tell it was exercised by the other endpoint's
+        # test alone.
+        api, _ = demo
+
+        def refuse(*_: object) -> None:
+            raise EditError(UNVERIFIED, "does not read back")
+
+        monkeypatch.setattr("ddd.gui.api.previewed", refuse)
+        reply = get(api, "/api/values-plan", name="CurveA", raw="1300,950,850,800,750,700")
+        assert (reply.status, reply.body["error"]) == (409, "unverified")
+
+    def test_a_text_init_cannot_be_pasted_into_at_the_endpoint(self, demo) -> None:
+        # set_values's own text refusal, plumbed through: neither /api/values nor
+        # /api/value-plan has a test of this at the http layer either, so this is new ground
+        # rather than a sibling to extend.
+        api, _ = demo
+        reply = get(api, "/api/values-plan", name="SoftwareLabel", raw="1")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "'SoftwareLabel' is initialised with text, not with a grid"
+
+    def test_a_shapeless_object_cannot_be_pasted_into_at_the_endpoint(self, demo) -> None:
+        # set_values's own shapeless refusal, plumbed through - the other refusal kind with no
+        # existing http-layer test to extend.
+        api, _ = demo
+        reply = get(api, "/api/values-plan", name="ValueA", raw="1")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "'ValueA' has no cell for a value to sit in"

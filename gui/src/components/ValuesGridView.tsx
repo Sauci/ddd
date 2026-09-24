@@ -7,6 +7,8 @@ import {
   columnHeader,
   cornerLabel,
   elementLabel,
+  pasteHint,
+  pasteSentence,
   physicalOf,
   rawOf,
   readOnlyNote,
@@ -45,6 +47,9 @@ export interface ValuesGridViewProps {
   onChangesShown: (shown: boolean) => void;
   onApply: () => void;
   onBack: () => void;
+  /** The clipboard's text, from a paste anywhere in the grid. The component reads the event and
+   * hands over its text; what the text means is the screen's and `pasted`'s business. */
+  onPaste: (text: string) => void;
 }
 
 /** One column of the header row: the corner above the row labels, or one of
@@ -118,12 +123,27 @@ export function ValuesGridView(props: ValuesGridViewProps) {
       : typed;
   // What was typed is refused here rather than by the server, which is never asked for a plan
   // for it, and ahead of whatever refusal came back for an earlier value: that one is about a
-  // number no longer in the cell.
-  const refused = editing === null ? null : (typedRefusal(editing.typed) ?? refusal);
+  // number no longer in the cell. Where no cell is being typed into - a pasted table owns the
+  // offer instead - there is no typed refusal to take priority, so the screen's own refusal (a
+  // pasted block's own sentence among them) is what shows.
+  const refused = (editing === null ? null : typedRefusal(editing.typed)) ?? refusal;
   const columnAxis = columnAxisLabel(reply, physical);
   const readOnly = readOnlyNote(reply);
   return (
-    <section>
+    <section
+      onPaste={(event) => {
+        // A read-only grid has nothing to paste into, and says so via `readOnly` below rather
+        // than by planning a refusal for a table it could never write (spec 4.3). A grid with
+        // an apply in flight takes nothing either: every input and Apply are disabled while
+        // `busy`, so a cell cannot be typed into, and a paste taken here would be cleared
+        // without a word by that apply's own `onSuccess` the moment it landed.
+        if (readOnly !== null || busy) return;
+        // A cell is a text field: without this the browser also drops the whole block into
+        // whichever one has focus.
+        event.preventDefault();
+        props.onPaste(event.clipboardData.getData("text/plain"));
+      }}
+    >
       <div className="heading">
         <h1>{reply.name}</h1>
         {undoStrip}
@@ -204,6 +224,10 @@ export function ValuesGridView(props: ValuesGridViewProps) {
           {reply.stated === "none" && <p className="quiet">Nothing is stated.</p>}
           {reply.stated === "scalar" && <p className="quiet">Stated once, for every cell.</p>}
           {readOnly !== null && <p className="quiet">{readOnly}</p>}
+          {/* A grid with nothing to write into has nothing to paste into either (spec 4.3) and
+              already says so above, so the hint - the only way the feature is discoverable -
+              belongs only where a paste would actually land. */}
+          {readOnly === null && <p className="quiet values-paste">{pasteHint(reply)}</p>}
         </>
       )}
       {reply.findings.length > 0 && (
@@ -216,22 +240,34 @@ export function ValuesGridView(props: ValuesGridViewProps) {
           ))}
         </ul>
       )}
-      {editing !== null && (
-        <section className="panel-offer" aria-label="Set the cell">
+      {(refused !== null || plan !== null) && (
+        // Gated on what there is to show rather than on `editing` alone: a pasted table owns
+        // this same section too, with no one cell of its own to name (spec 2: "one edit, one
+        // preview, one entry in the undo stack" either way).
+        <section
+          className="panel-offer"
+          aria-label={editing !== null ? "Set the cell" : "Replace the values"}
+        >
           {refused !== null && (
             <p className="panel-refusal" role="status">
               {refused}
             </p>
           )}
-          {plan !== null && raw !== null && (
+          {plan !== null && (editing === null || raw !== null) && (
             // What it sets, and the file it lands in - the way `renameConsequence` folds
             // `consequence()` into its own sentence, and for the same reason every sibling
             // write path names its files: an object's numbers live in its producer's file,
             // which need not be the one the reader opened the grid from (spec 5.3's ValueB
             // on Controller, whose numbers are SensorHub's), and learning that should not
-            // take opening Show changes.
+            // take opening Show changes. A pasted table names no one cell, so `pasteSentence`
+            // takes `cellSentence`'s place - both worth it for the same reason: a reader who
+            // pasted physical values and sees raw counts in the hunks is told the two are one
+            // change, not two, without opening Show changes to find out.
             <p className="consequence">
-              {cellSentence(reply, editing.row, editing.column, raw, physical)}.{" "}
+              {editing !== null && raw !== null && (
+                <>{cellSentence(reply, editing.row, editing.column, raw, physical)}. </>
+              )}
+              {editing === null && <>{pasteSentence(reply)}. </>}
               {consequence(plan.changes)}
             </p>
           )}

@@ -51,6 +51,12 @@ export function valueLabel(name: string, row: number, column: number, shape: num
   return fitted(`${elementLabel(row, column, shape)} of ${name}`);
 }
 
+/** What an undo of a pasted table is called: the object, not an element, because a paste is
+ * every element at once. */
+export function pasteLabel(name: string): string {
+  return fitted(`the values of ${name}`);
+}
+
 /**
  * What a fix applied from the Findings tab is called.
  *

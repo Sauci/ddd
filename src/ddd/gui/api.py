@@ -63,6 +63,7 @@ from ddd.gui.session import (
     _source,
     find_projects,
 )
+from ddd.ir import DataDictionary
 from ddd.lsp.edits import PROPAGATED_KEYS, settle
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document, read
@@ -77,7 +78,7 @@ from ddd.lsp.units import (
     rename_unit,
     unit_project,
 )
-from ddd.object_values import ValueRefusalError, grid_of, set_cell
+from ddd.object_values import ValueRefusalError, grid_of, set_cell, set_values
 from ddd.project_types import (
     SCALAR_KEYS,
     fixed_by,
@@ -921,6 +922,36 @@ class Api:
             ).model_dump(mode="json"),
         )
 
+    def _values_plan(self, query: Query, body: bytes | None) -> Reply:
+        name = _single(query.get("name"))
+        counts = _single(query.get("raw"))
+        if not name or not counts:
+            return _error(400, "bad-request", "values-plan takes ?name= and ?raw=")
+        revision = self._opened()
+        built, dictionary = revision.index, revision.dictionary
+        if built is None or dictionary is None:
+            return _error(409, UNREADABLE, _NOTHING_RESOLVED)
+        try:
+            flat = [_number(piece) for piece in counts.split(",")]
+            plan = set_values(dictionary, built, name, _folded(flat, dictionary, name))
+        except ValueRefusalError as refused:
+            # Both codes, as `_value_plan` above: a name the project has not, and every other
+            # refusal. A statement rather than a ternary, so the gate can see both arms.
+            if refused.code == "not-found":
+                return _error(404, refused.code, refused.message)
+            return _error(409, refused.code, refused.message)
+        stamps = {entry.path.resolve(): entry.fingerprint for entry in revision.files}
+        try:
+            planned = previewed(plan.edits, stamps)
+        except EditError as refused:
+            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+        return Reply(
+            200,
+            contract.PlanReply(
+                revision=revision.number, changes=_planned_changes(planned)
+            ).model_dump(mode="json"),
+        )
+
     def _opened(self) -> Revision:
         revision = self.session.revision
         if revision is None:
@@ -973,6 +1004,7 @@ _ROUTES: Final[dict[str, dict[str, Answer]]] = {
     "/api/declaration-plan": {"GET": Api._declaration_plan},
     "/api/values": {"GET": Api._values},
     "/api/value-plan": {"GET": Api._value_plan},
+    "/api/values-plan": {"GET": Api._values_plan},
 }
 
 
@@ -1209,6 +1241,20 @@ def _number(text: str) -> float:
     if not isinstance(value, int | float) or isinstance(value, bool):
         raise ValueRefusalError("invalid", f"'{text}' is not a number")
     return value
+
+
+def _folded(flat: Sequence[float], dictionary: DataDictionary, name: str) -> list[list[float]]:
+    """A row-major list laid back into rows by the shape the project already states.
+
+    A list whose length is not the shape's is laid out as one row, so that ``set_values``'s own
+    refusal says what was wanted against what came - one sentence for a wrong length, rather than
+    one here and a different one there.
+    """
+    resolved = dictionary.by_name.get(name)
+    shape = tuple(resolved.shape) if resolved is not None else ()
+    if len(shape) != 2 or len(flat) != shape[0] * shape[1]:
+        return [list(flat)]
+    return [list(flat[row * shape[1] : (row + 1) * shape[1]]) for row in range(shape[0])]
 
 
 def _validated[T: BaseModel](model: type[T], body: bytes | None) -> T | Reply:

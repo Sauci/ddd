@@ -19,6 +19,7 @@ import {
   getUnits,
   getValuePlan,
   getValues,
+  getValuesPlan,
   getVariable,
   openProject,
   postEdit,
@@ -29,6 +30,13 @@ import {
 
 function answering(status: number, body: string) {
   return vi.fn(async (_path: string, _init?: RequestInit) => new Response(body, { status }));
+}
+
+/** A fetch answering `{}` to anything, exposing the calls it recorded - `getValuesPlan`'s own
+ * test needs nothing richer than the one path it asked for. */
+function recorded() {
+  const fetch = answering(200, "{}");
+  return { fetch, urls: fetch.mock.calls };
 }
 
 describe("requests to the server", () => {
@@ -215,5 +223,30 @@ describe("requests to the server", () => {
       ["/api/values?name=CurveA", { credentials: "same-origin" }],
       ["/api/value-plan?name=CurveA&at=%5B2%5D&raw=750", { credentials: "same-origin" }],
     ]);
+  });
+
+  test("getValuesPlan asks for a whole table's plan", async () => {
+    const calls = recorded();
+    await getValuesPlan({ name: "CurveA", raw: [1300, 950, 850, 800, 750, 700] }, calls.fetch);
+    expect(calls.urls).toEqual([
+      [
+        "/api/values-plan?name=CurveA&raw=1300%2C950%2C850%2C800%2C750%2C700",
+        { credentials: "same-origin" },
+      ],
+    ]);
+  });
+
+  test("a table whose counts outgrow one address is refused, and nothing is asked", async () => {
+    // The server reads a request line of at most 65536 bytes and answers 414 beyond it, which
+    // the grid would show as `Request-URI Too Long` - true, and no use to a reader holding a
+    // table. Nine thousand five-digit counts cost five characters each and three more for the
+    // `%2C` before them, which is past the line on its own.
+    const calls = recorded();
+    const raw = Array.from({ length: 9000 }, () => 12345);
+    await expect(getValuesPlan({ name: "Huge", raw }, calls.fetch)).rejects.toThrow(
+      "'Huge' has too many values to plan in one request: its counts need 72028 characters " +
+        "of address, and ddd gui reads at most 65521",
+    );
+    expect(calls.urls).toEqual([]);
   });
 });

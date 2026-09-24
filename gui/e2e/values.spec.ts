@@ -241,14 +241,18 @@ test("a pasted curve replaces every value in one edit", async ({ page, gui }) =>
   await page.getByRole("button", { name: "Controller", exact: true }).click();
   await page.getByRole("button", { name: "Show the values of CurveA" }).click();
 
-  await paste(page, "13\t9.5\t8.5\t8\t7.5\t7");
+  await paste(page, "12.004\t9.5\t8.5\t8\t7.5\t7");
   await expect(page.getByText("Replaces every value of CurveA")).toBeVisible();
   await expect(page.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
 
   await page.getByRole("button", { name: "Apply to 1 file" }).click();
   await expect
     .poll(() => readFileSync(join(gui.directory, CONTROLLER), "utf8"))
-    .toContain('"init": [1300, 950, 850, 800, 750, 700]');
+    .toContain('"init": [1200, 950, 850, 800, 750, 700]');
+  // Spec 4.1: 12.004 has no raw count of its own - stored as the nearest one, 1200, then shown
+  // as what was stored. `values.spec.ts:118`'s own single-cell journey already makes this claim
+  // for a typed cell; nothing before this re-read the grid after a paste to make it true of one.
+  await expect(page.getByRole("textbox", { name: "element 1" })).toHaveValue("12");
   await expect(page.getByRole("button", { name: "Undo the values of CurveA" })).toBeVisible();
 });
 

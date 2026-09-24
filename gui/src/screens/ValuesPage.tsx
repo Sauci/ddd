@@ -63,8 +63,10 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   const [physical, setPhysical] = useState(true);
   const [editing, setEditing] = useState<Editing>(null);
   const [changesShown, setChangesShown] = useState(false);
-  // A refused apply for a reason other than staleness, if any: cleared whenever the reader types
-  // into the cell again, exactly as `UnitPanel`'s own fields clear on a fresh choice.
+  // A refused apply for a reason other than staleness, if any: cleared whenever the reader takes
+  // a fresh action - types into the cell again, or pastes a fresh table over it - exactly as
+  // `UnitPanel`'s own fields clear on a fresh choice. Without the paste side of that, a failure
+  // left over from an earlier cell apply would sit under a perfectly good pasted table.
   const [failed, setFailed] = useState<string | null>(null);
   // A refused apply because a file changed on disk, held to the revision it happened at - as
   // `UnitPanel`'s own `staleFailed`, so a reader who applies again straight away is not refused a
@@ -225,6 +227,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
         const block = pasted(text, reply, physical);
         setPastedRows(block.rows);
         setPasteRefusal(block.refusal);
+        setFailed(null);
         setEditing(null);
       }}
     />

@@ -267,3 +267,10 @@ function physicalReading(raw: number, reply: ValuesReply): string {
   const value = physicalOf(raw, reply.conversion);
   return reply.unit === "" ? String(value) : `${value} ${reply.unit}`;
 }
+
+/** The sentence above a pasted table's preview, as `cellSentence` is a cell's: what is about to
+ * happen, so that a reader who pasted physical values and sees raw counts in the hunks is told
+ * the two are one change and not two. */
+export function pasteSentence(reply: ValuesReply): string {
+  return `Replaces every value of ${reply.name}`;
+}

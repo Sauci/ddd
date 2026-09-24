@@ -117,12 +117,14 @@ export const AReadOnlyGrid = () => (
 export const ATextInit = () => <View reply={VALUES_SOFTWARE_LABEL} backTo="Controller" physical />;
 
 // Part 9's own story: the hint line under a writable grid, waiting for Ctrl-V - drawn straight
-// from `ValuesGridView` rather than through `View`, since nothing here is mid-paste yet.
+// from `ValuesGridView` rather than through `View`, since nothing here is mid-paste yet. CurveA
+// rather than MapA, so its singular "Paste 1 row of 6" is a picture of its own rather than one
+// AMapWithBothHeaders' updated picture already shows.
 export function ATableWaitingForAPaste() {
   const [physical, setPhysical] = useState(true);
   return (
     <ValuesGridView
-      reply={VALUES_MAP}
+      reply={VALUES_CURVE}
       backTo="Controller"
       physical={physical}
       editing={null}

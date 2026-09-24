@@ -8,6 +8,7 @@ import {
   cornerLabel,
   elementLabel,
   pasteHint,
+  pasteSentence,
   physicalOf,
   rawOf,
   readOnlyNote,
@@ -255,12 +256,15 @@ export function ValuesGridView(props: ValuesGridViewProps) {
             // write path names its files: an object's numbers live in its producer's file,
             // which need not be the one the reader opened the grid from (spec 5.3's ValueB
             // on Controller, whose numbers are SensorHub's), and learning that should not
-            // take opening Show changes. A pasted table names no one cell, so it is left to
-            // `consequence` alone.
+            // take opening Show changes. A pasted table names no one cell, so `pasteSentence`
+            // takes `cellSentence`'s place - both worth it for the same reason: a reader who
+            // pasted physical values and sees raw counts in the hunks is told the two are one
+            // change, not two, without opening Show changes to find out.
             <p className="consequence">
               {editing !== null && raw !== null && (
                 <>{cellSentence(reply, editing.row, editing.column, raw, physical)}. </>
               )}
+              {editing === null && <>{pasteSentence(reply)}. </>}
               {consequence(plan.changes)}
             </p>
           )}

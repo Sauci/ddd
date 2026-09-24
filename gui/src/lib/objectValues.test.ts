@@ -10,6 +10,7 @@ import {
   elementLabel,
   pasted,
   pasteHint,
+  pasteSentence,
   physicalOf,
   rawOf,
   readOnlyNote,
@@ -444,6 +445,16 @@ describe("cellSentence", () => {
 
   test("an object with no unit carries none in its sentence either", () => {
     expect(cellSentence(BLOCK_A, 0, 4, 84, true)).toBe("Sets element 5 of BlockA to 84");
+  });
+});
+
+describe("pasteSentence", () => {
+  test("names the object a pasted table is about to replace every value of", () => {
+    expect(pasteSentence(CURVE_A)).toBe("Replaces every value of CurveA");
+  });
+
+  test("carries no count of its own, one-dimensional or not - the hint above already has it", () => {
+    expect(pasteSentence(MAP_A)).toBe("Replaces every value of MapA");
   });
 });
 

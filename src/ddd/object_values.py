@@ -322,10 +322,13 @@ def set_values(
     this one always writes the whole ``init`` - so there is nothing for it to read.
     """
     grid = grid_of(dictionary, built, name)
-    if grid.stated == "text":
-        raise ValueRefusalError("invalid", f"'{name}' is initialised with text, not with a grid")
+    # Shape before text, the order :func:`set_cell` asks them in: an object that is both - a
+    # scalar whose init is a string - would otherwise be told two different things depending on
+    # which way a reader reached it.
     if not grid.shape:
         raise ValueRefusalError("invalid", f"'{name}' has no cell for a value to sit in")
+    if grid.stated == "text":
+        raise ValueRefusalError("invalid", f"'{name}' is initialised with text, not with a grid")
     sites = built.producers.get(name) or []
     if len(sites) != 1:
         raise ValueRefusalError("invalid", _no_single_producer(name, sites))

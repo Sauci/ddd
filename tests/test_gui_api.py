@@ -2851,10 +2851,17 @@ class TestTheValuesGrid:
         preview = get(api, "/api/values-plan", name="MapA", raw=counts).body
         assert applied(api, preview, "the values of MapA").status == 200
         written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
-        assert "[1, 2, 3, 4, 5, 6]," in written
-        assert "[7, 8, 9, 10, 11, 12]," in written
-        assert "[13, 14, 15, 16, 17, 18]," in written
-        assert "[19, 20, 21, 22, 23, 24]" in written
+        # Read back as one value rather than as four substrings: `in` says a row is somewhere in
+        # the file and nothing about where, so four of them pass just as happily on a fold that
+        # swapped the middle two - which is exactly what this test says it is here to catch.
+        interface = json.loads(written)["component"]["interface"]
+        init = next(e["definition"]["init"] for e in interface if e["definition"]["name"] == "MapA")
+        assert init == [
+            [1, 2, 3, 4, 5, 6],
+            [7, 8, 9, 10, 11, 12],
+            [13, 14, 15, 16, 17, 18],
+            [19, 20, 21, 22, 23, 24],
+        ]
 
     def test_a_list_of_the_wrong_length_says_what_it_wanted(self, demo) -> None:
         api, _ = demo

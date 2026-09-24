@@ -949,6 +949,38 @@ class TestSetValues:
             set_values(dictionary, built, "CurveA", [])
         assert refused.value.message == "'CurveA' takes 1 row of 6 values, and this is 0 rows of 0"
 
+    def test_an_object_that_is_both_shapeless_and_text_is_told_one_thing(self, tmp_path) -> None:
+        # A measurement whose init is a string and whose dimensions are absent is both, and the
+        # two functions used to ask their two questions in opposite orders - so a reader reached
+        # the same object by two paths and was told two different things about it. Nothing in
+        # `examples/demo` is both, which is why the orders could differ unnoticed.
+        from conftest import component, declare, project, write_tree
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Label", kind="measurement", datatype="uint8", init="OFF"),
+                ),
+            },
+        )
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        revision = session.revision
+        assert revision is not None and revision.dictionary is not None
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        try:
+            with pytest.raises(ValueRefusalError) as by_cell:
+                set_cell(revision.dictionary, built, "Label", "[0]", 1, {})
+            with pytest.raises(ValueRefusalError) as by_table:
+                set_values(revision.dictionary, built, "Label", [[1]])
+        finally:
+            session.stop()
+        assert by_cell.value.message == "'Label' has no cell for a value to sit in"
+        assert by_table.value.message == by_cell.value.message
+
 
 def _definition_of(text: str, name: str) -> dict[str, object]:
     """One declaration's definition out of a component's json text."""

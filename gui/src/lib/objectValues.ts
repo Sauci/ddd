@@ -224,7 +224,7 @@ export function pasted(text: string, reply: ValuesReply, physical: boolean): Pas
         rows: null,
         refusal:
           `the comma in '${grouped}' could be a decimal point or a thousands separator, so it ` +
-          "is not clear what it means; paste the block with no thousands separators",
+          "is not clear what it means; paste the column unformatted",
       };
     }
   }

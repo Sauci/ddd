@@ -98,8 +98,9 @@ Exactly three digits, because no other count of them is a grouping anyone writes
 - `1 234,5` is refused rather than guessed at - whitespace inside a cell is not stripped.
 
 A block that states a point is not weighed for grouping at all: it has already said what its
-commas are, and either mixes the two separators or holds a cell that is not a number, both of
-which are refused above.
+commas are. A block of `1.5` and `2.5` holds no comma to weigh and is simply read; one that holds
+a comma as well either mixes the two separators or leaves a cell that is not a number, and both
+of those are refused above.
 
 A typed cell keeps the stricter grammar, and the difference is explainable: a typed cell is one
 value a person is entering now, and a block carries its own evidence about which convention wrote

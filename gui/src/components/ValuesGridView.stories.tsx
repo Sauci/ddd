@@ -55,6 +55,7 @@ function View({
       busy={busy}
       onApply={() => undefined}
       onBack={() => undefined}
+      onPaste={() => undefined}
     />
   );
 }
@@ -114,3 +115,27 @@ export const AReadOnlyGrid = () => (
 
 // The fourth and last `stated`, with no picture until now: a text init draws no grid at all.
 export const ATextInit = () => <View reply={VALUES_SOFTWARE_LABEL} backTo="Controller" physical />;
+
+// Part 9's own story: the hint line under a writable grid, waiting for Ctrl-V - drawn straight
+// from `ValuesGridView` rather than through `View`, since nothing here is mid-paste yet.
+export function ATableWaitingForAPaste() {
+  const [physical, setPhysical] = useState(true);
+  return (
+    <ValuesGridView
+      reply={VALUES_MAP}
+      backTo="Controller"
+      physical={physical}
+      editing={null}
+      plan={null}
+      refusal={null}
+      changesShown={false}
+      busy={false}
+      onPhysical={setPhysical}
+      onEditing={() => {}}
+      onChangesShown={() => {}}
+      onApply={() => {}}
+      onBack={() => {}}
+      onPaste={() => {}}
+    />
+  );
+}

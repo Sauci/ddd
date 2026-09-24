@@ -571,6 +571,13 @@ tr.changing td {
 .values-table input.unstated {
   color: var(--ink-quiet);
 }
+/* The paste hint (part 9): set small like the meta and axis lines above the grid, since it is
+   the same kind of annotation, and pulled in close under the table rather than left at the
+   paragraph's own default margin. */
+.values-paste {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-small);
+}
 
 /* Ladle only: a row of widgets with a gap, for a story that shows several at once. */
 .story-row {

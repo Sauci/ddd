@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import type { Finding, UndoneChange } from "../api/types";
 import {
   declareLabel,
   fixLabel,
+  pasteLabel,
   removeLabel,
   settleLabel,
   shownUndo,
@@ -86,6 +87,10 @@ describe("what an edit is called", () => {
     expect(label).toHaveLength(120);
     expect(label.endsWith("…")).toBe(true);
   });
+});
+
+test("an undone paste is named by the object whose table it replaced", () => {
+  expect(pasteLabel("CurveA")).toBe("the values of CurveA");
 });
 
 const CHANGED: UndoneChange = {

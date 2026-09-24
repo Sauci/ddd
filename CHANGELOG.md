@@ -130,7 +130,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   one-dimensional object is one row, as the grid already draws it - or exactly one row
   and one column larger, with the header a reader selects along with the grid's own
   cells; a comma is read as the decimal separator where the block states no point, and
-  one that mixes `.` and `,` is refused rather than guessed at.  The header itself is
+  one that mixes `.` and `,` is refused rather than guessed at - as is a comma that
+  could be a thousands separator, `1,200` being twelve hundred to one spreadsheet and
+  one and a fifth to another, which names the cell and says so.  The header itself is
   discarded without being read, so a block whose header names a different axis is not
   caught here; the preview, which shows the lines each file will change, is what catches
   it before anything is written.  A finding filed on an object's `init` now leads to

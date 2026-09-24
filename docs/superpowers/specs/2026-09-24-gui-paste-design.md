@@ -76,15 +76,30 @@ converts them.
 A cell's text is trimmed, and must then be **wholly** a number - the grammar `typedNumber` already
 applies to a typed cell, so a numeric prefix is not a number and neither is an empty cell.
 
-**A comma is decided for the block as a whole, before any cell is read.** If no cell contains a
-point and no cell contains more than one comma, a comma is the decimal separator throughout;
-otherwise a comma is a refusal. So:
+**A comma is decided for the block as a whole, before any cell is read.** The block here is the
+values: the header, where there is one, is discarded first and is read for this decision no more
+than for any other (section 3). If no cell contains a point and no cell contains more than one
+comma, a comma is the decimal separator throughout; otherwise a comma is a refusal.
+
+**And where a comma could be a thousands separator, the block is refused rather than read either
+way.** A cell whose comma is followed by exactly three digits at the end of the cell - `1,200` -
+is what an English spreadsheet writes for twelve hundred and what a French one writes for one and
+a fifth, and nothing in the block tells the two apart: `1,500` is one and a half in Germany and
+fifteen hundred in England. Reading it as either writes a calibration a thousand times out, and
+says nothing; so it is the ambiguity this rule exists to refuse, and the refusal names the cell.
+Exactly three digits, because no other count of them is a grouping anyone writes. So:
 
 - a block of `1,5` and `2,5`, which is what a French or German spreadsheet writes, is read as
-  `1.5` and `2.5`;
+  `1.5` and `2.5`, and so are `1,25` and `1,2345` - two digits and four are no grouping;
+- a block holding `1,200` is refused, naming that cell: its comma could be a decimal point or a
+  thousands separator, and a reader told so knows to paste the column unformatted;
 - a block mixing `1.5` and `2,5` is refused as not knowing which it means;
 - `1.234,56` is refused: its point turns the comma rule off, and what is left is not a number;
 - `1 234,5` is refused rather than guessed at - whitespace inside a cell is not stripped.
+
+A block that states a point is not weighed for grouping at all: it has already said what its
+commas are, and either mixes the two separators or holds a cell that is not a number, both of
+which are refused above.
 
 A typed cell keeps the stricter grammar, and the difference is explainable: a typed cell is one
 value a person is entering now, and a block carries its own evidence about which convention wrote
@@ -130,9 +145,11 @@ cannot see.
 
 ### 5.2 The server
 
-`src/ddd/object_values.py` gains `set_values(dictionary, built, name, rows, cache)` beside
-`set_cell`, taking the counts already folded into rows. It checks every value with the same
-`_acceptable` a single cell goes through and plans **one** `set` of the whole `init`.
+`src/ddd/object_values.py` gains `set_values(dictionary, built, name, rows)` beside `set_cell`,
+taking the counts already folded into rows. It checks every value with the same `_acceptable` a
+single cell goes through and plans **one** `set` of the whole `init`. It takes no document cache,
+unlike `set_cell`: that one reads whether the file already holds an array, to choose between
+setting one element and setting the whole `init`, and this one always writes the whole `init`.
 
 Measured, because it is easy to say otherwise: that one `set` moves **one** line for a curve,
 whose `init` is a single line of six, and **one line per row** for a map, whose `init` is written
@@ -144,8 +161,17 @@ four lists of six. The server folds them by the shape it already knows, and refu
 length is not that shape's, which is the one thing it can check that the page can also get wrong.
 It is a GET with its arguments in the query, like `/api/unit-plan`, `/api/type-plan`,
 `/api/declaration-plan` and `/api/value-plan`, which is every other plan endpoint this server has.
-The number of counts is bounded by the object's own shape, because the page refuses a block that
-does not match before it builds a request.
+
+**What bounds the counts is the request line, not the object's shape.** The shape bounds how
+many counts there are and not how many bytes they take, and the server - a
+`ThreadingHTTPServer` - reads a request line of at most 65536 bytes and answers **414** past it.
+A count costs its own digits and the three of the `%2C` before it, so the line holds about 8 000
+whole counts and about 2 500 that carry decimals, a float datatype's raw count being an unrounded
+double. A 64×64 `float32` map is over that line, and the object's own shape is what puts it
+there. So the page refuses such a block itself, in a sentence naming the object and the two
+numbers, before it builds the request - a reader meeting `Request-URI Too Long` under the grid
+learns nothing they can act on. The structural answer is a POST with a body, which needs a
+contract model this part does not add.
 
 Nothing is needed in the edit engine, the preview, `POST /api/edit`, or the undo stack.
 

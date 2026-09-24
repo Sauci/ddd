@@ -124,8 +124,15 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   number, and nothing is written.  An
   object initialised with text shows a sentence saying so rather than a grid; one stated
   once draws that value in every cell with a note, and one stating nothing draws greyed
-  zeros with a note.  A finding filed on an object's `init` now leads to this grid, the
-  way every other finding already leads to what it names.
+  zeros with a note.  A table copied from a spreadsheet is pasted anywhere in the grid
+  to replace every value of the object in one change, previewed and undone the same way
+  as every other change.  The pasted block must be the object's own shape - a
+  one-dimensional object is one row, as the grid already draws it - or exactly one row
+  and one column larger, with the header a reader selects along with the grid's own
+  cells; a comma is read as the decimal separator where the block states no point, and
+  one that mixes `.` and `,` is refused rather than guessed at.  A finding filed on an
+  object's `init` now leads to this grid, the way every other finding already leads to
+  what it names.
 
 * **The editor's reconcile quick fix is no longer offered for a value that already means what
   it would be set to.**  Taking the producing component's value, or spreading one declaration's

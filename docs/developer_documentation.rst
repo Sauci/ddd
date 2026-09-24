@@ -931,11 +931,17 @@ one object's grid shows - its kind, datatype, unit, conversion, resolved limits,
 values and the breakpoints of the axes it is laid against - and what changing one cell of
 it takes: an edit-engine ``set`` at the element's own pointer where the file already holds
 an array, or of the whole ``init`` where it states one value for every element or none at
-all, written into the file that produces it either way. A shape of more than two dimensions
-is refused rather than drawn a dimension short, a grid being rows of cells and nothing
-deeper; and a name that is not produced by exactly one declaration answers its grid
-read-only, because the values and the owner are the analysis's own producer's and
-``Index.producers`` need not name that same declaration first.
+all, written into the file that produces it either way. ``set_values`` sits beside
+``set_cell`` for a whole table pasted at once. The shape is checked here too, because
+the page that already checked it is not this function's only caller, and every element
+is weighed by the same ``_acceptable``, a refusal naming every one that fails rather
+than the first. It always plans one ``set`` of the whole ``init`` regardless of what the
+file held before - one line for a curve, whose ``init`` sits on a line of its own, and
+one line per row for a map, whose ``init`` is written a row to a line. A shape of more
+than two dimensions is refused rather than drawn a dimension short, a grid being rows
+of cells and nothing deeper; and a name that is not produced by exactly one declaration
+answers its grid read-only, because the values and the owner are the analysis's own
+producer's and ``Index.producers`` need not name that same declaration first.
 
 The edit engine learnt one thing for adoption: a change whose ``fingerprint`` is ``null``
 creates its file, one ``set`` of the whole document at the root pointer, and is refused as

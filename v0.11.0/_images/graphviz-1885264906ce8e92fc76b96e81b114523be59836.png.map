@@ -1,0 +1,24 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="ddd.ir.ResolvedMember
+
+One member of a structure, as the c templates need it to declare the member.
+
+Only what a declaration takes. The meaning of the member &#45; its unit, its conversion, its
+limits &#45; travels with the *leaf* instead, because that is the form the a2l consumes and
+there is no second place a reader should have to look.
+
+Exactly one of ``datatype``, ``type`` and ``external`` is stated: a member holds a value
+of a base datatype, is a structure, or is storage of a type DDD does not describe. A
+member stating none of them would be storage with no size, no meaning and no name, which
+a consumer of this document has nothing to do with.
+" alt="" coords="449,90,727,342"/>
+<area shape="rect" id="node2" title="ddd.ir.ResolvedStruct
+
+One structure, in an order a c file can be written out in.
+
+The order of :attr:`DataDictionary.types` matters and is not alphabetical: a structure
+appears after every structure it nests, because a c compiler needs the nested one to be
+complete first. The members keep the order the author wrote them in, which is the order the
+compiler lays them out.
+" alt="" coords="5,5,305,117"/>
+</map>

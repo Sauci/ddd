@@ -1,0 +1,598 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddd.models.conversion &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="../../../_static/ddd-favicon.svg"/>
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=f3b36f1a"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../../_static/js/versions.js?v=a915def3"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            DDD
+              <img src="../../../_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../concept.html">Concept</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../file_formats/index.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../plugins.html">Plugins</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddd.models.conversion</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddd.models.conversion</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Conversions between the raw (implementation) and the physical value of a data object.</span>
+
+<span class="sd">The four variants form a tagged union discriminated on ``kind``, and each one answers the</span>
+<span class="sd">same three questions - the interface :class:`ConversionRule` spells out. It is a Protocol</span>
+<span class="sd">rather than a base class because the variants are pydantic models whose only shared state is</span>
+<span class="sd">their tag: inheritance would put a ``kind`` field where each variant needs its own literal.</span>
+<span class="sd">"""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Iterable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">math</span><span class="w"> </span><span class="kn">import</span> <span class="n">isclose</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Final</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">Protocol</span><span class="p">,</span> <span class="n">runtime_checkable</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">BeforeValidator</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">model_validator</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">C_IDENTIFIER_PATTERN</span><span class="p">,</span>
+    <span class="n">IDENTIFIER_MAX_LENGTH</span><span class="p">,</span>
+    <span class="n">Datatype</span><span class="p">,</span>
+    <span class="n">Identifier</span><span class="p">,</span>
+    <span class="n">Real</span><span class="p">,</span>
+    <span class="n">format_number</span><span class="p">,</span>
+<span class="p">)</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_Frozen</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+
+<span class="nd">@runtime_checkable</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ConversionRule</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""What every conversion variant can do, whatever its kind."""</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_physical</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""The physical value a raw value stands for."""</span>
+        <span class="o">...</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_raw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">physical</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""The raw value needed to represent a physical one."""</span>
+        <span class="o">...</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">describe</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""A short phrase naming the rule, for diagnostics."""</span>
+        <span class="o">...</span>
+
+
+<span class="n">ENUMERATOR_VALUE_MIN</span><span class="p">:</span> <span class="n">Final</span> <span class="o">=</span> <span class="o">-</span><span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">63</span><span class="p">)</span>
+<span class="n">ENUMERATOR_VALUE_MAX</span><span class="p">:</span> <span class="n">Final</span> <span class="o">=</span> <span class="mi">2</span><span class="o">**</span><span class="mi">64</span> <span class="o">-</span> <span class="mi">1</span>
+<span class="sd">"""What an enumerator's value is bounded to: what 64 bits hold, signed or unsigned.</span>
+
+<span class="sd">Named rather than written twice because the mapping shorthand publishes its own value</span>
+<span class="sd">schema (:func:`_publish_mapping_form`), and a bound the two forms disagreed about would be</span>
+<span class="sd">exactly the drift that finding was about.</span>
+<span class="sd">"""</span>
+
+
+<div class="viewcode-block" id="Enumerator">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.Enumerator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Enumerator</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""One named value of an enum conversion, and what that value means."""</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
+<span class="w">    </span><span class="sd">"""C identifier of the enumerator; enumerators of all enums share one c namespace."""</span>
+
+    <span class="n">value</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="n">ENUMERATOR_VALUE_MIN</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="n">ENUMERATOR_VALUE_MAX</span><span class="p">)]</span>
+<span class="w">    </span><span class="sd">"""The raw value; two enumerators of one enum sharing one is reported as a warning.</span>
+
+<span class="sd">    ``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and</span>
+<span class="sd">    occasionally meant as an alias - but the a2l table then offers a calibration tool two</span>
+<span class="sd">    names for one reading.</span>
+
+<span class="sd">    Bounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no</span>
+<span class="sd">    storage could ever represent is refused here rather than overflowing a comparison once</span>
+<span class="sd">    it is checked against the c ``int`` every enumerator has to fit, or against the</span>
+<span class="sd">    datatype carrying it.</span>
+
+<span class="sd">    A whole number written without a decimal point: ``4``, not ``4.0``, which the published</span>
+<span class="sd">    schema accepts and the loader refuses.</span>
+<span class="sd">    """</span>
+
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""What the value means; documentation, not interface."""</span></div>
+
+
+
+<div class="viewcode-block" id="IdentityConversion">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.IdentityConversion">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">IdentityConversion</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""``physical == raw``; stated like any other conversion, ``{}`` its shortest spelling.</span>
+
+<span class="sd">    Not a default: a definition naming storage by ``datatype`` states this one where raw and</span>
+<span class="sd">    physical are the same number, so that the claim is written down rather than left to</span>
+<span class="sd">    silence.</span>
+<span class="sd">    """</span>
+
+    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"identity"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"identity"</span>
+<span class="w">    </span><span class="sd">"""The tag of this kind, which may be left out: an empty block is the identity."""</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_physical</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">raw</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_raw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">physical</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">physical</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">describe</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">"identity"</span></div>
+
+
+
+<div class="viewcode-block" id="LinearConversion">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.LinearConversion">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LinearConversion</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""``physical = raw * factor + offset``, the scaling of a fixed point value."""</span>
+
+    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"linear"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"linear"</span>
+<span class="w">    </span><span class="sd">"""The tag of this kind, which may be left out: a block stating ``factor`` or ``offset``</span>
+<span class="sd">    is linear."""</span>
+
+    <span class="n">factor</span><span class="p">:</span> <span class="n">Real</span> <span class="o">=</span> <span class="mf">1.0</span>
+<span class="w">    </span><span class="sd">"""Scaling; must not be zero, or nothing could be converted back."""</span>
+
+    <span class="n">offset</span><span class="p">:</span> <span class="n">Real</span> <span class="o">=</span> <span class="mf">0.0</span>
+<span class="w">    </span><span class="sd">"""What raw zero stands for, in the physical unit."""</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_factor_not_zero</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LinearConversion</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">factor</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">"factor must not be zero"</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_physical</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">raw</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">factor</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">offset</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_raw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">physical</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">physical</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">factor</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">describe</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"linear(factor=</span><span class="si">{</span><span class="n">format_number</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">factor</span><span class="p">)</span><span class="si">}</span><span class="s2">, offset=</span><span class="si">{</span><span class="n">format_number</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">)</span><span class="si">}</span><span class="s2">)"</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_publish_mapping_form</span><span class="p">(</span><span class="n">schema</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Let the schema accept the mapping ``_expand_mapping`` turns into the list.</span>
+
+<span class="sd">    The list is what the model holds, so it is what pydantic publishes; the shorthand is what</span>
+<span class="sd">    the loader accepts, so an editor validating a file has to accept it as well.</span>
+
+<span class="sd">    With the rules each half of an entry is held to, which the list form publishes through</span>
+<span class="sd">    :class:`Enumerator` and this one used to leave out: a key is a c identifier and a value</span>
+<span class="sd">    is a number 64 bits hold, so ``{"1bad": 0}`` and a value past the bound were accepted by</span>
+<span class="sd">    an editor bound to the schema and refused by ``ddd check``.</span>
+<span class="sd">    """</span>
+    <span class="n">listed</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">schema</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"type"</span><span class="p">,</span> <span class="s2">"items"</span><span class="p">,</span> <span class="s2">"minItems"</span><span class="p">)</span> <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">schema</span><span class="p">}</span>
+    <span class="n">schema</span><span class="p">[</span><span class="s2">"anyOf"</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">listed</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="s2">"type"</span><span class="p">:</span> <span class="s2">"object"</span><span class="p">,</span>
+            <span class="s2">"propertyNames"</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">"pattern"</span><span class="p">:</span> <span class="n">C_IDENTIFIER_PATTERN</span><span class="p">,</span>
+                <span class="s2">"minLength"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+                <span class="s2">"maxLength"</span><span class="p">:</span> <span class="n">IDENTIFIER_MAX_LENGTH</span><span class="p">,</span>
+            <span class="p">},</span>
+            <span class="s2">"additionalProperties"</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">"type"</span><span class="p">:</span> <span class="s2">"integer"</span><span class="p">,</span>
+                <span class="s2">"minimum"</span><span class="p">:</span> <span class="n">ENUMERATOR_VALUE_MIN</span><span class="p">,</span>
+                <span class="s2">"maximum"</span><span class="p">:</span> <span class="n">ENUMERATOR_VALUE_MAX</span><span class="p">,</span>
+            <span class="p">},</span>
+            <span class="s2">"minProperties"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+            <span class="s2">"description"</span><span class="p">:</span> <span class="s1">'The enumerators as a ``{"NAME": value}`` mapping.'</span><span class="p">,</span>
+        <span class="p">},</span>
+    <span class="p">]</span>
+
+
+<div class="viewcode-block" id="EnumConversion">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.EnumConversion">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EnumConversion</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""A verbal conversion table; the raw value *is* the physical value.</span>
+
+<span class="sd">    Accepts both the explicit form::</span>
+
+<span class="sd">        {"kind": "enum", "name": "StateA",</span>
+<span class="sd">         "enumerators": [{"name": "STATE_OFF", "value": 0}]}</span>
+
+<span class="sd">    and the mapping shorthand::</span>
+
+<span class="sd">        {"kind": "enum", "name": "StateA", "enumerators": {"STATE_OFF": 0}}</span>
+<span class="sd">    """</span>
+
+    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"enum"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"enum"</span>
+<span class="w">    </span><span class="sd">"""The tag of this kind, which may be left out: a block stating ``enumerators`` or a</span>
+<span class="sd">    ``name`` is an enum."""</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
+<span class="w">    </span><span class="sd">"""C identifier of the generated ``typedef enum``; shared enums must agree everywhere."""</span>
+
+    <span class="n">enumerators</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span>
+        <span class="nb">tuple</span><span class="p">[</span><span class="n">Enumerator</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">json_schema_extra</span><span class="o">=</span><span class="n">_publish_mapping_form</span><span class="p">)</span>
+    <span class="p">]</span>
+<span class="w">    </span><span class="sd">"""The named values, either as objects or as a ``{"NAME": value}`` mapping.</span>
+
+<span class="sd">    Two of them may not carry the same name, which the mapping form cannot express twice and</span>
+<span class="sd">    the list form can: the generated enumeration would not compile, and a calibration tool</span>
+<span class="sd">    reading the generated table of labels would have two answers for one. Two names sharing a</span>
+<span class="sd">    *value* is a different matter - it is the C idiom for an alias, reported as</span>
+<span class="sd">    ``enum-duplicate-value`` rather than refused.</span>
+<span class="sd">    """</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"before"</span><span class="p">)</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_expand_mapping</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="n">enumerators</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"enumerators"</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">enumerators</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                <span class="n">data</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+                <span class="n">data</span><span class="p">[</span><span class="s2">"enumerators"</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="n">name</span><span class="p">,</span> <span class="s2">"value"</span><span class="p">:</span> <span class="n">value</span><span class="p">}</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">enumerators</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+                <span class="p">]</span>
+        <span class="k">return</span> <span class="n">data</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_unique_names</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">EnumConversion</span><span class="p">:</span>
+        <span class="n">seen</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">enumerator</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">enumerators</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">enumerator</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"duplicate enumerator name '</span><span class="si">{</span><span class="n">enumerator</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">'"</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">enumerator</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">values</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">enumerator</span><span class="o">.</span><span class="n">value</span> <span class="k">for</span> <span class="n">enumerator</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">enumerators</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">spell_enumerators</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">entries</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">Enumerator</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""``NAME=value`` pairs in written order: every enumerator, or the ones handed in.</span>
+
+<span class="sd">        The one spelling of the three findings that quote enumerators - ``enum-conflict``</span>
+<span class="sd">        inside a project, the delivery comparison across two, and the ``init-invalid`` that</span>
+<span class="sd">        names the enumerators outside a datatype, which passes the subset - so that a reader</span>
+<span class="sd">        meets the same list wherever an enumeration is quoted.</span>
+<span class="sd">        """</span>
+        <span class="n">listed</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">enumerators</span> <span class="k">if</span> <span class="n">entries</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">entries</span>
+        <span class="k">return</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">=</span><span class="si">{</span><span class="n">entry</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">listed</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_physical</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">raw</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_raw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">physical</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">physical</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">describe</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"enum(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">)"</span></div>
+
+
+
+<div class="viewcode-block" id="StringConversion">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.StringConversion">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">StringConversion</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Bytes read as text: each element of the array holds one character code.</span>
+
+<span class="sd">    Stated on a ``uint8`` or ``sint8`` array of one dimension; the rules sit beside the</span>
+<span class="sd">    datatype because the same pair is written in three places. ``kind`` is required here,</span>
+<span class="sd">    unlike on the other three kinds: a string has no key of its own to be inferred from,</span>
+<span class="sd">    and ``{}`` is the identity.</span>
+
+<span class="sd">    The two mappings are the identity on one byte, so that the derived limits of a string</span>
+<span class="sd">    are the raw range of its datatype - which is what the a2l record states - and nothing</span>
+<span class="sd">    that ranges a conversion has to know that a string exists. A byte has no reading of its</span>
+<span class="sd">    own, so no reading is produced for it, as for the identity.</span>
+<span class="sd">    """</span>
+
+    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"string"</span><span class="p">]</span>
+<span class="w">    </span><span class="sd">"""The tag of this kind, which is required: a string has no key of its own to be</span>
+<span class="sd">    recognised by, so nothing else would tell it from the identity."""</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_physical</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">raw</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_raw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">physical</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">physical</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">describe</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">"string"</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_infer_kind</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Allow ``kind`` to be omitted when the shape of the object is unambiguous."""</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">"kind"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s2">"enumerators"</span> <span class="ow">in</span> <span class="n">data</span> <span class="ow">or</span> <span class="s2">"name"</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">"kind"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"enum"</span>
+        <span class="k">elif</span> <span class="s2">"factor"</span> <span class="ow">in</span> <span class="n">data</span> <span class="ow">or</span> <span class="s2">"offset"</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">"kind"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"linear"</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">"kind"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"identity"</span>
+    <span class="k">return</span> <span class="n">data</span>
+
+
+<span class="n">Conversion</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span>
+    <span class="n">IdentityConversion</span> <span class="o">|</span> <span class="n">LinearConversion</span> <span class="o">|</span> <span class="n">EnumConversion</span> <span class="o">|</span> <span class="n">StringConversion</span><span class="p">,</span>
+    <span class="n">Field</span><span class="p">(</span><span class="n">discriminator</span><span class="o">=</span><span class="s2">"kind"</span><span class="p">),</span>
+    <span class="n">BeforeValidator</span><span class="p">(</span><span class="n">_infer_kind</span><span class="p">),</span>
+<span class="p">]</span>
+<span class="sd">"""Raw to physical conversion; ``kind`` may be omitted when the shape is unambiguous, which</span>
+<span class="sd">a string never is."""</span>
+
+<span class="n">IDENTITY</span> <span class="o">=</span> <span class="n">IdentityConversion</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">conversion_identity</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">object</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""What two spellings of one conversion have to agree on to be the same conversion.</span>
+
+<span class="sd">    An enumerator's ``description`` is documentation, not interface: the two spellings the</span>
+<span class="sd">    file format offers - the mapping shorthand and the list of objects - cannot even carry</span>
+<span class="sd">    the same text, and two conversions differing only in it mean the same mapping. The</span>
+<span class="sd">    ordered name and value pairs do count, exactly as ``enum-conflict`` counts them, and</span>
+<span class="sd">    everything else compares as written, because ``linear`` with factor 1 is deliberately</span>
+<span class="sd">    not the identity. This is what a delivery comparison compares and what ``enum-conflict``</span>
+<span class="sd">    holds two declarations of one enum to; the in-project interface table narrows an enum to</span>
+<span class="sd">    its name instead (:func:`conversion_interface_value`), the enumerators being</span>
+<span class="sd">    ``enum-conflict``'s there.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="s2">"enum"</span><span class="p">,</span>
+            <span class="n">conversion</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+            <span class="nb">tuple</span><span class="p">((</span><span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">entry</span><span class="o">.</span><span class="n">value</span><span class="p">)</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">conversion</span><span class="o">.</span><span class="n">enumerators</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">conversion</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"json"</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">conversion_interface_value</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">object</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""What two declarations of one object, within a project, have to agree on about a conversion.</span>
+
+<span class="sd">    An identity or a linear conversion is compared in full, by :func:`conversion_identity` -</span>
+<span class="sd">    kind and parameters both, completed the way the models complete them: ``{"factor": 2}``</span>
+<span class="sd">    and ``{"kind": "linear", "factor": 2, "offset": 0}`` agree. An enum narrows to its name</span>
+<span class="sd">    alone: the enumerators, descriptions included, are ``enum-conflict``'s to agree on, and</span>
+<span class="sd">    folding them in here as well would turn one mistake into two findings - the second of</span>
+<span class="sd">    which cannot even say what it means, because a definition explains itself by calling</span>
+<span class="sd">    :meth:`EnumConversion.describe`, which names the enum and nothing else, so a reordered or</span>
+<span class="sd">    revalued enumerator used to print identical text on both sides of the mismatch.</span>
+
+<span class="sd">    Used by :func:`ddd.analysis._conversion_value` for ``definition-mismatch``, and by</span>
+<span class="sd">    :mod:`ddd.variable_keys` to decide which declarations of a variable already agree about a</span>
+<span class="sd">    conversion before the panel of ``ddd gui`` offers to settle it - the checker and the panel</span>
+<span class="sd">    must not disagree about what counts as one conversion.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="s2">"enum"</span><span class="p">,</span> <span class="n">conversion</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">conversion_identity</span><span class="p">(</span><span class="n">conversion</span><span class="p">)</span>
+
+
+<span class="n">SIGNIFICANT_DIGITS</span><span class="p">:</span> <span class="n">Final</span> <span class="o">=</span> <span class="mi">12</span>
+<span class="sd">"""How many digits of a computed physical value are the value rather than the arithmetic.</span>
+
+<span class="sd">A decimal factor has no exact binary float, so the product of a raw end and a factor carries a</span>
+<span class="sd">tail that belongs to the arithmetic and not to the number anybody wrote: 255 counts of 0.03</span>
+<span class="sd">compute as ``7.6499999999999995``, and 32767 of 0.1 as ``3276.7000000000003``. Twelve digits</span>
+<span class="sd">erase that tail while a genuinely long value still shows itself as approximate - the width</span>
+<span class="sd">:func:`raw_reading` has always spelled a reading at, used here so that a limit and a reading</span>
+<span class="sd">of the same raw count are the same number."""</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">round_physical</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""One computed physical value, with the tail of the arithmetic taken off it.</span>
+
+<span class="sd">    A whole number passes through untouched, because there is no tail to take off one and</span>
+<span class="sd">    making it a float would cost digits rather than save them: the identity hands back the raw</span>
+<span class="sd">    count it was given, and the largest ``uint64`` count is exact as an ``int`` and wrong by</span>
+<span class="sd">    one as a ``float``. Only a linear conversion multiplies, and its factor is always a float,</span>
+<span class="sd">    so everything this has to round arrives as one.</span>
+
+<span class="sd">    Infinities and NaN pass through as well: ``f"{inf:.12g}"`` is ``inf``, which reads back as</span>
+<span class="sd">    itself, so the callers that ask whether a derived range stayed finite still get an answer.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">value</span>
+    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">value</span><span class="si">:</span><span class="s2">.</span><span class="si">{</span><span class="n">SIGNIFICANT_DIGITS</span><span class="si">}</span><span class="s2">g</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+
+<span class="n">RELATIVE_TOLERANCE</span><span class="p">:</span> <span class="n">Final</span> <span class="o">=</span> <span class="mf">1e-9</span>
+<span class="sd">"""How close two physical values have to be before the difference is the arithmetic's.</span>
+
+<span class="sd">Wide enough to absorb the rounding above and the float a decimal literal parses to, narrow</span>
+<span class="sd">enough that a limit anybody stated on purpose is still a different number."""</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">is_below</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Whether ``value`` is under ``limit`` by more than the arithmetic could account for.</span>
+
+<span class="sd">    The one tolerance the tool weighs a derived limit with, in the two places that weigh one:</span>
+<span class="sd">    :mod:`ddd.analysis`, deciding whether stated limits exceed what a datatype and conversion</span>
+<span class="sd">    can represent, and :mod:`ddd.compare`, deciding whether a candidate narrowed them. Both</span>
+<span class="sd">    compare a number somebody wrote against a number this module computed, and computing it</span>
+<span class="sd">    goes through a float: ``7.65`` typed by hand is not bit for bit the ``7.65`` that 255</span>
+<span class="sd">    counts of 0.03 produce, however each of them is rounded. A relative tolerance is what</span>
+<span class="sd">    makes the two the same number, and having one spelling of it is what keeps the check that</span>
+<span class="sd">    reports narrowing and the check that reports an impossible limit from disagreeing about</span>
+<span class="sd">    which values are equal.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="n">value</span> <span class="o">&lt;</span> <span class="n">limit</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">isclose</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">limit</span><span class="p">,</span> <span class="n">rel_tol</span><span class="o">=</span><span class="n">RELATIVE_TOLERANCE</span><span class="p">,</span> <span class="n">abs_tol</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">is_above</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Whether ``value`` is over ``limit`` by more than the arithmetic could account for."""</span>
+    <span class="k">return</span> <span class="n">value</span> <span class="o">&gt;</span> <span class="n">limit</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">isclose</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">limit</span><span class="p">,</span> <span class="n">rel_tol</span><span class="o">=</span><span class="n">RELATIVE_TOLERANCE</span><span class="p">,</span> <span class="n">abs_tol</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">physical_range</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">raw_min</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">raw_max</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""The physical range a raw range covers, in the order a reader expects.</span>
+
+<span class="sd">    Takes the raw ends rather than a datatype, because they do not always come from one: a</span>
+<span class="sd">    bitfield's ends come from its width, and offering a two bit field over the whole range of</span>
+<span class="sd">    the ``uint16`` carrying it would be an invitation to enter a value it cannot hold.</span>
+
+<span class="sd">    Both ends are rounded the way :func:`raw_reading` rounds a reading, and for the same</span>
+<span class="sd">    reason: the range is written into the A2L and into the dumped dictionary, where a</span>
+<span class="sd">    calibration tool enforces it and an engineer reads it. Unrounded, a ``uint8`` under</span>
+<span class="sd">    ``{"factor": 0.03}`` stated an upper limit of ``7.6499999999999995`` - below the physical</span>
+<span class="sd">    value of its own largest raw count - and a tool holding data to the limits it reads</span>
+<span class="sd">    refused the value the description implies.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">):</span>
+        <span class="n">values</span> <span class="o">=</span> <span class="n">conversion</span><span class="o">.</span><span class="n">values</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">values</span><span class="p">)),</span> <span class="nb">float</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">values</span><span class="p">))</span>
+    <span class="n">low</span> <span class="o">=</span> <span class="n">round_physical</span><span class="p">(</span><span class="n">conversion</span><span class="o">.</span><span class="n">to_physical</span><span class="p">(</span><span class="n">raw_min</span><span class="p">))</span>
+    <span class="n">high</span> <span class="o">=</span> <span class="n">round_physical</span><span class="p">(</span><span class="n">conversion</span><span class="o">.</span><span class="n">to_physical</span><span class="p">(</span><span class="n">raw_max</span><span class="p">))</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">low</span><span class="p">,</span> <span class="n">high</span><span class="p">)</span> <span class="k">if</span> <span class="n">low</span> <span class="o">&lt;=</span> <span class="n">high</span> <span class="k">else</span> <span class="p">(</span><span class="n">high</span><span class="p">,</span> <span class="n">low</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">conversion_range</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""The physical range covered by the full raw range of ``datatype``."""</span>
+    <span class="k">return</span> <span class="n">physical_range</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">datatype</span><span class="o">.</span><span class="n">raw_min</span><span class="p">,</span> <span class="n">datatype</span><span class="o">.</span><span class="n">raw_max</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">raw_reading</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""What one raw value reads as, or ``None`` where the raw value already says it.</span>
+
+<span class="sd">    The forward direction only, which is always defined: every raw value has exactly one</span>
+<span class="sd">    physical image under a linear conversion, while most physical values are the image of no</span>
+<span class="sd">    raw count at all. Under the identity the physical value *is* the raw one, and an enum</span>
+<span class="sd">    names only the values of its table - both answer ``None`` rather than repeat the number</span>
+<span class="sd">    they were given. The unit rides along on a linear reading because the physical value is</span>
+<span class="sd">    the one it belongs to; an enumerator name carries no unit.</span>
+
+<span class="sd">    The reading is rounded the way a derived limit is, to :data:`SIGNIFICANT_DIGITS` digits.</span>
+<span class="sd">    A decimal factor has no exact binary float, so 3 raw counts of 0.1 compute as</span>
+<span class="sd">    0.30000000000000004 - an artifact of the arithmetic, not part of the reading. Twelve</span>
+<span class="sd">    digits erase it while a genuinely long value still shows itself as approximate.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">LinearConversion</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">format_number</span><span class="p">(</span><span class="n">round_physical</span><span class="p">(</span><span class="n">conversion</span><span class="o">.</span><span class="n">to_physical</span><span class="p">(</span><span class="n">raw</span><span class="p">)))</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">unit</span><span class="si">}</span><span class="s2">"</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">next</span><span class="p">((</span><span class="n">item</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">conversion</span><span class="o">.</span><span class="n">enumerators</span> <span class="k">if</span> <span class="n">item</span><span class="o">.</span><span class="n">value</span> <span class="o">==</span> <span class="n">raw</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">return</span> <span class="kc">None</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="../../../../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

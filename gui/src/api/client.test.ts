@@ -19,6 +19,7 @@ import {
   getUnits,
   getValuePlan,
   getValues,
+  getValuesPlan,
   getVariable,
   openProject,
   postEdit,
@@ -29,6 +30,13 @@ import {
 
 function answering(status: number, body: string) {
   return vi.fn(async (_path: string, _init?: RequestInit) => new Response(body, { status }));
+}
+
+/** A fetch answering `{}` to anything, exposing the calls it recorded - `getValuesPlan`'s own
+ * test needs nothing richer than the one path it asked for. */
+function recorded() {
+  const fetch = answering(200, "{}");
+  return { fetch, urls: fetch.mock.calls };
 }
 
 describe("requests to the server", () => {
@@ -214,6 +222,17 @@ describe("requests to the server", () => {
       ],
       ["/api/values?name=CurveA", { credentials: "same-origin" }],
       ["/api/value-plan?name=CurveA&at=%5B2%5D&raw=750", { credentials: "same-origin" }],
+    ]);
+  });
+
+  test("getValuesPlan asks for a whole table's plan", async () => {
+    const calls = recorded();
+    await getValuesPlan({ name: "CurveA", raw: [1300, 950, 850, 800, 750, 700] }, calls.fetch);
+    expect(calls.urls).toEqual([
+      [
+        "/api/values-plan?name=CurveA&raw=1300%2C950%2C850%2C800%2C750%2C700",
+        { credentials: "same-origin" },
+      ],
     ]);
   });
 });

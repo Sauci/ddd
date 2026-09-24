@@ -8,6 +8,8 @@ import {
   cornerLabel,
   drawable,
   elementLabel,
+  pasted,
+  pasteHint,
   physicalOf,
   rawOf,
   readOnlyNote,
@@ -456,5 +458,142 @@ describe("drawable", () => {
 
   test("a shaped, non-text object is drawable", () => {
     expect(drawable(CURVE_A)).toBe(true);
+  });
+});
+
+describe("pasted", () => {
+  test("a curve's six values, in physical, become the counts the file holds", () => {
+    // 12 ms through ×0.01 is 1200 counts - the same arithmetic a typed cell goes through.
+    const block = pasted("12\t9\t8\t7.5\t7\t6.5", CURVE_A, true);
+    expect(block.refusal).toBeNull();
+    expect(block.rows).toEqual([[1200, 900, 800, 750, 700, 650]]);
+  });
+
+  test("in raw, the counts are taken as they are", () => {
+    const block = pasted("1300\t950\t850\t800\t750\t700", CURVE_A, false);
+    expect(block.rows).toEqual([[1300, 950, 850, 800, 750, 700]]);
+  });
+
+  test("a map takes four rows of six", () => {
+    const text = [
+      "1\t2\t3\t4\t5\t6",
+      "7\t8\t9\t10\t11\t12",
+      "13\t14\t15\t16\t17\t18",
+      "19\t20\t21\t22\t23\t24",
+    ].join("\n");
+    expect(pasted(text, MAP_A, false).rows).toEqual([
+      [1, 2, 3, 4, 5, 6],
+      [7, 8, 9, 10, 11, 12],
+      [13, 14, 15, 16, 17, 18],
+      [19, 20, 21, 22, 23, 24],
+    ]);
+  });
+
+  test("a header row and column are dropped without being read", () => {
+    // What selecting the drawn grid gives: a blank corner, AxisA's readings, the CurveA label -
+    // and readings that belong to no axis at all, which are discarded just the same.
+    const text = ["\t0\t800\t1600\t3200\t4800\t8000", "CurveA (ms)\t12\t9\t8\t7.5\t7\t6.5"].join(
+      "\n",
+    );
+    expect(pasted(text, CURVE_A, true).rows).toEqual([[1200, 900, 800, 750, 700, 650]]);
+  });
+
+  test("a map's header row and column are dropped too", () => {
+    const text = [
+      "\t0\t800\t1600\t3200\t4800\t8000",
+      "0\t1\t2\t3\t4\t5\t6",
+      "30\t7\t8\t9\t10\t11\t12",
+      "70\t13\t14\t15\t16\t17\t18",
+      "100\t19\t20\t21\t22\t23\t24",
+    ].join("\n");
+    expect(pasted(text, MAP_A, false).rows?.[3]).toEqual([19, 20, 21, 22, 23, 24]);
+  });
+
+  test("breakpoints above values, with no labels, matches neither shape", () => {
+    const text = ["0\t3200\t6400\t12800\t19200\t32000", "1200\t900\t800\t750\t700\t650"].join("\n");
+    expect(pasted(text, CURVE_A, false).refusal).toBe(
+      "expected 1 row of 6, or 2 rows of 7 with a header; got 2 rows of 6",
+    );
+  });
+
+  test("a column is refused: the grid draws a curve as a row", () => {
+    expect(pasted("1200\n900\n800\n750\n700\n650", CURVE_A, false).refusal).toBe(
+      "expected 1 row of 6, or 2 rows of 7 with a header; got 6 rows of 1",
+    );
+  });
+
+  test("rows of different lengths are not a table", () => {
+    expect(pasted("1\t2\t3\t4\t5\t6\n7\t8\t9", MAP_A, false).refusal).toBe(
+      "this is not a table: its rows are 6 and 3 values long",
+    );
+  });
+
+  test("a comma is the decimal separator where no cell has a point", () => {
+    expect(pasted("12\t9\t8\t7,5\t7\t6,5", CURVE_A, true).rows).toEqual([
+      [1200, 900, 800, 750, 700, 650],
+    ]);
+  });
+
+  test("a block mixing a comma and a point does not know which it means", () => {
+    expect(pasted("12\t9\t8\t7.5\t7\t6,5", CURVE_A, true).refusal).toBe(
+      "this mixes '.' and ',' as decimal separators, so it is not clear what it means",
+    );
+  });
+
+  test("a thousands separator beside a decimal comma is not a number", () => {
+    expect(pasted("1.234,56\t9\t8\t7.5\t7\t6.5", CURVE_A, true).refusal).toBe(
+      "'1.234,56' is not a number",
+    );
+  });
+
+  test("whitespace inside a cell is not stripped", () => {
+    expect(pasted("1 234\t9\t8\t7.5\t7\t6.5", CURVE_A, true).refusal).toBe(
+      "'1 234' is not a number",
+    );
+  });
+
+  test("an empty cell is nothing, not zero", () => {
+    expect(pasted("12\t\t8\t7.5\t7\t6.5", CURVE_A, true).refusal).toBe("'' is not a number");
+  });
+
+  test("a value block over indices takes one row of eight", () => {
+    expect(pasted("0\t12\t28\t52\t84\t124\t180\t255", BLOCK_A, false).rows).toEqual([
+      [0, 12, 28, 52, 84, 124, 180, 255],
+    ]);
+  });
+});
+
+describe("pasteHint", () => {
+  test("a curve asks for one row", () => {
+    expect(pasteHint(CURVE_A)).toBe(
+      "Paste 1 row of 6 values from a spreadsheet to replace them all.",
+    );
+  });
+
+  test("a map asks for four", () => {
+    expect(pasteHint(MAP_A)).toBe(
+      "Paste 4 rows of 6 values from a spreadsheet to replace them all.",
+    );
+  });
+
+  test("a shapeless object asks for nothing at all", () => {
+    // Not one of the brief's own cases: `wanted`'s "else" arm falls back to 0 for a shape index
+    // that is not there, and only a shapeless reply - ValueA, already in this file, never
+    // drawable in the first place - takes that arm without supplying either index.
+    expect(pasteHint(VALUE_A)).toBe(
+      "Paste 0 rows of 0 values from a spreadsheet to replace them all.",
+    );
+  });
+
+  test("a length-one shape with nothing at index zero also falls back", () => {
+    // Also not the brief's: `noUncheckedIndexedAccess` cannot know a length-1 array's [0] is
+    // always there, so `wanted`'s other arm guards it the same way - a guard a real answer
+    // (always a dense array straight off JSON) can never trigger. Setting `.length` on an empty
+    // array is the one type-legal way to build the sparse array that can.
+    const shape: number[] = [];
+    shape.length = 1;
+    expect(pasteHint({ ...CURVE_A, shape })).toBe(
+      "Paste 1 row of 0 values from a spreadsheet to replace them all.",
+    );
   });
 });

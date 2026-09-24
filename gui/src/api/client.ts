@@ -234,6 +234,20 @@ export const getValuePlan = (plan: ValuePlanRequest, fetchImpl: Fetch = fetch) =
     fetchImpl,
   );
 
+/** A whole table's change, as `GET /api/values-plan` takes it: the counts row-major, in one list. */
+export interface ValuesPlanRequest {
+  name: string;
+  raw: readonly number[];
+}
+
+export const getValuesPlan = (plan: ValuesPlanRequest, fetchImpl: Fetch = fetch) =>
+  request<PlanReply>(
+    `/api/values-plan?name=${encodeURIComponent(plan.name)}` +
+      `&raw=${encodeURIComponent(plan.raw.join(","))}`,
+    {},
+    fetchImpl,
+  );
+
 function post(body: unknown): RequestInit {
   return {
     method: "POST",

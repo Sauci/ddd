@@ -113,6 +113,95 @@ export function typedRefusal(text: string): string | null {
   return `'${text}' is not a number`;
 }
 
+/** A pasted block, read against the object the grid is showing. Exactly one of the two fields is
+ * set, so a reader narrows on `refusal === null` and needs no fallback for the other. */
+export type Pasted = { rows: number[][]; refusal: null } | { rows: null; refusal: string };
+
+/** The block as a spreadsheet writes it: rows by newline, cells by tab, a trailing newline
+ * dropped because every spreadsheet adds one. */
+function celled(text: string): string[][] {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n");
+  return lines.map((line) => line.split("\t"));
+}
+
+/** The rows and columns the object itself takes, as a table is counted. */
+function wanted(reply: ValuesReply): [number, number] {
+  return reply.shape.length === 1
+    ? [1, reply.shape[0] ?? 0]
+    : [reply.shape[0] ?? 0, reply.shape[1] ?? 0];
+}
+
+/** `1 row of 6`, `4 rows of 6` - how a block is counted, the same spelling `_table` uses in
+ * `object_values.py`. The word "values" is left to whichever sentence wants it. */
+function table(rows: number, columns: number): string {
+  return `${rows} row${rows === 1 ? "" : "s"} of ${columns}`;
+}
+
+/** Whether a comma is this block's decimal separator: only where no cell states a point and no
+ * cell states two commas, so `1,5` reads as one and a half and `1.234,56` never does. */
+function commaIsDecimal(cells: string[][]): boolean {
+  const all = cells.flat();
+  if (all.some((cell) => cell.includes("."))) return false;
+  return all.every((cell) => (cell.match(/,/g) ?? []).length <= 1);
+}
+
+/** Whether two *different* cells disagree about the separator, which is the one case worth its
+ * own sentence. A single cell holding both - `1.234,56` - is not a block that mixes them; it is
+ * a cell that is not a number, and saying so names the cell a reader has to go and fix. */
+function mixesSeparators(cells: string[][]): boolean {
+  const all = cells.flat();
+  return (
+    all.some((cell) => cell.includes(".") && !cell.includes(",")) &&
+    all.some((cell) => cell.includes(",") && !cell.includes("."))
+  );
+}
+
+export function pasted(text: string, reply: ValuesReply, physical: boolean): Pasted {
+  const cells = celled(text);
+  const widths = new Set(cells.map((row) => row.length));
+  if (widths.size > 1) {
+    const said = [...widths].join(" and ");
+    return { rows: null, refusal: `this is not a table: its rows are ${said} values long` };
+  }
+  const [rows, columns] = wanted(reply);
+  const width = cells[0]?.length ?? 0;
+  const header = cells.length === rows + 1 && width === columns + 1;
+  if (!header && (cells.length !== rows || width !== columns)) {
+    return {
+      rows: null,
+      refusal:
+        `expected ${table(rows, columns)}, or ${table(rows + 1, columns + 1)} with a header; ` +
+        `got ${table(cells.length, width)}`,
+    };
+  }
+  const values = header ? cells.slice(1).map((row) => row.slice(1)) : cells;
+  const decimal = commaIsDecimal(values);
+  if (mixesSeparators(values)) {
+    return {
+      rows: null,
+      refusal: "this mixes '.' and ',' as decimal separators, so it is not clear what it means",
+    };
+  }
+  const read: number[][] = [];
+  for (const row of values) {
+    const counts: number[] = [];
+    for (const cell of row) {
+      const typed = typedNumber(decimal ? cell.replace(",", ".") : cell);
+      if (Number.isNaN(typed)) return { rows: null, refusal: `'${cell}' is not a number` };
+      counts.push(physical ? rawOf(typed, reply.conversion, reply.datatype) : typed);
+    }
+    read.push(counts);
+  }
+  return { rows: read, refusal: null };
+}
+
+/** The line under the grid saying what shape a paste wants - the only way the feature is
+ * discoverable, and the hint that stops the commonest refusal before it happens. */
+export function pasteHint(reply: ValuesReply): string {
+  const [rows, columns] = wanted(reply);
+  return `Paste ${table(rows, columns)} values from a spreadsheet to replace them all.`;
+}
+
 /** One breakpoint, in physical or in raw, as a column or a row header shows it. */
 function reading(raw: number, conversion: Conversion, physical: boolean): string {
   return String(physical ? physicalOf(raw, conversion) : raw);

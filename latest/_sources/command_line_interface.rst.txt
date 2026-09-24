@@ -296,8 +296,17 @@ The commands
        once. A component's page adds a declaration to its interface - a variable
        already declared, carrying the producer's keys where there is one and the
        project's own where there is not, or a new object of one of six kinds - and
-       takes one away. A Types tab lists the types the project declares, with what each
-       fixes and what names it; what a scalar type fixes is changed there, and
+       takes one away. Its table's Shape column opens the page of a curve, a map, an
+       axis or any other declaration shaped in one or two dimensions: its values as a
+       grid, laid against its axes' breakpoints or plain indices and named with the axis
+       on each edge, in physical or in raw by a toggle. A curve, a map and an axis are
+       offered whatever type they name; anything else states its own dimensions and its
+       own datatype, so a dimensioned declaration naming a structured type is shown
+       there and not offered, and so is a deeper shape. One cell
+       is changed at a time, previewed - in a sentence naming what it sets and the
+       producing file it lands in - and applied like every other change here, and put
+       back by the same undo. A Types tab lists the types the project declares, with
+       what each fixes and what names it; what a scalar type fixes is changed there, and
        renaming one rewrites every declaration and member naming it in one edit.
        Every change is written into the files in their own layout and checked
        the way ``ddd check`` checks them. A change applied here can be undone while

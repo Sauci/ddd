@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator } from "@playwright/test";
-import { CONTROLLER, SENSOR_HUB, typeCurveA, widenBlockA, writeBlockAInit } from "./demo";
+import { CONTROLLER, paste, SENSOR_HUB, typeCurveA, widenBlockA, writeBlockAInit } from "./demo";
 import { expect, test } from "./fixtures";
 
 /** A declaration's own definition, read back from a file of the copy - the same untyped shape
@@ -187,6 +187,130 @@ test("a cell changed is put back", async ({ page, gui }) => {
   await page.getByRole("button", { name: "Apply to 1 file" }).click();
 
   const undo = page.getByRole("button", { name: "Undo element 3 of CurveA" });
+  await expect(undo).toBeVisible();
+  await undo.click();
+  const strip = page.getByRole("region", { name: "Undo" });
+  await expect(strip.getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
+  await strip.getByRole("button", { name: "Put back 1 file" }).click();
+
+  await expect.poll(() => readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+});
+
+// Part 9's own five: a table pasted from a spreadsheet replaces every value of an object in one
+// edit, the way `paste` (demo.ts) delivers one - a `DataTransfer` dispatched as a real `paste`
+// event, since Playwright cannot put a table on the system clipboard.
+
+/** The five-row block a reader would copy from MapA's own Raw grid: AxisA's breakpoints across
+ * the top, AxisB's down the side, and 1..24 filled in underneath in row-major order - so the
+ * file's first row and its last come to exactly `[1, 2, 3, 4, 5, 6]` and
+ * `[19, 20, 21, 22, 23, 24]`. `pasted()` only counts the header's shape and drops its text
+ * (`objectValues.ts`'s own `header ? cells.slice(1).map((row) => row.slice(1))`), so what the
+ * corner and the breakpoints actually read makes no difference to the parse - they are spelled
+ * out here only so the block reads like one a spreadsheet would hand back. */
+const MAP_A_PASTE = [
+  "AxisB\t0\t3200\t6400\t12800\t19200\t32000",
+  "0\t1\t2\t3\t4\t5\t6",
+  "60\t7\t8\t9\t10\t11\t12",
+  "140\t13\t14\t15\t16\t17\t18",
+  "200\t19\t20\t21\t22\t23\t24",
+].join("\n");
+
+/** MapA's own shape (4 rows of 6), three cells of the first row three ways over what sint8
+ * holds - columns 1, 3 and 6 - and every other cell in range, so the server's refusal names
+ * exactly those three and nothing else drags a fourth offender into the sentence. */
+const MAP_A_OVER_RANGE = [
+  "200\t1\t300\t1\t1\t400",
+  "1\t1\t1\t1\t1\t1",
+  "1\t1\t1\t1\t1\t1",
+  "1\t1\t1\t1\t1\t1",
+].join("\n");
+
+// A stale-failure regression - a cell apply failed for a reason other than staleness, then a
+// table pasted over it, asserting no trace of the old failure remains - is not folded into this
+// journey. The one mechanism this file already has for that failure is the out-of-range cell
+// above ("a value the datatype cannot hold is refused, and nothing is written"), and it cannot
+// reach one: `_value_plan` (`api.py`) runs `set_cell`'s own range check before ever answering a
+// plan, so a value out of range never renders an `Apply to` button at all - that test's own
+// `toHaveCount(0)` is exactly this - and `apply.mutate()`, the only place `ValuesPage.tsx` sets
+// its non-stale `failed`, is never reached. Nothing reachable through a cell's own Apply button
+// can fail non-stale without the file also changing underneath it, which is staleness itself; the
+// only way left is a mechanism of its own (an unwritable file, say), which is not reusing this
+// one - left untried rather than invented.
+test("a pasted curve replaces every value in one edit", async ({ page, gui }) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+
+  await paste(page, "13\t9.5\t8.5\t8\t7.5\t7");
+  await expect(page.getByText("Replaces every value of CurveA")).toBeVisible();
+  await expect(page.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
+
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => readFileSync(join(gui.directory, CONTROLLER), "utf8"))
+    .toContain('"init": [1300, 950, 850, 800, 750, 700]');
+  await expect(page.getByRole("button", { name: "Undo the values of CurveA" })).toBeVisible();
+});
+
+test("a pasted map takes its header row and column", async ({ page, gui }) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Show the values of MapA" }).click();
+  await page.getByRole("button", { name: "Raw" }).click();
+
+  await paste(page, MAP_A_PASTE);
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+
+  await expect
+    .poll(() => definitionOf(gui.directory, CONTROLLER, "MapA").init[0])
+    .toEqual([1, 2, 3, 4, 5, 6]);
+  expect(definitionOf(gui.directory, CONTROLLER, "MapA").init[3]).toEqual([19, 20, 21, 22, 23, 24]);
+});
+
+test("a block of the wrong shape is refused and nothing is written", async ({ page, gui }) => {
+  const before = readFileSync(join(gui.directory, CONTROLLER));
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+
+  await paste(page, ["1\t2\t3\t4\t5\t6", "7\t8\t9\t10\t11\t12"].join("\n"));
+  await expect(
+    page.getByText("expected 1 row of 6, or 2 rows of 7 with a header; got 2 rows of 6"),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+
+  expect(readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+});
+
+test("a value the datatype cannot hold names every offender", async ({ page, gui }) => {
+  const before = readFileSync(join(gui.directory, CONTROLLER));
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Show the values of MapA" }).click();
+  await page.getByRole("button", { name: "Raw" }).click();
+
+  await paste(page, MAP_A_OVER_RANGE);
+  await expect(
+    page.getByText(
+      "element 1, 1, element 1, 3 and element 1, 6 of 'MapA' are refused: " +
+        "200 does not fit into sint8 (-128 .. 127)",
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+
+  expect(readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+});
+
+test("a pasted table is put back", async ({ page, gui }) => {
+  const before = readFileSync(join(gui.directory, CONTROLLER));
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+
+  await paste(page, "13\t9.5\t8.5\t8\t7.5\t7");
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+
+  const undo = page.getByRole("button", { name: "Undo the values of CurveA" });
   await expect(undo).toBeVisible();
   await undo.click();
   const strip = page.getByRole("region", { name: "Undo" });

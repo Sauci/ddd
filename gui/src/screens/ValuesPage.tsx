@@ -109,8 +109,14 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
 
   // One offer under the grid at a time: whichever of the two was last acted on owns the preview,
   // the sentence and Apply. `pastedRows` is cleared when a cell is typed into and `editing` when
-  // a block is pasted (both below), so these never both hold something.
-  const pasting = pastedRows !== null;
+  // a block is pasted (both below), so these never both hold something. `pasteRefusal` alone -
+  // `pastedRows` still `null` - is still a paste: a block the parser itself refuses (a wrong
+  // shape, a cell that is not a number) never reaches `pastedRows` at all, since `Pasted` (Task
+  // 2's) holds exactly one of the two. Gating on `pastedRows` alone would fall through to the
+  // cell's own refusal chain below, silently dropping the parser's own sentence for a paste that
+  // was never a cell to begin with - driving it through a real browser (`values.spec.ts`'s own
+  // "a block of the wrong shape is refused and nothing is written") is what actually found this.
+  const pasting = pastedRows !== null || pasteRefusal !== null;
   const shownPlan = pasting ? (table.data ?? null) : (plan.data ?? null);
   // The pre-apply refusal each offer can find for itself - a pasted block's own sentence, or the
   // server's, for the one thing the parser cannot check - ahead of a stale or a plain apply

@@ -69,6 +69,24 @@ export async function openPanel(
   return page.getByRole("complementary", { name: variable });
 }
 
+/** A table pasted into the grid the way a browser delivers one: a `DataTransfer` built in the
+ * page and dispatched as a `paste` event, because Playwright cannot put a table on the system
+ * clipboard. Dispatched on the grid's own `<section>` - the one `ValuesGridView` binds `onPaste`
+ * to - found by filtering for the `section` that holds a `grid`, `.first()` only as a guard
+ * against a second one elsewhere on the page: this project's own `Table` sits in a `<section>`
+ * on every grid screen, not only this one. */
+export async function paste(page: Page, text: string): Promise<void> {
+  await page
+    .locator("section")
+    .filter({ has: page.getByRole("grid") })
+    .first()
+    .evaluate((node, block) => {
+      const data = new DataTransfer();
+      data.setData("text/plain", block);
+      node.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true }));
+    }, text);
+}
+
 /** One variable's linear factor in one file of a copy drifted, saved from outside; answers the
  * file as it was before. */
 export function driftFactor(

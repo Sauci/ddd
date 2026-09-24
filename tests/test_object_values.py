@@ -13,7 +13,14 @@ from ddd.editing import edit_text
 from ddd.gui.session import Session
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
-from ddd.object_values import AXIS_REFERENCES, ValuePlan, ValueRefusalError, grid_of, set_cell
+from ddd.object_values import (
+    AXIS_REFERENCES,
+    ValuePlan,
+    ValueRefusalError,
+    grid_of,
+    set_cell,
+    set_values,
+)
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 
@@ -653,6 +660,155 @@ class TestChangingOne:
         finally:
             session.stop()
         assert refused.value.message == "1e-50 rounds to zero in float32"
+
+
+class TestSetValues:
+    def test_a_curve_is_written_whole_in_one_operation(self, demo) -> None:
+        dictionary, built = demo
+        plan = set_values(dictionary, built, "CurveA", [[1300, 950, 850, 800, 750, 700]], {})
+        (operation,) = plan.edits[0].operations
+        assert operation.pointer.endswith(".definition.init")
+        assert json.loads(operation.raw or "") == [1300, 950, 850, 800, 750, 700]
+        assert plan.edits[0].path.name == "controller.ddd.json"
+
+    def test_a_map_is_written_as_rows(self, demo) -> None:
+        # Nested, as MapA's own file holds it - a row to a line, which is why one `set` moves
+        # four lines there and one here.
+        dictionary, built = demo
+        rows = [
+            [1, 2, 3, 4, 5, 6],
+            [7, 8, 9, 10, 11, 12],
+            [13, 14, 15, 16, 17, 18],
+            [19, 20, 21, 22, 23, 24],
+        ]
+        plan = set_values(dictionary, built, "MapA", rows, {})
+        (operation,) = plan.edits[0].operations
+        assert json.loads(operation.raw or "") == rows
+
+    def test_a_block_of_the_wrong_shape_says_what_it_wanted(self, demo) -> None:
+        dictionary, built = demo
+        with pytest.raises(ValueRefusalError) as refused:
+            set_values(dictionary, built, "CurveA", [[1, 2, 3]], {})
+        assert refused.value.code == "invalid"
+        assert refused.value.message == "'CurveA' takes 1 row of 6 values, and this is 1 row of 3"
+
+    def test_every_value_the_datatype_cannot_hold_is_named(self, demo) -> None:
+        # sint8 is -128 … 127, so three of MapA's six are out of range, and a reader fixing a
+        # pasted row wants the list rather than one round trip per number.
+        dictionary, built = demo
+        rows = [
+            [200, 24, 300, 30, 32, 400],
+            [18, 22, 26, 28, 30, 28],
+            [12, 16, 20, 22, 24, 22],
+            [6, 10, 14, 16, 18, 16],
+        ]
+        with pytest.raises(ValueRefusalError) as refused:
+            set_values(dictionary, built, "MapA", rows, {})
+        assert refused.value.message == (
+            "element 1, 1, element 1, 3 and element 1, 6 of 'MapA' do not fit into "
+            "sint8 (-128 .. 127)"
+        )
+
+    def test_a_name_the_project_has_not_is_not_found(self, demo) -> None:
+        dictionary, built = demo
+        with pytest.raises(ValueRefusalError) as refused:
+            set_values(dictionary, built, "Nope", [[1]], {})
+        assert refused.value.code == "not-found"
+
+    def test_an_object_no_single_declaration_produces_is_refused(self, tmp_path) -> None:
+        # The read-only grid of part 8: two producers, so no one file holds these numbers.
+        from conftest import component, declare, project, write_tree
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Twice",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[3],
+                        init=[1, 2, 3],
+                    ),
+                ),
+                "b.ddd.json": component(
+                    "B",
+                    declare(
+                        "output",
+                        "Twice",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[3],
+                        init=[7, 8, 9],
+                    ),
+                ),
+            },
+        )
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        revision = session.revision
+        assert revision is not None and revision.dictionary is not None
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        try:
+            with pytest.raises(ValueRefusalError) as refused:
+                set_values(revision.dictionary, built, "Twice", [[1, 2, 3]], {})
+        finally:
+            session.stop()
+        assert "more than one" in refused.value.message
+
+    def test_text_is_no_grid_to_paste_into_either(self, demo) -> None:
+        # set_cell's own text refusal, checked first here too - a table has nowhere to land on
+        # an object whose producer writes text.
+        dictionary, built = demo
+        with pytest.raises(ValueRefusalError) as refused:
+            set_values(dictionary, built, "SoftwareLabel", [[1]], {})
+        assert refused.value.message == "'SoftwareLabel' is initialised with text, not with a grid"
+
+    def test_a_shapeless_object_has_no_table_to_paste_into(self, demo) -> None:
+        # ValueA again, as TestChangingOne's own shapeless test pins for set_cell: no cell for
+        # a value, so no table of them either.
+        dictionary, built = demo
+        with pytest.raises(ValueRefusalError) as refused:
+            set_values(dictionary, built, "ValueA", [[1]], {})
+        assert refused.value.message == "'ValueA' has no cell for a value to sit in"
+
+    def test_a_value_nothing_produces_cannot_take_a_pasted_table(self, tmp_path) -> None:
+        # The other half of the read-only grid, beside the two-producer test above: no
+        # declaration at all to write the table into.
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("input", "Orphan", kind="value_block", dimensions=[2])
+                ),
+            },
+        )
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        revision = session.revision
+        assert revision is not None and revision.dictionary is not None
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        try:
+            with pytest.raises(ValueRefusalError) as refused:
+                set_values(revision.dictionary, built, "Orphan", [[1, 2]], {})
+        finally:
+            session.stop()
+        assert refused.value.message == "nothing produces 'Orphan', so it has no values to set"
+
+    def test_a_one_dimensional_offender_is_named_by_element_alone(self, demo) -> None:
+        # _element_label's other arm: the map test above names a row and a column, and a
+        # curve - one dimensional - is named by element alone, the word set_cell's own undo
+        # strip already uses for it.
+        dictionary, built = demo
+        with pytest.raises(ValueRefusalError) as refused:
+            set_values(dictionary, built, "CurveA", [[1200, 900, 800, 750, 700, 70000]], {})
+        assert refused.value.message == (
+            "element 6 of 'CurveA' do not fit into uint16 (0 .. 65535)"
+        )
 
 
 def _definition_of(text: str, name: str) -> dict[str, object]:

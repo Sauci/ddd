@@ -598,6 +598,13 @@ class TestEveryEndpointOnTheDemo:
         planned = answered(server, "GET", "/api/value-plan?name=CurveA&at=%5B2%5D&raw=750")
         assert len(planned["changes"]) == 1
 
+    def test_a_whole_curve_planned_over_http(self, demo) -> None:
+        server, _ = demo
+        planned = answered(
+            server, "GET", "/api/values-plan?name=CurveA&raw=1300,950,850,800,750,700"
+        )
+        assert len(planned["changes"]) == 1
+
 
 class TestBlankParameters:
     """A parameter given with no value reaches the api as the empty text: clearing a unit's

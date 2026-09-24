@@ -2824,3 +2824,70 @@ class TestTheValuesGrid:
         monkeypatch.setattr("ddd.gui.api.previewed", refuse)
         reply = get(api, "/api/value-plan", name="CurveA", at="[2]", raw="750")
         assert (reply.status, reply.body["error"]) == (409, "unverified")
+
+    def test_a_pasted_curve_is_previewed_then_written(self, demo) -> None:
+        api, root = demo
+        before = contents(root)
+        preview = get(api, "/api/values-plan", name="CurveA", raw="1300,950,850,800,750,700").body
+        assert contents(root) == before
+        assert [Path(c["file"]).name for c in preview["changes"]] == ["controller.ddd.json"]
+        assert applied(api, preview, "the values of CurveA").status == 200
+        written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
+        assert '"init": [1300, 950, 850, 800, 750, 700]' in written
+
+    def test_a_pasted_map_is_folded_by_the_shape_the_server_knows(self, demo) -> None:
+        api, root = demo
+        counts = ",".join(str(n) for n in range(1, 25))
+        preview = get(api, "/api/values-plan", name="MapA", raw=counts).body
+        assert applied(api, preview, "the values of MapA").status == 200
+        written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
+        assert "[1, 2, 3, 4, 5, 6]," in written
+        assert "[19, 20, 21, 22, 23, 24]" in written
+
+    def test_a_list_of_the_wrong_length_says_what_it_wanted(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/values-plan", name="CurveA", raw="1,2,3")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == ("'CurveA' takes 1 row of 6 values, and this is 1 row of 3")
+
+    def test_a_name_the_project_has_not_is_not_found_for_a_values_plan(self, demo) -> None:
+        # Named distinctly from TestTheValuesGrid's own /api/values test above (and
+        # /api/value-plan's own "_for_a_plan" test below): two methods of the same name in one
+        # class would shadow one another, silently dropping the first from the suite.
+        api, _ = demo
+        reply = get(api, "/api/values-plan", name="Nope", raw="1")
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_without_its_parameters_it_says_which_it_takes(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/values-plan", name="CurveA")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply.body["message"] == "values-plan takes ?name= and ?raw="
+
+    def test_a_count_that_is_not_a_number_is_refused(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/values-plan", name="CurveA", raw="1200,900,lots,750,700,650")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "'lots' is not a number"
+
+    def test_a_project_that_did_not_load_has_nothing_to_plan_values_of(self, tmp_path) -> None:
+        # Named distinctly from TestTheValuesGrid's own /api/values test above, for the same
+        # reason as the "not-found" rename just above it.
+        reply = get(unloaded(tmp_path), "/api/values-plan", name="Anything", raw="1")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_a_values_plan_the_engine_refuses_is_a_refusal_the_page_can_act_on(
+        self, demo, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The same pattern as test_a_plan_the_engine_refuses_is_a_refusal_the_page_can_act_on
+        # above, over /api/values-plan's own call to `previewed` - its own line in this
+        # handler, and the coverage gate cannot tell it was exercised by the other endpoint's
+        # test alone.
+        api, _ = demo
+
+        def refuse(*_: object) -> None:
+            raise EditError(UNVERIFIED, "does not read back")
+
+        monkeypatch.setattr("ddd.gui.api.previewed", refuse)
+        reply = get(api, "/api/values-plan", name="CurveA", raw="1300,950,850,800,750,700")
+        assert (reply.status, reply.body["error"]) == (409, "unverified")

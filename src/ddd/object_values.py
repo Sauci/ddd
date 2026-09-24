@@ -15,7 +15,7 @@ as the name of a constant.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal, cast
@@ -292,6 +292,95 @@ def set_cell(
         rows[row][column] = raw
         operation = Operation("set", f"{site.pointer}.init", json.dumps(whole))
     return ValuePlan((PlannedEdit(site.path, (operation,)),))
+
+
+def _element_label(row: int, column: int, shape: tuple[int, ...]) -> str:
+    """``element 3``, ``element 2, 4`` - one-based, the spelling the undo strip already uses.
+
+    One-based because the reader is looking at a breakpoint and not at an index, and the same
+    words ``valueLabel`` puts in "Undo element 3 of CurveA".
+    """
+    if len(shape) == 1:
+        return f"element {column + 1}"
+    return f"element {row + 1}, {column + 1}"
+
+
+def set_values(
+    dictionary: DataDictionary,
+    built: Index,
+    name: str,
+    rows: Sequence[Sequence[float]],
+    cache: dict[Path, Document],
+) -> ValuePlan:
+    """What replacing every value of an object takes: one ``set`` of the whole ``init``.
+
+    The whole table at once, rather than a cell at a time, is what makes a pasted calibration one
+    edit and one entry in the undo stack. The shape is checked here as well as on the page,
+    because the page is not the only thing that can call this.
+    """
+    grid = grid_of(dictionary, built, name)
+    if grid.stated == "text":
+        raise ValueRefusalError("invalid", f"'{name}' is initialised with text, not with a grid")
+    if not grid.shape:
+        raise ValueRefusalError("invalid", f"'{name}' has no cell for a value to sit in")
+    sites = built.producers.get(name) or []
+    if len(sites) != 1:
+        raise ValueRefusalError("invalid", _no_single_producer(name, sites))
+    wanted = (1, grid.shape[0]) if len(grid.shape) == 1 else (grid.shape[0], grid.shape[1])
+    given = (len(rows), len(rows[0]) if rows else 0)
+    if given != wanted or any(len(row) != wanted[1] for row in rows):
+        raise ValueRefusalError(
+            "invalid",
+            f"'{name}' takes {_table(wanted)} values, and this is {_table(given)}",
+        )
+    datatype = Datatype(grid.datatype)
+    offenders = []
+    for r, row in enumerate(rows):
+        for c, value in enumerate(row):
+            try:
+                _acceptable(value, datatype, name)
+            except ValueRefusalError as refused:
+                offenders.append((_element_label(r, c, grid.shape), refused.message))
+    if offenders:
+        raise ValueRefusalError("invalid", _all_of_them(offenders, name))
+    site = sites[0]
+    whole: list[float] | list[list[float]] = (
+        list(rows[0]) if len(grid.shape) == 1 else [list(row) for row in rows]
+    )
+    operation = Operation("set", f"{site.pointer}.init", json.dumps(whole))
+    return ValuePlan((PlannedEdit(site.path, (operation,)),))
+
+
+def _table(shape: tuple[int, int]) -> str:
+    """``1 row of 6``, ``4 rows of 6`` - how a block is counted, in both languages.
+
+    The word "values" is left to whichever sentence wants it, so that this reads in the refusal
+    and in the page's hint alike; `table` in ``objectValues.ts`` spells it the same way.
+    """
+    rows, columns = shape
+    return f"{rows} row{'' if rows == 1 else 's'} of {columns}"
+
+
+def _no_single_producer(name: str, sites: Sequence[object]) -> str:
+    """Why a read-only grid cannot take a table, in the words part 8 refuses a cell with."""
+    if not sites:
+        return f"nothing produces '{name}', so it has no values to set"
+    return f"more than one declaration produces '{name}', so this cannot tell which file to write"
+
+
+def _all_of_them(offenders: Sequence[tuple[str, str]], name: str) -> str:
+    """Every element that failed, up to five, then how many more.
+
+    A pasted table can be wrong in several places at once, and a reader fixing it wants the list
+    rather than one round trip per number. The reason is taken from the first, because every
+    offender of one datatype fails the same check for the same reason.
+    """
+    shown = [label for label, _ in offenders[:5]]
+    listed = shown[0] if len(shown) == 1 else f"{', '.join(shown[:-1])} and {shown[-1]}"
+    more = "" if len(offenders) <= 5 else f", and {len(offenders) - 5} more,"
+    _, first = offenders[0]
+    reason = first.split(" ", 1)[1]
+    return f"{listed}{more} of '{name}' do not {reason.replace('does not ', '', 1)}"
 
 
 def _element(at: str, shape: tuple[int, ...]) -> tuple[int, ...]:

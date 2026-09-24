@@ -14,7 +14,7 @@ twenty-four applies and twenty-four entries in the undo stack, each one a chance
 and leave the object half written.
 
 The numbers exist already, in a spreadsheet, on the engineer's other screen. This part lets them
-arrive in one act: one paste, one preview, one line changed in the file, one undo.
+arrive in one act: one paste, one preview, one change to the file, one undo.
 
 Part 8's own section 3 named this as its successor - "paste is a parser and a shape match with its
 own refusals" - and that is what it is. Nothing about the grid, the endpoints, the edit engine or
@@ -133,6 +133,10 @@ cannot see.
 `src/ddd/object_values.py` gains `set_values(dictionary, built, name, rows, cache)` beside
 `set_cell`, taking the counts already folded into rows. It checks every value with the same
 `_acceptable` a single cell goes through and plans **one** `set` of the whole `init`.
+
+Measured, because it is easy to say otherwise: that one `set` moves **one** line for a curve,
+whose `init` is a single line of six, and **one line per row** for a map, whose `init` is written
+a row to a line. One operation and one undo entry either way; not one line either way.
 
 `GET /api/values-plan?name=&raw=` answers the existing `PlanReply`, with the counts as one
 comma-separated list in **row-major order** - `MapA`'s twenty-four as one list of twenty-four, not

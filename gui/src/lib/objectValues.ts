@@ -126,9 +126,8 @@ function celled(text: string): string[][] {
 
 /** The rows and columns the object itself takes, as a table is counted. */
 function wanted(reply: ValuesReply): [number, number] {
-  return reply.shape.length === 1
-    ? [1, reply.shape[0] ?? 0]
-    : [reply.shape[0] ?? 0, reply.shape[1] ?? 0];
+  const [first = 0, second] = reply.shape;
+  return second === undefined ? [1, first] : [first, second];
 }
 
 /** `1 row of 6`, `4 rows of 6` - how a block is counted, the same spelling `_table` uses in
@@ -163,8 +162,11 @@ export function pasted(text: string, reply: ValuesReply, physical: boolean): Pas
     const said = [...widths].join(" and ");
     return { rows: null, refusal: `this is not a table: its rows are ${said} values long` };
   }
+  // Every row is the same length by now, so the widest is the width - and taking it this way
+  // needs no index into `cells`, which would carry a fallback nothing can reach: a split on a
+  // non-empty separator always answers at least one row.
+  const width = Math.max(0, ...widths);
   const [rows, columns] = wanted(reply);
-  const width = cells[0]?.length ?? 0;
   const header = cells.length === rows + 1 && width === columns + 1;
   if (!header && (cells.length !== rows || width !== columns)) {
     return {

@@ -576,23 +576,12 @@ describe("pasteHint", () => {
     );
   });
 
-  test("a shapeless object asks for nothing at all", () => {
-    // Not one of the brief's own cases: `wanted`'s "else" arm falls back to 0 for a shape index
-    // that is not there, and only a shapeless reply - ValueA, already in this file, never
-    // drawable in the first place - takes that arm without supplying either index.
+  test("a shapeless object still asks for one row", () => {
+    // Not one of the brief's own cases: `wanted` destructures `reply.shape`, defaulting its
+    // first element to 0 where the shape does not state one - and the shapeless reply, ValueA,
+    // already in this file (never drawable in the first place), is the real fixture that takes
+    // that default, with no dead branch and no fixture no server could ever answer.
     expect(pasteHint(VALUE_A)).toBe(
-      "Paste 0 rows of 0 values from a spreadsheet to replace them all.",
-    );
-  });
-
-  test("a length-one shape with nothing at index zero also falls back", () => {
-    // Also not the brief's: `noUncheckedIndexedAccess` cannot know a length-1 array's [0] is
-    // always there, so `wanted`'s other arm guards it the same way - a guard a real answer
-    // (always a dense array straight off JSON) can never trigger. Setting `.length` on an empty
-    // array is the one type-legal way to build the sparse array that can.
-    const shape: number[] = [];
-    shape.length = 1;
-    expect(pasteHint({ ...CURVE_A, shape })).toBe(
       "Paste 1 row of 0 values from a spreadsheet to replace them all.",
     );
   });

@@ -2653,6 +2653,8 @@ class TestTheValuesGrid:
         assert reply.body["message"] == "'Cube' has 3 dimensions, and a grid draws at most two"
         plan = get(api, "/api/value-plan", name="Cube", at="[1][2][3]", raw="7")
         assert (plan.status, plan.body["error"]) == (409, "invalid")
+        plans = get(api, "/api/values-plan", name="Cube", raw="7")
+        assert (plans.status, plans.body["error"]) == (409, "invalid")
 
     def test_a_name_two_declarations_produce_is_read_only(self, tmp_path: Path) -> None:
         # The values come from the analysis's own producer and the file used to come from
@@ -2696,6 +2698,11 @@ class TestTheValuesGrid:
         assert (plan.status, plan.body["error"]) == (409, "invalid")
         assert plan.body["message"] == (
             "'Twin' is produced in more than one place, so there is no one file to set it in"
+        )
+        plans = get(api, "/api/values-plan", name="Twin", raw="1,2,3")
+        assert (plans.status, plans.body["error"]) == (409, "invalid")
+        assert plans.body["message"] == (
+            "more than one declaration produces 'Twin', so this cannot tell which file to write"
         )
         assert contents(tmp_path) == before
 
@@ -2891,3 +2898,20 @@ class TestTheValuesGrid:
         monkeypatch.setattr("ddd.gui.api.previewed", refuse)
         reply = get(api, "/api/values-plan", name="CurveA", raw="1300,950,850,800,750,700")
         assert (reply.status, reply.body["error"]) == (409, "unverified")
+
+    def test_a_text_init_cannot_be_pasted_into_at_the_endpoint(self, demo) -> None:
+        # set_values's own text refusal, plumbed through: neither /api/values nor
+        # /api/value-plan has a test of this at the http layer either, so this is new ground
+        # rather than a sibling to extend.
+        api, _ = demo
+        reply = get(api, "/api/values-plan", name="SoftwareLabel", raw="1")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "'SoftwareLabel' is initialised with text, not with a grid"
+
+    def test_a_shapeless_object_cannot_be_pasted_into_at_the_endpoint(self, demo) -> None:
+        # set_values's own shapeless refusal, plumbed through - the other refusal kind with no
+        # existing http-layer test to extend.
+        api, _ = demo
+        reply = get(api, "/api/values-plan", name="ValueA", raw="1")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "'ValueA' has no cell for a value to sit in"

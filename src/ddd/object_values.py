@@ -369,18 +369,20 @@ def _no_single_producer(name: str, sites: Sequence[object]) -> str:
 
 
 def _all_of_them(offenders: Sequence[tuple[str, str]], name: str) -> str:
-    """Every element that failed, up to five, then how many more.
+    """Every element that failed, up to five, then how many more, and why - once.
 
-    A pasted table can be wrong in several places at once, and a reader fixing it wants the list
-    rather than one round trip per number. The reason is taken from the first, because every
-    offender of one datatype fails the same check for the same reason.
+    ``_acceptable``'s own message is quoted whole, from the first offender, rather than reshaped
+    into this sentence: reshaping only ever matched one phrasing, "... does not fit into ...",
+    and broke - or for ``rounds_to_zero``, inverted - every other refusal ``_acceptable`` raises.
+    Quoting it whole is correct for all of them, including ones added later, at the cost of
+    naming only the first offender's own reason when two elements fail two different checks.
     """
     shown = [label for label, _ in offenders[:5]]
     listed = shown[0] if len(shown) == 1 else f"{', '.join(shown[:-1])} and {shown[-1]}"
     more = "" if len(offenders) <= 5 else f", and {len(offenders) - 5} more,"
+    verb = "is" if len(offenders) == 1 else "are"
     _, first = offenders[0]
-    reason = first.split(" ", 1)[1]
-    return f"{listed}{more} of '{name}' do not {reason.replace('does not ', '', 1)}"
+    return f"{listed}{more} of '{name}' {verb} refused: {first}"
 
 
 def _element(at: str, shape: tuple[int, ...]) -> tuple[int, ...]:

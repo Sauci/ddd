@@ -705,8 +705,8 @@ class TestSetValues:
         with pytest.raises(ValueRefusalError) as refused:
             set_values(dictionary, built, "MapA", rows, {})
         assert refused.value.message == (
-            "element 1, 1, element 1, 3 and element 1, 6 of 'MapA' do not fit into "
-            "sint8 (-128 .. 127)"
+            "element 1, 1, element 1, 3 and element 1, 6 of 'MapA' are refused: "
+            "200 does not fit into sint8 (-128 .. 127)"
         )
 
     def test_a_name_the_project_has_not_is_not_found(self, demo) -> None:
@@ -802,13 +802,100 @@ class TestSetValues:
     def test_a_one_dimensional_offender_is_named_by_element_alone(self, demo) -> None:
         # _element_label's other arm: the map test above names a row and a column, and a
         # curve - one dimensional - is named by element alone, the word set_cell's own undo
-        # strip already uses for it.
+        # strip already uses for it. One offender only, so this also pins _all_of_them's
+        # singular verb - "is refused", not "are".
         dictionary, built = demo
         with pytest.raises(ValueRefusalError) as refused:
             set_values(dictionary, built, "CurveA", [[1200, 900, 800, 750, 700, 70000]], {})
         assert refused.value.message == (
-            "element 6 of 'CurveA' do not fit into uint16 (0 .. 65535)"
+            "element 6 of 'CurveA' is refused: 70000 does not fit into uint16 (0 .. 65535)"
         )
+
+    def test_more_than_five_offenders_says_how_many_more(self, demo) -> None:
+        # The clause nothing reached before: five named, then how many more - MapA's own six
+        # columns are exactly one past the five _all_of_them shows by name.
+        dictionary, built = demo
+        rows = [
+            [200, 200, 200, 200, 200, 200],
+            [18, 22, 26, 28, 30, 28],
+            [12, 16, 20, 22, 24, 22],
+            [6, 10, 14, 16, 18, 16],
+        ]
+        with pytest.raises(ValueRefusalError) as refused:
+            set_values(dictionary, built, "MapA", rows, {})
+        assert refused.value.message == (
+            "element 1, 1, element 1, 2, element 1, 3, element 1, 4 and element 1, 5, "
+            "and 1 more, of 'MapA' are refused: 200 does not fit into sint8 (-128 .. 127)"
+        )
+
+    def test_every_refusal_kind_is_quoted_whole_not_reshaped(self, tmp_path) -> None:
+        # _all_of_them used to reshape _acceptable's own message by stripping "does not " -
+        # which only ever matched the "does not fit into ..." phrasing. Every other refusal
+        # either broke ("do not is written as a fractional number...") or, for rounds_to_zero,
+        # inverted its own meaning ("do not rounds to zero" says the opposite of why float32
+        # refused it). Quoting the message whole reads for all of them; examples/demo has
+        # neither an integer object fed a fraction nor a boolean one, so both are built here,
+        # the same way the zero-producer test above builds its own project.
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Ints",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[2],
+                        init=[1, 2],
+                    ),
+                    declare(
+                        "output",
+                        "Flags",
+                        kind="value_block",
+                        datatype="boolean",
+                        dimensions=[1],
+                        init=[False],
+                    ),
+                ),
+            },
+        )
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        revision = session.revision
+        assert revision is not None and revision.dictionary is not None
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        try:
+            with pytest.raises(ValueRefusalError) as fractional:
+                set_values(revision.dictionary, built, "Ints", [[1.5, 2.5]], {})
+            with pytest.raises(ValueRefusalError) as boolean:
+                set_values(revision.dictionary, built, "Flags", [[2]], {})
+        finally:
+            session.stop()
+        assert fractional.value.message == (
+            "element 1 and element 2 of 'Ints' are refused: 1.5 is written as a fractional "
+            "number, but 'Ints' has the integer datatype uint8"
+        )
+        assert boolean.value.message == "element 1 of 'Flags' is refused: 2 is not a valid bool"
+
+    def test_a_shape_mismatch_of_more_than_one_row_reads_in_the_plural(self, demo) -> None:
+        # _table's own 's' arm: every shape-mismatch test above names a one-row object
+        # (CurveA), so "row" never had to become "rows" - a conditional expression, so the
+        # coverage gate could not see the gap either.
+        dictionary, built = demo
+        with pytest.raises(ValueRefusalError) as refused:
+            set_values(dictionary, built, "MapA", [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]], {})
+        assert refused.value.message == "'MapA' takes 4 rows of 6 values, and this is 2 rows of 6"
+
+    def test_no_rows_at_all_is_a_shape_mismatch_too(self, demo) -> None:
+        # `given`'s own ternary: an empty `rows` is falsy, so `len(rows[0]) if rows else 0`
+        # takes its other arm - untested until now, since the endpoint's own `_folded` never
+        # answers an empty list of rows.
+        dictionary, built = demo
+        with pytest.raises(ValueRefusalError) as refused:
+            set_values(dictionary, built, "CurveA", [], {})
+        assert refused.value.message == "'CurveA' takes 1 row of 6 values, and this is 0 rows of 0"
 
 
 def _definition_of(text: str, name: str) -> dict[str, object]:

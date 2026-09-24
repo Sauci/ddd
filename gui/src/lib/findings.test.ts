@@ -149,6 +149,20 @@ describe("where a finding leads", () => {
     );
   });
 
+  test("a values grid, by the object's name", () => {
+    const one = finding({ check: "init-invalid", route: { kind: "values", name: "ValueA" } });
+    expect(routeLabel(one, state([one]))).toBe("Open ValueA");
+    expect(routeHref(one)).toBe(
+      `/component?file=${encodeURIComponent(SENSOR_HUB)}&variable=ValueA&view=values`,
+    );
+    expect(routeOf(one)).toEqual({
+      page: "component",
+      file: SENSOR_HUB,
+      variable: "ValueA",
+      view: "values",
+    });
+  });
+
   test("a unit, by its spelling", () => {
     const one = finding({ check: "unknown-unit", route: { kind: "unit", name: "degC" } });
     expect(routeLabel(one, state([one]))).toBe("Open degC");

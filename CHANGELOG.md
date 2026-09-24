@@ -97,6 +97,36 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   declares it, or that nothing does any longer.  All three are previewed before anything
   is written, and undone the same way as every other change.
 
+  A component's table now gains a Shape column between Type and Unit, a button wherever
+  there is a grid to open and plain text or nothing where there is not.  A curve, a map,
+  an axis and any declaration shaped in one or two dimensions show their values there as
+  a grid, laid against their axes' breakpoints, each edge named with its axis and, where
+  the readings are physical, that axis's unit; an object with no axis is laid over plain
+  indices instead.  A curve, a map and an axis are offered whatever type they name,
+  their shape following from their axes; anything else has to state both its own
+  dimensions and its own datatype, so a dimensioned declaration naming a structured
+  type is shown and not offered, and so is a shape of more dimensions than two: a
+  structure holds no values of its own, and a grid draws rows of cells and nothing
+  deeper.  The readings switch between physical values and raw counts with a toggle.
+  One cell is changed at a time: type a value, see what it would set and which file
+  that lands in, apply it, and put it back with the undo control already there -
+  except an object that has no one
+  producing declaration, because nothing produces it or because more than one thing
+  does, whose grid opens read-only rather than being refused.  A physical value no raw count
+  represents is stored as the count nearest it and then shown as what was
+  stored - typing `12.004` into a `uint16` at ×0.01 stores `1200`, and the grid then
+  reads `12`.  A value outside the object's declared limits - shown beside its kind and
+  datatype - is stored rather than refused: `limits-out-of-range` weighs the limits
+  against the storage and nothing in the analysis weighs an init against them, so
+  refusing here would make the grid stricter than `ddd check` and leave cells a person
+  wrote by hand that the interface could not edit.  A value the datatype itself
+  cannot hold is refused in the tool's own words instead, and so is what is not wholly a
+  number, and nothing is written.  An
+  object initialised with text shows a sentence saying so rather than a grid; one stated
+  once draws that value in every cell with a note, and one stating nothing draws greyed
+  zeros with a note.  A finding filed on an object's `init` now leads to this grid, the
+  way every other finding already leads to what it names.
+
 * **The editor's reconcile quick fix is no longer offered for a value that already means what
   it would be set to.**  Taking the producing component's value, or spreading one declaration's
   value to the rest, now writes nothing to a declaration that already states it, however

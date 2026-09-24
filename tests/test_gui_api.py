@@ -2581,3 +2581,246 @@ class TestPlanningAChangeOfAnInterface:
             scope="input",
         )
         assert (reply.status, reply.body["error"]) == (409, "unverified")
+
+
+class TestTheValuesGrid:
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> tuple[Api, Path]:
+        return copied(tmp_path, "demo", "demo.ddd.json")
+
+    def test_a_curve_answers_its_row_and_its_axis(self, demo) -> None:
+        api, _ = demo
+        body = get(api, "/api/values", name="CurveA").body
+        assert (body["kind"], body["datatype"], body["unit"]) == ("curve", "uint16", "ms")
+        assert body["shape"] == [6]
+        assert body["rows"] == [[1200, 900, 800, 750, 700, 650]]
+        assert body["stated"] == "array"
+        assert [(a["position"], a["name"], a["unit"]) for a in body["axes"]] == [
+            ("axis", "AxisA", "Hz")
+        ]
+        assert body["axes"][0]["breakpoints"] == [0, 3200, 6400, 12800, 19200, 32000]
+        assert body["owner"] == "Controller"
+        assert body["file"].endswith("controller.ddd.json")
+
+    def test_a_map_answers_four_rows_of_six(self, demo) -> None:
+        api, _ = demo
+        body = get(api, "/api/values", name="MapA").body
+        assert body["shape"] == [4, 6]
+        assert body["rows"][1] == [18, 22, 26, 28, 30, 28]
+        assert [a["position"] for a in body["axes"]] == ["x_axis", "y_axis"]
+
+    def test_an_object_with_no_shape_answers_an_empty_grid(self, demo) -> None:
+        # The name is what the brief called this before Task 1's own fix (see task-1's report):
+        # a shapeless object was once refused, and now answers the empty grid below instead -
+        # grid_of's one refusal is "not-found" alone, so there is nothing left to refuse here.
+        api, _ = demo
+        reply = get(api, "/api/values", name="ValueA")
+        assert reply.status == 200
+        assert reply.body["shape"] == []
+
+    def test_without_a_name_it_says_so(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/values")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply.body["message"] == "values takes ?name="
+
+    def test_a_name_the_project_has_not_is_not_found(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/values", name="Nope")
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_a_shape_of_more_than_two_dimensions_is_refused_rather_than_drawn(
+        self, tmp_path: Path
+    ) -> None:
+        # The other status this endpoint answers, and the reason it weighs the code at all:
+        # `dimensions: [2, 3, 4]` used to reach `ValuesReply` as a three level nest and come
+        # back 500 out of the server's blanket handler. A refusal, with the sentence the page
+        # renders, and 409 rather than 404 - the project does declare this object.
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output", "Cube", kind="value_block", datatype="uint8", dimensions=[2, 3, 4]
+                    ),
+                ),
+            },
+        )
+        reply = get(api, "/api/values", name="Cube")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "'Cube' has 3 dimensions, and a grid draws at most two"
+        plan = get(api, "/api/value-plan", name="Cube", at="[1][2][3]", raw="7")
+        assert (plan.status, plan.body["error"]) == (409, "invalid")
+
+    def test_a_name_two_declarations_produce_is_read_only(self, tmp_path: Path) -> None:
+        # The values come from the analysis's own producer and the file used to come from
+        # `Index.producers[0]`, which is a different choice: with the project listing b first,
+        # the reply showed A's numbers over b's file and an edit would have replaced a value
+        # that was never on screen. No one file to write into, so the grid opens read-only -
+        # the numbers and the owner still shown, since they are how the reader finds the
+        # second producer.
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "b.ddd.json", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Twin",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[3],
+                        init=[1, 2, 3],
+                    ),
+                ),
+                "b.ddd.json": component(
+                    "B",
+                    declare(
+                        "output",
+                        "Twin",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[3],
+                        init=[7, 8, 9],
+                    ),
+                ),
+            },
+        )
+        body = get(api, "/api/values", name="Twin").body
+        assert (body["rows"], body["owner"], body["file"]) == ([[1, 2, 3]], "A", None)
+        before = contents(tmp_path)
+        plan = get(api, "/api/value-plan", name="Twin", at="[0]", raw="5")
+        assert (plan.status, plan.body["error"]) == (409, "invalid")
+        assert plan.body["message"] == (
+            "'Twin' is produced in more than one place, so there is no one file to set it in"
+        )
+        assert contents(tmp_path) == before
+
+    def test_a_project_that_did_not_load_has_no_dictionary(self, tmp_path) -> None:
+        reply = get(unloaded(tmp_path), "/api/values", name="Anything")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_the_findings_on_its_init_are_carried_and_others_are_not(self, tmp_path: Path) -> None:
+        # examples/demo (the `demo` fixture above) has no finding at all - measured by
+        # TestGraph.test_the_demo_lists_its_modules_and_the_flows_between_them, every module's
+        # count is zero - so this exercises the filter with its own small project instead.
+        # `Bad`'s only bad value (9999, over uint8) files `init-invalid` at exactly
+        # `…definition.init`, the pointer test_finding_routes.py's own "Measured" note pins;
+        # the same declaration, unread and unidentified, also files `unused-output` (at the
+        # bare declaration) and `missing-id` (at `…definition.name`) - neither pointer ends
+        # `.definition.init`, so neither is carried here.
+        #
+        # `Second` is declared beside it, in the same file, with its own bad value: a pointer
+        # ending `.definition.init` is not enough to tell the two objects' findings apart, both
+        # answer at `…interface[N].definition.init` for their own N - fix round 1's own defect,
+        # reproduced here so it stays fixed. `Bad`'s own request must not carry `Second`'s
+        # finding, and `Second`'s must not carry `Bad`'s.
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Bad",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[2],
+                        init=[1, 9999],
+                    ),
+                    declare(
+                        "output",
+                        "Second",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[2],
+                        init=[2, 8888],
+                    ),
+                ),
+            },
+        )
+        first = get(api, "/api/values", name="Bad").body["findings"]
+        assert [(f["check"], f["pointer"]) for f in first] == [
+            ("init-invalid", "component.interface[0].definition.init")
+        ]
+        second = get(api, "/api/values", name="Second").body["findings"]
+        assert [(f["check"], f["pointer"]) for f in second] == [
+            ("init-invalid", "component.interface[1].definition.init")
+        ]
+
+    def test_setting_a_cell_is_previewed_then_written(self, demo) -> None:
+        api, root = demo
+        before = contents(root)
+        preview = get(api, "/api/value-plan", name="CurveA", at="[2]", raw="750").body
+        assert contents(root) == before
+        assert [Path(c["file"]).name for c in preview["changes"]] == ["controller.ddd.json"]
+        assert applied(api, preview, "element 3 of CurveA").status == 200
+        written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
+        assert '"init": [1200, 900, 750, 750, 700, 650]' in written
+
+    def test_a_map_cell_names_its_row_and_column(self, demo) -> None:
+        api, root = demo
+        preview = get(api, "/api/value-plan", name="MapA", at="[1][3]", raw="99").body
+        assert applied(api, preview, "element 2, 4 of MapA").status == 200
+        written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
+        assert "[18, 22, 26, 99, 30, 28]" in written
+
+    def test_a_plan_missing_a_parameter_says_which_it_takes(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/value-plan", name="CurveA")
+        assert reply.status == 400
+        assert reply.body["message"] == "value-plan takes ?name= and ?at= and ?raw="
+
+    def test_a_raw_that_is_not_a_number_is_refused(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/value-plan", name="CurveA", at="[2]", raw="lots")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "'lots' is not a number"
+
+    def test_a_raw_that_is_valid_json_but_not_a_number_is_refused(self, demo) -> None:
+        # `json.loads("true")` parses fine and answers a bool - which is an `int` in python, so
+        # `isinstance(value, int | float)` alone would let it through as 1. `raw` is always a
+        # count (spec 2026-09-23-gui-values-design.md section 4.3), and `true` is not one.
+        api, _ = demo
+        reply = get(api, "/api/value-plan", name="CurveA", at="[2]", raw="true")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "'true' is not a number"
+
+    def test_a_refusal_carries_the_module_s_own_sentence(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/value-plan", name="CurveA", at="[2]", raw="70000")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "70000 does not fit into uint16 (0 .. 65535)"
+
+    def test_a_name_the_project_has_not_is_not_found_for_a_plan(self, demo) -> None:
+        # set_cell raises "not-found" through grid_of, for a name the project has not - unlike
+        # _values, this handler keeps both of set_cell's refusal codes, and this is the only
+        # test reaching the 404 one; without it the status choice's "not-found" arm is untested.
+        api, _ = demo
+        reply = get(api, "/api/value-plan", name="Nope", at="[0]", raw="1")
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+        assert reply.body["message"] == "the project declares no 'Nope'"
+
+    def test_a_project_that_did_not_load_has_nothing_to_plan_a_value_of(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(unloaded(tmp_path), "/api/value-plan", name="Anything", at="[0]", raw="1")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_a_plan_the_engine_refuses_is_a_refusal_the_page_can_act_on(
+        self, demo, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The same pattern as TestPlanningAChangeOfAnInterface's equivalent, over
+        # /api/value-plan's own call to `previewed`.
+        api, _ = demo
+
+        def refuse(*_: object) -> None:
+            raise EditError(UNVERIFIED, "does not read back")
+
+        monkeypatch.setattr("ddd.gui.api.previewed", refuse)
+        reply = get(api, "/api/value-plan", name="CurveA", at="[2]", raw="750")
+        assert (reply.status, reply.body["error"]) == (409, "unverified")

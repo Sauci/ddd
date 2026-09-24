@@ -4,6 +4,7 @@ import type { Locator, Page } from "@playwright/test";
 
 export const CONTROLLER = join("components", "controller.ddd.json");
 export const SENSOR_HUB = join("components", "sensor_hub.ddd.json");
+export const USER_INTERFACE = join("components", "user_interface.ddd.json");
 /** The files of examples/vocabulary the journeys change, in its copy: the component stating its
  * units, and the units file listing them. */
 export const PUMP = "pump.ddd.json";
@@ -113,4 +114,63 @@ export function unstamp(directory: string, file: string, variable: string): Buff
     .replace(new RegExp(`("name": "${variable}"[\\s\\S]*?)\\n\\s*"id": "[^"]*",`), "$1");
   writeFileSync(path, text, "utf8");
   return before;
+}
+
+/** BlockA's own array `init` in the copy's user_interface.ddd.json, replaced from outside with
+ * the values given - part 7's own fixture for a finding that leads to the values grid: an
+ * out-of-range element the analysis reports as `init-invalid`, whose route opens BlockA's own
+ * grid rather than its variable panel. */
+export function writeBlockAInit(directory: string, values: readonly number[]): void {
+  const path = join(directory, USER_INTERFACE);
+  const text = readFileSync(path, "utf8").replace(
+    /("name": "BlockA"[\s\S]*?"init": )\[[\s\S]*?\]/,
+    `$1${JSON.stringify(values)}`,
+  );
+  writeFileSync(path, text, "utf8");
+}
+
+/** CurveA made to name a scalar type instead of stating its own storage, in the copy: the type
+ * declared on Controller itself, and the `datatype`, `unit` and `conversion` taken off the
+ * declaration, which the loader refuses beside a `typename`. Measured on the copy this writes:
+ * the project loads with no finding at all and CurveA resolves exactly as it did - uint16, ms,
+ * x0.01, the same six values, the same producing file - so the Shape column must keep offering
+ * it. Nothing in examples/ has this shape, which is how it was taken away unnoticed.
+ *
+ * Written whole rather than patched: this changes what the declaration is made of, not one
+ * value inside it, and no journey using it applies an edit whose hunks would move. */
+export function typeCurveA(directory: string): void {
+  const path = join(directory, CONTROLLER);
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  data.component.types = [
+    {
+      type: "scalar",
+      name: "Millis_t",
+      description: "A duration as every component of this project agrees to see it",
+      datatype: "uint16",
+      unit: "ms",
+      conversion: { factor: 0.01 },
+      limits: { min: 0, max: 655.35 },
+    },
+  ];
+  const curve = data.component.interface.find(
+    (declaration: { definition: { name: string } }) => declaration.definition.name === "CurveA",
+  ).definition;
+  for (const key of ["datatype", "unit", "conversion"]) delete curve[key];
+  curve.typename = "Millis_t";
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
+/** BlockA given three dimensions, and an init nested to match with one value over uint8: a
+ * shape no grid draws, saved from outside the page the way every other drift here is. Legal
+ * DDD - the loader takes it and only `init-invalid` is reported - and the one shaped object of
+ * examples/demo whose declaration is easy to widen without touching anything that reads it. */
+export function widenBlockA(directory: string): void {
+  const path = join(directory, USER_INTERFACE);
+  const text = readFileSync(path, "utf8")
+    .replace(/("name": "BlockA"[\s\S]*?"dimensions": )\[[^\]]*\]/, "$1[2, 2, 2]")
+    .replace(
+      /("name": "BlockA"[\s\S]*?"init": )\[[\s\S]*?\]\s*(?=,\s*\n)/,
+      "$1[[[0, 12], [28, 52]], [[84, 124], [180, 9999]]]",
+    );
+  writeFileSync(path, text, "utf8");
 }

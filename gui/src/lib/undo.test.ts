@@ -11,6 +11,7 @@ import {
   undoButton,
   undoConsequence,
   unitLabel,
+  valueLabel,
 } from "./undo";
 
 const MISSING_ID: Finding = {
@@ -59,6 +60,11 @@ describe("what an edit is called", () => {
 
   it("names a declaration taken out of a component's interface", () => {
     expect(removeLabel("ValueB", "Controller")).toBe("removing ValueB from Controller");
+  });
+
+  it("names the element of an object's values that was set", () => {
+    expect(valueLabel("CurveA", 0, 2, [6])).toBe("element 3 of CurveA");
+    expect(valueLabel("MapA", 1, 3, [4, 6])).toBe("element 2, 4 of MapA");
   });
 
   it("names the declaration an identity was given to", () => {

@@ -318,6 +318,18 @@ test("no page reports a violation of its content security policy", async ({ page
   // The type's own entry and the declaration naming it both change: two hunks, one file.
   await expect(diagnosis.locator(".hunk")).toHaveCount(2);
 
+  // The values grid (part 8), on the component page too - visited here for the same reason as
+  // Types above, while the project's own tabs are still there to follow it from.
+  await page.getByRole("link", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await expect(page.getByRole("textbox", { name: "element 1" })).toHaveValue("12");
+  await page.getByRole("button", { name: "Back to Controller" }).click();
+
+  // Back on the component page, which carries no tabs of its own - the same reason the add
+  // panel section below returns through the masthead before its own "Table" click.
+  await page.getByRole("button", { name: "DemoDevice" }).click();
+
   // The add panel (part 7), on the component page. Opened and filled far enough to draw its
   // preview - the panel's own chooser, its consequence and its hunks are the three things a
   // policy would otherwise catch - then closed, so the walk below starts where it did.

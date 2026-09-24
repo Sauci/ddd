@@ -16,6 +16,7 @@ import type {
   UndoReply,
   UnitReply,
   UnitsReply,
+  ValuesReply,
   VariableReply,
 } from "./types";
 
@@ -212,6 +213,26 @@ export const getUndo = (fetchImpl: Fetch = fetch) =>
 
 export const postUndo = (at: number, fetchImpl: Fetch = fetch) =>
   request<UndoReply>("/api/undo", post({ at }), fetchImpl);
+
+export const getValues = (name: string, fetchImpl: Fetch = fetch) =>
+  request<ValuesReply>(`/api/values?name=${encodeURIComponent(name)}`, {}, fetchImpl);
+
+/** One cell's change, as `GET /api/value-plan` takes it. */
+export interface ValuePlanRequest {
+  name: string;
+  /** `[2]` or `[1][3]` - the element, as a json pointer suffix. */
+  at: string;
+  /** The raw count to store, already converted from what was typed. */
+  raw: number;
+}
+
+export const getValuePlan = (plan: ValuePlanRequest, fetchImpl: Fetch = fetch) =>
+  request<PlanReply>(
+    `/api/value-plan?name=${encodeURIComponent(plan.name)}` +
+      `&at=${encodeURIComponent(plan.at)}&raw=${encodeURIComponent(String(plan.raw))}`,
+    {},
+    fetchImpl,
+  );
 
 function post(body: unknown): RequestInit {
   return {

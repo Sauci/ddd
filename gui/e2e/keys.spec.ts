@@ -123,10 +123,17 @@ test("a change refused as stale can be applied again once the analysis has caugh
 }) => {
   const panel = await openPanel(page, gui.address, "ValueA");
   await panel.getByRole("row", { name: /^limits/ }).click();
-  // The file changes under the page: the preview it is holding is against the old bytes.
-  driftMax(gui.directory, CONTROLLER, "ValueA", 60);
   await panel.getByLabel("Max").fill("50");
-  await panel.getByRole("button", { name: /^Apply to/ }).click();
+  const apply = panel.getByRole("button", { name: /^Apply to/ });
+  await expect(apply).toBeEnabled();
+
+  // The file changes under the page, between the preview it is holding and the press that sends
+  // it, so that preview is against the old bytes. The order is the whole test: the session polls
+  // once a second (`session.py`, `poll_interval`), so anything awaited between the change and the
+  // press is a chance for the page to catch up first and for there to be nothing stale left to
+  // refuse - which is how this failed on a CI runner and never here.
+  driftMax(gui.directory, CONTROLLER, "ValueA", 60);
+  await apply.click();
   await expect(panel.getByText("A file changed on disk")).toBeVisible();
 
   // The watcher catches up within a second; the sentence goes and Apply works.

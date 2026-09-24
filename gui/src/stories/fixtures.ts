@@ -3,6 +3,7 @@ import type {
   DeclarableReply,
   Finding,
   FixReply,
+  GridAxis,
   KindForm,
   PlanReply,
   ProjectUnit,
@@ -13,6 +14,7 @@ import type {
   UndoPreview,
   UnitReply,
   UnitsReply,
+  ValuesReply,
   VariableKeyCarried,
   VariableKeyOffer,
   VariableKeyValue,
@@ -1335,4 +1337,205 @@ export const DECLARABLE: DeclarableReply = {
   // Measured: `examples/demo` declares no constants, so a dimension of BlockC is a number
   // typed and nothing else. `DimensionsField`'s own stories carry the other case.
   constants: [],
+};
+
+// ValuesGridView (docs/superpowers/plans/2026-09-23-gui-values.md, task 5): GET /api/values
+// answers, measured off the running server against examples/demo rather than read off its files
+// directly - a file's own conversion is not what it reads back as once resolved (see task-5-
+// brief.md's own prerequisites table, and objectValues.test.ts's own CurveA/MapA/BlockA answers,
+// which these mirror field for field under this file's own C:/work/demo paths).
+
+/** AxisA: Hz, ×0.25, the six points CurveA, CurveB and MapA's x_axis all read through - and, for
+ * `position: "axis"`, MapA's y_axis is never this: an axis's own reference is never an axis. */
+function axisA(position: string): GridAxis {
+  return {
+    position,
+    name: "AxisA",
+    unit: "Hz",
+    breakpoints: [0, 3200, 6400, 12800, 19200, 32000],
+    conversion: { kind: "linear", factor: 0.25, offset: 0 },
+  };
+}
+
+/** AxisB: %, ×0.5, MapA's own y_axis alone. */
+function axisB(position: string): GridAxis {
+  return {
+    position,
+    name: "AxisB",
+    unit: "%",
+    breakpoints: [0, 60, 140, 200],
+    conversion: { kind: "linear", factor: 0.5, offset: 0 },
+  };
+}
+
+/** CurveA: one row against AxisA, both linear - ACurveAgainstItsAxis and ACurveInRawCounts'
+ * shared fixture, the raw/physical toggle being the only thing that differs between them. Index
+ * 2 (currently 800) is ACellMidChange's own edit, to 750. */
+export const VALUES_CURVE: ValuesReply = {
+  revision: 1,
+  name: "CurveA",
+  kind: "curve",
+  datatype: "uint16",
+  unit: "ms",
+  conversion: { kind: "linear", factor: 0.01, offset: 0 },
+  minimum: 0,
+  maximum: 655.35,
+  shape: [6],
+  rows: [[1200, 900, 800, 750, 700, 650]],
+  stated: "array",
+  axes: [axisA("axis")],
+  owner: "Controller",
+  file: CONTROLLER,
+  findings: [],
+};
+
+/** MapA: four rows of six, x_axis AxisA and y_axis AxisB - AMapWithBothHeaders exists to prove
+ * its row labels are AxisB's own readings (0, 30, 70, 100 physical) and not indices. */
+export const VALUES_MAP: ValuesReply = {
+  revision: 1,
+  name: "MapA",
+  kind: "map",
+  datatype: "sint8",
+  unit: "%",
+  conversion: { kind: "linear", factor: 0.5, offset: 0 },
+  minimum: -64,
+  maximum: 63.5,
+  shape: [4, 6],
+  rows: [
+    [20, 24, 28, 30, 32, 30],
+    [18, 22, 26, 28, 30, 28],
+    [12, 16, 20, 22, 24, 22],
+    [6, 10, 14, 16, 18, 16],
+  ],
+  stated: "array",
+  axes: [axisA("x_axis"), axisB("y_axis")],
+  owner: "Controller",
+  file: CONTROLLER,
+  findings: [],
+};
+
+/** BlockA: one row of eight against no axis at all, and the identity conversion, so physical and
+ * raw read the same - AValueBlockOverIndices' own column header is plain indices. */
+export const VALUES_BLOCK: ValuesReply = {
+  revision: 1,
+  name: "BlockA",
+  kind: "value_block",
+  datatype: "uint8",
+  unit: "",
+  conversion: { kind: "identity" },
+  minimum: 0,
+  maximum: 255,
+  shape: [8],
+  rows: [[0, 12, 28, 52, 84, 124, 180, 255]],
+  stated: "array",
+  axes: [],
+  owner: "UserInterface",
+  file: USER_INTERFACE,
+  findings: [],
+};
+
+/** AxisA drawn as an object in its own right, rather than as CurveA's or MapA's own axis: it
+ * carries no axis of its own, so AnAxisOnItsOwn's column header is plain indices too - what makes
+ * it worth drawing beside AValueBlockOverIndices rather than redundant with it. */
+export const VALUES_AXIS: ValuesReply = {
+  revision: 1,
+  name: "AxisA",
+  kind: "axis",
+  datatype: "uint16",
+  unit: "Hz",
+  conversion: { kind: "linear", factor: 0.25, offset: 0 },
+  minimum: 0,
+  maximum: 16383.75,
+  shape: [6],
+  rows: [[0, 3200, 6400, 12800, 19200, 32000]],
+  stated: "array",
+  axes: [],
+  owner: "Controller",
+  file: CONTROLLER,
+  findings: [],
+};
+
+/** CurveB: one value, 200, standing for all six cells against AxisA - AScalarInitStatedOnce's
+ * own "stated once" note. */
+export const VALUES_CURVE_B: ValuesReply = {
+  revision: 1,
+  name: "CurveB",
+  kind: "curve",
+  datatype: "uint8",
+  unit: "%",
+  conversion: { kind: "linear", factor: 0.5, offset: 0 },
+  minimum: 0,
+  maximum: 127.5,
+  shape: [6],
+  rows: [[200, 200, 200, 200, 200, 200]],
+  stated: "scalar",
+  axes: [axisA("axis")],
+  owner: "UserInterface",
+  file: USER_INTERFACE,
+  findings: [],
+};
+
+/** ValueD: SensorHub's own real absent init - a measurement declared with `dimensions: [8]` and
+ * no `init` at all (sensor_hub.ddd.json), so the startup code zeroes it - AnAbsentInitGreyed's
+ * own "nothing is stated" note. No unit, the identity conversion, and no axis: a plain shaped
+ * measurement, not a curve or a map. */
+export const VALUES_VALUE_D: ValuesReply = {
+  revision: 1,
+  name: "ValueD",
+  kind: "measurement",
+  datatype: "uint16",
+  unit: "",
+  conversion: { kind: "identity" },
+  minimum: 0,
+  maximum: 65535,
+  shape: [8],
+  rows: [[0, 0, 0, 0, 0, 0, 0, 0]],
+  stated: "none",
+  axes: [],
+  owner: "SensorHub",
+  file: SENSOR_HUB,
+  findings: [],
+};
+
+/** SoftwareLabel: initialised with text ("V1.2.3", `conversion: { kind: "string" }`) rather than
+ * a grid at all - ATextInit's own line, with no grid under it. */
+export const VALUES_SOFTWARE_LABEL: ValuesReply = {
+  revision: 1,
+  name: "SoftwareLabel",
+  kind: "value_block",
+  datatype: "uint8",
+  unit: "",
+  conversion: { kind: "string" },
+  minimum: 0,
+  maximum: 255,
+  shape: [16],
+  rows: [],
+  stated: "text",
+  axes: [],
+  owner: "Controller",
+  file: CONTROLLER,
+  findings: [],
+};
+
+/** CurveA's own element [2] (controller.ddd.json:205, currently 800, inline with the rest of its
+ * row) set to 750 - ACellMidChange's preview, the same cell objectValues.test.ts's cellSentence
+ * test pins (750 raw reads 7.5 ms). */
+export const CURVE_CELL_PLAN: PlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: CONTROLLER,
+      fingerprint: "b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8",
+      operations: [
+        { op: "set", pointer: "component.interface[12].definition.init[2]", raw: "750" },
+      ],
+      hunks: [
+        {
+          line: 205,
+          before: ['          "init": [1200, 900, 800, 750, 700, 650],'],
+          after: ['          "init": [1200, 900, 750, 750, 700, 650],'],
+        },
+      ],
+    },
+  ],
 };

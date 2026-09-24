@@ -17,6 +17,8 @@ import {
   getUnit,
   getUnitPlan,
   getUnits,
+  getValuePlan,
+  getValues,
   getVariable,
   openProject,
   postEdit,
@@ -133,6 +135,8 @@ describe("requests to the server", () => {
     );
     await getUndo(fetchImpl);
     await postUndo(3, fetchImpl);
+    await getValues("CurveA", fetchImpl);
+    await getValuePlan({ name: "CurveA", at: "[2]", raw: 750 }, fetchImpl);
     expect(fetchImpl.mock.calls).toEqual([
       ["/api/session", { credentials: "same-origin" }],
       ["/api/projects", { credentials: "same-origin" }],
@@ -208,6 +212,8 @@ describe("requests to the server", () => {
           body: '{"at":3}',
         },
       ],
+      ["/api/values?name=CurveA", { credentials: "same-origin" }],
+      ["/api/value-plan?name=CurveA&at=%5B2%5D&raw=750", { credentials: "same-origin" }],
     ]);
   });
 });

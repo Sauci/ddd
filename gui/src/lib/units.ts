@@ -30,7 +30,7 @@ export interface HunkLine {
   text: string;
 }
 
-const NO_UNIT = "no unit";
+export const NO_UNIT = "no unit";
 
 /** The string a json text spells, or `null`: absent, empty, not json, or not a string at all. */
 export function textOf(raw: string | undefined): string | null {

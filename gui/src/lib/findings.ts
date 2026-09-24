@@ -110,6 +110,9 @@ export function routeOf(finding: Finding): Route | null {
   if (route.kind === "variable" && route.name !== null) {
     return { page: "component", file: finding.file, variable: route.name };
   }
+  if (route.kind === "values" && route.name !== null) {
+    return { page: "component", file: finding.file, variable: route.name, view: "values" };
+  }
   if (route.kind === "type" && route.name !== null) {
     return { page: "project", view: "types", type: route.name };
   }

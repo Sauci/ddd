@@ -346,6 +346,13 @@ tr.changing td {
   font-size: var(--text-small);
   font-weight: 600;
 }
+/* ValuesGridView's own grid (spec 5.2): every header and cell is a number (or blank), so the
+   whole table reads right aligned, like a spreadsheet's - placed ahead of the row-selection and
+   error tints below so their own, more specific selectors keep winning over this one. */
+.values-table .react-aria-Column,
+.values-table .react-aria-Cell {
+  text-align: right;
+}
 .react-aria-Row[data-selected] .react-aria-Cell {
   background: var(--accent-ground);
 }
@@ -517,6 +524,52 @@ tr.changing td {
   flex-direction: column;
   gap: var(--space-3);
   margin-top: var(--space-3);
+}
+
+/* ValuesGridView (spec 5.2): the summary line under the heading, the raw/physical toggle, and
+   the grid itself - React Aria's Table again, a text field per cell rather than plain text,
+   right aligned and set in the page's own monospace like a spreadsheet's, with an absent init's
+   zeros read in the same quiet ink a note beside them already uses. */
+.values-meta {
+  margin: 0 0 var(--space-2);
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
+/* The x axis's own name above a map's columns - spec 5.2's `AxisA (Hz) →`, where the corner
+   under it is taken by the y axis's. The two edges of a grid are two different objects with two
+   different units, and these labels are the only thing that says which belongs to which. */
+.values-axis {
+  margin: 0 0 var(--space-1);
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
+.values-toggle {
+  display: flex;
+  gap: var(--space-2);
+  border: 0;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+}
+.values-table {
+  margin-bottom: var(--space-2);
+}
+.values-table input {
+  width: 5em;
+  padding: var(--cell);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  font-family: var(--mono);
+  text-align: right;
+}
+.values-table input:disabled {
+  background: var(--ground);
+  color: var(--ink-quiet);
+}
+.values-table input.unstated {
+  color: var(--ink-quiet);
 }
 
 /* Ladle only: a row of widgets with a gap, for a story that shows several at once. */

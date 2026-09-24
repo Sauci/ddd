@@ -287,6 +287,88 @@ class TestRoutes:
             is None
         )
 
+    def test_a_finding_on_an_init_leads_to_that_object_s_values(
+        self, tmp_path: Path, cache
+    ) -> None:
+        # Measured: the analysis files an init-invalid at `…definition.init`, the declaration's
+        # own pointer with `.definition.init` after it and no element index.
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Bad",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[2],
+                        init=[1, 9999],
+                    ),
+                )
+            },
+        )
+        route = route_of(
+            "init-invalid",
+            tmp_path / "a.ddd.json",
+            "component.interface[0].definition.init",
+            "component",
+            True,
+            cache,
+        )
+        assert route == Route("values", "Bad")
+
+    def test_a_finding_elsewhere_in_the_declaration_still_leads_to_the_variable(
+        self, tmp_path: Path, cache
+    ) -> None:
+        # The init route must not swallow its neighbours: `missing-id` is filed at
+        # `…definition.name` on the same declaration and still opens the variable's panel.
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Bad",
+                        kind="value_block",
+                        datatype="uint8",
+                        dimensions=[2],
+                        init=[1, 2],
+                    ),
+                )
+            },
+        )
+        route = route_of(
+            "missing-id",
+            tmp_path / "a.ddd.json",
+            "component.interface[0].definition.name",
+            "component",
+            True,
+            cache,
+        )
+        assert route == Route("variable", "Bad")
+
+    def test_a_finding_on_an_init_the_file_no_longer_holds_leads_nowhere(
+        self, tmp_path: Path
+    ) -> None:
+        # The same "moved on since" case WITHIN_DECLARATION already has its own test for
+        # (test_a_declaration_the_file_no_longer_holds_leads_nowhere above): the analysis read
+        # the file: the pointer describes where the declaration was then, and index 7 is past
+        # the file's one declaration, so `value_at` answers no name to route by.
+        root = built(
+            tmp_path, **{"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}
+        )
+        route = route_of(
+            "init-invalid",
+            root / "a.ddd.json",
+            "component.interface[7].definition.init",
+            "component",
+            True,
+            {},
+        )
+        assert route is None
+
     def test_an_unknown_unit_whose_pointer_holds_no_string_leads_nowhere(
         self, tmp_path: Path
     ) -> None:

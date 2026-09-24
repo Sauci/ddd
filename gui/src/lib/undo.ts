@@ -1,6 +1,7 @@
 import type { TypePlanRequest, UnitPlanRequest } from "../api/client";
 import type { Finding, State, UndoneChange } from "../api/types";
 import type { Mode } from "./declarations";
+import { elementLabel } from "./objectValues";
 import { baseName, type ShownChange } from "./units";
 
 /** The longest label `POST /api/edit` takes; see `Changes.label` in src/ddd/gui/contract.py. */
@@ -41,6 +42,13 @@ export function declareLabel(mode: Mode, typed: string, component: string): stri
  * the other way. */
 export function removeLabel(name: string, component: string): string {
   return fitted(`removing ${name} from ${component}`);
+}
+
+/** What setting one element of an object's values is called when it comes to be undone - the
+ * cell `elementLabel` phrases and the object it belongs to: "element 3 of CurveA", "element 2,
+ * 4 of MapA". */
+export function valueLabel(name: string, row: number, column: number, shape: number[]): string {
+  return fitted(`${elementLabel(row, column, shape)} of ${name}`);
 }
 
 /**

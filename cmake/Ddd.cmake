@@ -40,7 +40,7 @@ find_program(DDD_EXECUTABLE NAMES ddd DOC "The ddd data dictionary tool")
 
 # The release this module belongs to, spelled the way "ddd --version" spells it. Bumped with every other place the
 # release states its version; tests/test_documentation.py compares it with the package's own.
-set(DDD_MODULE_VERSION "0.10.0")
+set(DDD_MODULE_VERSION "0.11.0")
 
 # The module and the tool it drives have to be one release. "ddd cmake-dir" and the header above invite a project to
 # copy this file into its own tree, where it then sits beside whichever ddd the environment happens to have - and the

@@ -983,11 +983,19 @@ one object’s grid shows - its kind, datatype, unit, conversion, resolved limit
 values and the breakpoints of the axes it is laid against - and what changing one cell of
 it takes: an edit-engine <code class="docutils literal notranslate"><span class="pre">set</span></code> at the element’s own pointer where the file already holds
 an array, or of the whole <code class="docutils literal notranslate"><span class="pre">init</span></code> where it states one value for every element or none at
-all, written into the file that produces it either way. A shape of more than two dimensions
-is refused rather than drawn a dimension short, a grid being rows of cells and nothing
-deeper; and a name that is not produced by exactly one declaration answers its grid
-read-only, because the values and the owner are the analysis’s own producer’s and
-<code class="docutils literal notranslate"><span class="pre">Index.producers</span></code> need not name that same declaration first.</p>
+all, written into the file that produces it either way. <code class="docutils literal notranslate"><span class="pre">set_values</span></code> sits beside
+<code class="docutils literal notranslate"><span class="pre">set_cell</span></code> for a whole table pasted at once. The shape is checked here too, because
+the page that already checked it is not this function’s only caller, and every element
+is weighed by the same <code class="docutils literal notranslate"><span class="pre">_acceptable</span></code>, a refusal naming up to five that fail - each
+with its own reason, since a block can fail two checks at once - and, beyond that, how
+many more, rather than stopping at the first. It always plans one
+<code class="docutils literal notranslate"><span class="pre">set</span></code> of the whole <code class="docutils literal notranslate"><span class="pre">init</span></code> regardless of what the file held before - one line for a
+curve, whose <code class="docutils literal notranslate"><span class="pre">init</span></code> sits on a line of its own, and one line per row for a map, whose
+<code class="docutils literal notranslate"><span class="pre">init</span></code> is written a row to a line. A shape of more than two dimensions is refused
+rather than drawn a dimension short, a grid being rows of cells and nothing deeper; and
+a name that is not produced by exactly one declaration answers its grid read-only,
+because the values and the owner are the analysis’s own
+producer’s and <code class="docutils literal notranslate"><span class="pre">Index.producers</span></code> need not name that same declaration first.</p>
 <p>The edit engine learnt one thing for adoption: a change whose <code class="docutils literal notranslate"><span class="pre">fingerprint</span></code> is <code class="docutils literal notranslate"><span class="pre">null</span></code>
 creates its file, one <code class="docutils literal notranslate"><span class="pre">set</span></code> of the whole document at the root pointer, and is refused as
 <code class="docutils literal notranslate"><span class="pre">stale</span></code> if the file exists by the time the edit is made. It is staged and renamed into

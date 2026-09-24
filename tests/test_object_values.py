@@ -665,7 +665,7 @@ class TestChangingOne:
 class TestSetValues:
     def test_a_curve_is_written_whole_in_one_operation(self, demo) -> None:
         dictionary, built = demo
-        plan = set_values(dictionary, built, "CurveA", [[1300, 950, 850, 800, 750, 700]], {})
+        plan = set_values(dictionary, built, "CurveA", [[1300, 950, 850, 800, 750, 700]])
         (operation,) = plan.edits[0].operations
         assert operation.pointer.endswith(".definition.init")
         assert json.loads(operation.raw or "") == [1300, 950, 850, 800, 750, 700]
@@ -681,20 +681,22 @@ class TestSetValues:
             [13, 14, 15, 16, 17, 18],
             [19, 20, 21, 22, 23, 24],
         ]
-        plan = set_values(dictionary, built, "MapA", rows, {})
+        plan = set_values(dictionary, built, "MapA", rows)
         (operation,) = plan.edits[0].operations
         assert json.loads(operation.raw or "") == rows
 
     def test_a_block_of_the_wrong_shape_says_what_it_wanted(self, demo) -> None:
         dictionary, built = demo
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "CurveA", [[1, 2, 3]], {})
+            set_values(dictionary, built, "CurveA", [[1, 2, 3]])
         assert refused.value.code == "invalid"
         assert refused.value.message == "'CurveA' takes 1 row of 6 values, and this is 1 row of 3"
 
     def test_every_value_the_datatype_cannot_hold_is_named(self, demo) -> None:
         # sint8 is -128 … 127, so three of MapA's six are out of range, and a reader fixing a
-        # pasted row wants the list rather than one round trip per number.
+        # pasted row wants the list rather than one round trip per number. Three offenders
+        # failing the same way, so the same sentence is said three times - the shape that
+        # repeats, and the price of the one below, where it would be false said once.
         dictionary, built = demo
         rows = [
             [200, 24, 300, 30, 32, 400],
@@ -703,16 +705,39 @@ class TestSetValues:
             [6, 10, 14, 16, 18, 16],
         ]
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "MapA", rows, {})
+            set_values(dictionary, built, "MapA", rows)
         assert refused.value.message == (
-            "element 1, 1, element 1, 3 and element 1, 6 of 'MapA' are refused: "
-            "200 does not fit into sint8 (-128 .. 127)"
+            "3 elements of 'MapA' are refused: "
+            "element 1, 1 because 200 does not fit into sint8 (-128 .. 127); "
+            "element 1, 3 because 300 does not fit into sint8 (-128 .. 127); "
+            "element 1, 6 because 400 does not fit into sint8 (-128 .. 127)"
+        )
+
+    def test_each_offender_is_given_its_own_reason_not_the_first_s(self, demo) -> None:
+        # A physical column pasted into a grid left in raw: 200 is out of sint8's range and 1.5
+        # is in it and fractional, two different checks in one block. Lending the first's reason
+        # to both named 1.5 and then said something false about it - the reader fixes the one
+        # number that is not wrong, pastes again, and meets the other refusal.
+        dictionary, built = demo
+        rows = [
+            [200, 1.5, 1, 1, 1, 1],
+            [18, 22, 26, 28, 30, 28],
+            [12, 16, 20, 22, 24, 22],
+            [6, 10, 14, 16, 18, 16],
+        ]
+        with pytest.raises(ValueRefusalError) as refused:
+            set_values(dictionary, built, "MapA", rows)
+        assert refused.value.message == (
+            "2 elements of 'MapA' are refused: "
+            "element 1, 1 because 200 does not fit into sint8 (-128 .. 127); "
+            "element 1, 2 because 1.5 is written as a fractional number, but 'MapA' has the "
+            "integer datatype sint8"
         )
 
     def test_a_name_the_project_has_not_is_not_found(self, demo) -> None:
         dictionary, built = demo
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "Nope", [[1]], {})
+            set_values(dictionary, built, "Nope", [[1]])
         assert refused.value.code == "not-found"
 
     def test_an_object_no_single_declaration_produces_is_refused(self, tmp_path) -> None:
@@ -754,17 +779,25 @@ class TestSetValues:
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
         try:
             with pytest.raises(ValueRefusalError) as refused:
-                set_values(revision.dictionary, built, "Twice", [[1, 2, 3]], {})
+                set_values(revision.dictionary, built, "Twice", [[1, 2, 3]])
+            with pytest.raises(ValueRefusalError) as cell:
+                set_cell(revision.dictionary, built, "Twice", "[0]", 1, {})
         finally:
             session.stop()
-        assert "more than one" in refused.value.message
+        # Word for word what set_cell refuses the same grid with, which is what
+        # _no_single_producer's own docstring claims and what `readOnlyNote` shows on the page:
+        # one condition, one sentence, wherever a reader meets it.
+        assert refused.value.message == (
+            "'Twice' is produced in more than one place, so there is no one file to set it in"
+        )
+        assert cell.value.message == refused.value.message
 
     def test_text_is_no_grid_to_paste_into_either(self, demo) -> None:
         # set_cell's own text refusal, checked first here too - a table has nowhere to land on
         # an object whose producer writes text.
         dictionary, built = demo
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "SoftwareLabel", [[1]], {})
+            set_values(dictionary, built, "SoftwareLabel", [[1]])
         assert refused.value.message == "'SoftwareLabel' is initialised with text, not with a grid"
 
     def test_a_shapeless_object_has_no_table_to_paste_into(self, demo) -> None:
@@ -772,7 +805,7 @@ class TestSetValues:
         # a value, so no table of them either.
         dictionary, built = demo
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "ValueA", [[1]], {})
+            set_values(dictionary, built, "ValueA", [[1]])
         assert refused.value.message == "'ValueA' has no cell for a value to sit in"
 
     def test_a_value_nothing_produces_cannot_take_a_pasted_table(self, tmp_path) -> None:
@@ -794,7 +827,7 @@ class TestSetValues:
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
         try:
             with pytest.raises(ValueRefusalError) as refused:
-                set_values(revision.dictionary, built, "Orphan", [[1, 2]], {})
+                set_values(revision.dictionary, built, "Orphan", [[1, 2]])
         finally:
             session.stop()
         assert refused.value.message == "nothing produces 'Orphan', so it has no values to set"
@@ -806,14 +839,16 @@ class TestSetValues:
         # singular verb - "is refused", not "are".
         dictionary, built = demo
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "CurveA", [[1200, 900, 800, 750, 700, 70000]], {})
+            set_values(dictionary, built, "CurveA", [[1200, 900, 800, 750, 700, 70000]])
         assert refused.value.message == (
             "element 6 of 'CurveA' is refused: 70000 does not fit into uint16 (0 .. 65535)"
         )
 
     def test_more_than_five_offenders_says_how_many_more(self, demo) -> None:
-        # The clause nothing reached before: five named, then how many more - MapA's own six
-        # columns are exactly one past the five _all_of_them shows by name.
+        # Five named, then how many more - MapA's own six columns are exactly one past the five
+        # _all_of_them shows by name. "and 1 more" is the sentence's only conjunction and sits
+        # at its end, where nothing else is joining a list: the labels' own commas are inside
+        # clauses the semicolons keep apart.
         dictionary, built = demo
         rows = [
             [200, 200, 200, 200, 200, 200],
@@ -822,10 +857,12 @@ class TestSetValues:
             [6, 10, 14, 16, 18, 16],
         ]
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "MapA", rows, {})
+            set_values(dictionary, built, "MapA", rows)
+        says = "200 does not fit into sint8 (-128 .. 127)"
         assert refused.value.message == (
-            "element 1, 1, element 1, 2, element 1, 3, element 1, 4 and element 1, 5, "
-            "and 1 more, of 'MapA' are refused: 200 does not fit into sint8 (-128 .. 127)"
+            f"6 elements of 'MapA' are refused: element 1, 1 because {says}; "
+            f"element 1, 2 because {says}; element 1, 3 because {says}; "
+            f"element 1, 4 because {says}; element 1, 5 because {says}; and 1 more"
         )
 
     def test_every_refusal_kind_is_quoted_whole_not_reshaped(self, tmp_path) -> None:
@@ -868,14 +905,15 @@ class TestSetValues:
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
         try:
             with pytest.raises(ValueRefusalError) as fractional:
-                set_values(revision.dictionary, built, "Ints", [[1.5, 2.5]], {})
+                set_values(revision.dictionary, built, "Ints", [[1.5, 2.5]])
             with pytest.raises(ValueRefusalError) as boolean:
-                set_values(revision.dictionary, built, "Flags", [[2]], {})
+                set_values(revision.dictionary, built, "Flags", [[2]])
         finally:
             session.stop()
         assert fractional.value.message == (
-            "element 1 and element 2 of 'Ints' are refused: 1.5 is written as a fractional "
-            "number, but 'Ints' has the integer datatype uint8"
+            "2 elements of 'Ints' are refused: element 1 because 1.5 is written as a fractional "
+            "number, but 'Ints' has the integer datatype uint8; element 2 because 2.5 is "
+            "written as a fractional number, but 'Ints' has the integer datatype uint8"
         )
         assert boolean.value.message == "element 1 of 'Flags' is refused: 2 is not a valid bool"
 
@@ -885,8 +923,22 @@ class TestSetValues:
         # coverage gate could not see the gap either.
         dictionary, built = demo
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "MapA", [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]], {})
+            set_values(dictionary, built, "MapA", [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]])
         assert refused.value.message == "'MapA' takes 4 rows of 6 values, and this is 2 rows of 6"
+
+    def test_a_ragged_block_is_told_that_its_rows_differ(self, demo) -> None:
+        # Measured against `wanted` alone this used to read "'MapA' takes 4 rows of 6 values,
+        # and this is 4 rows of 6" - the same shape twice, since `given`'s width is the first
+        # row's and the short row is further down. The page refuses a ragged block before it
+        # ever asks, and `_folded` cannot answer one, so this is what the third caller the
+        # docstring invites would be told.
+        dictionary, built = demo
+        rows = [[1, 2, 3, 4, 5, 6], [1, 2, 3], [1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5, 6]]
+        with pytest.raises(ValueRefusalError) as refused:
+            set_values(dictionary, built, "MapA", rows)
+        assert refused.value.message == (
+            "'MapA' takes 4 rows of 6 values, and this block's rows are not all the same length"
+        )
 
     def test_no_rows_at_all_is_a_shape_mismatch_too(self, demo) -> None:
         # `given`'s own ternary: an empty `rows` is falsy, so `len(rows[0]) if rows else 0`
@@ -894,7 +946,7 @@ class TestSetValues:
         # answers an empty list of rows.
         dictionary, built = demo
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "CurveA", [], {})
+            set_values(dictionary, built, "CurveA", [])
         assert refused.value.message == "'CurveA' takes 1 row of 6 values, and this is 0 rows of 0"
 
 

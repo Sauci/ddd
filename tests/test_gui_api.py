@@ -2701,9 +2701,9 @@ class TestTheValuesGrid:
         )
         plans = get(api, "/api/values-plan", name="Twin", raw="1,2,3")
         assert (plans.status, plans.body["error"]) == (409, "invalid")
-        assert plans.body["message"] == (
-            "more than one declaration produces 'Twin', so this cannot tell which file to write"
-        )
+        # The same sentence as the cell's above, not a second spelling of the same condition:
+        # a reader who pastes and a reader who types are told the one thing that is true.
+        assert plans.body["message"] == plan.body["message"]
         assert contents(tmp_path) == before
 
     def test_a_project_that_did_not_load_has_no_dictionary(self, tmp_path) -> None:

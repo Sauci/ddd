@@ -933,7 +933,7 @@ class Api:
             return _error(409, UNREADABLE, _NOTHING_RESOLVED)
         try:
             flat = [_number(piece) for piece in counts.split(",")]
-            plan = set_values(dictionary, built, name, _folded(flat, dictionary, name), {})
+            plan = set_values(dictionary, built, name, _folded(flat, dictionary, name))
         except ValueRefusalError as refused:
             # Both codes, as `_value_plan` above: a name the project has not, and every other
             # refusal. A statement rather than a ternary, so the gate can see both arms.

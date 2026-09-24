@@ -310,13 +310,16 @@ def set_values(
     built: Index,
     name: str,
     rows: Sequence[Sequence[float]],
-    cache: dict[Path, Document],
 ) -> ValuePlan:
     """What replacing every value of an object takes: one ``set`` of the whole ``init``.
 
     The whole table at once, rather than a cell at a time, is what makes a pasted calibration one
     edit and one entry in the undo stack. The shape is checked here as well as on the page,
     because the page is not the only thing that can call this.
+
+    No document cache is taken, unlike :func:`set_cell`: that one reads whether the file already
+    holds an array, to decide between setting one element and setting the whole ``init``, and
+    this one always writes the whole ``init`` - so there is nothing for it to read.
     """
     grid = grid_of(dictionary, built, name)
     if grid.stated == "text":
@@ -328,7 +331,17 @@ def set_values(
         raise ValueRefusalError("invalid", _no_single_producer(name, sites))
     wanted = (1, grid.shape[0]) if len(grid.shape) == 1 else (grid.shape[0], grid.shape[1])
     given = (len(rows), len(rows[0]) if rows else 0)
-    if given != wanted or any(len(row) != wanted[1] for row in rows):
+    # Ragged first, and in a sentence of its own: measured against `wanted` alone, a block of
+    # four rows of six with a short row in the middle reads "takes 4 rows of 6, and this is 4
+    # rows of 6" - the same shape printed twice, since `given`'s width is the first row's. What
+    # is wrong with such a block is not its shape but that it has none.
+    if any(len(row) != len(rows[0]) for row in rows):
+        raise ValueRefusalError(
+            "invalid",
+            f"'{name}' takes {_table(wanted)} values, and this block's rows are not all the "
+            "same length",
+        )
+    if given != wanted:
         raise ValueRefusalError(
             "invalid",
             f"'{name}' takes {_table(wanted)} values, and this is {_table(given)}",
@@ -362,27 +375,42 @@ def _table(shape: tuple[int, int]) -> str:
 
 
 def _no_single_producer(name: str, sites: Sequence[object]) -> str:
-    """Why a read-only grid cannot take a table, in the words part 8 refuses a cell with."""
+    """Why a read-only grid cannot take a table, in the words part 8 refuses a cell with.
+
+    Both sentences are ``set_cell``'s own, word for word, and the page's ``readOnlyNote``
+    reproduces the same two: one condition said three ways in one interface is three things for
+    a reader to reconcile, and this is the one of the three nothing else was spelling.
+    """
     if not sites:
         return f"nothing produces '{name}', so it has no values to set"
-    return f"more than one declaration produces '{name}', so this cannot tell which file to write"
+    return f"'{name}' is produced in more than one place, so there is no one file to set it in"
 
 
 def _all_of_them(offenders: Sequence[tuple[str, str]], name: str) -> str:
-    """Every element that failed, up to five, then how many more, and why - once.
+    """Every element that failed, up to five, with its own reason, then how many more.
 
-    ``_acceptable``'s own message is quoted whole, from the first offender, rather than reshaped
-    into this sentence: reshaping only ever matched one phrasing, "... does not fit into ...",
-    and broke - or for ``rounds_to_zero``, inverted - every other refusal ``_acceptable`` raises.
-    Quoting it whole is correct for all of them, including ones added later, at the cost of
-    naming only the first offender's own reason when two elements fail two different checks.
+    ``_acceptable``'s own message is quoted whole rather than reshaped into this sentence:
+    reshaping only ever matched one phrasing, "... does not fit into ...", and broke - or for
+    ``rounds_to_zero``, inverted - every other refusal ``_acceptable`` raises.
+
+    Quoted once per offender, not once for the block: a table can be wrong in several ways at
+    once - a physical column pasted into a grid left in raw gives both out-of-range counts and
+    fractional ones - and one reason lent to every element named is false of most of them.
+    Repeating the same sentence for elements that do fail the same way is the price of that,
+    and the cheaper of the two mistakes: a reader sent to a cell to fix something that cell
+    does not have is sent twice.
+
+    Semicolons separate the clauses because a two-dimensional label carries a comma of its own
+    ("element 1, 2"), and the one conjunction in the sentence is the last clause's "and N
+    more", so the two never compete to be read as the same list's.
     """
-    shown = [label for label, _ in offenders[:5]]
-    listed = shown[0] if len(shown) == 1 else f"{', '.join(shown[:-1])} and {shown[-1]}"
-    more = "" if len(offenders) <= 5 else f", and {len(offenders) - 5} more,"
-    verb = "is" if len(offenders) == 1 else "are"
-    _, first = offenders[0]
-    return f"{listed}{more} of '{name}' {verb} refused: {first}"
+    if len(offenders) == 1:
+        label, message = offenders[0]
+        return f"{label} of '{name}' is refused: {message}"
+    clauses = [f"{label} because {message}" for label, message in offenders[:5]]
+    if len(offenders) > 5:
+        clauses.append(f"and {len(offenders) - 5} more")
+    return f"{len(offenders)} elements of '{name}' are refused: {'; '.join(clauses)}"
 
 
 def _element(at: str, shape: tuple[int, ...]) -> tuple[int, ...]:

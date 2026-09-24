@@ -395,6 +395,19 @@
       "title": "ObjectKind",
       "type": "string"
     },
+    "PointCounts": {
+      "description": "Where an interpolation object stores its number of axis points, if anywhere.\n\n* ``none`` - Nowhere: the object is its data and nothing else. What every project had before.\n* ``leading`` - Ahead of the data, in the object's own datatype: x first, then y for a map. What firmware whose interpolation routines learn a table's shape from the table itself stores, and what ASAP2 describes by placing each axis's point count ahead of a curve or map's values, or ahead of a shared axis's own points. An enumeration rather than a flag so that another placement the format allows can join it without renaming the key.",
+      "enum": [
+        "none",
+        "leading"
+      ],
+      "enumDescriptions": [
+        "Nowhere: the object is its data and nothing else. What every project had before.",
+        "Ahead of the data, in the object's own datatype: x first, then y for a map. What firmware whose interpolation routines learn a table's shape from the table itself stores, and what ASAP2 describes by placing each axis's point count ahead of a curve or map's values, or ahead of a shared axis's own points. An enumeration rather than a flag so that another placement the format allows can join it without renaming the key."
+      ],
+      "title": "PointCounts",
+      "type": "string"
+    },
     "ResolvedComponent": {
       "additionalProperties": false,
       "description": "A component and the objects it declares.",
@@ -1089,6 +1102,11 @@
           "description": "Measurement raster the producing component updates the object in; ``null`` when the\nproject named none. Empty in a dictionary from format 4 or older.",
           "title": "Raster"
         },
+        "point_counts": {
+          "$ref": "#/$defs/PointCounts",
+          "default": "none",
+          "description": "Whether this curve, map or axis stores its point counts ahead of its data: its\nproducing component's ``point_counts``, else the project's. ``none`` for every other kind,\nand in a dictionary from format 8 or older, which never stored any."
+        },
         "volatile": {
           "default": false,
           "description": "Generate the object ``volatile``: stated by every declaration, on every kind.\n\nCalibration data carries it as ``const volatile``, which is what a value the calibration\ntool changes in a running ecu needs - see the field of the same name on the authored\ndefinition. The default is kept although a definition may no longer omit it, so that a\ndictionary dumped by an older DDD still reads back: an older document is read with the\ndefaults of the format it states, which is what the ``format`` key of this document is\nfor.",
@@ -1289,7 +1307,7 @@
   "description": "The resolved data of one project.\n\nWhat ``ddd dump`` writes and every backend reads. Unlike the description files, this one\nis produced rather than authored: every derived property is already worked out, so a\nconsumer never has to repeat the resolution and two consumers can never disagree about it.",
   "properties": {
     "format": {
-      "default": 8,
+      "default": 9,
       "description": "Version of this document format, raised only when the shape of the document changes.\n\nStamped so that a dictionary archived next to a delivery can be read back years later by\na version of DDD that can say \"this file is newer than I understand\" rather than misread\nit. It does not follow the version of the tool.\n\nA whole number of at least 1, and strictly that: ``\"9\"``, ``9.0`` and ``0`` are not\nversions any DDD ever wrote, and the check that refuses a dictionary from a newer DDD has\nno version to compare them with.",
       "minimum": 1,
       "title": "Format",

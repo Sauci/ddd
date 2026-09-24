@@ -30,7 +30,9 @@ ASAP2_VERSION {{ model.version }}
 {% for layout in model.record_layouts %}
 
     /begin RECORD_LAYOUT {{ layout.name }}
-      {{ layout.entry }}
+{% for entry in layout.entries %}
+      {{ entry }}
+{% endfor %}
     /end RECORD_LAYOUT
 {% endfor %}
 {% for vtab in model.compu_vtabs %}

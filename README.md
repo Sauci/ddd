@@ -554,6 +554,7 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | error | `type-cycle` | structures nest each other, so neither has a size |
 | error | `enum-conflict` | one enum name, two different sets of enumerators |
 | error | `init-invalid` | an initial value or enumerator does not fit the datatype or the shape |
+| error | `point-counts-unrepresentable` | a table stores its point counts in a datatype that cannot hold them |
 | error | `unknown-reference` | a curve, map or axis refers to an object nobody declares |
 | error | `reference-kind` | a reference points at an object of the wrong kind |
 | error | `reserved-identifier` | a name is a c keyword, one of the names `<stdint.h>` or `<stdbool.h>` declares or brings in (`<stddef.h>`'s `size_t` among them), or one C11 7.1.3 reserves for the implementation - any name containing a double underscore, or starting with an underscore followed by a capital letter |
@@ -575,6 +576,7 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | warning | `enum-duplicate-value` | two enumerators share a value |
 | warning | `name-similar` | two variables differ only in upper/lower case |
 | warning | `a2l-unrepresentable` | an object needs more dimensions than the generated a2l version has |
+| warning | `point-counts-mismatch` | a curve or map and one of its axes store their point counts differently |
 | warning | `address-missing` | an object in the a2l has no entry in the address map the run was given |
 | info | `empty-component` | a component declares no variable |
 | info | `incomplete-project` | a variable is missing from the dictionary and the finding that says why is silenced |
@@ -612,7 +614,7 @@ for the baseline - and graded, because the changes are not equally bad:
 | severity | check | reported when |
 | --- | --- | --- |
 | error | `removed-object` | an object is gone and a component read it |
-| error | `changed-interface` | kind, datatype, unit, scaling, shape, axes or locality changed, or the layout a released structure fixed for its consumers: a bitfield's width, the order of the members, or the type a structured variable names |
+| error | `changed-interface` | kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point counts changed, or the layout a released structure fixed for its consumers: a bitfield's width, the order of the members, or the type a structured variable names |
 | error | `reused-name` | a name of the baseline now names a different object |
 | warning | `renamed-object` | an object of the baseline is offered under a different name; its `id` is what says so |
 | warning | `removed-unused-object` | an object is gone that no component read |

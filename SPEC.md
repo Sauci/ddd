@@ -257,6 +257,9 @@ rasters files and/or other (sub-)projects, and names the plugins the project run
 - `"extensions"` (optional): the settings of those plugins, keyed by plugin name - so
   each key matches `[a-z][a-z0-9_]*`, and one that does not is `schema`
   ([section 3.11](#311-plugins)).
+- `"point_counts"` (optional): `"none"` or `"leading"`, the default for every curve, map and
+  axis of the project; `"none"` when no project file states it. A component overrides it for
+  the curves, maps and axes it defines.
 
 An entry of `includes` that names an existing file **shall** be read as that file, whatever
 characters it contains; only an entry naming no file is read as a pattern. The two readings
@@ -293,6 +296,8 @@ The top level key `"component"` is required, and it contains the following eleme
 - `"raster"` (optional): the measurement raster every measurement this component produces
   is updated in, unless its definition states one of its own
   ([section 3.10](#310-measurement-rasters)); it applies to nothing the component reads.
+- `"point_counts"` (optional): `"none"` or `"leading"`, overriding the project's default for
+  the curves, maps and axes this component defines; it applies to nothing the component reads.
 - `"interface"` (required): the data interface, a list of declarations, each declaring one
   data object. The key is required with no default, so that a component with nothing to
   declare states an empty list rather than omitting a key that might merely have been
@@ -1366,6 +1371,9 @@ Errors:
   or a non-zero initial value rounds to zero in a floating point datatype, or a string init
   is not printable ASCII, leaves no room for its terminator, or is written on an object that
   is not a string.
+- `point-counts-unrepresentable`: a table stores its point counts in a datatype that cannot
+  hold them - a `boolean` table, or an integer one whose range stops short of a count. Only
+  a counted table is checked; a float holds any count a shape can have.
 - `unknown-reference`, `reference-kind`: a curve, map or axis refers to an object that does
   not exist or has the wrong kind. A structured object ([section 3.3.2](#332-naming-a-declared-type))
   is the wrong kind for the `input` of an axis as well, although an instance of a structure
@@ -1434,6 +1442,9 @@ Warnings:
   version 1.6.1 cannot carry. The check fires only for an object the A2L carries, the
   closure over references included ([section 5.2](#52-a2l)), and the emitted file writes
   every dimension out regardless, which a 1.7 reader accepts.
+- `point-counts-mismatch`: a curve or a map stores its point counts one way and one of its
+  axes the other. The A2L describes each as resolved; an interpolation routine is unlikely
+  to read both.
 - `address-missing`: an object the A2L carries has no entry in the address map the run was
   given. It fires only when a map with at least one entry is supplied: without a map, or
   with an empty one, every address is zero by construction, which is the run a build makes
@@ -1517,9 +1528,10 @@ compile:
 
 - `removed-object`: an object is gone that a component read.
 - `changed-interface`: kind, datatype, unit, scaling, shape, referenced objects, locality,
-  the width of a bitfield, the `type` a structured variable names or the order of a
-  structure's members changed. Scaling is the conversion, compared by its kind and by its
-  parameters, and an enum by its name together with its enumerators in order; a description,
+  where a table keeps its point counts, the width of a bitfield, the `type` a structured
+  variable names or the order of a structure's members changed. Scaling is the conversion,
+  compared by its kind and by its parameters, and an enum by its name together with its
+  enumerators in order; a description,
   of an object or of an enumerator, is documentation and is never compared. An enum inside a
   project compares by its name alone ([section 4](#4-consistency-checks)), because
   `enum-conflict` owns the enumerators there and reporting them twice said nothing; a
@@ -1799,10 +1811,14 @@ ASAM MCD-2 MC output containing:
   and no `MATRIX_DIM`; a string measurement is the `UBYTE` or `SBYTE` array it is, with its
   `MATRIX_DIM` and an `ANNOTATION` labelled `string` saying that the format has no string
   measurement, which no version of it has.
-- `RECORD_LAYOUT` per datatype and storage category - the two things a record layout can
-  describe, the values of an object and the points of an axis; maps are stored row wise, that is the
-  C declaration is `[y][x]` and the A2L index mode is `ROW_DIR`. An axis layout states
-  `INDEX_INCR DIRECT` and a value layout `ROW_DIR DIRECT`.
+- `RECORD_LAYOUT` per datatype and storage category - the values of an object, the points of
+  an axis, or, when a curve, map or axis resolves `point_counts` to `leading`, its own count
+  ahead of that same data; maps are stored row wise, that is the C declaration is `[y][x]`
+  and the A2L index mode is `ROW_DIR`. An axis layout states `INDEX_INCR DIRECT` and a value
+  layout `ROW_DIR DIRECT`. A counted layout states `NO_AXIS_PTS_X` (and, for a map,
+  `NO_AXIS_PTS_Y`) ahead of `FNC_VALUES` or `AXIS_PTS_X`, each in the object's own datatype,
+  matching the C declaration that puts the counts first; no `STATIC_RECORD_LAYOUT` is
+  written for one, since a tool removing points compacts the data behind the new count.
 - `AXIS_DESCR` with `COM_AXIS` and `AXIS_PTS_REF` for the axis of a curve or map.
 - `COMPU_METHOD` shared between objects with the same conversion, unit and default display
   format - an integer and a float object under one conversion therefore share a method
@@ -1856,7 +1872,9 @@ state (`ddd generate a2l --byte-order little|big`, default little, emitted as
 and a tool reading multi byte values under the wrong one misreads every value.
 
 Generated identifiers are deterministic: record layouts `RL_VALUES_<TYPE>` and
-`RL_AXIS_<TYPE>` per datatype and storage category, computation methods `CM_<enum>`,
+`RL_AXIS_<TYPE>` per datatype and storage category, or, for one whose objects resolve
+`point_counts` to `leading`, `RL_MAP_COUNTED_<TYPE>`, `RL_CURVE_COUNTED_<TYPE>` and
+`RL_AXIS_COUNTED_<TYPE>`; computation methods `CM_<enum>`,
 `CM_LIN_<unit>` and `CM_IDENT_<unit>`, the unit slugged into identifier characters with
 `_2`, `_3` appended on a collision, and one `COMPU_VTAB` named `VTAB_<enum>` per enum a
 record refers to. The suffix is added when the generated name collides - two linear
@@ -1918,7 +1936,7 @@ themselves, `IF_DATA` for CCP, and A2L *import* for migration and merging are *p
 ### 5.3 Data dictionary
 
 `ddd dump` publishes the resolved project as one JSON document, the contract between the
-checking front end and every backend, DDD's own and a project's. Its `format` is `8`: a
+checking front end and every backend, DDD's own and a project's. Its `format` is `9`: a
 whole number of at least 1, written as a number and not as text, of which a reader
 **shall** refuse a higher one and reads a lower one with the defaults of that format
 ([section 4.1](#41-comparing-two-deliveries)). A dictionary is read under the JSON rules a
@@ -1946,8 +1964,9 @@ own, else its component's default), `volatile`,
 `condition` (the producer's), `references` (the objects this one names, keyed by the role it
 names them in - `axis` for a curve, `x_axis` and `y_axis` for a map, `input` for an axis -
 and `{}` on an object that names none), `owner` (the component producing it, `null` only
-where no component does, which a consistent project has none of), `consumers`, `local` and
-`a2l` with `export` resolved to a boolean. An instance records `name`, `id`, `extensions`, `type`,
+where no component does, which a consistent project has none of), `consumers`, `local`,
+`point_counts` (`"none"` or `"leading"`, resolved for a curve, a map or an axis, `"none"`
+for every other kind) and `a2l` with `export` resolved to a boolean. An instance records `name`, `id`, `extensions`, `type`,
 `kind`, `description`, `shape`, `dimensions`, `volatile`, `section`, `raster`, `condition`,
 `owner`, `consumers`, `local` and `a2l`; a leaf records `path`, `instance`, `instance_id`,
 `kind`, `datatype`, `description`, `unit`, `conversion`, `limits`, `shape`, `dimensions`,

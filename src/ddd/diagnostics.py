@@ -187,6 +187,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("init-invalid", Severity.ERROR,
                "an initial value or an enumerator does not fit the datatype or the shape, or "
                "a string init breaks the rules for one"),
+        _check("point-counts-unrepresentable", Severity.ERROR,
+               "a table stores its point counts in a datatype that cannot hold them"),
         _check("storage-mismatch", Severity.WARNING,
                "components disagree on how the a2l presents the object; the producer wins"),
         _check("condition-mismatch", Severity.WARNING,
@@ -203,6 +205,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "two variables differ only in upper/lower case"),
         _check("a2l-unrepresentable", Severity.WARNING,
                "an object cannot be described by the a2l version that is generated"),
+        _check("point-counts-mismatch", Severity.WARNING,
+               "a curve or map and one of its axes store their point counts differently"),
         _check("address-missing", Severity.WARNING,
                "an object reaching the a2l has no entry in the address map the run was given"),
         _check("empty-component", Severity.INFO, "a component declares no variable at all"),
@@ -223,7 +227,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "an object of the baseline is gone and somebody read it",
                comparison=True),
         _check("changed-interface", Severity.ERROR,
-               "kind, datatype, unit, scaling, shape, axes or locality of an object changed",
+               "kind, datatype, unit, scaling, shape, axes, locality or where a table keeps "
+               "its point counts changed",
                comparison=True),
         _check("reused-name", Severity.ERROR,
                "a name of the baseline now belongs to a different object",

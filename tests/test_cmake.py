@@ -684,6 +684,52 @@ target_include_directories(alone PRIVATE "{output.as_posix()}")
         assert '#include "ddd_globals.h"' in (output / "ddd_layout.h").read_text(encoding="utf-8")
         self.compile_alone(tmp_path, output)
 
+    def test_a_table_keeping_its_counts_compiles_with_them_in_front(self, tmp_path: Path) -> None:
+        """The flat declaration, its initialiser and the extern in the component header agree
+        with one another under the full warning set - ``-Wconversion`` included, which is what
+        a count spelled as a constant's name meets - and a static assertion pins the size the
+        counts add ahead of the data. ``tests/test_point_counts.py::TestTheC`` is what checks
+        the values and their order."""
+        (tmp_path / "k.ddd.json").write_text(
+            json.dumps({"constants": [{"name": "NX", "value": 8}]}), encoding="utf-8"
+        )
+        (tmp_path / "t.ddd.json").write_text(
+            json.dumps(
+                {
+                    "component": {
+                        "name": "T",
+                        "interface": [
+                            declare("output", "AX", "uint16", kind="axis", size="NX"),
+                            declare("output", "AY", "uint16", kind="axis", size=11),
+                            declare("output", "M", "uint32", kind="map", x_axis="AX", y_axis="AY"),
+                        ],
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        description = tmp_path / "project.ddd.json"
+        description.write_text(
+            json.dumps(
+                {
+                    "project": {
+                        "name": "P",
+                        "includes": ["k.ddd.json", "t.ddd.json"],
+                        "point_counts": "leading",
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        output = self.generated(tmp_path, description)
+        (output / "check_counts.c").write_text(
+            '#include "T.h"\n'
+            '_Static_assert(sizeof M == (2 + 8 * 11) * sizeof(uint32_t), "counts ahead of M");\n'
+            '_Static_assert(sizeof AX == (1 + 8) * sizeof(uint16_t), "count ahead of AX");\n',
+            encoding="utf-8",
+        )
+        self.compile_alone(tmp_path, output)
+
 
 class TestAHandWrittenProject:
     def write(self, tmp_path: Path) -> Path:
@@ -953,6 +999,38 @@ class TestTheDocumentedAddressMapRecipe:
         # "nothing is recompiled, nothing is relinked, and the flow settles after one extra
         # round rather than chasing its own tail" - the page's own sentence about this flow.
         assert "no work to do" in build(tmp_path / "build")
+
+    def test_two_file_local_statics_of_one_name_do_not_collide(self, tmp_path: Path) -> None:
+        """Two translation units, each with its own ``static int cntr_50ms_decimate_5`` - the
+        report this recipe was fixed for. Without ``--extern-only`` the listing carries both
+        under the same name, and ``load_address_map`` refuses a symbol named twice with two
+        addresses; kept to global symbols only, the file-local statics never reach the map."""
+        source = self.write(tmp_path)
+        for suffix, function in (("a", "bump_a"), ("b", "bump_b")):
+            (source / f"statics_{suffix}.c").write_text(
+                "static int cntr_50ms_decimate_5 = 1;\n"
+                "\n"
+                f"int {function}(void)\n"
+                "{\n"
+                "    return cntr_50ms_decimate_5++;\n"
+                "}\n",
+                encoding="utf-8",
+            )
+        listing = source / "CMakeLists.txt"
+        text = listing.read_text(encoding="utf-8")
+        marker = "add_executable(firmware.elf main.c)"
+        assert marker in text
+        text = text.replace(
+            marker, marker + "\ntarget_sources(firmware.elf PRIVATE statics_a.c statics_b.c)"
+        )
+        listing.write_text(text, encoding="utf-8")
+
+        configure(source, tmp_path / "build")
+        build(tmp_path / "build")  # links with every address 0, then writes the map
+        build(tmp_path / "build")  # regenerates from the map - the run the duplicate used to fail
+        generated = tmp_path / "build" / "ddd" / "firmware.elf"
+        extracted = json.loads((generated / "addresses.json").read_text(encoding="utf-8"))
+        assert "cntr_50ms_decimate_5" not in extracted
 
 
 class TestAKeywordGivenNoValue:

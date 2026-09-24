@@ -308,12 +308,12 @@ themselves:
      - The component that produces the object and the components that read it, for a comment
        that says where a value comes from.
 
-``.kind``, ``.c_type``, ``.datatype``, ``.array_suffix``, ``.qualifier``, ``.initializer``
-and ``.extensions`` are there as well, for a template that would rather lay the declaration
-out itself than take ``.definition`` whole - ``.extensions`` being the resolved block of
-every :doc:`plugin <plugins>` the project loads, keyed by plugin name, for a template that
-renders what a plugin decided. ``.c_type`` and ``.datatype`` are the same type in two
-vocabularies:
+``.kind``, ``.c_type``, ``.datatype``, ``.array_suffix``, ``.qualifier``, ``.initializer``,
+``.dimensions``, ``.point_counts`` and ``.extensions`` are there as well, for a template that
+would rather lay the declaration out itself than take ``.definition`` whole - ``.extensions``
+being the resolved block of every :doc:`plugin <plugins>` the project loads, keyed by plugin
+name, for a template that renders what a plugin decided. ``.c_type`` and ``.datatype`` are the
+same type in two vocabularies:
 the ISO spelling (``uint16_t``) that ``.definition`` and the example templates use, and the
 description's own (``uint16``). A project whose platform header already provides the
 description's names - AUTOSAR's ``Platform_Types.h`` spells them exactly - renders
@@ -321,8 +321,16 @@ description's names - AUTOSAR's ``Platform_Types.h`` spells them exactly - rende
 structure member of another structure or of an external type, the two fields agree, because
 that spelling was the project's own to begin with. ``.array_suffix`` spells each dimension as the project spells it - a
 dimension stated as a :doc:`declared constant <file_formats/constants>` renders as that
-name, ``[PRESSURE_CELLS]``, in ``.definition`` and ``.declaration(...)`` alike - while
-``.initializer`` lays its braces out over the resolved numeric shape. ``.qualifier`` is derived rather than stored, from the two answers a
+name, ``[PRESSURE_CELLS]``, in ``.definition`` and ``.declaration(...)`` alike; for a table
+whose point counts are stored ``leading``, it is instead the flat suffix that has room for
+the counts ahead of the values, such as ``[1 + (8)]`` for an axis of 8 points. ``.dimensions`` is the shape ``.array_suffix`` was rendered from, in declaration
+order and in the project's own spelling, so a template computing anything from the shape does
+not have to parse the suffix back apart. ``.point_counts`` is the counts such a table stores
+ahead of its values, in storage order - x, then y - and spelled like ``.dimensions``; empty
+for every object that stores none. ``.initializer`` lays its braces out over the resolved
+numeric shape - or, again for a table with leading counts, over the counts followed by the
+values, which is always present even when the description gives no ``init``, since the
+counts can never be left to implicit zero initialisation. ``.qualifier`` is derived rather than stored, from the two answers a
 declaration can give about who writes the object: ``.constant`` is true for calibration data,
 which the software never writes and which is therefore generated ``const``, and ``.volatile``
 is what the description states on the definition, on every kind, to say that something

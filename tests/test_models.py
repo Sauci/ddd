@@ -1048,7 +1048,7 @@ class TestDictionaryFormat:
         )
         assert dictionary is not None, messages(bag)
         payload = dictionary.model_dump(mode="json")
-        assert payload["format"] == DICTIONARY_FORMAT == 8
+        assert payload["format"] == DICTIONARY_FORMAT == 9
         entry = next(o for o in payload["objects"] if o["name"] == "Label")
         assert entry["conversion"] == {"kind": "string"}
         assert entry["init"] == "V1.2"

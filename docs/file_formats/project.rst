@@ -64,6 +64,11 @@ The keys
      - ``{}``
      - Settings for each named :doc:`plugin <../plugins>`, keyed by plugin name and validated
        against its own model.
+   * - ``point_counts``
+     - none
+     - Where the project's curves, maps and axes store their point counts by default:
+       ``"leading"`` ahead of the data, or ``"none"``. A component's own ``point_counts``
+       overrides it for what that component defines.
 
 The identifier rule is tighter than what a c compiler would accept, and deliberately so:
 ASAP2 1.6.1 limits an identifier to 128 characters, and a name DDD cannot write into the a2l

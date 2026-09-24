@@ -18,6 +18,8 @@ The mapping follows ASAM MCD-2 MC (ASAP2) 1.6.1:
   datatype and with no compu method, which is the 1.6.1 form Vector's own files use; a
   string measurement is the byte array it is, with an ``ANNOTATION`` saying so, because no
   version of the format has a string measurement
+* a curve, map or axis whose ``point_counts`` is ``leading`` gets a record layout with
+  ``NO_AXIS_PTS_X`` (and ``_Y``) ahead of its data
 * every component becomes a ``GROUP`` referencing the objects it declares
 """
 
@@ -38,6 +40,7 @@ from ddd.models import (
     IdentityConversion,
     LinearConversion,
     ObjectKind,
+    PointCounts,
     StringConversion,
     format_number,
 )
@@ -77,8 +80,8 @@ class CompuMethodView:
 @dataclass(frozen=True, slots=True)
 class RecordLayoutView:
     name: str
-    entry: str
-    """The single layout line, e.g. ``FNC_VALUES 1 UBYTE ROW_DIR DIRECT``."""
+    entries: tuple[str, ...]
+    """The layout's lines in position order, e.g. ``("FNC_VALUES 1 UBYTE ROW_DIR DIRECT",)``."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -420,7 +423,11 @@ class _A2lModelBuilder:
             description=entry.description or entry.name,
             type="ASCII" if string else _CHARACTERISTIC_TYPE[entry.kind],
             address=self._options.address_of(entry.name),
-            deposit=self._layouts.values(entry.datatype),
+            deposit=(
+                self._layouts.counted(entry.kind, entry.datatype)
+                if entry.point_counts is PointCounts.LEADING
+                else self._layouts.values(entry.datatype)
+            ),
             compu_method=self._methods.reference(entry),
             lower=format_number(entry.limits.min),
             upper=format_number(entry.limits.max),
@@ -466,7 +473,11 @@ class _A2lModelBuilder:
             description=entry.description or entry.name,
             address=self._options.address_of(entry.name),
             input_quantity=self._input_quantity(entry),
-            deposit=self._layouts.axis(entry.datatype),
+            deposit=(
+                self._layouts.counted(entry.kind, entry.datatype)
+                if entry.point_counts is PointCounts.LEADING
+                else self._layouts.axis(entry.datatype)
+            ),
             compu_method=self._methods.reference(entry),
             max_points=entry.shape[0] if entry.shape else 0,
             lower=format_number(entry.limits.min),
@@ -542,17 +553,37 @@ class _RecordLayoutBuilder:
         self._layouts: dict[str, RecordLayoutView] = {}
 
     def values(self, datatype: Datatype) -> str:
-        return self._add(
-            f"RL_VALUES_{A2L_TYPE[datatype]}", f"FNC_VALUES 1 {A2L_TYPE[datatype]} ROW_DIR DIRECT"
-        )
+        a2l_type = A2L_TYPE[datatype]
+        return self._add(f"RL_VALUES_{a2l_type}", (f"FNC_VALUES 1 {a2l_type} ROW_DIR DIRECT",))
 
     def axis(self, datatype: Datatype) -> str:
-        return self._add(
-            f"RL_AXIS_{A2L_TYPE[datatype]}", f"AXIS_PTS_X 1 {A2L_TYPE[datatype]} INDEX_INCR DIRECT"
-        )
+        a2l_type = A2L_TYPE[datatype]
+        return self._add(f"RL_AXIS_{a2l_type}", (f"AXIS_PTS_X 1 {a2l_type} INDEX_INCR DIRECT",))
 
-    def _add(self, name: str, entry: str) -> str:
-        self._layouts.setdefault(name, RecordLayoutView(name, entry))
+    def counted(self, kind: ObjectKind, datatype: Datatype) -> str:
+        """The layout of a table that keeps its point counts ahead of its data.
+
+        One count per axis - x, then y for a map - each in the object's own type, then the data
+        at the next position: ASAP2 1.6.1 numbers positions in ascending order without gaps and
+        wants the counts in memory before the points and the values. No
+        ``STATIC_RECORD_LAYOUT``: a tool removing points then compacts the data behind the new
+        count, which is what a routine indexing by the stored count reads. A curve cannot share
+        the values layout, because it has one count where a map has two.
+        """
+        a2l_type = A2L_TYPE[datatype]
+        keywords = ("NO_AXIS_PTS_X", "NO_AXIS_PTS_Y")[: 2 if kind is ObjectKind.MAP else 1]
+        counts = tuple(
+            f"{keyword} {position} {a2l_type}" for position, keyword in enumerate(keywords, 1)
+        )
+        data = (
+            f"AXIS_PTS_X {len(counts) + 1} {a2l_type} INDEX_INCR DIRECT"
+            if kind is ObjectKind.AXIS
+            else f"FNC_VALUES {len(counts) + 1} {a2l_type} ROW_DIR DIRECT"
+        )
+        return self._add(f"RL_{kind.name}_COUNTED_{a2l_type}", (*counts, data))
+
+    def _add(self, name: str, entries: tuple[str, ...]) -> str:
+        self._layouts.setdefault(name, RecordLayoutView(name, entries))
         return name
 
     def layouts(self) -> tuple[RecordLayoutView, ...]:

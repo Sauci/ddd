@@ -158,6 +158,20 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   and `mV` and `MV` remain two units.  The language server's rename-everywhere quick fix,
   which offers exactly what the finding suggests, gains the same spellings.
 
+* **Tables that keep their point counts in front.**  A project states `"point_counts":
+  "leading"` - once, in a project file, and a component may state otherwise for the curves,
+  maps and axes it defines - when its firmware stores each table's number of axis points ahead
+  of its data, in the table's own type.  The c declares such a table flat, counts first
+  (`M[2 + (11) * (8)] = { 8, 11, ... }`), and the a2l describes it with `NO_AXIS_PTS_X` and
+  `NO_AXIS_PTS_Y` ahead of `FNC_VALUES` or `AXIS_PTS_X` in a record layout of its own.  Two
+  checks come with it: `point-counts-unrepresentable` refuses a table whose type cannot hold
+  its counts, and `point-counts-mismatch` warns when a table and its axis disagree; `ddd
+  compare` reports a changed convention as `changed-interface`.  The c templates are offered
+  each object's `dimensions` and `point_counts`.  The dumped dictionary is format 9, adding
+  `point_counts` to every object; a format 8 dictionary reads back unchanged.  The address map
+  recipe of the build integration page now runs `nm --extern-only`, so two file-local statics
+  sharing a name no longer make the map refuse to load.
+
 ## 0.10.0
 
 This release is two things at once.  It finishes what 0.9.0 started - constants that hold any

@@ -62,6 +62,12 @@ before it becomes a field report. That comparison is what the :doc:`consistency 
        measured in, unless its own definition names another. A default for the producer's
        own outputs and locals: it reaches nothing the component merely reads, and no
        calibration object.
+   * - ``point_counts``
+     - none
+     - Where the curves, maps and axes this component defines store their point counts,
+       overriding the project's default. Follows the producer, as ``raster`` does: it
+       reaches nothing this component reads, and nothing that is not a curve, a map or an
+       axis.
    * - ``interface``
      - required
      - The data interface: one entry per data object the component reads, writes or owns.

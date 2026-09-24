@@ -21,6 +21,7 @@ from ddd.models import (
     ConstantsFile,
     Conversion,
     ExternalType,
+    PointCounts,
     Project,
     ProjectFile,
     RasterDeclaration,
@@ -454,6 +455,10 @@ class Workspace:
     project_extensions: dict[str, dict[str, Any]] = field(default_factory=dict)
     """The settings block of each plugin, as the project files wrote it, by plugin name."""
 
+    point_counts: PointCounts = PointCounts.NONE
+    """The project's default for where tables store their point counts, as the one project
+    file stating it wrote it; ``none`` when no file does, and for a component read alone."""
+
     locations: dict[str, Location] = field(default_factory=dict)
     """Where each declared name is written: its producing declaration, else the first one
     naming it, since a consumer's declaration is still where a reader looks for the object."""
@@ -601,6 +606,7 @@ class _Loader:
         self._deep_includes: list[tuple[Path, Location, int]] = []
         self._plugins_by_name: dict[str, LoadedPlugin] = {}
         self._project_blocks: dict[str, tuple[dict[str, Any], Location]] = {}
+        self._point_counts: tuple[PointCounts, Location] | None = None
 
     def load(self, path: Path) -> Workspace | None:
         root = resolve_path(path)
@@ -668,6 +674,7 @@ class _Loader:
             plugins=self._loaded_plugins,
             plugin_paths=self._plugin_paths,
             project_extensions={name: block for name, (block, _) in self._project_blocks.items()},
+            point_counts=self._point_counts[0] if self._point_counts else PointCounts.NONE,
             locations=self._locations(),
         )
 
@@ -946,6 +953,10 @@ class _Loader:
             self._load_plugin(spelling, Location(path, f"project.plugins[{index}]"), path.parent)
         for name, block in model.project.extensions.items():
             self._register_settings(name, block, Location(path, f"project.extensions.{name}"))
+        if model.project.point_counts is not None:
+            self._register_point_counts(
+                model.project.point_counts, Location(path, "project.point_counts")
+            )
 
         child_parents = (*parents, loaded.name)
         child_stack = (*stack, path)
@@ -1024,6 +1035,21 @@ class _Loader:
             )
             return
         self._project_blocks[name] = (block, location)
+
+    def _register_point_counts(self, value: PointCounts, location: Location) -> None:
+        """One default per tree. A second file restating it agrees and is accepted; one stating
+        another value is refused like a second plugin settings block, since two files cannot
+        both decide how the image is laid out."""
+        previous = self._point_counts
+        if previous is None:
+            self._point_counts = (value, location)
+        elif previous[0] is not value:
+            self._bag.add(
+                "schema",
+                f"point_counts is already stated as '{previous[0].value}'",
+                location,
+                notes=[("first stated here", previous[1])],
+            )
 
     def _validate_blocks(self, root: Path) -> None:
         """Every extension block against the model of the plugin that owns it.

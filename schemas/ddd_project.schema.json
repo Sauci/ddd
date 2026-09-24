@@ -1,6 +1,19 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
+    "PointCounts": {
+      "description": "Where an interpolation object stores its number of axis points, if anywhere.\n\n* ``none`` - Nowhere: the object is its data and nothing else. What every project had before.\n* ``leading`` - Ahead of the data, in the object's own datatype: x first, then y for a map. What firmware whose interpolation routines learn a table's shape from the table itself stores, and what ASAP2 describes by placing each axis's point count ahead of a curve or map's values, or ahead of a shared axis's own points. An enumeration rather than a flag so that another placement the format allows can join it without renaming the key.",
+      "enum": [
+        "none",
+        "leading"
+      ],
+      "enumDescriptions": [
+        "Nowhere: the object is its data and nothing else. What every project had before.",
+        "Ahead of the data, in the object's own datatype: x first, then y for a map. What firmware whose interpolation routines learn a table's shape from the table itself stores, and what ASAP2 describes by placing each axis's point count ahead of a curve or map's values, or ahead of a shared axis's own points. An enumeration rather than a flag so that another placement the format allows can join it without renaming the key."
+      ],
+      "title": "PointCounts",
+      "type": "string"
+    },
     "Project": {
       "additionalProperties": false,
       "description": "A project is a named list of components and/or sub-projects.",
@@ -48,6 +61,18 @@
           },
           "title": "Extensions",
           "type": "object"
+        },
+        "point_counts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PointCounts"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where the project's curves, maps and axes store their point counts: ``\"leading\"``\nahead of the data, or ``\"none\"``. Unstated, it is ``\"none\"``.\n\nThe default a component's own ``point_counts`` overrides. It belongs to the firmware's\ninterpolation library, which is why it is stated here and not on each object; one project\nfile of a tree states it, and a second one stating another value is refused."
         }
       },
       "required": [

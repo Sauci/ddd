@@ -36,7 +36,15 @@ from ddd.models.common import Datatype, Identifier, hash_excluding_mappings
 from ddd.models.component import Scope
 from ddd.models.constants import ConstantDeclaration
 from ddd.models.conversion import Conversion, EnumConversion
-from ddd.models.objects import A2lObjectOptions, Dimension, InitValue, Limits, ObjectKind
+from ddd.models.objects import (
+    COUNTED_KINDS,
+    A2lObjectOptions,
+    Dimension,
+    InitValue,
+    Limits,
+    ObjectKind,
+    PointCounts,
+)
 
 
 def _check_dimensions_match(shape: tuple[int, ...], dimensions: tuple[int | str, ...]) -> None:
@@ -208,6 +216,11 @@ class ResolvedObject(_Frozen):
     """Measurement raster the producing component updates the object in; ``null`` when the
     project named none. Empty in a dictionary from format 4 or older."""
 
+    point_counts: PointCounts = PointCounts.NONE
+    """Whether this curve, map or axis stores its point counts ahead of its data: its
+    producing component's ``point_counts``, else the project's. ``none`` for every other kind,
+    and in a dictionary from format 8 or older, which never stored any."""
+
     volatile: bool = False
     """Generate the object ``volatile``: stated by every declaration, on every kind.
 
@@ -269,6 +282,16 @@ class ResolvedObject(_Frozen):
     @model_validator(mode="after")
     def _dimensions_spell_the_shape(self) -> ResolvedObject:
         _check_dimensions_match(self.shape, self.dimensions)
+        return self
+
+    @model_validator(mode="after")
+    def _point_counts_describe_a_counted_kind(self) -> ResolvedObject:
+        if self.point_counts is not PointCounts.NONE and self.kind not in COUNTED_KINDS:
+            msg = (
+                f"point_counts is '{self.point_counts.value}', but '{self.kind.value}' has no "
+                "axis points to count; only an axis, a curve or a map can hold one"
+            )
+            raise ValueError(msg)
         return self
 
 
@@ -619,7 +642,7 @@ rescaled. They differ only in what they are called, and a leaf answers to its pa
 """
 
 
-DICTIONARY_FORMAT = 8
+DICTIONARY_FORMAT = 9
 """Version of the dictionary format itself.
 
 A dumped dictionary is meant to be archived next to a delivery and read back by a later
@@ -630,6 +653,9 @@ missing field. It changes only when the shape of the document changes, not with 
 Format 8 added the ``string`` conversion kind and the string spelling of ``init``, and
 widened a constant's ``value`` from a whole number of at least 1 to any number. A format 7
 dictionary carries none of them, and reads back unchanged.
+
+Format 9 added ``point_counts`` to every object. A format 8 dictionary carries none, and reads
+back with ``none`` everywhere, which is the layout it described.
 """
 
 

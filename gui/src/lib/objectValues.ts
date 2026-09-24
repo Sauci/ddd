@@ -124,7 +124,11 @@ function celled(text: string): string[][] {
   return lines.map((line) => line.split("\t"));
 }
 
-/** The rows and columns the object itself takes, as a table is counted. */
+/** The rows and columns the object itself takes, as a table is counted. The `= 0` is defensive
+ * and nothing tests it: a shapeless reply reaches neither caller, since `ValuesPage` answers
+ * "has no cell for a value to sit in" before it draws a grid at all - and the test that used to
+ * cover it pinned `Paste 1 row of 0 values…`, a sentence no reader can reach. A destructuring
+ * default is no branch to v8's coverage, so the gate is not hiding one here either. */
 function wanted(reply: ValuesReply): [number, number] {
   const [first = 0, second] = reply.shape;
   return second === undefined ? [1, first] : [first, second];

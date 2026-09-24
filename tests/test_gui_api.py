@@ -2843,12 +2843,17 @@ class TestTheValuesGrid:
         assert '"init": [1300, 950, 850, 800, 750, 700]' in written
 
     def test_a_pasted_map_is_folded_by_the_shape_the_server_knows(self, demo) -> None:
+        # Every row, not the first and the last alone: a fold that got those two right and
+        # scrambled the two between them would have passed, which is the one thing this test -
+        # the only one whose subject is `_folded` itself - is here to catch.
         api, root = demo
         counts = ",".join(str(n) for n in range(1, 25))
         preview = get(api, "/api/values-plan", name="MapA", raw=counts).body
         assert applied(api, preview, "the values of MapA").status == 200
         written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
         assert "[1, 2, 3, 4, 5, 6]," in written
+        assert "[7, 8, 9, 10, 11, 12]," in written
+        assert "[13, 14, 15, 16, 17, 18]," in written
         assert "[19, 20, 21, 22, 23, 24]" in written
 
     def test_a_list_of_the_wrong_length_says_what_it_wanted(self, demo) -> None:
@@ -2856,6 +2861,19 @@ class TestTheValuesGrid:
         reply = get(api, "/api/values-plan", name="CurveA", raw="1,2,3")
         assert (reply.status, reply.body["error"]) == (409, "invalid")
         assert reply.body["message"] == ("'CurveA' takes 1 row of 6 values, and this is 1 row of 3")
+
+    def test_a_two_dimensional_name_given_the_wrong_count_is_laid_out_as_one_row(
+        self, demo
+    ) -> None:
+        # `_folded`'s wrong-length arm for a two-dimensional name: every other wrong-count test
+        # here names a one- or three-dimensional object, which takes the `len(shape) != 2` half
+        # of the same `or` and leaves the length half unexercised for a shape that has one.
+        # One row of 23 is what the reader is told they pasted, which is what they did.
+        api, _ = demo
+        counts = ",".join(str(n) for n in range(1, 24))
+        reply = get(api, "/api/values-plan", name="MapA", raw=counts)
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "'MapA' takes 4 rows of 6 values, and this is 1 row of 23"
 
     def test_a_name_the_project_has_not_is_not_found_for_a_values_plan(self, demo) -> None:
         # Named distinctly from TestTheValuesGrid's own /api/values test above (and

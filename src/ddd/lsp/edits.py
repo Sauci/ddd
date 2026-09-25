@@ -280,11 +280,12 @@ def _on_the_declaration(
         given = _propagate(built, here, document, name, candidate, cache) or _remove_elsewhere(
             built, here, document, name, candidate, cache
         )
+        spelled = None if taken is None else _protocol_action(taken, cache)
         # A consumer is offered the producer's value first; the producer is offered its own,
         # outward. Which side owns the variable is not a matter of taste here - it is the rule
         # the whole tool is built on, and the fix that reads naturally is the one that follows
         # it rather than the one that quietly redefines somebody else's data.
-        ordered = [given, taken] if produces else [taken, given]
+        ordered = [given, spelled] if produces else [spelled, given]
         offered.extend(action for action in ordered if action is not None)
     settles = [entry for entry in reported if entry.get("code") in RECONCILED]
     if settles and offered:
@@ -400,6 +401,33 @@ class Settlement:
     unsettled: tuple[Unsettled, ...]
 
 
+def settled_at(
+    built: Index, site: Site, name: str, key: str, raw: str | None, cache: dict[Path, Document]
+) -> Settled | Unsettled | None:
+    """What one declaration does about ``raw`` for ``key``: take it, refuse it, or nothing.
+
+    ``None`` where there is nothing to do - the declaration already means that value, or it is
+    leaving a deferred key to whoever states it. The body of :func:`settle`'s own loop, lifted
+    so that an action changing one declaration asks it the same question a whole settlement
+    asks of each: the two must not drift into two readings of "can this declaration take it".
+    """
+    document = _at_site(site, name, cache)
+    if document is None:
+        return Unsettled(site, "unreachable")
+    typename = document.value_at(f"{site.pointer}.typename")
+    if key in MEANING_KEYS and isinstance(typename, str):
+        if _fixed_by(built, typename, key, cache) != raw:
+            return Unsettled(site, "type", typename)
+        return None
+    stated = document.raw_at(f"{site.pointer}.{key}")
+    if _already(key, stated, raw) or (key in DEFERRED_KEYS and stated is None):
+        return None
+    accepted, required = _keys_of(document, site.pointer)
+    if (raw is None and key in required) or (raw is not None and key not in accepted):
+        return Unsettled(site, "kind")
+    return Settled(site, raw)
+
+
 def settle(
     built: Index, name: str, key: str, raw: str | None, cache: dict[Path, Document]
 ) -> Settlement:
@@ -411,33 +439,51 @@ def settle(
     instead, because its reader chose a value for the variable and a change that reaches only
     some of its declarations is not the one they chose. Deciding here, once, is what keeps the
     editor and the page from disagreeing about what a change touches.
-
-    A declaration that already states ``raw`` is left as it is, and so is one leaving a deferred
-    key to whoever states it. A declaration naming a declared type takes none of the keys the
-    type fixes: it agrees when the type states ``raw``, and refuses otherwise - stating the key
-    beside the type is an error the loader reports, not an override.
     """
     changes: list[Settled] = []
     unsettled: list[Unsettled] = []
     for site in built.declarations.get(name, ()):
-        document = _at_site(site, name, cache)
-        if document is None:
-            unsettled.append(Unsettled(site, "unreachable"))
-            continue
-        typename = document.value_at(f"{site.pointer}.typename")
-        if key in MEANING_KEYS and isinstance(typename, str):
-            if _fixed_by(built, typename, key, cache) != raw:
-                unsettled.append(Unsettled(site, "type", typename))
-            continue
-        stated = document.raw_at(f"{site.pointer}.{key}")
-        if _already(key, stated, raw) or (key in DEFERRED_KEYS and stated is None):
-            continue
-        accepted, required = _keys_of(document, site.pointer)
-        if (raw is None and key in required) or (raw is not None and key not in accepted):
-            unsettled.append(Unsettled(site, "kind"))
-            continue
-        changes.append(Settled(site, raw))
+        decided = settled_at(built, site, name, key, raw, cache)
+        if isinstance(decided, Settled):
+            changes.append(decided)
+        elif decided is not None:
+            unsettled.append(decided)
     return Settlement(tuple(changes), tuple(unsettled))
+
+
+@dataclass(frozen=True, slots=True)
+class Reconciliation:
+    """One way to settle one key of one variable: decided, and not yet spelled.
+
+    What the two clients share. The decision is which declarations come to state what, which is
+    a question about the project; how that arrives in a file is a question about text, and the
+    two have no business being one function. :mod:`ddd.finding_fixes` spells this as operations
+    on json pointers, this module as edits with ranges.
+    """
+
+    title: str
+    key: str
+    settlement: Settlement
+
+
+def _protocol_action(reconciliation: Reconciliation, cache: dict[Path, Document]) -> dict[str, Any]:
+    """A decision as the protocol carries it: a titled quick fix over one or more files.
+
+    ``_assign`` and ``_erase`` answer ``None`` for a change the decision already ruled out, so
+    nothing here is expected to skip; the guard is the only-child refusal of :func:`_erase`,
+    which stays a question about a file's own style rather than about the data.
+    """
+    changes: dict[str, list[dict[str, Any]]] = {}
+    for change in reconciliation.settlement.changes:
+        document = read(change.site.path, cache)
+        edit = (
+            _erase(document, change.site.pointer, reconciliation.key)
+            if change.raw is None
+            else _assign(document, change.site.pointer, reconciliation.key, change.raw)
+        )
+        if edit is not None:
+            changes.setdefault(change.site.path.as_uri(), []).append(edit)
+    return {"title": reconciliation.title, "kind": QUICK_FIX, "edit": {"changes": changes}}
 
 
 def _fixed_by(built: Index, typename: str, key: str, cache: dict[Path, Document]) -> str | None:
@@ -506,7 +552,7 @@ def _missing(
 
 def _adopt(
     built: Index, here: Site, document: Document, name: str, key: str, cache: dict[Path, Document]
-) -> dict[str, Any] | None:
+) -> Reconciliation | None:
     """Take a value the others state and this declaration does not.
 
     Only when they agree with each other about it - by what the value means, the rule
@@ -545,19 +591,19 @@ def _adopt(
         stated.setdefault(same_value(key, raw), raw)
     if len(stated) != 1:
         return None
-    edit = _assign(document, here.pointer, key, next(iter(stated.values())))
-    if edit is None:
+    decided = settled_at(built, here, name, key, next(iter(stated.values())), cache)
+    if not isinstance(decided, Settled):
         return None
-    return {
-        "title": f"Take the {key} the other declarations of '{name}' state",
-        "kind": QUICK_FIX,
-        "edit": {"changes": {here.path.as_uri(): [edit]}},
-    }
+    return Reconciliation(
+        f"Take the {key} the other declarations of '{name}' state",
+        key,
+        Settlement((decided,), ()),
+    )
 
 
 def _from_producer(
     built: Index, here: Site, document: Document, name: str, key: str, cache: dict[Path, Document]
-) -> dict[str, Any] | None:
+) -> Reconciliation | None:
     """Take the value the producing component states, into the declaration asked at.
 
     The direction that reads naturally from a consumer. A component that reads a variable is
@@ -572,23 +618,18 @@ def _from_producer(
     producer = producers[0]
     target = _at_site(producer, name, cache)
     raw = None if target is None else target.raw_at(f"{producer.pointer}.{key}")
-    mine = document.raw_at(f"{here.pointer}.{key}")
-    if raw is None or raw == mine or (key in DEFERRED_KEYS and mine is None):
+    if raw is None:
         return None
-    edit = _assign(document, here.pointer, key, raw)
-    if edit is None:
+    decided = settled_at(built, here, name, key, raw, cache)
+    if not isinstance(decided, Settled):
         return None
     owner = producer.path.stem.removesuffix(".ddd")
-    return {
-        "title": f"Use the {key} declared in {owner}",
-        "kind": QUICK_FIX,
-        "edit": {"changes": {here.path.as_uri(): [edit]}},
-    }
+    return Reconciliation(f"Use the {key} declared in {owner}", key, Settlement((decided,), ()))
 
 
 def _remove_here(
     built: Index, here: Site, document: Document, name: str, key: str, cache: dict[Path, Document]
-) -> dict[str, Any] | None:
+) -> Reconciliation | None:
     """Take a key out, when this declaration is the only one that states it.
 
     The other half of adopting somebody else's answer: a key nobody else mentions is
@@ -597,10 +638,6 @@ def _remove_here(
     because otherwise removing it settles nothing.
     """
     if key in DEFERRED_KEYS or document.raw_at(f"{here.pointer}.{key}") is None:
-        return None
-    if key in _keys_of(document, here.pointer)[1]:
-        # Offering to remove a key the kind requires is offering to break the file: it would
-        # not load at all afterwards, which is a worse state than the disagreement it settles.
         return None
     others = [site for site in built.declarations.get(name, ()) if site != here]
     # Nobody to disagree with is not the same as everybody agreeing: a variable one component
@@ -623,8 +660,8 @@ def _remove_here(
         for site, target in zip(others, targets, strict=True)
     ):
         return None
-    edit = _erase(document, here.pointer, key)
-    if edit is None:
+    decided = settled_at(built, here, name, key, None, cache)
+    if not isinstance(decided, Settled):
         return None
     producers = [site for site in built.producers.get(name, ()) if site != here]
     where = (
@@ -632,11 +669,7 @@ def _remove_here(
         if len(producers) == 1
         else f"which no other declaration of '{name}' has"
     )
-    return {
-        "title": f"Remove this {key}, {where}",
-        "kind": QUICK_FIX,
-        "edit": {"changes": {here.path.as_uri(): [edit]}},
-    }
+    return Reconciliation(f"Remove this {key}, {where}", key, Settlement((decided,), ()))
 
 
 def _remove_elsewhere(

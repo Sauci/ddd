@@ -26,6 +26,7 @@ from ddd.build_info import BUILD_INFO_FILENAME
 from ddd.diagnostics import DiagnosticBag, SeverityPolicy
 from ddd.ir import DataDictionary
 from ddd.loading import load_workspace
+from ddd.lsp.navigation import Index, index
 from ddd.lsp.protocol import read_message, write_message
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
@@ -129,6 +130,14 @@ def write_tree(base: Path, files: Mapping[str, Any]) -> Path:
         written = content if isinstance(content, str) else json.dumps(content, indent=2)
         path.write_text(written, encoding="utf-8", newline="")
     return base
+
+
+def built_of(tmp_path: Path, **files: Any) -> tuple[Index, Path]:
+    """The index of a project including every file given, and the root they were written under."""
+    write_tree(tmp_path, {"p.ddd.json": project("P", *files), **files})
+    workspace = load_workspace(tmp_path / "p.ddd.json", DiagnosticBag())
+    assert workspace is not None
+    return index(workspace), tmp_path
 
 
 def directory_link(link: Path, target: Path) -> None:

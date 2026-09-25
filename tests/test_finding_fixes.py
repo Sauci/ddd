@@ -68,6 +68,10 @@ class TestAnIdentity:
         built, root = built_of(
             tmp_path, **{"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}
         )
+        # Pinned first, like every `== ()` case below it: empty because there is nothing to
+        # reconcile at all, not because a settlement failed or an owner could not be found.
+        document = read(root / "a.ddd.json", {})
+        assert reconciliations(built, root / "a.ddd.json", document, DEFINITION, {}) == []
         assert fixes_for("definition-mismatch", root / "a.ddd.json", DEFINITION, {}, built) == ()
 
     def test_a_pointer_naming_no_declaration_carries_no_fix(self, tmp_path: Path) -> None:
@@ -167,17 +171,19 @@ class TestAMismatch:
 
     def test_a_producer_with_only_the_taking_direction_offers_nothing(self, tmp_path: Path) -> None:
         # The mirror image of the case above, on the giving side instead of the taking side.
-        # `b` names a type that fixes `unit` to a value `a` does not state, so `a`'s own value
-        # cannot be sent to `b` at all (`given` is blocked) - but `a` stating no unit is
-        # something `b`'s type does not contradict, so `a` *could* adopt that silence (`taken`
-        # exists, via `_remove_here`). A producer's finding owns the giving direction, not the
-        # taking one; asked unowned, `a` is still offered that button - asked the way the page
-        # asks, nothing is, rather than quietly falling through to the direction it does not own.
+        # `a` is the sole producer, so the no-single-producer guard does not apply here - this
+        # isolates the other guard, the one inside the per-key loop. `b` reads `Speed` and names
+        # a type that fixes `unit` to a value `a` does not state, so `a`'s own value cannot be
+        # sent to `b` at all (`given` is blocked) - but `a` stating no unit is something `b`'s
+        # type does not contradict, so `a` *could* adopt that silence (`taken` exists, via
+        # `_remove_here`). A producer's finding owns the giving direction, not the taking one;
+        # asked unowned, `a` is still offered that button - asked the way the page asks, nothing
+        # is, rather than quietly falling through to the direction it does not own.
         built, root = built_of(
             tmp_path,
             **{
                 "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
-                "b.ddd.json": component("B", declare("output", "Speed", typename="Speed_t")),
+                "b.ddd.json": component("B", declare("input", "Speed", typename="Speed_t")),
                 "t.ddd.json": types(scalar_type("Speed_t", unit="kPa")),
             },
         )
@@ -185,9 +191,57 @@ class TestAMismatch:
         document = read(root / "a.ddd.json", {})
         unowned = reconciliations(built, root / "a.ddd.json", document, unit, {})
         assert [decision.title for decision in unowned] == [
-            "Remove this unit, which b does not declare"
+            "Remove this unit, which no other declaration of 'Speed' has"
         ]
         assert fixes_for("definition-mismatch", root / "a.ddd.json", unit, {}, built) == ()
+
+    def test_two_producers_disagreeing_with_each_other_are_offered_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        # No consumer at all, just the dispute the ownership rule has no standing to settle:
+        # `a` and `b` both produce `Speed` and state different units. Queried at either, `given`
+        # succeeds (each can push its own value onto the other) and, with exactly one *other*
+        # producer to source from, so does `taken` - unowned, both directions are offered, each
+        # a button that overwrites the other file. `owned=True` now refuses before the per-key
+        # loop even starts, because `built.producers.get("Speed")` has two entries, not one.
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("output", "Speed", unit="Hz")),
+            },
+        )
+        document = read(root / "b.ddd.json", {})
+        unowned = reconciliations(built, root / "b.ddd.json", document, DEFINITION, {})
+        assert [decision.title for decision in unowned] == [
+            "Apply this unit to 1 other declaration of 'Speed'",
+            "Use the unit declared in a",
+        ]
+        assert fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built) == ()
+
+    def test_no_producer_at_all_is_offered_nothing(self, tmp_path: Path) -> None:
+        # The other half of "no single producer": nobody, not several. Two components both
+        # *read* `Speed` and disagree about its unit - `missing-producer` is `examples/
+        # inconsistent`'s own name for this, filed on `MissingValue` there, and it does not
+        # stop `definition-mismatch` from also being filed between the readers. Queried at `a`,
+        # `given` still succeeds (nothing about `_propagate` asks whether anyone produces the
+        # variable at all), so unowned this offers a button that overwrites `b` with `a`'s own,
+        # equally unowned, value. `built.producers.get("Speed")` is empty - zero entries, still
+        # not one - so `owned=True` refuses here the same way it does for two.
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("input", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="Hz")),
+            },
+        )
+        assert built.producers.get("Speed") is None
+        document = read(root / "a.ddd.json", {})
+        unowned = reconciliations(built, root / "a.ddd.json", document, DEFINITION, {})
+        assert [decision.title for decision in unowned] == [
+            "Apply this unit to 1 other declaration of 'Speed'"
+        ]
+        assert fixes_for("definition-mismatch", root / "a.ddd.json", DEFINITION, {}, built) == ()
 
     def test_a_declaration_that_cannot_take_the_value_stops_the_fix_being_offered(
         self, tmp_path: Path

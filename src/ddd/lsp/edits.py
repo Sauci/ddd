@@ -296,12 +296,15 @@ def reconciliations(
     brought here, and this one's answer sent out - ordered by which side owns the variable.
 
     ``owned=True`` keeps only the first of each key's pair - the direction the ownership rule
-    wants for this declaration - or nothing when that direction does not exist. The editor calls
-    without it, offering both and letting the reader pick; ``ddd gui`` calls with it, because a
-    button whose direction the reader has to work out is not the one press it exists to be, and
-    falling through to the *other* direction when the wanted one is missing would have a
-    consumer rewrite its producers, or a producer adopt its consumers' consensus - the thing the
-    rule exists to prevent.
+    wants for this declaration - or nothing when that direction does not exist, and nothing at
+    all, for every key, when the variable has no single producer: two components writing it, or
+    none, leaves no side to take without the tool choosing a winner it has no standing to choose.
+    The editor calls without it, offering both (and whatever else two or no producers still
+    leaves reachable) and letting the reader pick; ``ddd gui`` calls with it, because a button
+    whose direction the reader has to work out is not the one press it exists to be, and falling
+    through to the *other* direction when the wanted one is missing would have a consumer rewrite
+    its producers, a producer adopt its consumers' consensus, or - with no producer to prefer at
+    all - one disagreeing declaration overwrite another in a dispute neither of them owns.
     """
     within = WITHIN_DEFINITION.match(pointer)
     if within is None:
@@ -319,6 +322,11 @@ def reconciliations(
         )
     here = Site(path, definition)
     produces = here in built.producers.get(name, ())
+    if owned and len(built.producers.get(name, ())) != 1:
+        # No single owner, so no direction for a fix to flow in. Two components writing one
+        # variable - or none writing it - is its own finding, and settling the disagreement
+        # between them would be choosing a winner this has no standing to choose.
+        return []
     offered: list[Reconciliation] = []
     for candidate in wanted:
         # Two ways to settle a key, and at most one of each. Taking is somebody else's answer

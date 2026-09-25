@@ -305,6 +305,12 @@ def reconciliations(
     through to the *other* direction when the wanted one is missing would have a consumer rewrite
     its producers, a producer adopt its consumers' consensus, or - with no producer to prefer at
     all - one disagreeing declaration overwrite another in a dispute neither of them owns.
+
+    Kept taking is also widened to every declaration of the variable, not left at the one it was
+    computed for: the editor's own actions reach where the cursor is, which is right for a
+    cursor and wrong for a finding, where pressing the button means the disagreement over
+    everywhere, not moved along to the next file that still carries it. Giving needs no such
+    widening - it is built from :func:`settle` already, which never reached only one file.
     """
     within = WITHIN_DEFINITION.match(pointer)
     if within is None:
@@ -346,12 +352,27 @@ def reconciliations(
         # it rather than the one that quietly redefines somebody else's data.
         ordered = [given, taken] if produces else [taken, given]
         if owned:
-            # The page offers the direction the owning component decides, or nothing: falling
-            # through to the other one would have a consumer rewrite its producers, which is
-            # the thing the whole ownership rule exists to prevent.
-            ordered = ordered[:1]
+            first = ordered[0]
+            if first is not None and not produces:
+                first = _across(built, name, first, cache)
+            ordered = [first]
         offered.extend(action for action in ordered if action is not None)
     return offered
+
+
+def _across(
+    built: Index, name: str, action: Reconciliation, cache: dict[Path, Document]
+) -> Reconciliation:
+    """One declaration's settlement widened to every declaration of the variable.
+
+    The editor changes what the cursor is in, which is the right reach for a cursor and the
+    wrong one for a finding: a reader pressing a finding's button means the disagreement to be
+    over, not to move to the next file that still carries it.
+    """
+    (change,) = action.settlement.changes
+    return Reconciliation(
+        action.title, action.key, settle(built, name, action.key, change.raw, cache)
+    )
 
 
 def _vocabulary_actions(

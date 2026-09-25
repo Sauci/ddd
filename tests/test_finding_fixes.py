@@ -96,6 +96,9 @@ class TestAnIdentity:
 
 class TestAMismatch:
     def test_a_consumer_is_offered_the_producer_s_value(self, tmp_path: Path) -> None:
+        # One consumer: the count pinned at this end of the pair with
+        # `test_a_consumer_s_fix_reaches_every_other_declaration_too` below - `(edit,) =
+        # ...changes` would itself raise if this ever widened to more than one file.
         built, root = built_of(
             tmp_path,
             **{
@@ -110,6 +113,27 @@ class TestAMismatch:
         assert [(o.op, o.pointer, o.raw) for o in edit.operations] == [
             ("set", f"{DEFINITION}.unit", '"rpm"')
         ]
+
+    def test_a_consumer_s_fix_reaches_every_other_declaration_too(self, tmp_path: Path) -> None:
+        # The reach is the whole variable, not the declaration the finding happened to be filed
+        # on. `b` and `c` both disagree with the producer `a`; pressing the button on `b`'s own
+        # finding must also clear `c`'s, or the page would leave a sibling finding behind the
+        # spec says one press should settle. `_from_producer` (the editor's own, untouched)
+        # changes only the declaration under the cursor - right for a cursor, wrong for a
+        # finding - so `reconciliations` widens the kept `taken` action across the variable
+        # before handing it back.
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="Hz")),
+                "c.ddd.json": component("C", declare("input", "Speed", unit="kPa")),
+            },
+        )
+        offered = fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built)
+        assert [fix.title for fix in offered] == ["Use the unit declared in a"]
+        # An exact set, not a superset check: this is what pins the producer *out*.
+        assert {edit.path.name for edit in offered[0].changes} == {"b.ddd.json", "c.ddd.json"}
 
     def test_the_producer_is_offered_its_own_value_outward(self, tmp_path: Path) -> None:
         built, root = built_of(

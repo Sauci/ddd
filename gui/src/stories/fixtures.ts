@@ -904,6 +904,92 @@ export const ID_FIX: FixReply = {
   ],
 };
 
+/** UserInterface's ValueE disagreeing with Controller, the variable's one producer, on both its
+ * datatype and its unit - two keys to fix, each its own button (`ddd.finding_fixes._reconciled`).
+ * Filed on the whole definition, with the producer's declaration noted as the reference, exactly
+ * as a real `definition-mismatch` is (`ddd.analysis._compare`). */
+export const DEFINITION_MISMATCH: Finding = {
+  file: USER_INTERFACE,
+  check: "definition-mismatch",
+  severity: "error",
+  message:
+    "'ValueE' is declared differently by component 'UserInterface' than by 'Controller' " +
+    "(datatype: uint16 != uint8, unit: 'kHz' != 'Hz')",
+  pointer: "component.interface[2].definition",
+  notes: [
+    {
+      message: "reference declaration",
+      file: CONTROLLER,
+      pointer: "component.interface[4].definition",
+    },
+  ],
+  route: { kind: "variable", name: "ValueE" },
+};
+
+/** The two fixes `DEFINITION_MISMATCH` carries, offered in the order UserInterface's own
+ * declaration writes the keys: datatype, then unit (`reconciliations`' `wanted`). SensorHub
+ * reads ValueE too and already states the producer's datatype, so taking it reaches
+ * UserInterface alone; SensorHub still states the wrong unit as well, so taking that reaches
+ * both - a consumer's fix widened to every declaration of the variable, not left at the one the
+ * finding is filed on (`_across`). */
+export const DEFINITION_MISMATCH_FIX: FixReply = {
+  revision: 7,
+  fixes: [
+    {
+      title: "Use the datatype declared in controller",
+      changes: [
+        {
+          file: USER_INTERFACE,
+          fingerprint: "d",
+          operations: [
+            { op: "set", pointer: "component.interface[2].definition.datatype", raw: '"uint8"' },
+          ],
+          hunks: [
+            {
+              line: 23,
+              before: ['          "datatype": "uint16",'],
+              after: ['          "datatype": "uint8",'],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      title: "Use the unit declared in controller",
+      changes: [
+        {
+          file: SENSOR_HUB,
+          fingerprint: "c",
+          operations: [
+            { op: "set", pointer: "component.interface[3].definition.unit", raw: '"Hz"' },
+          ],
+          hunks: [
+            {
+              line: 19,
+              before: ['          "unit": "kHz",'],
+              after: ['          "unit": "Hz",'],
+            },
+          ],
+        },
+        {
+          file: USER_INTERFACE,
+          fingerprint: "d",
+          operations: [
+            { op: "set", pointer: "component.interface[2].definition.unit", raw: '"Hz"' },
+          ],
+          hunks: [
+            {
+              line: 24,
+              before: ['          "unit": "kHz",'],
+              after: ['          "unit": "Hz",'],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
 /** A project with nothing to report. */
 export const NO_FINDINGS: State = {
   revision: 7,

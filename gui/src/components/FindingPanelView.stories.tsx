@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { Finding, FixReply, State } from "../api/types";
 import { noRouteReason, routeHref, routeLabel } from "../lib/findings";
 import {
+  DEFINITION_MISMATCH,
+  DEFINITION_MISMATCH_FIX,
   DID_NOT_LOAD,
   ID_FIX,
   MISSING_ID,
@@ -84,4 +86,25 @@ export const Refused = () => (
     chosen="Give 'ValueA' an id"
     refusal="sensor_hub.ddd.json changed on disk, so nothing was written. The panel now shows the file as it is."
   />
+);
+
+/** A `definition-mismatch` offering two keys to fix, one chosen so its preview is open: the
+ * consequence sentence and the changed lines. The chosen fix - the unit - reaches both
+ * declarations that still disagree with the producer, not only the one the finding is filed on,
+ * so the preview spans two files and the button reads "Apply to 2 files". */
+export const MismatchWithTwoFixes = () => (
+  <View
+    finding={DEFINITION_MISMATCH}
+    state={PROJECT_FINDINGS}
+    fixes={DEFINITION_MISMATCH_FIX}
+    chosen="Use the unit declared in controller"
+    changesShown
+  />
+);
+
+/** The same finding, offering no fix at all: what a reader sees when the variable has two
+ * producers, or when only its `kind` disagrees - the message, the note and the link, and no
+ * buttons beneath them. */
+export const MismatchWithNoFix = () => (
+  <View finding={DEFINITION_MISMATCH} state={PROJECT_FINDINGS} fixes={{ revision: 7, fixes: [] }} />
 );

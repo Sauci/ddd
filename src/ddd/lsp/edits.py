@@ -311,6 +311,11 @@ def reconciliations(
     cursor and wrong for a finding, where pressing the button means the disagreement over
     everywhere, not moved along to the next file that still carries it. Giving needs no such
     widening - it is built from :func:`settle` already, which never reached only one file.
+
+    Taking is narrower too, under ``owned=True``: adopting what the other readers agree on is
+    offered to the editor, never to the page. It only ever arises with a silent producer - the
+    one case ``_from_producer`` cannot answer for - and a silent owner is not standing in for
+    its readers' consensus, whatever they happen to agree on among themselves.
     """
     within = WITHIN_DEFINITION.match(pointer)
     if within is None:
@@ -338,11 +343,15 @@ def reconciliations(
         # Two ways to settle a key, and at most one of each. Taking is somebody else's answer
         # brought here - the producer's for preference, the one the rest agree on otherwise,
         # or their silence. Giving is this declaration's answer sent out, value or silence.
-        taken = (
-            _from_producer(built, here, document, name, candidate, cache)
-            or _remove_here(built, here, document, name, candidate, cache)
-            or _adopt(built, here, document, name, candidate, cache)
+        taken = _from_producer(built, here, document, name, candidate, cache) or _remove_here(
+            built, here, document, name, candidate, cache
         )
+        if not owned:
+            # The editor offers a consensus among the other declarations where the producer is
+            # silent. The page does not: with one owner guaranteed above, a silent owner means
+            # there is no owner's answer to take, and what the other readers happen to agree on
+            # is not one.
+            taken = taken or _adopt(built, here, document, name, candidate, cache)
         given = _propagate(built, here, document, name, candidate, cache) or _remove_elsewhere(
             built, here, document, name, candidate, cache
         )

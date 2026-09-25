@@ -163,6 +163,17 @@ describe("plotted", () => {
     expect([plot.low, plot.high]).toEqual([-1, 1]);
   });
 
+  test("a row with no values gets the same span as the zero row, not Infinity", () => {
+    // A `value_block` of `dimensions: [6]` stated with `"init": []` resolves with `shape=(6,)`
+    // and `rows=[[]]` - measured against a scratch copy of `examples/demo`, not assumed.
+    // `Math.min()`/`Math.max()` of nothing are `Infinity`/`-Infinity`, which is not a range and
+    // is what the side readings would print without the guard.
+    const empty: ValuesReply = { ...BLOCK_A, shape: [6], rows: [[]] };
+    const plot = plotted(empty, true);
+    expect([plot.low, plot.high]).toEqual([-1, 1]);
+    expect(plot.lines[0]?.points).toEqual([]);
+  });
+
   test("a flat line at zero is ruled by its own lower limit", () => {
     // `ValueD` is this object in the demo: an absent init reads zero everywhere, its limits are
     // `0 … 65535`, and the range of -1 to 1 the line above gives it puts the lower limit *inside*
@@ -207,6 +218,9 @@ describe("plotted", () => {
       "4800",
       "8000",
     ]);
+    // Proportional placement (spec §3) is about where a reading sits, not only what it says -
+    // the third tick, like the third point above, is a fifth of the way across.
+    expect(plot.ticks[2]?.x).toBeCloseTo(BOX.left + inside * 0.2);
   });
 
   test("the labels name the axis below and the object beside", () => {

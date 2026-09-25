@@ -56,8 +56,15 @@ function alongTheBottom(reply: ValuesReply, physical: boolean): number[] {
  * A span of zero has no twentieth worth taking, and a scale built on it divides by zero: an
  * object stating one value for every element is real (`CurveB`) and so is one stating none at
  * all. Such a range is the value with a twentieth of *itself* either side, or one either side
- * where the value is zero and there is no proportion to take. */
+ * where the value is zero and there is no proportion to take.
+ *
+ * A row can hold no values at all - `Math.min()` and `Math.max()` of nothing are `Infinity` and
+ * `-Infinity`, which is not a range and prints as those two words. An `init` of `[]` against a
+ * stated shape reaches this: `_check_init_shape` files a finding but does not drop the
+ * declaration, so the reply still has to draw *something*. It gets the same span the zero case
+ * gets, -1 to 1, there being no values to take a proportion of either. */
 function rangeOf(values: number[]): [number, number] {
+  if (values.length === 0) return [-1, 1];
   const low = Math.min(...values);
   const high = Math.max(...values);
   if (low !== high) {

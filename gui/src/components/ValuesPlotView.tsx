@@ -71,7 +71,13 @@ export function ValuesPlotView({ reply, physical }: ValuesPlotViewProps) {
             {/* `last` is `undefined` only when `line.points` is empty, so this is the one
                 condition that guards it - no `?? 0` fallback left for nothing to reach. */}
             {line.label !== "" && last !== undefined && (
-              <text className="values-plot-row" x={BOX.width - BOX.right} y={last.y}>
+              // `last.x`, not `BOX.width - BOX.right` again: they read the same for an ordinary
+              // row because the last column always reaches the right edge, but the two are not
+              // the same fact - a shape of one element centres its lone marker (`placed`'s
+              // `from === to` branch) rather than sitting on that edge, and the label belongs
+              // next to the marker it names either way. The `- 6` is a drawn offset clear of the
+              // marker's own radius, not a second one for it to sit on.
+              <text className="values-plot-row" x={last.x - 6} y={last.y}>
                 {line.label}
               </text>
             )}

@@ -4,7 +4,7 @@ import { columnAxis, columnHeader, labelled, physicalOf, rawOf, rowHeader } from
 /** The drawn box, in the `viewBox`'s own units - one fixed frame scaled to whatever width the
  * component is given, so the drawing is resolution-free and its screenshot is stable. The left
  * margin holds the two y readings, the bottom one the x readings. */
-export const BOX = { width: 640, height: 200, left: 56, right: 8, top: 8, bottom: 28 } as const;
+export const BOX = { width: 640, height: 200, left: 56, right: 16, top: 8, bottom: 28 } as const;
 
 export interface PlotPoint {
   x: number;

@@ -62,7 +62,7 @@ function columnAxis(reply: ValuesReply) {
  * a unit there would be a label the numbers under it contradict. Spec 5.2 labels both edges of
  * every grid it draws, because the header converts by the axis's rule and the values by the
  * object's - two different units, and nothing else on the screen says which belongs to which. */
-function labelled(name: string, unit: string, physical: boolean): string {
+export function labelled(name: string, unit: string, physical: boolean): string {
   return physical && unit !== "" ? `${name} (${unit})` : name;
 }
 

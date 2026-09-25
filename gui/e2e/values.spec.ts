@@ -70,7 +70,8 @@ test("a curve is drawn from the numbers it holds", async ({ page, gui }) => {
   // `role="img"`'s own name drops "(Hz)" and "(ms)" in Raw the way the grid's own headers do
   // (spec 5.2, `ValuesPlotView.tsx`), so matching the fragment both keep - "plotted against
   // AxisA" - is what this locator survives the toggle below on, without re-querying the page.
-  const polyline = page.getByRole("img", { name: "plotted against AxisA" }).locator("polyline");
+  const plot = page.getByRole("img", { name: "plotted against AxisA" });
+  const polyline = plot.locator("polyline");
   // Read once off this served copy of examples/demo and pinned literally, not recomputed from
   // BOX and AxisA's own breakpoints: a test that repeats valuePlot.ts's own arithmetic passes
   // even where both share the same mistake. The first pair sits at x = 56 - BOX.left itself -
@@ -82,11 +83,39 @@ test("a curve is drawn from the numbers it holds", async ({ page, gui }) => {
     "169.60000000000002,123.88429752066115 283.20000000000005,137.43801652892563 " +
     "396.8,150.99173553719007 624,164.54545454545453";
   await expect(polyline).toHaveAttribute("points", physicalPoints);
+  await expect(plot.locator(".values-plot-tick")).toHaveText([
+    "0",
+    "800",
+    "1600",
+    "3200",
+    "4800",
+    "8000",
+  ]);
+  await expect(plot.locator(".values-plot-side")).toHaveText(["12.275", "6.225"]);
 
-  // Raw counts read CurveA's own six as 1200 .. 650 rather than 12 .. 6.5 ms: a plot drawn from
-  // reply.rows redraws under that toggle, where one merely styled to look like it was would not.
   await page.getByRole("button", { name: "Raw" }).click();
-  await expect(polyline).not.toHaveAttribute("points", physicalPoints);
+  // What the toggle actually redraws, in text a reader can see: AxisA's own ticks (its raw
+  // breakpoints rather than what its conversion makes of them) and the two side readings (the
+  // padded range of CurveA's own raw counts rather than of what its conversion makes of them).
+  //
+  // The polyline's own `points` are deliberately not re-asserted here. The plot scales to its own
+  // range (`rangeOf`, `placed` in valuePlot.ts), so the same six numbers in a different unit are
+  // the same shape: low, high and every value between them move by the same factor, and a
+  // coordinate is placed by the ratio between them, which that factor cancels out of. Reading
+  // `points` again after this toggle, on this served page, does turn up a change - but only in
+  // the thirteenth decimal of two of the six y's, from CurveA's own 0.01 conversion factor not
+  // being an exact binary fraction the way AxisA's 0.25 is (which is why every x above is
+  // bit-for-bit identical either way). That is real, but it is not what this toggle is for, and a
+  // test asserting it would be asserting rounding noise rather than the picture.
+  await expect(plot.locator(".values-plot-tick")).toHaveText([
+    "0",
+    "3200",
+    "6400",
+    "12800",
+    "19200",
+    "32000",
+  ]);
+  await expect(plot.locator(".values-plot-side")).toHaveText(["1227.5", "622.5"]);
 });
 
 test("a cell changed is written to the producer's file", async ({ page, gui }) => {

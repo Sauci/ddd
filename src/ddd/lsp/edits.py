@@ -281,7 +281,13 @@ def _on_the_declaration(
 
 
 def reconciliations(
-    built: Index, path: Path, document: Document, pointer: str, cache: dict[Path, Document]
+    built: Index,
+    path: Path,
+    document: Document,
+    pointer: str,
+    cache: dict[Path, Document],
+    *,
+    owned: bool = False,
 ) -> list[Reconciliation]:
     """Every way to settle the declaration at ``pointer``, in the order to offer them.
 
@@ -289,9 +295,13 @@ def reconciliations(
     that differs from the other declarations. Two ways at most per key - somebody else's answer
     brought here, and this one's answer sent out - ordered by which side owns the variable.
 
-    Public because ``ddd gui`` offers the first of each key's pair from a finding, and must
-    order them the way the editor does or the two clients disagree about which fix is the
-    natural one.
+    ``owned=True`` keeps only the first of each key's pair - the direction the ownership rule
+    wants for this declaration - or nothing when that direction does not exist. The editor calls
+    without it, offering both and letting the reader pick; ``ddd gui`` calls with it, because a
+    button whose direction the reader has to work out is not the one press it exists to be, and
+    falling through to the *other* direction when the wanted one is missing would have a
+    consumer rewrite its producers, or a producer adopt its consumers' consensus - the thing the
+    rule exists to prevent.
     """
     within = WITHIN_DEFINITION.match(pointer)
     if within is None:
@@ -327,6 +337,11 @@ def reconciliations(
         # the whole tool is built on, and the fix that reads naturally is the one that follows
         # it rather than the one that quietly redefines somebody else's data.
         ordered = [given, taken] if produces else [taken, given]
+        if owned:
+            # The page offers the direction the owning component decides, or nothing: falling
+            # through to the other one would have a consumer rewrite its producers, which is
+            # the thing the whole ownership rule exists to prevent.
+            ordered = ordered[:1]
         offered.extend(action for action in ordered if action is not None)
     return offered
 

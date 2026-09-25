@@ -35,10 +35,6 @@ MISMATCH: Final = "definition-mismatch"
 """Two components describing one variable differently - the finding this tool exists to file,
 and until now the one it could only describe."""
 
-_NOTHING_BUILT: Final = Index()
-"""The default ``built``, for a caller asking about the one check that needs no index at all -
-a module-level singleton rather than a call in the signature, which a mutable default would be."""
-
 
 @dataclass(frozen=True, slots=True)
 class FileEdit:
@@ -61,11 +57,7 @@ class Fix:
 
 
 def fixes_for(
-    check: str,
-    path: Path,
-    pointer: str,
-    cache: dict[Path, Document],
-    built: Index = _NOTHING_BUILT,
+    check: str, path: Path, pointer: str, cache: dict[Path, Document], built: Index
 ) -> tuple[Fix, ...]:
     """The fixes the finding filed at ``pointer`` of ``path`` carries, in the order to offer
     them.
@@ -101,25 +93,22 @@ def _an_identity(path: Path, pointer: str, cache: dict[Path, Document]) -> tuple
 def _reconciled(
     built: Index, path: Path, pointer: str, cache: dict[Path, Document]
 ) -> tuple[Fix, ...]:
-    """One fix per key the declaration disagrees on: the first of that key's ordered pair.
+    """One fix per key the declaration disagrees on: the direction the owning component decides.
 
-    The editor offers up to two ways to settle a key and lets the reader pick; the page offers
-    the one that follows the ownership rule - a consumer takes the producer's value, the
-    producer sends its own out - because a button whose direction the reader has to work out is
-    not the one press this exists to be. The other way is a click away, in the variable's own
-    panel, which settles any value the reader chooses.
+    Asks ``reconciliations`` for ``owned=True``, which already keeps only the direction the
+    ownership rule wants for this declaration - a consumer takes the producer's value, the
+    producer sends its own out - or nothing when that direction does not exist, rather than
+    falling through to the other one: a button whose direction the reader has to work out is not
+    the one press this exists to be. The other way is a click away, in the variable's own panel,
+    which settles any value the reader chooses.
 
     A settlement that cannot reach every declaration is dropped rather than offered. The page
     refuses a partial settlement, so the button would do nothing but explain itself, and a fix
     that does nothing teaches a reader to stop reading the fixes.
     """
     document = read(path, cache)
-    seen: set[str] = set()
     fixes: list[Fix] = []
-    for decision in reconciliations(built, path, document, pointer, cache):
-        if decision.key in seen:
-            continue
-        seen.add(decision.key)
+    for decision in reconciliations(built, path, document, pointer, cache, owned=True):
         if decision.settlement.unsettled:
             continue
         changes = tuple(

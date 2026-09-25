@@ -4,26 +4,21 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
-from conftest import built_of, component, declare, project, write_tree
+from conftest import built_of, component, declare, scalar_type, types
 from ddd.finding_fixes import fixes_for
-from ddd.lsp.edits import settle
+from ddd.lsp.edits import reconciliations, settle
+from ddd.lsp.ranges import read
 
 DEFINITION = "component.interface[0].definition"
 
 
-def tree(tmp_path: Path, **files: Any) -> Path:
-    write_tree(tmp_path, {"p.ddd.json": project("P", *files), **files})
-    return tmp_path
-
-
 class TestAnIdentity:
     def test_a_producing_declaration_without_one_is_offered_an_id(self, tmp_path: Path) -> None:
-        root = tree(
+        built, root = built_of(
             tmp_path, **{"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}
         )
-        offered = fixes_for("missing-id", root / "a.ddd.json", DEFINITION, {})
+        offered = fixes_for("missing-id", root / "a.ddd.json", DEFINITION, {}, built)
         assert [fix.title for fix in offered] == ["Give 'Speed' an id"]
         (edit,) = offered[0].changes
         (operation,) = edit.operations
@@ -33,15 +28,15 @@ class TestAnIdentity:
     def test_two_asks_propose_two_ids(self, tmp_path: Path) -> None:
         # `ddd.identity` generates a fresh id per call, which is why a caller applies the
         # answer it was given rather than asking again.
-        root = tree(
+        built, root = built_of(
             tmp_path, **{"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}
         )
-        first = fixes_for("missing-id", root / "a.ddd.json", DEFINITION, {})[0]
-        second = fixes_for("missing-id", root / "a.ddd.json", DEFINITION, {})[0]
+        first = fixes_for("missing-id", root / "a.ddd.json", DEFINITION, {}, built)[0]
+        second = fixes_for("missing-id", root / "a.ddd.json", DEFINITION, {}, built)[0]
         assert first.changes[0].operations[0].raw != second.changes[0].operations[0].raw
 
     def test_a_declaration_that_has_an_id_is_offered_nothing(self, tmp_path: Path) -> None:
-        root = tree(
+        built, root = built_of(
             tmp_path,
             **{
                 "a.ddd.json": component(
@@ -49,22 +44,22 @@ class TestAnIdentity:
                 )
             },
         )
-        assert fixes_for("missing-id", root / "a.ddd.json", DEFINITION, {}) == ()
+        assert fixes_for("missing-id", root / "a.ddd.json", DEFINITION, {}, built) == ()
 
     def test_a_declaration_that_reads_the_variable_is_offered_nothing(self, tmp_path: Path) -> None:
         # An identity belongs to whoever produces the object; a reader states none.
-        root = tree(
+        built, root = built_of(
             tmp_path, **{"a.ddd.json": component("A", declare("input", "Speed", unit="rpm"))}
         )
-        assert fixes_for("missing-id", root / "a.ddd.json", DEFINITION, {}) == ()
+        assert fixes_for("missing-id", root / "a.ddd.json", DEFINITION, {}, built) == ()
 
     def test_an_id_stated_as_null_is_replaced_rather_than_added(self, tmp_path: Path) -> None:
         # What `ddd dump` writes for an unstamped object, and what `missing-id` reports too.
-        root = tree(
+        built, root = built_of(
             tmp_path,
             **{"a.ddd.json": component("A", declare("output", "Speed", unit="rpm", id=None))},
         )
-        (fix,) = fixes_for("missing-id", root / "a.ddd.json", DEFINITION, {})
+        (fix,) = fixes_for("missing-id", root / "a.ddd.json", DEFINITION, {}, built)
         assert fix.changes[0].operations[0].pointer == f"{DEFINITION}.id"
 
     def test_a_lone_declaration_has_nothing_to_reconcile(self, tmp_path: Path) -> None:
@@ -76,14 +71,14 @@ class TestAnIdentity:
         assert fixes_for("definition-mismatch", root / "a.ddd.json", DEFINITION, {}, built) == ()
 
     def test_a_pointer_naming_no_declaration_carries_no_fix(self, tmp_path: Path) -> None:
-        root = tree(
+        built, root = built_of(
             tmp_path, **{"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}
         )
-        assert fixes_for("missing-id", root / "a.ddd.json", "component.name", {}) == ()
+        assert fixes_for("missing-id", root / "a.ddd.json", "component.name", {}, built) == ()
 
     def test_a_declaration_whose_name_is_not_a_name_carries_no_fix(self, tmp_path: Path) -> None:
         # The file moved on since the analysis: the fix's own title would have nothing to say.
-        root = tree(
+        built, root = built_of(
             tmp_path, **{"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}
         )
         path = root / "a.ddd.json"
@@ -92,7 +87,7 @@ class TestAnIdentity:
             encoding="utf-8",
             newline="",
         )
-        assert fixes_for("missing-id", path, DEFINITION, {}) == ()
+        assert fixes_for("missing-id", path, DEFINITION, {}, built) == ()
 
 
 class TestAMismatch:
@@ -144,6 +139,55 @@ class TestAMismatch:
             "Use the datatype declared in a",
             "Use the unit declared in a",
         ]
+
+    def test_a_variable_with_two_producers_is_offered_nothing(self, tmp_path: Path) -> None:
+        # The case `examples/inconsistent` is: `SharedValue` written by two components. There is
+        # no producer whose value is *the* producer's, so `taken` (`_from_producer`) refuses -
+        # but nothing about `given` (`_propagate`) asks who produces, and queried at `c` it
+        # would happily offer to overwrite *both* correct, agreeing producers with `c`'s own,
+        # disagreeing value. That is what `owned=True` exists to stop: the first of the pair if
+        # it exists, and otherwise nothing - never falling through to the second.
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("output", "Speed", unit="rpm")),
+                "c.ddd.json": component("C", declare("input", "Speed", unit="Hz")),
+            },
+        )
+        # Asserted first, so this cannot pass because the fixture quietly has nothing to offer
+        # at all: unowned, `reconciliations` really does offer the dangerous direction here -
+        # the editor still shows it, letting a reader who understands it decide for themselves.
+        document = read(root / "c.ddd.json", {})
+        unowned = reconciliations(built, root / "c.ddd.json", document, DEFINITION, {})
+        assert [decision.title for decision in unowned] == [
+            "Apply this unit to 2 other declarations of 'Speed'"
+        ]
+        assert fixes_for("definition-mismatch", root / "c.ddd.json", DEFINITION, {}, built) == ()
+
+    def test_a_producer_with_only_the_taking_direction_offers_nothing(self, tmp_path: Path) -> None:
+        # The mirror image of the case above, on the giving side instead of the taking side.
+        # `b` names a type that fixes `unit` to a value `a` does not state, so `a`'s own value
+        # cannot be sent to `b` at all (`given` is blocked) - but `a` stating no unit is
+        # something `b`'s type does not contradict, so `a` *could* adopt that silence (`taken`
+        # exists, via `_remove_here`). A producer's finding owns the giving direction, not the
+        # taking one; asked unowned, `a` is still offered that button - asked the way the page
+        # asks, nothing is, rather than quietly falling through to the direction it does not own.
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("output", "Speed", typename="Speed_t")),
+                "t.ddd.json": types(scalar_type("Speed_t", unit="kPa")),
+            },
+        )
+        unit = f"{DEFINITION}.unit"
+        document = read(root / "a.ddd.json", {})
+        unowned = reconciliations(built, root / "a.ddd.json", document, unit, {})
+        assert [decision.title for decision in unowned] == [
+            "Remove this unit, which b does not declare"
+        ]
+        assert fixes_for("definition-mismatch", root / "a.ddd.json", unit, {}, built) == ()
 
     def test_a_declaration_that_cannot_take_the_value_stops_the_fix_being_offered(
         self, tmp_path: Path

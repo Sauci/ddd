@@ -1,7 +1,14 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONTROLLER, drift, driftIn, PUMP, unstamp } from "./demo";
+import { CONTROLLER, drift, driftIn, EVENT_LOGGER, PUMP, USER_INTERFACE, unstamp } from "./demo";
 import { expect, test } from "./fixtures";
+
+/** ValueE's own `"unit"` in a file, read back from disk - scoped to its own declaration so a
+ * stray `"unit": "Hz"` elsewhere in the same file (AxisA's, in user_interface.ddd.json) cannot
+ * make a fix that wrote nothing look like one that worked. */
+function unitOfValueE(bytes: Buffer): string | undefined {
+  return /"name": "ValueE"[\s\S]*?"unit": "([^"]*)"/.exec(bytes.toString("utf8"))?.[1];
+}
 
 /** ValueH's definition in the copy's own controller.ddd.json, read back from disk - the one
  * local declaration `unstamp` below takes an id from. */
@@ -40,6 +47,47 @@ test("a disagreement leads to its variable", async ({ page, gui }) => {
   const variablePanel = page.getByRole("complementary", { name: "ValueA" });
   await expect(variablePanel).toBeVisible();
   await expect(variablePanel.getByRole("combobox", { name: "Unit of ValueA" })).toHaveValue("%");
+});
+
+test("a disagreement is settled from the finding that reports it", async ({ page, gui }) => {
+  // ValueE is written by Controller and read by UserInterface and EventLogger, all three in
+  // Hz - the only demo variable with one producer and two consumers, so drifting one reader's
+  // unit shows a fix that reaches one file, and drifting both shows the same button reaching
+  // two: the settlement follows the variable, not the finding that happened to report it.
+  driftIn(gui.directory, USER_INTERFACE, "ValueE", "kHz");
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+
+  const panel = page.getByRole("complementary", { name: "definition-mismatch" });
+
+  const uiRow = page
+    .getByRole("row", { name: "definition-mismatch" })
+    .filter({ hasText: "user_interface.ddd.json" });
+  await uiRow.click();
+  await panel.getByRole("button", { name: "Use the unit declared in controller" }).click();
+  await expect(panel.getByRole("button", { name: "Apply to 1 file" })).toBeVisible();
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+
+  await expect(page.getByText("Nothing to report")).toBeVisible();
+  expect(unitOfValueE(readFileSync(join(gui.directory, USER_INTERFACE)))).toBe("Hz");
+
+  // Both readers disagree now. The button offered on EventLogger's own finding must still
+  // change UserInterface's file too - the reach is the whole variable, not the one file this
+  // finding was filed on.
+  driftIn(gui.directory, USER_INTERFACE, "ValueE", "kHz");
+  driftIn(gui.directory, EVENT_LOGGER, "ValueE", "kHz");
+
+  const eventRow = page
+    .getByRole("row", { name: "definition-mismatch" })
+    .filter({ hasText: "event_logger.ddd.json" });
+  await eventRow.click();
+  await panel.getByRole("button", { name: "Use the unit declared in controller" }).click();
+  await expect(panel.getByRole("button", { name: "Apply to 2 files" })).toBeVisible();
+  await panel.getByRole("button", { name: "Apply to 2 files" }).click();
+
+  await expect(page.getByText("Nothing to report")).toBeVisible();
+  expect(unitOfValueE(readFileSync(join(gui.directory, USER_INTERFACE)))).toBe("Hz");
+  expect(unitOfValueE(readFileSync(join(gui.directory, EVENT_LOGGER)))).toBe("Hz");
 });
 
 test("an unknown unit leads to its unit", async ({ page, vocabularyGui }) => {

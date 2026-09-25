@@ -5,6 +5,10 @@ import type { Locator, Page } from "@playwright/test";
 export const CONTROLLER = join("components", "controller.ddd.json");
 export const SENSOR_HUB = join("components", "sensor_hub.ddd.json");
 export const USER_INTERFACE = join("components", "user_interface.ddd.json");
+/** ValueE's other reader, in a sub project of its own - with UserInterface, the only demo
+ * variable with one producer and two consumers, which is what lets a settlement reach one file
+ * or both. */
+export const EVENT_LOGGER = join("subsystems", "logging", "event_logger.ddd.json");
 /** The files of examples/vocabulary the journeys change, in its copy: the component stating its
  * units, and the units file listing them. */
 export const PUMP = "pump.ddd.json";

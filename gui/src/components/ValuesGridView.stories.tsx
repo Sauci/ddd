@@ -11,6 +11,7 @@ import {
   VALUES_VALUE_D,
 } from "../stories/fixtures";
 import { ValuesGridView } from "./ValuesGridView";
+import { ValuesPlotView } from "./ValuesPlotView";
 
 export default { title: "Components / ValuesGridView" };
 
@@ -141,3 +142,24 @@ export function ATableWaitingForAPaste() {
     />
   );
 }
+
+// Part 10's own stories: the plot alone rather than the whole grid, since a grid's own picture
+// is already the ones above - `View` wraps `ValuesGridView`, these draw `ValuesPlotView` direct.
+
+export const ACurvePlotted = () => <ValuesPlotView reply={VALUES_CURVE} physical />;
+
+export const ACurvePlottedInRawCounts = () => (
+  <ValuesPlotView reply={VALUES_CURVE} physical={false} />
+);
+
+export const AMapAsAFamilyOfCurves = () => <ValuesPlotView reply={VALUES_MAP} physical />;
+
+// BlockA's own limits, 0 and 255, are its own extremes (spec 4) - the one fixture in this file
+// where both draw, ruled just inside the frame rather than clipped to its edge.
+export const ABlockPlottedWithBothLimits = () => <ValuesPlotView reply={VALUES_BLOCK} physical />;
+
+export const AFlatLineStatedOnce = () => <ValuesPlotView reply={VALUES_CURVE_B} physical />;
+
+// ValueD's absent init reads zero throughout, and its lower limit is zero too - the flat line and
+// the limit line share one y, which is correct rather than a coincidence to hide.
+export const AnAbsentInitAtZero = () => <ValuesPlotView reply={VALUES_VALUE_D} physical />;

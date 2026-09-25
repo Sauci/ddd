@@ -135,8 +135,20 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   one and a fifth to another, which names the cell and says so.  The header itself is
   discarded without being read, so a block whose header names a different axis is not
   caught here; the preview, which shows the lines each file will change, is what catches
-  it before anything is written.  A finding filed on an object's `init` now leads to
-  this grid, the way every other finding already leads to what it names.
+  it before anything is written.  Under the grid, the object's values are drawn as a
+  picture too: a marker at each point and a line joining them where a row holds more
+  than one, laid against an axis's own breakpoints - unevenly spaced, exactly as those
+  breakpoints are - or over plain indices where there is none, with the declared limits
+  ruled across it wherever they fall inside the range it draws and left off it where
+  they do not, the one place a value stored outside them can be seen.  It follows the
+  same toggle between physical values and raw counts, offers no control of its own,
+  changes nothing, and is drawn under a read-only grid exactly as under a writable one,
+  left undrawn only where there is no grid to begin with.  The toggle always rescales
+  to its own range: for a positive conversion the same numbers in a different unit
+  draw the very same picture, only the readings along its edges changing; a negative
+  one - legal here - mirrors the curve instead of leaving it alone.  A finding filed
+  on an object's `init` now leads to this grid, the way every other finding already
+  leads to what it names.
 
 * **The editor's reconcile quick fix is no longer offered for a value that already means what
   it would be set to.**  Taking the producing component's value, or spreading one declaration's

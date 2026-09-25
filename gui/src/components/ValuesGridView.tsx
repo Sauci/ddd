@@ -22,6 +22,7 @@ import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
 import { Changes } from "./Changes";
+import { ValuesPlotView } from "./ValuesPlotView";
 
 export interface ValuesGridViewProps {
   reply: ValuesReply;
@@ -233,6 +234,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
               already says so above, so the hint - the only way the feature is discoverable -
               belongs only where a paste would actually land. */}
           {readOnly === null && <p className="quiet values-paste">{pasteHint(reply)}</p>}
+          <ValuesPlotView reply={reply} physical={physical} />
         </>
       )}
       {reply.findings.length > 0 && (

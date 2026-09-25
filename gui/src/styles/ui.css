@@ -579,6 +579,53 @@ tr.changing td {
   font-size: var(--text-small);
 }
 
+/* ValuesPlotView (part 10): a fixed `viewBox` scaled to the column's own width, so it stays
+   resolution-free and its screenshot is stable. It draws only - every number it places comes
+   from `plotted()` - so nothing here computes a position, only how one already placed is
+   painted. Colours are the page's own tokens, not new ones. */
+.values-plot {
+  width: 100%;
+  height: auto;
+  margin-top: 0.75rem;
+}
+.values-plot-line polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+.values-plot-line circle {
+  fill: var(--accent);
+}
+.values-plot-axis {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+.values-plot-rule {
+  stroke: var(--ink-quiet);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+.values-plot-tick,
+.values-plot-side,
+.values-plot-row,
+.values-plot-name {
+  fill: var(--ink-quiet);
+  font-size: 10px;
+}
+.values-plot-tick {
+  text-anchor: middle;
+}
+.values-plot-row {
+  text-anchor: end;
+}
+/* The x axis's own name: drawn at the frame's right-hand end rather than its left (task 2's own
+   ruling), since the left is where the first tick already sits. Its own rule rather than folded
+   into `.values-plot-row`'s above - the two agree on `text-anchor: end` by coincidence of where
+   each sits, not because a row label and the axis name are the same kind of thing. */
+.values-plot-name {
+  text-anchor: end;
+}
+
 /* Ladle only: a row of widgets with a gap, for a story that shows several at once. */
 .story-row {
   display: flex;

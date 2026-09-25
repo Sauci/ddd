@@ -38,7 +38,7 @@ export function rawOf(physical: number, conversion: Conversion, datatype: string
 }
 
 /** The tail of the arithmetic taken off, as `round_physical` takes it off server side. */
-function rounded(value: number): number {
+export function rounded(value: number): number {
   return Number.parseFloat(value.toPrecision(12));
 }
 
@@ -53,7 +53,7 @@ function axisOf(reply: ValuesReply, position: string) {
 }
 
 /** The axis the columns are laid against: a map's x axis, or a curve's only one. */
-function columnAxis(reply: ValuesReply) {
+export function columnAxis(reply: ValuesReply) {
   return axisOf(reply, "x_axis") ?? axisOf(reply, "axis");
 }
 
@@ -62,7 +62,7 @@ function columnAxis(reply: ValuesReply) {
  * a unit there would be a label the numbers under it contradict. Spec 5.2 labels both edges of
  * every grid it draws, because the header converts by the axis's rule and the values by the
  * object's - two different units, and nothing else on the screen says which belongs to which. */
-function labelled(name: string, unit: string, physical: boolean): string {
+export function labelled(name: string, unit: string, physical: boolean): string {
   return physical && unit !== "" ? `${name} (${unit})` : name;
 }
 

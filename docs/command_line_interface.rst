@@ -293,7 +293,12 @@ The commands
        maintaining its vocabulary - and a Findings tab of every finding, worst first,
        one tab away; a variable's panel shows every key its declarations share, says
        which of them they disagree about, and settles one on every declaration at
-       once. A component's page adds a declaration to its interface - a variable
+       once. A ``definition-mismatch`` finding carries that settlement as a button of its own,
+       one per disagreeing key, taking the producing component's value with nothing left
+       for the reader to choose, and reaching every declaration that disagrees, not only
+       the one the finding names. Nothing is offered where the variable has no single
+       producer, where only ``kind`` disagrees, or where some declaration cannot take
+       the value. A component's page adds a declaration to its interface - a variable
        already declared, carrying the producer's keys where there is one and the
        project's own where there is not, or a new object of one of six kinds - and
        takes one away. Its table's Shape column opens the page of a curve, a map, an

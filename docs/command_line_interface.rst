@@ -317,9 +317,10 @@ The commands
        wherever they fall inside the drawn range. It follows the same toggle, offers no
        control of its own, changes nothing, and is drawn under a read-only grid exactly
        as under a writable one, left undrawn only where there is no grid to begin with.
-       The toggle does not change its shape: the plot scales to its own range, so the
-       same numbers in a different unit draw the same picture, and only the readings
-       along its edges change. A Types tab lists the types the project declares, with
+       The toggle always rescales to its own range: for a positive conversion the same
+       numbers in a different unit draw the very same picture, only the readings along
+       its edges changing; a negative one - legal here - mirrors the curve instead of
+       leaving it alone. A Types tab lists the types the project declares, with
        what each fixes and what names it;
        what a scalar type fixes is changed there, and renaming one rewrites every
        declaration and member naming it in one edit.

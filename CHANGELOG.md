@@ -143,9 +143,10 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   they do not, the one place a value stored outside them can be seen.  It follows the
   same toggle between physical values and raw counts, offers no control of its own,
   changes nothing, and is drawn under a read-only grid exactly as under a writable one,
-  left undrawn only where there is no grid to begin with.  The toggle does not change
-  its shape: the plot scales to its own range, so the same numbers in a different unit
-  draw the same picture, and only the readings along its edges change.  A finding filed
+  left undrawn only where there is no grid to begin with.  The toggle always rescales
+  to its own range: for a positive conversion the same numbers in a different unit
+  draw the very same picture, only the readings along its edges changing; a negative
+  one - legal here - mirrors the curve instead of leaving it alone.  A finding filed
   on an object's `init` now leads to this grid, the way every other finding already
   leads to what it names.
 

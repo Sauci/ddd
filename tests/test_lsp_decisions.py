@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from conftest import built_of, component, declare
-from ddd.lsp.edits import settled_at
-from ddd.lsp.navigation import Site
-from ddd.lsp.ranges import Document
+from ddd.lsp.edits import _propagate, reconciliations, settled_at
+from ddd.lsp.navigation import Index, Site
+from ddd.lsp.ranges import Document, read
 
 
 class TestOneDeclaration:
@@ -75,3 +75,55 @@ class TestWhatTheSpellingRefuses:
             "kind": QUICK_FIX,
             "edit": {"changes": {}},
         }
+
+
+class TestTheOtherDeclarations:
+    def test_a_value_sent_out_names_every_declaration_that_takes_it(self, tmp_path: Path) -> None:
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="Hz")),
+                "c.ddd.json": component("C", declare("input", "Speed", unit="Hz")),
+            },
+        )
+        here = Site(root / "a.ddd.json", "component.interface[0].definition")
+        document = read(here.path, {})
+        decision = _propagate(built, here, document, "Speed", "unit", {})
+        assert decision is not None
+        assert decision.title == "Apply this unit to 2 other declarations of 'Speed'"
+        assert {change.site.path.name for change in decision.settlement.changes} == {
+            "b.ddd.json",
+            "c.ddd.json",
+        }
+        assert all(change.raw == '"rpm"' for change in decision.settlement.changes)
+
+
+class TestReconciliations:
+    """`reconciliations` repeats the two guards `_on_the_declaration` already made before ever
+    calling it, so that the function reads the same whichever caller reaches it - the editor,
+    through `_on_the_declaration`, or the page, directly. That duplication means neither guard
+    is reachable through `actions()` any more: `_on_the_declaration` already returned before
+    `reconciliations` is called, for both a pointer outside a definition and one whose
+    declaration states no name. Covered here the way `TestOneDeclaration` covers `settled_at`
+    directly, rather than only through whatever caller happens to reach it today.
+    """
+
+    def test_outside_a_definition_nothing_is_settled(self, tmp_path: Path) -> None:
+        document = Document('{"component": {"interface": [{"definition": {"name": "S"}}]}}')
+        assert (
+            reconciliations(Index(), tmp_path / "a.ddd.json", document, "component.name", {}) == []
+        )
+
+    def test_a_declaration_with_no_name_settles_nothing(self, tmp_path: Path) -> None:
+        document = Document('{"component": {"interface": [{"definition": {"unit": "rpm"}}]}}')
+        assert (
+            reconciliations(
+                Index(),
+                tmp_path / "a.ddd.json",
+                document,
+                "component.interface[0].definition",
+                {},
+            )
+            == []
+        )

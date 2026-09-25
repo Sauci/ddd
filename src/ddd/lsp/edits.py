@@ -258,35 +258,10 @@ def _on_the_declaration(
     if not isinstance(name, str):
         return []
 
-    key = pointer.rsplit(".", 1)[-1]
-    if pointer == f"{definition}.{key}" and key in PROPAGATED_KEYS:
-        wanted = [key]
-    else:
-        wanted = interface_keys(document.value_at(definition)) + _missing(
-            built, path, document, name, definition, cache
-        )
-    here = Site(path, definition)
-    produces = here in built.producers.get(name, ())
-    offered: list[dict[str, Any]] = []
-    for candidate in wanted:
-        # Two ways to settle a key, and at most one of each. Taking is somebody else's answer
-        # brought here - the producer's for preference, the one the rest agree on otherwise,
-        # or their silence. Giving is this declaration's answer sent out, value or silence.
-        taken = (
-            _from_producer(built, here, document, name, candidate, cache)
-            or _remove_here(built, here, document, name, candidate, cache)
-            or _adopt(built, here, document, name, candidate, cache)
-        )
-        given = _propagate(built, here, document, name, candidate, cache) or _remove_elsewhere(
-            built, here, document, name, candidate, cache
-        )
-        spelled = None if taken is None else _protocol_action(taken, cache)
-        # A consumer is offered the producer's value first; the producer is offered its own,
-        # outward. Which side owns the variable is not a matter of taste here - it is the rule
-        # the whole tool is built on, and the fix that reads naturally is the one that follows
-        # it rather than the one that quietly redefines somebody else's data.
-        ordered = [given, spelled] if produces else [spelled, given]
-        offered.extend(action for action in ordered if action is not None)
+    offered = [
+        _protocol_action(action, cache)
+        for action in reconciliations(built, path, document, pointer, cache)
+    ]
     settles = [entry for entry in reported if entry.get("code") in RECONCILED]
     if settles and offered:
         for action in offered:
@@ -302,6 +277,57 @@ def _on_the_declaration(
         if identity is not None:
             identity["diagnostics"] = unstamped
             offered.append(identity)
+    return offered
+
+
+def reconciliations(
+    built: Index, path: Path, document: Document, pointer: str, cache: dict[Path, Document]
+) -> list[Reconciliation]:
+    """Every way to settle the declaration at ``pointer``, in the order to offer them.
+
+    On a key that can be propagated, that key; anywhere else inside the declaration, every key
+    that differs from the other declarations. Two ways at most per key - somebody else's answer
+    brought here, and this one's answer sent out - ordered by which side owns the variable.
+
+    Public because ``ddd gui`` offers the first of each key's pair from a finding, and must
+    order them the way the editor does or the two clients disagree about which fix is the
+    natural one.
+    """
+    within = WITHIN_DEFINITION.match(pointer)
+    if within is None:
+        return []
+    definition = within.group()
+    name = document.value_at(f"{definition}.name")
+    if not isinstance(name, str):
+        return []
+    key = pointer.rsplit(".", 1)[-1]
+    if pointer == f"{definition}.{key}" and key in PROPAGATED_KEYS:
+        wanted = [key]
+    else:
+        wanted = interface_keys(document.value_at(definition)) + _missing(
+            built, path, document, name, definition, cache
+        )
+    here = Site(path, definition)
+    produces = here in built.producers.get(name, ())
+    offered: list[Reconciliation] = []
+    for candidate in wanted:
+        # Two ways to settle a key, and at most one of each. Taking is somebody else's answer
+        # brought here - the producer's for preference, the one the rest agree on otherwise,
+        # or their silence. Giving is this declaration's answer sent out, value or silence.
+        taken = (
+            _from_producer(built, here, document, name, candidate, cache)
+            or _remove_here(built, here, document, name, candidate, cache)
+            or _adopt(built, here, document, name, candidate, cache)
+        )
+        given = _propagate(built, here, document, name, candidate, cache) or _remove_elsewhere(
+            built, here, document, name, candidate, cache
+        )
+        # A consumer is offered the producer's value first; the producer is offered its own,
+        # outward. Which side owns the variable is not a matter of taste here - it is the rule
+        # the whole tool is built on, and the fix that reads naturally is the one that follows
+        # it rather than the one that quietly redefines somebody else's data.
+        ordered = [given, taken] if produces else [taken, given]
+        offered.extend(action for action in ordered if action is not None)
     return offered
 
 
@@ -678,39 +704,33 @@ def _remove_here(
 
 def _remove_elsewhere(
     built: Index, here: Site, document: Document, name: str, key: str, cache: dict[Path, Document]
-) -> dict[str, Any] | None:
+) -> Reconciliation | None:
     """Take the key out of the other declarations, when this one does not state it.
 
     The mirror of spreading a value, and the direction that was missing: a declaration with no
     ``unit`` could take one from the others but never say "none of you should have one
     either". Both are ways of agreeing, and which one is meant is the author's to choose.
+
+    What cannot lose the key is left out rather than refusing the action, as it is for
+    :func:`_propagate`: an editor offers what it can.
     """
     if key in DEFERRED_KEYS or document.raw_at(f"{here.pointer}.{key}") is not None:
         return None
-    changes: dict[str, list[dict[str, Any]]] = {}
-    for site in built.declarations.get(name, ()):
-        if site == here:
-            continue
-        target = _at_site(site, name, cache)
-        if target is None:
-            continue
-        edit = (
-            None
-            if target.raw_at(f"{site.pointer}.{key}") is None
-            or key in _keys_of(target, site.pointer)[1]
-            else _erase(target, site.pointer, key)
-        )
-        if edit is not None:
-            changes.setdefault(site.path.as_uri(), []).append(edit)
-    if not changes:
+    changes = tuple(
+        decided
+        for site in built.declarations.get(name, ())
+        if site != here
+        and isinstance(decided := settled_at(built, site, name, key, None, cache), Settled)
+    )
+    elsewhere = len(changes)
+    if elsewhere == 0:
         return None
-    elsewhere = sum(len(edits) for edits in changes.values())
-    return {
-        "title": f"Remove the {key} from {elsewhere} other declaration"
+    return Reconciliation(
+        f"Remove the {key} from {elsewhere} other declaration"
         f"{'s' if elsewhere != 1 else ''} of '{name}'",
-        "kind": QUICK_FIX,
-        "edit": {"changes": changes},
-    }
+        key,
+        Settlement(changes, ()),
+    )
 
 
 def _erase(document: Document, definition: str, key: str) -> dict[str, Any] | None:
@@ -735,7 +755,7 @@ def _erase(document: Document, definition: str, key: str) -> dict[str, Any] | No
 
 def _propagate(
     built: Index, here: Site, document: Document, name: str, key: str, cache: dict[Path, Document]
-) -> dict[str, Any] | None:
+) -> Reconciliation | None:
     """One action, or nothing when every other declaration already says the same.
 
     Which declarations it reaches is :func:`settle`'s to say, as it is for ``ddd gui``. One that
@@ -745,25 +765,16 @@ def _propagate(
     raw = document.raw_at(f"{here.pointer}.{key}")
     if raw is None:
         return None
-    changes: dict[str, list[dict[str, Any]]] = {}
-    for change in settle(built, name, key, raw, cache).changes:
-        edit = _assign(read(change.site.path, cache), change.site.pointer, key, raw)
-        # `settle` already ran every check `_assign` makes - kind, meaning key fixed by a type,
-        # already agrees - before it put this site in `changes`, so there is always an edit
-        # here. Asserted rather than guarded, the way `_give_an_identity` narrows a span it
-        # already knows is there: a branch that cannot be taken is a branch no test can cover
-        # and no reader can trust.
-        assert edit is not None
-        changes.setdefault(change.site.path.as_uri(), []).append(edit)
-    if not changes:
+    settlement = settle(built, name, key, raw, cache)
+    elsewhere = len(settlement.changes)
+    if elsewhere == 0:
         return None
-    elsewhere = sum(len(edits) for edits in changes.values())
-    return {
-        "title": f"Apply this {key} to {elsewhere} other declaration"
+    return Reconciliation(
+        f"Apply this {key} to {elsewhere} other declaration"
         f"{'s' if elsewhere != 1 else ''} of '{name}'",
-        "kind": QUICK_FIX,
-        "edit": {"changes": changes},
-    }
+        key,
+        settlement,
+    )
 
 
 def _assign(document: Document, definition: str, key: str, raw: str) -> dict[str, Any] | None:

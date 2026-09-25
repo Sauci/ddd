@@ -410,6 +410,10 @@ def settled_at(
     leaving a deferred key to whoever states it. The body of :func:`settle`'s own loop, lifted
     so that an action changing one declaration asks it the same question a whole settlement
     asks of each: the two must not drift into two readings of "can this declaration take it".
+
+    A declaration naming a declared type takes none of the keys the type fixes: it agrees when
+    the type states ``raw``, and refuses otherwise - stating the key beside the type is an error
+    the loader reports, not an override.
     """
     document = _at_site(site, name, cache)
     if document is None:

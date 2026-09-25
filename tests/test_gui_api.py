@@ -1364,6 +1364,34 @@ class TestFix:
         # it was, which a fixture with only one unstamped declaration could not have shown.
         assert "id" not in stamped["component"]["interface"][1]["definition"]
 
+    def test_a_mismatch_is_previewed(self, tmp_path: Path) -> None:
+        # Not applied here too, unlike the missing-id test above: applying is `POST /api/edit`
+        # spelling the same operations regardless of which finding asked for them, and that
+        # round trip is already shown there. What only this check can show is that the preview
+        # really reaches the edit engine for a fix with several files behind one title.
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="Hz")),
+            },
+        )
+        root = tmp_path
+        reply = get(
+            api,
+            "/api/fix",
+            file=posix(root, "b.ddd.json"),
+            pointer="component.interface[0].definition",
+            check="definition-mismatch",
+        )
+        assert reply.status == 200
+        assert reply.body["revision"] == 1
+        assert [fix["title"] for fix in reply.body["fixes"]] == ["Use the unit declared in a"]
+        (change,) = reply.body["fixes"][0]["changes"]
+        assert change["file"] == posix(root, "b.ddd.json")
+        assert change["hunks"], "the reader is shown the line it would change"
+
     def test_a_fix_the_engine_refuses_is_a_refusal_the_page_can_act_on(
         self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -1410,6 +1438,19 @@ class TestFix:
             check="missing-id",
         )
         assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_a_project_that_did_not_load_offers_no_fix(self, tmp_path: Path) -> None:
+        # No index, no declarations: a revision whose project did not load has nothing to
+        # reconcile, and this answers no fixes rather than an error - the one file such a
+        # revision has is the project description itself.
+        reply = get(
+            unloaded(tmp_path),
+            "/api/fix",
+            file=posix(tmp_path, "p.ddd.json"),
+            pointer="component.interface[0].definition",
+            check="definition-mismatch",
+        )
+        assert (reply.status, reply.body["fixes"]) == (200, [])
 
     def test_fixing_needs_an_open_project(self, root: Path) -> None:
         reply = get(

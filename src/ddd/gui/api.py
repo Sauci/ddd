@@ -737,13 +737,18 @@ class Api:
             return _error(404, "not-found", f"{file} is not a file of the open project")
         cache: dict[Path, Document] = {}
         stamps = {f.path.resolve(): f.fingerprint for f in revision.files}
+        built = revision.index
+        if built is None:
+            # No index, no declarations - a revision whose project did not load has nothing to
+            # reconcile, and answering no fixes is truer than answering an error.
+            built = Index()
         offered = []
-        for fix in fixes_for(check, source.path, pointer, cache):
+        for fix in fixes_for(check, source.path, pointer, cache, built):
             try:
-                made = planned(fix.path, fix.operations, stamps)
+                made = [planned(edit.path, edit.operations, stamps) for edit in fix.changes]
             except EditError as refused:
                 return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-            offered.append({"title": fix.title, "changes": _planned_changes([made])})
+            offered.append({"title": fix.title, "changes": _planned_changes(made)})
         return Reply(
             200,
             contract.FixReply(revision=revision.number, fixes=offered).model_dump(mode="json"),

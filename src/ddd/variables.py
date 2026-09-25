@@ -155,15 +155,13 @@ def vocabulary_of(documents: Sequence[Document]) -> tuple[tuple[str, str | None]
     return tuple(declared)
 
 
-def preview(
-    settlement: Settlement, key: str, fingerprints: Mapping[Path, str]
-) -> tuple[Planned, ...]:
-    """The edit a settlement comes to, file by file, and the lines it changes in each - made by
-    the edit engine in memory and never written.
+def operations_for(
+    settlement: Settlement, key: str
+) -> tuple[tuple[Path, tuple[Operation, ...]], ...]:
+    """What a settlement writes, file by file, in path order.
 
-    Each file carries the fingerprint the analysis read it at, from ``fingerprints`` (keyed by
-    resolved path), so that applying the preview after the file changed on disk is refused as
-    stale rather than made to text nobody previewed.
+    Shared by the preview a variable's panel draws and the fix a finding carries, so that one
+    settlement spells the same operations in the same order whichever of the two asked for it.
     """
     operations: dict[Path, list[Operation]] = {}
     for change in settlement.changes:
@@ -175,8 +173,24 @@ def preview(
         )
         operations.setdefault(change.site.path, []).append(made)
     return tuple(
-        planned(path, tuple(made), fingerprints)
+        (path, tuple(made))
         for path, made in sorted(operations.items(), key=lambda entry: entry[0].as_posix())
+    )
+
+
+def preview(
+    settlement: Settlement, key: str, fingerprints: Mapping[Path, str]
+) -> tuple[Planned, ...]:
+    """The edit a settlement comes to, file by file, and the lines it changes in each - made by
+    the edit engine in memory and never written.
+
+    Each file carries the fingerprint the analysis read it at, from ``fingerprints`` (keyed by
+    resolved path), so that applying the preview after the file changed on disk is refused as
+    stale rather than made to text nobody previewed.
+    """
+    return tuple(
+        planned(path, operations, fingerprints)
+        for path, operations in operations_for(settlement, key)
     )
 
 

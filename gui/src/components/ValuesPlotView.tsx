@@ -1,4 +1,5 @@
 import type { ValuesReply } from "../api/types";
+import { rounded } from "../lib/objectValues";
 import { BOX, plotted } from "../lib/valuePlot";
 
 export interface ValuesPlotViewProps {
@@ -23,9 +24,14 @@ export function ValuesPlotView({ reply, physical }: ValuesPlotViewProps) {
       aria-label={`${plot.yLabel} plotted against ${plot.xLabel === "" ? "its indices" : plot.xLabel}`}
     >
       <title>{`${reply.name}, drawn`}</title>
-      {plot.rules.map((rule) => (
+      {plot.rules.map((rule, index) => (
+        // Keyed by index, not `rule.value`: duplicate breakpoints are legal DDD (nothing checks
+        // an axis for order or uniqueness), and a limit converted to raw counts can round to the
+        // same reading as the other one - the same hazard the lines and points below are already
+        // keyed against, and the reason `ticks` just below is too.
         <line
-          key={rule.value}
+          // biome-ignore lint/suspicious/noArrayIndexKey: a rule is its own position in `plot.rules`
+          key={index}
           className="values-plot-rule"
           x1={BOX.left}
           x2={BOX.width - BOX.right}
@@ -40,16 +46,20 @@ export function ValuesPlotView({ reply, physical }: ValuesPlotViewProps) {
         y1={BOX.top + inside}
         y2={BOX.top + inside}
       />
-      {plot.ticks.map((tick) => (
-        <text key={tick.label} className="values-plot-tick" x={tick.x} y={BOX.height - 8}>
+      {plot.ticks.map((tick, index) => (
+        // Keyed by index, not `tick.label`: duplicate breakpoints are legal DDD, so two ticks
+        // can share a reading - the same hazard `rule` above is keyed against, for the same
+        // reason.
+        // biome-ignore lint/suspicious/noArrayIndexKey: a tick is its own position in `plot.ticks`
+        <text key={index} className="values-plot-tick" x={tick.x} y={BOX.height - 8}>
           {tick.label}
         </text>
       ))}
       <text className="values-plot-side" x={4} y={BOX.top + 8}>
-        {String(plot.high)}
+        {String(rounded(plot.high))}
       </text>
       <text className="values-plot-side" x={4} y={BOX.top + inside}>
-        {String(plot.low)}
+        {String(rounded(plot.low))}
       </text>
       {plot.lines.map((line, index) => {
         // Keyed by the row's own index rather than `line.label`: a map's y axis is free to

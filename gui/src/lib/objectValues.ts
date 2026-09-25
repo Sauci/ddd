@@ -38,7 +38,7 @@ export function rawOf(physical: number, conversion: Conversion, datatype: string
 }
 
 /** The tail of the arithmetic taken off, as `round_physical` takes it off server side. */
-function rounded(value: number): number {
+export function rounded(value: number): number {
   return Number.parseFloat(value.toPrecision(12));
 }
 

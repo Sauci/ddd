@@ -227,12 +227,16 @@ describe("plotted", () => {
   // fixtures leave unreached, per the task's instruction to add a covering test rather than
   // delete the branch. See the task report for why each one is needed.
 
-  test("a map with no column axis is indexed by its own width, not its row count", () => {
-    // Every map fixture above states an x axis, so the no-axis fallback never has to work out a
-    // two-dimensional width. Strip the axes entirely: MapA is 4 rows of 6, and the fallback must
-    // answer 6 - its *column* count - not 4, its row count.
-    const noAxis: ValuesReply = { ...MAP_A, axes: [] };
-    const xs = plotted(noAxis, true).lines[0]?.points.map((p) => p.x) ?? [];
+  test("a map whose x axis states no breakpoints is indexed by its own width, not its row count", () => {
+    // An axis states a `size` and need not state an `init`; one that does not states no
+    // breakpoints at all. A map still needs both of its axes - only this one's breakpoints go
+    // missing, not the axis itself or the y axis beside it. MapA is 4 rows of 6, and the
+    // fallback must answer 6 - its *column* count - not 4, its row count.
+    const noInit: ValuesReply = {
+      ...MAP_A,
+      axes: [{ ...(MAP_A.axes[0] as GridAxis), breakpoints: [] }, MAP_A.axes[1] as GridAxis],
+    };
+    const xs = plotted(noInit, true).lines[0]?.points.map((p) => p.x) ?? [];
     expect(xs).toHaveLength(6);
     expect(xs[5]).toBeCloseTo(BOX.left + inside);
   });

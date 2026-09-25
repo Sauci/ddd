@@ -53,7 +53,7 @@ function axisOf(reply: ValuesReply, position: string) {
 }
 
 /** The axis the columns are laid against: a map's x axis, or a curve's only one. */
-function columnAxis(reply: ValuesReply) {
+export function columnAxis(reply: ValuesReply) {
   return axisOf(reply, "x_axis") ?? axisOf(reply, "axis");
 }
 

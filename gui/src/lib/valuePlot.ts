@@ -1,5 +1,5 @@
 import type { ValuesReply } from "../api/types";
-import { columnHeader, labelled, physicalOf, rawOf, rowHeader } from "./objectValues";
+import { columnAxis, columnHeader, labelled, physicalOf, rawOf, rowHeader } from "./objectValues";
 
 /** The drawn box, in the `viewBox`'s own units - one fixed frame scaled to whatever width the
  * component is given, so the drawing is resolution-free and its screenshot is stable. The left
@@ -32,14 +32,6 @@ export interface Plot {
 }
 
 const PAD = 20;
-
-/** The axis the columns are laid against, which a map states as `x_axis` and a curve as `axis`. */
-function columnAxis(reply: ValuesReply) {
-  return (
-    reply.axes.find((axis) => axis.position === "x_axis") ??
-    reply.axes.find((axis) => axis.position === "axis")
-  );
-}
 
 /** How many values a row holds - the shape's last dimension, and 0 for a shape of none. */
 function widthOf(reply: ValuesReply): number {
@@ -91,7 +83,7 @@ export function plotted(reply: ValuesReply, physical: boolean): Plot {
   const down = BOX.height - BOX.top - BOX.bottom;
   const xAt = (index: number) =>
     placed(xs[index] ?? 0, Math.min(...xs), Math.max(...xs), BOX.left, across);
-  const yAt = (value: number) => BOX.top + down - (placed(value, low, high, 0, down) - 0);
+  const yAt = (value: number) => BOX.top + down - placed(value, low, high, 0, down);
   const labels = reply.shape.length === 1 ? reply.rows.map(() => "") : rowHeader(reply, physical);
   const axis = columnAxis(reply);
   return {

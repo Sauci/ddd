@@ -154,9 +154,10 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   disagree about.**  Each takes the producing component's value, the only direction
   offered.  It settles every declaration of the variable at once, not only the one the
   finding names; the button reads "Apply to 2 files" where two have to move.  Nothing is
-  offered where the variable has no single producer, several or none; where only `kind`
-  disagrees, the one key no edit may carry between declarations; or where some declaration
-  cannot take the value.
+  offered where the variable has no single producer - several components writing it, or
+  none, leaves no owner to take a direction from.  Nor where only `kind` disagrees, the
+  one key no edit may carry between declarations, or where some declaration cannot take
+  the value.
 
 * **The editor's reconcile quick fix is no longer offered for a value that already means what
   it would be set to.**  Taking the producing component's value, or spreading one declaration's

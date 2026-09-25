@@ -137,6 +137,11 @@ export function ValuesGridView(props: ValuesGridViewProps) {
         // an apply in flight takes nothing either: every input and Apply are disabled while
         // `busy`, so a cell cannot be typed into, and a paste taken here would be cleared
         // without a word by that apply's own `onSuccess` the moment it landed.
+        //
+        // The `busy` half is the one arm of this component nothing pins: a journey would have to
+        // paste inside the window an apply is in flight, which it cannot open on purpose, and a
+        // test that waited for it would be the race this suite refuses to write. It is left here
+        // unguarded by any test on purpose, and said so rather than left to be discovered.
         if (readOnly !== null || busy) return;
         // A cell is a text field: without this the browser also drops the whole block into
         // whichever one has focus.

@@ -572,7 +572,7 @@ describe("pasted", () => {
     // uint32 curve of 1,000 / 2,000 / 3,000 was written 1 / 2 / 3 and nothing said so.
     expect(pasted("1,200\t2\t3\t4\t5\t6", CURVE_A, false).refusal).toBe(
       "the comma in '1,200' could be a decimal point or a thousands separator, so it is not " +
-        "clear what it means; paste the block with no thousands separators",
+        "clear what it means; paste the column unformatted",
     );
   });
 

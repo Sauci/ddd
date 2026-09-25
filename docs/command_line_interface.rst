@@ -299,10 +299,11 @@ The commands
        value; opened on the producer's own row, where the same disagreement is filed a
        second time, it sends that value outward - never a direction the reader chooses.
        Nothing is offered where the variable has no single producer - several components
-       writing it, or none, leaves no owner to take a direction from. Nor where only
-       ``kind`` disagrees, the one key no edit may carry between declarations, or where
-       some declaration cannot take the value. A component's page adds a declaration to
-       its interface - a variable
+       writing it, or none, leaves no owner to take a direction from; the variable's own
+       panel, one click from the finding, still settles any value the reader chooses.
+       Nor where only ``kind`` disagrees, the one key no edit may carry between
+       declarations, or where some declaration cannot take the value. A component's page
+       adds a declaration to its interface - a variable
        already declared, carrying the producer's keys where there is one and the
        project's own where there is not, or a new object of one of six kinds - and
        takes one away. Its table's Shape column opens the page of a curve, a map, an

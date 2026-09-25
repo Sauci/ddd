@@ -174,6 +174,22 @@ describe("plotted", () => {
     expect(plot.lines[0]?.points).toEqual([]);
   });
 
+  test("a reading has the arithmetic's tail taken off before it is printed", () => {
+    // Nothing in `examples/demo` pads to a tail, so this fixture is the reason the rounding
+    // exists rather than a demonstration of it: an ordinary uint8 x0.1 curve reading 0.5 to 1.2
+    // pads to a `high` of exactly 1.2349999999999999, which the frame would print in full beside
+    // values of one decimal. `low` is clean at 0.465, so only one end of the range moves.
+    const tenths: ValuesReply = {
+      ...CURVE_A,
+      datatype: "uint8",
+      conversion: { kind: "linear", factor: 0.1, offset: 0 },
+      rows: [[5, 6, 8, 9, 11, 12]],
+    };
+    const plot = plotted(tenths, true);
+    expect(plot.high).toBe(1.235);
+    expect(plot.low).toBe(0.465);
+  });
+
   test("a flat line at zero is ruled by its own lower limit", () => {
     // `ValueD` is this object in the demo: an absent init reads zero everywhere, its limits are
     // `0 … 65535`, and the range of -1 to 1 the line above gives it puts the lower limit *inside*

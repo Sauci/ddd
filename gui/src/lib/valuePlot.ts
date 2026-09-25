@@ -1,5 +1,13 @@
 import type { ValuesReply } from "../api/types";
-import { columnAxis, columnHeader, labelled, physicalOf, rawOf, rowHeader } from "./objectValues";
+import {
+  columnAxis,
+  columnHeader,
+  labelled,
+  physicalOf,
+  rawOf,
+  rounded,
+  rowHeader,
+} from "./objectValues";
 
 /** The drawn box, in the `viewBox`'s own units - one fixed frame scaled to whatever width the
  * component is given, so the drawing is resolution-free and its screenshot is stable. The left
@@ -27,6 +35,10 @@ export interface Plot {
   rules: PlotRule[];
   xLabel: string;
   yLabel: string;
+  /** The two readings printed at the frame's edges, with the arithmetic's tail taken off the
+   * way `columnHeader` already takes it off a tick's. The padding below is ordinary floating
+   * point: a `x0.1` curve running 0.5 to 1.2 pads to a `high` of 1.2349999999999999, and that
+   * is what a reader would see beside one-decimal values. The geometry keeps the exact numbers. */
   low: number;
   high: number;
 }
@@ -108,7 +120,7 @@ export function plotted(reply: ValuesReply, physical: boolean): Plot {
       .map((value) => ({ value, y: yAt(value) })),
     xLabel: axis === undefined ? "" : labelled(axis.name, axis.unit, physical),
     yLabel: labelled(reply.name, reply.unit, physical),
-    low,
-    high,
+    low: rounded(low),
+    high: rounded(high),
   };
 }

@@ -1,5 +1,4 @@
 import type { ValuesReply } from "../api/types";
-import { rounded } from "../lib/objectValues";
 import { BOX, plotted } from "../lib/valuePlot";
 
 export interface ValuesPlotViewProps {
@@ -56,10 +55,10 @@ export function ValuesPlotView({ reply, physical }: ValuesPlotViewProps) {
         </text>
       ))}
       <text className="values-plot-side" x={4} y={BOX.top + 8}>
-        {String(rounded(plot.high))}
+        {String(plot.high)}
       </text>
       <text className="values-plot-side" x={4} y={BOX.top + inside}>
-        {String(rounded(plot.low))}
+        {String(plot.low)}
       </text>
       {plot.lines.map((line, index) => {
         // Keyed by the row's own index rather than `line.label`: a map's y axis is free to

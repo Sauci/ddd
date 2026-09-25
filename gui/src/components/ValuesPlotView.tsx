@@ -77,7 +77,12 @@ export function ValuesPlotView({ reply, physical }: ValuesPlotViewProps) {
               // `from === to` branch) rather than sitting on that edge, and the label belongs
               // next to the marker it names either way. The `- 6` is a drawn offset clear of the
               // marker's own radius, not a second one for it to sit on.
-              <text className="values-plot-row" x={last.x - 6} y={last.y}>
+              //
+              // `dy="-4"` clears the *line*, not the marker: the polyline arrives at `last.y`
+              // from the left, level with the text baseline, and ran straight through the lower
+              // third of every glyph without it - found by opening the map picture enlarged,
+              // which is the only instrument that shows it.
+              <text className="values-plot-row" x={last.x - 6} y={last.y} dy="-4">
                 {line.label}
               </text>
             )}

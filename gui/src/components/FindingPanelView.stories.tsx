@@ -6,6 +6,7 @@ import {
   DEFINITION_MISMATCH_FIX,
   DID_NOT_LOAD,
   ID_FIX,
+  KIND_MISMATCH,
   MISSING_ID,
   PROJECT_FINDINGS,
   STORAGE_MISMATCH,
@@ -102,9 +103,8 @@ export const MismatchWithTwoFixes = () => (
   />
 );
 
-/** The same finding, offering no fix at all: what a reader sees when the variable has two
- * producers, or when only its `kind` disagrees - the message, the note and the link, and no
- * buttons beneath them. */
-export const MismatchWithNoFix = () => (
-  <View finding={DEFINITION_MISMATCH} state={PROJECT_FINDINGS} fixes={{ revision: 7, fixes: [] }} />
-);
+/** A `definition-mismatch` offering no fix at all: `kind` is the one of the three reasons a
+ * reader can actually see in the panel - a contested owner and an unreachable declaration are
+ * both invisible here, and would leave the same unexplained blank. Message, note and link, and
+ * no buttons beneath them. */
+export const MismatchWithNoFix = () => <View finding={KIND_MISMATCH} state={PROJECT_FINDINGS} />;

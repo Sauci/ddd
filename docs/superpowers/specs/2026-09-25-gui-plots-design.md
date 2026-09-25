@@ -48,9 +48,12 @@ most easily got wrong: `AxisA` reads `0, 800, 1600, 3200, 4800, 8000`, so its ga
 1600, 1600 and 3200. Spacing those evenly draws a curve that is not the curve. Where there is no
 axis, indices are evenly spaced, because they are.
 
-The labels are the ones the grid already computes — `AxisA (Hz)` along the bottom and
-`CurveA (ms)` up the side — and both drop their unit in raw counts, exactly as the grid's own
-headers do. The plot follows the Physical/Raw toggle and adds no control of its own.
+`AxisA (Hz)` is named along the bottom, dropping its unit in raw counts exactly as the grid's own
+headers do, and the side carries the two ends of the drawn range. **The object's own name is not
+drawn a second time**: the plot sits directly under the grid it belongs to (§5), whose row label
+already reads `CurveA (ms)`, and repeating it inside the frame would be noise. A reader who cannot
+see the drawing gets it from the picture's own accessible name instead. The plot follows the
+Physical/Raw toggle and adds no control of its own.
 
 ## 4 The vertical range
 

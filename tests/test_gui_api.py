@@ -23,6 +23,7 @@ from conftest import (
     write_tree,
 )
 from ddd import __version__
+from ddd.cli import EXIT_OK, main
 from ddd.diagnostics import CHECKS
 from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
 from ddd.gui.api import Api, Reply
@@ -1460,6 +1461,100 @@ class TestFix:
             pointer="component.interface[0].definition",
             check="missing-id",
         )
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+
+def dumped(source: Path, target: Path) -> None:
+    """``target`` as ``ddd dump`` would write it for the project description at ``source``."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    assert main(["dump", str(source), "-o", str(target)]) == EXIT_OK
+
+
+class TestCompare:
+    def test_a_project_compared_against_a_dump_of_itself_matches(
+        self, api: Api, root: Path
+    ) -> None:
+        dump = root / "baseline.json"
+        dumped(root / "p.ddd.json", dump)
+        reply = get(api, "/api/compare", baseline=dump.as_posix())
+        assert reply.status == 200
+        assert reply.body["revision"] == 1
+        assert reply.body["verdict"] is True
+        assert reply.body["findings"] == []
+        assert reply.body["renames"] == []
+
+    def test_a_drifted_datatype_fails_the_verdict_with_a_changed_interface_finding(
+        self, tmp_path: Path
+    ) -> None:
+        root = tmp_path
+        write_tree(
+            root,
+            {
+                "old/p.ddd.json": project("P", "a.ddd.json"),
+                "old/a.ddd.json": component("A", declare("output", "Speed", "uint8", unit="rpm")),
+            },
+        )
+        dump = root / "baseline.json"
+        dumped(root / "old" / "p.ddd.json", dump)
+        api = opened(
+            root,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+            },
+        )
+        reply = get(api, "/api/compare", baseline=dump.as_posix())
+        assert reply.status == 200
+        assert reply.body["verdict"] is False
+        changed = [f for f in reply.body["findings"] if f["check"] == "changed-interface"]
+        assert len(changed) == 1
+        assert changed[0]["file"] == posix(root, "p.ddd.json")
+        # `compare()` takes one location for the whole call, the way `ddd compare`'s own text
+        # report does, so every finding of a comparison is filed at the candidate's own project
+        # file - never at the component that happens to declare the object. `route_of` only
+        # opens a component file at a declaration's own pointer, so - like every finding
+        # `/api/state` already answers this way for a file that did not load or names no place -
+        # there is nothing here for the page to open either.
+        assert changed[0]["route"] is None
+
+    def test_a_missing_baseline_is_bad(self, api: Api) -> None:
+        reply = get(api, "/api/compare")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+
+    def test_a_baseline_outside_the_root_is_refused(self, api: Api, tmp_path: Path) -> None:
+        outside = tmp_path / "elsewhere.json"
+        outside.write_text("{}")
+        reply = get(api, "/api/compare", baseline=outside.as_posix())
+        assert reply.status == 400
+        assert "outside" in reply.body["message"]
+
+    def test_an_unreadable_baseline_is_refused(self, api: Api, root: Path) -> None:
+        reply = get(api, "/api/compare", baseline=posix(root, "missing.json"))
+        assert reply.status == 400
+        assert "unreadable" in reply.body["message"]
+
+    def test_a_baseline_that_is_not_json_is_refused(self, api: Api, root: Path) -> None:
+        (root / "bad.json").write_text("{not json at all")
+        reply = get(api, "/api/compare", baseline=posix(root, "bad.json"))
+        assert reply.status == 400
+        assert "not valid json" in reply.body["message"]
+
+    def test_a_baseline_that_is_neither_a_dictionary_nor_a_description_is_refused(
+        self, api: Api, root: Path
+    ) -> None:
+        # The fourth reason, the one nobody thinks of: a perfectly valid json file that is
+        # simply something else.
+        (root / "odd.json").write_text(json.dumps({"something": "else"}))
+        reply = get(api, "/api/compare", baseline=posix(root, "odd.json"))
+        assert reply.status == 400
+        assert "neither a dictionary nor a description" in reply.body["message"]
+
+    def test_a_project_that_did_not_load_cannot_be_compared(self, tmp_path: Path) -> None:
+        reply = get(unloaded(tmp_path), "/api/compare", baseline=posix(tmp_path, "p.ddd.json"))
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_comparing_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root)), "/api/compare")
         assert (reply.status, reply.body["error"]) == (409, "no-project")
 
 

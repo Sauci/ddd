@@ -52,6 +52,7 @@ from ddd.finding_fixes import fixes_for
 from ddd.finding_routes import Route, route_of
 from ddd.graph import Module, graph_of
 from ddd.gui import contract
+from ddd.gui.compare import BaselineCache, BaselineRefusedError, compared
 from ddd.gui.session import (
     Filed,
     NoProjectError,
@@ -144,6 +145,10 @@ _NOTHING_LOADED: Final = "the open project did not load, so no interface of it c
 
 _NOTHING_RESOLVED: Final = "the open project did not resolve, so no object's values can be read"
 
+_NOTHING_COMPARABLE: Final = (
+    "the open project did not resolve, so it cannot be compared against a baseline"
+)
+
 type Query = Mapping[str, Sequence[str]]
 
 
@@ -164,6 +169,7 @@ class Api:
         self.session = session
         self.project = None if project is None else project.resolve()
         self.wait_seconds = wait_seconds
+        self._compare_cache: BaselineCache = {}
 
     def handle(self, method: str, path: str, query: Query, body: bytes | None) -> Reply:
         route = _ROUTES.get(path)
@@ -957,6 +963,35 @@ class Api:
             ).model_dump(mode="json"),
         )
 
+    def _compare(self, query: Query, body: bytes | None) -> Reply:
+        revision = self._opened()
+        path = _single(query.get("baseline"))
+        if not path:
+            return _error(400, "bad-request", "compare takes ?baseline=")
+        if revision.dictionary is None:
+            return _error(409, UNREADABLE, _NOTHING_COMPARABLE)
+        try:
+            result = compared(revision, Path(path), self.session.root, self._compare_cache)
+        except BaselineRefusedError as refused:
+            return _error(400, "bad-request", str(refused))
+        sources = {file.path.resolve(): file for file in revision.files}
+        cache: dict[Path, Document] = {}
+        return Reply(
+            200,
+            contract.CompareReply(
+                revision=revision.number,
+                verdict=result.verdict,
+                findings=[
+                    _finding(filed, sources.get(filed.file.resolve()), cache)
+                    for filed in result.findings
+                ],
+                renames=[
+                    {"id": entry["id"], "old": entry["from"], "new": entry["to"]}
+                    for entry in result.renames
+                ],
+            ).model_dump(mode="json"),
+        )
+
     def _opened(self) -> Revision:
         revision = self.session.revision
         if revision is None:
@@ -1010,6 +1045,7 @@ _ROUTES: Final[dict[str, dict[str, Answer]]] = {
     "/api/values": {"GET": Api._values},
     "/api/value-plan": {"GET": Api._value_plan},
     "/api/values-plan": {"GET": Api._values_plan},
+    "/api/compare": {"GET": Api._compare},
 }
 
 

@@ -40,6 +40,7 @@ __all__ = [
     "Changes",
     "CheckInfo",
     "ChecksReply",
+    "CompareReply",
     "DeclarableName",
     "DeclarableReply",
     "DictionaryReply",
@@ -70,6 +71,7 @@ __all__ = [
     "ProjectType",
     "ProjectUnit",
     "RefusedBuild",
+    "Renamed",
     "SessionInfo",
     "SettleReply",
     "SourceFile",
@@ -1001,6 +1003,45 @@ class ValuesReply(_Frozen):
     """Every finding filed on the object's own ``init``."""
 
 
+# --- GET /api/compare ------------------------------------------------------------------------
+
+
+class Renamed(_Frozen):
+    """One object the baseline and the candidate agree is the same, called differently now."""
+
+    id: str
+    """The object's persistent id - a structure member's is its instance's id followed by its
+    path below the instance, so one row still names each member of a renamed variable."""
+
+    old: str
+    """The name the baseline gave it."""
+
+    new: str
+    """What the candidate calls it now."""
+
+
+class CompareReply(_Frozen):
+    """What ``GET /api/compare`` answers: whether the open project can replace a baseline."""
+
+    revision: int
+    """The revision this comparison was read from."""
+
+    verdict: bool
+    """Whether the candidate can replace the baseline: no finding of severity error survived
+    the session's own severity policy."""
+
+    findings: tuple[Finding, ...]
+    """Every finding the comparison reported: the baseline's own errors, prefixed ``"in the
+    baseline: "``, beside the interface and storage differences between the two deliveries.
+    A finding whose file is not one of the open project's - the baseline's own errors are
+    filed on the baseline - carries ``route: null``, exactly as any other finding does whose
+    file the page has nothing to open for."""
+
+    renames: tuple[Renamed, ...]
+    """Every object the two sides agree is one and the same but call differently now, sorted
+    by the new name: what ``ddd compare --renames`` would write for this pair."""
+
+
 # --- GET /api/undo and POST /api/undo -------------------------------------------------------
 
 
@@ -1212,6 +1253,7 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (DeclarableReply, "serialization"),
     (PlanReply, "serialization"),
     (ValuesReply, "serialization"),
+    (CompareReply, "serialization"),
 )
 """Every request and response of spec section 6.5, with the schema pydantic builds for each:
 ``"validation"`` for a request, read for the shape a caller must send; ``"serialization"`` for

@@ -159,12 +159,8 @@ test("a change refused as stale can be applied again once the analysis has caugh
   // difference in the one thing `stamped` compares, so it stands in for "something else
   // changed" and is what lets the next poll reanalyse the project - reading, for the first
   // time, the file's true and already-drifted bytes, and updating what the page holds against.
-  const reanalysed = page.waitForResponse((response) =>
-    response.url().includes("/api/state?after="),
-  );
   const now = new Date();
   utimesSync(path, now, now);
-  await reanalysed;
   await expect(panel.getByText("A file changed on disk")).toBeHidden({ timeout: 15000 });
   await panel.getByLabel("Max").fill("50");
   await panel.getByRole("button", { name: /^Apply to/ }).click();

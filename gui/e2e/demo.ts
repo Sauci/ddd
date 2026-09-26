@@ -161,24 +161,24 @@ function driftNumber(
  * which is what an Apply's own staleness check does. Used where a test means the second and not
  * the first, the way `keys.spec.ts`'s "a change refused as stale..." does.
  *
- * A no-op on Windows: the restore below needs `touch`'s own date parsing to land on the exact
- * nanosecond `statSync` read here, and `fs.utimesSync` cannot - it takes the time through a
- * JS `number`, tens of nanoseconds off for an epoch this large, which is close enough to fool
- * a human but not the exact-tuple comparison `stamped` makes. Nothing this repository's e2e
- * runs on windows-latest needs hidden from the watcher, so there is nothing to lose by leaving
- * the write's own, unrestored stamp in place there. */
+ * The restore is made through python's own `os.utime(path, ns=(...))`, not `fs.utimesSync`:
+ * `utimesSync` takes the time through a JS `number`, which is a handful of nanoseconds off for
+ * an epoch this large - close enough to fool a human but not the exact-tuple comparison
+ * `stamped` makes, so the write would still have been visible to it. Reached through
+ * `DDD_PYTHON` rather than a shell tool, the way `dump` above is, so this needs nothing this
+ * repository does not already depend on and is exact on every platform the suite runs on. */
 export function preserveStampOf(path: string): () => void {
-  if (process.platform === "win32") {
-    return () => {};
-  }
   const mtimeNs = statSync(path, { bigint: true }).mtimeNs;
   return () => {
-    const digits = mtimeNs.toString().padStart(10, "0");
-    const stamp = `${digits.slice(0, -9)}.${digits.slice(-9)}`;
-    const result = spawnSync("touch", ["-d", `@${stamp}`, path]);
+    const result = spawnSync(process.env.DDD_PYTHON ?? "python", [
+      "-c",
+      "import os, sys\nos.utime(sys.argv[1], ns=(int(sys.argv[2]), int(sys.argv[2])))",
+      path,
+      mtimeNs.toString(),
+    ]);
     if (result.status !== 0) {
       throw new Error(
-        `touch -d @${stamp} ${path} exited with ${String(result.status)}: ` +
+        `restoring ${path}'s modification time exited with ${String(result.status)}: ` +
           `${result.stderr.toString("utf8")}`,
       );
     }

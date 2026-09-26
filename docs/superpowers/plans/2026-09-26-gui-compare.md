@@ -608,9 +608,107 @@ git commit -m "say the browser can now ask the replacement question"
 
 ## Left open
 
-Filled in as the plan runs: anything found and deliberately not fixed here, with what it costs.
+Found while running the plan and deliberately not fixed here.
+
+- **The panel's own header does not say a baseline finding is the baseline's.** The File column
+  beside it does - `the baseline's sensor_hub.ddd.json` - and the reason line under the message
+  does, but `FindingPanelView`'s meta line shows the filename bare, and so does each note's.
+  *Costs:* a reader who opens a baseline finding sees an unqualified filename as the panel's
+  header, having just read the possessive form in the row they clicked, with the message's first
+  words - `in the baseline:` - one line below it.
+- **The cache misses two shapes that `Session.poll()` misses too.** Keyed on every file
+  `Resolved.sources` names, it catches an edit, an addition and a removal - but not a file
+  appearing behind a **wildcard** include, nor an included **symlink re-pointed**. Both are the
+  session's own limits rather than the cache's. *Costs:* a comparison answered from a delivery
+  one file out of date, until the next edit that the session does see.
+- **A live `Revision` now retains its whole `Workspace`.** `Resolved.locate` is a bound method,
+  so carrying the `Resolved` an analysis produced keeps the workspace alive - about 135 KiB
+  against a 151 KiB dictionary on `examples/demo`, roughly doubling what a session holds.
+  Unavoidable given the shape. *Costs:* memory proportional to the project, on a tool that
+  serves one project at a time.
+- **The baseline stamp is `(st_mtime_ns, st_size)`, where the key it replaced was a sha-256.**
+  Strictly weaker: `tar -p`, `rsync -t` and `touch -r` can all reproduce a stamp. Two hundred
+  same-length rewrites did not. *Costs:* a restored-from-archive baseline could be served from
+  cache, where hashing every file of an include tree would cost a read per ask.
+- **A refused baseline is re-read on every revision.** Refusals are deliberately not cached,
+  because one held goes stale the moment the reader fixes the file, and `ComparePage` keys its
+  query on the revision. *Costs:* a reader who leaves a bad path in the field pays a read per
+  analysis.
+- **`driftDatatypeIn` duplicates `driftIn`'s regex shape**, where `driftNumber` already shows the
+  generalised form. `driftIn` also backs `withUnitOf`, which is used on bytes elsewhere, so the
+  two do not collapse cleanly. *Costs:* two near-identical helpers; worth revisiting at a third.
+- **`compare.py:387` reads `) from (error)`.** Stray parentheses, the one untidy line in the file.
+- **Not this part's, and the maintainer's to weigh: `POST /api/edit` will set `project.includes`
+  to a path outside the session root, after which `GET /api/file` serves that file.** Measured by
+  the branch's own re-review. It predates this part entirely and has nothing to do with the
+  Compare tab - but it means the GUI already has the reach that §3 spends a paragraph arguing the
+  baseline field must not introduce. *Costs:* the confinement this part added is sound on its own
+  terms and is not the tool's only door.
 
 ## Rulings
 
-Filled in as the plan runs: every decision taken against the plan's text, why, and what it costs
-if wrong.
+Every decision taken against this plan's own text, with what it costs if wrong. The pattern of
+parts 8 through 11 held again: the plan was wrong about the code repeatedly, and twice an
+implementer caught a claim of **mine** that would have shipped a defect.
+
+### Before execution
+
+- **Task 3 also edits `gui/src/lib/route.ts` and its tests.** `Route` is a discriminated union
+  with a parse arm and an href arm per view, and `gui/src/lib` sits under the 100 % gate; the
+  plan named only `PROJECT_VIEWS`, which is the smaller half. *Costs:* none, it is a fact about
+  the code.
+- **Task 5 produces its dump with `python -m ddd dump`**, resolving the interpreter the way
+  `gui/e2e/fixtures.ts` already does, written inside `gui.directory` so the path is under the
+  root. *Costs:* a journey that cannot make its own baseline on one machine.
+- **Task 2's tests use `tests/test_gui_api.py`'s own helpers**, not the `_a_revision` the plan
+  invented. *Costs:* a test module reaching its revision through an `Api` it does not need.
+
+### During execution
+
+- **Drop the back-compat alias; let the test's import line move.** A test that imports a private
+  symbol and calls it is a unit test of that symbol, so when the symbol changes house its import
+  follows. An alias whose only job is to make a proof look tidier is debt, and a proof that needs
+  protecting is not proving anything. The claim narrowed to *one import line and one call name,
+  zero assertions* - and it survived 27 commits. *Costs:* a weaker but honest proof.
+- **`where` lives in `diagnostics.py`, beside the `Location` it builds.** Six of its seven call
+  sites name a delivery's file; the seventh locates an address map, which is what shows the
+  function is really "make a `Location` from a path somebody typed". *Costs:* one more file
+  touched in a task billed as a pure move - and it turned that file's lazy import load-bearing.
+- **The spec's §5 was wrong and the spec was corrected.** I wrote that comparison findings "route
+  to what they name"; measured, `compare` locates every finding of one call at the candidate's
+  project file with an empty pointer. The honest fix is to correct the claim, not to grow the
+  part until the claim is true. *Costs:* none - and the whole-branch review later made the
+  sentence true for a third case, a plugin's own findings, which do name a place.
+- **The marking travels on the wire, not in the message.** `CompareReply` merged a baseline's own
+  errors into one tuple and told readers to find them by the `"in the baseline: "` prefix - the
+  same text-marking already removed from the server one task earlier. `Compared` held two fields;
+  the reply now mirrors them. *Costs:* one more field on a contract two later tasks describe.
+- **The most severe policy among a project's builds decides the verdict.** Taking `builds[0]`
+  made the verdict a function of which image's record sorted first, giving opposite answers for
+  one comparison. A delivery any of the project's builds would refuse is not one to call
+  acceptable. *Costs:* a project whose images genuinely disagree is told an error where one image
+  would have said warning.
+- **`findingRows(state)` narrows to `findingRows(findings)`**, though it touches three files the
+  brief never listed. Fabricating a placeholder `State` or duplicating the sort are both worse.
+  *Costs:* a helper two screens away changed by a task that did not list it.
+- **The panel's bare meta line is parked.** A reader reaches that panel through a row whose File
+  column now says `the baseline's …`, and the message's first words say it again. I first parked
+  it on cost - "a component four other screens draw" - and the whole-branch review corrected me:
+  it is drawn by **two**, `Panel`'s prop is already `meta?: string`, and a three-line fix exists
+  that I had not seen. **The parking stands on impact, not on cost.** *Costs:* one ambiguous line
+  in a panel reached through a label that already says it.
+
+### At the end
+
+- **One more round after the wave, against the process's own "there is no second fix wave".**
+  Running the plugin hooks made plugin comparison findings name a **place**, which falsified a
+  sentence in the changelog, the command-line page, the spec and the page's own reason text - and
+  the page was telling a reader there was nowhere to go while discarding a live route. A wave that
+  creates a falsehood has not finished. *Costs:* one more round on a branch that has had many.
+- **The confinement is on the entry file, and the documentation says so.** Confining an include
+  tree would mean a root check inside `read_baseline`, which is shared with `ddd compare` and
+  would change the command - or a second check outside it, which is a second reading of "which
+  files a delivery is made of", the drift this part exists to remove, and which could only reject
+  after the whole tree had been read. This ruling is the implementer's, argued better than the
+  alternative I offered, and I took it. *Costs:* a crafted description under the root can name a
+  file outside it - and the `POST /api/edit` finding above shows that door was already open.

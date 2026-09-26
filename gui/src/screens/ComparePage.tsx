@@ -50,7 +50,11 @@ export function ComparePage({ state, stopped }: Props) {
     <CompareView
       baseline={baseline}
       onBaseline={setBaseline}
-      onAsk={() => setAsked(baseline)}
+      // Trimmed here, once, rather than where the field is typed: `CompareView`'s own disabled
+      // check reads the same way (`baseline.trim() === ""`), so the two must agree on what
+      // counts as "nothing typed" - and a path with a stray leading or trailing space is not a
+      // path under the root the server would find.
+      onAsk={() => setAsked(baseline.trim())}
       reply={reply}
       refusal={compare.isError ? compare.error.message : null}
       busy={stopped || compare.isFetching}

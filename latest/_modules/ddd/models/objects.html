@@ -341,6 +341,23 @@
 <span class="sd">question with one answer.</span>
 <span class="sd">"""</span>
 
+<span class="n">FIXED_BY_A_TYPE</span><span class="p">:</span> <span class="n">Final</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"datatype"</span><span class="p">,</span> <span class="o">*</span><span class="n">MEANING_KEYS</span><span class="p">)</span>
+<span class="sd">"""What a scalar type states once, for every declaration naming it.</span>
+
+<span class="sd">:data:`MEANING_KEYS` and the storage they sit on. A named type is the whole answer to what a</span>
+<span class="sd">number is and what it means, which is why a declaration that names one states none of these -</span>
+<span class="sd">so anything asking what a declaration says about one of these keys has to ask the type, and</span>
+<span class="sd">anything offering to write one beside a ``typename`` is offering a file the loader refuses.</span>
+<span class="sd">"""</span>
+
+<span class="n">STORAGE_NAMES</span><span class="p">:</span> <span class="n">Final</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"datatype"</span><span class="p">,</span> <span class="s2">"typename"</span><span class="p">)</span>
+<span class="sd">"""The two ways a definition may name its storage, of which it states exactly one.</span>
+
+<span class="sd">Named here because :func:`check_storage_named_once` is a rule about the pair rather than about</span>
+<span class="sd">either key, and a caller working out which of the two a definition used - to keep from taking it</span>
+<span class="sd">away, or from adding the other beside it - is asking about the pair too.</span>
+<span class="sd">"""</span>
+
 
 <span class="k">def</span><span class="w"> </span><span class="nf">refuse_restating</span><span class="p">(</span><span class="n">typename</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">stated</span><span class="p">:</span> <span class="n">Container</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Refuse stating what a named type already fixes; an error rather than an override.</span>
@@ -494,6 +511,28 @@
             <span class="s1">'({"kind": "identity"}) is an answer to state, not a default to fall into'</span>
         <span class="p">)</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">storage_keys</span><span class="p">(</span><span class="n">stated</span><span class="p">:</span> <span class="n">Container</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""What a definition stating these keys may not be left without, and may not be given.</span>
+
+<span class="sd">    The two rules above, read forwards: :func:`check_storage_named_once` says a definition names</span>
+<span class="sd">    its storage exactly once, so the key it used may not be taken away and the other one may not</span>
+<span class="sd">    be added beside it; :func:`check_conversion_stated` says a base ``datatype`` comes with its</span>
+<span class="sd">    ``conversion``, so that one goes with it.</span>
+
+<span class="sd">    Read forwards because the callers are not the loader: a panel offering values for a key, and</span>
+<span class="sd">    the decision behind a quick fix, each have to know which changes would write a file the</span>
+<span class="sd">    loader then refuses - before writing it, and without a model to validate. Derived from the</span>
+<span class="sd">    same two rules rather than restated beside them, so a change to either reaches all three.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="s2">"typename"</span> <span class="ow">in</span> <span class="n">stated</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">frozenset</span><span class="p">({</span><span class="s2">"typename"</span><span class="p">}),</span> <span class="nb">frozenset</span><span class="p">({</span><span class="s2">"datatype"</span><span class="p">})</span>
+    <span class="k">if</span> <span class="s2">"datatype"</span> <span class="ow">in</span> <span class="n">stated</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">frozenset</span><span class="p">({</span><span class="s2">"datatype"</span><span class="p">,</span> <span class="s2">"conversion"</span><span class="p">}),</span> <span class="nb">frozenset</span><span class="p">({</span><span class="s2">"typename"</span><span class="p">})</span>
+    <span class="c1"># A definition naming no storage at all does not load, so there is nothing to keep and</span>
+    <span class="c1"># nothing that would be a second naming.</span>
+    <span class="k">return</span> <span class="nb">frozenset</span><span class="p">(),</span> <span class="nb">frozenset</span><span class="p">()</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">resolve_export</span><span class="p">(</span><span class="n">stated</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>

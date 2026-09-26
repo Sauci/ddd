@@ -293,7 +293,22 @@ The commands
        maintaining its vocabulary - and a Findings tab of every finding, worst first,
        one tab away; a variable's panel shows every key its declarations share, says
        which of them they disagree about, and settles one on every declaration at
-       once. A component's page adds a declaration to its interface - a variable
+       once. A ``definition-mismatch`` finding carries that settlement as a button of its own,
+       one per disagreeing key, reaching every declaration that disagrees, not only the
+       one the finding names. Opened on a consumer it takes the producing component's
+       value; opened on the producer's own row, where the same disagreement is filed a
+       second time, it sends that value outward - never a direction the reader chooses.
+       That value may be silence: a producer stating no unit where its readers state
+       one is settled by taking it out of all of them, from either row.
+       Nothing is offered where the variable has no single producer - several components
+       writing it, or none, leaves no owner to take a direction from; the variable's own
+       panel, one click from the finding, still settles any value the reader chooses, unless
+       it would leave the file unable to load. A key is offered only where one change settles
+       it for every declaration: never ``kind``, the one key no edit may carry between
+       declarations, and not a key some declaration could neither take nor drop - one its
+       named type fixes, one its kind does not allow, or the ``datatype``, ``conversion`` or
+       ``typename`` its own storage is made of. A component's page
+       adds a declaration to its interface - a variable
        already declared, carrying the producer's keys where there is one and the
        project's own where there is not, or a new object of one of six kinds - and
        takes one away. Its table's Shape column opens the page of a curve, a map, an

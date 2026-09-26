@@ -1588,6 +1588,42 @@ class TestCompare:
         # the one thing asserted here rather than pinning either reason by name.
         assert baseline in reply.body["message"]
 
+    def test_a_baseline_whose_resolve_raises_a_value_error_is_refused(
+        self, api: Api, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Forced rather than left to the platform, the way ``test_hardening.py``'s own
+        ``test_a_path_refused_by_resolve_itself`` forces the same thing for the same reason: the
+        NUL byte above only raises ``ValueError`` out of ``resolve()`` on POSIX, so the real test
+        alone leaves this except clause unexercised on Windows - and the 100% coverage gate is
+        read once per platform, not once for whichever machine happened to run the suite."""
+
+        def refuse(self: Path, *args: object, **kwargs: object) -> Path:
+            msg = "embedded null character in path"
+            raise ValueError(msg)
+
+        monkeypatch.setattr(Path, "resolve", refuse)
+        reply = get(api, "/api/compare", baseline="whatever.json")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert "whatever.json' is unreadable" in reply.body["message"]
+
+    def test_a_baseline_whose_resolve_raises_an_os_error_is_refused(
+        self, api: Api, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The other exception the same clause catches, which nothing above ever reaches on
+        either platform: ``Path.resolve()`` can still raise ``OSError`` outright even unstrict -
+        a symlink loop is the one case it does not swallow. Forced for its own sake and not only
+        the gate's: one ``except`` clause covering two exceptions is a choice that could quietly
+        drop either from its tuple, and only a test naming each one separately would notice."""
+
+        def refuse(self: Path, *args: object, **kwargs: object) -> Path:
+            msg = "Too many levels of symbolic links"
+            raise OSError(40, msg)
+
+        monkeypatch.setattr(Path, "resolve", refuse)
+        reply = get(api, "/api/compare", baseline="whatever.json")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert "whatever.json' is unreadable" in reply.body["message"]
+
     def test_a_baseline_that_is_not_json_is_refused(self, api: Api, root: Path) -> None:
         (root / "bad.json").write_text("{not json at all")
         reply = get(api, "/api/compare", baseline=posix(root, "bad.json"))

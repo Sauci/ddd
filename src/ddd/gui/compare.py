@@ -301,7 +301,8 @@ def _resolved_baseline(
     does not exist yet still resolves - so that a reader who typed one outside the root is told
     that and nothing about the file itself. ``Path.resolve()`` then ``is_relative_to`` is the
     reading :func:`~ddd.gui.session.find_projects` already gives its own root, followed rather
-    than invented a second time.
+    than invented a second time; a path that will not resolve at all is *unreadable*, which is
+    what it is.
 
     An entry already held is used only while every file it was read out of still carries the
     stamp it was read at - :func:`~ddd.gui.session.stamped`, the session's own reading of "has
@@ -309,7 +310,18 @@ def _resolved_baseline(
     A file a wildcard include would match only once it exists is noticed when something else
     changes, which is the limit the session already states for the open project.
     """
-    resolved = path.resolve()
+    try:
+        resolved = path.resolve()
+    except (OSError, ValueError) as error:
+        # Resolving is not total, and it is the first thing reader input meets: a NUL inside the
+        # path raises `ValueError` out of the stat behind it - and `parse_qs` decodes `%00` into
+        # a real one, so it arrives over the wire - while a path the filesystem refuses outright
+        # raises `OSError`. Neither is one of the three below, and unanswered here both left a
+        # traceback in the terminal and a 500 telling the reader to go and read it. Named as
+        # typed, because there is no resolved spelling of a path that would not resolve.
+        raise BaselineRefusedError(
+            f"the baseline '{path.as_posix()}' is unreadable: {error}"
+        ) from error
     if not resolved.is_relative_to(root):
         raise BaselineRefusedError(
             f"the baseline '{resolved.as_posix()}' is outside the session root '{root.as_posix()}'"

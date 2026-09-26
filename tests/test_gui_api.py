@@ -1571,6 +1571,15 @@ class TestCompare:
         assert reply.status == 400
         assert "unreadable" in reply.body["message"]
 
+    def test_a_baseline_whose_path_cannot_be_resolved_is_refused(self, api: Api) -> None:
+        """Reader input over the wire: ``parse_qs`` decodes ``%00`` into a real NUL, which
+        ``Path.resolve`` raises ``ValueError`` on before any of the four refusals is reached.
+        That left the terminal holding a traceback and the reader a 500 telling them to go and
+        read it - and ``ddd gui --host`` widens the bind beyond loopback."""
+        reply = get(api, "/api/compare", baseline="base\x00line.json")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert "unreadable" in reply.body["message"]
+
     def test_a_baseline_that_is_not_json_is_refused(self, api: Api, root: Path) -> None:
         (root / "bad.json").write_text("{not json at all")
         reply = get(api, "/api/compare", baseline=posix(root, "bad.json"))

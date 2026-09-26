@@ -1571,14 +1571,22 @@ class TestCompare:
         assert reply.status == 400
         assert "unreadable" in reply.body["message"]
 
-    def test_a_baseline_whose_path_cannot_be_resolved_is_refused(self, api: Api) -> None:
-        """Reader input over the wire: ``parse_qs`` decodes ``%00`` into a real NUL, which
-        ``Path.resolve`` raises ``ValueError`` on before any of the four refusals is reached.
-        That left the terminal holding a traceback and the reader a 500 telling them to go and
-        read it - and ``ddd gui --host`` widens the bind beyond loopback."""
-        reply = get(api, "/api/compare", baseline="base\x00line.json")
+    def test_a_baseline_path_with_a_nul_byte_is_refused(self, api: Api) -> None:
+        """Reader input over the wire: ``parse_qs`` decodes ``%00`` into a real NUL. Before this
+        was caught, that reached ``Path.resolve`` unguarded and left the terminal holding a
+        traceback and the reader a 500 telling them to go and read it - and ``ddd gui --host``
+        widens the bind beyond loopback."""
+        baseline = "base\x00line.json"
+        reply = get(api, "/api/compare", baseline=baseline)
         assert (reply.status, reply.body["error"]) == (400, "bad-request")
-        assert "unreadable" in reply.body["message"]
+        # Which of the four refusals answers this is platform-dependent, though a refusal
+        # always does: `Path.resolve` raises `ValueError` on an embedded NUL on POSIX, straight
+        # into the *unreadable* rule (`_resolved_baseline`'s `except (OSError, ValueError)`);
+        # on Windows it resolves the path against the current drive instead - a real path that
+        # merely lands outside the session root, straight into the confinement rule
+        # (`is_relative_to`). Both name the path the reader typed in their message, which is
+        # the one thing asserted here rather than pinning either reason by name.
+        assert baseline in reply.body["message"]
 
     def test_a_baseline_that_is_not_json_is_refused(self, api: Api, root: Path) -> None:
         (root / "bad.json").write_text("{not json at all")

@@ -491,12 +491,87 @@ class TestTheCache:
         assert again.verdict is True
         assert len(cache) == 1
 
-        # A re-dump changes the fingerprint: read again, never served stale - the one thing a
-        # comparison must not do.
+        # A re-dump in place moves the file's stamp: read again, never served stale - the one
+        # thing a comparison must not do. One entry per path, the newest read holding it.
         write_tree(
             old, {"a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm"))}
         )
         _dumped(old / "p.ddd.json", dump)
         after = compared(revision, dump, root, cache)
         assert after.verdict is False
-        assert len(cache) == 2
+        assert len(cache) == 1
+
+    def test_an_edit_to_a_file_the_baseline_includes_is_read_again(self, tmp_path: Path) -> None:
+        """A dumped dictionary is its own file; a project description is its whole include tree,
+        and that tree is the delivery being compared against. Keyed on the named file alone, an
+        edit to a file that file includes left the entry looking untouched and a stale verdict
+        was served - a comparison answering ``True`` about bytes no longer on disk."""
+        root = tmp_path / "project"
+        revision = _revision(
+            root,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+                "old/p.ddd.json": project("P", "a.ddd.json"),
+                "old/a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+            },
+        )
+        baseline = root / "old" / "p.ddd.json"
+        cache: BaselineCache = {}
+        assert compared(revision, baseline, root, cache).verdict is True
+
+        # The baseline's own component, not the file `?baseline=` names, which is untouched.
+        write_tree(
+            root / "old",
+            {"a.ddd.json": component("A", declare("output", "Speed", "uint8", unit="rpm"))},
+        )
+        after = compared(revision, baseline, root, cache)
+        assert after.verdict is False
+        assert [f.diagnostic.check for f in after.findings] == ["changed-interface"]
+
+    def test_a_project_can_replace_itself_however_warm_the_cache(self, tmp_path: Path) -> None:
+        """The first thing anyone compares against (spec §3), and the sharpest form of the
+        staleness above: with the baseline the open project's own description, a warm entry read
+        before an edit was compared against the revision made after it, and the tab said a
+        project could not replace itself. Which of the two answers a reader got depended on
+        nothing but whether the cache happened to be warm, and nothing short of restarting the
+        server could clear it - a cache "in the strict sense: discarding it changes speed and
+        nothing else" (spec §4) may never decide an answer."""
+        root = tmp_path / "project"
+        api = opened(
+            root,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+            },
+        )
+        session = api.session
+        first = session.revision
+        assert first is not None
+        cache: BaselineCache = {}
+        assert compared(first, root / "p.ddd.json", root, cache).verdict is True
+
+        write_tree(
+            root, {"a.ddd.json": component("A", declare("output", "Speed", "uint8", unit="rpm"))}
+        )
+        assert session.poll() is True
+        second = session.revision
+        assert second is not None and second.number == 2
+        assert compared(second, root / "p.ddd.json", root, cache).verdict is True
+
+    def test_a_baseline_that_was_refused_is_never_served_from_the_cache(
+        self, tmp_path: Path
+    ) -> None:
+        """The cache holds deliveries, and a refusal is not one: nothing is kept for a file that
+        did not resolve, so the reason a reader is given is always this ask's own - and fixing
+        the file is answered rather than met with the refusal it earned a minute ago."""
+        root = tmp_path / "project"
+        revision = _revision(root, {"p.ddd.json": project("P")})
+        baseline = root / "baseline.json"
+        baseline.write_text("{not json at all", encoding="utf-8")
+        cache: BaselineCache = {}
+        with pytest.raises(BaselineRefusedError, match="not valid json"):
+            compared(revision, baseline, root, cache)
+        assert cache == {}
+        _dumped(root / "p.ddd.json", baseline)
+        assert compared(revision, baseline, root, cache).verdict is True

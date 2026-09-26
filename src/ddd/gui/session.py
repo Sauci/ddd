@@ -223,7 +223,7 @@ class Session:
         """Analyse the open project again if a file of it changed on disk; say whether one did."""
         with self._lock:
             revision = self._revision
-            stamps = _signature(self._signature)
+            stamps = stamped(self._signature)
             if revision is None or stamps == self._signature:
                 return False
             self._publish(self._analysed(revision.project), stamps)
@@ -281,7 +281,7 @@ class Session:
             del self._stack[:-MAX_UNDO]
             # After the edit's own write, so the next poll does not take it for somebody else's,
             # and before the analysis, so a save landing while that runs is not taken for seen.
-            stamps = _signature(self._signature)
+            stamps = stamped(self._signature)
             return self._publish(self._analysed(revision.project), stamps), written
 
     def undo(self, at: int) -> Revision:
@@ -300,7 +300,7 @@ class Session:
             restore(top.files)
             # Stamped before the analysis, as an edit's own write is, and popped only once the
             # files are back: a refused restore leaves the entry where it was.
-            stamps = _signature(self._signature)
+            stamps = stamped(self._signature)
             self._stack.pop()
             return self._publish(self._analysed(revision.project), stamps)
 
@@ -498,7 +498,16 @@ def _name_in(data: Any, kind: str) -> str | None:
     return name if isinstance(name, str) else None
 
 
-def _signature(paths: Iterable[Path]) -> dict[Path, tuple[int, int] | None]:
+def stamped(paths: Iterable[Path]) -> dict[Path, tuple[int, int] | None]:
+    """The modification time and size of each path, ``None`` for one that is not there.
+
+    How this session decides a file has changed, without a file watcher the standard library
+    does not have: taken again and compared with what was taken before. Shared with
+    :mod:`ddd.gui.compare`, which asks the same question of a baseline's own files, rather than
+    read a second way there - a baseline may perfectly well *be* the open project's description
+    (spec 2026-09-26-gui-compare-design.md §3), and two readings of "has this file changed"
+    disagreeing about one file is exactly the answer nobody could explain.
+    """
     signature: dict[Path, tuple[int, int] | None] = {}
     for path in paths:
         try:

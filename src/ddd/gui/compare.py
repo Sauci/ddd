@@ -72,8 +72,7 @@ from ddd.diagnostics import (
     SeverityPolicy,
     where,
 )
-from ddd.editing import fingerprint
-from ddd.gui.session import Filed, Revision
+from ddd.gui.session import Filed, Revision, stamped
 from ddd.lsp.diagnostics import group_findings
 from ddd.plugins import PluginError, run_compare_hooks
 
@@ -81,11 +80,10 @@ _NOT_JSON_CHECKS: Final = frozenset({"json-syntax"})
 """The check the loader files when the bytes are not valid json - or not valid utf-8, which is
 the same refusal one step earlier, reported through the same check.
 
-``file-not-found`` never reaches :func:`_refusal_reason`: :func:`_resolved_baseline` has
-already read the file's bytes once by the time it asks ``read_baseline`` to read it as a
-dictionary or a description, so a reason of that kind was already raised, from that first
-read, as *unreadable* - the message :func:`_resolved_baseline` builds itself rather than
-one this looks up."""
+``file-not-found`` never reaches :func:`_refusal_reason`: :func:`_read` has already opened the
+file once by the time it asks ``read_baseline`` to read it as a dictionary or a description, so
+a reason of that kind was already raised, from that probe, as *unreadable* - the message
+:func:`_read` builds itself rather than one this looks up."""
 
 _COMPARISON_CHECKS: Final = frozenset(
     identifier for identifier, info in CHECKS.items() if info.comparison
@@ -94,13 +92,38 @@ _COMPARISON_CHECKS: Final = frozenset(
 than listed again - the same reasoning :data:`ddd.diagnostics.STANDALONE_POLICY` gives for
 deriving its own list instead of naming checks by hand."""
 
-type BaselineCache = dict[tuple[Path, str], tuple[Resolved | None, tuple[Diagnostic, ...]]]
-"""Every baseline this session has resolved, keyed by its resolved path *and* the fingerprint it
-was read at - never the path alone, which would go on serving a stale delivery after a re-dump.
 
-The value is what :func:`~ddd.deliveries.read_baseline` produced: the resolved side of the
-comparison (``None`` when it was refused), and every diagnostic it forwarded ("in the baseline:
-..."), captured once so a cache hit still reports them without reading the file again.
+@dataclass(frozen=True, slots=True)
+class Cached:
+    """One baseline this session has resolved, and what would make it stale."""
+
+    resolved: Resolved
+    """The side of the comparison :func:`~ddd.deliveries.read_baseline` produced."""
+
+    forwarded: tuple[Diagnostic, ...]
+    """Every diagnostic that read forwarded ("in the baseline: ..."), captured once so that a
+    cache hit still reports them without reading the file again."""
+
+    stamps: dict[Path, tuple[int, int] | None]
+    """The stamp of every file the read was made out of, as :func:`~ddd.gui.session.stamped`
+    takes them - :attr:`ddd.deliveries.Resolved.sources`, which is the whole include tree and
+    the plugins for a description and the one file for an archived dump."""
+
+
+type BaselineCache = dict[Path, Cached]
+"""Every baseline this session has resolved, by its resolved path - one entry each, the newest
+read of it holding the entry.
+
+**What is cached is the whole delivery, not the file that names it.** Keyed on the named file
+and a fingerprint of it, an edit to a file that file *includes* left the key untouched and a
+stale verdict was served; and comparing a project against itself - "the very first thing anyone
+compares against" (spec §3) - answered *cannot replace* or *can*, depending on nothing but
+whether the entry happened to be warm. A cache "in the strict sense: discarding it changes speed
+and nothing else" (spec §4) may not decide an answer, so an entry is used only while every file
+it was read out of still carries the stamp it was read at.
+
+Nothing is kept for a baseline that did not resolve: a refusal is not a delivery, and one held
+here would go stale the moment the reader fixed the file it is about.
 """
 
 
@@ -279,29 +302,47 @@ def _resolved_baseline(
     that and nothing about the file itself. ``Path.resolve()`` then ``is_relative_to`` is the
     reading :func:`~ddd.gui.session.find_projects` already gives its own root, followed rather
     than invented a second time.
+
+    An entry already held is used only while every file it was read out of still carries the
+    stamp it was read at - :func:`~ddd.gui.session.stamped`, the session's own reading of "has
+    this file changed", asked of the baseline's files as the poller asks it of the candidate's.
+    A file a wildcard include would match only once it exists is noticed when something else
+    changes, which is the limit the session already states for the open project.
     """
     resolved = path.resolve()
     if not resolved.is_relative_to(root):
         raise BaselineRefusedError(
             f"the baseline '{resolved.as_posix()}' is outside the session root '{root.as_posix()}'"
         )
+    hit = cache.get(resolved)
+    if hit is None or stamped(hit.stamps) != hit.stamps:
+        hit = _read(resolved)
+        cache[resolved] = hit
+    return hit.resolved, hit.forwarded
+
+
+def _read(path: Path) -> Cached:
+    """The baseline at ``path``, read and stamped, or the reason it is not one.
+
+    The open is a probe and reads nothing: it answers *unreadable* - a file that is not there,
+    a directory, one whose permissions refuse - before ``read_baseline`` is asked for a reading
+    that would report it as something else entirely. Reading the bytes here as well, which is
+    what the fingerprint key used to need, meant the 45 MB dump of a thousand object project
+    went through twice.
+    """
     try:
-        data = resolved.read_bytes()
+        with path.open("rb"):
+            pass
     except OSError as error:
         raise BaselineRefusedError(
-            f"the baseline '{resolved.as_posix()}' is unreadable: {error}"
-        ) from error
-    key = (resolved, fingerprint(data))
-    hit = cache.get(key)
-    if hit is None:
-        own = DiagnosticBag()
-        found = read_baseline(resolved, own)
-        hit = (found, tuple(own.sorted))
-        cache[key] = hit
-    found, forwarded = hit
+            f"the baseline '{path.as_posix()}' is unreadable: {error}"
+        ) from (error)
+    own = DiagnosticBag()
+    found = read_baseline(path, own)
+    forwarded = tuple(own.sorted)
     if found is None:
-        raise BaselineRefusedError(_refusal_reason(resolved, forwarded))
-    return found, forwarded
+        raise BaselineRefusedError(_refusal_reason(path, forwarded))
+    return Cached(found, forwarded, stamped(found.sources))
 
 
 def _refusal_reason(path: Path, diagnostics: tuple[Diagnostic, ...]) -> str:

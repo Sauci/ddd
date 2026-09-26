@@ -1343,6 +1343,13 @@ Found while running the plan and deliberately not fixed here.
   `AxisA`'s own `"unit": "Hz"`, twelve lines further down the same file, cannot satisfy it - and
   promoting it would invite a second caller for whom that scoping is wrong. *Costs:* one helper
   that does not live with its family.
+- **The same raw-text reading is wrong on the variable panel's own path, and predates this
+  branch.** `variable_keys._storage_of` decides from `Declared.stated`, which `variables._stated`
+  builds with `raw_at`, so an explicit `"typename": null` reads as a type in use there too - the
+  panel marks a declaration's real, in-use `datatype` removable and its null `typename` required,
+  backwards from reality. Confirmed against master: `entry.stated` carried the same reading before
+  this part existed. *Costs:* one control offered and one withheld, both the wrong way round, on a
+  declaration that writes an explicit null.
 - **A test outside this branch failed once and never again.**
   `tests/test_generation.py::TestTheManifest::test_a_file_the_manifest_does_not_name_is_never_removed`
   raised a `ValueError` from a jinja render in one full-suite run and passed in every run since -
@@ -1446,6 +1453,16 @@ accepted could not exist.
 
 ### At the end
 
+- **One more fix after the wave, against the process's own "there is no second fix wave".** The
+  scoped re-review found a regression the wave itself introduced: `settled_at` asked `raw_at`,
+  which answers the *text* `"null"` for an explicit `"typename": null`, so a declaration naming no
+  type read as naming one - offering no button where one had worked, and answering `409` with the
+  false sentence "would not load with that datatype". `_assign` six lines below already asked by
+  value, with a comment claiming it gave "the same reading `settle` gives it", which was
+  aspirational rather than true. The rule against a second wave exists to stop polish spirals;
+  this was a verified regression making the tool print a falsehood, one line, with the correct
+  form in the same file. *Costs if wrong:* one more round on a branch that has had many, for a
+  case that is legal but unusual.
 - **The Critical is fixed in `settled_at`, the shared decision, spending the branch's proof.**
   Fixing only the page would have left the decision layer answering `Settled` for a change that
   breaks the file and had the page filter it afterwards - two readings of one question, which is

@@ -106,8 +106,13 @@ class Resolved:
     from_description: bool
     sources: tuple[Path, ...]
     """Every file this side was read out of, resolved: a project and its whole include tree,
-    or the single file an archived dump was read from. What :func:`_refuse_a_source` holds an
-    output path against."""
+    or the single file an archived dump was read from.
+
+    What a caller has to know before it writes anything - ``ddd compare --renames`` and
+    ``ddd dump -o`` refuse a path naming one of these rather than writing over a file the
+    delivery was read from - and before it trusts anything it kept: this is the set whose
+    staleness makes a reading of this side stale, which is how :mod:`ddd.gui.compare` decides
+    a cached baseline has to be read again."""
 
 
 def read_dictionary(

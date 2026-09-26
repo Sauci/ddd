@@ -1,6 +1,14 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, utimesSync } from "node:fs";
 import { join } from "node:path";
-import { CONTROLLER, driftFactor, driftMax, openPanel, PUMP, SENSOR_HUB } from "./demo";
+import {
+  CONTROLLER,
+  driftFactor,
+  driftMax,
+  openPanel,
+  PUMP,
+  preserveStampOf,
+  SENSOR_HUB,
+} from "./demo";
 import { expect, test } from "./fixtures";
 
 /** ValueA's definition in one file of the copy, read back from disk. */
@@ -128,15 +136,35 @@ test("a change refused as stale can be applied again once the analysis has caugh
   await expect(apply).toBeEnabled();
 
   // The file changes under the page, between the preview it is holding and the press that sends
-  // it, so that preview is against the old bytes. The order is the whole test: the session polls
-  // once a second (`session.py`, `poll_interval`), so anything awaited between the change and the
-  // press is a chance for the page to catch up first and for there to be nothing stale left to
-  // refuse - which is how this failed on a CI runner and never here.
-  driftMax(gui.directory, CONTROLLER, "ValueA", 60);
+  // it, so that preview is against the old bytes - made so deterministically now, rather than by
+  // racing the click: the write below is made without moving controller.ddd.json's modification
+  // time, so the session's own watcher (`stamped`, `session.py:518` - keyed on `(st_mtime_ns,
+  // st_size)`) never sees it, however long the run is between here and the click. Only a fresh
+  // read of the bytes does, which is the check an Apply itself makes: the fingerprint is the
+  // authority and the watcher only a convenience, which this pins rather than merely relying on
+  // - it used to fail this way on a slow CI runner and never here, the watcher having caught the
+  // change first and left nothing stale to refuse by the time the click above was processed.
+  // `driftMax` is asked for a replacement the same three digits wide as the value it replaces,
+  // so that the one part of the write left unstamped - the file's size - does not move either.
+  const path = join(gui.directory, CONTROLLER);
+  const restoreStamp = preserveStampOf(path);
+  driftMax(gui.directory, CONTROLLER, "ValueA", 999);
+  restoreStamp();
   await apply.click();
   await expect(panel.getByText("A file changed on disk")).toBeVisible();
 
-  // The watcher catches up within a second; the sentence goes and Apply works.
+  // Hidden from the watcher for good now, not just for a moment - nothing will ever make it
+  // notice controller.ddd.json changed on its own, so the drift above is not what the rest of
+  // this test can wait on. A plain modification time bump, no byte touched again, is a real
+  // difference in the one thing `stamped` compares, so it stands in for "something else
+  // changed" and is what lets the next poll reanalyse the project - reading, for the first
+  // time, the file's true and already-drifted bytes, and updating what the page holds against.
+  const reanalysed = page.waitForResponse((response) =>
+    response.url().includes("/api/state?after="),
+  );
+  const now = new Date();
+  utimesSync(path, now, now);
+  await reanalysed;
   await expect(panel.getByText("A file changed on disk")).toBeHidden({ timeout: 15000 });
   await panel.getByLabel("Max").fill("50");
   await panel.getByRole("button", { name: /^Apply to/ }).click();

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 
@@ -151,6 +151,38 @@ function driftNumber(
     .replace(new RegExp(`("name": "${variable}"[\\s\\S]*?"${key}": )[0-9.]+`), `$1${value}`);
   writeFileSync(path, text, "utf8");
   return before;
+}
+
+/** `path`'s modification time, read now so a write about to be made to it can be hidden from
+ * the session's own file watcher afterwards - call the function this returns once that write is
+ * made. The session decides a file changed by `(st_mtime_ns, st_size)` alone (`stamped`,
+ * `session.py`), never by reading it, so a write whose bytes change but whose stamp does not
+ * is invisible to the watcher while still being a different file to anyone who reads it fresh -
+ * which is what an Apply's own staleness check does. Used where a test means the second and not
+ * the first, the way `keys.spec.ts`'s "a change refused as stale..." does.
+ *
+ * A no-op on Windows: the restore below needs `touch`'s own date parsing to land on the exact
+ * nanosecond `statSync` read here, and `fs.utimesSync` cannot - it takes the time through a
+ * JS `number`, tens of nanoseconds off for an epoch this large, which is close enough to fool
+ * a human but not the exact-tuple comparison `stamped` makes. Nothing this repository's e2e
+ * runs on windows-latest needs hidden from the watcher, so there is nothing to lose by leaving
+ * the write's own, unrestored stamp in place there. */
+export function preserveStampOf(path: string): () => void {
+  if (process.platform === "win32") {
+    return () => {};
+  }
+  const mtimeNs = statSync(path, { bigint: true }).mtimeNs;
+  return () => {
+    const digits = mtimeNs.toString().padStart(10, "0");
+    const stamp = `${digits.slice(0, -9)}.${digits.slice(-9)}`;
+    const result = spawnSync("touch", ["-d", `@${stamp}`, path]);
+    if (result.status !== 0) {
+      throw new Error(
+        `touch -d @${stamp} ${path} exited with ${String(result.status)}: ` +
+          `${result.stderr.toString("utf8")}`,
+      );
+    }
+  };
 }
 
 /** A producing declaration's id taken away from outside, the way a description written before

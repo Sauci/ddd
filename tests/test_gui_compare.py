@@ -123,6 +123,38 @@ class TestThePathRule:
         result = compared(revision, inside, root, {})
         assert result.verdict is True
 
+    def test_what_the_named_baseline_includes_is_read_where_it_points(self, tmp_path: Path) -> None:
+        """The confinement is on the file the reader names, and not on the tree that file pulls
+        in: a description under the root whose ``includes`` climb out of it is read, and one of
+        its own findings comes back filed outside the root.
+
+        Deliberate, and the reason is that the include tree is the baseline project's own
+        business - ``ddd compare`` reads it the same way, and a second reading of "which files a
+        delivery is made of" here is the drift this part exists to remove. It is not the
+        file-read primitive spec §3 weighs either: it needs a description *under* the root
+        already pointing where somebody wants to look, and whoever can reach the port cannot put
+        one there.
+        """
+        root = tmp_path / "project"
+        revision = _revision(
+            root,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "baseline/p.ddd.json": project("P", "a.ddd.json", "../../outside/b.ddd.json"),
+                "baseline/a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        write_tree(
+            tmp_path / "outside",
+            {"b.ddd.json": component("B", declare("output", "Speed", unit="rpm"))},
+        )
+        result = compared(revision, root / "baseline" / "p.ddd.json", root, {})
+        forwarded = {
+            f.file for f in result.baseline_findings if f.diagnostic.check == "multiple-producers"
+        }
+        assert (tmp_path / "outside" / "b.ddd.json").resolve() in forwarded
+
 
 class TestTheRefusals:
     """Why a baseline was refused: outside the root and unreadable, which this module settles

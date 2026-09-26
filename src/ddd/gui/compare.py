@@ -41,7 +41,7 @@ found while reading a baseline given as a multi-file project description carries
 at the *other* file that also produces the object, and both copies are the baseline's, whatever
 either happens to be named.
 
-**Whatever it happens to be named is the part a path check cannot settle.** A baseline is read
+**Whatever it happens to be named is the part a path check cannot settle.** A baseline is named
 under the session root, and the candidate's own files are under it too - a reader may legally
 point ``?baseline=`` at the project it already has open, which is the very first thing anyone
 compares against. When they do, a baseline finding's file coincides with a real file of
@@ -179,11 +179,12 @@ def compared(revision: Revision, baseline: Path, root: Path, cache: BaselineCach
     every rule the command's own exit code answers by - the built-in comparison checks and the
     project's plugins' own.
 
-    ``root`` is the session's own root, the one directory a baseline is ever allowed to be read
-    from: a path :func:`_resolved_baseline` finds outside it is refused with its reason instead
-    of being clamped to something inside it, which would silently compare against a delivery
-    nobody named. ``cache`` is owned by the caller - the route itself keeps nothing between two
-    requests - and is only ever read and added to here.
+    ``root`` is the session's own root, the one directory a baseline may be *named* in: a path
+    :func:`_resolved_baseline` finds outside it is refused with its reason instead of being
+    clamped to something inside it, which would silently compare against a delivery nobody
+    named. What that file includes is read wherever it points, as ``ddd compare`` reads it -
+    :func:`_resolved_baseline` says why. ``cache`` is owned by the caller - the route itself
+    keeps nothing between two requests - and is only ever read and added to here.
     """
     candidate = revision.resolved
     if candidate is None:
@@ -311,7 +312,7 @@ def _graded(revision: Revision) -> dict[str, CheckInfo]:
 def _resolved_baseline(
     path: Path, root: Path, cache: BaselineCache
 ) -> tuple[Resolved, tuple[Diagnostic, ...]]:
-    """Read the baseline at ``path``, confined to ``root``, through the cache.
+    """Read the baseline named at ``path``, which must be under ``root``, through the cache.
 
     Confinement is checked before anything is read, on the resolved path alone - a path that
     does not exist yet still resolves - so that a reader who typed one outside the root is told
@@ -319,6 +320,17 @@ def _resolved_baseline(
     reading :func:`~ddd.gui.session.find_projects` already gives its own root, followed rather
     than invented a second time; a path that will not resolve at all is *unreadable*, which is
     what it is.
+
+    **It confines the file the reader names, and not the files that file includes.** A
+    description under the root whose ``includes`` point above it is read, and a finding of its
+    own comes back filed at a path outside the root. That is deliberate: the include tree is how
+    a project is composed and it is that project's own business - ``ddd compare`` reads it the
+    same way, and holding the tree to this root here would be a second reading of "which files
+    is a delivery made of", diverging from the command the first time either changed. It is also
+    not the file-read primitive spec §3 weighs: reaching one needs a description under the root
+    that *already* points where the reader wants to look, which whoever can reach the port
+    cannot put there - ``POST /api/edit`` writes description files of the open project and
+    nothing else.
 
     An entry already held is used only while every file it was read out of still carries the
     stamp it was read at - :func:`~ddd.gui.session.stamped`, the session's own reading of "has

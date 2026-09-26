@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ddd import __version__
-from ddd.deliveries import Resolved, read_baseline, read_dictionary, where
+from ddd.deliveries import Resolved, read_baseline, read_dictionary
 from ddd.diagnostics import (
     CHECKS,
     STANDALONE_POLICY,
@@ -23,6 +23,7 @@ from ddd.diagnostics import (
     Severity,
     SeverityPolicy,
     UnknownCheckError,
+    where,
 )
 from ddd.names import (
     BUILT_IN_ARTEFACTS,
@@ -46,14 +47,6 @@ if TYPE_CHECKING:
 # about a third of a second of pydantic building contracts the answer never looks at. The
 # names argparse needs while it is still deciding what was asked for are in :mod:`ddd.names`,
 # which imports nothing, and ddd.diagnostics comes with the package itself.
-
-_read_dictionary = read_dictionary
-"""``tests/test_cli.py`` reaches into this module for the function under its old, private
-name, to check where a plugin's finding on an archived dictionary lands without a whole
-command run. This task moves the function's definition to :mod:`ddd.deliveries` and renames
-it there; aliasing the import back to the old name would hide that from every call site inside
-this module, which is not wanted, so every call site here uses the new name instead and only
-this one re-export keeps the test working unchanged."""
 
 EXIT_OK = 0
 EXIT_FINDINGS = 1

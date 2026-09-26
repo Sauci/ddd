@@ -341,6 +341,24 @@ class Location:
         }
 
 
+def where(path: Path) -> Location:
+    """A finding's place, out of a path typed on the command line.
+
+    Resolved rather than taken as typed: a ``location`` is "an absolute, forward-slashed
+    path" (``docs/consistency_checks.rst``), and everything the loader locates is one, because
+    it resolves every file it reads. The paths this module locates a finding at itself - the
+    project or candidate a comparison is about, the address map a note is about - arrive as
+    somebody typed them, and a relative one is unresolvable to whoever reads the json without
+    the working directory the run had. It is also unorderable against the rest: within one
+    severity the findings sort by path, so a relative one landed apart from the findings of
+    the very file it is about. The text report is unchanged, because it renders every path
+    back against the working directory.
+    """
+    from ddd.loading import resolve_path
+
+    return Location(resolve_path(path))
+
+
 @dataclass(frozen=True, slots=True)
 class Diagnostic:
     """A single finding."""

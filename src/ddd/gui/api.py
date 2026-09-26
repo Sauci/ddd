@@ -976,15 +976,22 @@ class Api:
             return _error(400, "bad-request", str(refused))
         sources = {file.path.resolve(): file for file in revision.files}
         cache: dict[Path, Document] = {}
+        entries = sorted(
+            [(filed, sources.get(filed.file.resolve())) for filed in result.findings]
+            # Never a source for one of these, whatever file it resolves to: a baseline given as
+            # a project description can share files, ids and even paths with the open project,
+            # so being in `baseline_findings` rather than `findings` is what marks a finding as
+            # the baseline's - not a test of where it happens to sit, which answered this wrong
+            # for a baseline that was also a file of the open project.
+            + [(filed, None) for filed in result.baseline_findings],
+            key=lambda entry: entry[0].file.as_posix(),
+        )
         return Reply(
             200,
             contract.CompareReply(
                 revision=revision.number,
                 verdict=result.verdict,
-                findings=[
-                    _finding(filed, sources.get(filed.file.resolve()), cache)
-                    for filed in result.findings
-                ],
+                findings=[_finding(filed, source, cache) for filed, source in entries],
                 renames=[
                     {"id": entry["id"], "old": entry["from"], "new": entry["to"]}
                     for entry in result.renames

@@ -116,6 +116,7 @@ class TestTheComparison:
         result = compared(revision, dump, root, {})
         assert result.verdict is True
         assert result.findings == ()
+        assert result.baseline_findings == ()
         assert result.renames == ()
 
     def test_a_drifted_datatype_fails_the_verdict(self, tmp_path: Path) -> None:
@@ -212,6 +213,47 @@ class TestTheComparison:
         result = compared(revision, dump, root, {})
         assert result.verdict is True
 
+    def test_the_strictest_of_several_builds_governs_not_the_one_that_sorts_first(
+        self, tmp_path: Path
+    ) -> None:
+        """A verdict must not depend on an image's name. Two build records disagreeing about
+        ``changed-interface``'s severity used to produce opposite verdicts for the identical
+        comparison depending on which one ``build_files``' own sort (by path, which orders by
+        image name) put first in ``revision.builds`` - here, deliberately, the lenient one."""
+        root = tmp_path / "project"
+        old = tmp_path / "old"
+        write_tree(
+            old,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", "uint8", unit="rpm")),
+            },
+        )
+        dump = root / "baseline.json"
+        _dumped(old / "p.ddd.json", dump)
+        write_tree(
+            root,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+            },
+        )
+        build_record(
+            root,
+            root / "p.ddd.json",
+            image="aaa_lenient",
+            severity=["changed-interface=warning"],
+        )
+        build_record(root, root / "p.ddd.json", image="zzz_strict")
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        revision = session.revision
+        assert revision is not None
+        # Proof the lenient record really is the one `revision.builds[0]` used to trust.
+        assert [build.image for build in revision.builds] == ["aaa_lenient", "zzz_strict"]
+        result = compared(revision, dump, root, {})
+        assert result.verdict is False
+
     def test_a_baseline_only_finding_files_its_mirror_on_the_baseline_too(
         self, tmp_path: Path
     ) -> None:
@@ -222,9 +264,9 @@ class TestTheComparison:
         `multiple-producers` whose note points at a *second* baseline file. `group_findings`'s
         `_mirrors` step files a copy there too, same as it would for two files of an open
         project. Both copies are correctly attributed to the baseline - the message already
-        says "in the baseline" - and both are inert on the page: `_finding` resolves a route
-        only for a file in `revision.files`, and a baseline file never is one, so this is the
-        same `route: null` an unopenable finding already gets for any other reason.
+        says "in the baseline" - and both are kept in `baseline_findings`, never `findings`,
+        which is what answers `route: null` for them regardless of where either path resolves
+        to (see the next test for why that distinction, and not the path, is load-bearing).
         """
         root = tmp_path / "project"
         revision = _revision(
@@ -238,7 +280,10 @@ class TestTheComparison:
             },
         )
         result = compared(revision, root / "baseline" / "p.ddd.json", root, {})
-        forwarded = [f for f in result.findings if f.diagnostic.check == "multiple-producers"]
+        assert not any(f.diagnostic.check == "multiple-producers" for f in result.findings)
+        forwarded = [
+            f for f in result.baseline_findings if f.diagnostic.check == "multiple-producers"
+        ]
         assert len(forwarded) == 2
         assert {f.file for f in forwarded} == {
             (root / "baseline" / "a.ddd.json").resolve(),
@@ -246,6 +291,45 @@ class TestTheComparison:
         }
         assert all(f.diagnostic.message.startswith("in the baseline: ") for f in forwarded)
         assert all(_finding(f, None, {})["route"] is None for f in forwarded)
+
+    def test_a_baseline_finding_never_routes_even_when_its_file_is_also_the_open_projects(
+        self, tmp_path: Path
+    ) -> None:
+        """The regression: comparing a project against itself is the first thing a reader
+        tries, and a baseline only has to be read from under the session root - it is not
+        required to sit outside the candidate's own files, so ``?baseline=`` may legally name
+        the project already open. When it does, a baseline finding's file is, path for path, a
+        real file of ``revision.files`` - proved below rather than assumed. Answering a route
+        by asking "is this file one of the open project's" got that case wrong: a message that
+        says "in the baseline: ..." wired a live link into the candidate. What actually marks a
+        finding as the baseline's is being in ``baseline_findings`` rather than ``findings``,
+        which is a fact about which list it is in, not about where its path resolves to.
+        """
+        root = tmp_path / "project"
+        revision = _revision(
+            root,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        # The baseline is the project itself, read a second time.
+        result = compared(revision, root / "p.ddd.json", root, {})
+        forwarded = [
+            f for f in result.baseline_findings if f.diagnostic.check == "multiple-producers"
+        ]
+        assert len(forwarded) == 2
+        sources = {file.path.resolve(): file for file in revision.files}
+        for filed in forwarded:
+            # Each file really is one of the open project's - the coincidence a path check
+            # alone cannot tell apart from a baseline kept in a directory of its own.
+            assert filed.file in sources
+            assert _finding(filed, sources[filed.file], {})["route"] is not None
+            # What the caller actually does: never look a source up for one of these at all.
+            assert _finding(filed, None, {})["route"] is None
+        # `compare()`'s own findings agree the project can replace itself: no differences.
+        assert result.findings == ()
 
 
 class TestTheCache:

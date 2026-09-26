@@ -1517,6 +1517,36 @@ class TestCompare:
         # there is nothing here for the page to open either.
         assert changed[0]["route"] is None
 
+    def test_comparing_a_project_against_itself_with_its_own_conflict_never_routes_into_it(
+        self, tmp_path: Path
+    ) -> None:
+        """The regression this route actually had: comparing a project against itself is the
+        first thing a reader tries, and a baseline only has to sit under the session root - it
+        is not required to be a file other than the candidate's own. Here the open project has
+        a `multiple-producers` conflict of its own, so reading it a second time as its own
+        baseline forwards that same conflict, once per producer, at files that really are
+        `revision.files`' own. Neither answers a route: it used to, because the api asked
+        "is this file one of the open project's" and answered honestly for a message that
+        says "in the baseline: ..."; now a baseline finding is marked by which list the server
+        keeps it in, not by where its path happens to resolve to."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        reply = get(api, "/api/compare", baseline=posix(tmp_path, "p.ddd.json"))
+        assert reply.status == 200
+        forwarded = [f for f in reply.body["findings"] if f["check"] == "multiple-producers"]
+        assert len(forwarded) == 2
+        assert all(f["message"].startswith("in the baseline: ") for f in forwarded)
+        assert all(f["route"] is None for f in forwarded)
+        # Each really is a file of the open project - the coincidence a path check alone
+        # cannot tell apart from a baseline kept somewhere else entirely.
+        assert {Path(f["file"]).name for f in forwarded} == {"a.ddd.json", "b.ddd.json"}
+
     def test_a_missing_baseline_is_bad(self, api: Api) -> None:
         reply = get(api, "/api/compare")
         assert (reply.status, reply.body["error"]) == (400, "bad-request")

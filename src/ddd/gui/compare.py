@@ -25,21 +25,24 @@ never trigger it: every one of them carries the single ``location`` this module 
 :func:`ddd.compare.compare`, and none of them attaches a note with a location of its own (checked
 against the table in ``ddd/compare.py``: every note it builds is ``(text, None)``). It *can* fire
 on the errors :func:`~ddd.deliveries.read_baseline` forwards, prefixed ``"in the baseline: "``,
-because those are the baseline's own analysis handed back unchanged - a ``duplicate-component``
+because those are the baseline's own analysis handed back unchanged - a ``multiple-producers``
 found while reading a baseline given as a multi-file project description carries a note pointing
-at the *other* baseline file, and both the primary location and that note's are inside the
-baseline, never inside the open project.
+at the *other* file that also produces the object, and both copies are the baseline's, whatever
+either happens to be named.
 
-Filing that mirror anyway - rather than special-casing it away - is the considered choice: the
-primary copy already sits at a path the page cannot open (it is not one of ``revision.files``,
-so :func:`~ddd.gui.api._finding` resolves no source for it and answers ``route: None``, exactly
-as it already does for a finding whose file did not load or names no place); the mirror is the
-same fact, truthfully reported at the *other* baseline file the note is about. Collapsing the
-note's location before grouping - so the mirror lands on the candidate's own project file
-instead - would trade a truthful, inert row for one that looks like it is about the open
-project when it is not, which is worse. A row the page cannot open is not a defect here: it is
-what "this finding is about the baseline, not about a file you have open" looks like once it
-reaches the wire, and the contract already has words for it.
+**Whatever it happens to be named is the part a path check cannot settle.** A baseline is read
+under the session root, and the candidate's own files are under it too - a reader may legally
+point ``?baseline=`` at the project it already has open, which is the very first thing anyone
+compares against. When they do, a baseline finding's file coincides with a real file of
+``revision.files``, id for id and path for path. Filing baseline findings through the same
+``Filed`` list the comparison's own findings use, and letting the api layer resolve a route for
+every entry by asking "is this file one of ``revision.files``", answered that question wrong:
+a message that says "in the baseline: ..." got a live link into the open project, because the
+open project and the baseline happened to be read from the same file. **The two are kept apart
+instead**: :attr:`Compared.findings` is what :func:`ddd.compare.compare` itself reported, routed
+normally, and :attr:`Compared.baseline_findings` is everything :func:`~ddd.deliveries.read_baseline`
+forwarded, always answered ``route: None`` by the caller - marked as the baseline's by which
+list it is in, not by where its path happens to resolve to.
 """
 
 from __future__ import annotations
@@ -50,7 +53,7 @@ from typing import Final
 
 from ddd.compare import compare, renames
 from ddd.deliveries import Resolved, read_baseline
-from ddd.diagnostics import Diagnostic, DiagnosticBag, SeverityPolicy, where
+from ddd.diagnostics import CHECKS, Diagnostic, DiagnosticBag, SeverityPolicy, where
 from ddd.editing import fingerprint
 from ddd.gui.session import Filed, Revision
 from ddd.lsp.diagnostics import group_findings
@@ -64,6 +67,13 @@ already read the file's bytes once by the time it asks ``read_baseline`` to read
 dictionary or a description, so a reason of that kind was already raised, from that first
 read, as *unreadable* - the message :func:`_resolved_baseline` builds itself rather than
 one this looks up."""
+
+_COMPARISON_CHECKS: Final = frozenset(
+    identifier for identifier, info in CHECKS.items() if info.comparison
+)
+"""Every check :func:`ddd.compare.compare` can file, read from the registry's own flag rather
+than listed again - the same reasoning :data:`ddd.diagnostics.STANDALONE_POLICY` gives for
+deriving its own list instead of naming checks by hand."""
 
 type BaselineCache = dict[tuple[Path, str], tuple[Resolved | None, tuple[Diagnostic, ...]]]
 """Every baseline this session has resolved, keyed by its resolved path *and* the fingerprint it
@@ -88,11 +98,18 @@ class Compared:
     """Whether the open project can replace a baseline, and everything the page draws about it."""
 
     verdict: bool
-    """``True`` when no finding of severity error survived the session's own policy."""
+    """``True`` when no finding of severity error, in either list below, survived its policy."""
 
     findings: tuple[Filed, ...]
-    """Every finding the comparison reported, grouped onto the files each belongs on exactly as
-    a revision's own findings are."""
+    """Every finding ``ddd.compare.compare`` itself reported, filed on the candidate exactly as
+    a revision's own findings are, and routed the same way through ``_finding``."""
+
+    baseline_findings: tuple[Filed, ...]
+    """Every error the baseline's own analysis reported, forwarded here prefixed ``"in the
+    baseline: "``. Never routed by the caller, whatever file one of these happens to sit at -
+    a baseline given as a project description can share files, ids and paths with the open
+    project, and being in this list rather than in ``findings`` is what marks a finding as the
+    baseline's, not where it resolves to."""
 
     renames: tuple[dict[str, str], ...]
     """Every object the two sides agree is one and the same but call differently now, as
@@ -119,42 +136,76 @@ def compared(revision: Revision, baseline: Path, root: Path, cache: BaselineCach
             "the open project did not resolve, so it cannot be compared against a baseline"
         )
     resolved, forwarded = _resolved_baseline(baseline, root, cache)
-    bag = DiagnosticBag(_policy_of(revision))
+
+    # The baseline's own errors, in a bag of their own: kept apart from `compare`'s own findings
+    # from the moment they are read, exactly so that they are never routed as though they were
+    # about the open project - see the module docstring's note on what this list is.
+    baseline_bag = DiagnosticBag()
     for diagnostic in forwarded:
         # Replayed rather than re-derived: a cache hit skips reading the baseline again, and its
         # errors are read back from what the first read forwarded, at the severity that read
         # gave them - the same "no `-W` of this run reaches them" rule `read_baseline` documents.
-        bag.add(
+        # `baseline_bag`'s own policy plays no part in this: every one of these calls states its
+        # severity, which is the one thing `DiagnosticBag.add` never asks the policy to resolve.
+        baseline_bag.add(
             diagnostic.check,
             diagnostic.message,
             diagnostic.location,
             diagnostic.notes,
             severity=diagnostic.severity,
         )
+    baseline_grouped: dict[Path, list[Diagnostic]] = {}
+    group_findings(baseline_bag, revision.project, baseline_grouped)
+    baseline_findings = tuple(
+        Filed(path, found) for path in sorted(baseline_grouped) for found in baseline_grouped[path]
+    )
+
+    compare_bag = DiagnosticBag(_policy_of(revision))
     location = where(revision.project)
-    paired = compare(resolved.dictionary, dictionary, bag, location=location)
-    grouped: dict[Path, list[Diagnostic]] = {}
-    group_findings(bag, revision.project, grouped)
-    findings = tuple(Filed(path, found) for path in sorted(grouped) for found in grouped[path])
-    return Compared(not bag.has_errors, findings, tuple(renames(paired)))
+    paired = compare(resolved.dictionary, dictionary, compare_bag, location=location)
+    compare_grouped: dict[Path, list[Diagnostic]] = {}
+    group_findings(compare_bag, revision.project, compare_grouped)
+    findings = tuple(
+        Filed(path, found) for path in sorted(compare_grouped) for found in compare_grouped[path]
+    )
+
+    verdict = not compare_bag.has_errors and not baseline_bag.has_errors
+    return Compared(verdict, findings, baseline_findings, tuple(renames(paired)))
 
 
 def _policy_of(revision: Revision) -> SeverityPolicy:
-    """The severity policy to grade a comparison's findings with: the session's own, not a new
-    control the route invents.
+    """The severity policy to grade ``compare``'s own findings with: the session's own, not a
+    new control the route invents.
 
     A revision with no build record analysing it is checked under the defaults, the same run
-    ``_analysed`` makes for it; one with a build record is checked under the first one's
-    ``-W`` and ``--strict``, the way a project named by exactly one build is checked everywhere
-    else in this file. A project two build records disagree about already reports two copies of
-    a consistency finding when they grade a check differently (`group_findings`'s own docstring);
-    resolving that same disagreement for a check no build record has ever named is not something
-    a single verdict can answer either way, so the first record is the one that governs here.
+    ``_analysed`` makes for it. One with several is checked under the *strictest* reading any
+    of them would give a comparison check - the worst of what each build's own ``-W`` and
+    ``--strict`` would resolve it to, one check at a time, not the first build's answer alone.
+    A build's own filename or discovery order must not decide a verdict: two records disagreeing
+    about ``changed-interface``'s severity used to make the same comparison pass or fail by
+    which one happened to sort first, which is not a property of the delivery being compared. A
+    delivery any one of the project's builds would refuse is not one to call acceptable, so the
+    strictest reading is the one taken - at the cost that a project whose images genuinely
+    disagree is told an error where one image alone would have said warning.
+
+    Running the comparison once per build and showing a row each, the way ``_analysed`` keeps
+    two images that disagree as two findings, is not done here: a comparison finding is not
+    "this build's opinion of a consistency rule" the way `group_findings`'s own docstring means
+    it, and multiplying every one of them by the number of images is a part of its own rather
+    than a tie-break for this one.
     """
-    if not revision.builds:
+    policies = [
+        SeverityPolicy.from_strings(list(build.severity), strict=build.strict)
+        for build in revision.builds
+    ]
+    if not policies:
         return SeverityPolicy()
-    build = revision.builds[0]
-    return SeverityPolicy.from_strings(list(build.severity), strict=build.strict)
+    return SeverityPolicy(
+        {
+            check: min((policy.resolve(check) for policy in policies), key=lambda s: s.rank)
+            for check in _COMPARISON_CHECKS
+        }
+    )
 
 
 def _resolved_baseline(

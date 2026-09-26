@@ -1316,9 +1316,141 @@ git commit -m "say that a disagreement can now be settled where it is reported"
 
 ## Left open
 
-Filled in as the plan runs: anything found and deliberately not fixed here, with what it costs.
+Found while running the plan and deliberately not fixed here.
+
+- **A key that disagrees only through a named type offers no button at all.** After the
+  whole-branch fix, a declaration naming a type is read by what it resolves to, so a `unit` the
+  type fixes is no longer offered as a removal that breaks the file - but neither is it offered
+  as a value to take, because taking it would mean reading the producer's answer *through* its
+  type, which is new behaviour rather than a correction. *Costs:* a project where every component
+  shares its types gets fewer buttons than one where they do not, and the variable's panel is
+  where its reader settles those keys, as before.
+- **A mirrored finding can show the same button twice.** `group_findings` files a copy of a
+  mismatch on every file its notes point at, so a producer read by two consumers carries two rows
+  and each offers the identical widened removal. Pressing either is idempotent and safe.
+  *Costs:* a reader sees one fix offered twice and cannot tell the copies apart.
+- **`_assign` keeps its own copy of the declared-type refusal.** `settled_at` asks the same
+  question first, so `_assign`'s arm is unreachable through `actions()` and is held alive by
+  tests that call it directly. It stays because `_assign` writes files and failing closed on a
+  future caller's mistake is worth a check no path takes; both now read the same constant, so
+  they cannot disagree about *what* a type fixes. *Costs:* one decision expressed twice, in two
+  functions that must move together.
+- **`Reconciliation` and `_protocol_action` sit after `settle`**, some 250 lines from `_assign`
+  and `_erase`, which are the spelling they hand work to. *Costs:* a reader looking for the
+  spelling finds the decision first.
+- **`unitOfValueE` is local to `gui/e2e/findings.spec.ts`** rather than beside `driftIn` in
+  `demo.ts`. It is deliberately narrower than its neighbours - scoped to one declaration so that
+  `AxisA`'s own `"unit": "Hz"`, twelve lines further down the same file, cannot satisfy it - and
+  promoting it would invite a second caller for whom that scoping is wrong. *Costs:* one helper
+  that does not live with its family.
+- **A test outside this branch failed once and never again.**
+  `tests/test_generation.py::TestTheManifest::test_a_file_the_manifest_does_not_name_is_never_removed`
+  raised a `ValueError` from a jinja render in one full-suite run and passed in every run since -
+  more than fifteen, across four agents. The suite configures no random ordering and nothing here
+  imports that code. *Costs:* nothing this part can fix; what it needs is a seed and an ordering
+  captured **at** a failure, which nobody has.
 
 ## Rulings
 
-Filled in as the plan runs: every decision taken against the plan's text, why, and what it costs
-if wrong.
+Every decision taken against this plan's own text, with what it costs if wrong. The pattern of
+parts 8, 9 and 10 held again and then some: the plan was wrong about the code far more often than
+the code was wrong about the plan, **four of its own examples would have shipped a test that
+asserts nothing**, and one ruling below was overturned by a reviewer who built the fixture I had
+accepted could not exist.
+
+### Before execution
+
+- **The spec's "three refusals move" is two.** `_erase`'s only-child guard stays in the spelling
+  layer: moving it into `settled_at` would put a branch there that no input can reach, every
+  definition stating a `name` beside its keys, and a 100 % gate cannot hold a branch nothing
+  covers. *Costs:* an only-child removal the editor refuses and the page would allow, in a case
+  no file can reach.
+- **`operations_for` is extracted; the plan's `_written` is not written.** The plan gave a helper
+  duplicating `variables.preview`'s first half and left sharing to the implementer's judgement,
+  which invites a review finding the plan itself caused. Its version also returned dict insertion
+  order where `preview` sorts by posix path - two orders for one idea. *Costs:* one more public
+  function in `variables.py`.
+- **`built_of` goes in `tests/conftest.py`.** The plan said to copy it into each test module
+  "rather than importing across test modules, which this repository does not do". The premise is
+  right and the conclusion is not: `conftest.py` is how this repository shares fixture builders.
+  *Costs:* one helper in a shared file that two modules use.
+
+### During execution
+
+- **Three weakened tests stay untouched through Tasks 1 and 2.** The lift moved them onto
+  `settled_at`'s `"unreachable"` arm, so they asserted less than their names claimed; fixing them
+  meant editing the one file whose byte-identity was the proof the editor had not moved. Parked
+  until the proof had served. *Costs:* three tests carrying names better than their fixtures for
+  the length of the branch - paid off in the final wave.
+- **`_assign`'s and `_erase`'s unreachable refusals stay.** They write files; failing closed on a
+  future caller's bug is worth a check no path takes today. *Costs:* guards kept alive by tests
+  that call them directly.
+- **The page selects a fix by direction, not by position.** "The first of each key's ordered
+  pair" was my shorthand for the ownership rule and it was the wrong shorthand: where the
+  ownership-correct action is absent, the list comprehension drops it and *the other direction*
+  becomes first - a consumer rewriting its producers, or a producer adopting its consumers'
+  consensus. *Costs:* a key whose owning direction is unavailable shows no button where the
+  editor still shows two.
+- **`built` is a required parameter of `fixes_for`.** A shared mutable `Index()` default has a
+  silent failure mode: a caller passing `definition-mismatch` and forgetting it gets zero fixes
+  and no error. *Costs:* seven test call sites longer.
+- **The no-single-owner guard goes in `reconciliations`'s `owned` path**, not in `_propagate` or
+  `_remove_elsewhere`. Teaching those to ask would change the **editor**, whose docstring says it
+  deliberately offers what it can, and would spend the branch's proof on a page-only rule. One
+  guard there makes the spec's §5 sentence literally true in one place, covering both halves of
+  it: several producers, and none. *Costs:* a variable with a contested owner shows no button
+  anywhere in the page.
+- **`_adopt` is never offered under ownership.** With one owner guaranteed, `_adopt` is reached
+  only when the producer is *silent* on that key, and taking what the other readers happen to
+  agree on over an owner's silence is not the ownership rule under any reading. *Costs:* a
+  consumer stating no value for a key its fellow readers agree on is offered nothing from its
+  finding.
+- **The taking direction widens to the whole variable.** A consumer's fix reached one declaration
+  where §3 says one press clears the finding on every file that carried it; the producer's
+  already did, so the same disagreement was fixed wholly from one side and partially from the
+  other. *Costs:* pressing a consumer's button rewrites a sibling consumer's file too - visibly,
+  in a preview that names it.
+- **An unpinned `== ()` gets its reason pinned**, against the brief, which mandated the bare
+  assertion. An empty tuple is also what a fixture with no mismatch at all produces. *Costs:* two
+  lines.
+- **`MismatchWithNoFix` gets its own finding**, a `kind`-only mismatch, against the brief, which
+  said to reuse the two-fix story's finding with `fixes: []`. Reusing it taught that fix-count is
+  arbitrary given a fixed message, and the shared fixture's own text ruled out both causes the
+  story named. A `kind`-only disagreement is the one zero-fix reason a reader can *see* in the
+  panel. *Costs:* one more fixture.
+- **Task 5's deviation from its brief stands; the brief was self-contradictory.** It asked for one
+  more reader to be drifted *and* for the button to read `Apply to 2 files`, but the first apply
+  had already settled the other reader, and a settlement moves only declarations that currently
+  disagree. *Costs:* none found; the reviewer reached the same conclusion independently.
+- **Round 4 resumed the same implementer rather than escalating to a fresh one.** The process
+  escalates at four because a loop surviving three resumes usually means an implementer cannot
+  see its own problem. This loop was four parties finding four different things - the implementer
+  refusing a brief's test, the task reviewer, the controller running the full ownership matrix,
+  and the re-reviewer building a fixture. *Costs:* a fifth round that does not converge, at which
+  point the breaker trips.
+- **Four fix rounds went to the next review rather than to a dispatched re-review**: a docstring
+  paragraph, two prose sentences, a stories-and-fixtures change, and a guard pair I ablated
+  myself in a throwaway worktree. Each was verified directly - the pictures opened, the
+  coordinates checked against the real demo, four named tests watched going red. *Costs:* seats
+  of review on changes the whole-branch review saw again anyway.
+
+### Overturned
+
+- **The `_adopt` over-reach was parked, and the parking was wrong.** I accepted that widening
+  `_adopt` could write a silent producer but could not be reached through a real finding. The
+  re-reviewer built the fixture: a mismatch about **any other key** on the same declaration
+  surfaces every reconcilable key, because a finding's pointer is the whole definition. The
+  argument I accepted had only asked whether a mismatch could be filed about the key `_adopt`
+  fires for. *Cost paid:* one extra fix round, and a reminder that "I could not construct it" is
+  not "it cannot be constructed".
+
+### At the end
+
+- **The Critical is fixed in `settled_at`, the shared decision, spending the branch's proof.**
+  Fixing only the page would have left the decision layer answering `Settled` for a change that
+  breaks the file and had the page filter it afterwards - two readings of one question, which is
+  the drift this part exists to remove - and would have left the editor knowingly offering a
+  file-breaking fix. Every edit to `tests/test_lsp.py` had to be justified one at a time; exactly
+  one behavioural assertion moved, and applying it really does leave the project unloadable.
+  *Costs:* the editor's answers change in cases nobody had complained about, in a release whose
+  headline is that the page gained a button.

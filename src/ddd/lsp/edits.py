@@ -386,6 +386,15 @@ def _across(
     The editor changes what the cursor is in, which is the right reach for a cursor and the
     wrong one for a finding: a reader pressing a finding's button means the disagreement to be
     over, not to move to the next file that still carries it.
+
+    ``action`` is a *taking* decision, which settles exactly one declaration - the one asked
+    at - and whose single change is therefore the value to widen. :func:`reconciliations` calls
+    this on ``ordered[0]`` of a row that does not produce the variable, where ``owned=True``
+    leaves ``_from_producer`` or ``_remove_here`` and nothing else, and both build their
+    settlement from one :class:`Settled` literally. The two builders that reach several
+    declarations, ``_propagate`` and ``_remove_elsewhere``, are the giving direction and never
+    arrive here. Said here because the unpack below is where it would be discovered otherwise,
+    as a ``ValueError`` out of ``GET /api/fix`` - a 500 rather than a missing button.
     """
     (change,) = action.settlement.changes
     return Reconciliation(

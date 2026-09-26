@@ -3,11 +3,18 @@ import { join } from "node:path";
 import { CONTROLLER, drift, driftIn, EVENT_LOGGER, PUMP, USER_INTERFACE, unstamp } from "./demo";
 import { expect, test } from "./fixtures";
 
-/** ValueE's own `"unit"` in a file, read back from disk - scoped to its own declaration so a
- * stray `"unit": "Hz"` elsewhere in the same file (AxisA's, in user_interface.ddd.json) cannot
- * make a fix that wrote nothing look like one that worked. */
+/** ValueE's own `"unit"` in a file, read back from disk - its own declaration's and no other, so
+ * a stray `"unit": "Hz"` elsewhere in the same file (AxisA's, in user_interface.ddd.json) cannot
+ * make a fix that wrote nothing look like one that worked. Found through the file's own
+ * structure, as `valueH` below is: a regex scoped by "the next unit after the name" would read
+ * straight past a ValueE that states none and report the following declaration's instead, which
+ * is the one way this assertion could go quiet rather than fail. */
 function unitOfValueE(bytes: Buffer): string | undefined {
-  return /"name": "ValueE"[\s\S]*?"unit": "([^"]*)"/.exec(bytes.toString("utf8"))?.[1];
+  const data = JSON.parse(bytes.toString("utf8"));
+  const entry = data.component.interface.find(
+    (declaration: { definition: { name: string } }) => declaration.definition.name === "ValueE",
+  );
+  return entry?.definition.unit;
 }
 
 /** ValueH's definition in the copy's own controller.ddd.json, read back from disk - the one

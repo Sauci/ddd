@@ -3414,63 +3414,101 @@ class TestPropagating:
         )
 
     def test_a_key_that_cannot_be_cut_out_is_not_offered_for_removal(self, tmp_path: Path) -> None:
-        """Nothing to leave behind: it is the only member, so there is no comma to take."""
+        """A measurement states its volatility, so there is no version of it without one.
+
+        The decision's refusal reached through the builder: ``settled_at`` answers ``Unsettled``
+        for a removal that would leave out a key the kind requires, and nothing is offered
+        rather than an edit the loader would refuse. The only other declaration says nothing
+        about the key, so the "somebody else still states it" guard is not what answers here.
+
+        ``here``'s own file is written, and its document read from it: these builders re-read
+        the site from disk through ``settled_at``, so a ``Site`` whose file was never written is
+        ``unreachable`` before any refusal of theirs is asked. The one refusal left in the
+        spelling - an only child, with no comma to take - is ``_erase``'s, and is reached
+        through ``_protocol_action`` rather than through a decision at all.
+        """
         from ddd.lsp.edits import _remove_here
         from ddd.lsp.navigation import Index, Site
 
-        write_tree(tmp_path, {"b.ddd.json": component("B", declare("input", "S"))})
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": component("A", declare("output", "S")),
+                "b.ddd.json": '{"component": {"interface": [{"definition": {"name": "S"}}]}}',
+            },
+        )
+        here = Site(tmp_path / "a.ddd.json", "component.interface[0].definition")
         elsewhere = Site(tmp_path / "b.ddd.json", "component.interface[0].definition")
-        document = Document('{"component": {"interface": [{"definition": {"unit": "rpm"}}]}}')
+        cache: dict[Path, Document] = {}
         assert (
             _remove_here(
                 Index(declarations={"S": [elsewhere]}),
-                Site(tmp_path / "a.ddd.json", "component.interface[0].definition"),
-                document,
+                here,
+                read(here.path, cache),
                 "S",
-                "unit",
-                {},
+                "volatile",
+                cache,
             )
             is None
         )
 
-    def test_there_is_nowhere_to_put_the_producer_value_in_an_empty_definition(
+    def test_there_is_nowhere_to_put_the_producer_value_in_a_definition_with_no_kind(
         self, tmp_path: Path
     ) -> None:
+        """A definition stating nothing but the name it is found by states no ``kind`` either,
+        and which keys a definition may hold is its kind's answer: nothing is known here, so
+        nothing is written. ``here``'s file is written like the producer's, since a site whose
+        file is not there is ``unreachable`` before this is asked."""
         from ddd.lsp.edits import _from_producer
         from ddd.lsp.navigation import Index, Site
 
-        write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "S", unit="rpm"))})
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": component("A", declare("output", "S", unit="rpm")),
+                "b.ddd.json": '{"component": {"interface": [{"definition": {"name": "S"}}]}}',
+            },
+        )
         producer = Site(tmp_path / "a.ddd.json", "component.interface[0].definition")
-        document = Document('{"component": {"interface": [{"definition": {}}]}}')
+        here = Site(tmp_path / "b.ddd.json", "component.interface[0].definition")
+        cache: dict[Path, Document] = {}
         assert (
             _from_producer(
                 Index(producers={"S": [producer]}),
-                Site(tmp_path / "b.ddd.json", "component.interface[0].definition"),
-                document,
+                here,
+                read(here.path, cache),
                 "S",
                 "unit",
-                {},
+                cache,
             )
             is None
         )
 
-    def test_there_is_nothing_to_take_into_a_definition_with_no_members(
-        self, tmp_path: Path
-    ) -> None:
+    def test_there_is_nothing_to_take_into_a_definition_with_no_kind(self, tmp_path: Path) -> None:
+        """The same answer for the consensus among the others: what the other declarations
+        agree on is not written into a definition whose kind is unknown, however unanimous
+        they are."""
         from ddd.lsp.edits import _adopt
         from ddd.lsp.navigation import Index, Site
 
-        write_tree(tmp_path, {"b.ddd.json": component("B", declare("input", "S", unit="rpm"))})
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": '{"component": {"interface": [{"definition": {"name": "S"}}]}}',
+                "b.ddd.json": component("B", declare("input", "S", unit="rpm")),
+            },
+        )
         elsewhere = Site(tmp_path / "b.ddd.json", "component.interface[0].definition")
-        document = Document('{"component": {"interface": [{"definition": {}}]}}')
+        here = Site(tmp_path / "a.ddd.json", "component.interface[0].definition")
+        cache: dict[Path, Document] = {}
         assert (
             _adopt(
                 Index(declarations={"S": [elsewhere]}),
-                Site(tmp_path / "a.ddd.json", "component.interface[0].definition"),
-                document,
+                here,
+                read(here.path, cache),
                 "S",
                 "unit",
-                {},
+                cache,
             )
             is None
         )

@@ -16,8 +16,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from ddd.diagnostics import (
     STANDALONE_POLICY,
@@ -31,6 +32,63 @@ from ddd.diagnostics import (
 if TYPE_CHECKING:
     from ddd.ir import DataDictionary
     from ddd.plugins import Plugin
+
+BASELINE_PREFIX: Final = "in the baseline: "
+"""What marks an error carried over from the baseline's own analysis, so that it reads as the
+predecessor's rather than as this run's. Named here rather than spelled twice: a caller putting
+one of these into a sentence that has already said which delivery it is about
+(:mod:`ddd.gui.compare`'s refusal banner) has to take it off again, and matching a prefix nobody
+owns is how that sort of thing goes wrong."""
+
+
+class Refusal(StrEnum):
+    """Why a reader came back with nothing, as the reader itself knows it: which of the two
+    readers the file reached, and how far it got.
+
+    What a caller has to have in order to tell a person why the file they named is not a
+    delivery. Re-derived instead - by classifying one diagnostic out of a bag the caller did not
+    fill - a description whose ``includes`` names a file that is not there was called "neither a
+    dictionary nor a description", which reads as *you named the wrong file* and is answered by
+    replacing one whose only fault is the missing include.
+    """
+
+    NOT_JSON = "not-json"
+    """The file holds no json object at all, or none this tool will read - a duplicate key, a
+    ``NaN``, bytes that are not utf-8.
+
+    A file whose bytes could not be read at all comes back as this too:
+    :func:`~ddd.loading.read_json_document` answers ``None`` for both "without saying a word
+    about why not", and it is the *reader* the caller is asking, not the filesystem. A caller
+    that has to tell those two apart settles it before asking, by opening the file itself -
+    which is what :mod:`ddd.gui.compare` does to answer *unreadable*.
+    """
+
+    DESCRIPTION = "description"
+    """A project or component description that did not become a dictionary: a file it includes
+    that is not there, a name that does not validate, a plugin that refused, an analysis that
+    reported an error. It is the right kind of file, and it is broken."""
+
+    DICTIONARY = "dictionary"
+    """A dumped dictionary this DDD could not read: one from a newer DDD, or one whose fields do
+    not match the contract. Also the right kind of file - :func:`holds_a_dictionary` says how
+    that is known before anything is validated."""
+
+    NEITHER = "neither"
+    """Valid json and neither of the two: no ``project``, no ``component``, no ``format``. The
+    one refusal that really does mean the reader named the wrong file."""
+
+
+@dataclass(slots=True)
+class Reading:
+    """What one read of a delivery turned out to be, beside the findings it reported.
+
+    Filled in as the read goes, the way ``bag`` is, and for the same reason: the reader is the
+    only thing that knows, and a caller working it out afterwards is guessing. A caller with
+    nothing to say about a refusal passes none and pays nothing.
+    """
+
+    refusal: Refusal | None = None
+    """Why nothing came back, or ``None`` while nothing has been refused."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,19 +110,27 @@ class Resolved:
     output path against."""
 
 
-def read_dictionary(path: Path, bag: DiagnosticBag) -> Resolved | None:
+def read_dictionary(
+    path: Path, bag: DiagnosticBag, reading: Reading | None = None
+) -> Resolved | None:
     """A dumped dictionary, or a project/component description resolved into one.
 
     Accepting both is what makes the command usable in a pipeline: the baseline is normally
     an archived dump, while the candidate is the project sitting in the working tree.
+
+    ``reading`` is where this says *why* it answers ``None``, for a caller that has to put that
+    in words - which of the two readers met the file, and how far it got. A caller with nothing
+    to say about a refusal leaves it out.
     """
     from ddd.analysis import analyze
     from ddd.loading import load_dictionary, load_workspace, read_json_document
 
+    account = Reading() if reading is None else reading
     document = read_json_document(path)
     if holds_a_description(document):
         workspace = load_workspace(path, bag)
         if workspace is None or bag.has_errors:
+            account.refusal = Refusal.DESCRIPTION
             return None
         return Resolved(
             analyze(workspace, bag),
@@ -78,12 +144,25 @@ def read_dictionary(path: Path, bag: DiagnosticBag) -> Resolved | None:
     # object project costs about a third of a second per pass, twice over in a comparison.
     dictionary = load_dictionary(path, bag, document)
     if dictionary is None:
+        account.refusal = _unread(document)
         return None
     archived = where(path)
     return Resolved(dictionary, (), lambda _: archived, False, (archived.path,))
 
 
-def read_baseline(path: Path, bag: DiagnosticBag, standalone: bool = False) -> Resolved | None:
+def _unread(document: dict[str, Any] | None) -> Refusal:
+    """Which refusal a file the dump reader could not read is: the sniff again, now that the
+    reader has had its say, and never a classification of what it happened to report."""
+    if document is None:
+        return Refusal.NOT_JSON
+    if holds_a_dictionary(document):
+        return Refusal.DICTIONARY
+    return Refusal.NEITHER
+
+
+def read_baseline(
+    path: Path, bag: DiagnosticBag, standalone: bool = False, reading: Reading | None = None
+) -> Resolved | None:
     """Resolve the baseline side of a comparison, in a bag of its own.
 
     A baseline given as a project description has to be analysed to become a dictionary, and
@@ -106,12 +185,12 @@ def read_baseline(path: Path, bag: DiagnosticBag, standalone: bool = False) -> R
     """
     floor = STANDALONE_POLICY if standalone else ()
     own = DiagnosticBag(SeverityPolicy.from_strings(floor, strict=False, standalone=standalone))
-    resolved = read_dictionary(path, own)
+    resolved = read_dictionary(path, own, reading)
     for diagnostic in own.sorted:
         if diagnostic.severity is Severity.ERROR:
             bag.add(
                 diagnostic.check,
-                f"in the baseline: {diagnostic.message}",
+                f"{BASELINE_PREFIX}{diagnostic.message}",
                 diagnostic.location,
                 diagnostic.notes,
                 # At the severity the baseline's own analysis gave it: "the run fails on
@@ -131,3 +210,17 @@ def holds_a_description(document: dict[str, Any] | None) -> bool:
     has something to say about it, and it reads the file again to say it.
     """
     return document is not None and ("project" in document or "component" in document)
+
+
+def holds_a_dictionary(document: dict[str, Any] | None) -> bool:
+    """True for a file ``ddd dump`` wrote, by the one key every dump stamps.
+
+    ``format`` is what a dictionary declares itself with, and the only field
+    :func:`~ddd.loading.load_dictionary` reads before validating anything - so that a dictionary
+    from a newer DDD is told it is one rather than judged against a contract it was never
+    written to. A file carrying it is that reader's, however badly it reads; one carrying
+    neither it nor a description's own key belongs to nobody, which is what a reader who has
+    simply named the wrong file is told. Like :func:`holds_a_description`, only a sniff: it
+    decides whose refusal a file's is, never whether it loads.
+    """
+    return document is not None and "format" in document

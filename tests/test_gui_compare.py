@@ -16,9 +16,10 @@ import pytest
 
 from conftest import EXAMPLES, build_record, component, declare, project, write_tree
 from ddd.cli import EXIT_OK, main
+from ddd.deliveries import Refusal
 from ddd.diagnostics import Severity
 from ddd.gui.api import _finding
-from ddd.gui.compare import BaselineCache, BaselineRefusedError, compared
+from ddd.gui.compare import _REASONS, BaselineCache, BaselineRefusedError, compared
 from ddd.gui.session import Revision, Session
 from test_gui_api import opened, unloaded
 
@@ -117,9 +118,14 @@ class TestThePathRule:
         assert result.verdict is True
 
 
-class TestTheFourRefusals:
-    """The spec names four reasons a baseline is refused; the fourth is the one nobody thinks
-    of - a perfectly valid json file that is simply something else."""
+class TestTheRefusals:
+    """Why a baseline was refused: outside the root and unreadable, which this module settles
+    itself, and whichever of the reader's own :class:`Refusal` reasons it came back with.
+
+    Each is the reader's own answer, never a classification of one diagnostic out of the bag -
+    which named a description with a missing include "neither a dictionary nor a description"
+    and sent a reader off to replace a file whose only fault was the missing include.
+    """
 
     def test_a_missing_baseline_is_unreadable(self, tmp_path: Path) -> None:
         root = tmp_path / "project"
@@ -145,6 +151,18 @@ class TestTheFourRefusals:
         with pytest.raises(BaselineRefusedError, match="not valid json"):
             compared(revision, root / "bad.json", root, {})
 
+    def test_the_reason_does_not_repeat_the_baseline_it_already_names(self, tmp_path: Path) -> None:
+        """``read_baseline``'s ``"in the baseline: "`` marks a finding shown beside a run's own
+        findings. Inside a sentence that has already named the baseline it is a stutter, and it
+        was on the page's own refusal banner."""
+        root = tmp_path / "project"
+        revision = _revision(root, {"p.ddd.json": project("P")})
+        (root / "empty.json").write_text("")
+        with pytest.raises(BaselineRefusedError) as refused:
+            compared(revision, root / "empty.json", root, {})
+        assert "in the baseline" not in str(refused.value)
+        assert str(refused.value).endswith("is not valid json: Expecting value")
+
     def test_a_baseline_that_is_neither_a_dictionary_nor_a_description_is_refused(
         self, tmp_path: Path
     ) -> None:
@@ -153,6 +171,61 @@ class TestTheFourRefusals:
         (root / "odd.json").write_text(json.dumps({"something": "else"}))
         with pytest.raises(BaselineRefusedError, match="neither a dictionary nor a description"):
             compared(revision, root / "odd.json", root, {})
+
+    def test_a_description_whose_include_is_missing_is_not_called_the_wrong_kind_of_file(
+        self, tmp_path: Path
+    ) -> None:
+        """Measured, and with no race in it: this is a description, and it was told it was
+        neither - which reads as "you named the wrong file" and is answered by replacing one
+        whose only fault is a missing include."""
+        root = tmp_path / "project"
+        revision = _revision(
+            root, {"p.ddd.json": project("P"), "old/p.ddd.json": project("P", "gone.ddd.json")}
+        )
+        with pytest.raises(BaselineRefusedError) as refused:
+            compared(revision, root / "old" / "p.ddd.json", root, {})
+        assert "is a description that could not be read" in str(refused.value)
+        assert "gone.ddd.json" in str(refused.value)
+
+    def test_a_description_that_does_not_validate_is_still_a_description(
+        self, tmp_path: Path
+    ) -> None:
+        root = tmp_path / "project"
+        revision = _revision(root, {"p.ddd.json": project("P")})
+        (root / "named.ddd.json").write_text(json.dumps(project("P ")), encoding="utf-8")
+        with pytest.raises(BaselineRefusedError, match="is a description that could not be read"):
+            compared(revision, root / "named.ddd.json", root, {})
+
+    def test_a_dump_this_ddd_cannot_read_is_still_a_dump(self, tmp_path: Path) -> None:
+        """A dictionary from a newer DDD is precisely the file this one cannot judge by its own
+        contract, which is why ``load_dictionary`` gates on ``format`` before validating. Told
+        it is neither, a reader would look for a file that is not the one they want."""
+        root = tmp_path / "project"
+        revision = _revision(root, {"p.ddd.json": project("P")})
+        (root / "newer.json").write_text(json.dumps({"format": 999, "name": "P"}))
+        with pytest.raises(BaselineRefusedError) as refused:
+            compared(revision, root / "newer.json", root, {})
+        assert "is a dumped dictionary that could not be read" in str(refused.value)
+        assert "use a newer DDD to read it" in str(refused.value)
+
+    def test_a_lone_component_description_is_a_baseline(self, tmp_path: Path) -> None:
+        """``holds_a_description`` answers for a component file too, so one is read as a
+        delivery of its own - which is what the field's own sentence says it accepts."""
+        root = tmp_path / "project"
+        revision = _revision(
+            root,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "Speed", "uint16", unit="rpm")),
+            },
+        )
+        result = compared(revision, root / "a.ddd.json", root, {})
+        assert result.verdict is True
+
+    def test_every_refusal_the_reader_can_answer_has_words_for_it(self) -> None:
+        """The mapping is the whole classification: a reason added to the reader and left out
+        here would be a ``KeyError`` on the route rather than a sentence."""
+        assert set(_REASONS) == set(Refusal)
 
 
 class TestTheComparison:

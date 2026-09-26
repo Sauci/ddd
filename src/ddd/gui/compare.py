@@ -63,7 +63,7 @@ from pathlib import Path
 from typing import Final
 
 from ddd.compare import compare, renames
-from ddd.deliveries import Resolved, read_baseline
+from ddd.deliveries import BASELINE_PREFIX, Reading, Refusal, Resolved, read_baseline
 from ddd.diagnostics import (
     CHECKS,
     CheckInfo,
@@ -76,14 +76,18 @@ from ddd.gui.session import Filed, Revision, stamped
 from ddd.lsp.diagnostics import group_findings
 from ddd.plugins import PluginError, run_compare_hooks
 
-_NOT_JSON_CHECKS: Final = frozenset({"json-syntax"})
-"""The check the loader files when the bytes are not valid json - or not valid utf-8, which is
-the same refusal one step earlier, reported through the same check.
+_REASONS: Final[dict[Refusal, str]] = {
+    Refusal.NOT_JSON: "is not valid json",
+    Refusal.DESCRIPTION: "is a description that could not be read",
+    Refusal.DICTIONARY: "is a dumped dictionary that could not be read",
+    Refusal.NEITHER: "is neither a dictionary nor a description",
+}
+"""What each of the reader's own refusals is called on the page, one entry per
+:class:`~ddd.deliveries.Refusal` - the words are this layer's, the classification is not.
 
-``file-not-found`` never reaches :func:`_refusal_reason`: :func:`_read` has already opened the
-file once by the time it asks ``read_baseline`` to read it as a dictionary or a description, so
-a reason of that kind was already raised, from that probe, as *unreadable* - the message
-:func:`_read` builds itself rather than one this looks up."""
+``Refusal.NOT_JSON`` covers a file whose bytes could not be read at all as well, which this
+never sees: :func:`_read` opens the file first and answers *unreadable* itself, so by the time
+the reader is asked the bytes are known to be there."""
 
 _COMPARISON_CHECKS: Final = frozenset(
     identifier for identifier, info in CHECKS.items() if info.comparison
@@ -350,29 +354,32 @@ def _read(path: Path) -> Cached:
             f"the baseline '{path.as_posix()}' is unreadable: {error}"
         ) from (error)
     own = DiagnosticBag()
-    found = read_baseline(path, own)
+    reading = Reading()
+    found = read_baseline(path, own, reading=reading)
     forwarded = tuple(own.sorted)
     if found is None:
-        raise BaselineRefusedError(_refusal_reason(path, forwarded))
+        # `read_dictionary` records one before every `return None` of its own, whichever of its
+        # two readers met the file, so there is always a reason here to put into words.
+        assert reading.refusal is not None
+        raise BaselineRefusedError(_refusal_reason(path, reading.refusal, forwarded))
     return Cached(found, forwarded, stamped(found.sources))
 
 
-def _refusal_reason(path: Path, diagnostics: tuple[Diagnostic, ...]) -> str:
-    """Which of the spec's remaining reasons a baseline that did not resolve was refused for -
-    "outside the root" and "unreadable" are both settled before this is ever called.
+def _refusal_reason(path: Path, refusal: Refusal, diagnostics: tuple[Diagnostic, ...]) -> str:
+    """Why a baseline that did not resolve was refused, in the reader's own words - "outside the
+    root" and "unreadable" are both settled before this is ever called.
 
-    ``read_baseline`` never returns ``None`` without having forwarded at least one error first -
-    ``read_dictionary`` adds one before every ``return None`` of its own, whichever of its two
-    readers meets the file - so ``diagnostics`` is never empty here. Classified by the check
-    that fired rather than by re-reading the file a second way: anything other than
-    ``json-syntax`` - most often ``schema``, a file that parsed but validates as neither shape -
-    is the fourth reason the spec names: a perfectly valid json file that is simply something
-    else.
+    The reason comes from :class:`~ddd.deliveries.Refusal`, which the reader sets as it goes,
+    and never from classifying one diagnostic out of a bag this did not fill: that told a
+    description with a missing include, and a dump from a newer DDD, that they were "neither a
+    dictionary nor a description" - the one refusal that means *you named the wrong file*, said
+    of two files that were exactly the right kind and merely broken.
+
+    The detail is the first error the read reported, which is the one a reader acts on, with
+    :data:`~ddd.deliveries.BASELINE_PREFIX` taken off: that prefix marks a finding shown beside
+    a run's own findings, and inside a sentence that has already named the baseline it reads as
+    a stutter. ``read_baseline`` never answers ``None`` without forwarding at least one error
+    first, so there is always one.
     """
-    check = diagnostics[0].check
-    if check in _NOT_JSON_CHECKS:
-        return f"the baseline '{path.as_posix()}' is not valid json: {diagnostics[0].message}"
-    return (
-        f"the baseline '{path.as_posix()}' is neither a dictionary nor a description: "
-        f"{diagnostics[0].message}"
-    )
+    detail = diagnostics[0].message.removeprefix(BASELINE_PREFIX)
+    return f"the baseline '{path.as_posix()}' {_REASONS[refusal]}: {detail}"

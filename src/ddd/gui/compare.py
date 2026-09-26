@@ -14,6 +14,17 @@ is Task 1's shared policy - a bag of its own, ``-W`` never reaching it, only its
 over - and using anything else here would drift from ``ddd compare`` the first time either side
 changed.
 
+**A comparison is :func:`ddd.compare.compare` and then
+:func:`ddd.plugins.run_compare_hooks`**, in that order, which is what both
+``ddd compare`` and ``ddd check --baseline`` do. The second half is not an extra: the thirteen
+built-in comparison checks grade what every delivery has, and a plugin's comparison rules grade
+what *this* project stamps on it - a layout key a dataset is keyed on, a version that has to
+rise with the bytes. Running the first half alone answered "can replace" for a delivery the
+command exits 1 on, and lost ``missing-plugin``, which the hooks file and which exists to say
+that a rule did not run at all. Running them needs the candidate's plugins, which is why
+:class:`~ddd.gui.session.Revision` carries the whole :class:`~ddd.deliveries.Resolved` the
+session's analysis produced rather than its dictionary alone.
+
 **A note on what a comparison's findings are filed on.** :func:`~ddd.lsp.diagnostics.group_findings`
 is the same function that turns a session's own analysis into rows the page can draw, and it is
 reused unchanged, per the same reasoning that keeps :func:`~ddd.gui.api._finding` unchanged: a
@@ -53,10 +64,18 @@ from typing import Final
 
 from ddd.compare import compare, renames
 from ddd.deliveries import Resolved, read_baseline
-from ddd.diagnostics import CHECKS, Diagnostic, DiagnosticBag, SeverityPolicy, where
+from ddd.diagnostics import (
+    CHECKS,
+    CheckInfo,
+    Diagnostic,
+    DiagnosticBag,
+    SeverityPolicy,
+    where,
+)
 from ddd.editing import fingerprint
 from ddd.gui.session import Filed, Revision
 from ddd.lsp.diagnostics import group_findings
+from ddd.plugins import PluginError, run_compare_hooks
 
 _NOT_JSON_CHECKS: Final = frozenset({"json-syntax"})
 """The check the loader files when the bytes are not valid json - or not valid utf-8, which is
@@ -117,7 +136,9 @@ class Compared:
 
 
 def compared(revision: Revision, baseline: Path, root: Path, cache: BaselineCache) -> Compared:
-    """Compare ``revision``'s dictionary against the baseline named at ``baseline``.
+    """Compare what ``revision`` resolved to against the baseline named at ``baseline``, under
+    every rule the command's own exit code answers by - the built-in comparison checks and the
+    project's plugins' own.
 
     ``root`` is the session's own root, the one directory a baseline is ever allowed to be read
     from: a path :func:`_resolved_baseline` finds outside it is refused with its reason instead
@@ -125,8 +146,8 @@ def compared(revision: Revision, baseline: Path, root: Path, cache: BaselineCach
     nobody named. ``cache`` is owned by the caller - the route itself keeps nothing between two
     requests - and is only ever read and added to here.
     """
-    dictionary = revision.dictionary
-    if dictionary is None:
+    candidate = revision.resolved
+    if candidate is None:
         # The caller (`Api._compare`) already answers this before it ever reaches here, the way
         # `_values` and `_value_plan` answer their own "the project did not resolve" without
         # calling into a helper that cannot do anything about it either. Kept as a real check
@@ -161,8 +182,34 @@ def compared(revision: Revision, baseline: Path, root: Path, cache: BaselineCach
     )
 
     compare_bag = DiagnosticBag(_policy_of(revision))
+    # The candidate's own plugin checks, so that a finding one of their comparison rules files
+    # is graded by the policy above rather than by `SeverityPolicy.resolve`'s fallback for a
+    # check it has never heard of, which is `Severity.ERROR` whatever the plugin declared.
+    compare_bag.register(revision.checks)
     location = where(revision.project)
-    paired = compare(resolved.dictionary, dictionary, compare_bag, location=location)
+    paired = compare(resolved.dictionary, candidate.dictionary, compare_bag, location=location)
+    try:
+        # What both commands do next, and what this did not: `compare()` grades the thirteen
+        # built-in comparison checks, and every rule a plugin states about a replacement -
+        # ``layout/key-changed``, that a dataset keyed on an entry now reads an orphan - is run
+        # from here. Missed, the verdict was a confident "can replace" with a hole in it, and
+        # ``missing-plugin``, which exists to close that hole, was missed with it.
+        run_compare_hooks(
+            candidate.plugins,
+            resolved.dictionary,
+            candidate.dictionary,
+            compare_bag,
+            candidate.locate,
+            location,
+            where(baseline),
+        )
+    except PluginError as error:
+        # A hook raising is a defect of the plugin rather than of either delivery. ``ddd
+        # compare`` answers a usage error; the server promises findings and never an exception,
+        # so it is filed as one here, the way `ddd.lsp.diagnostics._run` files the same defect
+        # met while analysing. `plugin-invalid` is an error, so the verdict refuses rather than
+        # answering one the plugin's own rules never graded.
+        compare_bag.add("plugin-invalid", str(error), location)
     compare_grouped: dict[Path, list[Diagnostic]] = {}
     group_findings(compare_bag, revision.project, compare_grouped)
     findings = tuple(
@@ -202,10 +249,24 @@ def _policy_of(revision: Revision) -> SeverityPolicy:
         return SeverityPolicy()
     return SeverityPolicy(
         {
-            check: min((policy.resolve(check) for policy in policies), key=lambda s: s.rank)
-            for check in _COMPARISON_CHECKS
+            check: min((policy.resolve(check, info) for policy in policies), key=lambda s: s.rank)
+            for check, info in _graded(revision).items()
         }
     )
+
+
+def _graded(revision: Revision) -> dict[str, CheckInfo]:
+    """Every check this comparison can file and the registry entry to grade it by: the built-in
+    comparison checks, and the comparison checks the project's own plugins register.
+
+    The plugins' are not in :data:`ddd.diagnostics.CHECKS` and never will be - a plugin's checks
+    live on the bag that loaded it, so that two projects checked in one process cannot leak one
+    into the other - so they are read from ``revision.checks``, which is that registration as
+    the session kept it. Left out, a build's ``-W layout/key-changed=warning`` would be resolved
+    against nothing and the finding reported at the fallback severity instead of the stated one.
+    """
+    plugins = {info.identifier: info for info in revision.checks if info.comparison}
+    return {identifier: CHECKS[identifier] for identifier in _COMPARISON_CHECKS} | plugins
 
 
 def _resolved_baseline(

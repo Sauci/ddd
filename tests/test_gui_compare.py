@@ -9,16 +9,31 @@ reach it. A second way to build one here would be the duplication this series ke
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
 
-from conftest import build_record, component, declare, project, write_tree
+from conftest import EXAMPLES, build_record, component, declare, project, write_tree
 from ddd.cli import EXIT_OK, main
+from ddd.diagnostics import Severity
 from ddd.gui.api import _finding
 from ddd.gui.compare import BaselineCache, BaselineRefusedError, compared
 from ddd.gui.session import Revision, Session
 from test_gui_api import opened, unloaded
+
+RAISING_PLUGIN = """
+from ddd.plugins import CompareContext, Plugin
+
+
+def compare(context: CompareContext) -> None:
+    raise RuntimeError("the compare hook of this plugin is broken")
+
+
+PLUGIN = Plugin(name="demo", compare=compare)
+"""
+"""A plugin whose comparison hook raises, to prove the route answers a finding rather than an
+exception - the promise ``ddd.lsp.diagnostics._run`` already makes for a check hook."""
 
 
 def _revision(root: Path, files: dict[str, object]) -> Revision:
@@ -33,6 +48,45 @@ def _dumped(source: Path, target: Path) -> None:
     """``target`` as ``ddd dump`` would write it for the project description at ``source``."""
     target.parent.mkdir(parents=True, exist_ok=True)
     assert main(["dump", str(source), "-o", str(target)]) == EXIT_OK
+
+
+def _layout(tmp_path: Path) -> Path:
+    """``examples/layout`` and the plugin it names, copied under ``tmp_path`` so that a test may
+    edit them; returns the project description, with ``tmp_path`` as the session root.
+
+    The repository's own proof that a plugin's comparison rules exist: ``ddd_layout.py``
+    registers five of them, three at ``Severity.ERROR``. Used rather than a plugin written here
+    because a rule nobody ships is a rule this module could have got wrong in the same way twice.
+    """
+    shutil.copytree(EXAMPLES / "layout", tmp_path / "layout")
+    shutil.copytree(EXAMPLES / "plugins", tmp_path / "plugins")
+    return tmp_path / "layout" / "project.ddd.json"
+
+
+def _moved_key(tmp_path: Path) -> None:
+    """Move ``EngineHours`` from layout key 12 to 112, which ``layout/key-changed`` is about:
+    every dataset keyed on 12 now reads an entry the delivery has orphaned."""
+    storage = tmp_path / "layout" / "storage.ddd.json"
+    storage.write_text(
+        storage.read_text(encoding="utf-8").replace('"key": 12,', '"key": 112,'), encoding="utf-8"
+    )
+
+
+def _unstamped(tmp_path: Path) -> None:
+    """Take the plugin out of the candidate, blocks and all: a delivery that no longer stamps
+    what the baseline was stamped with, which is what ``missing-plugin`` exists to say."""
+    for path in (tmp_path / "layout").glob("*.ddd.json"):
+        document = json.loads(path.read_text(encoding="utf-8"))
+        for block in (document.get("project", {}), *_definitions(document)):
+            block.pop("plugins", None)
+            block.pop("extensions", None)
+        path.write_text(json.dumps(document), encoding="utf-8")
+
+
+def _definitions(document: dict[str, object]) -> list[dict[str, object]]:
+    component = document.get("component")
+    entries = component.get("interface", []) if isinstance(component, dict) else []
+    return [entry["definition"] for entry in entries]
 
 
 class TestThePathRule:
@@ -330,6 +384,81 @@ class TestTheComparison:
             assert _finding(filed, None, {})["route"] is None
         # `compare()`'s own findings agree the project can replace itself: no differences.
         assert result.findings == ()
+
+
+class TestThePluginsComparisonRules:
+    """A comparison that ran ``compare()`` and stopped answered a confident "can replace" for a
+    delivery ``ddd compare`` exits 1 on: both commands follow it with ``run_compare_hooks``
+    (``cli._command_compare``, ``cli._command_check``), and the page did not. ``missing-plugin``
+    could not close the hole either, being filed by those same hooks.
+    """
+
+    def test_a_plugins_comparison_check_turns_the_verdict(self, tmp_path: Path) -> None:
+        description = _layout(tmp_path)
+        dump = tmp_path / "baseline.json"
+        _dumped(description, dump)
+        _moved_key(tmp_path)
+        revision = Session(tmp_path).open(description)
+        result = compared(revision, dump, tmp_path, {})
+        assert result.verdict is False
+        assert [f.diagnostic.check for f in result.findings] == ["layout/key-changed"]
+
+    def test_a_plugin_of_the_baseline_the_candidate_does_not_name_is_reported(
+        self, tmp_path: Path
+    ) -> None:
+        """``missing-plugin`` says a rule did not run, which is the one thing a silent partial
+        verdict must not leave out - and it is filed by the hooks, so it went with them."""
+        description = _layout(tmp_path)
+        dump = tmp_path / "baseline.json"
+        _dumped(description, dump)
+        _unstamped(tmp_path)
+        revision = Session(tmp_path).open(description)
+        result = compared(revision, dump, tmp_path, {})
+        missing = [f.diagnostic for f in result.findings if f.diagnostic.check == "missing-plugin"]
+        assert len(missing) == 1
+        assert "'layout'" in missing[0].message
+        assert missing[0].severity is Severity.WARNING
+
+    def test_a_build_records_override_grades_a_plugins_comparison_check(
+        self, tmp_path: Path
+    ) -> None:
+        """The session's own policy, over a plugin's check as over a built-in one. Without the
+        candidate's checks registered on the comparison's bag the policy has no entry to read
+        and ``resolve`` falls back to ``Severity.ERROR``, so a ``-W`` the build states would be
+        ignored and the verdict would stand against the project's own wishes."""
+        description = _layout(tmp_path)
+        dump = tmp_path / "baseline.json"
+        _dumped(description, dump)
+        _moved_key(tmp_path)
+        build_record(tmp_path, description, severity=["layout/key-changed=warning"])
+        revision = Session(tmp_path).open(description)
+        assert [build.image for build in revision.builds] == ["firmware.elf"]
+        result = compared(revision, dump, tmp_path, {})
+        assert [f.diagnostic.severity.value for f in result.findings] == ["warning"]
+        assert result.verdict is True
+
+    def test_a_compare_hook_that_raises_is_a_finding_and_not_an_exception(
+        self, tmp_path: Path
+    ) -> None:
+        """``ddd check`` reports a broken hook as a usage error; the server promises findings and
+        never an exception, so it lands as ``plugin-invalid`` here exactly as it does in
+        ``ddd.lsp.diagnostics._run`` - and, being an error, it refuses the verdict rather than
+        answering one a rule never graded."""
+        root = tmp_path / "project"
+        revision = _revision(
+            root,
+            {
+                "tools/demo_plugin.py": RAISING_PLUGIN,
+                "p.ddd.json": project("P", "a.ddd.json", plugins=["tools/demo_plugin.py"]),
+                "a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+            },
+        )
+        dump = root / "baseline.json"
+        _dumped(root / "p.ddd.json", dump)
+        result = compared(revision, dump, root, {})
+        assert [f.diagnostic.check for f in result.findings] == ["plugin-invalid"]
+        assert "failed in its compare hook" in result.findings[0].diagnostic.message
+        assert result.verdict is False
 
 
 class TestTheCache:

@@ -25,6 +25,7 @@ from typing import Any, Final
 
 from ddd.analysis import analyze
 from ddd.build_info import BuildInfo
+from ddd.deliveries import Resolved
 from ddd.diagnostics import (
     STANDALONE_POLICY,
     Diagnostic,
@@ -55,18 +56,31 @@ _LSP_SEVERITY: Final[dict[Severity, int]] = {
 class Run:
     """One analysis of one project: what it reported, the files it covered, what it resolved to.
 
-    ``dictionary`` is ``None`` when the analysis did not get that far - a read that reported an
+    ``resolved`` is ``None`` when the analysis did not get that far - a read that reported an
     error is not analysed, and a plugin that raises stops the run - which is exactly when a
     reader of the dictionary has nothing it could trust.
 
+    It is a :class:`~ddd.deliveries.Resolved`, the same shape ``ddd compare`` reads each side of
+    a comparison into, rather than the ``DataDictionary`` alone: a project's plugins and where it
+    writes each name are as much a part of what an analysis resolved as the dictionary is, and a
+    caller that has one of the three has by construction the other two. Carrying the dictionary
+    by itself is what left ``ddd gui``'s own comparison with no plugins to run the comparison
+    hooks of, and so with a verdict that skipped every rule a plugin states.
+
     ``index`` is the language server's own index of where the project writes each name, built
-    from the same read, or ``None`` when the project could not be read at all.
+    from the same read, or ``None`` when the project could not be read at all - which is a
+    weaker condition than the above, so it is kept apart rather than folded in.
     """
 
     bag: DiagnosticBag
     covered: frozenset[Path]
-    dictionary: DataDictionary | None
+    resolved: Resolved | None
     index: Index | None = None
+
+    @property
+    def dictionary(self) -> DataDictionary | None:
+        """What the analysis resolved to, or ``None`` when it did not get that far."""
+        return None if self.resolved is None else self.resolved.dictionary
 
 
 def analyse(info: BuildInfo) -> tuple[DiagnosticBag, frozenset[Path]]:
@@ -172,7 +186,7 @@ def _run(root: Path, bag: DiagnosticBag) -> Run:
     every file the project covers, rather than of the project file alone.
     """
     covered = frozenset({root})
-    dictionary: DataDictionary | None = None
+    resolved: Resolved | None = None
     built: Index | None = None
     try:
         workspace = load_workspace(root, bag)
@@ -181,13 +195,23 @@ def _run(root: Path, bag: DiagnosticBag) -> Run:
         covered = frozenset(workspace.sources())
         built = index_of(workspace)
         if not bag.has_errors:
-            dictionary = analyze(workspace, bag)
+            # Exactly what `deliveries.read_dictionary` builds for a side of a comparison given
+            # as a description, from the same workspace: a run of the checks over a project and
+            # a read of it as a delivery resolve the same four things, and they say so here by
+            # holding one shape rather than two that have to be kept in step by hand.
+            resolved = Resolved(
+                analyze(workspace, bag),
+                workspace.plugins,
+                workspace.locate,
+                True,
+                workspace.sources(),
+            )
     except PluginError as error:
         # A hook or a model raising is a defect of the plugin, not of the project: ``ddd
         # check`` reports it as a usage error, but the server promises findings and never an
         # exception, so it is turned into one here, on the project file itself.
         bag.add("plugin-invalid", str(error), Location(root))
-    return Run(bag, covered, dictionary, built)
+    return Run(bag, covered, resolved, built)
 
 
 def collect(

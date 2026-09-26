@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from ddd.build_info import BuildInfo
+from ddd.deliveries import Resolved
 from ddd.diagnostics import CheckInfo, Diagnostic, Severity
 from ddd.editing import (
     INVALID,
@@ -107,13 +108,26 @@ class Revision:
     builds: tuple[BuildInfo, ...]
     files: tuple[SourceFile, ...]
     findings: tuple[Filed, ...]
-    dictionary: DataDictionary | None
+    resolved: Resolved | None
+    """What the analysis resolved the project to, or ``None`` when it did not get that far.
+
+    The whole of it - the dictionary, the project's plugins and where it writes each name - and
+    not the dictionary alone, because those are what a reader of a revision needs to do to it
+    anything ``ddd check`` or ``ddd compare`` does to a project of their own: the comparison in
+    :mod:`ddd.gui.compare` has a plugin's comparison rules to run only because they are here.
+    """
+
     checks: tuple[CheckInfo, ...]
     """The plugin checks the analysis registered, beside the built-in ones every run has."""
 
     index: Index | None
     """Where the project writes down each name it uses, from the analysis's own read: the first
     run that built one, since every run of one project reads the same files."""
+
+    @property
+    def dictionary(self) -> DataDictionary | None:
+        """What the analysis resolved to, or ``None`` when it did not get that far."""
+        return None if self.resolved is None else self.resolved.dictionary
 
 
 @dataclass(frozen=True, slots=True)
@@ -335,7 +349,10 @@ class Session:
             findings=tuple(
                 Filed(path, found) for path in sorted(grouped) for found in grouped[path]
             ),
-            dictionary=next((run.dictionary for run in runs if run.dictionary is not None), None),
+            # One run's whole answer, never a field picked from each: the plugins a comparison
+            # runs the rules of and the dictionary it compares have to be the same read's, and
+            # two `next()` calls over the same list would only agree by coincidence.
+            resolved=next((run.resolved for run in runs if run.resolved is not None), None),
             checks=tuple(registered.values()),
             index=next((run.index for run in runs if run.index is not None), None),
         )

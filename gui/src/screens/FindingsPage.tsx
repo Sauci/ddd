@@ -35,7 +35,7 @@ const STALE =
 export function FindingsPage({ state, stopped, onOpen }: Props) {
   const queries = useQueryClient();
   const revision = state?.revision;
-  const rows = state === null ? [] : findingRows(state);
+  const rows = state === null ? [] : findingRows(state.findings);
   const [selected, setSelected] = useState<string | undefined>(undefined);
   const [chosen, setChosen] = useState<string | undefined>(undefined);
   const [changesShown, setChangesShown] = useState(false);

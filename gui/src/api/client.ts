@@ -1,5 +1,6 @@
 import type {
   Changes,
+  CompareReply,
   DeclarableReply,
   EditReply,
   FileContent,
@@ -126,6 +127,9 @@ export const getFix = (file: string, pointer: string, check: string, fetchImpl: 
     {},
     fetchImpl,
   );
+
+export const getCompare = (baseline: string, fetchImpl: Fetch = fetch) =>
+  request<CompareReply>(`/api/compare?baseline=${encodeURIComponent(baseline)}`, {}, fetchImpl);
 
 /** One change to the project's units, as `GET /api/unit-plan` takes it: what each action needs,
  * and nothing it does not. */

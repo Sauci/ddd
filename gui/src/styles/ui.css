@@ -633,3 +633,30 @@ tr.changing td {
   align-items: center;
   gap: var(--space-3);
 }
+
+/* The Compare tab (spec 2026-09-26-gui-compare-design.md, 6): the baseline field stacks with its
+   own rhythm, its sentence and its button under it. The verdict leads in a banner of its own -
+   `.banner` has no pass tone, since nothing before this tab ever answered yes. The renames read
+   as a table under a heading that says what they are for; `.panel-declarations` is reused as it
+   stands, styled for a read-only table wherever one sits, panel or not. */
+.compare-field {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.verdict {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  font-weight: 600;
+}
+.verdict.pass {
+  background: var(--ok-ground);
+  color: var(--ok);
+}
+.verdict.fail {
+  background: var(--error-ground);
+  color: var(--error);
+}

@@ -1306,13 +1306,13 @@ git commit -m "say that a disagreement can now be settled where it is reported"
 
 | Task | Commit | Notes |
 | --- | --- | --- |
-| 1 | | |
-| 2 | | |
-| 3 | | |
-| 4 | | |
-| 5 | | |
-| 6 | | |
-| 7 | | |
+| 1 | `bd32111`, `16534ee` | Lifted `settle`'s loop body into `settled_at`, and gave `_adopt`, `_from_producer` and `_remove_here` a `Reconciliation` to return instead of a protocol dict; `tests/test_lsp.py` held, byte-identical to master. One fix round: the docstring paragraph on `settled_at`'s declared-type branch was dropped in the lift and had to be restored. |
+| 2 | `3553d53` | `_propagate` and `_remove_elsewhere` rewritten as decisions, and `reconciliations()` introduced as the producer-first seam Task 3 consumes. Clean: no fix round, `tests/test_lsp.py` still byte-identical. |
+| 3 | `96cbf4b`, `6ee592e`, `8ba29eb`, `65c7990`, `7536b65` | The fixes a finding offers, through `fixes_for`/`_reconciled`. Four fix rounds, one rule arriving in pieces: a disagreeing consumer's own finding could still offer to overwrite its producers; two producers, or none, could still offer a button from either side; a consumer's own press cleared only its own copy of the disagreement rather than the whole variable; and the ownership path still fell back to adopting the other readers' consensus over a producer silent on the key. All four closed inside `reconciliations`'s own `owned` direction; `tests/test_lsp.py` unmoved throughout. |
+| 4 | `119ed05`, `4120780` | Two Ladle stories and their screenshots: a mismatch offering two keys, and one offering none. One fix round: the fixtures invented a file, a pointer index and line numbers `examples/demo` does not have, and the no-fix story reused the two-fix finding's own message with `fixes: []` bolted on; both grounded in the real demo (`EventLogger`, not `SensorHub`) and the no-fix story rebuilt around `ValueF`'s genuine kind-only disagreement, the one reason of the three a reader can actually see in the panel. |
+| 5 | `7449c47` | The journey: `EventLogger` exported from `demo.ts`, and a reader settling `ValueE`'s mismatch from the finding itself, first reaching one file and then, once both readers drift, the same button reaching two. Clean: 75/75 three times, neither documented flake fired, no fix round. |
+| 6 | `dcb9209`, `feefbef`, `13fd17c`, `273660d` | CHANGELOG and the command-line page. Three fix rounds: the no-single-producer clause got its reason; a claim that the fix offers only one direction was corrected once the producer's own mirrored row was confirmed by running `group_findings` for real rather than trusting `ddd check`'s single-report view; and a second round fixed "the button reads Apply to N files" misattributing that label to the wrong control, and pointed the no-owner reader at the variable's own panel as where they still settle a value by hand. |
+| 7 | (this commit) | The gate, clean: 4025 Python and 405 Vitest tests at 100 % line and branch, 95 screenshots unmoved, 75 journeys three times with neither documented flake firing, sphinx clean under `-W`. Driven by hand over copies: pressing `ValueE`'s fix rewrote `user_interface.ddd.json` on disk and undo put it back exactly; the disagreement showed two rows, the consumer's own and a mirrored copy on Controller's file, the producer's row offering "Apply this unit to 1 other declaration of 'ValueE'" rather than the taking button; and `examples/inconsistent`'s two-producer `SharedValue` mismatch offered no fix on either of its two rows, only the link to its own panel. |
 
 ## Left open
 

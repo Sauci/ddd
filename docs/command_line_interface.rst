@@ -346,15 +346,17 @@ The commands
        put back: the files are shown first, the lines on request, and a file that
        changed on disk since is named and left alone. The list of what can be undone
        lives in the running server and ends with it.
-       The Compare tab's baseline is a dumped dictionary or a project description at a
-       path under this project's own root, refused, and told why, when it is outside the
-       root, unreadable, not valid json, or json that is neither a dictionary nor a
-       description. Its verdict answers only whether the project can replace that
+       The Compare tab's baseline is a dumped dictionary, or a project or component
+       description, at a path under the directory ``ddd gui`` was started in, refused, and
+       told why, when it is outside that directory, unreadable, not valid json, a
+       description or a dictionary this DDD could not read, or json that is neither. Its
+       verdict answers only whether the project can replace that
        baseline, not whether the project is itself consistent: the project's own findings,
-       the Findings tab's own question, take no part in it. Every finding it shows, the
-       comparison's own and the baseline's own marked ``in the baseline:``, names the
-       whole delivery rather than a place in one file, and its panel says so rather than
-       offering to go anywhere. The renames the comparison finds are drawn here as a
+       the Findings tab's own question, take no part in it. Nothing it shows leads
+       anywhere: the comparison's own findings name the whole delivery rather than a place
+       in one file, the baseline's own findings marked ``in the baseline:`` name a place in
+       the baseline's files rather than in this project's, and the panel says which of the
+       two it has open. The renames the comparison finds are drawn here as a
        table, exactly what ``ddd compare --renames`` would write to a file, and are not
        written from this tab.
        ``-b DIR`` names a build directory as for ``ddd lsp``, ``--host ADDRESS``

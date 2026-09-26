@@ -151,15 +151,17 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   leads to what it names.
 
   A sixth tab, Compare, answers the question `ddd check` was never asked: can the open
-  project stand in for a delivery the reader names.  The baseline is a dumped dictionary or
-  a project description at a path under the project's own root, refused, and told why, when
-  it is outside the root, unreadable, not valid json, or json that is neither a dictionary
-  nor a description.  Its verdict counts only the comparison and the baseline's own errors,
+  project stand in for a delivery the reader names.  The baseline is a dumped dictionary,
+  or a project or component description, at a path under the directory `ddd gui` was
+  started in - refused, and told why, when it is outside that directory, unreadable, not
+  valid json, a description or a dictionary this DDD could not read, or json that is
+  neither.  Its verdict counts only the comparison and the baseline's own errors,
   never the open project's own consistency errors - the Findings tab's own question - so a
   project the Findings tab still shows full of errors can be told here that it can replace
-  its baseline.  Every finding it shows - the comparison's own, and the baseline's own
-  errors marked `in the baseline:` - names the whole delivery rather than a place in one
-  file, and the panel says so rather than offering to go anywhere.  The renames the
+  its baseline.  Nothing it shows leads anywhere: the comparison's own findings name the
+  whole delivery rather than a place in one file, the baseline's own errors marked `in the
+  baseline:` name a place in the baseline's files rather than in yours, and the panel says
+  which of the two it has open rather than offering to go there.  The renames the
   comparison finds - objects the two sides agree are one and the same, called differently
   now - are drawn here as a table, exactly what `ddd compare --renames` would write to a
   file, and the tab does not write it.

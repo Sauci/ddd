@@ -67,9 +67,14 @@ export function CompareView(props: CompareViewProps) {
             }}
           />
         </label>
+        {/* The reach, in the words that are true of it: the root is the directory `ddd gui` was
+            started in - `Session(Path.cwd(), ...)` - which may be far above the open project, and
+            "this project's own root" told the reader it was narrower than it is. `holds_a_description`
+            answers for a component file too, so one is a baseline of its own and the sentence says
+            so rather than offering less than the field takes. */}
         <p className="quiet">
-          Accepts a dumped dictionary or a project description, at a path under this project's own
-          root.
+          Accepts a dumped dictionary, or a project or component description, at a path under the
+          directory ddd gui was started in.
         </p>
         <Button
           variant="primary"

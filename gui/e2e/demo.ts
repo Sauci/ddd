@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
@@ -42,6 +43,33 @@ export function driftIn(directory: string, file: string, variable: string, unit:
   const path = join(directory, file);
   const before = readFileSync(path);
   writeFileSync(path, withUnitOf(before, variable, unit));
+  return before;
+}
+
+/** A variable's own `"datatype": ...` in a file: the first one after its name. */
+function datatypeOf(variable: string): RegExp {
+  return new RegExp(`("name": "${variable}"[\\s\\S]*?"datatype": )"[^"]*"`);
+}
+
+/** A variable's datatype in one file of a copy drifted to another, saved from outside - what a
+ * comparison reports as `changed-interface`, unlike `driftIn`'s unit, which the live analysis
+ * catches as `definition-mismatch` between a component's own reading and its producer. Written
+ * on the *producing* declaration: resolution follows the producer's own statement of a field
+ * (`reference = producer or refs[0]`, in the analysis that settles which declaration is the
+ * reference one), so this is what actually changes the delivery a comparison reads, the way a
+ * real widened storage type would. Answers the file as it was before. */
+export function driftDatatypeIn(
+  directory: string,
+  file: string,
+  variable: string,
+  datatype: string,
+): Buffer {
+  const path = join(directory, file);
+  const before = readFileSync(path);
+  const text = before
+    .toString("utf8")
+    .replace(datatypeOf(variable), `$1${JSON.stringify(datatype)}`);
+  writeFileSync(path, text, "utf8");
   return before;
 }
 
@@ -195,4 +223,25 @@ export function widenBlockA(directory: string): void {
       "$1[[[0, 12], [28, 52]], [[84, 124], [180, 9999]]]",
     );
   writeFileSync(path, text, "utf8");
+}
+
+/** `ddd dump` of `project` into `output`, both read and written relative to `directory` - the
+ * Compare tab's own baseline, produced the way `fixtures.ts` itself starts `ddd gui`: through
+ * `DDD_PYTHON` rather than the `ddd` launcher, which on Windows starts python as a child of its
+ * own that killing the launcher leaves running. Run from `directory`, exactly as the server
+ * under test is, so `output` lands under the one root a baseline is ever read from
+ * (`ddd/gui/compare.py`'s own `_resolved_baseline` confines it there). Synchronous: a journey
+ * calls this once, before it ever opens the page, and there is nothing here to await. */
+export function dump(directory: string, project: string, output: string): void {
+  const result = spawnSync(
+    process.env.DDD_PYTHON ?? "python",
+    ["-m", "ddd", "dump", project, "-o", output],
+    { cwd: directory },
+  );
+  if (result.status !== 0) {
+    throw new Error(
+      `ddd dump ${project} -o ${output} exited with ${String(result.status)}: ` +
+        `${result.stderr.toString("utf8")}`,
+    );
+  }
 }

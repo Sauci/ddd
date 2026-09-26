@@ -42,6 +42,19 @@ PLUGIN = Plugin(name="demo", compare=compare)
 """A plugin whose comparison hook raises, to prove the route answers a finding rather than an
 exception - the promise ``ddd.lsp.diagnostics._run`` already makes for a check hook."""
 
+RAISING_CHECK_PLUGIN = """
+from ddd.plugins import CheckContext, Plugin
+
+
+def check(context: CheckContext) -> None:
+    raise RuntimeError("this hook is broken")
+
+
+PLUGIN = Plugin(name="old", check=check)
+"""
+"""A plugin whose *check* hook raises, for a baseline description that names it: the defect is
+met while the baseline is being read, before any comparison is run."""
+
 
 def _revision(root: Path, files: dict[str, object]) -> Revision:
     """A revision over a small project written under ``root``, through ``opened`` - the one way
@@ -259,6 +272,27 @@ class TestTheRefusals:
         )
         result = compared(revision, root / "a.ddd.json", root, {})
         assert result.verdict is True
+
+    def test_a_baseline_whose_own_plugin_raises_is_refused_rather_than_thrown(
+        self, tmp_path: Path
+    ) -> None:
+        """A description's plugins are loaded and run while it is read, and a defect in one
+        raises instead of reporting - past the guard around the comparison's own hooks, which is
+        reached later. It was a traceback in the terminal and a 500 telling the reader to go and
+        read it, where spec §6 promises a reason."""
+        root = tmp_path / "project"
+        revision = _revision(
+            root,
+            {
+                "p.ddd.json": project("P"),
+                "old/tools/broken.py": RAISING_CHECK_PLUGIN,
+                "old/p.ddd.json": project("P", plugins=["tools/broken.py"]),
+            },
+        )
+        with pytest.raises(BaselineRefusedError) as refused:
+            compared(revision, root / "old" / "p.ddd.json", root, {})
+        assert "is a description that could not be read" in str(refused.value)
+        assert "failed in its check hook" in str(refused.value)
 
     def test_every_refusal_the_reader_can_answer_has_words_for_it(self) -> None:
         """The mapping is the whole classification: a reason added to the reader and left out
@@ -594,7 +628,9 @@ class TestThePluginsComparisonRules:
 
 
 class TestTheCache:
-    def test_the_cache_keys_on_path_and_fingerprint_not_path_alone(self, tmp_path: Path) -> None:
+    def test_a_re_dump_in_place_is_read_again_and_still_holds_one_entry(
+        self, tmp_path: Path
+    ) -> None:
         root = tmp_path / "project"
         old = tmp_path / "old"
         write_tree(

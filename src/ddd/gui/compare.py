@@ -387,7 +387,16 @@ def _read(path: Path) -> Cached:
         ) from (error)
     own = DiagnosticBag()
     reading = Reading()
-    found = read_baseline(path, own, reading=reading)
+    try:
+        found = read_baseline(path, own, reading=reading)
+    except PluginError as error:
+        # A description's own plugins are loaded and run while it is read - `load_workspace`
+        # validates each `extensions` block against its plugin's model, and `analyze` runs the
+        # check hooks - and a defect in one raises instead of reporting. Only a description can
+        # reach this: a dump runs no hook of anybody's. Refused as the description it is, with
+        # what the plugin did as the detail, where spec §6 promises a reason and a traceback in
+        # the terminal was what a reader got.
+        raise BaselineRefusedError(_refused(path, Refusal.DESCRIPTION, str(error))) from error
     forwarded = tuple(own.sorted)
     if found is None:
         # `read_dictionary` records one before every `return None` of its own, whichever of its
@@ -413,5 +422,9 @@ def _refusal_reason(path: Path, refusal: Refusal, diagnostics: tuple[Diagnostic,
     a stutter. ``read_baseline`` never answers ``None`` without forwarding at least one error
     first, so there is always one.
     """
-    detail = diagnostics[0].message.removeprefix(BASELINE_PREFIX)
+    return _refused(path, refusal, diagnostics[0].message.removeprefix(BASELINE_PREFIX))
+
+
+def _refused(path: Path, refusal: Refusal, detail: str) -> str:
+    """One refusal, in the one shape all of them take: which file, which reason, what happened."""
     return f"the baseline '{path.as_posix()}' {_REASONS[refusal]}: {detail}"

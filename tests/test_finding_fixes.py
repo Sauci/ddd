@@ -5,8 +5,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from conftest import built_of, component, declare, scalar_type, types
+from conftest import built_of, checks, component, declare, messages, scalar_type, types
+from ddd.analysis import analyze
+from ddd.diagnostics import DiagnosticBag
+from ddd.editing import edit_text
 from ddd.finding_fixes import fixes_for
+from ddd.loading import load_workspace
 from ddd.lsp.edits import reconciliations, settle
 from ddd.lsp.ranges import read
 
@@ -186,6 +190,45 @@ class TestAMismatch:
         )
         offered = fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built)
         assert [fix.title for fix in offered] == ["Use the datatype declared in a"]
+
+    def test_a_datatype_beside_an_explicit_null_typename_is_offered_and_loads(
+        self, tmp_path: Path
+    ) -> None:
+        # `b` states a real `datatype` and an explicit `"typename": null` beside it - a plain
+        # declaration, since pydantic reads the explicit null the same as leaving the key out
+        # (`check_storage_named_once` never sees the two as stated together). Read by the json
+        # text rather than by value, the null still has text, so a declaration naming no type
+        # was read as naming one, and the only fix that settles this shape was withheld with a
+        # refusal claiming the file "would not load" - false for exactly this shape. Applying
+        # the button is asserted too, not just its presence: a fix a regression withholds is one
+        # thing, one that would have broken the file if it had not been withheld is another, and
+        # this one only stayed missing because it would not have.
+        b = declare("input", "Speed", datatype="uint8")
+        b["definition"]["typename"] = None
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", datatype="uint16")),
+                "b.ddd.json": component("B", b),
+            },
+        )
+        offered = fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built)
+        # The null `typename` is a key of its own besides, stated where `a` states none at all -
+        # its own, unrelated fix, offered alongside the one this test is about.
+        assert [fix.title for fix in offered] == [
+            "Use the datatype declared in a",
+            "Remove this typename, which a does not declare",
+        ]
+        (edit,) = offered[0].changes
+        assert edit.path == root / "b.ddd.json"
+        text = edit.path.read_text(encoding="utf-8")
+        edit.path.write_text(edit_text(text, edit.operations), encoding="utf-8", newline="")
+
+        bag = DiagnosticBag()
+        workspace = load_workspace(root / "p.ddd.json", bag)
+        assert workspace is not None, messages(bag)
+        analyze(workspace, bag)
+        assert "definition-mismatch" not in checks(bag), messages(bag)
 
     def test_the_producer_is_offered_its_own_value_outward(self, tmp_path: Path) -> None:
         built, root = built_of(

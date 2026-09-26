@@ -500,6 +500,19 @@ class Settlement:
     unsettled: tuple[Unsettled, ...]
 
 
+def _type_named(document: Document, definition: str) -> str | None:
+    """The declared type ``definition`` names, or ``None`` when it names none.
+
+    Read by value, not by the json text a member happens to hold: written ``"typename": null``,
+    it has text but names nothing, and a plain declaration that happens to state that beside its
+    ``datatype`` has to read the same way wherever the question is asked. :func:`settled_at` and
+    :func:`_assign` each need exactly this answer, so it is asked here once instead of spelled
+    out twice - the two cannot drift into different answers for the same shape.
+    """
+    typename = document.value_at(f"{definition}.typename")
+    return typename if isinstance(typename, str) else None
+
+
 def settled_at(
     built: Index, site: Site, name: str, key: str, raw: str | None, cache: dict[Path, Document]
 ) -> Settled | Unsettled | None:
@@ -520,22 +533,25 @@ def settled_at(
     Nor does a declaration give up the storage it named, or name it a second way. That is
     :func:`ddd.models.objects.storage_keys`', the same reading the variable's panel hides its
     "state nothing" by, and the loader refuses a file either would write: a ``datatype`` taken
-    out, or a ``typename`` written beside one, leaves storage named twice or not at all.
+    out, or a ``typename`` written beside one, leaves storage named twice or not at all - by what
+    the two keys mean, the same way :func:`_type_named` reads ``typename`` above, so an explicit
+    ``null`` beside a stated ``datatype`` is a plain declaration and not one caught here either.
     """
     document = _at_site(site, name, cache)
     if document is None:
         return Unsettled(site, "unreachable")
-    typename = document.value_at(f"{site.pointer}.typename")
-    if key in FIXED_BY_A_TYPE and isinstance(typename, str):
+    typename = _type_named(document, site.pointer)
+    if key in FIXED_BY_A_TYPE and typename is not None:
         if _fixed_by(built, typename, key, cache) != raw:
             return Unsettled(site, "type", typename)
         return None
     stated = document.raw_at(f"{site.pointer}.{key}")
     if _already(key, stated, raw) or (key in DEFERRED_KEYS and stated is None):
         return None
-    storage, another = storage_keys(
-        [named for named in STORAGE_NAMES if document.raw_at(f"{site.pointer}.{named}") is not None]
-    )
+    named = [
+        name for name in STORAGE_NAMES if document.value_at(f"{site.pointer}.{name}") is not None
+    ]
+    storage, another = storage_keys(named)
     if (raw is None and key in storage) or (raw is not None and key in another):
         return Unsettled(site, "storage")
     accepted, required = _keys_of(document, site.pointer)
@@ -893,16 +909,16 @@ def _assign(document: Document, definition: str, key: str, raw: str) -> dict[str
     Refused as well for a key a named type fixes - what it means and the storage under it alike,
     :data:`ddd.models.objects.FIXED_BY_A_TYPE` - for the same reason: the declaration already
     gets this key from its ``typename``, and stating it again beside that is an error the loader
-    reports, not an override. The same set :func:`settled_at` decides by, which asks first: these
-    are two spellings of one rule and must not come to two answers.
+    reports, not an override. The same question :func:`settled_at` asks first, through
+    :func:`_type_named` rather than a second spelling of it, so the two cannot come to two
+    answers.
     """
     if key not in _keys_of(document, definition)[0]:
         return None
-    if key in FIXED_BY_A_TYPE and isinstance(document.value_at(f"{definition}.typename"), str):
-        # The type it names fixes this key; stated beside it, the loader refuses the file. An
-        # explicit ``null`` names no type - the same reading ``settle`` gives it, so a plain
-        # declaration that happens to state ``"typename": null`` beside its ``datatype`` is not
-        # caught here.
+    if key in FIXED_BY_A_TYPE and _type_named(document, definition) is not None:
+        # The type it names fixes this key; stated beside it, the loader refuses the file.
+        # ``_type_named`` reads an explicit ``null`` as naming none, so a plain declaration
+        # that happens to state ``"typename": null`` beside its ``datatype`` is not caught here.
         return None
     existing = document.raw_at(f"{definition}.{key}")
     if existing is not None:

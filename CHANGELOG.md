@@ -160,11 +160,12 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   the apply button reads "Apply to 2 files" where two have to move.  Nothing is offered
   where the variable has no single producer - several components writing it, or none,
   leaves no owner to take a direction from; the variable's own panel, one click from the
-  finding, still settles any value the reader chooses.  A key is offered only where one
-  change settles it for every declaration: never `kind`, the one key no edit may carry
-  between declarations, and not a key some declaration could neither take nor drop - one
-  its named type fixes, one its kind does not allow, or the `datatype` or `conversion` its
-  own storage is made of.
+  finding, still settles any value the reader chooses, unless it would leave the file
+  unable to load.  A key is offered only where one change settles it for every
+  declaration: never `kind`, the one key no edit may carry between declarations, and not a
+  key some declaration could neither take nor drop - one its named type fixes, one its
+  kind does not allow, or the `datatype`, `conversion` or `typename` its own storage is
+  made of.
 
 * **The editor's reconcile quick fix is no longer offered for a value that already means what
   it would be set to.**  Taking the producing component's value, or spreading one declaration's

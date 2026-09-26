@@ -302,12 +302,12 @@ The commands
        one is settled by taking it out of all of them, from either row.
        Nothing is offered where the variable has no single producer - several components
        writing it, or none, leaves no owner to take a direction from; the variable's own
-       panel, one click from the finding, still settles any value the reader chooses.
-       A key is offered only where one change settles it for every declaration: never
-       ``kind``, the one key no edit may carry between declarations, and not a key some
-       declaration could neither take nor drop - one its named type fixes, one its kind
-       does not allow, or the ``datatype`` or ``conversion`` its own storage is made
-       of. A component's page
+       panel, one click from the finding, still settles any value the reader chooses, unless
+       it would leave the file unable to load. A key is offered only where one change settles
+       it for every declaration: never ``kind``, the one key no edit may carry between
+       declarations, and not a key some declaration could neither take nor drop - one its
+       named type fixes, one its kind does not allow, or the ``datatype``, ``conversion`` or
+       ``typename`` its own storage is made of. A component's page
        adds a declaration to its interface - a variable
        already declared, carrying the producer's keys where there is one and the
        project's own where there is not, or a new object of one of six kinds - and

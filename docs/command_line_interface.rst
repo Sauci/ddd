@@ -290,11 +290,12 @@ The commands
        computer by default, and open the browser on it. The project opens on a graph
        of its modules, an arrow per pair coloured by the worst disagreement between
        them, with the component table, a Units tab - listing the project's units and
-       maintaining its vocabulary - and a Findings tab of every finding, worst first,
-       one tab away; a variable's panel shows every key its declarations share, says
-       which of them they disagree about, and settles one on every declaration at
-       once. A ``definition-mismatch`` finding carries that settlement as a button of its own,
-       one per disagreeing key, reaching every declaration that disagrees, not only the
+       maintaining its vocabulary - a Findings tab of every finding, worst first, and a
+       Compare tab asking whether the open project can replace a baseline delivery the
+       reader names, one tab away. A variable's panel shows every key its declarations
+       share, says which of them they disagree about, and settles one on every declaration
+       at once. A ``definition-mismatch`` finding carries that settlement as a button of
+       its own, one per disagreeing key, reaching every declaration that disagrees, not only the
        one the finding names. Opened on a consumer it takes the producing component's
        value; opened on the producer's own row, where the same disagreement is filed a
        second time, it sends that value outward - never a direction the reader chooses.
@@ -345,6 +346,17 @@ The commands
        put back: the files are shown first, the lines on request, and a file that
        changed on disk since is named and left alone. The list of what can be undone
        lives in the running server and ends with it.
+       The Compare tab's baseline is a dumped dictionary or a project description at a
+       path under this project's own root, refused, and told why, when it is outside the
+       root, unreadable, not valid json, or json that is neither a dictionary nor a
+       description. Its verdict answers only whether the project can replace that
+       baseline, not whether the project is itself consistent: the project's own findings,
+       the Findings tab's own question, take no part in it. Every finding it shows, the
+       comparison's own and the baseline's own marked ``in the baseline:``, names the
+       whole delivery rather than a place in one file, and its panel says so rather than
+       offering to go anywhere. The renames the comparison finds are drawn here as a
+       table, exactly what ``ddd compare --renames`` would write to a file, and are not
+       written from this tab.
        ``-b DIR`` names a build directory as for ``ddd lsp``, ``--host ADDRESS``
        listens beyond this computer for a container, ``--port N`` fixes the port and
        ``--no-browser`` only prints the address. It serves until interrupted, and its

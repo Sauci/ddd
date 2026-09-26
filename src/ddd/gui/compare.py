@@ -146,8 +146,10 @@ discarded at will.
 class BaselineRefusedError(ValueError):
     """Why ``?baseline=`` could not be read as one, for the route to answer 400 with.
 
-    Every reason the spec names is a message a reader can act on rather than a bare refusal:
-    the path they typed is the thing they have to fix, and only the message says how.
+    Every reason is a message a reader can act on rather than a bare refusal: the path they
+    typed is the thing they have to fix, and only the message says how. Which reason it is comes
+    from whoever settled it - this module for a path outside the root or one that will not open,
+    and :class:`ddd.deliveries.Refusal` for everything past that.
     """
 
 
@@ -184,7 +186,8 @@ def compared(revision: Revision, baseline: Path, root: Path, cache: BaselineCach
     clamped to something inside it, which would silently compare against a delivery nobody
     named. What that file includes is read wherever it points, as ``ddd compare`` reads it -
     :func:`_resolved_baseline` says why. ``cache`` is owned by the caller - the route itself
-    keeps nothing between two requests - and is only ever read and added to here.
+    keeps nothing between two requests - and this only ever reads it, adds to it and drops from
+    it what :data:`MAX_BASELINES` puts over the edge.
     """
     candidate = revision.resolved
     if candidate is None:

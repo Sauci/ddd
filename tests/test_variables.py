@@ -233,6 +233,12 @@ class TestRefusal:
         [
             ("type", "fixed-by-type", "names the type 'Speed_t', which fixes its unit"),
             ("kind", "invalid", "is of a kind that does not allow that unit"),
+            (
+                "storage",
+                "invalid",
+                "would not load with that unit: storage is named exactly once, and a "
+                "'datatype' comes with a 'conversion'",
+            ),
             ("unreachable", "unreadable", "is no longer where the last analysis found it"),
         ],
     )

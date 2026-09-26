@@ -22,7 +22,7 @@ from ddd.lsp.edits import DEFERRED_KEYS
 from ddd.lsp.navigation import Index
 from ddd.models import definition_keys
 from ddd.models.common import Datatype
-from ddd.models.objects import ObjectKind
+from ddd.models.objects import ObjectKind, storage_keys
 from ddd.value_identity import same_value
 from ddd.variables import Declared
 
@@ -206,12 +206,12 @@ def _storage_of(entry: Declared) -> frozenset[str]:
     fixes both, and the models check the pair after the fact. Offering to strip the one a
     declaration actually uses would write a file the loader refuses, so the panel does not
     offer it.
+
+    Which keys those are is :func:`ddd.models.objects.storage_keys`', beside the two checks it
+    reads forwards - the same answer :func:`ddd.lsp.edits.settled_at` refuses a removal by, so
+    that a fix on a finding cannot offer what this panel withholds.
     """
-    if "typename" in entry.stated:
-        return frozenset({"typename"})
-    if "datatype" in entry.stated:
-        return frozenset({"datatype", "conversion"})
-    return frozenset()
+    return storage_keys(entry.stated)[0]
 
 
 def _in_play(declared: Sequence[Declared], key: str) -> tuple[InPlay, ...]:

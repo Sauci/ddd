@@ -240,6 +240,23 @@ it. The rule against restating is what keeps "where is this object's unit writte
 question with one answer.
 """
 
+FIXED_BY_A_TYPE: Final = ("datatype", *MEANING_KEYS)
+"""What a scalar type states once, for every declaration naming it.
+
+:data:`MEANING_KEYS` and the storage they sit on. A named type is the whole answer to what a
+number is and what it means, which is why a declaration that names one states none of these -
+so anything asking what a declaration says about one of these keys has to ask the type, and
+anything offering to write one beside a ``typename`` is offering a file the loader refuses.
+"""
+
+STORAGE_NAMES: Final = ("datatype", "typename")
+"""The two ways a definition may name its storage, of which it states exactly one.
+
+Named here because :func:`check_storage_named_once` is a rule about the pair rather than about
+either key, and a caller working out which of the two a definition used - to keep from taking it
+away, or from adding the other beside it - is asking about the pair too.
+"""
+
 
 def refuse_restating(typename: str, stated: Container[str]) -> None:
     """Refuse stating what a named type already fixes; an error rather than an override.
@@ -393,6 +410,28 @@ def check_conversion_stated(datatype: Datatype | None, conversion: Conversion | 
             '({"kind": "identity"}) is an answer to state, not a default to fall into'
         )
         raise ValueError(msg)
+
+
+def storage_keys(stated: Container[str]) -> tuple[frozenset[str], frozenset[str]]:
+    """What a definition stating these keys may not be left without, and may not be given.
+
+    The two rules above, read forwards: :func:`check_storage_named_once` says a definition names
+    its storage exactly once, so the key it used may not be taken away and the other one may not
+    be added beside it; :func:`check_conversion_stated` says a base ``datatype`` comes with its
+    ``conversion``, so that one goes with it.
+
+    Read forwards because the callers are not the loader: a panel offering values for a key, and
+    the decision behind a quick fix, each have to know which changes would write a file the
+    loader then refuses - before writing it, and without a model to validate. Derived from the
+    same two rules rather than restated beside them, so a change to either reaches all three.
+    """
+    if "typename" in stated:
+        return frozenset({"typename"}), frozenset({"datatype"})
+    if "datatype" in stated:
+        return frozenset({"datatype", "conversion"}), frozenset({"typename"})
+    # A definition naming no storage at all does not load, so there is nothing to keep and
+    # nothing that would be a second naming.
+    return frozenset(), frozenset()
 
 
 def resolve_export(stated: Iterable[bool | None]) -> bool:

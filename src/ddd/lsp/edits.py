@@ -58,7 +58,7 @@ from ddd.lsp.units import (
     unit_drift,
 )
 from ddd.models import definition_keys
-from ddd.models.objects import MEANING_KEYS
+from ddd.models.objects import FIXED_BY_A_TYPE, STORAGE_NAMES, storage_keys
 from ddd.value_identity import same_value
 
 PROPAGATED_KEYS: Final = frozenset(
@@ -258,34 +258,10 @@ def _on_the_declaration(
     if not isinstance(name, str):
         return []
 
-    key = pointer.rsplit(".", 1)[-1]
-    if pointer == f"{definition}.{key}" and key in PROPAGATED_KEYS:
-        wanted = [key]
-    else:
-        wanted = interface_keys(document.value_at(definition)) + _missing(
-            built, path, document, name, definition, cache
-        )
-    here = Site(path, definition)
-    produces = here in built.producers.get(name, ())
-    offered: list[dict[str, Any]] = []
-    for candidate in wanted:
-        # Two ways to settle a key, and at most one of each. Taking is somebody else's answer
-        # brought here - the producer's for preference, the one the rest agree on otherwise,
-        # or their silence. Giving is this declaration's answer sent out, value or silence.
-        taken = (
-            _from_producer(built, here, document, name, candidate, cache)
-            or _remove_here(built, here, document, name, candidate, cache)
-            or _adopt(built, here, document, name, candidate, cache)
-        )
-        given = _propagate(built, here, document, name, candidate, cache) or _remove_elsewhere(
-            built, here, document, name, candidate, cache
-        )
-        # A consumer is offered the producer's value first; the producer is offered its own,
-        # outward. Which side owns the variable is not a matter of taste here - it is the rule
-        # the whole tool is built on, and the fix that reads naturally is the one that follows
-        # it rather than the one that quietly redefines somebody else's data.
-        ordered = [given, taken] if produces else [taken, given]
-        offered.extend(action for action in ordered if action is not None)
+    offered = [
+        _protocol_action(action, cache)
+        for action in reconciliations(built, path, document, pointer, cache)
+    ]
     settles = [entry for entry in reported if entry.get("code") in RECONCILED]
     if settles and offered:
         for action in offered:
@@ -302,6 +278,128 @@ def _on_the_declaration(
             identity["diagnostics"] = unstamped
             offered.append(identity)
     return offered
+
+
+def reconciliations(
+    built: Index,
+    path: Path,
+    document: Document,
+    pointer: str,
+    cache: dict[Path, Document],
+    *,
+    owned: bool = False,
+) -> list[Reconciliation]:
+    """Every way to settle the declaration at ``pointer``, in the order to offer them.
+
+    On a key that can be propagated, that key; anywhere else inside the declaration, every key
+    that differs from the other declarations. Two ways at most per key - somebody else's answer
+    brought here, and this one's answer sent out - ordered by which side owns the variable.
+
+    ``owned=True`` keeps only the first of each key's pair - the direction the ownership rule
+    wants for this declaration - or nothing when that direction does not exist, and nothing at
+    all, for every key, when the variable has no single producer: two components writing it, or
+    none, leaves no side to take without the tool choosing a winner it has no standing to choose.
+    The editor calls without it, offering both (and whatever else two or no producers still
+    leaves reachable) and letting the reader pick; ``ddd gui`` calls with it, because a button
+    whose direction the reader has to work out is not the one press it exists to be, and falling
+    through to the *other* direction when the wanted one is missing would have a consumer rewrite
+    its producers, a producer adopt its consumers' consensus, or - with no producer to prefer at
+    all - one disagreeing declaration overwrite another in a dispute neither of them owns.
+
+    Kept taking is also widened to every declaration of the variable, not left at the one it was
+    computed for: the editor's own actions reach where the cursor is, which is right for a
+    cursor and wrong for a finding, where pressing the button means the disagreement over
+    everywhere, not moved along to the next file that still carries it. Giving needs no such
+    widening - it is built from :func:`settle` already, which never reached only one file.
+
+    The builders are told which reach they are being asked for, because a removal's own
+    "otherwise this settles nothing" depends on it: a consumer taking a key out while another
+    consumer keeps it changes nothing about the disagreement, and taking it out of every
+    declaration at once ends it.
+
+    Taking is narrower too, under ``owned=True``: adopting what the other readers agree on is
+    offered to the editor, never to the page. It only ever arises with a silent producer - the
+    one case ``_from_producer`` cannot answer for - and a silent owner is not standing in for
+    its readers' consensus, whatever they happen to agree on among themselves.
+    """
+    within = WITHIN_DEFINITION.match(pointer)
+    if within is None:
+        return []
+    definition = within.group()
+    name = document.value_at(f"{definition}.name")
+    if not isinstance(name, str):
+        return []
+    key = pointer.rsplit(".", 1)[-1]
+    if pointer == f"{definition}.{key}" and key in PROPAGATED_KEYS:
+        wanted = [key]
+    else:
+        wanted = interface_keys(document.value_at(definition)) + _missing(
+            built, path, document, name, definition, cache
+        )
+    here = Site(path, definition)
+    produces = here in built.producers.get(name, ())
+    if owned and len(built.producers.get(name, ())) != 1:
+        # No single owner, so no direction for a fix to flow in. Two components writing one
+        # variable - or none writing it - is its own finding, and settling the disagreement
+        # between them would be choosing a winner this has no standing to choose.
+        return []
+    # Whether what is taken will reach every declaration of the variable rather than this one:
+    # the page's reach, and what the builders below have to know before deciding that a removal
+    # settles nothing.
+    widened = owned and not produces
+    offered: list[Reconciliation] = []
+    for candidate in wanted:
+        # Two ways to settle a key, and at most one of each. Taking is somebody else's answer
+        # brought here - the producer's for preference, the one the rest agree on otherwise,
+        # or their silence. Giving is this declaration's answer sent out, value or silence.
+        taken = _from_producer(built, here, document, name, candidate, cache) or _remove_here(
+            built, here, document, name, candidate, cache, across=widened
+        )
+        if not owned:
+            # The editor offers a consensus among the other declarations where the producer is
+            # silent. The page does not: with one owner guaranteed above, a silent owner means
+            # there is no owner's answer to take, and what the other readers happen to agree on
+            # is not one.
+            taken = taken or _adopt(built, here, document, name, candidate, cache)
+        given = _propagate(built, here, document, name, candidate, cache) or _remove_elsewhere(
+            built, here, document, name, candidate, cache
+        )
+        # A consumer is offered the producer's value first; the producer is offered its own,
+        # outward. Which side owns the variable is not a matter of taste here - it is the rule
+        # the whole tool is built on, and the fix that reads naturally is the one that follows
+        # it rather than the one that quietly redefines somebody else's data.
+        ordered = [given, taken] if produces else [taken, given]
+        if owned:
+            first = ordered[0]
+            if widened and first is not None:
+                first = _across(built, name, first, cache)
+            ordered = [first]
+        offered.extend(action for action in ordered if action is not None)
+    return offered
+
+
+def _across(
+    built: Index, name: str, action: Reconciliation, cache: dict[Path, Document]
+) -> Reconciliation:
+    """One declaration's settlement widened to every declaration of the variable.
+
+    The editor changes what the cursor is in, which is the right reach for a cursor and the
+    wrong one for a finding: a reader pressing a finding's button means the disagreement to be
+    over, not to move to the next file that still carries it.
+
+    ``action`` is a *taking* decision, which settles exactly one declaration - the one asked
+    at - and whose single change is therefore the value to widen. :func:`reconciliations` calls
+    this on ``ordered[0]`` of a row that does not produce the variable, where ``owned=True``
+    leaves ``_from_producer`` or ``_remove_here`` and nothing else, and both build their
+    settlement from one :class:`Settled` literally. The two builders that reach several
+    declarations, ``_propagate`` and ``_remove_elsewhere``, are the giving direction and never
+    arrive here. Said here because the unpack below is where it would be discovered otherwise,
+    as a ``ValueError`` out of ``GET /api/fix`` - a 500 rather than a missing button.
+    """
+    (change,) = action.settlement.changes
+    return Reconciliation(
+        action.title, action.key, settle(built, name, action.key, change.raw, cache)
+    )
 
 
 def _vocabulary_actions(
@@ -383,10 +481,12 @@ class Unsettled:
     """One declaration a settlement cannot change, and why not."""
 
     site: Site
-    reason: Literal["unreachable", "kind", "type"]
+    reason: Literal["unreachable", "kind", "type", "storage"]
     """``unreachable``: its file no longer names the variable at that pointer, or no longer
     reads as json. ``kind``: its kind has no such key, or requires the one being taken out.
-    ``type``: it names a declared type that fixes the key to another value."""
+    ``type``: it names a declared type that fixes the key to another value. ``storage``: the
+    key is the storage it named, or would name it a second way - what
+    :func:`ddd.models.objects.storage_keys` answers."""
 
     type_name: str | None = None
     """The declared type that fixes the key, when ``reason`` is ``type``."""
@@ -400,6 +500,66 @@ class Settlement:
     unsettled: tuple[Unsettled, ...]
 
 
+def _type_named(document: Document, definition: str) -> str | None:
+    """The declared type ``definition`` names, or ``None`` when it names none.
+
+    Read by value, not by the json text a member happens to hold: written ``"typename": null``,
+    it has text but names nothing, and a plain declaration that happens to state that beside its
+    ``datatype`` has to read the same way wherever the question is asked. :func:`settled_at` and
+    :func:`_assign` each need exactly this answer, so it is asked here once instead of spelled
+    out twice - the two cannot drift into different answers for the same shape.
+    """
+    typename = document.value_at(f"{definition}.typename")
+    return typename if isinstance(typename, str) else None
+
+
+def settled_at(
+    built: Index, site: Site, name: str, key: str, raw: str | None, cache: dict[Path, Document]
+) -> Settled | Unsettled | None:
+    """What one declaration does about ``raw`` for ``key``: take it, refuse it, or nothing.
+
+    ``None`` where there is nothing to do - the declaration already means that value, or it is
+    leaving a deferred key to whoever states it. The body of :func:`settle`'s own loop, lifted
+    so that an action changing one declaration asks it the same question a whole settlement
+    asks of each: the two must not drift into two readings of "can this declaration take it".
+
+    A declaration naming a declared type takes none of the keys the type fixes - every key of
+    :data:`ddd.models.objects.FIXED_BY_A_TYPE`, the ``datatype`` as much as what it means: it
+    agrees when the type states ``raw``, and refuses otherwise - stating the key beside the type
+    is an error the loader reports, not an override. Read from what the declaration *resolves
+    to*, in other words, which is what ``definition-mismatch`` compares and what makes a
+    ``typename`` carrying the answer something other than silence.
+
+    Nor does a declaration give up the storage it named, or name it a second way. That is
+    :func:`ddd.models.objects.storage_keys`', the same reading the variable's panel hides its
+    "state nothing" by, and the loader refuses a file either would write: a ``datatype`` taken
+    out, or a ``typename`` written beside one, leaves storage named twice or not at all - by what
+    the two keys mean, the same way :func:`_type_named` reads ``typename`` above, so an explicit
+    ``null`` beside a stated ``datatype`` is a plain declaration and not one caught here either.
+    """
+    document = _at_site(site, name, cache)
+    if document is None:
+        return Unsettled(site, "unreachable")
+    typename = _type_named(document, site.pointer)
+    if key in FIXED_BY_A_TYPE and typename is not None:
+        if _fixed_by(built, typename, key, cache) != raw:
+            return Unsettled(site, "type", typename)
+        return None
+    stated = document.raw_at(f"{site.pointer}.{key}")
+    if _already(key, stated, raw) or (key in DEFERRED_KEYS and stated is None):
+        return None
+    named = [
+        name for name in STORAGE_NAMES if document.value_at(f"{site.pointer}.{name}") is not None
+    ]
+    storage, another = storage_keys(named)
+    if (raw is None and key in storage) or (raw is not None and key in another):
+        return Unsettled(site, "storage")
+    accepted, required = _keys_of(document, site.pointer)
+    if (raw is None and key in required) or (raw is not None and key not in accepted):
+        return Unsettled(site, "kind")
+    return Settled(site, raw)
+
+
 def settle(
     built: Index, name: str, key: str, raw: str | None, cache: dict[Path, Document]
 ) -> Settlement:
@@ -411,33 +571,51 @@ def settle(
     instead, because its reader chose a value for the variable and a change that reaches only
     some of its declarations is not the one they chose. Deciding here, once, is what keeps the
     editor and the page from disagreeing about what a change touches.
-
-    A declaration that already states ``raw`` is left as it is, and so is one leaving a deferred
-    key to whoever states it. A declaration naming a declared type takes none of the keys the
-    type fixes: it agrees when the type states ``raw``, and refuses otherwise - stating the key
-    beside the type is an error the loader reports, not an override.
     """
     changes: list[Settled] = []
     unsettled: list[Unsettled] = []
     for site in built.declarations.get(name, ()):
-        document = _at_site(site, name, cache)
-        if document is None:
-            unsettled.append(Unsettled(site, "unreachable"))
-            continue
-        typename = document.value_at(f"{site.pointer}.typename")
-        if key in MEANING_KEYS and isinstance(typename, str):
-            if _fixed_by(built, typename, key, cache) != raw:
-                unsettled.append(Unsettled(site, "type", typename))
-            continue
-        stated = document.raw_at(f"{site.pointer}.{key}")
-        if _already(key, stated, raw) or (key in DEFERRED_KEYS and stated is None):
-            continue
-        accepted, required = _keys_of(document, site.pointer)
-        if (raw is None and key in required) or (raw is not None and key not in accepted):
-            unsettled.append(Unsettled(site, "kind"))
-            continue
-        changes.append(Settled(site, raw))
+        decided = settled_at(built, site, name, key, raw, cache)
+        if isinstance(decided, Settled):
+            changes.append(decided)
+        elif decided is not None:
+            unsettled.append(decided)
     return Settlement(tuple(changes), tuple(unsettled))
+
+
+@dataclass(frozen=True, slots=True)
+class Reconciliation:
+    """One way to settle one key of one variable: decided, and not yet spelled.
+
+    What the two clients share. The decision is which declarations come to state what, which is
+    a question about the project; how that arrives in a file is a question about text, and the
+    two have no business being one function. :mod:`ddd.finding_fixes` spells this as operations
+    on json pointers, this module as edits with ranges.
+    """
+
+    title: str
+    key: str
+    settlement: Settlement
+
+
+def _protocol_action(reconciliation: Reconciliation, cache: dict[Path, Document]) -> dict[str, Any]:
+    """A decision as the protocol carries it: a titled quick fix over one or more files.
+
+    ``_assign`` and ``_erase`` answer ``None`` for a change the decision already ruled out, so
+    nothing here is expected to skip; the guard is the only-child refusal of :func:`_erase`,
+    which stays a question about a file's own style rather than about the data.
+    """
+    changes: dict[str, list[dict[str, Any]]] = {}
+    for change in reconciliation.settlement.changes:
+        document = read(change.site.path, cache)
+        edit = (
+            _erase(document, change.site.pointer, reconciliation.key)
+            if change.raw is None
+            else _assign(document, change.site.pointer, reconciliation.key, change.raw)
+        )
+        if edit is not None:
+            changes.setdefault(change.site.path.as_uri(), []).append(edit)
+    return {"title": reconciliation.title, "kind": QUICK_FIX, "edit": {"changes": changes}}
 
 
 def _fixed_by(built: Index, typename: str, key: str, cache: dict[Path, Document]) -> str | None:
@@ -506,7 +684,7 @@ def _missing(
 
 def _adopt(
     built: Index, here: Site, document: Document, name: str, key: str, cache: dict[Path, Document]
-) -> dict[str, Any] | None:
+) -> Reconciliation | None:
     """Take a value the others state and this declaration does not.
 
     Only when they agree with each other about it - by what the value means, the rule
@@ -545,19 +723,19 @@ def _adopt(
         stated.setdefault(same_value(key, raw), raw)
     if len(stated) != 1:
         return None
-    edit = _assign(document, here.pointer, key, next(iter(stated.values())))
-    if edit is None:
+    decided = settled_at(built, here, name, key, next(iter(stated.values())), cache)
+    if not isinstance(decided, Settled):
         return None
-    return {
-        "title": f"Take the {key} the other declarations of '{name}' state",
-        "kind": QUICK_FIX,
-        "edit": {"changes": {here.path.as_uri(): [edit]}},
-    }
+    return Reconciliation(
+        f"Take the {key} the other declarations of '{name}' state",
+        key,
+        Settlement((decided,), ()),
+    )
 
 
 def _from_producer(
     built: Index, here: Site, document: Document, name: str, key: str, cache: dict[Path, Document]
-) -> dict[str, Any] | None:
+) -> Reconciliation | None:
     """Take the value the producing component states, into the declaration asked at.
 
     The direction that reads naturally from a consumer. A component that reads a variable is
@@ -572,35 +750,41 @@ def _from_producer(
     producer = producers[0]
     target = _at_site(producer, name, cache)
     raw = None if target is None else target.raw_at(f"{producer.pointer}.{key}")
-    mine = document.raw_at(f"{here.pointer}.{key}")
-    if raw is None or raw == mine or (key in DEFERRED_KEYS and mine is None):
+    if raw is None:
         return None
-    edit = _assign(document, here.pointer, key, raw)
-    if edit is None:
+    decided = settled_at(built, here, name, key, raw, cache)
+    if not isinstance(decided, Settled):
         return None
     owner = producer.path.stem.removesuffix(".ddd")
-    return {
-        "title": f"Use the {key} declared in {owner}",
-        "kind": QUICK_FIX,
-        "edit": {"changes": {here.path.as_uri(): [edit]}},
-    }
+    return Reconciliation(f"Use the {key} declared in {owner}", key, Settlement((decided,), ()))
 
 
 def _remove_here(
-    built: Index, here: Site, document: Document, name: str, key: str, cache: dict[Path, Document]
-) -> dict[str, Any] | None:
+    built: Index,
+    here: Site,
+    document: Document,
+    name: str,
+    key: str,
+    cache: dict[Path, Document],
+    *,
+    across: bool = False,
+) -> Reconciliation | None:
     """Take a key out, when this declaration is the only one that states it.
 
     The other half of adopting somebody else's answer: a key nobody else mentions is
     reconciled by removing it just as much as by spreading it, and which of the two an author
     wants is not something to decide for them. Only offered when no other declaration has one,
     because otherwise removing it settles nothing.
+
+    ``across`` says the caller will widen this to every declaration of the variable, which is
+    what :func:`reconciliations` does for a finding's one press. That changes the question: the
+    other declarations stating the key are ones this removal now reaches too, so the
+    disagreement it settles is between all of them and the owner's silence, and only the *owner*
+    stating the key is a reason to withhold - taking the owner's value is that key's fix then,
+    and this title would be untrue besides. Without it the button vanished from every consumer's
+    row of a variable with two readers, exactly where the widening exists to reach them both.
     """
     if key in DEFERRED_KEYS or document.raw_at(f"{here.pointer}.{key}") is None:
-        return None
-    if key in _keys_of(document, here.pointer)[1]:
-        # Offering to remove a key the kind requires is offering to break the file: it would
-        # not load at all afterwards, which is a worse state than the disagreement it settles.
         return None
     others = [site for site in built.declarations.get(name, ()) if site != here]
     # Nobody to disagree with is not the same as everybody agreeing: a variable one component
@@ -618,62 +802,56 @@ def _remove_here(
             # "other declarations" the title speaks for; withhold the offer instead.
             return None
         targets.append(target)
-    if any(
-        target.raw_at(f"{site.pointer}.{key}") is not None
+    stating = {
+        site
         for site, target in zip(others, targets, strict=True)
-    ):
-        return None
-    edit = _erase(document, here.pointer, key)
-    if edit is None:
-        return None
+        if target.raw_at(f"{site.pointer}.{key}") is not None
+    }
     producers = [site for site in built.producers.get(name, ()) if site != here]
+    if across:
+        # Widened, only the owner's own value stands in the way; see the docstring.
+        stating &= set(producers)
+    if stating:
+        return None
+    decided = settled_at(built, here, name, key, None, cache)
+    if not isinstance(decided, Settled):
+        return None
     where = (
         f"which {producers[0].path.stem.removesuffix('.ddd')} does not declare"
         if len(producers) == 1
         else f"which no other declaration of '{name}' has"
     )
-    return {
-        "title": f"Remove this {key}, {where}",
-        "kind": QUICK_FIX,
-        "edit": {"changes": {here.path.as_uri(): [edit]}},
-    }
+    return Reconciliation(f"Remove this {key}, {where}", key, Settlement((decided,), ()))
 
 
 def _remove_elsewhere(
     built: Index, here: Site, document: Document, name: str, key: str, cache: dict[Path, Document]
-) -> dict[str, Any] | None:
+) -> Reconciliation | None:
     """Take the key out of the other declarations, when this one does not state it.
 
     The mirror of spreading a value, and the direction that was missing: a declaration with no
     ``unit`` could take one from the others but never say "none of you should have one
     either". Both are ways of agreeing, and which one is meant is the author's to choose.
+
+    Which declarations it reaches is :func:`settle`'s to say, as it is for :func:`_propagate`,
+    and it carries what cannot lose the key as well: an editor offers the reachable part, and a
+    page that refuses a partial settlement needs to be told there is one. This declaration is
+    among the ones asked and answers nothing, since silence is what it already states - except
+    where a type it names states the key for it, which is a declaration that cannot lose it
+    either and is exactly how a removal that settles nothing used to be offered.
     """
     if key in DEFERRED_KEYS or document.raw_at(f"{here.pointer}.{key}") is not None:
         return None
-    changes: dict[str, list[dict[str, Any]]] = {}
-    for site in built.declarations.get(name, ()):
-        if site == here:
-            continue
-        target = _at_site(site, name, cache)
-        if target is None:
-            continue
-        edit = (
-            None
-            if target.raw_at(f"{site.pointer}.{key}") is None
-            or key in _keys_of(target, site.pointer)[1]
-            else _erase(target, site.pointer, key)
-        )
-        if edit is not None:
-            changes.setdefault(site.path.as_uri(), []).append(edit)
-    if not changes:
+    settlement = settle(built, name, key, None, cache)
+    elsewhere = len(settlement.changes)
+    if elsewhere == 0:
         return None
-    elsewhere = sum(len(edits) for edits in changes.values())
-    return {
-        "title": f"Remove the {key} from {elsewhere} other declaration"
+    return Reconciliation(
+        f"Remove the {key} from {elsewhere} other declaration"
         f"{'s' if elsewhere != 1 else ''} of '{name}'",
-        "kind": QUICK_FIX,
-        "edit": {"changes": changes},
-    }
+        key,
+        settlement,
+    )
 
 
 def _erase(document: Document, definition: str, key: str) -> dict[str, Any] | None:
@@ -698,7 +876,7 @@ def _erase(document: Document, definition: str, key: str) -> dict[str, Any] | No
 
 def _propagate(
     built: Index, here: Site, document: Document, name: str, key: str, cache: dict[Path, Document]
-) -> dict[str, Any] | None:
+) -> Reconciliation | None:
     """One action, or nothing when every other declaration already says the same.
 
     Which declarations it reaches is :func:`settle`'s to say, as it is for ``ddd gui``. One that
@@ -708,25 +886,16 @@ def _propagate(
     raw = document.raw_at(f"{here.pointer}.{key}")
     if raw is None:
         return None
-    changes: dict[str, list[dict[str, Any]]] = {}
-    for change in settle(built, name, key, raw, cache).changes:
-        edit = _assign(read(change.site.path, cache), change.site.pointer, key, raw)
-        # `settle` already ran every check `_assign` makes - kind, meaning key fixed by a type,
-        # already agrees - before it put this site in `changes`, so there is always an edit
-        # here. Asserted rather than guarded, the way `_give_an_identity` narrows a span it
-        # already knows is there: a branch that cannot be taken is a branch no test can cover
-        # and no reader can trust.
-        assert edit is not None
-        changes.setdefault(change.site.path.as_uri(), []).append(edit)
-    if not changes:
+    settlement = settle(built, name, key, raw, cache)
+    elsewhere = len(settlement.changes)
+    if elsewhere == 0:
         return None
-    elsewhere = sum(len(edits) for edits in changes.values())
-    return {
-        "title": f"Apply this {key} to {elsewhere} other declaration"
+    return Reconciliation(
+        f"Apply this {key} to {elsewhere} other declaration"
         f"{'s' if elsewhere != 1 else ''} of '{name}'",
-        "kind": QUICK_FIX,
-        "edit": {"changes": changes},
-    }
+        key,
+        settlement,
+    )
 
 
 def _assign(document: Document, definition: str, key: str, raw: str) -> dict[str, Any] | None:
@@ -737,17 +906,19 @@ def _assign(document: Document, definition: str, key: str, raw: str) -> dict[str
     ``axis`` into the measurement somebody else declared would only add a file that no longer
     loads to a project that already has something to fix.
 
-    Refused as well for a meaning key a named type fixes, for the same reason: the declaration
-    already gets this key from its ``typename``, and stating it again beside that is an error
-    the loader reports, not an override.
+    Refused as well for a key a named type fixes - what it means and the storage under it alike,
+    :data:`ddd.models.objects.FIXED_BY_A_TYPE` - for the same reason: the declaration already
+    gets this key from its ``typename``, and stating it again beside that is an error the loader
+    reports, not an override. The same question :func:`settled_at` asks first, through
+    :func:`_type_named` rather than a second spelling of it, so the two cannot come to two
+    answers.
     """
     if key not in _keys_of(document, definition)[0]:
         return None
-    if key in MEANING_KEYS and isinstance(document.value_at(f"{definition}.typename"), str):
-        # The type it names fixes this key; stated beside it, the loader refuses the file. An
-        # explicit ``null`` names no type - the same reading ``settle`` gives it, so a plain
-        # declaration that happens to state ``"typename": null`` beside its ``datatype`` is not
-        # caught here.
+    if key in FIXED_BY_A_TYPE and _type_named(document, definition) is not None:
+        # The type it names fixes this key; stated beside it, the loader refuses the file.
+        # ``_type_named`` reads an explicit ``null`` as naming none, so a plain declaration
+        # that happens to state ``"typename": null`` beside its ``datatype`` is not caught here.
         return None
     existing = document.raw_at(f"{definition}.{key}")
     if existing is not None:

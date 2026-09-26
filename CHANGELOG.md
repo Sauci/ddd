@@ -150,6 +150,23 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   on an object's `init` now leads to this grid, the way every other finding already
   leads to what it names.
 
+* **A `definition-mismatch` finding now carries a button for each key its declarations
+  disagree about.**  Opened from a consumer, it takes the producing component's value;
+  opened from the producer's own row - the same disagreement, filed there too - it sends
+  that value outward, and the reader never chooses a direction.  Either way the value may
+  be silence: a producer stating no `unit` where its readers state one is settled by taking
+  it out of all of them, from either row.  Previewed first, it
+  settles every declaration of the variable at once, not only the one the finding names;
+  the apply button reads "Apply to 2 files" where two have to move.  Nothing is offered
+  where the variable has no single producer - several components writing it, or none,
+  leaves no owner to take a direction from; the variable's own panel, one click from the
+  finding, still settles any value the reader chooses, unless it would leave the file
+  unable to load.  A key is offered only where one change settles it for every
+  declaration: never `kind`, the one key no edit may carry between declarations, and not a
+  key some declaration could neither take nor drop - one its named type fixes, one its
+  kind does not allow, or the `datatype`, `conversion` or `typename` its own storage is
+  made of.
+
 * **The editor's reconcile quick fix is no longer offered for a value that already means what
   it would be set to.**  Taking the producing component's value, or spreading one declaration's
   value to the rest, now writes nothing to a declaration that already states it, however
@@ -157,14 +174,22 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   one are one value, as the checks have always counted them.
 
 * **The editor offers no unit to a declaration whose type fixes it.**  A declaration naming a
-  declared type takes its `unit`, `conversion` and `limits` from the type, and the loader
-  refuses one of them stated beside the `typename`.  A `definition-mismatch` on such a
+  declared type takes its `datatype`, `unit`, `conversion` and `limits` from the type, and the
+  loader refuses one of them stated beside the `typename`.  A `definition-mismatch` on such a
   declaration was offered the producer's `unit` or `conversion` all the same, or the one
   every other declaration states, and "Apply this unit to N other declarations" from another
   declaration wrote into it too: each fix left a file that no longer loaded.  None of the
-  three is offered to a declaration naming a type any longer, and "Apply this unit", or the
-  same action for a `conversion` or `limits`, leaves it out of the declarations it counts and
-  changes.
+  four is offered to a declaration naming a type any longer, and "Apply this unit", or the
+  same action for a `datatype`, a `conversion` or `limits`, leaves it out of the declarations
+  it counts and changes.
+
+* **The editor no longer offers to unname a declaration's storage, or to name it twice.**  A
+  definition states either a `datatype` with the `conversion` that goes with it or the
+  `typename` of a type fixing both, and the loader refuses a file that states neither or
+  both.  "Remove the datatype from N other declarations", the same for a `conversion`, and
+  "Apply this typename" into a declaration already stating a `datatype` each wrote one of
+  those files; none of them is offered any more, and an action reaching several declarations
+  leaves out whichever of them could not take it.
 
 * **Renaming a unit from the editor, and quick fixes for an unknown one.**  `F2` on a unit -
   from any place it is stated, or from its entry in a units file - renames it everywhere at

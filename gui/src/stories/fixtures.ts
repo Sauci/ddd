@@ -27,6 +27,7 @@ const SENSOR_HUB = "C:/work/demo/components/sensor_hub.ddd.json";
 const CONTROLLER = "C:/work/demo/components/controller.ddd.json";
 const USER_INTERFACE = "C:/work/demo/components/user_interface.ddd.json";
 const PUMP = "C:/work/demo/components/pump.ddd.json";
+const EVENT_LOGGER = "C:/work/demo/subsystems/logging/event_logger.ddd.json";
 const TYPES = "C:/work/demo/types.ddd.json";
 const DEMO = "C:/work/demo/demo.ddd.json";
 
@@ -902,6 +903,142 @@ export const ID_FIX: FixReply = {
       ],
     },
   ],
+};
+
+/** UserInterface's ValueE disagreeing with Controller, the variable's one producer, on both its
+ * datatype and its unit - two keys to fix, each its own button (`ddd.finding_fixes._reconciled`).
+ * Filed on the whole definition, with the producer's declaration noted as the reference, exactly
+ * as a real `definition-mismatch` is (`ddd.analysis._compare`).
+ *
+ * `examples/demo` grounds every coordinate a reference screenshot prints as literal text: read
+ * from the shipped files rather than invented. ValueE is UserInterface's first interface entry
+ * (`component.interface[0].definition`, `user_interface.ddd.json:10`) and Controller's third,
+ * where it is the one declaration with `"scope": "output"`
+ * (`component.interface[2].definition`, `controller.ddd.json:36`) - the variable's real, single
+ * producer. Only the disagreement itself is invented: both files really state `datatype:
+ * "uint16"` and `unit: "Hz"`, agreeing with Controller. */
+export const DEFINITION_MISMATCH: Finding = {
+  file: USER_INTERFACE,
+  check: "definition-mismatch",
+  severity: "error",
+  message:
+    "'ValueE' is declared differently by component 'UserInterface' than by 'Controller' " +
+    "(datatype: uint8 != uint16, unit: 'kHz' != 'Hz')",
+  pointer: "component.interface[0].definition",
+  notes: [
+    {
+      message: "reference declaration",
+      file: CONTROLLER,
+      pointer: "component.interface[2].definition",
+    },
+  ],
+  route: { kind: "variable", name: "ValueE" },
+};
+
+/** The two fixes `DEFINITION_MISMATCH` carries, offered in the order UserInterface's own
+ * declaration writes the keys: datatype, then unit (`reconciliations`' `wanted`).
+ *
+ * ValueE's real second reader is EventLogger (`examples/demo/subsystems/logging/
+ * event_logger.ddd.json`), not SensorHub, which has no ValueE declaration at all - confirmed by
+ * `grep -n ValueE examples/demo/components/*.ddd.json examples/demo/subsystems/logging/
+ * *.ddd.json`. EventLogger's ValueE is its own first interface entry
+ * (`component.interface[0].definition`, `event_logger.ddd.json:10`), stating the producer's own
+ * datatype (`uint16`, real, line 13) but - fictionally, the disagreement this story exists to
+ * show - the wrong unit. Taking the datatype therefore reaches UserInterface alone; taking the
+ * unit reaches both files that still say `kHz`, in `operations_for`'s own path-sorted order
+ * (`components/...` before `subsystems/...`) - a consumer's fix widened to every declaration of
+ * the variable, not left at the one the finding is filed on (`_across`). */
+export const DEFINITION_MISMATCH_FIX: FixReply = {
+  revision: 7,
+  fixes: [
+    {
+      title: "Use the datatype declared in controller",
+      changes: [
+        {
+          file: USER_INTERFACE,
+          fingerprint: "d",
+          operations: [
+            { op: "set", pointer: "component.interface[0].definition.datatype", raw: '"uint16"' },
+          ],
+          hunks: [
+            {
+              line: 13,
+              before: ['          "datatype": "uint8",'],
+              after: ['          "datatype": "uint16",'],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      title: "Use the unit declared in controller",
+      changes: [
+        {
+          file: USER_INTERFACE,
+          fingerprint: "d",
+          operations: [
+            { op: "set", pointer: "component.interface[0].definition.unit", raw: '"Hz"' },
+          ],
+          hunks: [
+            {
+              line: 14,
+              before: ['          "unit": "kHz",'],
+              after: ['          "unit": "Hz",'],
+            },
+          ],
+        },
+        {
+          file: EVENT_LOGGER,
+          fingerprint: "e",
+          operations: [
+            { op: "set", pointer: "component.interface[0].definition.unit", raw: '"Hz"' },
+          ],
+          hunks: [
+            {
+              line: 14,
+              before: ['          "unit": "kHz",'],
+              after: ['          "unit": "Hz",'],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+/** UserInterface's ValueF disagreeing with Controller on `kind` alone - the one of the three
+ * reasons a `definition-mismatch` carries no fix that a reader can actually see in the panel:
+ * `kind` is absent from `PROPAGATED_KEYS` (`ddd.lsp.edits`), so `reconciliations` never
+ * considers it as a candidate key and no chooser can settle it either. Confirmed by running the
+ * real pipeline rather than predicting it: a two-component project stating `ValueF` as
+ * `"measurement"` in one and `"parameter"` in the other files exactly one `definition-mismatch`,
+ * message `"'ValueF' is declared differently by component 'UserInterface' than by 'Controller'
+ * (kind: parameter != measurement)"`, and `ddd.finding_fixes.fixes_for("definition-mismatch",
+ * ...)` on it answers `()`.
+ *
+ * Grounded the same way as `DEFINITION_MISMATCH`: ValueF is Controller's fourth interface entry,
+ * its second with `"scope": "output"` (`component.interface[3].definition`,
+ * `controller.ddd.json:51`), and UserInterface's second (`component.interface[1].definition`,
+ * `user_interface.ddd.json:29`). Both really state `kind: "measurement"`; only UserInterface's
+ * is fictionally `"parameter"` here, the disagreement this story exists to show. Distinct from
+ * `DEFINITION_MISMATCH`'s ValueE so the two stories never read as two contradictory findings
+ * about one variable. */
+export const KIND_MISMATCH: Finding = {
+  file: USER_INTERFACE,
+  check: "definition-mismatch",
+  severity: "error",
+  message:
+    "'ValueF' is declared differently by component 'UserInterface' than by 'Controller' " +
+    "(kind: parameter != measurement)",
+  pointer: "component.interface[1].definition",
+  notes: [
+    {
+      message: "reference declaration",
+      file: CONTROLLER,
+      pointer: "component.interface[3].definition",
+    },
+  ],
+  route: { kind: "variable", name: "ValueF" },
 };
 
 /** A project with nothing to report. */

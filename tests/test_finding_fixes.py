@@ -135,6 +135,58 @@ class TestAMismatch:
         # An exact set, not a superset check: this is what pins the producer *out*.
         assert {edit.path.name for edit in offered[0].changes} == {"b.ddd.json", "c.ddd.json"}
 
+    def test_a_consumer_is_offered_the_producer_s_silence_across_both_consumers(
+        self, tmp_path: Path
+    ) -> None:
+        # Silence is the producer's value too, and this is the shape that reaches for it: `a`
+        # writes `Speed` and states no unit, `b` and `c` read it and both state one. The
+        # producer's own row offers to take the unit out of the two of them; each consumer's row
+        # has to offer the same thing, or the reader sees an unexplained blank where the identical
+        # finding on the other file has a button. It vanished because `_remove_here` asked
+        # "does any other declaration state this key" - `c` does, from `b`'s row - which is the
+        # right question for the editor's reach of one declaration and the wrong one here, where
+        # the press reaches `c` as well.
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="Hz")),
+                "c.ddd.json": component("C", declare("input", "Speed", unit="Hz")),
+            },
+        )
+        for name in ("b.ddd.json", "c.ddd.json"):
+            offered = fixes_for("definition-mismatch", root / name, DEFINITION, {}, built)
+            assert [fix.title for fix in offered] == ["Remove this unit, which a does not declare"]
+            assert {edit.path.name for edit in offered[0].changes} == {"b.ddd.json", "c.ddd.json"}
+        # The same reach as the producer's own row, which is what makes the two rows one fix.
+        producer = fixes_for("definition-mismatch", root / "a.ddd.json", DEFINITION, {}, built)
+        assert [fix.title for fix in producer] == [
+            "Remove the unit from 2 other declarations of 'Speed'"
+        ]
+
+    def test_a_key_the_producer_states_is_never_taken_out_of_the_variable(
+        self, tmp_path: Path
+    ) -> None:
+        # The other side of the widened reach, and the reason it is not simply unguarded: `b`
+        # agrees with the producer about the unit and disagrees about the datatype, so the unit
+        # is a key `reconciliations` still walks and `_from_producer` still declines - `b` already
+        # means "rpm". Offering to remove it would take an agreed value out of the producer's own
+        # file to settle a disagreement about something else, under a title saying `a` does not
+        # declare it.
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm", datatype="uint16")
+                ),
+                "b.ddd.json": component(
+                    "B", declare("input", "Speed", unit="rpm", datatype="uint8")
+                ),
+            },
+        )
+        offered = fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built)
+        assert [fix.title for fix in offered] == ["Use the datatype declared in a"]
+
     def test_the_producer_is_offered_its_own_value_outward(self, tmp_path: Path) -> None:
         built, root = built_of(
             tmp_path,
@@ -374,6 +426,40 @@ class TestAMismatch:
         # `unit` is sending its own value out to both other declarations - and that is exactly
         # the settlement just shown above cannot reach `c`.
         assert fixes_for("definition-mismatch", root / "a.ddd.json", DEFINITION, {}, built) == ()
+
+    def test_a_fix_that_would_change_nothing_at_all_is_not_offered(self, tmp_path: Path) -> None:
+        # The window this function reads files for, taken to its end: the index recorded `b` as a
+        # declaration of `Speed`, and the file now declares `Other` at that pointer - the variable
+        # `d` produces and `e` reads, both already stating "bar". `_from_producer` reads the file
+        # as it stands, decides `b` should take "bar", and the widening recomputes that over the
+        # declarations of `Other` the index knows - `d` and `e`, neither of which changes, and not
+        # `b`, which was not one of them when the index was built. The result is a settlement with
+        # nothing in it: `Api._fix` answered 200 with an empty change list, and the panel drew the
+        # button, printed "Nothing to change" under it and offered no apply control.
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="Hz")),
+                "d.ddd.json": component("D", declare("output", "Other", unit="bar")),
+                "e.ddd.json": component("E", declare("input", "Other", unit="bar")),
+            },
+        )
+        path = root / "b.ddd.json"
+        path.write_text(
+            path.read_text(encoding="utf-8")
+            .replace('"name": "Speed"', '"name": "Other"', 1)
+            .replace('"unit": "Hz"', '"unit": "kPa"', 1),
+            encoding="utf-8",
+            newline="",
+        )
+        # Asserted first, so this cannot pass by the decision simply not being made: it is made,
+        # titled, and comes back with neither a change nor a reason it could not be made.
+        document = read(path, {})
+        (decision,) = reconciliations(built, path, document, DEFINITION, {}, owned=True)
+        assert decision.title == "Use the unit declared in d"
+        assert (decision.settlement.changes, decision.settlement.unsettled) == ((), ())
+        assert fixes_for("definition-mismatch", path, DEFINITION, {}, built) == ()
 
     def test_a_check_with_no_fix_at_all_carries_nothing(self, tmp_path: Path) -> None:
         # Neither of the two checks this module knows: not `missing-id`'s pointer-and-cache

@@ -105,11 +105,17 @@ def _reconciled(
     A settlement that cannot reach every declaration is dropped rather than offered. The page
     refuses a partial settlement, so the button would do nothing but explain itself, and a fix
     that does nothing teaches a reader to stop reading the fixes.
+
+    Nor is one that reaches no declaration at all, for the same reason and with nothing left even
+    to explain: the panel would draw the button, print "Nothing to change" under it and offer no
+    apply control. That is the window this function reads files for - a widened settlement is
+    computed over the declarations the index recorded, and a file that has drifted since is not
+    among them, so the change the decision was built from is no longer one anybody makes.
     """
     document = read(path, cache)
     fixes: list[Fix] = []
     for decision in reconciliations(built, path, document, pointer, cache, owned=True):
-        if decision.settlement.unsettled:
+        if decision.settlement.unsettled or not decision.settlement.changes:
             continue
         changes = tuple(
             FileEdit(edit_path, operations)

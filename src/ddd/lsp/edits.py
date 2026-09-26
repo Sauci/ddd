@@ -312,6 +312,11 @@ def reconciliations(
     everywhere, not moved along to the next file that still carries it. Giving needs no such
     widening - it is built from :func:`settle` already, which never reached only one file.
 
+    The builders are told which reach they are being asked for, because a removal's own
+    "otherwise this settles nothing" depends on it: a consumer taking a key out while another
+    consumer keeps it changes nothing about the disagreement, and taking it out of every
+    declaration at once ends it.
+
     Taking is narrower too, under ``owned=True``: adopting what the other readers agree on is
     offered to the editor, never to the page. It only ever arises with a silent producer - the
     one case ``_from_producer`` cannot answer for - and a silent owner is not standing in for
@@ -338,13 +343,17 @@ def reconciliations(
         # variable - or none writing it - is its own finding, and settling the disagreement
         # between them would be choosing a winner this has no standing to choose.
         return []
+    # Whether what is taken will reach every declaration of the variable rather than this one:
+    # the page's reach, and what the builders below have to know before deciding that a removal
+    # settles nothing.
+    widened = owned and not produces
     offered: list[Reconciliation] = []
     for candidate in wanted:
         # Two ways to settle a key, and at most one of each. Taking is somebody else's answer
         # brought here - the producer's for preference, the one the rest agree on otherwise,
         # or their silence. Giving is this declaration's answer sent out, value or silence.
         taken = _from_producer(built, here, document, name, candidate, cache) or _remove_here(
-            built, here, document, name, candidate, cache
+            built, here, document, name, candidate, cache, across=widened
         )
         if not owned:
             # The editor offers a consensus among the other declarations where the producer is
@@ -362,7 +371,7 @@ def reconciliations(
         ordered = [given, taken] if produces else [taken, given]
         if owned:
             first = ordered[0]
-            if first is not None and not produces:
+            if widened and first is not None:
                 first = _across(built, name, first, cache)
             ordered = [first]
         offered.extend(action for action in ordered if action is not None)
@@ -726,7 +735,14 @@ def _from_producer(
 
 
 def _remove_here(
-    built: Index, here: Site, document: Document, name: str, key: str, cache: dict[Path, Document]
+    built: Index,
+    here: Site,
+    document: Document,
+    name: str,
+    key: str,
+    cache: dict[Path, Document],
+    *,
+    across: bool = False,
 ) -> Reconciliation | None:
     """Take a key out, when this declaration is the only one that states it.
 
@@ -734,6 +750,14 @@ def _remove_here(
     reconciled by removing it just as much as by spreading it, and which of the two an author
     wants is not something to decide for them. Only offered when no other declaration has one,
     because otherwise removing it settles nothing.
+
+    ``across`` says the caller will widen this to every declaration of the variable, which is
+    what :func:`reconciliations` does for a finding's one press. That changes the question: the
+    other declarations stating the key are ones this removal now reaches too, so the
+    disagreement it settles is between all of them and the owner's silence, and only the *owner*
+    stating the key is a reason to withhold - taking the owner's value is that key's fix then,
+    and this title would be untrue besides. Without it the button vanished from every consumer's
+    row of a variable with two readers, exactly where the widening exists to reach them both.
     """
     if key in DEFERRED_KEYS or document.raw_at(f"{here.pointer}.{key}") is None:
         return None
@@ -753,15 +777,20 @@ def _remove_here(
             # "other declarations" the title speaks for; withhold the offer instead.
             return None
         targets.append(target)
-    if any(
-        target.raw_at(f"{site.pointer}.{key}") is not None
+    stating = {
+        site
         for site, target in zip(others, targets, strict=True)
-    ):
+        if target.raw_at(f"{site.pointer}.{key}") is not None
+    }
+    producers = [site for site in built.producers.get(name, ()) if site != here]
+    if across:
+        # Widened, only the owner's own value stands in the way; see the docstring.
+        stating &= set(producers)
+    if stating:
         return None
     decided = settled_at(built, here, name, key, None, cache)
     if not isinstance(decided, Settled):
         return None
-    producers = [site for site in built.producers.get(name, ()) if site != here]
     where = (
         f"which {producers[0].path.stem.removesuffix('.ddd')} does not declare"
         if len(producers) == 1

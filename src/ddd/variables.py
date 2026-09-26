@@ -23,15 +23,17 @@ from ddd.editing import UNREADABLE, EditError, Operation, edit_text
 from ddd.lsp.edits import PROPAGATED_KEYS, Settlement, Unsettled
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document, read
-from ddd.models.objects import MEANING_KEYS
+from ddd.models.objects import FIXED_BY_A_TYPE
 
 ROLES: Final = (("output", "produces"), ("input", "reads"), ("local", "local"))
 """What a declaration's scope says its component does with the variable."""
 
-FIXED_BY_A_TYPE: Final = ("datatype", *MEANING_KEYS)
-"""What a scalar type states once, for every declaration naming it."""
-
-SETTLE_CODES: Final = {"unreachable": "unreadable", "type": "fixed-by-type", "kind": "invalid"}
+SETTLE_CODES: Final = {
+    "unreachable": "unreadable",
+    "type": "fixed-by-type",
+    "kind": "invalid",
+    "storage": "invalid",
+}
 """The code ``ddd gui`` refuses a settlement with, for each reason a declaration cannot take it."""
 
 
@@ -49,7 +51,7 @@ class Declared:
 
     type_name: str | None
     fixed: Mapping[str, str]
-    """The json text of each key of :data:`FIXED_BY_A_TYPE` the named type states."""
+    """The json text of each key of :data:`ddd.models.objects.FIXED_BY_A_TYPE` the type states."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,6 +233,13 @@ def refusal(unsettled: Unsettled, name: str, key: str) -> tuple[str, str]:
         sentence = f"{where} names the type '{unsettled.type_name}', which fixes its {key}"
     elif unsettled.reason == "kind":
         sentence = f"{where} is of a kind that does not allow that {key}"
+    elif unsettled.reason == "storage":
+        # The loader's own two sentences, quoted: the declaration would not load afterwards, and
+        # which of the pair is at fault depends on which way the change went.
+        sentence = (
+            f"{where} would not load with that {key}: storage is named exactly once, and a "
+            f"'datatype' comes with a 'conversion'"
+        )
     else:
         sentence = f"{where} is no longer where the last analysis found it"
     return SETTLE_CODES[unsettled.reason], sentence

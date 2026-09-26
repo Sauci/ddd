@@ -3174,7 +3174,10 @@ class TestPropagating:
             # Taken first: a declaration the loader dropped is in nobody's producer list, so
             # this reads as a consumer, which is offered somebody else's answer first.
             "Take the conversion the other declarations of 'Speed' state",
-            "Remove the conversion from 2 other declarations of 'Speed'",
+            # And taken only. Sending this declaration's silence out - "Remove the conversion
+            # from 2 other declarations of 'Speed'" - is no longer offered: `b` and `c` each
+            # state a `datatype`, which comes with its conversion, so the removal would leave
+            # both files refused with "a 'datatype' comes with a 'conversion'".
         ]
         take = offered[0]
         (edits,) = take["edit"]["changes"].values()

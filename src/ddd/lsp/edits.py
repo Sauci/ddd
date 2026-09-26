@@ -58,7 +58,7 @@ from ddd.lsp.units import (
     unit_drift,
 )
 from ddd.models import definition_keys
-from ddd.models.objects import MEANING_KEYS
+from ddd.models.objects import FIXED_BY_A_TYPE, STORAGE_NAMES, storage_keys
 from ddd.value_identity import same_value
 
 PROPAGATED_KEYS: Final = frozenset(
@@ -463,10 +463,12 @@ class Unsettled:
     """One declaration a settlement cannot change, and why not."""
 
     site: Site
-    reason: Literal["unreachable", "kind", "type"]
+    reason: Literal["unreachable", "kind", "type", "storage"]
     """``unreachable``: its file no longer names the variable at that pointer, or no longer
     reads as json. ``kind``: its kind has no such key, or requires the one being taken out.
-    ``type``: it names a declared type that fixes the key to another value."""
+    ``type``: it names a declared type that fixes the key to another value. ``storage``: the
+    key is the storage it named, or would name it a second way - what
+    :func:`ddd.models.objects.storage_keys` answers."""
 
     type_name: str | None = None
     """The declared type that fixes the key, when ``reason`` is ``type``."""
@@ -490,21 +492,34 @@ def settled_at(
     so that an action changing one declaration asks it the same question a whole settlement
     asks of each: the two must not drift into two readings of "can this declaration take it".
 
-    A declaration naming a declared type takes none of the keys the type fixes: it agrees when
-    the type states ``raw``, and refuses otherwise - stating the key beside the type is an error
-    the loader reports, not an override.
+    A declaration naming a declared type takes none of the keys the type fixes - every key of
+    :data:`ddd.models.objects.FIXED_BY_A_TYPE`, the ``datatype`` as much as what it means: it
+    agrees when the type states ``raw``, and refuses otherwise - stating the key beside the type
+    is an error the loader reports, not an override. Read from what the declaration *resolves
+    to*, in other words, which is what ``definition-mismatch`` compares and what makes a
+    ``typename`` carrying the answer something other than silence.
+
+    Nor does a declaration give up the storage it named, or name it a second way. That is
+    :func:`ddd.models.objects.storage_keys`', the same reading the variable's panel hides its
+    "state nothing" by, and the loader refuses a file either would write: a ``datatype`` taken
+    out, or a ``typename`` written beside one, leaves storage named twice or not at all.
     """
     document = _at_site(site, name, cache)
     if document is None:
         return Unsettled(site, "unreachable")
     typename = document.value_at(f"{site.pointer}.typename")
-    if key in MEANING_KEYS and isinstance(typename, str):
+    if key in FIXED_BY_A_TYPE and isinstance(typename, str):
         if _fixed_by(built, typename, key, cache) != raw:
             return Unsettled(site, "type", typename)
         return None
     stated = document.raw_at(f"{site.pointer}.{key}")
     if _already(key, stated, raw) or (key in DEFERRED_KEYS and stated is None):
         return None
+    storage, another = storage_keys(
+        [named for named in STORAGE_NAMES if document.raw_at(f"{site.pointer}.{named}") is not None]
+    )
+    if (raw is None and key in storage) or (raw is not None and key in another):
+        return Unsettled(site, "storage")
     accepted, required = _keys_of(document, site.pointer)
     if (raw is None and key in required) or (raw is not None and key not in accepted):
         return Unsettled(site, "kind")
@@ -764,25 +779,24 @@ def _remove_elsewhere(
     ``unit`` could take one from the others but never say "none of you should have one
     either". Both are ways of agreeing, and which one is meant is the author's to choose.
 
-    What cannot lose the key is left out rather than refusing the action, as it is for
-    :func:`_propagate`: an editor offers what it can.
+    Which declarations it reaches is :func:`settle`'s to say, as it is for :func:`_propagate`,
+    and it carries what cannot lose the key as well: an editor offers the reachable part, and a
+    page that refuses a partial settlement needs to be told there is one. This declaration is
+    among the ones asked and answers nothing, since silence is what it already states - except
+    where a type it names states the key for it, which is a declaration that cannot lose it
+    either and is exactly how a removal that settles nothing used to be offered.
     """
     if key in DEFERRED_KEYS or document.raw_at(f"{here.pointer}.{key}") is not None:
         return None
-    changes = tuple(
-        decided
-        for site in built.declarations.get(name, ())
-        if site != here
-        and isinstance(decided := settled_at(built, site, name, key, None, cache), Settled)
-    )
-    elsewhere = len(changes)
+    settlement = settle(built, name, key, None, cache)
+    elsewhere = len(settlement.changes)
     if elsewhere == 0:
         return None
     return Reconciliation(
         f"Remove the {key} from {elsewhere} other declaration"
         f"{'s' if elsewhere != 1 else ''} of '{name}'",
         key,
-        Settlement(changes, ()),
+        settlement,
     )
 
 
@@ -838,13 +852,15 @@ def _assign(document: Document, definition: str, key: str, raw: str) -> dict[str
     ``axis`` into the measurement somebody else declared would only add a file that no longer
     loads to a project that already has something to fix.
 
-    Refused as well for a meaning key a named type fixes, for the same reason: the declaration
-    already gets this key from its ``typename``, and stating it again beside that is an error
-    the loader reports, not an override.
+    Refused as well for a key a named type fixes - what it means and the storage under it alike,
+    :data:`ddd.models.objects.FIXED_BY_A_TYPE` - for the same reason: the declaration already
+    gets this key from its ``typename``, and stating it again beside that is an error the loader
+    reports, not an override. The same set :func:`settled_at` decides by, which asks first: these
+    are two spellings of one rule and must not come to two answers.
     """
     if key not in _keys_of(document, definition)[0]:
         return None
-    if key in MEANING_KEYS and isinstance(document.value_at(f"{definition}.typename"), str):
+    if key in FIXED_BY_A_TYPE and isinstance(document.value_at(f"{definition}.typename"), str):
         # The type it names fixes this key; stated beside it, the loader refuses the file. An
         # explicit ``null`` names no type - the same reading ``settle`` gives it, so a plain
         # declaration that happens to state ``"typename": null`` beside its ``datatype`` is not

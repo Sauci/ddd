@@ -311,18 +311,41 @@ class TestAMismatch:
         assert [fix.title for fix in offered] == ["Use the datatype declared in a"]
         assert "a.ddd.json" not in {edit.path.name for fix in offered for edit in fix.changes}
 
+    def test_a_mismatch_between_a_type_and_a_base_datatype_offers_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        # One component has adopted the project's scalar type and the other has not, which is
+        # the shape in which what a declaration states and what it resolves to part company: `a`
+        # is silent in its file about the datatype, the conversion and the unit, and means all
+        # three through `Speed_t`. Read as silence, that offered six one-click buttons across the
+        # two mirrored rows, five of which wrote a file the loader then refused - a `typename`
+        # beside a `datatype`, either storage key taken away, the conversion a datatype comes
+        # with taken away - and the sixth removed `b`'s unit and left the mismatch standing.
+        # `settled_at` now reads both rules, so every one of them is withheld: settling this
+        # takes more than one key at a time, and the reader follows the panel link the finding
+        # already carries.
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", typename="Speed_t")),
+                "b.ddd.json": component(
+                    "B", declare("input", "Speed", datatype="uint16", unit="Hz")
+                ),
+                "t.ddd.json": types(scalar_type("Speed_t", datatype="uint16", unit="rpm")),
+            },
+        )
+        for name in ("a.ddd.json", "b.ddd.json"):
+            assert fixes_for("definition-mismatch", root / name, DEFINITION, {}, built) == ()
+        # And not because there is nothing to report: the unit really does disagree, through the
+        # type, which is what the panel this finding links to settles a key at a time.
+        assert settle(built, "Speed", "unit", '"rpm"', {}).unsettled == ()
+
     def test_a_declaration_that_cannot_take_the_value_stops_the_fix_being_offered(
         self, tmp_path: Path
     ) -> None:
-        # The natural way to block a key is a declared type that fixes it - but any fixture
-        # that names one this way also states no `datatype` (a type and a base datatype are
-        # mutually exclusive), which makes the plain declarations' own `datatype` look "missing"
-        # from it too and offers a *second*, unrelated fix that turns out to be its own defect
-        # (see the report: `settled_at` does not know `datatype` is fixed by a type - only
-        # `unit`, `conversion` and `limits` are `MEANING_KEYS` - so it would write `datatype`
-        # right beside `typename`, which the schema refuses). That defect belongs to
-        # `ddd.lsp.edits.settled_at`, outside this module, and is reported rather than patched
-        # here. What this test isolates instead is the guarantee `_reconciled` itself owns: a
+        # The natural way to block a key is a declared type that fixes it - which the test above
+        # now does, since `settled_at` learnt that a type fixes the storage as well as what it
+        # means. What this test isolates instead is the guarantee `_reconciled` itself owns: a
         # settlement that cannot reach every declaration is dropped rather than offered - shown
         # here the way a file can genuinely go out of reach, by drifting after the index was
         # built, the same as a concurrent edit would leave it.

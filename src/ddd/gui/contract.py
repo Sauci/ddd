@@ -1031,12 +1031,20 @@ class CompareReply(_Frozen):
     the session's own severity policy."""
 
     findings: tuple[Finding, ...]
-    """Every finding the comparison reported, sorted by file: the baseline's own errors,
-    prefixed ``"in the baseline: "``, beside the interface and storage differences between the
-    two deliveries. A finding prefixed that way always carries ``route: null`` - it is marked as
-    the baseline's by where the server keeps it, never by asking whether its file happens to be
-    one of the open project's, which a baseline that is also a file of the open project (the
-    reader's own project, read a second time as its own baseline) would answer wrong."""
+    """Every finding ``compare`` itself reported, sorted by file: the interface and storage
+    differences between the two deliveries. Always carries ``route: null`` - ``route_of``
+    answers only for a component file, and every one of these is filed on the candidate's own
+    project file, with an empty pointer."""
+
+    baseline_findings: tuple[Finding, ...]
+    """Every error the baseline's own analysis reported, forwarded here, sorted by file - still
+    captioned ``"in the baseline: "`` for a reader's own sake, exactly as ``read_baseline``
+    wrote it. Always carries ``route: null``: a finding is the baseline's because it is in
+    *this* field, never because of where its file happens to resolve to, which a baseline that
+    is also a file of the open project (the reader's own project, read a second time as its own
+    baseline) would answer wrong. A page must not tell the two fields' findings apart by
+    matching that prefix - this field is what that would be re-deriving, unreliably, from text
+    a message is free to change."""
 
     renames: tuple[Renamed, ...]
     """Every object the two sides agree is one and the same but call differently now, sorted

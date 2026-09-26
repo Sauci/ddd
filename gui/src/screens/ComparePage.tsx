@@ -3,7 +3,7 @@ import { useState } from "react";
 import { getCompare } from "../api/client";
 import type { State } from "../api/types";
 import { CompareView } from "../components/CompareView";
-import { findingRows } from "../lib/findings";
+import { compareRows } from "../lib/compare";
 
 interface Props {
   state: State | null;
@@ -42,7 +42,7 @@ export function ComparePage({ state, stopped }: Props) {
   if (
     reply !== null &&
     selected !== undefined &&
-    !findingRows(reply.findings).some((row) => row.key === selected)
+    !compareRows(reply).some((row) => row.key === selected)
   ) {
     setSelected(undefined);
   }

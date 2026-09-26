@@ -976,22 +976,28 @@ class Api:
             return _error(400, "bad-request", str(refused))
         sources = {file.path.resolve(): file for file in revision.files}
         cache: dict[Path, Document] = {}
-        entries = sorted(
-            [(filed, sources.get(filed.file.resolve())) for filed in result.findings]
-            # Never a source for one of these, whatever file it resolves to: a baseline given as
-            # a project description can share files, ids and even paths with the open project,
-            # so being in `baseline_findings` rather than `findings` is what marks a finding as
-            # the baseline's - not a test of where it happens to sit, which answered this wrong
-            # for a baseline that was also a file of the open project.
-            + [(filed, None) for filed in result.baseline_findings],
-            key=lambda entry: entry[0].file.as_posix(),
+        findings = sorted(result.findings, key=lambda filed: filed.file.as_posix())
+        baseline_findings = sorted(
+            result.baseline_findings, key=lambda filed: filed.file.as_posix()
         )
         return Reply(
             200,
             contract.CompareReply(
                 revision=revision.number,
                 verdict=result.verdict,
-                findings=[_finding(filed, source, cache) for filed, source in entries],
+                findings=[
+                    _finding(filed, sources.get(filed.file.resolve()), cache) for filed in findings
+                ],
+                # Never a source for one of these, whatever file it resolves to: a baseline given
+                # as a project description can share files, ids and even paths with the open
+                # project, so being carried in this field rather than `findings` is what marks a
+                # finding as the baseline's - not a test of where it happens to sit, which
+                # answered this wrong for a baseline that was also a file of the open project. Two
+                # fields on the wire, mirroring `Compared`'s own two, rather than one merged list
+                # a reader would have to tell apart by matching the "in the baseline: " a message
+                # happens to carry - `CompareReply.baseline_findings`' own docstring is what that
+                # matching would be re-deriving, unreliably, from text a page does not own.
+                baseline_findings=[_finding(filed, None, cache) for filed in baseline_findings],
                 renames=[
                     {"id": entry["id"], "old": entry["from"], "new": entry["to"]}
                     for entry in result.renames

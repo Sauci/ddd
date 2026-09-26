@@ -1,6 +1,6 @@
 import type { CompareReply } from "../api/types";
-import { compareRouteReason } from "../lib/compare";
-import { findingCounts, findingRows } from "../lib/findings";
+import { compareRouteReason, compareRows } from "../lib/compare";
+import { findingCounts } from "../lib/findings";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { FindingPanelView } from "./FindingPanelView";
@@ -41,11 +41,17 @@ export interface CompareViewProps {
  * `State` this tab does not need for anything else. `onOpen` is never called for the same reason,
  * and stays a plain no-op: routing a comparison finding by the object it names is real work left
  * to a part of its own (spec §5), not a wire this tab pre-runs today.
+ *
+ * `reply.findings` and `reply.baseline_findings` are two fields on purpose (`CompareReply`'s own
+ * docstrings), not one a page would have to sort back apart by matching a message's own text -
+ * `compareRows` reads which is which structurally and carries it onto every row, which is what
+ * lets the File column name a baseline row as the baseline's own even when its file displays
+ * with the very name one of the candidate's own files has.
  */
 export function CompareView(props: CompareViewProps) {
   const { reply, refusal, busy } = props;
-  const rows = reply === null ? [] : findingRows(reply.findings);
-  const finding = rows.find((row) => row.key === props.selected)?.finding;
+  const rows = reply === null ? [] : compareRows(reply);
+  const row = rows.find((entry) => entry.key === props.selected);
   return (
     <>
       <div className="compare-field">
@@ -80,18 +86,18 @@ export function CompareView(props: CompareViewProps) {
               ? "This project can replace the baseline."
               : "This project cannot replace the baseline."}
           </p>
-          <p className="summary">{findingCounts(reply.findings)}</p>
-          <div className={finding !== undefined ? "with-panel" : undefined}>
+          <p className="summary">{findingCounts(rows.map((entry) => entry.finding))}</p>
+          <div className={row !== undefined ? "with-panel" : undefined}>
             <div>
               <FindingsTableView rows={rows} selected={props.selected} onSelect={props.onSelect} />
             </div>
-            {finding !== undefined && (
+            {row !== undefined && (
               <div key={props.selected}>
                 <FindingPanelView
-                  finding={finding}
+                  finding={row.finding}
                   label={null}
                   href={null}
-                  reason={compareRouteReason(finding)}
+                  reason={compareRouteReason(row.fromBaseline)}
                   onOpen={() => {}}
                   // Nothing here ever offers a fix: `POST /api/edit` changes the open project,
                   // and a comparison's own finding names no place in it to change (see `reason`

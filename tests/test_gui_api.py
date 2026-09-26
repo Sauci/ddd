@@ -1481,6 +1481,7 @@ class TestCompare:
         assert reply.body["revision"] == 1
         assert reply.body["verdict"] is True
         assert reply.body["findings"] == []
+        assert reply.body["baseline_findings"] == []
         assert reply.body["renames"] == []
 
     def test_a_drifted_datatype_fails_the_verdict_with_a_changed_interface_finding(
@@ -1527,8 +1528,10 @@ class TestCompare:
         baseline forwards that same conflict, once per producer, at files that really are
         `revision.files`' own. Neither answers a route: it used to, because the api asked
         "is this file one of the open project's" and answered honestly for a message that
-        says "in the baseline: ..."; now a baseline finding is marked by which list the server
-        keeps it in, not by where its path happens to resolve to."""
+        says "in the baseline: ..."; now a baseline finding is carried in its own field of the
+        reply, `baseline_findings`, never in `findings` - marked by which one it is in, not by
+        where its path happens to resolve to, and a page reading the wire is told the same way
+        a test reading this reply's body now is."""
         api = opened(
             tmp_path,
             {
@@ -1539,7 +1542,12 @@ class TestCompare:
         )
         reply = get(api, "/api/compare", baseline=posix(tmp_path, "p.ddd.json"))
         assert reply.status == 200
-        forwarded = [f for f in reply.body["findings"] if f["check"] == "multiple-producers"]
+        # Never here: `multiple-producers` is not one of `compare`'s own comparison checks, and
+        # nothing the baseline's analysis forwards is ever mixed into this field.
+        assert not any(f["check"] == "multiple-producers" for f in reply.body["findings"])
+        forwarded = [
+            f for f in reply.body["baseline_findings"] if f["check"] == "multiple-producers"
+        ]
         assert len(forwarded) == 2
         assert all(f["message"].startswith("in the baseline: ") for f in forwarded)
         assert all(f["route"] is None for f in forwarded)

@@ -18,8 +18,8 @@ screen, not a word.
 one question. They are wrong in different ways: a project that passes every consistency check can
 still turn a `uint16` into a `uint32` and break the software already running in the field.
 Thirteen checks exist for that second question, `CHECKS` already flags each of them
-`comparison=True`, and `ddd gui`'s own `/api/checks` already reports that flag to the page. The tool knows these checks
-exist. The interface has never run one.
+`comparison=True`, and `ddd gui`'s own `/api/checks` already reports that flag to the page. The
+tool knows these checks exist. The interface has never run one.
 
 This part runs one.
 

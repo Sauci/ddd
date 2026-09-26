@@ -1,4 +1,5 @@
 import type {
+  CompareReply,
   DeclarableName,
   DeclarableReply,
   Finding,
@@ -7,6 +8,7 @@ import type {
   KindForm,
   PlanReply,
   ProjectUnit,
+  Renamed,
   SettleReply,
   State,
   TypeReply,
@@ -1676,3 +1678,121 @@ export const CURVE_CELL_PLAN: PlanReply = {
     },
   ],
 };
+
+// The Compare tab (spec 2026-09-26-gui-compare-design.md §6): can examples/demo replace a
+// baseline delivery archived somewhere under this session's own root? Every finding `compare`
+// itself reports is filed at one shared location, the candidate's own project file with an
+// empty pointer (`ddd.gui.compare.compared`'s own `where(revision.project)`) - never a place
+// `route_of` can answer for, which is why each of them carries `file: DEMO, pointer: ""` alike
+// (`../lib/compare`'s own docstring). The baseline's own findings carry no such rule -
+// `read_baseline` forwards them from wherever its own analysis filed them, prefixed
+// `"in the baseline: "` - so BASELINE_ROOT gives this one a directory of its own that mirrors
+// examples/demo's own layout, which is what lets its file share a display name with the
+// candidate's real sensor_hub.ddd.json: the exact case `../lib/compare`'s module docstring
+// names, and the reason the File column reads this row `the baseline's sensor_hub.ddd.json`
+// rather than plain `sensor_hub.ddd.json`.
+
+/** Where the baseline of CANNOT_REPLACE is archived: a project description under the session
+ * root, shaped like examples/demo itself. */
+export const BASELINE_ROOT = "C:/work/demo/deliveries/released";
+
+/** ValueC really is SensorHub's own float32 output, read by UserInterface alone and nobody else
+ * (`grep -n ValueC examples/demo/components/*.ddd.json examples/demo/subsystems/logging/
+ * *.ddd.json`: `sensor_hub.ddd.json:80`, `user_interface.ddd.json:48`). Only the baseline's own
+ * `uint16` is invented - the disagreement this finding exists to show. */
+const CHANGED_INTERFACE: Finding = {
+  file: DEMO,
+  check: "changed-interface",
+  severity: "error",
+  message:
+    "'ValueC' is not the same object any more (datatype: float32 != uint16), read by " +
+    "UserInterface",
+  pointer: "",
+  notes: [],
+  route: null,
+};
+
+/** No file examples/demo ships declares this (`grep -rn OldSensorFault examples/demo` answers
+ * nothing): the baseline's own object, gone from the candidate outright - `removed-object`
+ * fires exactly when something the baseline offered has no counterpart left to pair it with. */
+const REMOVED_OBJECT: Finding = {
+  file: DEMO,
+  check: "removed-object",
+  severity: "error",
+  message: "'OldSensorFault' is gone, but was read by Controller",
+  pointer: "",
+  notes: [],
+  route: null,
+};
+
+/** ValueB really is SensorHub's own output, read by both Controller and UserInterface
+ * (`grep -n ValueB examples/demo/components/*.ddd.json`: `controller.ddd.json:23`,
+ * `user_interface.ddd.json:119`). Only the baseline's own spelling, `RawValueB`, is invented -
+ * the rename this finding and RENAME_ROW below both exist to show. */
+const RENAMED_OBJECT: Finding = {
+  file: DEMO,
+  check: "renamed-object",
+  severity: "warning",
+  message:
+    "'RawValueB' is now called 'ValueB', read by Controller, UserInterface; every dataset, " +
+    "recording and script keyed by the old spelling needs migrating",
+  pointer: "",
+  notes: [],
+  route: null,
+};
+
+/** The pairing `compare` itself hands back for RENAMED_OBJECT above, exactly as
+ * `ddd.compare.renames` shapes it: ValueB's own real id (`sensor_hub.ddd.json:62`), carried
+ * across the name the baseline gave it. */
+const RENAME_ROW: Renamed = { id: "4kr9hsh0b448", old: "RawValueB", new: "ValueB" };
+
+/** The baseline's own `duplicate-id`, forwarded and captioned exactly as `read_baseline` writes
+ * it - never re-derived from that prefix (`../lib/compare`'s own docstring). Filed on the
+ * baseline's own copy of sensor_hub.ddd.json, at the position ValueC's declaration really holds
+ * in that file today (`component.interface[2].definition`, `sensor_hub.ddd.json:80`); the note
+ * points at ValueB's own, one entry earlier (`component.interface[1].definition`,
+ * `sensor_hub.ddd.json:61`). ValueB's id is real (`sensor_hub.ddd.json:62`); only the baseline's
+ * own duplicate of it is invented. */
+const BASELINE_DUPLICATE_ID: Finding = {
+  file: `${BASELINE_ROOT}/components/sensor_hub.ddd.json`,
+  check: "duplicate-id",
+  severity: "error",
+  message:
+    "in the baseline: 'ValueC' carries the id '4kr9hsh0b448', which 'ValueB' already carries; " +
+    "an id is one object's alone, and two objects sharing one make a later comparison pair the " +
+    "wrong pair",
+  pointer: "component.interface[2].definition.id",
+  notes: [
+    {
+      message: "first carries the id here",
+      file: `${BASELINE_ROOT}/components/sensor_hub.ddd.json`,
+      pointer: "component.interface[1].definition.id",
+    },
+  ],
+  route: null,
+};
+
+/** A delivery examples/demo can replace cleanly: no finding from either side, nothing renamed. */
+export const CAN_REPLACE: CompareReply = {
+  revision: 7,
+  verdict: true,
+  findings: [],
+  baseline_findings: [],
+  renames: [],
+};
+
+/** A delivery it cannot: two of `compare`'s own errors and a warning, one of the baseline's own
+ * errors besides, and the one rename its own `renamed-object` reports. */
+export const CANNOT_REPLACE: CompareReply = {
+  revision: 7,
+  verdict: false,
+  findings: [CHANGED_INTERFACE, REMOVED_OBJECT, RENAMED_OBJECT],
+  baseline_findings: [BASELINE_DUPLICATE_ID],
+  renames: [RENAME_ROW],
+};
+
+/** A baseline typed outside the session root - one of the spec's own four refusals (§6), settled
+ * before `read_baseline` is ever asked to read anything (`ddd.gui.compare._resolved_baseline`).
+ */
+export const REFUSED_OUTSIDE_ROOT =
+  "the baseline 'C:/archives/demo.ddd.json' is outside the session root 'C:/work/demo'";

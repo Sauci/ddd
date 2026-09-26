@@ -646,6 +646,16 @@ tr.changing td {
   gap: var(--space-2);
   margin-bottom: var(--space-3);
 }
+/* `.panel-field` was sized for a type name and a unit name, and sets no width at all, so
+   `align-items: start` above left this one at the browser's default input size - about eighteen
+   characters, clipping every path in every reference picture. It is the one field on the tab and
+   its content is always a path. Stretched to the column and capped, rather than given a width of
+   its own: capped alone it would still shrink-wrap, and stretched alone it would run the width of
+   the window. */
+.compare-field .panel-field {
+  align-self: stretch;
+  max-width: 44em;
+}
 .verdict {
   margin: 0 0 var(--space-3);
   padding: var(--space-3);

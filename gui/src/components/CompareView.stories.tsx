@@ -60,7 +60,7 @@ export const Empty = () => <View />;
 /** A delivery examples/demo can stand in for cleanly: the verdict leads, no findings follow it,
  * and "Nothing was renamed." stands where the renames table would be. */
 export const CanReplaceTheBaseline = () => (
-  <View baseline="C:/work/demo/deliveries/previous/demo.ddd.json" reply={CAN_REPLACE} />
+  <View baseline={`${BASELINE_ROOT}/demo.ddd.json`} reply={CAN_REPLACE} />
 );
 
 /** A delivery it cannot: three of the thirteen comparison checks - `changed-interface`,

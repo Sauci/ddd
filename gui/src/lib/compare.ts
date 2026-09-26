@@ -1,35 +1,37 @@
-import type { CompareReply, Finding } from "../api/types";
-import { type FindingRow, keyedFindings } from "./findings";
+import type { CompareReply, Finding, State } from "../api/types";
+import { type FindingRow, keyedFindings, noRouteReason } from "./findings";
 import { baseName } from "./units";
 
 /**
- * Why a comparison's finding leads nowhere - never `noRouteReason`, which answers that question
- * for the *open project's own* findings by asking what today's `state.files` says about the
- * finding's file. That is safe there because a Findings-tab finding is always about a file of
- * the very state being asked. A comparison finding is not one of those:
+ * Why a comparison's finding leads nowhere, said only where it does - a row that names a place
+ * in the open project leads there, and the panel offers the way rather than a sentence.
  *
- * - `compare`'s own findings (interface and storage differences) are filed on the candidate's
- *   whole project rather than a place in one file - `route_of` already answers `null` for
- *   exactly that shape, pointer `""` included.
- * - the baseline's own findings are marked route-less **at the source**, regardless of where
- *   their path resolves to - even one that happens to name a file of the open project, which
- *   comparing a project against itself makes legal (spec 2026-09-26-gui-compare-design.md §3).
+ * Three kinds of row, and which one this is is known structurally rather than guessed:
  *
- * Reading `noRouteReason`'s own branches: asked of a baseline finding whose file resolves to the
- * *same* path as a live, loaded, `component`-kind file of the open project - with a pointer that
- * still names a real declaration there - every branch but the last is skipped and it answers
- * "there is nothing at that place any more", which is false; there is something there, this
- * finding is simply not about it. Whether the open project's own analysis can actually produce
- * that exact pointer collision is a narrower question than this function needs to answer, and I
- * have not driven that literal case by hand - only a milder one, a baseline at a *different* path
- * sharing a display name only, which does not reach that branch at all. What is certain without
- * running anything is `fromBaseline`, not `state`, so this takes that instead: a baseline finding
- * cannot be answered wrong by a question it is never asked.
+ * - **the baseline's own findings**, marked route-less at the source whatever their path
+ *   resolves to - even one naming a file of the open project, which comparing a project against
+ *   itself makes legal (spec 2026-09-26-gui-compare-design.md §3). Answered first, before
+ *   anything reads `state`, because that is the case `noRouteReason` cannot answer: asked of a
+ *   baseline finding whose file *is* a live, loaded component of the open project, with a
+ *   pointer that still names a declaration there, it would answer "there is nothing at that
+ *   place any more", which is false - there is something there, this finding is simply not
+ *   about it.
+ * - **`compare`'s own findings**, filed at the candidate's project file with an empty pointer,
+ *   which is how a check about the whole delivery reports itself. `noRouteReason` would call
+ *   that file "a project file, which has no page yet" - true of the file, wrong about the
+ *   finding, which does not want a page to lead to.
+ * - **a plugin's comparison rule**, which files where its own `locate` puts it: a declaration in
+ *   a component of the open project, with a real pointer. Those route, and this is never asked
+ *   about one. When such a finding does not route - the file moved on since the analysis read
+ *   it, the same race the Findings tab lives with - `noRouteReason` is exactly the right answer,
+ *   and it is the open project's own file it is answering about.
  */
-export function compareRouteReason(fromBaseline: boolean): string {
-  return fromBaseline
-    ? "it is the baseline's own finding, not a place in your project"
-    : "it is about the whole delivery being compared, not a place in one file";
+export function compareRouteReason(row: CompareRow, state: State): string {
+  if (row.fromBaseline) return "it is the baseline's own finding, not a place in your project";
+  if (row.finding.pointer === "") {
+    return "it is about the whole delivery being compared, not a place in one file";
+  }
+  return noRouteReason(row.finding, state);
 }
 
 /** One row of the Compare tab's table: `FindingRow`'s three fields, and which side of the

@@ -4,10 +4,14 @@ import { getCompare } from "../api/client";
 import type { State } from "../api/types";
 import { CompareView } from "../components/CompareView";
 import { compareRows } from "../lib/compare";
+import type { Route } from "../lib/route";
 
 interface Props {
   state: State | null;
   stopped: boolean;
+  /** Following a finding that names a place in the open project, which the app navigates to -
+   * `FindingsPage`'s own prop, wired the same way from `App`. */
+  onOpen: (route: Route) => void;
 }
 
 /**
@@ -21,7 +25,7 @@ interface Props {
  * 2026-09-26-gui-compare-design.md §4) - and typing in the field, which never touches `asked`,
  * cannot itself trigger a request.
  */
-export function ComparePage({ state, stopped }: Props) {
+export function ComparePage({ state, stopped, onOpen }: Props) {
   const revision = state?.revision;
   // What the field shows, typed freely.
   const [baseline, setBaseline] = useState("");
@@ -46,8 +50,13 @@ export function ComparePage({ state, stopped }: Props) {
   ) {
     setSelected(undefined);
   }
+  // After every hook, as `FindingsPage`'s own is: a finding that names a place in the project is
+  // routed against the state, so there is nothing honest to draw until one has arrived.
+  if (state === null) return <p className="quiet">Reading the project…</p>;
   return (
     <CompareView
+      state={state}
+      onOpen={onOpen}
       baseline={baseline}
       onBaseline={setBaseline}
       // Trimmed here, once, rather than where the field is typed: `CompareView`'s own disabled

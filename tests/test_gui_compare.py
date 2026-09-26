@@ -514,6 +514,27 @@ class TestThePluginsComparisonRules:
         assert result.verdict is False
         assert [f.diagnostic.check for f in result.findings] == ["layout/key-changed"]
 
+    def test_a_plugins_comparison_finding_leads_to_the_declaration_it_names(
+        self, tmp_path: Path
+    ) -> None:
+        """Running the hooks gives the tab something it never had: a comparison finding filed at
+        a component of the open project with a real pointer, where ``compare()``'s own are all
+        filed at the project file with an empty one. ``route_of`` routes by that pointer, so it
+        leads exactly where a consistency finding filed there leads - and the page must let it,
+        rather than answering ``null`` by hand."""
+        description = _layout(tmp_path)
+        dump = tmp_path / "baseline.json"
+        _dumped(description, dump)
+        _moved_key(tmp_path)
+        revision = Session(tmp_path).open(description)
+        result = compared(revision, dump, tmp_path, {})
+        (filed,) = result.findings
+        assert filed.file == (tmp_path / "layout" / "storage.ddd.json").resolve()
+        sources = {file.path.resolve(): file for file in revision.files}
+        answered = _finding(filed, sources[filed.file], {})
+        assert answered["pointer"] == "component.interface[0]"
+        assert answered["route"] == {"kind": "variable", "name": "EngineHours"}
+
     def test_a_plugin_of_the_baseline_the_candidate_does_not_name_is_reported(
         self, tmp_path: Path
     ) -> None:

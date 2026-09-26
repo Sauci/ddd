@@ -1,12 +1,19 @@
-import type { CompareReply } from "../api/types";
+import type { CompareReply, State } from "../api/types";
 import { compareRouteReason, compareRows } from "../lib/compare";
-import { findingCounts } from "../lib/findings";
+import { findingCounts, routeHref, routeLabel, routeOf } from "../lib/findings";
+import type { Route } from "../lib/route";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { FindingPanelView } from "./FindingPanelView";
 import { FindingsTableView } from "./FindingsTableView";
 
 export interface CompareViewProps {
+  /** The open project as the session last published it: what a finding that names a place in it
+   * is routed against, exactly as the Findings tab routes its own (`routeLabel`,
+   * `noRouteReason`). */
+  state: State;
+  /** Following a finding that names a place in the open project, which the app navigates to. */
+  onOpen: (route: Route) => void;
   /** What the field shows: typed freely, and asked for only once the reader submits it - changing
    * it never asks again on its own. */
   baseline: string;
@@ -32,15 +39,15 @@ export interface CompareViewProps {
  * verdict leading, the findings below it, the renames as a table, and a refused baseline's
  * reason.
  *
- * Every finding this draws routes nowhere: `compare`'s own findings are filed on the candidate's
- * whole project rather than a place in one file, and the baseline's own are marked route-less at
- * the source regardless of where their path resolves to (`../lib/compare`'s own docstring has
- * the full reasoning). So, unlike the Findings tab this is otherwise the twin of, `label` and
- * `href` are given as `null` outright rather than asked of `../lib/findings`' `routeOf` family -
- * asking would answer the same `null`, every time, but would say so by re-deriving it from a
- * `State` this tab does not need for anything else. `onOpen` is never called for the same reason,
- * and stays a plain no-op: routing a comparison finding by the object it names is real work left
- * to a part of its own (spec §5), not a wire this tab pre-runs today.
+ * A finding that names a place in the open project leads there, through the same `routeOf`
+ * family the Findings tab uses: a plugin's comparison rule files at the declaration it is about
+ * - `layout/key-changed` at `component.interface[0]` of the component that declares the entry -
+ * and there is no reason to make a reader hunt for a place the finding already names. Most rows
+ * still lead nowhere, and `../lib/compare`'s `compareRouteReason` says which of the three kinds
+ * of row it is looking at; `FindingPanelView` draws the reason only where there is no link.
+ * Routing a finding by the *object its message names*, rather than by the place it is filed at,
+ * is still a part of its own (spec §5): a `renamed-object` names two objects and neither is
+ * where it sits.
  *
  * `reply.findings` and `reply.baseline_findings` are two fields on purpose (`CompareReply`'s own
  * docstrings), not one a page would have to sort back apart by matching a message's own text -
@@ -100,10 +107,13 @@ export function CompareView(props: CompareViewProps) {
               <div key={props.selected}>
                 <FindingPanelView
                   finding={row.finding}
-                  label={null}
-                  href={null}
-                  reason={compareRouteReason(row.fromBaseline)}
-                  onOpen={() => {}}
+                  label={routeLabel(row.finding, props.state)}
+                  href={routeHref(row.finding)}
+                  reason={compareRouteReason(row, props.state)}
+                  onOpen={() => {
+                    const route = routeOf(row.finding);
+                    if (route !== null) props.onOpen(route);
+                  }}
                   // Nothing here ever offers a fix: `POST /api/edit` changes the open project,
                   // and a comparison's own finding names no place in it to change (see `reason`
                   // above), while a baseline's finding is not about the open project at all.

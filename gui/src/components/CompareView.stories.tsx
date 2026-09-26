@@ -5,6 +5,7 @@ import {
   BASELINE_ROOT,
   CAN_REPLACE,
   CANNOT_REPLACE,
+  PROJECT_FINDINGS,
   REFUSED_OUTSIDE_ROOT,
 } from "../stories/fixtures";
 import { CompareView } from "./CompareView";
@@ -24,9 +25,9 @@ interface Props {
 }
 
 /** The Compare tab over one scenario's fixtures, with its own baseline field and selection -
- * `CompareView`'s own props, exactly as the tab itself supplies them (`ComparePage`). There is
- * no `onOpen`: a comparison finding routes nowhere at all (`../lib/compare`'s own docstring), so
- * `CompareView` never takes one. */
+ * `CompareView`'s own props, exactly as the tab itself supplies them (`ComparePage`). `state` is
+ * the Findings tab's own fixture, which is what a row naming a place in the open project is
+ * routed against; `onOpen` is where the app would navigate, and a story navigates nowhere. */
 function View({
   baseline: typedAtFirst = "",
   reply = null,
@@ -41,6 +42,8 @@ function View({
   );
   return (
     <CompareView
+      state={PROJECT_FINDINGS}
+      onOpen={() => undefined}
       baseline={baseline}
       onBaseline={setBaseline}
       onAsk={() => undefined}

@@ -88,14 +88,19 @@ project's `ddd check --baseline` would, and there is no new control.
 
 - **The verdict** - whether the candidate can stand in for the baseline, by the rule the command's
   exit code already uses.
-- **The findings**, as `Finding`s exactly as the Findings tab receives them — but **they lead
-  nowhere**, and this sentence used to claim the opposite. Measured: `compare` locates every
-  finding of one call at a single shared `location`, the candidate's own **project file** with an
-  empty pointer, so `route_of` — which answers only for a component file — returns `None` for all
-  of them. The panel already draws a finding that leads nowhere, which part 4 built for exactly
-  this. Routing them by the object their message names is a real feature and not a one-liner: a
-  `renamed-object` finding names two, and which one a button should open is a design question
-  rather than an implementation detail. Left to a part of its own.
+- **The findings**, as `Finding`s exactly as the Findings tab receives them. **Most lead
+  nowhere, and one kind leads where it is filed.** `compare` locates every finding of one call
+  at a single shared `location`, the candidate's own **project file** with an empty pointer, so
+  `route_of` — which answers only for a component file — returns `None` for all of those; the
+  baseline's own are marked route-less at the source, whatever their path resolves to. A
+  **plugin's** comparison rule is the third kind: it files through the candidate's own `locate`,
+  so it lands at a declaration in a component of the open project with a real pointer —
+  `layout/key-changed` at `storage.ddd.json#component.interface[0]` — and `route_of` answers for
+  it exactly as it does for a consistency finding filed there. That route is followed. (This
+  bullet twice claimed a flat "they lead nowhere": the first time before `route_of` was read,
+  and again after the plugin hooks were run, which is what created the third kind.) Routing a
+  finding by the object its *message* names, rather than by the place it is filed at, is still a
+  part of its own: a `renamed-object` names two objects and neither is where it sits.
 - **The rename rows**, `{id, from, to}`, which `compare` hands back as the pairing it made rather
   than a second comparison of the same two sides.
 

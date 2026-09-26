@@ -352,11 +352,13 @@ The commands
        description or a dictionary this DDD could not read, or json that is neither. Its
        verdict answers only whether the project can replace that
        baseline, not whether the project is itself consistent: the project's own findings,
-       the Findings tab's own question, take no part in it. Nothing it shows leads
-       anywhere: the comparison's own findings name the whole delivery rather than a place
-       in one file, the baseline's own findings marked ``in the baseline:`` name a place in
-       the baseline's files rather than in this project's, and the panel says which of the
-       two it has open. The renames the comparison finds are drawn here as a
+       the Findings tab's own question, take no part in it. A finding that names a place in
+       this project leads there, as on the Findings tab: a plugin's comparison rule files at
+       the declaration it is about. The comparison's own findings name the whole delivery
+       rather than a place in one file, and the baseline's own, marked ``in the baseline:``,
+       name a place in the baseline's files rather than in this project's - for those the
+       panel says so rather than offering to go anywhere. The renames the comparison finds
+       are drawn here as a
        table, exactly what ``ddd compare --renames`` would write to a file, and are not
        written from this tab.
        ``-b DIR`` names a build directory as for ``ddd lsp``, ``--host ADDRESS``

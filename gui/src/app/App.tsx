@@ -128,7 +128,7 @@ export function App() {
         ) : route.view === "findings" ? (
           <FindingsPage state={state} stopped={stopped} onOpen={navigate} />
         ) : route.view === "compare" ? (
-          <ComparePage state={state} stopped={stopped} />
+          <ComparePage state={state} stopped={stopped} onOpen={navigate} />
         ) : (
           <ProjectPage state={state} onComponent={openComponent} />
         )}

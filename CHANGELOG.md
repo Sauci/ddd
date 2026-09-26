@@ -158,10 +158,12 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   neither.  Its verdict counts only the comparison and the baseline's own errors,
   never the open project's own consistency errors - the Findings tab's own question - so a
   project the Findings tab still shows full of errors can be told here that it can replace
-  its baseline.  Nothing it shows leads anywhere: the comparison's own findings name the
-  whole delivery rather than a place in one file, the baseline's own errors marked `in the
-  baseline:` name a place in the baseline's files rather than in yours, and the panel says
-  which of the two it has open rather than offering to go there.  The renames the
+  its baseline.  A finding that names a place in this project leads there, as on the
+  Findings tab: a plugin's comparison rule files at the declaration it is about.  The
+  comparison's own findings name the whole delivery rather than a place in one file, and
+  the baseline's own errors marked `in the baseline:` name a place in the baseline's files
+  rather than in this project's; for those the panel says so rather than offering to go
+  anywhere.  The renames the
   comparison finds - objects the two sides agree are one and the same, called differently
   now - are drawn here as a table, exactly what `ddd compare --renames` would write to a
   file, and the tab does not write it.

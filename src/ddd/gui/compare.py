@@ -130,6 +130,18 @@ Nothing is kept for a baseline that did not resolve: a refusal is not a delivery
 here would go stale the moment the reader fixed the file it is about.
 """
 
+MAX_BASELINES: Final = 4
+"""How many baselines the cache keeps, the one read longest ago falling off.
+
+Every entry holds a whole :class:`~ddd.ir.DataDictionary` - "the 45 MB one of a thousand object
+project", as :mod:`ddd.deliveries` sizes it - and the cache lives as long as the server, which
+is a day. Re-asking one baseline costs a single entry however many times it is re-read, but
+nothing bounded how many *paths* a session could name, and ``ddd gui --host`` lets somebody else
+name them. Four is past what a reader flips between while comparing; the undo stack is bounded
+at :data:`~ddd.gui.session.MAX_UNDO` for the same reason, and a cache in the strict sense may be
+discarded at will.
+"""
+
 
 class BaselineRefusedError(ValueError):
     """Why ``?baseline=`` could not be read as one, for the route to answer 400 with.
@@ -333,7 +345,12 @@ def _resolved_baseline(
     hit = cache.get(resolved)
     if hit is None or stamped(hit.stamps) != hit.stamps:
         hit = _read(resolved)
+        # Taken out and put back rather than assigned in place, so that the entry dropped below
+        # is the one read longest ago: updating a key leaves it where it first went in.
+        cache.pop(resolved, None)
         cache[resolved] = hit
+        while len(cache) > MAX_BASELINES:
+            del cache[next(iter(cache))]
     return hit.resolved, hit.forwarded
 
 

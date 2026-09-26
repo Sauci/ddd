@@ -19,7 +19,13 @@ from ddd.cli import EXIT_OK, main
 from ddd.deliveries import Refusal
 from ddd.diagnostics import Severity
 from ddd.gui.api import _finding
-from ddd.gui.compare import _REASONS, BaselineCache, BaselineRefusedError, compared
+from ddd.gui.compare import (
+    _REASONS,
+    MAX_BASELINES,
+    BaselineCache,
+    BaselineRefusedError,
+    compared,
+)
 from ddd.gui.session import Revision, Session
 from test_gui_api import opened, unloaded
 
@@ -648,3 +654,29 @@ class TestTheCache:
         assert cache == {}
         _dumped(root / "p.ddd.json", baseline)
         assert compared(revision, baseline, root, cache).verdict is True
+
+    def test_the_cache_keeps_only_the_last_few_baselines(self, tmp_path: Path) -> None:
+        """It lives as long as the server and every entry holds a whole dictionary - the 45 MB
+        one of a thousand object project - so how many paths one session can be made to hold is
+        not a question to leave to whoever can reach the port."""
+        root = tmp_path / "project"
+        revision = _revision(
+            root,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+            },
+        )
+        dump = root / "baseline.json"
+        _dumped(root / "p.ddd.json", dump)
+        archived = [root / f"baseline_{number}.json" for number in range(MAX_BASELINES + 1)]
+        cache: BaselineCache = {}
+        for copy in archived:
+            shutil.copy(dump, copy)
+            assert compared(revision, copy, root, cache).verdict is True
+        assert len(cache) == MAX_BASELINES
+        # The oldest fell off; the newest is still there, and the one that fell off is read
+        # again rather than refused when it is asked for next.
+        assert archived[0].resolve() not in cache
+        assert archived[-1].resolve() in cache
+        assert compared(revision, archived[0], root, cache).verdict is True

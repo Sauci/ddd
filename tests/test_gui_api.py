@@ -74,6 +74,44 @@ LISTED_TWICE = {
     "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
 }
 
+# A constant declared with no `description` at all - `set_constant`'s "nothing to remove" arm
+# needs an entry the key is already absent from, which no shipped example happens to have.
+NO_DESCRIPTION = {
+    "p.ddd.json": project("P", "c.ddd.json"),
+    "c.ddd.json": {"constants": [{"name": "BARE", "value": 1}]},
+}
+
+# A constants file whose one entry fails the format - missing `value` - so the project as a
+# whole still opens (unlike a component, which loads nothing when invalid) but this one file
+# does not: measured with a scratch probe, `built` is not `None` and `c.ddd.json` is in both
+# `revision.files` (not loaded) and `shared_project(...).constants_files` (still recognised as
+# a constants file, since that only asks whether its top level holds a `constants` key).
+UNREADABLE_CONSTANTS = {
+    "p.ddd.json": project("P", "c.ddd.json"),
+    "c.ddd.json": {"constants": [{"name": "BAD"}]},
+}
+
+# A stray constants.ddd.json beside the project description, naming nothing the project
+# includes: `add` must refuse to create over it rather than overwrite a file it does not own.
+STRAY_CONSTANTS_FILE = {
+    "p.ddd.json": project("P", "a.ddd.json"),
+    "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+    "constants.ddd.json": "not a file `add` wrote",
+}
+
+# Two constants, neither used: removing one must not empty the file below the format's own
+# `min_length=1` on `constants` (measured - a file it would leave holding `"constants": []`
+# fails to load, same as one that never had any, which is not what this fixture is for).
+UNUSED_CONSTANT = {
+    "p.ddd.json": project("P", "c.ddd.json"),
+    "c.ddd.json": {
+        "constants": [
+            {"name": "SPARE", "value": 3, "description": "not used yet"},
+            {"name": "KEPT", "value": 1, "description": "stays after SPARE goes"},
+        ]
+    },
+}
+
 
 def opened(tmp_path: Path, files: dict[str, object]) -> Api:
     write_tree(tmp_path, files)
@@ -2525,6 +2563,327 @@ class TestTheTypesTab:
         monkeypatch.setattr("ddd.gui.api.previewed", refuse)
         reply = get(api, "/api/type-plan", action="rename", name="Sensor_t", to="Probe_t")
         assert (reply.status, reply.body["error"]) == (409, "unverified")
+
+
+class TestShared:
+    """``GET /api/shared``: the Shared files tab's one table, over examples/vocabulary - the one
+    example declaring a constant in a constants file (`TREND_SAMPLES`) and one inline in a
+    component (`PRESSURE_CELLS`), both named by a dimension, checking clean."""
+
+    def test_the_table_lists_every_constant_with_its_value_as_text(self, tmp_path: Path) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        body = get(api, "/api/shared").body
+        assert body["revision"] == 1
+        assert [(e["kind"], e["name"], e["value"]) for e in body["entries"]] == [
+            ("constant", "PRESSURE_CELLS", "8"),
+            ("constant", "TREND_SAMPLES", "16"),
+        ]
+
+    def test_each_row_counts_its_uses_and_its_findings(self, tmp_path: Path) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        rows = {e["name"]: e for e in get(api, "/api/shared").body["entries"]}
+        assert (rows["PRESSURE_CELLS"]["uses"], rows["PRESSURE_CELLS"]["findings"]) == (1, 0)
+        assert (rows["TREND_SAMPLES"]["uses"], rows["TREND_SAMPLES"]["findings"]) == (1, 0)
+
+    def test_a_project_declaring_no_constants_has_an_empty_table(self, api: Api) -> None:
+        # The `api` fixture's project has no constants file at all.
+        assert get(api, "/api/shared").body["entries"] == []
+
+    def test_a_project_the_analysis_could_not_read_has_an_empty_table(self, tmp_path: Path) -> None:
+        assert get(unloaded(tmp_path), "/api/shared").body["entries"] == []
+
+    def test_shared_needs_an_open_project(self, root: Path) -> None:
+        assert get(Api(Session(root)), "/api/shared").status == 409
+
+
+class TestConstant:
+    """``GET /api/constant`` and ``GET /api/constant-plan``, over examples/vocabulary and a
+    handful of small trees it cannot exercise on its own: an absent key, a constants file that
+    did not load, a stray one beside the project description, and a constant nothing uses."""
+
+    def test_the_panel_names_its_entry_its_uses_and_its_description(self, tmp_path: Path) -> None:
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        body = get(api, "/api/constant", name="PRESSURE_CELLS").body
+        assert body["revision"] == 1
+        assert body["value"] == "8"
+        assert body["description"] == "cells of the pressure manifold"
+        assert body["file"] == posix(root, "pump.ddd.json")
+        assert body["pointer"] == "component.constants[0]"
+        assert [(u["kind"], u["name"], u["component"]) for u in body["uses"]] == [
+            ("variable", "ManifoldPressure", "Pump")
+        ]
+        assert body["findings"] == []
+
+    def test_a_constant_declared_in_a_constants_file_answers_the_same_shape(
+        self, tmp_path: Path
+    ) -> None:
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        body = get(api, "/api/constant", name="TREND_SAMPLES").body
+        assert body["value"] == "16"
+        assert body["description"].startswith("sample slots of a pressure trend buffer")
+        assert body["file"] == posix(root, "constants.ddd.json")
+        assert body["pointer"] == "constants[0]"
+        assert [(u["kind"], u["name"], u["component"]) for u in body["uses"]] == [
+            ("variable", "PressureTrend", "Pump")
+        ]
+
+    def test_a_dimension_value_finding_routes_back_to_the_constant_and_nowhere_else(
+        self, tmp_path: Path
+    ) -> None:
+        """Pins the fix that belongs beside this route: ``FindingRoute.kind`` had no
+        ``"constant"`` member until this part, so building this very finding for the panel
+        raised a ``pydantic.ValidationError`` before a test ever reached the assertion below -
+        every other test of this class happens to ask about a constant with no finding on it,
+        which is why only this one catches it. Also checks the finding does not bleed into a
+        different constant's own count."""
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        text = (root / "constants.ddd.json").read_text(encoding="utf-8")
+        (root / "constants.ddd.json").write_text(
+            text.replace('"value": 16', '"value": 0'), encoding="utf-8"
+        )
+        api.session.poll()
+        trend = get(api, "/api/constant", name="TREND_SAMPLES").body
+        findings = {f["check"]: f for f in trend["findings"]}
+        assert findings["dimension-value"]["route"] == {
+            "kind": "constant",
+            "name": "TREND_SAMPLES",
+        }
+        pressure = get(api, "/api/constant", name="PRESSURE_CELLS").body
+        assert pressure["findings"] == []
+
+    def test_a_constant_is_asked_for_by_name(self, tmp_path: Path) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/constant")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+
+    def test_a_constant_the_project_does_not_declare_is_not_found(self, tmp_path: Path) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/constant", name="NOTHING")
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_a_name_only_a_file_that_did_not_load_declares_is_not_said_to_be_gone(
+        self, tmp_path: Path
+    ) -> None:
+        files = {
+            "p.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": json.dumps(
+                component(
+                    "A",
+                    declare("output", "Speed", unit="rpm"),
+                    constants=[{"name": "GHOST", "value": 1}],
+                ),
+                indent=2,
+            )[:60],
+        }
+        reply = get(opened(tmp_path, files), "/api/constant", name="GHOST")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert "a.ddd.json did not load" in reply.body["message"]
+
+    def test_a_project_the_analysis_could_not_read_cannot_answer_a_constant(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(unloaded(tmp_path), "/api/constant", name="TREND_SAMPLES")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_a_constant_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root)), "/api/constant", name="TREND_SAMPLES")
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+    def test_setting_a_value_is_previewed_then_written(self, tmp_path: Path) -> None:
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        before = contents(root)
+        preview = get(
+            api, "/api/constant-plan", action="set", name="PRESSURE_CELLS", key="value", raw="9"
+        ).body
+        assert contents(root) == before
+        assert [Path(c["file"]).name for c in preview["changes"]] == ["pump.ddd.json"]
+        assert applied(api, preview, "the value of PRESSURE_CELLS").status == 200
+        assert '"value": 9' in (root / "pump.ddd.json").read_text(encoding="utf-8")
+
+    def test_renaming_rewrites_the_entry_and_every_shape_naming_it(self, tmp_path: Path) -> None:
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        preview = get(
+            api, "/api/constant-plan", action="rename", name="TREND_SAMPLES", to="SAMPLE_COUNT"
+        ).body
+        assert [Path(c["file"]).name for c in preview["changes"]] == [
+            "constants.ddd.json",
+            "pump.ddd.json",
+        ]
+        label = "the rename of 'TREND_SAMPLES' to 'SAMPLE_COUNT'"
+        assert applied(api, preview, label).status == 200
+        for name in ("constants.ddd.json", "pump.ddd.json"):
+            assert "TREND_SAMPLES" not in (root / name).read_text(encoding="utf-8")
+        assert get(api, "/api/constant", name="SAMPLE_COUNT").status == 200
+        assert get(api, "/api/constant", name="TREND_SAMPLES").status == 404
+
+    @pytest.mark.parametrize(
+        ("to", "says"),
+        [("PRESSURE_CELLS", "is the name of the declared constant"), ("if", "is reserved")],
+    )
+    def test_a_rename_that_may_not_be_made_is_refused_in_the_editor_s_words(
+        self, tmp_path: Path, to: str, says: str
+    ) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/constant-plan", action="rename", name="TREND_SAMPLES", to=to)
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert says in reply.body["message"]
+
+    def test_removing_an_unused_constant_takes_its_entry_out(self, tmp_path: Path) -> None:
+        api = opened(tmp_path, UNUSED_CONSTANT)
+        preview = get(api, "/api/constant-plan", action="remove", name="SPARE").body
+        assert applied(api, preview, "SPARE removed").status == 200
+        assert get(api, "/api/constant", name="SPARE").status == 404
+
+    def test_removing_a_constant_a_shape_names_is_refused(self, tmp_path: Path) -> None:
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        before = contents(root)
+        reply = get(api, "/api/constant-plan", action="remove", name="TREND_SAMPLES")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert "pump.ddd.json" in reply.body["message"]
+        assert contents(root) == before
+
+    def test_adding_to_an_existing_constants_file_is_previewed_then_written(
+        self, tmp_path: Path
+    ) -> None:
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        preview = get(api, "/api/constant-plan", action="add", name="SPARE_CELLS", raw="4").body
+        assert [Path(c["file"]).name for c in preview["changes"]] == ["constants.ddd.json"]
+        assert applied(api, preview, "SPARE_CELLS declared").status == 200
+        text = (root / "constants.ddd.json").read_text(encoding="utf-8")
+        assert '"name": "SPARE_CELLS"' in text
+        assert get(api, "/api/constant", name="SPARE_CELLS").status == 200
+
+    def test_adding_when_the_project_has_no_constants_file_creates_one(
+        self, api: Api, root: Path
+    ) -> None:
+        before = contents(root)
+        preview = get(api, "/api/constant-plan", action="add", name="NEW_CONST", raw="5").body
+        assert contents(root) == before
+        # Sorted by path, as `SharedPlan` promises: "constants.ddd.json" sorts before
+        # "p.ddd.json" beside it, unlike the units precedent this test is modelled on, where the
+        # project file happens to sort first - so the two are told apart here by which one has a
+        # fingerprint rather than by position.
+        created, described = preview["changes"]
+        assert (Path(described["file"]).name, Path(created["file"]).name) == (
+            "p.ddd.json",
+            "constants.ddd.json",
+        )
+        assert described["fingerprint"] == fingerprint(before["p.ddd.json"])
+        assert created["fingerprint"] is None
+        assert applied(api, preview, "NEW_CONST declared").status == 200
+        text = (root / "constants.ddd.json").read_text(encoding="utf-8")
+        assert created["hunks"] == [{"line": 1, "before": [], "after": text.splitlines()}]
+        assert json.loads(text)["constants"][0]["name"] == "NEW_CONST"
+        assert '"constants.ddd.json"' in (root / "p.ddd.json").read_text(encoding="utf-8")
+
+    def test_an_add_of_a_name_already_declared_is_refused_in_the_editor_s_words(
+        self, tmp_path: Path
+    ) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/constant-plan", action="add", name="PRESSURE_CELLS", raw="1")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert "is the name of the declared constant" in reply.body["message"]
+
+    def test_an_add_while_the_constants_file_did_not_load_is_unreadable(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(
+            opened(tmp_path, UNREADABLE_CONSTANTS),
+            "/api/constant-plan",
+            action="add",
+            name="NEW",
+            raw="1",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert "c.ddd.json" in reply.body["message"]
+
+    def test_an_add_that_would_overwrite_a_stray_file_is_refused(self, tmp_path: Path) -> None:
+        reply = get(
+            opened(tmp_path, STRAY_CONSTANTS_FILE),
+            "/api/constant-plan",
+            action="add",
+            name="NEW",
+            raw="1",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert "constants.ddd.json" in reply.body["message"]
+
+    def test_a_constant_no_file_declares_cannot_be_changed(self, tmp_path: Path) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/constant-plan", action="set", name="NOPE", key="value", raw="1")
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_setting_an_absent_key_to_nothing_is_an_empty_plan_not_a_refusal(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(
+            opened(tmp_path, NO_DESCRIPTION),
+            "/api/constant-plan",
+            action="set",
+            name="BARE",
+            key="description",
+        )
+        assert reply.status == 200
+        assert reply.body["changes"] == []
+
+    def test_a_malformed_raw_is_bad_before_any_refusal_about_the_project(
+        self, tmp_path: Path
+    ) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(
+            api,
+            "/api/constant-plan",
+            action="set",
+            name="TREND_SAMPLES",
+            key="value",
+            raw="not json",
+        )
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            {},
+            {"action": "dance", "name": "TREND_SAMPLES"},
+            {"action": "set", "name": "TREND_SAMPLES"},
+            {"action": "set", "name": "", "key": "value", "raw": "1"},
+            {"action": "rename", "name": "TREND_SAMPLES"},
+            {"action": "add", "name": "NEW"},
+            {"action": "add", "name": "NEW", "raw": ""},
+            {"action": "remove"},
+        ],
+    )
+    def test_a_missing_or_unknown_parameter_is_a_bad_request(
+        self, tmp_path: Path, query: dict[str, str]
+    ) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/constant-plan", **query)
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+
+    def test_a_project_the_analysis_could_not_read_plans_no_constant_change(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(unloaded(tmp_path), "/api/constant-plan", action="remove", name="X")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"].startswith("p.ddd.json did not load")
+
+    def test_a_constant_preview_the_engine_refuses_is_a_refusal_the_page_can_act_on(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+
+        def refuse(*_: object) -> None:
+            raise EditError(UNVERIFIED, "does not read back")
+
+        monkeypatch.setattr("ddd.gui.api.previewed", refuse)
+        reply = get(
+            api, "/api/constant-plan", action="set", name="TREND_SAMPLES", key="value", raw="20"
+        )
+        assert (reply.status, reply.body["error"]) == (409, "unverified")
+
+    def test_constant_plan_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root)), "/api/constant-plan", action="remove", name="X")
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
 
 
 class TestWhatAComponentMayAdd:

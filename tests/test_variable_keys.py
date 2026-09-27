@@ -175,6 +175,21 @@ class TestWhatAKindCarries:
             Carried(allowed=True, required=True),
         )
 
+    def test_a_declaration_writing_an_explicit_null_states_nothing_there(
+        self, tmp_path: Path
+    ) -> None:
+        # `null` is how a file says a key holds nothing, and the loader reads it as absent -
+        # `ddd check` accepts an explicit `"typename": null` beside a real datatype. Read as a
+        # key that is stated, the panel offered to strip the storage this declaration actually
+        # uses and withheld the one holding nothing, exactly backwards, and taking that offer
+        # would have written a file the loader refuses.
+        idx = built(
+            tmp_path, **{"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}
+        )
+        edited(tmp_path / "a.ddd.json", lambda definition: definition.update({"typename": None}))
+        assert offered(idx, "Speed", "datatype").carried == (Carried(allowed=True, required=True),)
+        assert offered(idx, "Speed", "typename").carried == (Carried(allowed=True, required=False),)
+
     def test_a_declaration_whose_file_lost_its_datatype_requires_neither_storage_key(
         self, tmp_path: Path
     ) -> None:

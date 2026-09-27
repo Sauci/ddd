@@ -265,7 +265,20 @@ def _role_of(scope: Any) -> str:
 
 
 def _stated(document: Document, pointer: str, keys: Iterable[str]) -> dict[str, str]:
-    return {key: raw for key in keys if (raw := document.raw_at(f"{pointer}.{key}")) is not None}
+    """The json text of each of ``keys`` the document states there, the ones holding nothing left
+    out.
+
+    A key written ``null`` states nothing: that is how a file says so, and the loader reads it as
+    absent - ``ddd check`` accepts an explicit ``"typename": null`` beside a real datatype. Counted
+    as stated, the variable panel offered to strip the storage a declaration actually uses and
+    withheld the one holding nothing, backwards from what the loader believes, and taking that
+    offer would have written a file the loader refuses.
+    """
+    return {
+        key: raw
+        for key in keys
+        if (raw := document.raw_at(f"{pointer}.{key}")) is not None and raw != "null"
+    }
 
 
 def _fixed(built: Index, type_name: str | None, cache: dict[Path, Document]) -> dict[str, str]:

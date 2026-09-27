@@ -375,6 +375,12 @@ The commands
        ``dimension-value`` rather than refused: the interface does not invent a rule the
        format itself does not have. A finding naming a constant leads to the tab, a name no
        file declares landing on the form that declares it.
+       What the page reads and writes is bounded by the directory ``ddd gui`` was started in,
+       and by the project's own where a project elsewhere was named on the command line. A file
+       the project includes from outside those is read by ``ddd check`` like any other and named
+       by the findings on it, but is not opened, edited or drawn into a preview here: the
+       refusal names the directories served, and starting ``ddd gui`` in one that holds them all
+       opens them together.
        ``-b DIR`` names a build directory as for ``ddd lsp``, ``--host ADDRESS``
        listens beyond this computer for a container, ``--port N`` fixes the port and
        ``--no-browser`` only prints the address. It serves until interrupted, and its

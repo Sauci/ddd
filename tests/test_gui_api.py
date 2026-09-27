@@ -2585,6 +2585,22 @@ class TestShared:
         assert (rows["PRESSURE_CELLS"]["uses"], rows["PRESSURE_CELLS"]["findings"]) == (1, 0)
         assert (rows["TREND_SAMPLES"]["uses"], rows["TREND_SAMPLES"]["findings"]) == (1, 0)
 
+    def test_a_finding_on_a_shape_naming_a_constant_counts_on_its_row(self, tmp_path: Path) -> None:
+        """Review finding: every fixture elsewhere in this class checks clean, so a row's own
+        `findings` count was never asked to be anything but 0 - a mutation that hard-codes it to
+        0 passed the whole file. `dimension-value` is filed at the shape naming the constant, not
+        at its own entry (`located_on_constant` counts both), so breaking `TREND_SAMPLES`'s value
+        files exactly one finding, on the one row, without disturbing `PRESSURE_CELLS`'s."""
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        text = (root / "constants.ddd.json").read_text(encoding="utf-8")
+        (root / "constants.ddd.json").write_text(
+            text.replace('"value": 16', '"value": 0'), encoding="utf-8"
+        )
+        api.session.poll()
+        rows = {e["name"]: e for e in get(api, "/api/shared").body["entries"]}
+        assert rows["TREND_SAMPLES"]["findings"] == 1
+        assert rows["PRESSURE_CELLS"]["findings"] == 0
+
     def test_a_project_declaring_no_constants_has_an_empty_table(self, api: Api) -> None:
         # The `api` fixture's project has no constants file at all.
         assert get(api, "/api/shared").body["entries"] == []

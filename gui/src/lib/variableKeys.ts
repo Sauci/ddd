@@ -177,6 +177,12 @@ function cellOf(
     from,
     href: from === null ? null : hrefOf({ page: "project", view: "types", type: from }),
     changing,
+    // Redundant today with dimensionEntries's own `Array.isArray` check: no key in KEY_ORDER
+    // other than `dimensions` is ever array-shaped, so calling it unconditionally would answer
+    // `null` for every one of them anyway. Kept explicit rather than relying on that, because
+    // whether an array of constant links belongs on a key is this table's own decision - a
+    // future key that happens to be array-shaped too should not start rendering them merely
+    // because its raw text happens to parse the same way `dimensions`'s does.
     parts: offer.key === "dimensions" ? dimensionEntries(raw) : null,
   };
 }

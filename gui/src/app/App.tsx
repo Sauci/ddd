@@ -37,8 +37,8 @@ const PROJECT_VIEWS = [
  * one shape behind a value stops the checker from trying each shape in turn). Spelling every key
  * here, instead of asserting the widened union as a `Route`, means a `ProjectView` whose bare
  * route ever needs more than `{ page, view }` fails to compile right here - which is exactly what
- * `shared` needing `kind`/`name`/`declare` for its other two shapes would have hidden behind a
- * cast, rather than a wrong `Route` reaching `navigate` at runtime. The `Record<ProjectView,
+ * `shared` needing `kind`/`name` for its other shape would have hidden behind a cast, rather than
+ * a wrong `Route` reaching `navigate` at runtime. The `Record<ProjectView,
  * Route>` annotation is what keeps `BARE_ROUTES[view]` typed as `Route` at the call sites below;
  * the `satisfies` clause beside it is what stops an entry naming a view other than its own key -
  * `Record` alone accepts `table`'s route under `graph` just as readily, a mistake nothing else
@@ -100,14 +100,15 @@ export function App() {
     [navigate],
   );
   // Selecting a constant replaces the address, as selecting a type does. `SharedPage` itself
-  // opens the add form for a name this callback's own route names that nothing declares, and for
-  // its own Declare a constant button besides - neither needs the route's other shape, `declare`.
-  // Nor does design §5.3's own way in from a dimension, once it landed: `onOpenConstant` below
-  // and `routeOf` (`lib/findings.ts`) both carry a name whose declared state they cannot ask
-  // about - the whole point being that one link, or one route, serves a constant whichever way
-  // it turns out, and only `SharedPage`'s own `isDeclared` decides - so every writer of this
-  // route, this callback included, only ever writes the one shape. `declare` stays in `route.ts`
-  // parseable and tested for a hand-written address, but nothing in the app constructs one.
+  // decides whether a name is a declared constant's panel or an undeclared one's pre-filled add
+  // form, purely from `isDeclared` (design §2, "one route kind, and the page decides"). So
+  // `route.ts`'s own shape for this tab carries a name and nothing else - this callback, the two
+  // `onOpenConstant` callbacks below and `routeOf` (`lib/findings.ts`) all write that one shape,
+  // whichever of the two outcomes it turns out to be, and none of them needs a second shape
+  // naming one to declare directly. One address is unreachable as a result: `SharedPage`'s own
+  // *blank* form, opened only by its Declare a constant button, has no route of its own and so
+  // does not survive a reload the way every other panel on this page does. A pre-filled form is
+  // not affected - it opens through the same address a declared name's own panel does.
   const openShared = useCallback(
     (name: string | undefined) =>
       navigate(

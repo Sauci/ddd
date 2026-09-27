@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { PUMP } from "./demo";
+import { openPanel, PUMP } from "./demo";
 import { expect, test } from "./fixtures";
 
 /** PressureTrend's own `dimensions` in a copy of examples/vocabulary's pump.ddd.json, broken so
@@ -54,4 +54,12 @@ test("a finding nobody could act on becomes a constant declared in two clicks", 
   // name this journey broke is the only thing standing between it and clean again.
   await page.getByRole("link", { name: "Findings" }).click();
   await expect(page.getByText("Nothing to report")).toBeVisible();
+
+  // The other way in (spec 5.3, the part this test is named for): PressureTrend's own
+  // `dimensions` row still names TREND_SLOTS, and now that it is declared, its link is the
+  // second route to the very same panel the finding above led to - not only the finding's own.
+  const pumpPanel = await openPanel(page, vocabularyGui.address, "PressureTrend", "Pump");
+  await pumpPanel.getByRole("link", { name: "TREND_SLOTS" }).click();
+  await expect(page).toHaveURL(/\/project\?view=shared&kind=constant&name=TREND_SLOTS$/);
+  await expect(page.getByRole("complementary", { name: "TREND_SLOTS" })).toBeVisible();
 });

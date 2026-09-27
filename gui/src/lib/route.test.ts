@@ -118,17 +118,6 @@ test("the shared files tab with a constant selected", () => {
   expect(hrefOf(route)).toBe("/project?view=shared&kind=constant&name=TREND_SAMPLES");
 });
 
-test("the shared files tab with a name offered for declaration", () => {
-  const route = {
-    page: "project",
-    view: "shared",
-    kind: "constant",
-    declare: "CELLS",
-  } as const;
-  expect(parseRoute("/project", "?view=shared&kind=constant&declare=CELLS")).toEqual(route);
-  expect(hrefOf(route)).toBe("/project?view=shared&kind=constant&declare=CELLS");
-});
-
 test("a selection with no kind is the bare tab", () => {
   expect(parseRoute("/project", "?view=shared&name=TREND_SAMPLES")).toEqual({
     page: "project",
@@ -136,9 +125,8 @@ test("a selection with no kind is the bare tab", () => {
   });
 });
 
-test("a kind with neither a name nor a declaration offered is the bare tab too", () => {
-  // `kind=constant` alone is as half-written an address as leaving `kind` out entirely - the
-  // parse arm reads `name` before `declare`, and both can be missing at once.
+test("a kind with no name is the bare tab too", () => {
+  // `kind=constant` alone is as half-written an address as leaving `kind` out entirely.
   expect(parseRoute("/project", "?view=shared&kind=constant")).toEqual({
     page: "project",
     view: "shared",

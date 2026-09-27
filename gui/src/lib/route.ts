@@ -1,5 +1,5 @@
-/** Which of the project screen's six tabs is open. */
-export type ProjectView = "graph" | "table" | "units" | "types" | "findings" | "compare";
+/** Which of the project screen's seven tabs is open. */
+export type ProjectView = "graph" | "table" | "units" | "types" | "shared" | "findings" | "compare";
 
 export type Route =
   | { page: "start" }
@@ -7,6 +7,9 @@ export type Route =
   | { page: "project"; view: "table" }
   | { page: "project"; view: "units"; unit?: string }
   | { page: "project"; view: "types"; type?: string }
+  | { page: "project"; view: "shared" }
+  | { page: "project"; view: "shared"; kind: "constant"; name: string }
+  | { page: "project"; view: "shared"; kind: "constant"; declare: string }
   | { page: "project"; view: "findings" }
   | { page: "project"; view: "compare" }
   | { page: "component"; file: string; variable?: string }
@@ -34,6 +37,20 @@ export function parseRoute(pathname: string, search: string): Route {
       return type === undefined
         ? { page: "project", view: "types" }
         : { page: "project", view: "types", type };
+    }
+    if (view === "shared") {
+      // `kind` names which of the tab's vocabularies the selection is - only "constant" today -
+      // and a `name` or a `declare` without one, or neither of the two with it, is as bare an
+      // address as the tab having no `kind` at all: a half-written address is the tab, never a
+      // crash and never a guess at what it meant to select.
+      const kind = query.get("kind");
+      if (kind !== "constant") return { page: "project", view: "shared" };
+      const name = query.get("name") || undefined;
+      if (name !== undefined) return { page: "project", view: "shared", kind, name };
+      const declare = query.get("declare") || undefined;
+      return declare === undefined
+        ? { page: "project", view: "shared" }
+        : { page: "project", view: "shared", kind, declare };
     }
     if (view === "findings") return { page: "project", view: "findings" };
     if (view === "compare") return { page: "project", view: "compare" };
@@ -73,6 +90,14 @@ export function hrefOf(route: Route): string {
         return route.type === undefined
           ? "/project?view=types"
           : `/project?view=types&type=${encodeURIComponent(route.type)}`;
+      }
+      if (route.view === "shared") {
+        if (!("kind" in route)) return "/project?view=shared";
+        const selector =
+          "name" in route
+            ? `name=${encodeURIComponent(route.name)}`
+            : `declare=${encodeURIComponent(route.declare)}`;
+        return `/project?view=shared&kind=${route.kind}&${selector}`;
       }
       if (route.view === "findings") return "/project?view=findings";
       if (route.view === "compare") return "/project?view=compare";

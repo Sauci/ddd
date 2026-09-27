@@ -17,6 +17,8 @@ import {
 const SENSOR_HUB = "C:/work/demo/components/sensor_hub.ddd.json";
 const TYPES = "C:/work/demo/types.ddd.json";
 const UNITS = "C:/work/demo/units.ddd.json";
+const CONSTANTS = "C:/work/demo/constants.ddd.json";
+const SECTIONS = "C:/work/demo/sections.ddd.json";
 
 function finding(fields: Partial<Finding> = {}): Finding {
   return {
@@ -233,6 +235,57 @@ describe("why a finding leads nowhere", () => {
     ];
     expect(noRouteReason(one, withUnits)).toBe(
       "units.ddd.json is a units file, which has no page yet",
+    );
+  });
+
+  test("a finding on a constants file no longer says it has no page", () => {
+    // Part 13 gives constants a page, so a constants file joins `component` in the set the
+    // check reads from - what is left of this finding is that its pointer is empty, the same
+    // reason a component's own project-wide finding gets.
+    const one = finding({
+      file: CONSTANTS,
+      check: "duplicate-constant",
+      pointer: "",
+      route: null,
+    });
+    const withConstants = state([one]);
+    withConstants.files = [
+      ...withConstants.files,
+      {
+        path: CONSTANTS,
+        kind: "constants",
+        name: null,
+        loaded: true,
+        fingerprint: "d",
+        findings: { error: 1, warning: 0, info: 0 },
+      },
+    ];
+    expect(noRouteReason(one, withConstants)).toBe(
+      "it is about the project rather than a place in a file",
+    );
+  });
+
+  test("a finding on a sections file still says so, sections being the part after this", () => {
+    const one = finding({
+      file: SECTIONS,
+      check: "duplicate-section",
+      pointer: "sections[0]",
+      route: null,
+    });
+    const withSections = state([one]);
+    withSections.files = [
+      ...withSections.files,
+      {
+        path: SECTIONS,
+        kind: "sections",
+        name: null,
+        loaded: true,
+        fingerprint: "e",
+        findings: { error: 1, warning: 0, info: 0 },
+      },
+    ];
+    expect(noRouteReason(one, withSections)).toBe(
+      "sections.ddd.json is a sections file, which has no page yet",
     );
   });
 

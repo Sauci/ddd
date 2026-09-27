@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from "vitest";
 import type { Finding, UndoneChange } from "../api/types";
 import {
+  constantLabel,
   declareLabel,
   fixLabel,
   pasteLabel,
@@ -87,6 +88,22 @@ describe("what an edit is called", () => {
     expect(label).toHaveLength(120);
     expect(label.endsWith("…")).toBe(true);
   });
+});
+
+test.each([
+  [{ action: "set", name: "TREND_SAMPLES", key: "value", raw: "16" }, "the value of TREND_SAMPLES"],
+  [
+    { action: "set", name: "TREND_SAMPLES", key: "description" },
+    "the description of TREND_SAMPLES",
+  ],
+  [
+    { action: "rename", name: "TREND_SAMPLES", to: "TREND_SLOTS" },
+    "the rename of 'TREND_SAMPLES' to 'TREND_SLOTS'",
+  ],
+  [{ action: "add", name: "CELLS", raw: "8" }, "'CELLS' declared as a constant"],
+  [{ action: "remove", name: "CELLS" }, "'CELLS' removed from the constants"],
+] as const)("%o is undone as %s", (plan, label) => {
+  expect(constantLabel(plan)).toBe(label);
 });
 
 test("an undone paste is named by the object whose table it replaced", () => {

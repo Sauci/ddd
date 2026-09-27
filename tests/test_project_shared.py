@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
+
+import pytest
 
 from conftest import built_of, write_tree
 from ddd.diagnostics import Diagnostic, Location, Severity
@@ -528,3 +531,24 @@ class TestTheDescriptor:
             "value": "16",
             "description": "slots of a trend buffer",
         }
+
+
+class TestTheDescriptorsInvariants:
+    """`CONSTANTS` itself exercises the arm of each check in `Vocabulary.__post_init__` that
+    finds nothing wrong, every time this module loads - it is one of the two, three and one
+    values these three tests move away from. The arm that finds something wrong is unreachable
+    through `CONSTANTS`, since it was written by hand to satisfy all three; these tests reach it
+    the way `Vocabulary.__post_init__`'s own docstring measures the hole, with `dataclasses.
+    replace`."""
+
+    def test_a_key_without_a_judge_is_refused_at_construction(self) -> None:
+        with pytest.raises(ValueError, match="judge"):
+            dataclasses.replace(CONSTANTS, keys=("value", "description", "comment"))
+
+    def test_a_required_key_outside_keys_is_refused_at_construction(self) -> None:
+        with pytest.raises(ValueError, match="required"):
+            dataclasses.replace(CONSTANTS, required=frozenset({"value", "comment"}))
+
+    def test_a_nested_first_container_is_refused_at_construction(self) -> None:
+        with pytest.raises(ValueError, match="containers"):
+            dataclasses.replace(CONSTANTS, containers=("component.constants", "constants"))

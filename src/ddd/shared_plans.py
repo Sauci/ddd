@@ -93,13 +93,13 @@ class SharedProject:
 
 @dataclass(frozen=True, slots=True)
 class SharedPlan:
-    """Everything one change of a constant takes: one edit per file, sorted by path."""
+    """Everything one change of an entry takes: one edit per file, sorted by path."""
 
     edits: tuple[PlannedEdit, ...]
 
 
 class SharedRefusalError(Exception):
-    """A change of a constant that cannot be planned, and the code both clients refuse it with."""
+    """A change of an entry that cannot be planned, and the code both clients refuse it with."""
 
     code: Literal["unreadable", "invalid", "not-found"]
     """``unreadable``: a file the change has to see did not load. ``invalid``: the change cannot
@@ -185,12 +185,7 @@ def set_entry(
     they have.
     """
     entry = _entry(vocabulary, built, name)
-    if key not in vocabulary.keys:
-        raise SharedRefusalError(
-            "invalid",
-            f"a {vocabulary.kind} has no '{key}' to set in {entry.path.name}: it states "
-            f"{' and '.join(sorted(vocabulary.keys))}",
-        )
+    _settable(vocabulary, key, entry.path)
     if key in vocabulary.required:
         if raw is None:
             raise SharedRefusalError(
@@ -286,6 +281,7 @@ def add_entry(
             "added to it",
         )
     for key, raw in raws.items():
+        _settable(vocabulary, key, file)
         _judged(vocabulary, key, raw, name, file)
     listed = read(file, cache).value_at(vocabulary.containers[0])
     position = _appended_at(listed)
@@ -301,7 +297,7 @@ def remove_entry(
     """That entry of ``vocabulary`` taken out of the list holding it.
 
     Refused while any shape names it. Removed, each of those shapes would name nothing, which is
-    an ``unknown-constant`` apiece in files the reader was not looking at - a worse answer than
+    an ``unknown-*`` finding apiece in files the reader was not looking at - a worse answer than
     saying no. What is in use is asked of the index, never of a file's text: reading text to answer
     a question about meaning is the mistake part 11 filed against ``variable_keys._storage_of``.
 
@@ -314,7 +310,10 @@ def remove_entry(
     1, and a component emptied that way stops loading altogether, so every variable it declares
     goes out of the project with the constant. Two clicks reach it from this tab - declare a
     constant into a project that has none, then remove it, since nothing names it and Remove is
-    offered.
+    offered. Taking the whole container key out instead would load for a component, whose
+    container key is optional, and not for the vocabulary's own file, whose container key is what
+    makes it one - and a Remove meaning a different edit depending on which home the entry happens
+    to live in is not the design's "the entry, and nothing else".
 
     The list is read from the file rather than counted off the index because the index holds the
     project's entries by name across every file, not the entries of one list; ``cache`` is the one
@@ -350,6 +349,23 @@ def _entry(vocabulary: Vocabulary, built: Index, name: str) -> Site:
             "not-found", f"no file of this project declares a {vocabulary.kind} called '{name}'"
         )
     return entry
+
+
+def _settable(vocabulary: Vocabulary, key: str, file: Path) -> None:
+    """Refuse a key ``vocabulary`` does not let the interface touch, naming the file it would
+    have been written to or read at, and every key it does allow instead.
+
+    ``set_entry`` asks this of the one key it is given; ``add_entry`` asks it of every key
+    ``raws`` carries, before ``_judged`` ever sees it - a raw key outside ``vocabulary.keys`` is
+    not a value the format would refuse, it is a key the interface does not offer at all, and the
+    two must not be confused in what a reader is told.
+    """
+    if key not in vocabulary.keys:
+        raise SharedRefusalError(
+            "invalid",
+            f"a {vocabulary.kind} has no '{key}' to set in {file.name}: it states "
+            f"{' and '.join(sorted(vocabulary.keys))}",
+        )
 
 
 def _judged(vocabulary: Vocabulary, key: str, raw: str, name: str, file: Path) -> None:
@@ -425,6 +441,7 @@ def _created(
             "and a file of that name is there already",
         )
     for key, raw in raws.items():
+        _settable(vocabulary, key, created)
         _judged(vocabulary, key, raw, name, created)
     laid_out = lay_out(
         f'{{"{vocabulary.containers[0]}": [{_entry_text(vocabulary, name, raws)}]}}',
@@ -468,6 +485,12 @@ def _appended_at(listed: object) -> int:
 def _entry_text(vocabulary: Vocabulary, name: str, raws: Mapping[str, str]) -> str:
     """One entry of ``vocabulary`` as json text, its name and every value in ``raws`` embedded
     exactly as given, in the order :attr:`~ddd.project_shared.Vocabulary.keys` lists them.
+
+    The ``if key in raws`` filter is for a key ``raws`` leaves out, never for one it should not
+    have had: :func:`add_entry` has already refused any key outside ``vocabulary.keys`` through
+    :func:`_settable`, so by the time this runs, a key of ``vocabulary.keys`` missing from
+    ``raws`` is one the caller simply did not give a value - ``add_constant``'s own binding never
+    gives ``description`` one, and the entry it declares states none.
 
     Built as text rather than dumped from a dict, for the reason :func:`_raw` keeps a value's own
     spelling: a dict would carry a number through python's own types, and ``1e3`` would come back

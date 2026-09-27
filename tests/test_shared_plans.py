@@ -14,6 +14,7 @@ from ddd.editing import Operation
 from ddd.loading import included_files
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document
+from ddd.lsp.units import PlannedEdit
 from ddd.shared_plans import (
     CONSTANTS_FILE,
     SharedPlan,
@@ -21,6 +22,7 @@ from ddd.shared_plans import (
     SharedRefusalError,
     _raw,
     add_constant,
+    add_entry,
     remove_constant,
     remove_entry,
     rename_constant,
@@ -802,9 +804,21 @@ class TestTheDescriptorsVerbs:
     def test_a_key_is_set_through_the_vocabulary_it_belongs_to(self, tmp_path: Path) -> None:
         built, _root = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
-        assert set_entry(
-            project_shared.CONSTANTS, built, "TREND_SAMPLES", "value", "2.0", cache
-        ) == set_constant(built, "TREND_SAMPLES", "value", "2.0", cache)
+        plan = set_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "value", "2.0", cache)
+        # An expected plan written out, not just `set_constant`'s own answer: `set_constant` is
+        # `return set_entry(CONSTANTS, ...)`, so comparing only against it compares a call with
+        # itself and would stay green were `set_entry` ablated to `return SharedPlan(())`.
+        assert plan == SharedPlan(
+            (
+                PlannedEdit(
+                    (tmp_path / "c.ddd.json").resolve(),
+                    (Operation("set", "constants[0].value", "2.0"),),
+                ),
+            )
+        )
+        # Worth keeping too, once it is not the only assertion: the binding really does forward
+        # to the generic verb unchanged.
+        assert plan == set_constant(built, "TREND_SAMPLES", "value", "2.0", cache)
 
     def test_a_constant_both_named_and_alone_is_refused_for_being_named(
         self, tmp_path: Path
@@ -818,3 +832,24 @@ class TestTheDescriptorsVerbs:
             remove_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", cache)
         assert "is named by" in raised.value.message
         assert "is all" not in raised.value.message
+
+    def test_add_refuses_a_raw_key_the_vocabulary_does_not_have(self, tmp_path: Path) -> None:
+        # `raws` is this task's own surface - `add_constant` took a single `raw` - so a bad key
+        # in it is not a case the old `add_constant` could ever have been asked about; this is
+        # new ground `add_entry` has to cover itself, in `set_entry`'s own wording for the same
+        # mistake.
+        built, _root = built_of(tmp_path, **TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        with pytest.raises(SharedRefusalError) as raised:
+            add_entry(
+                project_shared.CONSTANTS,
+                built,
+                found,
+                "NEW_ONE",
+                {"value": "8", "unit": '"rpm"'},
+                cache,
+            )
+        assert raised.value.code == "invalid"
+        assert "'unit'" in raised.value.message
+        assert "description and value" in raised.value.message

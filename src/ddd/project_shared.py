@@ -71,7 +71,15 @@ class Vocabulary:
     containers: tuple[str, ...]
     """The pointers its entries live at, first the vocabulary file's own. Only constants have a
     second: a component may declare them inline, where sections and rasters live in their own files
-    alone."""
+    alone.
+
+    The first entry is what a file needs at its top level to be recognised as one of the
+    vocabulary's own (:func:`~ddd.shared_plans.project_of`) and what a newly created file wraps
+    its first entry in (:func:`~ddd.shared_plans._created`), so it must be a bare top-level key -
+    ``"constants"``, not ``"component.constants"``. A later entry nests under a container of its
+    own instead, the way ``component.constants`` does. :meth:`__post_init__` enforces the first
+    half of that; nothing enforces the second, because only one vocabulary has a second entry to
+    check."""
 
     name_key: str
     """What the entry calls its name: ``name`` for a constant, ``section``, ``raster``."""
@@ -122,6 +130,30 @@ class Vocabulary:
     project already holds. A constant's is ``rename_problem``, whose c identifier rule and
     ``occupied`` check fit a constant and neither of the others: a section's name is a linker string
     and a raster's an a2l short name, and neither joins the namespace ``occupied`` guards."""
+
+    def __post_init__(self) -> None:
+        """Three checks tying ``keys``, ``required``, ``judge`` and ``containers`` together, so a
+        descriptor that drops a key from one of these tables fails at construction rather than the
+        first time a reader reaches the one that fell out of step.
+
+        Unreachable through :data:`CONSTANTS` today - which is exactly why it matters. The next
+        vocabulary is hand-written, and the one after it a third time: ``dataclasses.replace(
+        CONSTANTS, keys=("value", "description", "comment"))`` gives a descriptor whose ``judge``
+        does not cover ``comment``, and :func:`~ddd.shared_plans._judged`'s ``vocabulary.judge[
+        key]`` has no guard of its own - so setting ``comment`` would raise ``KeyError`` where a
+        reader should meet a refusal, and nothing before this would have said so.
+        """
+        unjudged = [key for key in self.keys if key not in self.judge]
+        if unjudged:
+            msg = f"{self.kind}: {unjudged} in keys but judge has no entry for them"
+            raise ValueError(msg)
+        ungiven = sorted(self.required - set(self.keys))
+        if ungiven:
+            msg = f"{self.kind}: {ungiven} in required but not in keys"
+            raise ValueError(msg)
+        if "." in self.containers[0]:
+            msg = f"{self.kind}: containers[0] '{self.containers[0]}' is not a bare top-level key"
+            raise ValueError(msg)
 
 
 _DECLARATION_SHAPE: Final = re.compile(

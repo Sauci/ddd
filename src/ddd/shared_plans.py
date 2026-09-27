@@ -352,6 +352,12 @@ def _appended_at(listed: object) -> int:
     one, is a shape the loader itself refuses - but a plan is built from the raw document, read
     before anything validates it, so a length taken unconditionally would raise while building
     the plan rather than let the caller reach the refusal the next ``ddd check`` already gives.
+
+    A function rather than ``len(listed) if isinstance(listed, list) else 0`` at each call site:
+    a conditional expression registers no branch at all with coverage.py, so the arm nobody
+    tests could hide behind a green 100 % run, and the assignment ``if``/``else`` ruff would
+    accept in its place trips ``SIM108``, which asks for that same ternary right back. An early
+    return answers to both.
     """
     if isinstance(listed, list):
         return len(listed)

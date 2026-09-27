@@ -460,6 +460,28 @@ class TestDeclaringOne:
         assert '"value": 8' in (plan.edits[0].operations[0].raw or "")
         assert plan.edits[0].creates is False
 
+    def test_it_lands_in_the_first_of_two_constants_files_not_the_last(
+        self, tmp_path: Path
+    ) -> None:
+        """Every other tree in this class has at most one constants file, so nothing above tells
+        `constants_files[0]` apart from `constants_files[-1]`. `SharedProject.constants_files`'
+        own docstring promises "the first is where a new constant goes, so that it lands in the
+        file a run of `ddd check` reads first" - this is the test that holds `add_constant` to
+        that promise. The file that is first in `includes` sorts *last* alphabetically, so an
+        implementation that quietly sorted the files instead of trusting their `includes` order
+        would also be caught here."""
+        files = {
+            "z_first.ddd.json": {"constants": [{"name": "FIRST_ONE", "value": 1}]},
+            "a_second.ddd.json": {"constants": [{"name": "SECOND_ONE", "value": 2}]},
+        }
+        built = _index(tmp_path, files)
+        cache: dict[Path, Document] = {}
+        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        assert [f.name for f in found.constants_files] == ["z_first.ddd.json", "a_second.ddd.json"]
+        plan = add_constant(built, found, "NEW_ONE", "9", cache)
+        assert plan.edits[0].path.name == "z_first.ddd.json"
+        assert plan.edits[0].operations[0].pointer == "constants[1]"
+
     def test_the_value_is_embedded_as_the_text_it_was_given(self, tmp_path: Path) -> None:
         """`2.0` declares a fractional constant and `2` a whole one. Parsed and reprinted, a
         reader asking for one would get the other."""
@@ -569,6 +591,30 @@ class TestDeclaringOne:
         found = shared_project(tmp_path / "p.ddd.json", (), cache)
         with pytest.raises(SharedRefusalError) as raised:
             add_constant(built, found, "TREND_SAMPLES", "8", cache)
+        assert raised.value.code == "invalid"
+
+    def test_a_name_a_component_declares_inline_is_refused_before_a_file_is_created(
+        self, tmp_path: Path
+    ) -> None:
+        """The collision guard has to run before the branch on `project.constants_files`, not
+        only where a constants file already exists: `_created` never calls `rename_problem`
+        itself, so if the guard moved after `if not project.constants_files: return
+        _created(...)`, a component's own inline `CELLS` would not stop a brand new
+        `constants.ddd.json` from declaring a second one of that name - "two components share
+        storage neither of them meant to", in `rename_problem`'s own words."""
+        files = {
+            "a.ddd.json": component(
+                "A",
+                declare("output", "Speed", unit="rpm"),
+                constants=[{"name": "CELLS", "value": 2.0}],
+            )
+        }
+        built = _index(tmp_path, files)
+        cache: dict[Path, Document] = {}
+        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        assert not found.constants_files
+        with pytest.raises(SharedRefusalError) as raised:
+            add_constant(built, found, "CELLS", "8", cache)
         assert raised.value.code == "invalid"
 
     def test_a_value_the_format_would_refuse_is_refused(self, tmp_path: Path) -> None:

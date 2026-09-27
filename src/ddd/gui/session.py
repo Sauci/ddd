@@ -124,6 +124,20 @@ class Revision:
     """Where the project writes down each name it uses, from the analysis's own read: the first
     run that built one, since every run of one project reads the same files."""
 
+    served: tuple[Path, ...]
+    """The directories a file of this project may be read from and written to through the
+    interface: the one the session was given, and the open project's own where the operator
+    named a project from outside it.
+
+    Belonging to the project is not enough, because what a project includes is the project's
+    own business - a directory up, which is where a shared vocabulary lives - and an edit may
+    add such an entry. A reader of the page could otherwise widen the page's own reach: point
+    the includes at a file anywhere and read it back. These cannot be widened that way, being
+    what ``ddd gui`` was started in and what it was pointed at. A file outside them still takes
+    part in the analysis and is named by the findings on it, the page reporting what
+    ``ddd check`` reports; its contents are neither read, written, nor shown in a preview.
+    """
+
     @property
     def dictionary(self) -> DataDictionary | None:
         """What the analysis resolved to, or ``None`` when it did not get that far."""
@@ -160,7 +174,8 @@ class NoProjectError(RuntimeError):
 
 
 class NotInProjectError(LookupError):
-    """Asked about a file that is not a description file of the open project."""
+    """Asked about a file this session does not serve: one that is not a description file of
+    the open project, or one outside the directories it serves."""
 
 
 def find_projects(root: Path, build_directories: Sequence[Path] = ()) -> Found:
@@ -341,6 +356,13 @@ class Session:
         for run in runs:
             covered |= run.covered | group_findings(run.bag, project, grouped)
         registered = {info.identifier: info for run in runs for info in run.bag.registered.values()}
+        # The project's own directory as well, where it is not already inside the root: a
+        # project named on the command line from elsewhere. Two statements rather than one
+        # conditional expression, which coverage.py counts no branch in, so the arm no test
+        # took would pass the gate unexercised.
+        served: tuple[Path, ...] = (self.root,)
+        if not project.parent.is_relative_to(self.root):
+            served = (self.root, project.parent)
         return Revision(
             number=1 if self._revision is None else self._revision.number + 1,
             project=project,
@@ -355,6 +377,7 @@ class Session:
             resolved=next((run.resolved for run in runs if run.resolved is not None), None),
             checks=tuple(registered.values()),
             index=next((run.index for run in runs if run.index is not None), None),
+            served=served,
         )
 
     def _publish(
@@ -376,9 +399,34 @@ class Session:
 
 
 def _source(revision: Revision, path: Path) -> Path:
+    """One path the page gave, resolved and allowed: a description file of the open project,
+    inside a directory the session serves.
+
+    Both, not membership alone. ``POST /api/edit`` naming a file a directory up in the project's
+    ``includes`` and ``GET /api/file`` reading it back was the page widening its own reach - and
+    checked here rather than at that one route, because this is where every route that takes a
+    path from the page resolves it, and where an edit resolves the file it writes.
+    """
     resolved = path.resolve()
     if not any(file.path == resolved and file.kind != "plugin" for file in revision.files):
         raise NotInProjectError(f"{path} is not a description file of the open project")
+    return _served(revision, resolved)
+
+
+def _served(revision: Revision, resolved: Path) -> Path:
+    """One resolved path, allowed where it lies inside a directory the session serves.
+
+    Membership of the open project is not this question and does not answer it: an edit may add
+    anything to the project's own ``includes``, so a reader of the page can make a file
+    anywhere part of the project and then ask for it. What the session serves cannot be widened
+    that way - see :attr:`Revision.served`.
+    """
+    if not any(resolved.is_relative_to(directory) for directory in revision.served):
+        serves = " and ".join(directory.as_posix() for directory in revision.served)
+        raise NotInProjectError(
+            f"{resolved} is a description file of the open project, but ddd gui serves {serves}; "
+            "start it in a directory holding this file to reach it here"
+        )
     return resolved
 
 

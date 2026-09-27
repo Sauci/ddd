@@ -61,6 +61,7 @@ from ddd.gui.session import (
     Session,
     SourceFile,
     Undoable,
+    _served,
     _source,
     find_projects,
 )
@@ -560,7 +561,7 @@ class Api:
         return Reply(
             200,
             contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(planned)
+                revision=revision.number, changes=_planned_changes(revision, planned)
             ).model_dump(mode="json"),
         )
 
@@ -687,7 +688,7 @@ class Api:
         return Reply(
             200,
             contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(planned)
+                revision=revision.number, changes=_planned_changes(revision, planned)
             ).model_dump(mode="json"),
         )
 
@@ -727,7 +728,7 @@ class Api:
         return Reply(
             200,
             contract.SettleReply(
-                revision=revision.number, changes=_planned_changes(planned)
+                revision=revision.number, changes=_planned_changes(revision, planned)
             ).model_dump(mode="json"),
         )
 
@@ -754,7 +755,7 @@ class Api:
                 made = [planned(edit.path, edit.operations, stamps) for edit in fix.changes]
             except EditError as refused:
                 return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-            offered.append({"title": fix.title, "changes": _planned_changes(made)})
+            offered.append({"title": fix.title, "changes": _planned_changes(revision, made)})
         return Reply(
             200,
             contract.FixReply(revision=revision.number, fixes=offered).model_dump(mode="json"),
@@ -839,7 +840,7 @@ class Api:
         return Reply(
             200,
             contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(planned)
+                revision=revision.number, changes=_planned_changes(revision, planned)
             ).model_dump(mode="json"),
         )
 
@@ -929,7 +930,7 @@ class Api:
         return Reply(
             200,
             contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(planned)
+                revision=revision.number, changes=_planned_changes(revision, planned)
             ).model_dump(mode="json"),
         )
 
@@ -959,7 +960,7 @@ class Api:
         return Reply(
             200,
             contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(planned)
+                revision=revision.number, changes=_planned_changes(revision, planned)
             ).model_dump(mode="json"),
         )
 
@@ -1224,9 +1225,22 @@ def _declaration_plan_of(
     return declare_object(built, file, given["scope"], definition, cache)
 
 
-def _planned_changes(planned: Sequence[Planned]) -> list[dict[str, Any]]:
+def _planned_changes(revision: Revision, planned: Sequence[Planned]) -> list[dict[str, Any]]:
     """A preview's files as the page reads them: the edit of each - posted to ``POST /api/edit``
-    as it stands - beside the lines it changes."""
+    as it stands - beside the lines it changes.
+
+    Refused whole where one of those files lies outside what the session serves. A preview
+    carries the very lines it would change, so offering one would show a file the page may not
+    read, and the edit it offers would be refused on arrival. The routes that reach a file by
+    name rather than by path - settling a key on every declaration of a variable, a finding's
+    own fix - are the ones that can reach such a file at all, an ``includes`` entry above the
+    root having made it part of the project.
+
+    An undo's own preview needs no such check: opening a project empties the stack, and no edit
+    made since can have written a file outside, being resolved through :func:`_source`.
+    """
+    for entry in planned:
+        _served(revision, entry.path.resolve())
     return [
         {
             "file": entry.path.resolve().as_posix(),

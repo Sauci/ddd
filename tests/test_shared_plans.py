@@ -16,9 +16,12 @@ from ddd.lsp.ranges import Document
 from ddd.shared_plans import (
     CONSTANTS_FILE,
     SharedPlan,
+    SharedProject,
     SharedRefusalError,
     _raw,
+    add_constant,
     remove_constant,
+    rename_constant,
     set_constant,
     shared_project,
 )
@@ -310,6 +313,22 @@ class TestSettingAKey:
         cache: dict[Path, Document] = {}
         assert set_constant(built, "TREND_SAMPLES", "value", "2.5", cache).edits
 
+    @pytest.mark.parametrize("raw", ["123", "true", "null", "[1]", '{"a": 1}', "not json"])
+    def test_a_description_the_format_would_refuse_is_refused_here(
+        self, tmp_path: Path, raw: str
+    ) -> None:
+        """`value` is validated against the format; until now `description` was not, so
+        `?action=set&key=description&raw=123` planned `"description": 123` - a number where
+        `ConstantDeclaration` wants a string - and the file it landed in stopped loading,
+        emptying every tab in the page over one keystroke. This is `_value`'s own asymmetry,
+        closed the same way for `description`."""
+        built = _index(tmp_path, TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        with pytest.raises(SharedRefusalError) as raised:
+            set_constant(built, "TREND_SAMPLES", "description", raw, cache)
+        assert raised.value.code == "invalid"
+        assert "c.ddd.json" in raised.value.message
+
 
 class TestRemoving:
     def test_an_entry_nothing_names_is_taken_out(self, tmp_path: Path) -> None:
@@ -367,3 +386,208 @@ def test_a_value_travels_as_the_json_text_it_would_be_written_as() -> None:
     `json.dumps`'s default would escape, and the escaped spelling is not what this exists to
     prevent."""
     assert _raw("30\N{DEGREE SIGN}") == '"30\N{DEGREE SIGN}"'
+
+
+class TestRenaming:
+    def test_the_entry_and_every_shape_naming_it_are_rewritten_in_one_edit(
+        self, tmp_path: Path
+    ) -> None:
+        """All or nothing: a rename that reached the entry but not the shapes would leave the
+        project with `unknown-constant` on every one of them."""
+        built = _index(tmp_path, TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        plan = rename_constant(built, "TREND_SAMPLES", "TREND_SLOTS", cache)
+        assert {edit.path.name: edit.operations for edit in plan.edits} == {
+            "a.ddd.json": (
+                Operation(
+                    "set",
+                    "component.interface[0].definition.dimensions[0]",
+                    '"TREND_SLOTS"',
+                ),
+            ),
+            "c.ddd.json": (Operation("set", "constants[0].name", '"TREND_SLOTS"'),),
+        }
+
+    def test_the_edits_come_sorted_by_path(self, tmp_path: Path) -> None:
+        built = _index(tmp_path, TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        plan = rename_constant(built, "TREND_SAMPLES", "TREND_SLOTS", cache)
+        assert [edit.path.name for edit in plan.edits] == ["a.ddd.json", "c.ddd.json"]
+
+    @pytest.mark.parametrize(
+        ("to", "because"),
+        [
+            ("2CELLS", "not a usable c identifier"),
+            ("CELLS", "the name of the declared constant"),
+            ("int", "reserved by c"),
+        ],
+    )
+    def test_a_name_the_editor_refuses_is_refused_here_in_its_words(
+        self, tmp_path: Path, to: str, because: str
+    ) -> None:
+        """`rename_problem` is the editor's own judge, and the tab asks it rather than deciding
+        for itself: two clients that refused different names would disagree about what a project
+        may be called. The fragments are read off what that function actually returns for this
+        tree, not guessed: `CELLS` is an existing *constant*, so it is refused as `occupied`
+        rather than as `already declared` - the wording `built.declarations` gets, which only
+        variables are recorded under, `Trend` among them here but not asked for."""
+        built = _index(tmp_path, TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        with pytest.raises(SharedRefusalError) as raised:
+            rename_constant(built, "TREND_SAMPLES", to, cache)
+        assert raised.value.code == "invalid"
+        assert because in raised.value.message
+
+    def test_a_name_no_file_declares_is_not_found(self, tmp_path: Path) -> None:
+        built = _index(tmp_path, TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        with pytest.raises(SharedRefusalError) as raised:
+            rename_constant(built, "NOTHING", "SOMETHING", cache)
+        assert raised.value.code == "not-found"
+
+
+class TestDeclaringOne:
+    def test_it_is_appended_to_the_first_constants_file_the_project_includes(
+        self, tmp_path: Path
+    ) -> None:
+        built = _index(tmp_path, TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        plan = add_constant(built, found, "PRESSURE_CELLS", "8", cache)
+        assert [edit.path.name for edit in plan.edits] == ["c.ddd.json"]
+        assert plan.edits[0].operations[0].op == "insert"
+        assert plan.edits[0].operations[0].pointer == "constants[1]"
+        assert '"value": 8' in (plan.edits[0].operations[0].raw or "")
+        assert plan.edits[0].creates is False
+
+    def test_the_value_is_embedded_as_the_text_it_was_given(self, tmp_path: Path) -> None:
+        """`2.0` declares a fractional constant and `2` a whole one. Parsed and reprinted, a
+        reader asking for one would get the other."""
+        built = _index(tmp_path, TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        plan = add_constant(built, found, "GAIN", "2.0", cache)
+        assert '"value": 2.0' in (plan.edits[0].operations[0].raw or "")
+
+    def test_a_spelling_that_round_trips_differently_is_still_kept_as_written(
+        self, tmp_path: Path
+    ) -> None:
+        """`2.0` happens to come back `2.0` even parsed and reprinted through json, so the test
+        above would not notice a plan that did that. `1e3` would not: reprinted, it is `1000.0` -
+        the module's own docstring names this exact number - so this is the case that actually
+        tells a verbatim `raw` apart from a parsed-and-reprinted one."""
+        built = _index(tmp_path, TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        plan = add_constant(built, found, "GAIN", "1e3", cache)
+        assert '"value": 1e3' in (plan.edits[0].operations[0].raw or "")
+
+    def test_a_constants_file_whose_constants_is_not_a_list_still_gets_a_first_entry(
+        self, tmp_path: Path
+    ) -> None:
+        """`shared_project` only asks whether a file's top level holds a `constants` key, never
+        whether that key is a list - so a file this broken can still be
+        `project.constants_files[0]`, and `add_constant` has to pick a pointer without crashing
+        on it rather than assume every constants file loaded clean."""
+        built = _index(tmp_path, TWO_HOMES)
+        write_tree(tmp_path, {"weird.ddd.json": {"constants": "oops"}})
+        cache: dict[Path, Document] = {}
+        broken = SharedProject(tmp_path / "p.ddd.json", (tmp_path / "weird.ddd.json",), ())
+        plan = add_constant(built, broken, "NEW_CONST", "8", cache)
+        assert plan.edits[0].path.name == "weird.ddd.json"
+        assert plan.edits[0].operations[0].pointer == "constants[0]"
+        assert '"name": "NEW_CONST"' in (plan.edits[0].operations[0].raw or "")
+
+    def test_a_project_with_no_constants_file_gets_one_beside_its_description(
+        self, tmp_path: Path
+    ) -> None:
+        """Both edits in one plan, so a project can never list a file that was not written.
+        `Session._confined` allows exactly this shape of creation and no other."""
+        files = {"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}
+        built = _index(tmp_path, files)
+        cache: dict[Path, Document] = {}
+        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        plan = add_constant(built, found, "CELLS", "8", cache)
+        assert [(edit.path.name, edit.creates) for edit in plan.edits] == [
+            ("constants.ddd.json", True),
+            ("p.ddd.json", False),
+        ]
+        whole = plan.edits[0].operations[0].raw or ""
+        assert whole.startswith("{\n") and whole.endswith("}\n")
+        assert '"name": "CELLS"' in whole
+        assert plan.edits[1].operations == (
+            Operation("insert", "project.includes[1]", '"constants.ddd.json"'),
+        )
+
+    def test_a_project_whose_includes_is_not_a_list_still_gets_a_first_entry(
+        self, tmp_path: Path
+    ) -> None:
+        """The creating arm's own version of the guard above: a project this broken never
+        reaches `ddd gui` in the first place, but the plan reads the raw document before
+        anything validates it, so a length taken unconditionally would raise while building the
+        plan rather than answer with a pointer at all."""
+        built = _index(tmp_path, TWO_HOMES)
+        write_tree(tmp_path, {"solo.ddd.json": {"project": {"name": "P", "includes": 3}}})
+        cache: dict[Path, Document] = {}
+        broken = SharedProject(tmp_path / "solo.ddd.json", (), ())
+        plan = add_constant(built, broken, "NEW_CONST", "8", cache)
+        assert [(edit.path.name, edit.creates) for edit in plan.edits] == [
+            ("constants.ddd.json", True),
+            ("solo.ddd.json", False),
+        ]
+        assert plan.edits[1].operations == (
+            Operation("insert", "project.includes[0]", '"constants.ddd.json"'),
+        )
+
+    def test_a_file_of_that_name_already_there_is_refused_rather_than_overwritten(
+        self, tmp_path: Path
+    ) -> None:
+        files = {"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}
+        built = _index(tmp_path, files)
+        write_tree(tmp_path, {"constants.ddd.json": "not a description"})
+        cache: dict[Path, Document] = {}
+        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        with pytest.raises(SharedRefusalError) as raised:
+            add_constant(built, found, "CELLS", "8", cache)
+        assert raised.value.code == "invalid"
+        assert "constants.ddd.json" in raised.value.message
+
+    def test_a_constants_file_that_did_not_load_is_not_appended_to(self, tmp_path: Path) -> None:
+        """It parses, so it is a constants file; it did not load, so what it already declares is
+        unknown - and an entry appended to it could collide with one of them."""
+        built = _index(tmp_path, TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        found = shared_project(tmp_path / "p.ddd.json", [tmp_path / "c.ddd.json"], cache)
+        with pytest.raises(SharedRefusalError) as raised:
+            add_constant(built, found, "CELLS_2", "8", cache)
+        assert raised.value.code == "unreadable"
+        assert "c.ddd.json" in raised.value.message
+
+    def test_a_name_the_project_already_declares_is_refused(self, tmp_path: Path) -> None:
+        built = _index(tmp_path, TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        with pytest.raises(SharedRefusalError) as raised:
+            add_constant(built, found, "TREND_SAMPLES", "8", cache)
+        assert raised.value.code == "invalid"
+
+    def test_a_value_the_format_would_refuse_is_refused(self, tmp_path: Path) -> None:
+        built = _index(tmp_path, TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        with pytest.raises(SharedRefusalError) as raised:
+            add_constant(built, found, "CELLS_2", '"eight"', cache)
+        assert raised.value.code == "invalid"
+
+    def test_a_value_the_format_would_refuse_is_refused_when_creating_too(
+        self, tmp_path: Path
+    ) -> None:
+        """The same guard, in the creating arm: a bad value must not reach a file that did not
+        exist a moment ago either, and nothing above exercises `_value` there."""
+        files = {"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}
+        built = _index(tmp_path, files)
+        cache: dict[Path, Document] = {}
+        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        with pytest.raises(SharedRefusalError) as raised:
+            add_constant(built, found, "CELLS", '"eight"', cache)
+        assert raised.value.code == "invalid"

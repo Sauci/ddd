@@ -23,9 +23,9 @@ from typing import Any, Final, Literal
 
 from pydantic import TypeAdapter
 
-from ddd.editing import Operation
+from ddd.editing import DEFAULT_INDENT_UNIT, Operation, lay_out
 from ddd.loading import included_files, resolve_path
-from ddd.lsp.navigation import Index, Site
+from ddd.lsp.navigation import Index, Site, rename_problem, rename_sites
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
 from ddd.models.constants import ConstantValue
@@ -46,6 +46,11 @@ _VALUE: Final[TypeAdapter[ConstantValue]] = TypeAdapter(ConstantValue)
 """The format's own judge of what a constant may hold, so that the interface and the loader cannot
 come to different answers. Strict on both arms, which is what keeps ``2`` a whole constant and
 ``2.0`` a fractional one."""
+
+_DESCRIPTION: Final[TypeAdapter[str]] = TypeAdapter(str)
+"""The format's own judge of what a description may hold: any string, and nothing else -
+``ConstantDeclaration.description`` is a plain ``str``, so this need only refuse what a string can
+never be: a number, a bool, ``null``, an array, an object."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +133,10 @@ def set_constant(
 
     A ``value`` may not be taken away, and one the format would refuse is refused here: written,
     the file would stop loading and every tab would empty because of one keystroke in this one. A
+    ``description`` given is checked the same way, against the same consequence: unguarded,
+    ``?action=set&key=description&raw=123`` planned ``"description": 123`` - a number where the
+    model wants a string - and the file it landed in stopped loading, emptying every tab in the
+    page over one keystroke, exactly the failure the ``value`` check exists to prevent. A
     ``description`` already left out answers no edit at all rather than a removal, as
     :func:`ddd.type_plans.set_key` also does for a type: there is nothing to remove, and a reader
     who has only selected the row - not typed anything - must not be refused before they have.
@@ -152,7 +161,64 @@ def set_constant(
         if read(entry.path, cache).value_at(f"{entry.pointer}.{key}") is None:
             return SharedPlan(())
         return _plan({entry.path: [Operation("remove", f"{entry.pointer}.{key}")]})
+    _description(raw, name, entry.path)
     return _plan({entry.path: [Operation("set", f"{entry.pointer}.{key}", raw)]})
+
+
+def rename_constant(built: Index, name: str, to: str, cache: dict[Path, Document]) -> SharedPlan:
+    """What renaming a constant takes: its own ``name`` and every shape spelling it.
+
+    The editor's rename, asked for rather than reimplemented. :func:`ddd.lsp.navigation.
+    rename_sites` knows the three places a shape is written and
+    :func:`~ddd.lsp.navigation.rename_problem` knows why a name may not be used - with
+    ``Index.occupied`` already holding *the name of the declared constant* - so the tab and the
+    editor cannot disagree about what a rename reaches or which names it refuses.
+
+    Refused before a file is touched: a rename writes into every file naming the constant, and a
+    name that turned out to be unusable would leave the project broken across all of them at once.
+    """
+    _entry(built, name)
+    problem = rename_problem(built, to, "constant")
+    if problem is not None:
+        raise SharedRefusalError("invalid", problem)
+    by_file: dict[Path, list[Operation]] = {}
+    for site in rename_sites(built, "constant", name):
+        by_file.setdefault(site.path, []).append(Operation("set", site.pointer, _raw(to)))
+    return _plan(by_file)
+
+
+def add_constant(
+    built: Index, project: SharedProject, name: str, raw: str, cache: dict[Path, Document]
+) -> SharedPlan:
+    """``name`` declared with the value ``raw``: appended to the first constants file the project
+    includes, or written into a new one beside the project description where it includes none.
+
+    One verb, where the units vocabulary has two. :func:`ddd.lsp.units.adopt_units` harvests the
+    units already in use into a new file; the constants in use are exactly the ones
+    ``unknown-constant`` complains about, and a value cannot be harvested - nothing in the project
+    says what the length of an array is. So this creates the file when there is none, and there is
+    nothing to adopt.
+
+    ``raw`` is embedded as the text it was given rather than parsed and reprinted: ``2.0`` declares
+    a fractional constant and ``2`` a whole one, and a reader asking for one would otherwise get
+    the other.
+    """
+    problem = rename_problem(built, name, "constant")
+    if problem is not None:
+        raise SharedRefusalError("invalid", problem)
+    if not project.constants_files:
+        return _created(project, name, raw, cache)
+    file = project.constants_files[0]
+    if file in project.unread:
+        raise SharedRefusalError(
+            "unreadable",
+            f"{file.name} did not load, so what it declares is unknown and '{name}' cannot be "
+            "added to it",
+        )
+    _value(raw, name, file)
+    listed = read(file, cache).value_at("constants")
+    position = _appended_at(listed)
+    return _plan({file: [Operation("insert", f"constants[{position}]", _entry_text(name, raw))]})
 
 
 def remove_constant(built: Index, name: str, cache: dict[Path, Document]) -> SharedPlan:
@@ -197,6 +263,26 @@ def _value(raw: str, name: str, file: Path) -> None:
         ) from refused
 
 
+def _description(raw: str, name: str, file: Path) -> None:
+    """Refuse a description the format would not take, naming the file it would have been
+    written to.
+
+    ``value`` has been checked against the format since this module was first written;
+    ``description`` was not, and a plan carrying ``"description": 123`` - a number, where
+    ``ConstantDeclaration`` wants a string - would write a file that stops loading, emptying
+    every tab in the page over one keystroke. The same shape of guard as :func:`_value`, closing
+    the asymmetry between the two.
+    """
+    try:
+        _DESCRIPTION.validate_python(json.loads(raw))
+    except (ValueError, TypeError) as refused:
+        raise SharedRefusalError(
+            "invalid",
+            f"{raw} is not a description a constant may state, so '{name}' cannot take it in "
+            f"{file.name}: a json string",
+        ) from refused
+
+
 def _plan(operations: Mapping[Path, Sequence[Operation]]) -> SharedPlan:
     """One edit per file, sorted by path, as :class:`SharedPlan` promises and the interface applies
     them."""
@@ -218,3 +304,66 @@ def _raw(value: Any) -> str:
     holding a degree sign arrives in the file as one, where json's default would write an
     escape."""
     return json.dumps(value, ensure_ascii=False)
+
+
+def _created(
+    project: SharedProject, name: str, raw: str, cache: dict[Path, Document]
+) -> SharedPlan:
+    """The constants file a project without one gets, and the ``includes`` entry naming it.
+
+    Follows :func:`ddd.lsp.units.adopt_units`, the only other plan in the repo that creates a
+    file: laid out with :func:`ddd.editing.lay_out` so the new file reads like one a person
+    wrote, and carried in the same plan as the ``includes`` entry so that a project can never
+    list a file that was not written - which is also the only shape of creation
+    :func:`ddd.gui.session._confined` allows.
+    """
+    created = project.project.parent / CONSTANTS_FILE
+    if created.exists():
+        raise SharedRefusalError(
+            "invalid",
+            f"declaring '{name}' writes {CONSTANTS_FILE} beside {project.project.name}, and a "
+            "file of that name is there already",
+        )
+    _value(raw, name, created)
+    laid_out = lay_out(
+        f'{{"constants": [{_entry_text(name, raw)}]}}',
+        one_line=False,
+        indent="",
+        unit=DEFAULT_INDENT_UNIT,
+        newline="\n",
+    )
+    includes = read(project.project, cache).value_at("project.includes")
+    position = _appended_at(includes)
+    edits = (
+        PlannedEdit(created, (Operation("set", "", f"{laid_out}\n"),), creates=True),
+        PlannedEdit(
+            project.project,
+            (Operation("insert", f"project.includes[{position}]", _raw(CONSTANTS_FILE)),),
+        ),
+    )
+    return SharedPlan(tuple(sorted(edits, key=lambda edit: edit.path.as_posix())))
+
+
+def _appended_at(listed: object) -> int:
+    """Where a new entry lands: at the end of a list read off disk, or at the front of a value
+    that is not a list at all.
+
+    A project whose ``includes`` is not a list, or a constants file whose ``constants`` is not
+    one, is a shape the loader itself refuses - but a plan is built from the raw document, read
+    before anything validates it, so a length taken unconditionally would raise while building
+    the plan rather than let the caller reach the refusal the next ``ddd check`` already gives.
+    """
+    if isinstance(listed, list):
+        return len(listed)
+    return 0
+
+
+def _entry_text(name: str, raw: str) -> str:
+    """One constant entry as json text, with ``raw`` embedded exactly as it was given.
+
+    Built as text rather than dumped from a dict because a dict would carry the value through
+    python's number types: ``1e3`` would come back ``1000.0`` and ``2.00`` as ``2.0``. The
+    generated outputs normalise a number that way on purpose, but a description file should say
+    what its author wrote. ``raw`` has passed :func:`_value`, so what is built here is json.
+    """
+    return f'{{"name": {_raw(name)}, "value": {raw}, "description": ""}}'

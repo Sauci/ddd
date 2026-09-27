@@ -537,14 +537,14 @@ Run: `.venv/bin/python -m pytest tests/test_shared_plans.py -q --no-cov`
 Expected: PASS.
 
 Run: `.venv/bin/python -m pytest -q && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy`
-Expected: 100 % line and branch; ruff and mypy clean. The existing `tests/test_lsp_units.py` must
+Expected: 100 % line and branch; ruff and mypy clean. The existing `tests/test_unit_plans.py` must
 stay green untouched — that is the proof that moving `_included` moved no behaviour.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add src/ddd/loading.py src/ddd/lsp/units.py src/ddd/shared_plans.py tests/test_shared_plans.py
-git commit -m "$(printf "one rule for which files a project includes\n\nThe unit plans and the constants plans both have to ask which files a project\nincludes, and both have to get the same answer the run gets. The wrapper moves\nout of lsp/units.py to sit beside expand_include, whose docstring already says\nit is public for exactly this.\n\ntests/test_lsp_units.py is untouched, which is the proof that moving it moved\nno behaviour.\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>")"
+git commit -m "$(printf "one rule for which files a project includes\n\nThe unit plans and the constants plans both have to ask which files a project\nincludes, and both have to get the same answer the run gets. The wrapper moves\nout of lsp/units.py to sit beside expand_include, whose docstring already says\nit is public for exactly this.\n\ntests/test_unit_plans.py is untouched, which is the proof that moving it moved\nno behaviour.\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>")"
 ```
 
 ---

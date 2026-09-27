@@ -409,7 +409,7 @@ def _source(revision: Revision, path: Path) -> Path:
     """
     resolved = path.resolve()
     if not any(file.path == resolved and file.kind != "plugin" for file in revision.files):
-        raise NotInProjectError(f"{path} is not a description file of the open project")
+        raise NotInProjectError(f"{path.as_posix()} is not a description file of the open project")
     return _served(revision, resolved)
 
 
@@ -424,7 +424,8 @@ def _served(revision: Revision, resolved: Path) -> Path:
     if not any(resolved.is_relative_to(directory) for directory in revision.served):
         serves = " and ".join(directory.as_posix() for directory in revision.served)
         raise NotInProjectError(
-            f"{resolved} is a description file of the open project, but ddd gui serves {serves}; "
+            f"{resolved.as_posix()} is a description file of the open project, but ddd gui "
+            f"serves {serves}; "
             "start it in a directory holding this file to reach it here"
         )
     return resolved

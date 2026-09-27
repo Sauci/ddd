@@ -379,6 +379,9 @@ class TestFiles:
     def test_a_file_outside_the_project_is_not_found(self, api: Api, root: Path) -> None:
         reply = get(api, "/api/file", path=(root / "other" / "q.ddd.json").as_posix())
         assert (reply.status, reply.body["error"]) == (404, "not-found")
+        # Posix-separated, as every path the api hands the page is: this reason is drawn in the
+        # same banner as the rest, and on windows it read with backslashes.
+        assert (root / "other" / "q.ddd.json").as_posix() in reply.body["message"]
 
     def test_a_file_request_needs_a_path(self, api: Api) -> None:
         assert get(api, "/api/file").status == 400

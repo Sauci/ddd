@@ -23,6 +23,7 @@ from conftest import (
     write_tree,
 )
 from ddd import __version__
+from ddd.cli import EXIT_OK, main
 from ddd.diagnostics import CHECKS
 from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
 from ddd.gui.api import Api, Reply
@@ -1460,6 +1461,191 @@ class TestFix:
             pointer="component.interface[0].definition",
             check="missing-id",
         )
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+
+def dumped(source: Path, target: Path) -> None:
+    """``target`` as ``ddd dump`` would write it for the project description at ``source``."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    assert main(["dump", str(source), "-o", str(target)]) == EXIT_OK
+
+
+class TestCompare:
+    def test_a_project_compared_against_a_dump_of_itself_matches(
+        self, api: Api, root: Path
+    ) -> None:
+        dump = root / "baseline.json"
+        dumped(root / "p.ddd.json", dump)
+        reply = get(api, "/api/compare", baseline=dump.as_posix())
+        assert reply.status == 200
+        assert reply.body["revision"] == 1
+        assert reply.body["verdict"] is True
+        assert reply.body["findings"] == []
+        assert reply.body["baseline_findings"] == []
+        assert reply.body["renames"] == []
+
+    def test_a_drifted_datatype_fails_the_verdict_with_a_changed_interface_finding(
+        self, tmp_path: Path
+    ) -> None:
+        root = tmp_path
+        write_tree(
+            root,
+            {
+                "old/p.ddd.json": project("P", "a.ddd.json"),
+                "old/a.ddd.json": component("A", declare("output", "Speed", "uint8", unit="rpm")),
+            },
+        )
+        dump = root / "baseline.json"
+        dumped(root / "old" / "p.ddd.json", dump)
+        api = opened(
+            root,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+            },
+        )
+        reply = get(api, "/api/compare", baseline=dump.as_posix())
+        assert reply.status == 200
+        assert reply.body["verdict"] is False
+        changed = [f for f in reply.body["findings"] if f["check"] == "changed-interface"]
+        assert len(changed) == 1
+        assert changed[0]["file"] == posix(root, "p.ddd.json")
+        # `compare()` takes one location for the whole call, the way `ddd compare`'s own text
+        # report does, so every finding of a comparison is filed at the candidate's own project
+        # file - never at the component that happens to declare the object. `route_of` only
+        # opens a component file at a declaration's own pointer, so - like every finding
+        # `/api/state` already answers this way for a file that did not load or names no place -
+        # there is nothing here for the page to open either.
+        assert changed[0]["route"] is None
+
+    def test_comparing_a_project_against_itself_with_its_own_conflict_never_routes_into_it(
+        self, tmp_path: Path
+    ) -> None:
+        """The regression this route actually had: comparing a project against itself is the
+        first thing a reader tries, and a baseline only has to sit under the session root - it
+        is not required to be a file other than the candidate's own. Here the open project has
+        a `multiple-producers` conflict of its own, so reading it a second time as its own
+        baseline forwards that same conflict, once per producer, at files that really are
+        `revision.files`' own. Neither answers a route: it used to, because the api asked
+        "is this file one of the open project's" and answered honestly for a message that
+        says "in the baseline: ..."; now a baseline finding is carried in its own field of the
+        reply, `baseline_findings`, never in `findings` - marked by which one it is in, not by
+        where its path happens to resolve to, and a page reading the wire is told the same way
+        a test reading this reply's body now is."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        reply = get(api, "/api/compare", baseline=posix(tmp_path, "p.ddd.json"))
+        assert reply.status == 200
+        # Never here: `multiple-producers` is not one of `compare`'s own comparison checks, and
+        # nothing the baseline's analysis forwards is ever mixed into this field.
+        assert not any(f["check"] == "multiple-producers" for f in reply.body["findings"])
+        forwarded = [
+            f for f in reply.body["baseline_findings"] if f["check"] == "multiple-producers"
+        ]
+        assert len(forwarded) == 2
+        assert all(f["message"].startswith("in the baseline: ") for f in forwarded)
+        assert all(f["route"] is None for f in forwarded)
+        # Each really is a file of the open project - the coincidence a path check alone
+        # cannot tell apart from a baseline kept somewhere else entirely.
+        assert {Path(f["file"]).name for f in forwarded} == {"a.ddd.json", "b.ddd.json"}
+
+    def test_a_missing_baseline_is_bad(self, api: Api) -> None:
+        reply = get(api, "/api/compare")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+
+    def test_a_baseline_outside_the_root_is_refused(self, api: Api, tmp_path: Path) -> None:
+        outside = tmp_path / "elsewhere.json"
+        outside.write_text("{}")
+        reply = get(api, "/api/compare", baseline=outside.as_posix())
+        assert reply.status == 400
+        assert "outside" in reply.body["message"]
+
+    def test_an_unreadable_baseline_is_refused(self, api: Api, root: Path) -> None:
+        reply = get(api, "/api/compare", baseline=posix(root, "missing.json"))
+        assert reply.status == 400
+        assert "unreadable" in reply.body["message"]
+
+    def test_a_baseline_path_with_a_nul_byte_is_refused(self, api: Api) -> None:
+        """Reader input over the wire: ``parse_qs`` decodes ``%00`` into a real NUL. Before this
+        was caught, that reached ``Path.resolve`` unguarded and left the terminal holding a
+        traceback and the reader a 500 telling them to go and read it - and ``ddd gui --host``
+        widens the bind beyond loopback."""
+        baseline = "base\x00line.json"
+        reply = get(api, "/api/compare", baseline=baseline)
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        # Which of the four refusals answers this is platform-dependent, though a refusal
+        # always does: `Path.resolve` raises `ValueError` on an embedded NUL on POSIX, straight
+        # into the *unreadable* rule (`_resolved_baseline`'s `except (OSError, ValueError)`);
+        # on Windows it resolves the path against the current drive instead - a real path that
+        # merely lands outside the session root, straight into the confinement rule
+        # (`is_relative_to`). Both name the path the reader typed in their message, which is
+        # the one thing asserted here rather than pinning either reason by name.
+        assert baseline in reply.body["message"]
+
+    def test_a_baseline_whose_resolve_raises_a_value_error_is_refused(
+        self, api: Api, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Forced rather than left to the platform, the way ``test_hardening.py``'s own
+        ``test_a_path_refused_by_resolve_itself`` forces the same thing for the same reason: the
+        NUL byte above only raises ``ValueError`` out of ``resolve()`` on POSIX, so the real test
+        alone leaves this except clause unexercised on Windows - and the 100% coverage gate is
+        read once per platform, not once for whichever machine happened to run the suite."""
+
+        def refuse(self: Path, *args: object, **kwargs: object) -> Path:
+            msg = "embedded null character in path"
+            raise ValueError(msg)
+
+        monkeypatch.setattr(Path, "resolve", refuse)
+        reply = get(api, "/api/compare", baseline="whatever.json")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert "whatever.json' is unreadable" in reply.body["message"]
+
+    def test_a_baseline_whose_resolve_raises_an_os_error_is_refused(
+        self, api: Api, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The other exception the same clause catches, which nothing above ever reaches on
+        either platform: ``Path.resolve()`` can still raise ``OSError`` outright even unstrict -
+        a symlink loop is the one case it does not swallow. Forced for its own sake and not only
+        the gate's: one ``except`` clause covering two exceptions is a choice that could quietly
+        drop either from its tuple, and only a test naming each one separately would notice."""
+
+        def refuse(self: Path, *args: object, **kwargs: object) -> Path:
+            msg = "Too many levels of symbolic links"
+            raise OSError(40, msg)
+
+        monkeypatch.setattr(Path, "resolve", refuse)
+        reply = get(api, "/api/compare", baseline="whatever.json")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert "whatever.json' is unreadable" in reply.body["message"]
+
+    def test_a_baseline_that_is_not_json_is_refused(self, api: Api, root: Path) -> None:
+        (root / "bad.json").write_text("{not json at all")
+        reply = get(api, "/api/compare", baseline=posix(root, "bad.json"))
+        assert reply.status == 400
+        assert "not valid json" in reply.body["message"]
+
+    def test_a_baseline_that_is_neither_a_dictionary_nor_a_description_is_refused(
+        self, api: Api, root: Path
+    ) -> None:
+        # The fourth reason, the one nobody thinks of: a perfectly valid json file that is
+        # simply something else.
+        (root / "odd.json").write_text(json.dumps({"something": "else"}))
+        reply = get(api, "/api/compare", baseline=posix(root, "odd.json"))
+        assert reply.status == 400
+        assert "neither a dictionary nor a description" in reply.body["message"]
+
+    def test_a_project_that_did_not_load_cannot_be_compared(self, tmp_path: Path) -> None:
+        reply = get(unloaded(tmp_path), "/api/compare", baseline=posix(tmp_path, "p.ddd.json"))
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_comparing_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root)), "/api/compare")
         assert (reply.status, reply.body["error"]) == (409, "no-project")
 
 

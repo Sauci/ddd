@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useCallback } from "react";
 import { getSession } from "../api/client";
 import { hrefOf } from "../lib/route";
+import { ComparePage } from "../screens/ComparePage";
 import { ComponentPage } from "../screens/ComponentPage";
 import { FindingsPage } from "../screens/FindingsPage";
 import { GraphPage } from "../screens/GraphPage";
@@ -24,6 +25,7 @@ const PROJECT_VIEWS = [
   ["units", "Units"],
   ["types", "Types"],
   ["findings", "Findings"],
+  ["compare", "Compare"],
 ] as const;
 
 export function App() {
@@ -125,6 +127,8 @@ export function App() {
           />
         ) : route.view === "findings" ? (
           <FindingsPage state={state} stopped={stopped} onOpen={navigate} />
+        ) : route.view === "compare" ? (
+          <ComparePage state={state} stopped={stopped} onOpen={navigate} />
         ) : (
           <ProjectPage state={state} onComponent={openComponent} />
         )}

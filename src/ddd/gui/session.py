@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from ddd.build_info import BuildInfo
+from ddd.deliveries import Resolved
 from ddd.diagnostics import CheckInfo, Diagnostic, Severity
 from ddd.editing import (
     INVALID,
@@ -107,13 +108,26 @@ class Revision:
     builds: tuple[BuildInfo, ...]
     files: tuple[SourceFile, ...]
     findings: tuple[Filed, ...]
-    dictionary: DataDictionary | None
+    resolved: Resolved | None
+    """What the analysis resolved the project to, or ``None`` when it did not get that far.
+
+    The whole of it - the dictionary, the project's plugins and where it writes each name - and
+    not the dictionary alone, because those are what a reader of a revision needs to do to it
+    anything ``ddd check`` or ``ddd compare`` does to a project of their own: the comparison in
+    :mod:`ddd.gui.compare` has a plugin's comparison rules to run only because they are here.
+    """
+
     checks: tuple[CheckInfo, ...]
     """The plugin checks the analysis registered, beside the built-in ones every run has."""
 
     index: Index | None
     """Where the project writes down each name it uses, from the analysis's own read: the first
     run that built one, since every run of one project reads the same files."""
+
+    @property
+    def dictionary(self) -> DataDictionary | None:
+        """What the analysis resolved to, or ``None`` when it did not get that far."""
+        return None if self.resolved is None else self.resolved.dictionary
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,7 +223,7 @@ class Session:
         """Analyse the open project again if a file of it changed on disk; say whether one did."""
         with self._lock:
             revision = self._revision
-            stamps = _signature(self._signature)
+            stamps = stamped(self._signature)
             if revision is None or stamps == self._signature:
                 return False
             self._publish(self._analysed(revision.project), stamps)
@@ -267,7 +281,7 @@ class Session:
             del self._stack[:-MAX_UNDO]
             # After the edit's own write, so the next poll does not take it for somebody else's,
             # and before the analysis, so a save landing while that runs is not taken for seen.
-            stamps = _signature(self._signature)
+            stamps = stamped(self._signature)
             return self._publish(self._analysed(revision.project), stamps), written
 
     def undo(self, at: int) -> Revision:
@@ -286,7 +300,7 @@ class Session:
             restore(top.files)
             # Stamped before the analysis, as an edit's own write is, and popped only once the
             # files are back: a refused restore leaves the entry where it was.
-            stamps = _signature(self._signature)
+            stamps = stamped(self._signature)
             self._stack.pop()
             return self._publish(self._analysed(revision.project), stamps)
 
@@ -335,7 +349,10 @@ class Session:
             findings=tuple(
                 Filed(path, found) for path in sorted(grouped) for found in grouped[path]
             ),
-            dictionary=next((run.dictionary for run in runs if run.dictionary is not None), None),
+            # One run's whole answer, never a field picked from each: the plugins a comparison
+            # runs the rules of and the dictionary it compares have to be the same read's, and
+            # two `next()` calls over the same list would only agree by coincidence.
+            resolved=next((run.resolved for run in runs if run.resolved is not None), None),
             checks=tuple(registered.values()),
             index=next((run.index for run in runs if run.index is not None), None),
         )
@@ -481,7 +498,16 @@ def _name_in(data: Any, kind: str) -> str | None:
     return name if isinstance(name, str) else None
 
 
-def _signature(paths: Iterable[Path]) -> dict[Path, tuple[int, int] | None]:
+def stamped(paths: Iterable[Path]) -> dict[Path, tuple[int, int] | None]:
+    """The modification time and size of each path, ``None`` for one that is not there.
+
+    How this session decides a file has changed, without a file watcher the standard library
+    does not have: taken again and compared with what was taken before. Shared with
+    :mod:`ddd.gui.compare`, which asks the same question of a baseline's own files, rather than
+    read a second way there - a baseline may perfectly well *be* the open project's description
+    (spec 2026-09-26-gui-compare-design.md §3), and two readings of "has this file changed"
+    disagreeing about one file is exactly the answer nobody could explain.
+    """
     signature: dict[Path, tuple[int, int] | None] = {}
     for path in paths:
         try:

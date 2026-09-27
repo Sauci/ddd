@@ -9,12 +9,12 @@ import os
 import re
 import sys
 import unicodedata
-from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ddd import __version__
+from ddd.deliveries import Resolved, read_baseline, read_dictionary
 from ddd.diagnostics import (
     CHECKS,
     STANDALONE_POLICY,
@@ -23,6 +23,7 @@ from ddd.diagnostics import (
     Severity,
     SeverityPolicy,
     UnknownCheckError,
+    where,
 )
 from ddd.names import (
     BUILT_IN_ARTEFACTS,
@@ -645,24 +646,6 @@ def _add_plugin_argument(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _where(path: Path) -> Location:
-    """A finding's place, out of a path typed on the command line.
-
-    Resolved rather than taken as typed: a ``location`` is "an absolute, forward-slashed
-    path" (``docs/consistency_checks.rst``), and everything the loader locates is one, because
-    it resolves every file it reads. The paths this module locates a finding at itself - the
-    project or candidate a comparison is about, the address map a note is about - arrive as
-    somebody typed them, and a relative one is unresolvable to whoever reads the json without
-    the working directory the run had. It is also unorderable against the rest: within one
-    severity the findings sort by path, so a relative one landed apart from the findings of
-    the very file it is about. The text report is unchanged, because it renders every path
-    back against the working directory.
-    """
-    from ddd.loading import resolve_path
-
-    return Location(resolve_path(path))
-
-
 def _verify_overrides(bag: DiagnosticBag, plugins: Sequence[Plugin] = ()) -> None:
     """Hold every ``-W`` naming a plugin's check to the checks the run's plugins register.
 
@@ -726,13 +709,13 @@ def _command_check(args: argparse.Namespace) -> int:
             # has to say, and a comparison against them would say nothing. The overrides are
             # still held to what did load, so a typo is reported by the run that made it.
             baseline = (
-                _read_baseline(args.baseline, bag, getattr(args, "standalone", False))
+                read_baseline(args.baseline, bag, getattr(args, "standalone", False))
                 if resolved is not None
                 else None
             )
             _verify_overrides(bag, () if baseline is None else baseline.plugins)
             if resolved is not None and baseline is not None:
-                location = _where(args.project)
+                location = where(args.project)
                 compare(baseline.dictionary, resolved.dictionary, bag, location=location)
                 run_compare_hooks(
                     resolved.plugins,
@@ -741,7 +724,7 @@ def _command_check(args: argparse.Namespace) -> int:
                     bag,
                     resolved.locate,
                     location,
-                    _where(args.baseline),
+                    where(args.baseline),
                 )
     _report(bag, args.format)
     if args.format == "json":
@@ -767,8 +750,8 @@ def _command_compare(args: argparse.Namespace) -> int:
     # run's business. The candidate's are, which is why only it shares the bag - checking a
     # project description and comparing it are both reported by one `ddd compare`.
     with _reported_on_failure(bag, args.format):
-        baseline = _read_baseline(args.baseline, bag)
-        candidate = _read_dictionary(args.candidate, bag)
+        baseline = read_baseline(args.baseline, bag)
+        candidate = read_dictionary(args.candidate, bag)
         if baseline is None or candidate is None:
             _report(bag, args.format)
             return EXIT_FINDINGS
@@ -784,7 +767,7 @@ def _command_compare(args: argparse.Namespace) -> int:
             plugins = _plugins_from_arguments(args.plugin, bag)
         _verify_overrides(bag, baseline.plugins)
 
-        location = _where(args.candidate)
+        location = where(args.candidate)
         paired = compare(baseline.dictionary, candidate.dictionary, bag, location=location)
         run_compare_hooks(
             plugins,
@@ -793,7 +776,7 @@ def _command_compare(args: argparse.Namespace) -> int:
             bag,
             candidate.locate,
             location,
-            _where(args.baseline),
+            where(args.baseline),
         )
         if args.renames is not None:
             _refuse_a_source(args.renames, "--renames", *candidate.sources, *baseline.sources)
@@ -863,7 +846,7 @@ def _check_address_coverage(
         "address-missing",
         f"the address map has no entry for {_listed(missing)}; "
         f"{'it reaches' if len(missing) == 1 else 'they reach'} the a2l at address 0",
-        _where(path),
+        where(path),
         notes=notes,
     )
 
@@ -1635,25 +1618,6 @@ def _command_checks(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-@dataclass(frozen=True, slots=True)
-class Resolved:
-    """A dictionary and what a plugin's hook needs beside it.
-
-    A description resolved on the spot keeps its plugins and can point a finding at a
-    declaration; an archived dump has neither, so its plugins come from ``--plugin`` and a
-    finding points at the file.
-    """
-
-    dictionary: DataDictionary
-    plugins: tuple[Plugin, ...]
-    locate: Callable[[str], Location | None]
-    from_description: bool
-    sources: tuple[Path, ...]
-    """Every file this side was read out of, resolved: a project and its whole include tree,
-    or the single file an archived dump was read from. What :func:`_refuse_a_source` holds an
-    output path against."""
-
-
 def _analyze(
     args: argparse.Namespace, stream: Any = None, *, verify: bool = True
 ) -> tuple[Resolved | None, DiagnosticBag]:
@@ -1696,37 +1660,6 @@ def _analyze(
     return Resolved(dictionary, workspace.plugins, workspace.locate, True, workspace.sources()), bag
 
 
-def _read_dictionary(path: Path, bag: DiagnosticBag) -> Resolved | None:
-    """A dumped dictionary, or a project/component description resolved into one.
-
-    Accepting both is what makes the command usable in a pipeline: the baseline is normally
-    an archived dump, while the candidate is the project sitting in the working tree.
-    """
-    from ddd.analysis import analyze
-    from ddd.loading import load_dictionary, load_workspace, read_json_document
-
-    document = read_json_document(path)
-    if _holds_a_description(document):
-        workspace = load_workspace(path, bag)
-        if workspace is None or bag.has_errors:
-            return None
-        return Resolved(
-            analyze(workspace, bag),
-            workspace.plugins,
-            workspace.locate,
-            True,
-            workspace.sources(),
-        )
-    # Handed the document this already read rather than leaving the reader to read it again:
-    # a dumped dictionary is the file a build archives whole, and the 45 MB one of a thousand
-    # object project costs about a third of a second per pass, twice over in a comparison.
-    dictionary = load_dictionary(path, bag, document)
-    if dictionary is None:
-        return None
-    archived = _where(path)
-    return Resolved(dictionary, (), lambda _: archived, False, (archived.path,))
-
-
 def _refuse_a_directory(path: Path, option: str) -> None:
     """Refuse an output path with no file name of its own, in the tool's own words.
 
@@ -1761,56 +1694,6 @@ def _refuse_a_source(path: Path, option: str, *sources: Path) -> None:
             f"give it a file of its own"
         )
         raise ValueError(msg)
-
-
-def _read_baseline(path: Path, bag: DiagnosticBag, standalone: bool = False) -> Resolved | None:
-    """Resolve the baseline side of a comparison, in a bag of its own.
-
-    A baseline given as a project description has to be analysed to become a dictionary, and
-    that analysis produces findings about *that* delivery: files that are not part of the
-    project under check, an output nobody read two releases ago. Reported here they would be
-    attributed to this run, printed twice when both sides are the same tree, and would fail a
-    clean project because of its predecessor. Its warnings are its own, however strict this
-    run is, so the baseline is analysed without ``--strict``; only its errors are carried over,
-    prefixed, so that a broken baseline is visible. A candidate given as a dump is still
-    compared against whatever resolved, because a delivery that cannot be accepted still needs
-    its differences listed; a candidate given as a description is not analysed once the shared
-    bag holds an error, so a broken baseline stops that run at the errors.
-
-    ``-W`` does not reach it either, for the same reason and against the same objection: the
-    overrides used to be shared, so ``-W unused-output=error`` - a run asking to be told about
-    *its own* unread outputs - promoted a warning about a predecessor into an error, carried
-    it over as ``in the baseline:`` and refused a verdict about the delivery. What does reach
-    it is ``standalone``, the floor a component read on its own sets: that is a statement
-    about how the file was handed over, and the baseline was handed over the same way.
-    """
-    floor = STANDALONE_POLICY if standalone else ()
-    own = DiagnosticBag(SeverityPolicy.from_strings(floor, strict=False, standalone=standalone))
-    resolved = _read_dictionary(path, own)
-    for diagnostic in own.sorted:
-        if diagnostic.severity is Severity.ERROR:
-            bag.add(
-                diagnostic.check,
-                f"in the baseline: {diagnostic.message}",
-                diagnostic.location,
-                diagnostic.notes,
-                # At the severity the baseline's own analysis gave it: "the run fails on
-                # them" (4.1) is what makes a comparison against an untrustworthy dictionary
-                # visible, and a `-W` of this run relaxing the check would leave the run
-                # reporting no verdict and exiting 0.
-                severity=diagnostic.severity,
-            )
-    return resolved
-
-
-def _holds_a_description(document: dict[str, Any] | None) -> bool:
-    """True for a project or component file; a broken file is left to the reader to report.
-
-    A file :func:`read_json_document` could not read at all answers ``False`` rather than
-    raising, because this is only a sniff: whichever reader the file actually reaches is what
-    has something to say about it, and it reads the file again to say it.
-    """
-    return document is not None and ("project" in document or "component" in document)
 
 
 def _diagnostics_payload(bag: DiagnosticBag) -> dict[str, Any]:

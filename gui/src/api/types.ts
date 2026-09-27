@@ -5,6 +5,7 @@
 export type {
   Change,
   Changes,
+  CompareReply,
   DeclarableName,
   DeclarableReply,
   EditReply,
@@ -29,6 +30,7 @@ export type {
   PlanReply,
   ProjectType,
   ProjectUnit,
+  Renamed,
   SessionInfo,
   SettleReply,
   Severity,

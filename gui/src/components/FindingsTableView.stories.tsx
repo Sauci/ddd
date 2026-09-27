@@ -5,7 +5,7 @@ import { FindingsTableView } from "./FindingsTableView";
 
 export default { title: "Components / FindingsTableView" };
 
-const ROWS = findingRows(PROJECT_FINDINGS);
+const ROWS = findingRows(PROJECT_FINDINGS.findings);
 
 /** Every severity, worst first, grouped by file within a severity. */
 export const WorstFirst = () => {
@@ -22,6 +22,6 @@ export const Selected = () => {
 /** A project with nothing to report: the header alone, no row under it. */
 export const NothingToReport = () => {
   const [selected, setSelected] = useState<string | undefined>(undefined);
-  const rows = findingRows(NO_FINDINGS);
+  const rows = findingRows(NO_FINDINGS.findings);
   return <FindingsTableView rows={rows} selected={selected} onSelect={setSelected} />;
 };

@@ -341,6 +341,29 @@ class Location:
         }
 
 
+def where(path: Path) -> Location:
+    """A finding's place, out of a path typed on the command line.
+
+    Resolved rather than taken as typed: a ``location`` is "an absolute, forward-slashed
+    path" (``docs/consistency_checks.rst``), and everything the loader locates is one, because
+    it resolves every file it reads. The paths a caller locates a finding at itself - the
+    project or candidate a comparison is about, the address map a note is about - arrive as
+    somebody typed them, and a relative one is unresolvable to whoever reads the json without
+    the working directory the run had. It is also unorderable against the rest: within one
+    severity the findings sort by path, so a relative one landed apart from the findings of
+    the very file it is about. The text report is unchanged, because it renders every path
+    back against the working directory.
+    """
+    # Imported here, and it has to stay here: ``ddd.loading`` imports ``DiagnosticBag`` and
+    # ``Location`` from this module at module level, so hoisting this line answers "cannot
+    # import name 'DiagnosticBag' from partially initialized module 'ddd.diagnostics'". It was
+    # a startup-cost habit where this function used to live, in ``cli.py``; here it is the one
+    # thing keeping the import graph acyclic, and nothing said so.
+    from ddd.loading import resolve_path
+
+    return Location(resolve_path(path))
+
+
 @dataclass(frozen=True, slots=True)
 class Diagnostic:
     """A single finding."""
@@ -372,8 +395,11 @@ class Diagnostic:
         )
 
     def render(self, root: Path | None = None) -> str:
-        where = self.location.render(root) if self.location else "<project>"
-        lines = [f"{where}: {self.severity.value}[{self.check}]: {self.message}"]
+        # Not `where`: that is the name of the module-level function a few lines above, which
+        # builds the very `Location` being rendered here, and a reader tracing it stopped at
+        # this local instead.
+        place = self.location.render(root) if self.location else "<project>"
+        lines = [f"{place}: {self.severity.value}[{self.check}]: {self.message}"]
         for text, location in self.notes:
             prefix = f"{location.render(root)}: " if location else ""
             first, *rest = f"{prefix}{text}".splitlines() or [""]

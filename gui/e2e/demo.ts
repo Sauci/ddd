@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 
@@ -42,6 +43,33 @@ export function driftIn(directory: string, file: string, variable: string, unit:
   const path = join(directory, file);
   const before = readFileSync(path);
   writeFileSync(path, withUnitOf(before, variable, unit));
+  return before;
+}
+
+/** A variable's own `"datatype": ...` in a file: the first one after its name. */
+function datatypeOf(variable: string): RegExp {
+  return new RegExp(`("name": "${variable}"[\\s\\S]*?"datatype": )"[^"]*"`);
+}
+
+/** A variable's datatype in one file of a copy drifted to another, saved from outside - what a
+ * comparison reports as `changed-interface`, unlike `driftIn`'s unit, which the live analysis
+ * catches as `definition-mismatch` between a component's own reading and its producer. Written
+ * on the *producing* declaration: resolution follows the producer's own statement of a field
+ * (`reference = producer or refs[0]`, in the analysis that settles which declaration is the
+ * reference one), so this is what actually changes the delivery a comparison reads, the way a
+ * real widened storage type would. Answers the file as it was before. */
+export function driftDatatypeIn(
+  directory: string,
+  file: string,
+  variable: string,
+  datatype: string,
+): Buffer {
+  const path = join(directory, file);
+  const before = readFileSync(path);
+  const text = before
+    .toString("utf8")
+    .replace(datatypeOf(variable), `$1${JSON.stringify(datatype)}`);
+  writeFileSync(path, text, "utf8");
   return before;
 }
 
@@ -125,6 +153,38 @@ function driftNumber(
   return before;
 }
 
+/** `path`'s modification time, read now so a write about to be made to it can be hidden from
+ * the session's own file watcher afterwards - call the function this returns once that write is
+ * made. The session decides a file changed by `(st_mtime_ns, st_size)` alone (`stamped`,
+ * `session.py`), never by reading it, so a write whose bytes change but whose stamp does not
+ * is invisible to the watcher while still being a different file to anyone who reads it fresh -
+ * which is what an Apply's own staleness check does. Used where a test means the second and not
+ * the first, the way `keys.spec.ts`'s "a change refused as stale..." does.
+ *
+ * The restore is made through python's own `os.utime(path, ns=(...))`, not `fs.utimesSync`:
+ * `utimesSync` takes the time through a JS `number`, which is a handful of nanoseconds off for
+ * an epoch this large - close enough to fool a human but not the exact-tuple comparison
+ * `stamped` makes, so the write would still have been visible to it. Reached through
+ * `DDD_PYTHON` rather than a shell tool, the way `dump` above is, so this needs nothing this
+ * repository does not already depend on and is exact on every platform the suite runs on. */
+export function preserveStampOf(path: string): () => void {
+  const mtimeNs = statSync(path, { bigint: true }).mtimeNs;
+  return () => {
+    const result = spawnSync(process.env.DDD_PYTHON ?? "python", [
+      "-c",
+      "import os, sys\nos.utime(sys.argv[1], ns=(int(sys.argv[2]), int(sys.argv[2])))",
+      path,
+      mtimeNs.toString(),
+    ]);
+    if (result.status !== 0) {
+      throw new Error(
+        `restoring ${path}'s modification time exited with ${String(result.status)}: ` +
+          `${result.stderr.toString("utf8")}`,
+      );
+    }
+  };
+}
+
 /** A producing declaration's id taken away from outside, the way a description written before
  * `ddd id` adopted ids states it - which is what `missing-id` reports; answers the file as it
  * was before. */
@@ -195,4 +255,25 @@ export function widenBlockA(directory: string): void {
       "$1[[[0, 12], [28, 52]], [[84, 124], [180, 9999]]]",
     );
   writeFileSync(path, text, "utf8");
+}
+
+/** `ddd dump` of `project` into `output`, both read and written relative to `directory` - the
+ * Compare tab's own baseline, produced the way `fixtures.ts` itself starts `ddd gui`: through
+ * `DDD_PYTHON` rather than the `ddd` launcher, which on Windows starts python as a child of its
+ * own that killing the launcher leaves running. Run from `directory`, exactly as the server
+ * under test is, so `output` lands under the one root a baseline is ever read from
+ * (`ddd/gui/compare.py`'s own `_resolved_baseline` confines it there). Synchronous: a journey
+ * calls this once, before it ever opens the page, and there is nothing here to await. */
+export function dump(directory: string, project: string, output: string): void {
+  const result = spawnSync(
+    process.env.DDD_PYTHON ?? "python",
+    ["-m", "ddd", "dump", project, "-o", output],
+    { cwd: directory },
+  );
+  if (result.status !== 0) {
+    throw new Error(
+      `ddd dump ${project} -o ${output} exited with ${String(result.status)}: ` +
+        `${result.stderr.toString("utf8")}`,
+    );
+  }
 }

@@ -100,28 +100,24 @@ test("findings that differ in severity, check or message are each kept, in order
 
 describe("the rows of the findings tab", () => {
   test("errors come before warnings, and warnings before information", () => {
-    const rows = findingRows(
-      state([
-        finding({ severity: "info", check: "missing-id" }),
-        finding({ severity: "error" }),
-        finding({ severity: "warning", check: "storage-mismatch" }),
-      ]),
-    );
+    const rows = findingRows([
+      finding({ severity: "info", check: "missing-id" }),
+      finding({ severity: "error" }),
+      finding({ severity: "warning", check: "storage-mismatch" }),
+    ]);
     expect(rows.map((row) => row.finding.severity)).toEqual(["error", "warning", "info"]);
   });
 
   test("within a severity the analysis's own order is kept, which groups them by file", () => {
-    const rows = findingRows(
-      state([
-        finding({ file: TYPES, check: "duplicate-type", route: null }),
-        finding({ file: SENSOR_HUB }),
-      ]),
-    );
+    const rows = findingRows([
+      finding({ file: TYPES, check: "duplicate-type", route: null }),
+      finding({ file: SENSOR_HUB }),
+    ]);
     expect(rows.map((row) => row.file)).toEqual(["types.ddd.json", "sensor_hub.ddd.json"]);
   });
 
   test("each row has a key that tells two findings of one wording apart", () => {
-    const rows = findingRows(state([finding(), finding()]));
+    const rows = findingRows([finding(), finding()]);
     expect(new Set(rows.map((row) => row.key)).size).toBe(2);
   });
 });

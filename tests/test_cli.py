@@ -32,9 +32,9 @@ from ddd.cli import (
     EXIT_USAGE,
     _display_width,
     _displayed_path,
-    _read_dictionary,
     main,
 )
+from ddd.deliveries import read_dictionary
 from ddd.diagnostics import DiagnosticBag
 from ddd.ir import DICTIONARY_FORMAT
 from ddd.models.common import OBJECT_ID_PATTERN
@@ -3176,7 +3176,7 @@ class TestWhereTheRunsOwnFindingsAre:
         """A dump has no declaration to point at, so a hook's finding lands on the file."""
         self.deliveries(tree, capsys)
         monkeypatch.chdir(tree)
-        resolved = _read_dictionary(Path("base.json"), DiagnosticBag())
+        resolved = read_dictionary(Path("base.json"), DiagnosticBag())
         assert resolved is not None
         located = resolved.locate("Kept")
         assert located is not None and located.path == tree / "base.json"

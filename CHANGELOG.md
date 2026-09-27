@@ -150,6 +150,24 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   on an object's `init` now leads to this grid, the way every other finding already
   leads to what it names.
 
+  A sixth tab, Compare, answers the question `ddd check` was never asked: can the open
+  project stand in for a delivery the reader names.  The baseline is a dumped dictionary,
+  or a project or component description, at a path under the directory `ddd gui` was
+  started in - refused, and told why, when it is outside that directory, unreadable, not
+  valid json, a description or a dictionary this DDD could not read, or json that is
+  neither.  Its verdict counts only the comparison and the baseline's own errors,
+  never the open project's own consistency errors - the Findings tab's own question - so a
+  project the Findings tab still shows full of errors can be told here that it can replace
+  its baseline.  A finding that names a place in this project leads there, as on the
+  Findings tab: a plugin's comparison rule files at the declaration it is about.  The
+  comparison's own findings name the whole delivery rather than a place in one file, and
+  the baseline's own errors marked `in the baseline:` name a place in the baseline's files
+  rather than in this project's; for those the panel says so rather than offering to go
+  anywhere.  The renames the
+  comparison finds - objects the two sides agree are one and the same, called differently
+  now - are drawn here as a table, exactly what `ddd compare --renames` would write to a
+  file, and the tab does not write it.
+
 * **A `definition-mismatch` finding now carries a button for each key its declarations
   disagree about.**  Opened from a consumer, it takes the producing component's value;
   opened from the producer's own row - the same disagreement, filed there too - it sends

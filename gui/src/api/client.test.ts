@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import {
   ApiError,
+  getCompare,
   getDeclarable,
   getDeclarationPlan,
   getFile,
@@ -107,6 +108,7 @@ describe("requests to the server", () => {
     await getSettle("ValueA", "unit", '"%"', fetchImpl);
     await getSettle("ValueA", "unit", null, fetchImpl);
     await getFix("a.ddd.json", "component.interface[0].definition", "missing-id", fetchImpl);
+    await getCompare("C:/p/baseline copy.json", fetchImpl);
     await getUnit("°C", fetchImpl);
     await getUnitPlan({ action: "rename", unit: "RPM", to: "rpm" }, fetchImpl);
     await getUnitPlan({ action: "add", unit: "m/s" }, fetchImpl);
@@ -169,6 +171,7 @@ describe("requests to the server", () => {
         "/api/fix?file=a.ddd.json&pointer=component.interface%5B0%5D.definition&check=missing-id",
         { credentials: "same-origin" },
       ],
+      ["/api/compare?baseline=C%3A%2Fp%2Fbaseline%20copy.json", { credentials: "same-origin" }],
       ["/api/unit?name=%C2%B0C", { credentials: "same-origin" }],
       ["/api/unit-plan?action=rename&unit=RPM&to=rpm", { credentials: "same-origin" }],
       ["/api/unit-plan?action=add&unit=m%2Fs", { credentials: "same-origin" }],

@@ -40,6 +40,7 @@ __all__ = [
     "Changes",
     "CheckInfo",
     "ChecksReply",
+    "CompareReply",
     "DeclarableName",
     "DeclarableReply",
     "DictionaryReply",
@@ -70,6 +71,7 @@ __all__ = [
     "ProjectType",
     "ProjectUnit",
     "RefusedBuild",
+    "Renamed",
     "SessionInfo",
     "SettleReply",
     "SourceFile",
@@ -1001,6 +1003,54 @@ class ValuesReply(_Frozen):
     """Every finding filed on the object's own ``init``."""
 
 
+# --- GET /api/compare ------------------------------------------------------------------------
+
+
+class Renamed(_Frozen):
+    """One object the baseline and the candidate agree is the same, called differently now."""
+
+    id: str
+    """The object's persistent id - a structure member's is its instance's id followed by its
+    path below the instance, so one row still names each member of a renamed variable."""
+
+    old: str
+    """The name the baseline gave it."""
+
+    new: str
+    """What the candidate calls it now."""
+
+
+class CompareReply(_Frozen):
+    """What ``GET /api/compare`` answers: whether the open project can replace a baseline."""
+
+    revision: int
+    """The revision this comparison was read from."""
+
+    verdict: bool
+    """Whether the candidate can replace the baseline: no finding of severity error survived
+    the session's own severity policy."""
+
+    findings: tuple[Finding, ...]
+    """Every finding ``compare`` itself reported, sorted by file: the interface and storage
+    differences between the two deliveries. Always carries ``route: null`` - ``route_of``
+    answers only for a component file, and every one of these is filed on the candidate's own
+    project file, with an empty pointer."""
+
+    baseline_findings: tuple[Finding, ...]
+    """Every error the baseline's own analysis reported, forwarded here, sorted by file - still
+    captioned ``"in the baseline: "`` for a reader's own sake, exactly as ``read_baseline``
+    wrote it. Always carries ``route: null``: a finding is the baseline's because it is in
+    *this* field, never because of where its file happens to resolve to, which a baseline that
+    is also a file of the open project (the reader's own project, read a second time as its own
+    baseline) would answer wrong. A page must not tell the two fields' findings apart by
+    matching that prefix - this field is what that would be re-deriving, unreliably, from text
+    a message is free to change."""
+
+    renames: tuple[Renamed, ...]
+    """Every object the two sides agree is one and the same but call differently now, sorted
+    by the new name: what ``ddd compare --renames`` would write for this pair."""
+
+
 # --- GET /api/undo and POST /api/undo -------------------------------------------------------
 
 
@@ -1212,6 +1262,7 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (DeclarableReply, "serialization"),
     (PlanReply, "serialization"),
     (ValuesReply, "serialization"),
+    (CompareReply, "serialization"),
 )
 """Every request and response of spec section 6.5, with the schema pydantic builds for each:
 ``"validation"`` for a request, read for the shape a caller must send; ``"serialization"`` for

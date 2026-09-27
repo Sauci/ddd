@@ -56,13 +56,16 @@ export interface FindingRow {
   file: string;
 }
 
-/** Worst first, and within a severity in the order the analysis filed them - which groups them
- * by file, since that is the order `GET /api/state` answers in. A stable sort is what keeps the
- * second half of that sentence true. `ignore` never reaches this list - that severity means a
- * finding is not reported at all - but `Record` still needs it named to index by severity. */
-export function findingRows(state: State): FindingRow[] {
+/** Worst first, and within a severity in the order they were filed - which groups them by file
+ * for a revision's own (`GET /api/state` answers in that order), and by file for a comparison's
+ * own too (`GET /api/compare` sorts its own the same way). A stable sort is what keeps the second
+ * half of that sentence true. `ignore` never reaches this list - that severity means a finding is
+ * not reported at all - but `Record` still needs it named to index by severity. Takes the list
+ * itself rather than a `State`, so a comparison's `CompareReply.findings` - which is not one -
+ * files into the very same rows the Findings tab does. */
+export function findingRows(findings: readonly Finding[]): FindingRow[] {
   const rank: Record<Finding["severity"], number> = { error: 0, warning: 1, info: 2, ignore: 3 };
-  return keyedFindings(state.findings)
+  return keyedFindings(findings)
     .map(([finding, key]) => ({ finding, key, file: baseName(finding.file) }))
     .sort((one, other) => rank[one.finding.severity] - rank[other.finding.severity]);
 }

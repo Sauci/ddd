@@ -152,9 +152,36 @@ export function namesThisVariable(finding: Finding, name: string): boolean {
   return route !== null && route.page === "component" && route.variable === name;
 }
 
-/** The file kinds the page has a screen for. Sections and rasters are the parts after this one,
- * and their findings keep saying so rather than leading somewhere blank. */
-const SHOWN = new Set(["component", "constants"]);
+/** The files a tab's table cannot show the contents of, by name: those of its own kind that did not
+ * load, and those that did not load without saying what kind they are.
+ *
+ * Two lists because the tab can only speak for the first. `ddd.gui.session._kind` reads a file's
+ * kind off its own top-level key, so a file nobody could parse has none to read and the server
+ * answers `unknown` - correctly, since a constants file and a types file cannot be told apart when
+ * neither could be read. Filtering by kind alone, as both tabs did, missed the commonest way a file
+ * fails: an editor saving it half-written. The reader saw a table missing entries and nothing
+ * saying why.
+ *
+ * Here rather than in each screen because a screen is a `.tsx` file, which no gate in this repo
+ * executes - the filter that decides what a reader is told about a missing file belongs where its
+ * tests can reach it. */
+export function unreadable(state: State | null, kind: string): { own: string[]; untold: string[] } {
+  const missing = (state?.files ?? []).filter((file) => !file.loaded);
+  return {
+    own: missing.filter((file) => file.kind === kind).map((file) => baseName(file.path)),
+    untold: missing.filter((file) => file.kind === "unknown").map((file) => baseName(file.path)),
+  };
+}
+
+/** The file kinds the page opens a screen on: a component's own page, and the tab each vocabulary
+ * with one is listed in. Sections and rasters are the parts after this, and their findings say so
+ * rather than leading somewhere blank.
+ *
+ * Units and types belong here and were missing: both have had a tab for parts, and a reader whose
+ * finding led nowhere was told their file had no page. What reaches this line for one of them now
+ * is a pointer the file has moved on from - `duplicate-unit`, the one check that used to arrive
+ * here with somewhere to go, routes to the unit it names. */
+const SHOWN = new Set(["component", "constants", "types", "units"]);
 
 /** Why a finding leads nowhere, in the words the panel says it.
  *

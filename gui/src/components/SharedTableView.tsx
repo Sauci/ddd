@@ -15,6 +15,9 @@ export interface SharedTableViewProps {
    * server's own answer, so there is only the one place the two can be swapped. Empty when every
    * file loaded. */
   unreadable: readonly string[];
+  /** Names of files that did not load without saying what kind they are, so this tab
+   * cannot claim their entries were its own. */
+  untold: readonly string[];
   /** Pressed only where the table is absent, because the project declares nothing. `SharedPage`
    * opens the add form beside the table on it, blank. */
   onDeclare: () => void;
@@ -28,6 +31,7 @@ export function SharedTableView({
   selected,
   onSelect,
   unreadable,
+  untold,
   onDeclare,
 }: SharedTableViewProps) {
   const rows = reply.entries;
@@ -40,6 +44,15 @@ export function SharedTableView({
       {unreadable.length > 0 && (
         <Banner tone="warning">
           {unreadable.join(", ")} did not load, so the constants declared there are not listed.
+        </Banner>
+      )}
+      {/* A file nobody could read says nothing about what kind of file it is, so this tab cannot
+          claim its entries were its own - only that whatever is declared there is missing. It is
+          the commonest way a file fails, an editor saving it half-written, and both tabs said
+          nothing about it until now. */}
+      {untold.length > 0 && (
+        <Banner tone="warning">
+          {untold.join(", ")} did not load, so whatever is declared there is not listed.
         </Banner>
       )}
       <p className="summary">{tabTitle(rows)}</p>
@@ -59,7 +72,7 @@ export function SharedTableView({
         >
           <TableHeader>
             <Column isRowHeader>Name</Column>
-            <Column>Kind</Column>
+            <Column>Vocabulary</Column>
             {/* No Description column, unlike TypesTableView: a constant's description is a full
                 sentence - the shipped example's is "sample slots of a pressure trend buffer, a
                 device wide size no single component owns" - which would dominate every row, where
@@ -73,7 +86,7 @@ export function SharedTableView({
             {(row) => (
               <Row id={row.name}>
                 <Cell>{row.name}</Cell>
-                <Cell>{row.kind}</Cell>
+                <Cell>{vocabularyOf(row.kind)}</Cell>
                 <Cell>{row.value}</Cell>
                 <Cell>{used(row.uses)}</Cell>
                 <Cell>{row.findings === 0 ? "" : String(row.findings)}</Cell>
@@ -93,4 +106,17 @@ export function SharedTableView({
  * table came first (design §2). */
 function used(count: number): string {
   return count === 0 ? "" : `${count} place${count === 1 ? "" : "s"}`;
+}
+
+/** Which vocabulary a row belongs to, from the singular word the server sends for the entry.
+ *
+ * `Vocabulary` rather than `Kind`, which the Types tab already uses for a different fact - the
+ * shape of a type, `scalar` or `external` or `struct`. One header meaning two things on adjacent
+ * tabs is cheap to change now and expensive once sections and rasters have shipped and readers
+ * have learned it.
+ *
+ * All three of this tab's kinds pluralise with a plain `s`, and the plural is the vocabulary's own
+ * name - the same word the file kind uses. A fourth that does not would need its own answer here. */
+function vocabularyOf(kind: string): string {
+  return `${kind}s`;
 }

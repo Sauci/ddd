@@ -4,10 +4,10 @@ import { type ConstantPlanRequest, getShared, postEdit } from "../api/client";
 import type { State } from "../api/types";
 import { ConstantAddView } from "../components/ConstantPanelView";
 import { SharedTableView } from "../components/SharedTableView";
+import { unreadable } from "../lib/findings";
 import type { Route } from "../lib/route";
 import { isDeclared, planEdit } from "../lib/shared";
 import { constantLabel } from "../lib/undo";
-import { baseName } from "../lib/units";
 import { Banner } from "../ui/Banner";
 import { ConstantPanel, useConstantPlan } from "./ConstantPanel";
 import { refusalOf } from "./UnitPanel";
@@ -44,15 +44,7 @@ export function SharedPage({ state, name, onName, stopped, onOpen }: Props) {
   // Whether the add form is open with nothing pre-filled, because the reader pressed "Declare a
   // constant" rather than following a route that already names one.
   const [declaring, setDeclaring] = useState(false);
-  // The names of the constants files that did not load, which declare entries the table cannot
-  // show - computed from the same state the rest of the page reads, since the server's own answer
-  // to GET /api/shared says nothing about a file it could not read at all. A *file*'s own `kind`
-  // is "constants" (plural); an *entry*'s `kind` (what SharedTableView's own Kind column draws) is
-  // "constant" (singular) - only the file's word appears here, so the two cannot be swapped in
-  // this filter the way they could if both spellings were in play at once.
-  const unreadable = (state?.files ?? [])
-    .filter((file) => file.kind === "constants" && !file.loaded)
-    .map((file) => baseName(file.path));
+  const missing = unreadable(state, "constants");
 
   if (shared.data === undefined) {
     if (shared.isError) return <Banner tone="error">{shared.error.message}</Banner>;
@@ -82,7 +74,8 @@ export function SharedPage({ state, name, onName, stopped, onOpen }: Props) {
             reply={shared.data}
             selected={name}
             onSelect={select}
-            unreadable={unreadable}
+            unreadable={missing.own}
+            untold={missing.untold}
             onDeclare={() => {
               setGone(null);
               setDeclaring(true);

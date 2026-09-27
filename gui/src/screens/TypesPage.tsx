@@ -3,8 +3,8 @@ import { useState } from "react";
 import { getTypes } from "../api/client";
 import type { State } from "../api/types";
 import { TypesTableView } from "../components/TypesTableView";
+import { unreadable } from "../lib/findings";
 import type { Route } from "../lib/route";
-import { baseName } from "../lib/units";
 import { Banner } from "../ui/Banner";
 import { TypePanel } from "./TypePanel";
 
@@ -33,12 +33,7 @@ export function TypesPage({ state, type, stopped, onType, onOpen }: Props) {
   // The type whose panel closed because nothing declares it any longer (spec 5.4), named above
   // the table until another type is selected or the reader leaves the tab.
   const [gone, setGone] = useState<string | null>(null);
-  // The names of the types files that did not load, which declare types the table cannot show -
-  // computed from the same state the rest of the page reads, since the server's own answer to
-  // `GET /api/types` says nothing about a file it could not read at all.
-  const unreadable = (state?.files ?? [])
-    .filter((file) => file.kind === "types" && !file.loaded)
-    .map((file) => baseName(file.path));
+  const missing = unreadable(state, "types");
 
   if (types.data === undefined) {
     if (types.isError) return <Banner tone="error">{types.error.message}</Banner>;
@@ -61,7 +56,8 @@ export function TypesPage({ state, type, stopped, onType, onOpen }: Props) {
             types={types.data}
             selected={type}
             onSelect={select}
-            unreadable={unreadable}
+            unreadable={missing.own}
+            untold={missing.untold}
           />
         </div>
         {type !== undefined && (

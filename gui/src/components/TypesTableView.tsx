@@ -11,10 +11,19 @@ export interface TypesTableViewProps {
   /** The names of the types files that did not load, which declare types this list cannot show
    * (spec 5.4). Empty when every file loaded. */
   unreadable: readonly string[];
+  /** Names of files that did not load without saying what kind they are, so this tab
+   * cannot claim their entries were its own. */
+  untold: readonly string[];
 }
 
 /** The Types tab's table (spec 5.1): a picture of its props. */
-export function TypesTableView({ types, selected, onSelect, unreadable }: TypesTableViewProps) {
+export function TypesTableView({
+  types,
+  selected,
+  onSelect,
+  unreadable,
+  untold,
+}: TypesTableViewProps) {
   const rows = typeRows(types);
   return (
     <>
@@ -23,6 +32,15 @@ export function TypesTableView({ types, selected, onSelect, unreadable }: TypesT
       {unreadable.length > 0 && (
         <Banner tone="warning">
           {unreadable.join(", ")} did not load, so the types declared there are not listed.
+        </Banner>
+      )}
+      {/* A file nobody could read says nothing about what kind of file it is, so this tab cannot
+          claim its entries were its own - only that whatever is declared there is missing. It is
+          the commonest way a file fails, an editor saving it half-written, and both tabs said
+          nothing about it until now. */}
+      {untold.length > 0 && (
+        <Banner tone="warning">
+          {untold.join(", ")} did not load, so whatever is declared there is not listed.
         </Banner>
       )}
       <p className="summary">{typesTitle(types)}</p>

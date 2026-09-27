@@ -10,10 +10,12 @@ function Tab({
   types = PROJECT_TYPES,
   on,
   unreadable = [],
+  untold = [],
 }: {
   types?: TypesReply;
   on?: string;
   unreadable?: readonly string[];
+  untold?: readonly string[];
 }) {
   const [selected, setSelected] = useState<string | undefined>(on);
   return (
@@ -22,6 +24,7 @@ function Tab({
       selected={selected}
       onSelect={setSelected}
       unreadable={unreadable}
+      untold={untold}
     />
   );
 }
@@ -37,3 +40,7 @@ export const NothingDeclared = () => <Tab types={NO_TYPES} />;
 
 /** types.ddd.json did not load: the warning above the list of what did load. */
 export const AFileDidNotLoad = () => <Tab unreadable={["types.ddd.json"]} />;
+
+/** The same file nobody could parse, on this tab. Filtering by kind alone, neither tab said
+ * anything at all about it - the reader saw a table missing entries and no reason why. */
+export const AFileOfNoTellableKind = () => <Tab untold={["sizes.ddd.json"]} />;

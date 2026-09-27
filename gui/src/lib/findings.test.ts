@@ -12,6 +12,7 @@ import {
   routeHref,
   routeLabel,
   routeOf,
+  unreadable,
 } from "./findings";
 
 const SENSOR_HUB = "C:/work/demo/components/sensor_hub.ddd.json";
@@ -30,6 +31,17 @@ function finding(fields: Partial<Finding> = {}): Finding {
     notes: [],
     route: { kind: "variable", name: "ValueA" },
     ...fields,
+  };
+}
+
+function fileRow(path: string, kind: string, loaded: boolean) {
+  return {
+    path,
+    kind,
+    name: null,
+    loaded,
+    fingerprint: "z",
+    findings: { error: 0, warning: 0, info: 0 },
   };
 }
 
@@ -233,12 +245,12 @@ describe("why a finding leads nowhere", () => {
     expect(noRouteReason(one, half)).toBe("sensor_hub.ddd.json did not load");
   });
 
-  test("the page has no screen for that kind of file", () => {
-    // Not a types file: the server now routes every pointer inside a type's own entry to that
-    // type (`ddd.finding_routes`), so a `duplicate-type` finding can no longer have a null
-    // route. A vocabulary's `duplicate-unit` is filed the same way inside a units file - which,
-    // unlike a type's entry, still has no page of its own - and so is still routed nowhere.
-    const one = finding({ file: UNITS, check: "duplicate-unit", pointer: "units[1]", route: null });
+  test("a finding on a units file no longer says it has no page", () => {
+    // Units have had a page since part 2 and types since part 6, and `duplicate-unit` now routes
+    // to the unit it names, so the fixture this test used to carry - that finding with a null
+    // route - is a state the server no longer produces. What is left for a units file is a
+    // pointer the file has moved on from, and that is what the reason says.
+    const one = finding({ file: UNITS, check: "duplicate-unit", pointer: "units[9]", route: null });
     const withUnits = state([one]);
     withUnits.files = [
       ...withUnits.files,
@@ -251,9 +263,7 @@ describe("why a finding leads nowhere", () => {
         findings: { error: 1, warning: 0, info: 0 },
       },
     ];
-    expect(noRouteReason(one, withUnits)).toBe(
-      "units.ddd.json is a units file, which has no page yet",
-    );
+    expect(noRouteReason(one, withUnits)).toBe("there is nothing at that place any more");
   });
 
   test("a finding on a constants file no longer says it has no page", () => {
@@ -312,6 +322,52 @@ describe("why a finding leads nowhere", () => {
     expect(noRouteReason(one, state([one]))).toBe(
       "it is about the project rather than a place in a file",
     );
+  });
+
+  test("a file of the tab's own kind that did not load is named", () => {
+    const one = finding({});
+    const withFiles = state([one]);
+    withFiles.files = [
+      ...withFiles.files,
+      fileRow("C:/work/demo/constants.ddd.json", "constants", false),
+    ];
+    expect(unreadable(withFiles, "constants")).toEqual({
+      own: ["constants.ddd.json"],
+      untold: [],
+    });
+  });
+
+  test("a file that did not load without saying what kind it is counts as untold", () => {
+    // `session._kind` reads the kind off the document's own top-level key, so a file nobody could
+    // parse has none to read - it answers "unknown", correctly, because a constants file and a
+    // types file are indistinguishable when neither could be read. Filtering by kind alone, every
+    // tab's banner missed the commonest way a file fails: an editor saving it half-written.
+    const one = finding({});
+    const withFiles = state([one]);
+    withFiles.files = [
+      ...withFiles.files,
+      fileRow("C:/work/demo/sizes.ddd.json", "unknown", false),
+    ];
+    expect(unreadable(withFiles, "constants")).toEqual({
+      own: [],
+      untold: ["sizes.ddd.json"],
+    });
+  });
+
+  test("a file that loaded is named in neither list, whatever its kind", () => {
+    const one = finding({});
+    const withFiles = state([one]);
+    withFiles.files = [
+      ...withFiles.files,
+      fileRow("C:/work/demo/constants.ddd.json", "constants", true),
+      fileRow("C:/work/demo/odd.ddd.json", "unknown", true),
+    ];
+    expect(unreadable(withFiles, "constants")).toEqual({ own: [], untold: [] });
+  });
+
+  test("no state at all names nothing", () => {
+    // The tabs read this while the first revision is still being analysed.
+    expect(unreadable(null, "types")).toEqual({ own: [], untold: [] });
   });
 
   test("the declaration it names has moved since the analysis read the file", () => {

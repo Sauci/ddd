@@ -12,13 +12,14 @@ is strict on both arms and refuses a whole number in the fractional one, so ``2`
 two different constants; a plan that parsed a value and wrote it back would retype one nobody
 asked it to.
 
-The four verbs below take a :class:`~ddd.project_shared.Vocabulary` first, the way part 13's read
-side already takes one, and everywhere a constant's own reach differed from a section's or a
-raster's - the settable keys, the required ones, the judge of a value, the file created, the
-container a removal reads, the sentence a name is refused with - now comes off the descriptor
-instead of being written into the verb. ``set_constant``, ``rename_constant``, ``add_constant``
-and ``remove_constant`` survive as bindings to :data:`~ddd.project_shared.CONSTANTS`, for the one
-task the module docstring above them explains.
+The four verbs below - and :func:`project_of`, which reads the context :func:`add_entry` needs -
+take a :class:`~ddd.project_shared.Vocabulary` first, the way part 13's read side already takes
+one, and everywhere a constant's own reach differed from a section's or a raster's - the settable
+keys, the required ones, the judge of a value, the file created, the noun a removal names, the
+sentence a name is refused with - now comes off the descriptor instead of being written into the
+verb. ``set_constant``, ``rename_constant``, ``add_constant``, ``remove_constant`` and
+``shared_project`` survive as bindings to :data:`~ddd.project_shared.CONSTANTS`, for the one task
+the module docstring above them explains.
 """
 
 from __future__ import annotations
@@ -115,19 +116,11 @@ class SharedRefusalError(Exception):
         self.message = message
 
 
-def shared_project(
-    project: Path,
-    unread: Sequence[Path],
-    cache: dict[Path, Document],
-    vocabulary: Vocabulary = CONSTANTS,
+def project_of(
+    vocabulary: Vocabulary, project: Path, unread: Sequence[Path], cache: dict[Path, Document]
 ) -> SharedProject:
     """The project ``vocabulary``'s plans are made in: its description, its own files, the files
     it includes whose kind cannot be told, and the files of it that did not load.
-
-    Defaults to :data:`~ddd.project_shared.CONSTANTS`: every caller this task leaves in place -
-    the api's one call and this module's own tests - asks for a project's constants without
-    naming a vocabulary, and the default is what lets this function take a descriptor at all
-    without rewriting every one of them. A caller of a different vocabulary names it.
 
     Its files come out of the description's own ``includes``, each entry expanded by the loader's
     rule, so that the first of them is the first a run of ``ddd check`` reads. One of them is a
@@ -343,9 +336,8 @@ def remove_entry(
     if isinstance(listed, list) and len(listed) <= 1:
         raise SharedRefusalError(
             "invalid",
-            f"'{name}' is all {entry.path.name} declares, and a list of "
-            f"{vocabulary.containers[0]} declares at least one; emptied, the file would no "
-            "longer load",
+            f"'{name}' is all {entry.path.name} declares, and a list of {vocabulary.kind}s "
+            "declares at least one; emptied, the file would no longer load",
         )
     return _plan({entry.path: [Operation("remove", entry.pointer)]})
 
@@ -490,6 +482,12 @@ def _entry_text(vocabulary: Vocabulary, name: str, raws: Mapping[str, str]) -> s
 # generalisation is the evidence that it moved no behaviour - the same evidence part 13's first task
 # took from `tests/test_unit_plans.py`. Task 5 moves the api to the generic readers and deletes
 # these; nothing else may call them.
+def shared_project(
+    project: Path, unread: Sequence[Path], cache: dict[Path, Document]
+) -> SharedProject:
+    return project_of(CONSTANTS, project, unread, cache)
+
+
 def set_constant(
     built: Index, name: str, key: str, raw: str | None, cache: dict[Path, Document]
 ) -> SharedPlan:

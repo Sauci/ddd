@@ -111,10 +111,10 @@ from ddd.shared_plans import (
     SharedProject,
     SharedRefusalError,
     add_constant,
+    project_of,
     remove_constant,
     rename_constant,
     set_constant,
-    shared_project,
 )
 from ddd.type_plans import REQUIRED, TypePlan, TypeRefusalError, rename_type, set_key
 from ddd.variable_keys import offer_for, offers
@@ -818,11 +818,11 @@ class Api:
                 "so no constant of the project can be changed",
             )
         cache: dict[Path, Document] = {}
-        project = shared_project(
+        project = project_of(
+            CONSTANTS,
             revision.project,
             [file.path for file in revision.files if not file.loaded],
             cache,
-            CONSTANTS,
         )
         try:
             plan = _constant_plan_of(action, built, project, given, raw, cache)

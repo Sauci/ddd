@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from conftest import built_of, component, declare, project, write_tree
+from ddd import project_shared
 from ddd.editing import Operation
 from ddd.loading import included_files
 from ddd.lsp.navigation import Index
@@ -799,25 +800,21 @@ SOLE_AND_NAMED = {
 
 class TestTheDescriptorsVerbs:
     def test_a_key_is_set_through_the_vocabulary_it_belongs_to(self, tmp_path: Path) -> None:
-        from ddd.project_shared import CONSTANTS
-
         built, _root = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
-        assert set_entry(CONSTANTS, built, "TREND_SAMPLES", "value", "2.0", cache) == set_constant(
-            built, "TREND_SAMPLES", "value", "2.0", cache
-        )
+        assert set_entry(
+            project_shared.CONSTANTS, built, "TREND_SAMPLES", "value", "2.0", cache
+        ) == set_constant(built, "TREND_SAMPLES", "value", "2.0", cache)
 
     def test_a_constant_both_named_and_alone_is_refused_for_being_named(
         self, tmp_path: Path
     ) -> None:
-        from ddd.project_shared import CONSTANTS
-
         # Both guards apply at once, and which sentence a reader meets must not depend on the
         # order a dict happened to yield. Named-by-something is checked first, because it names a
         # place the reader can go and undo; being alone in its file names only the file.
         built, _root = built_of(tmp_path, **SOLE_AND_NAMED)
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:
-            remove_entry(CONSTANTS, built, "TREND_SAMPLES", cache)
+            remove_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", cache)
         assert "is named by" in raised.value.message
         assert "is all" not in raised.value.message

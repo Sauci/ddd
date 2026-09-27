@@ -1,12 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useCallback } from "react";
 import { getSession } from "../api/client";
-import { hrefOf } from "../lib/route";
+import { hrefOf, type ProjectView, type Route } from "../lib/route";
 import { ComparePage } from "../screens/ComparePage";
 import { ComponentPage } from "../screens/ComponentPage";
 import { FindingsPage } from "../screens/FindingsPage";
 import { GraphPage } from "../screens/GraphPage";
 import { ProjectPage } from "../screens/ProjectPage";
+import { SharedPage } from "../screens/SharedPage";
 import { StartPage } from "../screens/StartPage";
 import { TypesPage } from "../screens/TypesPage";
 import { UndoStrip } from "../screens/UndoStrip";
@@ -24,9 +25,20 @@ const PROJECT_VIEWS = [
   ["table", "Table"],
   ["units", "Units"],
   ["types", "Types"],
+  ["shared", "Shared files"],
   ["findings", "Findings"],
   ["compare", "Compare"],
 ] as const;
+
+/** The tab strip's own address: always the bare view, never `shared`'s own `kind`/`name`/
+ * `declare`. `PROJECT_VIEWS.map()` below reads `view` widened to the union of all seven tab
+ * literals, and TypeScript refuses that union to a `Route` directly once one literal - `shared` -
+ * names more than one of `Route`'s own shapes: a discriminant with more than one shape behind a
+ * value stops the check from trying each shape in turn. The assertion is exact here, not a
+ * loophole, because nothing reached through this list ever carries `shared`'s other two shapes. */
+function bareRoute(view: ProjectView): Route {
+  return { page: "project", view } as Route;
+}
 
 export function App() {
   const queries = useQueryClient();
@@ -74,6 +86,19 @@ export function App() {
       ),
     [navigate],
   );
+  // Selecting a constant replaces the address, as selecting a type does. The route's other shape,
+  // naming one to declare, is Task 8's: SharedPage draws no panel for either yet, so this task
+  // only ever writes the "declared" shape back.
+  const openShared = useCallback(
+    (name: string | undefined) =>
+      navigate(
+        name === undefined
+          ? { page: "project", view: "shared" }
+          : { page: "project", view: "shared", kind: "constant", name },
+        { replace: true },
+      ),
+    [navigate],
+  );
 
   let page: ReactNode;
   if (session.isPending) {
@@ -99,10 +124,10 @@ export function App() {
         <LinkTabs
           label="Project views"
           tabs={PROJECT_VIEWS.map(([view, label]) => ({
-            href: hrefOf({ page: "project", view }),
+            href: hrefOf(bareRoute(view)),
             label,
             current: route.view === view,
-            onFollow: () => navigate({ page: "project", view }),
+            onFollow: () => navigate(bareRoute(view)),
           }))}
         />
         {route.view === "graph" ? (
@@ -124,6 +149,12 @@ export function App() {
             stopped={stopped}
             onType={openType}
             onOpen={navigate}
+          />
+        ) : route.view === "shared" ? (
+          <SharedPage
+            state={state}
+            name={"name" in route ? route.name : undefined}
+            onName={openShared}
           />
         ) : route.view === "findings" ? (
           <FindingsPage state={state} stopped={stopped} onOpen={navigate} />

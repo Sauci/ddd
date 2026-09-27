@@ -10,6 +10,8 @@ import type {
   ProjectUnit,
   Renamed,
   SettleReply,
+  SharedEntry,
+  SharedReply,
   State,
   TypeReply,
   TypesReply,
@@ -1796,3 +1798,52 @@ export const CANNOT_REPLACE: CompareReply = {
  */
 export const REFUSED_OUTSIDE_ROOT =
   "the baseline 'C:/archives/demo.ddd.json' is outside the session root 'C:/work/demo'";
+
+// examples/vocabulary's own two constants (spec 5.1): TREND_SAMPLES in constants.ddd.json,
+// PRESSURE_CELLS declared inline in pump.ddd.json - modelled on it, not transcribed, as
+// PROJECT_TYPES already is not: the real project uses each constant once, but PRESSURE_CELLS is
+// used twice here, so the "Used by" column's plural ("2 places") has a row to draw beside
+// TREND_SAMPLES's singular ("1 place").
+
+/** Declared in constants.ddd.json, a constants file. `SharedEntry` carries no file, so nothing in
+ * the row itself says so - which is the point the BothHomes story makes. */
+const TREND_SAMPLES: SharedEntry = {
+  kind: "constant",
+  name: "TREND_SAMPLES",
+  value: "16",
+  uses: 1,
+  findings: 0,
+};
+
+/** Declared inline in pump.ddd.json's own `component.constants`, the tab's other home for one. */
+const PRESSURE_CELLS: SharedEntry = {
+  kind: "constant",
+  name: "PRESSURE_CELLS",
+  value: "8",
+  uses: 2,
+  findings: 0,
+};
+
+/** Both homes a constant may be declared in, listed in the one table (spec 5.1): sorted by name,
+ * as `GET /api/shared` sorts them, since both share the one kind the project declares today. */
+export const PROJECT_SHARED: SharedReply = {
+  revision: 7,
+  entries: [PRESSURE_CELLS, TREND_SAMPLES],
+};
+
+/** TREND_SAMPLES carrying a finding. `SharedEntry.findings` is a count, not a list - it is filed
+ * inside the entry or at any shape naming it (spec 4.2), and `dimension-value` is the latter: a
+ * value no longer an array length, filed at PressureTrend's own `dimensions[0]`, not at the
+ * constant's entry. */
+export const SHARED_WITH_FINDING: SharedReply = {
+  revision: 7,
+  entries: [PRESSURE_CELLS, { ...TREND_SAMPLES, findings: 1 }],
+};
+
+/** A project that declares no constants, for the story that says so and offers to declare one. */
+export const NO_SHARED: SharedReply = { revision: 7, entries: [] };
+
+/** constants.ddd.json did not load: TREND_SAMPLES's entry is in no index and so in no row (spec
+ * 5.4), but PRESSURE_CELLS still lists, declared inline in pump.ddd.json rather than in the file
+ * that failed. */
+export const SHARED_MISSING_FILE: SharedReply = { revision: 7, entries: [PRESSURE_CELLS] };

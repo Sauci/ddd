@@ -21,8 +21,13 @@ from typing import Final
 from ddd.lsp.edits import WITHIN_DECLARATION
 from ddd.lsp.ranges import Document, read
 
-UNIT_CHECKS: Final = frozenset({"unknown-unit"})
-"""The checks filed where a unit is stated, whose finding leads to that unit's own panel."""
+UNIT_CHECKS: Final = frozenset({"unknown-unit", "duplicate-unit"})
+"""The checks filed where a unit is written, whose finding leads to that unit's own panel.
+
+``unknown-unit`` is filed where a definition states one; ``duplicate-unit`` at the vocabulary entry
+that repeats it - measured, ``u.ddd.json#units[1]``. The panel lists both kinds of place, so both
+lead there, and a units file stopped being somewhere the page had nothing to open.
+"""
 
 CONSTANT_CHECKS: Final = frozenset({"unknown-constant", "dimension-value"})
 """The checks filed where a shape names a constant, whose finding leads to that constant.
@@ -89,6 +94,11 @@ def route_of(
         # A unit is stated in a component, in a scalar type and in a structure member, and part
         # 2's panel lists all three: the one route that does not care which file it was on.
         stated = read(path, cache).value_at(pointer)
+        if isinstance(stated, dict):
+            # A vocabulary entry is a spelling on its own or an object carrying a description,
+            # and `ddd.lsp.units` writes back whichever the file already uses. Read whole, the
+            # object is no string and `duplicate-unit` would lead nowhere.
+            stated = stated.get("unit")
         return Route("unit", stated) if isinstance(stated, str) and stated else None
     if check in CONSTANT_CHECKS:
         # Before WITHIN_TYPE below, exactly as UNIT_CHECKS is and for the same reason: a structure

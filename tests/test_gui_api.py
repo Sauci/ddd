@@ -379,6 +379,9 @@ class TestFiles:
     def test_a_file_outside_the_project_is_not_found(self, api: Api, root: Path) -> None:
         reply = get(api, "/api/file", path=(root / "other" / "q.ddd.json").as_posix())
         assert (reply.status, reply.body["error"]) == (404, "not-found")
+        # Posix-separated, as every path the api hands the page is: this reason is drawn in the
+        # same banner as the rest, and on windows it read with backslashes.
+        assert (root / "other" / "q.ddd.json").as_posix() in reply.body["message"]
 
     def test_a_file_request_needs_a_path(self, api: Api) -> None:
         assert get(api, "/api/file").status == 400
@@ -386,6 +389,138 @@ class TestFiles:
     def test_a_file_request_needs_an_open_project(self, root: Path) -> None:
         reply = get(Api(Session(root)), "/api/file", path=(root / "a.ddd.json").as_posix())
         assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+
+class TestWhatTheSessionServes:
+    """``ddd gui`` serves the directory it was started in, and the project it was pointed at
+    where that lies elsewhere. What the open project *includes* is wider than that and is the
+    project's own business - a directory up is where a shared vocabulary lives - but an edit
+    may add such an entry, so belonging to the project is a reach the page can widen for
+    itself. These two directories it cannot.
+    """
+
+    @pytest.fixture
+    def reaching_out(self, tmp_path: Path) -> tuple[Api, Path]:
+        """A project under the root, its ``includes`` edited to name a file above the root -
+        the escape, step one - and that file, which declares the same variable in another unit.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "outside.ddd.json": component("S", declare("output", "Speed", unit="rpm")),
+                "inside/p.ddd.json": project("P", "a.ddd.json"),
+                "inside/a.ddd.json": component("A", declare("input", "Speed", unit="km/h")),
+            },
+        )
+        inside = tmp_path / "inside"
+        session = Session(inside)
+        session.open(inside / "p.ddd.json")
+        api = Api(session, inside / "p.ddd.json", wait_seconds=0.05)
+        described = inside / "p.ddd.json"
+        added = post(
+            api,
+            "/api/edit",
+            {
+                "changes": [
+                    {
+                        "file": described.as_posix(),
+                        "fingerprint": fingerprint(described.read_bytes()),
+                        "operations": [
+                            {
+                                "op": "insert",
+                                "pointer": "project.includes[1]",
+                                "raw": '"../outside.ddd.json"',
+                            }
+                        ],
+                    }
+                ],
+                "label": "one more include",
+            },
+        )
+        assert added.status == 200
+        outside = (tmp_path / "outside.ddd.json").resolve()
+        revision = api.session.revision
+        assert revision is not None
+        # Step one worked: the file above the root is a file of the open project now. Asserted
+        # here so no test below can pass by the edit having been refused instead.
+        assert outside in {file.path for file in revision.files}
+        return api, outside
+
+    def test_a_file_outside_them_is_not_read(self, reaching_out: tuple[Api, Path]) -> None:
+        api, outside = reaching_out
+        reply = get(api, "/api/file", path=outside.as_posix())
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+        assert outside.as_posix() in reply.body["message"]
+        assert api.session.root.as_posix() in reply.body["message"]
+
+    def test_an_edit_of_a_file_outside_them_is_refused(
+        self, reaching_out: tuple[Api, Path]
+    ) -> None:
+        """Refused though the fingerprint is right: read from disk here, since the one route
+        that would hand it over no longer does."""
+        api, outside = reaching_out
+        reply = post(
+            api,
+            "/api/edit",
+            {
+                "changes": [
+                    {
+                        "file": outside.as_posix(),
+                        "fingerprint": fingerprint(outside.read_bytes()),
+                        "operations": [{"op": "set", "pointer": UNIT, "raw": '"km/h"'}],
+                    }
+                ],
+                "label": "the unit of Speed",
+            },
+        )
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+        assert outside.read_bytes() == json.dumps(
+            component("S", declare("output", "Speed", unit="rpm")), indent=2
+        ).encode("utf-8")
+
+    def test_a_settlement_reaching_a_file_outside_them_is_refused(
+        self, reaching_out: tuple[Api, Path]
+    ) -> None:
+        """A preview carries the very lines it would change, so offering this one would show a
+        file the page may not read - and the edit it offers would then be refused anyway."""
+        api, outside = reaching_out
+        reply = get(api, "/api/settle", name="Speed", key="unit", raw='"km/h"')
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+        assert outside.as_posix() in reply.body["message"]
+
+    def test_a_settlement_reaching_only_served_files_is_offered(
+        self, reaching_out: tuple[Api, Path]
+    ) -> None:
+        """The other way round on the same project: the value settled on is the one the file
+        above the root already spells, so nothing there has to change and the preview stands."""
+        api, _ = reaching_out
+        reply = get(api, "/api/settle", name="Speed", key="unit", raw='"rpm"')
+        assert reply.status == 200
+        assert [Path(change["file"]).name for change in reply.body["changes"]] == ["a.ddd.json"]
+
+    def test_a_project_named_from_outside_the_root_is_served_with_its_own_directory(
+        self, tmp_path: Path
+    ) -> None:
+        """``ddd gui ../elsewhere/p.ddd.json`` serves the directory it was started in - where
+        the picker looks - and the project the operator named, whose own directory that operator
+        named just as plainly. Confined to the root alone, that invocation would answer a banner
+        in place of every component's table.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "work/.keep": "",
+                "elsewhere/p.ddd.json": project("P", "a.ddd.json"),
+                "elsewhere/a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        described = tmp_path / "elsewhere" / "p.ddd.json"
+        session = Session(tmp_path / "work")
+        session.open(described)
+        api = Api(session, described, wait_seconds=0.05)
+        reply = get(api, "/api/file", path=(tmp_path / "elsewhere" / "a.ddd.json").as_posix())
+        assert reply.status == 200
+        assert reply.body["data"]["component"]["name"] == "A"
 
 
 class TestDictionaryAndChecks:

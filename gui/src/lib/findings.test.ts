@@ -173,6 +173,24 @@ describe("where a finding leads", () => {
     expect(routeHref(one)).toBe("/project?view=types&type=Sensor_t");
   });
 
+  test("a constant, by its name - the one route kind whether or not it is declared", () => {
+    // unknown-constant names one no file declares, the same route a duplicate-constant or a
+    // dimension-value on an already-declared one would carry - the tab's own `isDeclared` is
+    // what tells the two apart, not this route (design §2).
+    const one = finding({
+      check: "unknown-constant",
+      route: { kind: "constant", name: "TREND_SLOTS" },
+    });
+    expect(routeLabel(one, state([one]))).toBe("Open TREND_SLOTS");
+    expect(routeHref(one)).toBe("/project?view=shared&kind=constant&name=TREND_SLOTS");
+    expect(routeOf(one)).toEqual({
+      page: "project",
+      view: "shared",
+      kind: "constant",
+      name: "TREND_SLOTS",
+    });
+  });
+
   test("a component, by the name its file gives it", () => {
     const one = finding({ route: { kind: "component", name: null } });
     expect(routeLabel(one, state([one]))).toBe("Open SensorHub");

@@ -101,9 +101,13 @@ export function App() {
   );
   // Selecting a constant replaces the address, as selecting a type does. `SharedPage` itself
   // opens the add form for a name this callback's own route names that nothing declares, and for
-  // its own Declare a constant button besides - neither needs the route's other shape, which
-  // names one to declare directly (design §5.3, a later part's own way in from a dimension), so
-  // this callback still only ever writes the one shape.
+  // its own Declare a constant button besides - neither needs the route's other shape, `declare`.
+  // Nor does design §5.3's own way in from a dimension, once it landed: `onOpenConstant` below
+  // and `routeOf` (`lib/findings.ts`) both carry a name whose declared state they cannot ask
+  // about - the whole point being that one link, or one route, serves a constant whichever way
+  // it turns out, and only `SharedPage`'s own `isDeclared` decides - so every writer of this
+  // route, this callback included, only ever writes the one shape. `declare` stays in `route.ts`
+  // parseable and tested for a hand-written address, but nothing in the app constructs one.
   const openShared = useCallback(
     (name: string | undefined) =>
       navigate(
@@ -154,6 +158,9 @@ export function App() {
             onComponent={openComponent}
             onVariable={openVariable}
             onOpenType={(type) => navigate({ page: "project", view: "types", type })}
+            onOpenConstant={(name) =>
+              navigate({ page: "project", view: "shared", kind: "constant", name })
+            }
           />
         ) : route.view === "units" ? (
           <UnitsPage state={state} unit={route.unit} stopped={stopped} onUnit={openUnit} />
@@ -214,6 +221,9 @@ export function App() {
           navigate({ page: "component", file: route.file, variable, view: "values" })
         }
         onOpenType={(type) => navigate({ page: "project", view: "types", type })}
+        onOpenConstant={(name) =>
+          navigate({ page: "project", view: "shared", kind: "constant", name })
+        }
       />
     );
   }

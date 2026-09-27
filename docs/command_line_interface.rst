@@ -361,6 +361,15 @@ The commands
        are drawn here as a
        table, exactly what ``ddd compare --renames`` would write to a file, and are not
        written from this tab.
+       A Shared files tab lists every constant the project declares, from a constants file
+       or a component's own list, with its value and what names it; its value and its
+       description are changed there, and renaming one rewrites every shape naming it in one
+       edit. One is declared there too, writing ``constants.ddd.json`` beside the project
+       description and adding it to ``includes`` where the project has none; removing one is
+       refused while any shape still names it. A value no shape can use is reported there by
+       ``dimension-value`` rather than refused: the interface does not invent a rule the
+       format itself does not have. A finding naming a constant leads to the tab, a name no
+       file declares landing on the form that declares it.
        ``-b DIR`` names a build directory as for ``ddd lsp``, ``--host ADDRESS``
        listens beyond this computer for a container, ``--port N`` fixes the port and
        ``--no-browser`` only prints the address. It serves until interrupted, and its

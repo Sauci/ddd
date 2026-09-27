@@ -119,6 +119,13 @@ export function routeOf(finding: Finding): Route | null {
   if (route.kind === "type" && route.name !== null) {
     return { page: "project", view: "types", type: route.name };
   }
+  if (route.kind === "constant" && route.name !== null) {
+    // The one route kind, whether or not the name is declared (design §2 "the page decides"):
+    // `SharedPage` asks `isDeclared` of its own table and opens the panel or the pre-filled add
+    // form accordingly, which is also what `unknown-constant` needs - the name it carries names
+    // nothing yet.
+    return { page: "project", view: "shared", kind: "constant", name: route.name };
+  }
   return { page: "component", file: finding.file };
 }
 

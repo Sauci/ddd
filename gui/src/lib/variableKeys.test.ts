@@ -236,6 +236,56 @@ describe("the rows of the table", () => {
   });
 });
 
+describe("a dimension's own entries, split so a name can link to its constant", () => {
+  test("a literal number stays text; a name becomes a link to the Shared files tab", () => {
+    const of = variable(
+      [offer("dimensions", { values: [value('[3, "TREND_SAMPLES"]', ["SensorHub"], true)] })],
+      [{ dimensions: '[3, "TREND_SAMPLES"]' }],
+    );
+    const cell = keyRows(of, null).find((row) => row.key === "dimensions")?.cells[0];
+    expect(cell?.parts).toEqual([
+      { text: "3", constant: null, href: null },
+      {
+        text: "TREND_SAMPLES",
+        constant: "TREND_SAMPLES",
+        href: "/project?view=shared&kind=constant&name=TREND_SAMPLES",
+      },
+    ]);
+  });
+
+  test("every other key carries no such split", () => {
+    const of = variable(
+      [offer("unit", { values: [value('"%"', ["SensorHub"], true)] })],
+      [{ unit: '"%"' }],
+    );
+    expect(keyRows(of, null).find((row) => row.key === "unit")?.cells[0]).toMatchObject({
+      parts: null,
+    });
+  });
+
+  test("a value that is not a json array is not split - the text alone still shows it", () => {
+    const of = variable(
+      [offer("dimensions", { values: [value("4", ["SensorHub"], true)] })],
+      [{ dimensions: "4" }],
+    );
+    expect(keyRows(of, null).find((row) => row.key === "dimensions")?.cells[0]).toMatchObject({
+      text: "4",
+      parts: null,
+    });
+  });
+
+  test("a value that is not json at all is not split either", () => {
+    const of = variable(
+      [offer("dimensions", { values: [value("[", ["SensorHub"], true)] })],
+      [{ dimensions: "[" }],
+    );
+    expect(keyRows(of, null).find((row) => row.key === "dimensions")?.cells[0]).toMatchObject({
+      text: "[",
+      parts: null,
+    });
+  });
+});
+
 describe("the columns of the table", () => {
   /** ValueA as a project that lists Controller before SensorHub answers it: the reader first,
    * the producer second, which is the order every other reader of the api is given. */

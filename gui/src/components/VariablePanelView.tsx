@@ -20,6 +20,9 @@ export interface VariablePanelViewProps
   onSelect: (key: string | undefined) => void;
   /** Following a fixed key to the type that fixes it, without a reload. */
   onOpenType: (name: string) => void;
+  /** Following a `dimensions` entry that names a constant to the Shared files tab, without a
+   * reload. */
+  onOpenConstant: (name: string) => void;
   preview: SettleReply | null;
   /** Why the chosen value cannot be applied, or why applying it was refused. */
   refusal: string | null;
@@ -55,6 +58,7 @@ export function VariablePanelView(props: VariablePanelViewProps) {
         selected={selected}
         onSelect={props.onSelect}
         onOpenType={props.onOpenType}
+        onOpenConstant={props.onOpenConstant}
       />
       {variable.findings.length > 0 && (
         <ul className="panel-findings">

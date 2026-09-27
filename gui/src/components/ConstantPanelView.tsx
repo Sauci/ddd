@@ -42,12 +42,12 @@ export interface ConstantPanelViewProps {
   valueOffer: Offer | null;
   describeOffer: Offer | null;
   renameOffer: Offer | null;
-  /** Asked for as soon as the panel opens, unlike the other three: removing has no draft of its
-   * own to wait on, only a name already known from the route. Offered where nothing names the
-   * constant; refused, in the same banner every other refusal is drawn in, where a shape still
-   * does (design §4.5) - the "Used by" table above says which, but the reader reaches the reason
-   * in the server's own words by trying, the way every other refusal in the interface is read. */
-  removeOffer: Offer;
+  /** `null` where a shape still names the constant: nothing is asked for then, and the section
+   * draws the "Used by" count instead of a control (spec 4.5's refusal is real, but a button that
+   * would refuse the moment it was pressed is a button that lies - `ComponentPage.tsx`'s own rule
+   * for a shape's cell, spec 5.1). Never itself the reason the section goes empty: `uses.length`
+   * is read straight off `reply` below, so a reader is told why whether or not this is `null`. */
+  removeOffer: Offer | null;
   /** The offer whose lines Show changes has opened, or `null`. */
   shown: ConstantAction | null;
   onShown: (action: ConstantAction | null) => void;
@@ -187,7 +187,11 @@ export function ConstantPanelView(props: ConstantPanelViewProps) {
         )}
       </section>
       <section className="panel-offer" aria-label="Remove from the constants">
-        {outcome("remove", props.removeOffer, () => "Remove from the constants")}
+        {reply.uses.length === 0 ? (
+          outcome("remove", props.removeOffer, () => "Remove from the constants")
+        ) : (
+          <p className="quiet">{removeBlocked(reply.name, reply.uses.length)}</p>
+        )}
       </section>
     </Panel>
   );
@@ -261,6 +265,17 @@ function routeOfUse(use: ConstantUse): Route {
   }
   const dot = use.name.indexOf(".");
   return { page: "project", view: "types", type: dot === -1 ? use.name : use.name.slice(0, dot) };
+}
+
+/** What stands where Remove would be, while a shape still names the constant: not the server's
+ * own refusal - trying would only ever come back with the one word this already says, and a
+ * control asked for just to prove it refuses is the lying button `ComponentPage.tsx` already
+ * refuses to draw - but the count that made it refuse, read off `reply.uses` already on screen,
+ * in the quiet register the "Used by" table's own empty line above uses, not the warning tone an
+ * actual refusal is drawn in. The table above already names each of them; this only says how many. */
+function removeBlocked(name: string, count: number): string {
+  const verb = count === 1 ? "names" : "name";
+  return `${count} shape${count === 1 ? "" : "s"} ${verb} ${name}, so it cannot be removed.`;
 }
 
 export interface ConstantAddViewProps {

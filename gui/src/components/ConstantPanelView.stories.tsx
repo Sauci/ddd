@@ -10,22 +10,14 @@ import { ConstantAddView, ConstantPanelView } from "./ConstantPanelView";
 
 export default { title: "Components / ConstantPanelView" };
 
-/** Removing TREND_SAMPLES while its own two uses (CONSTANT_REPLY, above) still name it -
- * `remove_constant`'s own sentence, naming the count and the first of them (design §4.5). Shared
- * by every story built over that fixture: Remove is asked for as soon as the panel opens
- * (`ConstantPanelView`'s own doc on `removeOffer`), so every one of them shows its answer, not an
- * empty box waiting for a reader to press a button that is not there. */
-const REMOVE_REFUSED =
-  "'TREND_SAMPLES' is named by 2 shapes, the first in pump.ddd.json; nothing may name it before it goes";
-
 interface Props {
   reply: ConstantReply;
   /** What the Rename field starts on: the constant's own name, unless a scenario means to show
    * it already typed - a refusal only ever appears with the offending name still in the field. */
   renameTo?: string | null;
   refusal?: string;
-  /** Remove's own plan, for a constant nothing names; every other scenario here is built over one
-   * TREND_SAMPLES still names twice, so `REMOVE_REFUSED` stands in for it there instead. */
+  /** Remove's own plan, for a constant nothing names - `null` (nothing asked for) wherever a
+   * shape still does, `ConstantPanelView`'s own concern to say why from `reply.uses` alone. */
   removePlan?: PlanReply;
 }
 
@@ -50,9 +42,7 @@ function PanelStory({ reply, renameTo: renameSeed = null, refusal, removePlan }:
         renameTo === null ? null : { plan: null, refusal: refusal ?? null, pending: false }
       }
       removeOffer={
-        reply.uses.length === 0
-          ? { plan: removePlan ?? null, refusal: null, pending: false }
-          : { plan: null, refusal: REMOVE_REFUSED, pending: false }
+        reply.uses.length === 0 ? { plan: removePlan ?? null, refusal: null, pending: false } : null
       }
       shown={null}
       onShown={() => undefined}
@@ -65,7 +55,7 @@ function PanelStory({ reply, renameTo: renameSeed = null, refusal, removePlan }:
 }
 
 /** TREND_SAMPLES: two shapes name it - a variable's dimension and a structure member's - its
- * value, its description, no findings, and Remove already refused for the same two uses. */
+ * value, its description, no findings, and Remove not offered while both still name it. */
 export const TwoShapesNameIt = () => <PanelStory reply={CONSTANT_REPLY} />;
 
 /** The same constant set to a value no shape can use: `dimension-value`, filed on PressureTrend's

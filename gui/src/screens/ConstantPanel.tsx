@@ -118,12 +118,12 @@ export function ConstantPanel({
         ? null
         : { action: "set", name, key: "description", raw: JSON.stringify(draftDescription) },
     rename: to === null ? null : { action: "rename", name, to },
-    // Asked for as soon as the panel opens, unlike the other three: removing takes only the name
-    // the route already carries, with no draft to wait on. Offered where nothing names the
-    // constant; refused in the server's own words otherwise (design §4.5) - the reader reads why
-    // in the same banner every other refusal is shown in, rather than the control simply not
-    // being there to try.
-    remove: { action: "remove", name },
+    // Asked for only while nothing names the constant: a shape still naming it always refuses
+    // (design §4.5), and a control that would refuse the instant it was pressed is a lying button
+    // (`ComponentPage.tsx`'s own rule for a shape cell that cannot open). `ConstantPanelView`
+    // reads `reply.uses.length` itself to say why in words instead, so the reader is never left
+    // looking at a control - or a gap where one might have been - with no explanation either way.
+    remove: entry !== undefined && entry.uses.length === 0 ? { action: "remove", name } : null,
   };
   const plans = {
     value: useConstantPlan(requests.value, revision, true),
@@ -229,7 +229,7 @@ export function ConstantPanel({
       valueOffer={draftValue === null ? null : offer("value")}
       describeOffer={draftDescription === null ? null : offer("describe")}
       renameOffer={to === null ? null : offer("rename")}
-      removeOffer={offer("remove")}
+      removeOffer={requests.remove === null ? null : offer("remove")}
       shown={shown}
       onShown={setShown}
       onApply={(action) => apply.mutate(action)}

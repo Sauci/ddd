@@ -1,0 +1,339 @@
+import type { ConstantReply, ConstantUse, PlanReply } from "../api/types";
+import { distinctFindings, keyedFindings } from "../lib/findings";
+import type { Route } from "../lib/route";
+import { baseName, consequence, shownChanges } from "../lib/units";
+import { Button } from "../ui/Button";
+import { Chip } from "../ui/Chip";
+import { Panel } from "../ui/Panel";
+import { Changes } from "./Changes";
+
+/** A change this panel applies: its own value, its description, a rename, or its removal. */
+export type ConstantAction = "value" | "describe" | "rename" | "remove";
+
+/**
+ * Where one change stands: its plan once it has come, and why it cannot be applied - the same
+ * three facts `UnitPanelView` keeps its own four offers in (this panel's sibling, spec 5.2).
+ *
+ * Defined here rather than imported from there: a constant's four write paths are this panel's
+ * own, and importing a unit's would couple the two so that a shape grown for a unit's reason -
+ * one neither this panel nor a constant's plan has - would have to be carried here too.
+ */
+export interface Offer {
+  /** The plan; `null` while it is being asked for, or when it was refused. */
+  plan: PlanReply | null;
+  /** Why the plan was refused, or why applying it was; `null` when neither was. */
+  refusal: string | null;
+  /** The plan shown is an earlier one's, kept on screen while this one is asked for: a value or
+   * a description, both of which change with every key typed. It cannot be applied. */
+  pending: boolean;
+}
+
+export interface ConstantPanelViewProps {
+  reply: ConstantReply;
+  /** What the Value field holds: what is being typed, else the entry's own text. */
+  value: string;
+  onValue: (text: string) => void;
+  /** What the Description field holds: what is being typed, else the entry's own description. */
+  description: string;
+  onDescription: (text: string) => void;
+  /** The spelling chosen to rename the constant to, or `null` while none is typed. */
+  renameTo: string | null;
+  onRenameTo: (to: string | null) => void;
+  valueOffer: Offer | null;
+  describeOffer: Offer | null;
+  renameOffer: Offer | null;
+  /** Asked for as soon as the panel opens, unlike the other three: removing has no draft of its
+   * own to wait on, only a name already known from the route. Offered where nothing names the
+   * constant; refused, in the same banner every other refusal is drawn in, where a shape still
+   * does (design §4.5) - the "Used by" table above says which, but the reader reaches the reason
+   * in the server's own words by trying, the way every other refusal in the interface is read. */
+  removeOffer: Offer;
+  /** The offer whose lines Show changes has opened, or `null`. */
+  shown: ConstantAction | null;
+  onShown: (action: ConstantAction | null) => void;
+  onApply: (action: ConstantAction) => void;
+  /** Following a use's variable, a member's type, or the component declaring the constant inline,
+   * without a reload. */
+  onOpen: (route: Route) => void;
+  /** Applying, or the server stopped: nothing can be changed or applied. */
+  busy: boolean;
+  onClose: () => void;
+}
+
+/** One constant's panel (spec 5.2), drawn from what the api answered: a picture of its props. */
+export function ConstantPanelView(props: ConstantPanelViewProps) {
+  const { reply, busy } = props;
+  // The entry's own pointer is `constants[i]` in a constants file or `component.constants[i]`
+  // inline (`ConstantReply.pointer`'s own doc): the prefix is the only place that tells the two
+  // apart, since a constants file is not a component and so has no page of its own to link to.
+  const declaredInComponent = reply.pointer.startsWith("component.");
+  const outcome = (
+    action: ConstantAction,
+    offer: Offer | null,
+    label: (plan: PlanReply) => string,
+  ) => (
+    <Outcome
+      offer={offer}
+      label={label}
+      variant={action === "remove" ? "secondary" : "primary"}
+      shown={props.shown === action}
+      onShown={(shown) => props.onShown(shown ? action : null)}
+      onApply={() => props.onApply(action)}
+      busy={busy}
+    />
+  );
+  return (
+    <Panel title={reply.name} onClose={props.onClose}>
+      <p className="panel-meta">
+        Declared in{" "}
+        {declaredInComponent ? (
+          <Button
+            variant="link"
+            onPress={() => props.onOpen({ page: "component", file: reply.file })}
+          >
+            {baseName(reply.file)}
+          </Button>
+        ) : (
+          baseName(reply.file)
+        )}
+      </p>
+      <section className="panel-offer" aria-label="Value">
+        <label className="panel-field">
+          Value
+          {/* Text, not a number: the format tells `2` and `2.0` apart by the spelling its author
+              wrote (design §2) - a whole constant and a fractional one, and `_refuse_whole_
+              number` keeps them that way. A number input's value is a JS `number` either way, so
+              typing "2.0" there would hand back `2`, silently declaring the other constant from
+              the one written. */}
+          <input
+            type="text"
+            value={props.value}
+            disabled={busy}
+            onChange={(event) => props.onValue(event.target.value)}
+          />
+        </label>
+        {outcome("value", props.valueOffer, () => "Save")}
+      </section>
+      <section className="panel-offer" aria-label="Description">
+        <label className="panel-field">
+          Description
+          <input
+            type="text"
+            value={props.description}
+            disabled={busy}
+            onChange={(event) => props.onDescription(event.target.value)}
+          />
+        </label>
+        {outcome("describe", props.describeOffer, () => "Save")}
+      </section>
+      <h3 className="panel-heading">Used by</h3>
+      {reply.uses.length === 0 ? (
+        <p className="quiet">Nothing in the project uses {reply.name}.</p>
+      ) : (
+        <table className="panel-declarations">
+          <thead>
+            <tr>
+              <th scope="col">Where</th>
+              <th scope="col">File</th>
+              <th scope="col">What</th>
+            </tr>
+          </thead>
+          <tbody>
+            {reply.uses.map((use) => (
+              <tr key={`${use.path} ${use.pointer}`}>
+                <td>
+                  <Button variant="link" onPress={() => props.onOpen(routeOfUse(use))}>
+                    {use.name}
+                  </Button>
+                </td>
+                <td className="quiet">{baseName(use.path)}</td>
+                <td>{whatOf(use)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {reply.findings.length > 0 && (
+        <ul className="panel-findings">
+          {keyedFindings(distinctFindings(reply.findings)).map(([finding, key]) => (
+            <li key={key}>
+              <Chip tone={finding.severity === "error" ? "error" : "warning"}>{finding.check}</Chip>{" "}
+              <span className="quiet">{finding.message}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <section className="panel-offer" aria-label="Rename">
+        <label className="panel-field">
+          {`Rename ${reply.name} to`}
+          <input
+            type="text"
+            value={props.renameTo ?? reply.name}
+            disabled={busy}
+            onChange={(event) => {
+              const text = event.target.value;
+              props.onRenameTo(text === reply.name ? null : text);
+            }}
+          />
+        </label>
+        <p className="rename-note">
+          Only the name changes; its value and description stay as they are, and every place naming
+          it follows.
+        </p>
+        {outcome(
+          "rename",
+          props.renameOffer,
+          (plan) => `Apply to ${plan.changes.length} file${plan.changes.length === 1 ? "" : "s"}`,
+        )}
+      </section>
+      <section className="panel-offer" aria-label="Remove from the constants">
+        {outcome("remove", props.removeOffer, () => "Remove from the constants")}
+      </section>
+    </Panel>
+  );
+}
+
+/**
+ * One change's part of the panel: why it cannot be applied, if it cannot; then, once its plan has
+ * come, what it changes, the lines it changes once Show changes opens them, and the button that
+ * applies it. Mirrors `UnitPanelView`'s own private `Outcome` component for the same four offers
+ * shape; kept local for the reason `Offer` above is.
+ */
+function Outcome({
+  offer,
+  label,
+  variant,
+  shown,
+  onShown,
+  onApply,
+  busy,
+}: {
+  offer: Offer | null;
+  label: (plan: PlanReply) => string;
+  variant: "primary" | "secondary";
+  shown: boolean;
+  onShown: (shown: boolean) => void;
+  onApply: () => void;
+  busy: boolean;
+}) {
+  if (offer === null) return null;
+  const { plan, refusal } = offer;
+  return (
+    <>
+      {refusal !== null && (
+        <p className="panel-refusal" role="status">
+          {refusal}
+        </p>
+      )}
+      {plan !== null && <p className="consequence">{consequence(plan.changes)}</p>}
+      {plan !== null && plan.changes.length > 0 && (
+        <>
+          {shown && <Changes changes={shownChanges(plan.changes)} />}
+          <div className="panel-actions">
+            <Button variant="link" onPress={() => onShown(!shown)}>
+              {shown ? "Hide changes" : "Show changes"}
+            </Button>
+            <Button variant={variant} isDisabled={busy || offer.pending} onPress={onApply}>
+              {label(plan)}
+            </Button>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+/** What a use's row says under What: the component for a variable's declaration, the one word
+ * for a structure member - `ConstantUse.name` already says which member ("Sample_t.history"), so
+ * this is only ever a component's name or the noun, never a role the way a type's uses table
+ * reads one (a constant's own dimension carries no role of its own to show). */
+function whatOf(use: ConstantUse): string {
+  return use.kind === "member" ? "member" : (use.component ?? "");
+}
+
+/** Where a use's row leads: a variable's own panel on its component's page, or - a member's
+ * `name` always being `"<Type>.<member>"` (`ConstantUse.name`'s own doc) - the type holding it,
+ * on the Types tab. Mirrors `TypePanelView`'s own private `routeOfUse` for the same two shapes;
+ * kept local since that one is not exported and reads a `TypeUse`, not a `ConstantUse`. */
+function routeOfUse(use: ConstantUse): Route {
+  if (use.kind === "variable") {
+    return { page: "component", file: use.path, variable: use.name };
+  }
+  const dot = use.name.indexOf(".");
+  return { page: "project", view: "types", type: dot === -1 ? use.name : use.name.slice(0, dot) };
+}
+
+export interface ConstantAddViewProps {
+  /** What the Name field holds. */
+  typed: string;
+  onTyped: (text: string) => void;
+  /** What the Value field holds: the json text to declare the constant with. */
+  raw: string;
+  onRaw: (text: string) => void;
+  plan: PlanReply | null;
+  refusal: string | null;
+  changesShown: boolean;
+  onChangesShown: (shown: boolean) => void;
+  onApply: () => void;
+  busy: boolean;
+  onClose: () => void;
+}
+
+/**
+ * The form that declares a new constant (design §4.3's `add`): a name and a value, previewed and
+ * applied the same way every other change in the interface is (spec 5.2's own closing line).
+ *
+ * No description field: `add` takes none - `_entry_text` always writes `"description": ""` - and
+ * a reader states one afterwards from the panel this form opens onto once it is declared.
+ */
+export function ConstantAddView(props: ConstantAddViewProps) {
+  return (
+    <Panel title="Declare a constant" onClose={props.onClose}>
+      <div className="declare-fields">
+        <label className="panel-field">
+          Name
+          <input
+            type="text"
+            value={props.typed}
+            disabled={props.busy}
+            onChange={(event) => props.onTyped(event.target.value)}
+          />
+        </label>
+        <label className="panel-field">
+          Value
+          {/* Text, not a number, for the same reason as the panel's own Value field above: `2`
+              and `2.0` are two different constants to the format, and a number input cannot tell
+              them apart. */}
+          <input
+            type="text"
+            value={props.raw}
+            disabled={props.busy}
+            onChange={(event) => props.onRaw(event.target.value)}
+          />
+        </label>
+      </div>
+      {props.refusal !== null && (
+        <p className="panel-refusal" role="status">
+          {props.refusal}
+        </p>
+      )}
+      {props.refusal === null && props.plan !== null && (
+        <p className="consequence">{consequence(props.plan.changes)}</p>
+      )}
+      {props.refusal === null && props.plan !== null && props.plan.changes.length > 0 && (
+        <>
+          {props.changesShown && <Changes changes={shownChanges(props.plan.changes)} />}
+          <div className="panel-actions">
+            <Button variant="link" onPress={() => props.onChangesShown(!props.changesShown)}>
+              {props.changesShown ? "Hide changes" : "Show changes"}
+            </Button>
+            <Button variant="primary" isDisabled={props.busy} onPress={props.onApply}>
+              Apply to {props.plan.changes.length} file
+              {props.plan.changes.length === 1 ? "" : "s"}
+            </Button>
+          </div>
+        </>
+      )}
+    </Panel>
+  );
+}

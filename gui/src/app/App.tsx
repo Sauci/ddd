@@ -99,9 +99,11 @@ export function App() {
       ),
     [navigate],
   );
-  // Selecting a constant replaces the address, as selecting a type does. The route's other shape,
-  // naming one to declare, is Task 8's: SharedPage draws no panel for either yet, so this task
-  // only ever writes the "declared" shape back.
+  // Selecting a constant replaces the address, as selecting a type does. `SharedPage` itself
+  // opens the add form for a name this callback's own route names that nothing declares, and for
+  // its own Declare a constant button besides - neither needs the route's other shape, which
+  // names one to declare directly (design §5.3, a later part's own way in from a dimension), so
+  // this callback still only ever writes the one shape.
   const openShared = useCallback(
     (name: string | undefined) =>
       navigate(
@@ -168,6 +170,8 @@ export function App() {
             state={state}
             name={"name" in route ? route.name : undefined}
             onName={openShared}
+            stopped={stopped}
+            onOpen={navigate}
           />
         ) : route.view === "findings" ? (
           <FindingsPage state={state} stopped={stopped} onOpen={navigate} />

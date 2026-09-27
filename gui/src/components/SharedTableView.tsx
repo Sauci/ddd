@@ -15,10 +15,8 @@ export interface SharedTableViewProps {
    * server's own answer, so there is only the one place the two can be swapped. Empty when every
    * file loaded. */
   unreadable: readonly string[];
-  /** Pressed only where the table is absent, because the project declares nothing. Task 8 turns
-   * this into the add form beside the table; there is nothing yet to open, so this task wires it
-   * to a comment rather than to nothing, which is what leaving the button without an `onPress`
-   * at all would mean. */
+  /** Pressed only where the table is absent, because the project declares nothing. `SharedPage`
+   * opens the add form beside the table on it, blank. */
   onDeclare: () => void;
 }
 

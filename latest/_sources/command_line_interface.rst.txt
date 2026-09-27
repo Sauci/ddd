@@ -361,6 +361,12 @@ The commands
        are drawn here as a
        table, exactly what ``ddd compare --renames`` would write to a file, and are not
        written from this tab.
+       What the page reads and writes is bounded by the directory ``ddd gui`` was started in,
+       and by the project's own where a project elsewhere was named on the command line. A file
+       the project includes from outside those is read by ``ddd check`` like any other and named
+       by the findings on it, but is not opened, edited or drawn into a preview here: the
+       refusal names the directories served, and starting ``ddd gui`` in one that holds them all
+       opens them together.
        ``-b DIR`` names a build directory as for ``ddd lsp``, ``--host ADDRESS``
        listens beyond this computer for a container, ``--port N`` fixes the port and
        ``--no-browser`` only prints the address. It serves until interrupted, and its

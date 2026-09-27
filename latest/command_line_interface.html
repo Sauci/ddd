@@ -475,6 +475,12 @@ panel says so rather than offering to go anywhere. The renames the comparison fi
 are drawn here as a
 table, exactly what <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span> <span class="pre">--renames</span></code> would write to a file, and are not
 written from this tab.
+What the page reads and writes is bounded by the directory <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> was started in,
+and by the project’s own where a project elsewhere was named on the command line. A file
+the project includes from outside those is read by <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> like any other and named
+by the findings on it, but is not opened, edited or drawn into a preview here: the
+refusal names the directories served, and starting <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> in one that holds them all
+opens them together.
 <code class="docutils literal notranslate"><span class="pre">-b</span> <span class="pre">DIR</span></code> names a build directory as for <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">lsp</span></code>, <code class="docutils literal notranslate"><span class="pre">--host</span> <span class="pre">ADDRESS</span></code>
 listens beyond this computer for a container, <code class="docutils literal notranslate"><span class="pre">--port</span> <span class="pre">N</span></code> fixes the port and
 <code class="docutils literal notranslate"><span class="pre">--no-browser</span></code> only prints the address. It serves until interrupted, and its

@@ -737,7 +737,7 @@ class Api:
                     {
                         "kind": row.kind,
                         "name": row.name,
-                        "value": row.value,
+                        "value": row.states,
                         "uses": row.uses,
                         "findings": row.findings,
                     }

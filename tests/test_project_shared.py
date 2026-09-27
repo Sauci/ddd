@@ -11,12 +11,15 @@ from ddd.lsp.ranges import Document
 from ddd.project_shared import (
     _DECLARATION_SHAPE,
     _MEMBER_SHAPE,
+    CONSTANTS,
     constant_row,
     constant_string,
     constant_text,
     constant_uses,
     located_on_constant,
+    row_of,
     shared_rows,
+    shown,
 )
 
 # `p.ddd.json` is deliberately absent from every tree below: `conftest.built_of` writes it
@@ -493,3 +496,35 @@ def test_the_two_shape_patterns_match_what_the_index_calls_a_shape() -> None:
     for pointer in pointers:
         mine = _DECLARATION_SHAPE.match(pointer) or _MEMBER_SHAPE.match(pointer)
         assert bool(mine) == bool(_DIMENSION_KEY.match(pointer)), pointer
+
+
+class TestTheDescriptor:
+    def test_a_row_is_read_through_the_vocabulary_it_belongs_to(self, tmp_path: Path) -> None:
+        # The same answer the constants-named reader gives, asked the generic way. Until sections
+        # arrive this proves only that the descriptor threads through; Task 4 is what proves it
+        # generalises, which is why the two arrive in that order.
+        built, _ = built_of(tmp_path, **TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        assert row_of(CONSTANTS, built, "TREND_SAMPLES", (), cache) == constant_row(
+            built, "TREND_SAMPLES", (), cache
+        )
+
+    def test_the_states_cell_of_a_constant_is_the_text_its_file_spells(
+        self, tmp_path: Path
+    ) -> None:
+        # `2.0` is a fractional constant and `2` a whole one, so the cell carries the spelling.
+        built, _ = built_of(tmp_path, **TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        assert row_of(CONSTANTS, built, "CELLS", (), cache).states == "2.0"
+
+    def test_a_string_key_is_shown_without_its_quotes_and_a_literal_as_written(
+        self, tmp_path: Path
+    ) -> None:
+        # Both arms of the display branch, which no single vocabulary would exercise if
+        # `description` sat outside the editable keys.
+        built, _ = built_of(tmp_path, **TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        assert shown(CONSTANTS, built, "TREND_SAMPLES", cache) == {
+            "value": "16",
+            "description": "slots of a trend buffer",
+        }

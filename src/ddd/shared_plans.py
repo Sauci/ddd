@@ -15,14 +15,20 @@ asked it to.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Literal
+from typing import Any, Final, Literal
 
+from pydantic import TypeAdapter
+
+from ddd.editing import Operation
 from ddd.loading import included_files, resolve_path
+from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
+from ddd.models.constants import ConstantValue
 
 CONSTANTS_FILE: Final = "constants.ddd.json"
 """The constants file ``add_constant`` writes for a project that has none, beside its description.
@@ -35,6 +41,11 @@ name.
 SETTABLE: Final = frozenset({"value", "description"})
 """What the interface may set on a constant's entry. ``name`` is not one of them: changing a name
 is a rename, which has to rewrite every shape naming it in the same edit."""
+
+_VALUE: Final[TypeAdapter[ConstantValue]] = TypeAdapter(ConstantValue)
+"""The format's own judge of what a constant may hold, so that the interface and the loader cannot
+come to different answers. Strict on both arms, which is what keeps ``2`` a whole constant and
+``2.0`` a fractional one."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,3 +114,107 @@ def shared_project(
         tuple(found),
         tuple(sorted({resolve_path(file) for file in unread}, key=Path.as_posix)),
     )
+
+
+def set_constant(
+    built: Index, name: str, key: str, raw: str | None, cache: dict[Path, Document]
+) -> SharedPlan:
+    """``key`` of that constant's entry set to the json text ``raw``, or taken away where ``raw``
+    is ``None``.
+
+    ``raw`` is trusted to be json: the api parses it with :func:`ddd.editing.parse_raw` and answers
+    ``bad-request`` for text that is not, the way ``GET /api/settle`` already does - a malformed
+    request is not a refusal about the project.
+
+    A ``value`` may not be taken away, and one the format would refuse is refused here: written,
+    the file would stop loading and every tab would empty because of one keystroke in this one. A
+    ``description`` already left out answers no edit at all rather than a removal, as
+    :func:`ddd.type_plans.set_key` also does for a type: there is nothing to remove, and a reader
+    who has only selected the row - not typed anything - must not be refused before they have.
+    """
+    entry = _entry(built, name)
+    if key not in SETTABLE:
+        raise SharedRefusalError(
+            "invalid",
+            f"a constant has no '{key}' to set in {entry.path.name}: it states "
+            f"{' and '.join(sorted(SETTABLE))}",
+        )
+    if key == "value":
+        if raw is None:
+            raise SharedRefusalError(
+                "invalid",
+                f"a constant states a value, so '{name}' cannot be left without one in "
+                f"{entry.path.name}",
+            )
+        _value(raw, name, entry.path)
+        return _plan({entry.path: [Operation("set", f"{entry.pointer}.{key}", raw)]})
+    if raw is None:
+        if read(entry.path, cache).value_at(f"{entry.pointer}.{key}") is None:
+            return SharedPlan(())
+        return _plan({entry.path: [Operation("remove", f"{entry.pointer}.{key}")]})
+    return _plan({entry.path: [Operation("set", f"{entry.pointer}.{key}", raw)]})
+
+
+def remove_constant(built: Index, name: str, cache: dict[Path, Document]) -> SharedPlan:
+    """That constant's entry taken out of the list holding it.
+
+    Refused while any shape names it. Removed, each of those shapes would name nothing, which is
+    an ``unknown-constant`` apiece in files the reader was not looking at - a worse answer than
+    saying no. What is in use is asked of the index, never of a file's text: reading text to answer
+    a question about meaning is the mistake part 11 filed against ``variable_keys._storage_of``.
+    """
+    entry = _entry(built, name)
+    used = built.constant_uses.get(name, ())
+    if used:
+        raise SharedRefusalError(
+            "invalid",
+            f"'{name}' is named by {_plural(len(used), 'shape')}, the first in "
+            f"{used[0].path.name}; nothing may name it before it goes",
+        )
+    return _plan({entry.path: [Operation("remove", entry.pointer)]})
+
+
+def _entry(built: Index, name: str) -> Site:
+    """Where that constant is declared, or a refusal saying nothing declares it."""
+    entry = built.constants.get(name)
+    if entry is None:
+        raise SharedRefusalError(
+            "not-found", f"no file of this project declares a constant called '{name}'"
+        )
+    return entry
+
+
+def _value(raw: str, name: str, file: Path) -> None:
+    """Refuse a value the format would not take, naming the file it would have been written to."""
+    try:
+        _VALUE.validate_python(json.loads(raw))
+    except (ValueError, TypeError) as refused:
+        raise SharedRefusalError(
+            "invalid",
+            f"{raw} is not a value a constant may state, so '{name}' cannot take it in "
+            f"{file.name}: a whole number a 64 bit target holds, of either sign, or a finite "
+            f"fractional one",
+        ) from refused
+
+
+def _plan(operations: Mapping[Path, Sequence[Operation]]) -> SharedPlan:
+    """One edit per file, sorted by path, as :class:`SharedPlan` promises and the interface applies
+    them."""
+    return SharedPlan(
+        tuple(
+            PlannedEdit(path, tuple(operations[path]))
+            for path in sorted(operations, key=Path.as_posix)
+        )
+    )
+
+
+def _plural(count: int, noun: str) -> str:
+    """ "1 shape", "2 shapes" - the wording `remove_constant` names a blocking use's count with."""
+    return f"{count} {noun}{'' if count == 1 else 's'}"
+
+
+def _raw(value: Any) -> str:
+    """A value as the json text an operation carries, every character as written: a description
+    holding a degree sign arrives in the file as one, where json's default would write an
+    escape."""
+    return json.dumps(value, ensure_ascii=False)

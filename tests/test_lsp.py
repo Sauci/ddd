@@ -12,7 +12,6 @@ import json
 import os
 import re
 import shutil
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -2587,20 +2586,6 @@ TIMED = {
 definition naming it too."""
 
 
-def _placed_by_a_number() -> dict[str, Any]:
-    """``PLACED``, with the definition's ``section`` rewritten to ``4`` - the drift ``edited``
-    makes in ``test_variable_keys.py``, played once here rather than inside a test, since the
-    fixture has to already be a number by the time ``built_of`` loads it."""
-    with tempfile.TemporaryDirectory() as scratch:
-        root = Path(scratch)
-        write_tree(root, PLACED)
-        edited(root / "a.ddd.json", lambda definition: definition.__setitem__("section", 4))
-        return {**PLACED, "a.ddd.json": (root / "a.ddd.json").read_text(encoding="utf-8")}
-
-
-PLACED_BY_A_NUMBER = _placed_by_a_number()
-"""``PLACED``, drifted so the definition's ``section`` is a number rather than a string."""
-
 CALIB_TWICE = {
     "s.ddd.json": {"sections": [{"section": "calib", "access": "read-write", "alignment": 4}]},
     "a.ddd.json": component("A", declare("output", "calib")),
@@ -2633,12 +2618,24 @@ class TestSectionsAndRasters:
             "component.interface[0].definition.raster",
         ]
 
-    def test_a_section_key_that_is_no_longer_a_string_is_no_use(self, tmp_path: Path) -> None:
-        # The index is built from a file that loaded; a use is read from the file as it stands,
-        # which may have moved on. Anything but a string names no section, and must be left out
-        # rather than reach a caller as one.
-        built, _root = built_of(tmp_path, **PLACED_BY_A_NUMBER)
-        assert built.section_uses == {}
+    def test_a_section_key_written_as_a_number_is_no_rename_subject(self, tmp_path: Path) -> None:
+        # The model already validates `section` to `str | None`, so a non-string can never reach
+        # `index()` - a number there fails the whole file's schema and the declaration is simply
+        # absent, which `index()`'s own `is not None` guard need not defend against. Drift is real
+        # one layer up, where a save can overwrite the key after the workspace this index answers
+        # for was read: `renameable_at` reads the document as it stands, and a number there is no
+        # spelling of anything to rename.
+        from ddd.lsp.navigation import renameable_at
+
+        _built, root = built_of(tmp_path, **PLACED)
+        cache: dict[Path, Document] = {}
+        edited(root / "a.ddd.json", lambda definition: definition.__setitem__("section", 4))
+        assert (
+            renameable_at(
+                read(root / "a.ddd.json", cache), "component.interface[0].definition.section"
+            )
+            is None
+        )
 
     def test_a_section_may_share_a_spelling_with_a_variable(self, tmp_path: Path) -> None:
         # A section's name is a linker string written into an attribute, not a c identifier, so
@@ -2691,6 +2688,33 @@ class TestSectionsAndRasters:
             "rasters[0].raster",
             "component.raster",
             "component.interface[0].definition.raster",
+        ]
+
+    def test_a_section_nothing_declares_renames_its_uses_alone(self, tmp_path: Path) -> None:
+        """A definition may name a section no file declares - `unknown-section` reports it
+        already - and the rename still has to keep every file that names it agreeing, the same
+        precedent a typename nothing declares sets."""
+        from ddd.lsp.navigation import rename_sites
+
+        built, _root = built_of(
+            tmp_path, **{"a.ddd.json": component("A", declare("output", "X", section=".nowhere"))}
+        )
+        assert ".nowhere" not in built.sections
+        assert [site.pointer for site in rename_sites(built, "section", ".nowhere")] == [
+            "component.interface[0].definition.section"
+        ]
+
+    def test_a_raster_nothing_declares_renames_its_uses_alone(self, tmp_path: Path) -> None:
+        """The same as a section nothing declares, for a raster: `unknown-raster` reports it,
+        and the rename still reaches the one place that names it."""
+        from ddd.lsp.navigation import rename_sites
+
+        built, _root = built_of(
+            tmp_path, **{"a.ddd.json": component("A", declare("output", "X", raster="20ms"))}
+        )
+        assert "20ms" not in built.rasters
+        assert [site.pointer for site in rename_sites(built, "raster", "20ms")] == [
+            "component.interface[0].definition.raster"
         ]
 
 

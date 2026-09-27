@@ -222,7 +222,10 @@ def index(workspace: Workspace) -> Index:
     """Read the positions out of an already loaded project."""
     built = Index()
     for loaded in workspace.components:
-        if isinstance(loaded.component.raster, str):
+        # A plain `None` check: a component need not name a default raster, and the model has
+        # already validated this field to `str | None` - there is no drifted third shape here
+        # for an `isinstance` to be guarding against.
+        if loaded.component.raster is not None:
             where = loaded.location("component.raster")
             built.raster_uses.setdefault(loaded.component.raster, []).append(
                 Site(where.path, where.pointer)
@@ -250,12 +253,14 @@ def index(workspace: Workspace) -> Index:
             if named is not None:
                 where = loaded.declaration_location(position, "definition.typename")
                 built.type_uses.setdefault(named, []).append(Site(where.path, where.pointer))
-            if isinstance(declaration.definition.section, str):
+            # The same plain `None` check: a definition need not place its data in a section,
+            # nor state its own raster when the component's default already does.
+            if declaration.definition.section is not None:
                 where = loaded.declaration_location(position, "definition.section")
                 built.section_uses.setdefault(declaration.definition.section, []).append(
                     Site(where.path, where.pointer)
                 )
-            if isinstance(declaration.definition.raster, str):
+            if declaration.definition.raster is not None:
                 where = loaded.declaration_location(position, "definition.raster")
                 built.raster_uses.setdefault(declaration.definition.raster, []).append(
                     Site(where.path, where.pointer)
@@ -712,12 +717,16 @@ def rename_sites(built: Index, kind: str, name: str) -> list[Site]:
         return list(built.mentions.get(name, ()))
     if kind == "section":
         section = built.sections.get(name)
-        own = [] if section is None else [Site(section.path, f"{section.pointer}.section")]
-        return [*own, *built.section_uses.get(name, ())]
+        uses = built.section_uses.get(name, ())
+        if section is None:
+            return list(uses)
+        return [Site(section.path, f"{section.pointer}.section"), *uses]
     if kind == "raster":
         raster = built.rasters.get(name)
-        own = [] if raster is None else [Site(raster.path, f"{raster.pointer}.raster")]
-        return [*own, *built.raster_uses.get(name, ())]
+        uses = built.raster_uses.get(name, ())
+        if raster is None:
+            return list(uses)
+        return [Site(raster.path, f"{raster.pointer}.raster"), *uses]
     declared = (built.types if kind == "type" else built.constants).get(name)
     uses = (built.type_uses if kind == "type" else built.constant_uses).get(name, ())
     own = [] if declared is None else [Site(declared.path, f"{declared.pointer}.name")]

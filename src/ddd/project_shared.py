@@ -76,6 +76,8 @@ class ConstantUse:
     site: Site
 
     kind: Literal["variable", "member"]
+    """``variable`` for a declaration's ``dimensions`` entry or its axis ``size``, ``member`` for
+    a structure member's ``dimensions`` entry."""
 
     name: str
     """The variable's name, or ``Sample_t.history`` for a structure member."""
@@ -190,14 +192,13 @@ def constant_uses(built: Index, name: str, cache: dict[Path, Document]) -> tuple
                 found.append(ConstantUse(site, "member", f"{structure}.{named}", None))
             continue
         shape = _DECLARATION_SHAPE.match(site.pointer)
-        if shape is None:
-            # Unreachable through anything the index itself would ever record:
-            # `_DECLARATION_SHAPE` and `_MEMBER_SHAPE` between them cover exactly what
-            # `_DIMENSION_KEY` matches, which is the pointer shape navigation.index() writes
-            # here, and tests/test_project_shared.py pins the two patterns to that authority.
-            # Skipped rather than trusted, so a shape the two fall out of step on drops
-            # silently instead of raising out of a page nobody previewed a crash for.
-            continue
+        # `_DECLARATION_SHAPE` and `_MEMBER_SHAPE` between them cover exactly what
+        # `_DIMENSION_KEY` matches, which is the pointer shape navigation.index() writes here,
+        # and tests/test_project_shared.py pins the two patterns to that authority. A pointer
+        # neither matches would mean this module and `_DIMENSION_KEY` have drifted apart, not
+        # that the file holds anything unexpected - and undercounting a constant's uses
+        # silently is worse than failing loudly the moment the two fall out of step.
+        assert shape is not None
         definition = shape.group(1)
         variable = document.value_at(f"{definition}.name")
         if not isinstance(variable, str):

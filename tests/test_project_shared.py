@@ -6,7 +6,7 @@ from pathlib import Path
 
 from conftest import built_of, write_tree
 from ddd.diagnostics import Diagnostic, Location, Severity
-from ddd.lsp.navigation import _DIMENSION_KEY, Site
+from ddd.lsp.navigation import _DIMENSION_KEY
 from ddd.lsp.ranges import Document
 from ddd.project_shared import (
     _DECLARATION_SHAPE,
@@ -107,6 +107,56 @@ _WITH_A_STRUCTURE = {
                 ],
             }
         ]
+    },
+}
+
+# Two components declaring the same variable name - one producing it, one reading it - each
+# restating `dimensions`. `declarations_of` returns one `Declared` per component under the one
+# name "Trend", and `constant_uses` has to tell them apart by site rather than take whichever it
+# finds first, or a use in "B" would be reported as one in "A".
+_TWO_DECLARATIONS = {
+    "c.ddd.json": {
+        "constants": [
+            {"name": "TREND_SAMPLES", "value": 16, "description": "slots of a trend buffer"}
+        ]
+    },
+    "a.ddd.json": {
+        "component": {
+            "name": "A",
+            "interface": [
+                {
+                    "scope": "output",
+                    "definition": {
+                        "kind": "measurement",
+                        "name": "Trend",
+                        "datatype": "uint16",
+                        "unit": "rpm",
+                        "conversion": {"kind": "identity"},
+                        "volatile": False,
+                        "dimensions": ["TREND_SAMPLES"],
+                    },
+                }
+            ],
+        }
+    },
+    "b.ddd.json": {
+        "component": {
+            "name": "B",
+            "interface": [
+                {
+                    "scope": "input",
+                    "definition": {
+                        "kind": "measurement",
+                        "name": "Trend",
+                        "datatype": "uint16",
+                        "unit": "rpm",
+                        "conversion": {"kind": "identity"},
+                        "volatile": False,
+                        "dimensions": ["TREND_SAMPLES"],
+                    },
+                }
+            ],
+        }
     },
 }
 
@@ -366,19 +416,22 @@ class TestOneConstantsPanel:
         cache: dict[Path, Document] = {}
         assert constant_uses(built, "TREND_SAMPLES", cache) == ()
 
-    def test_a_pointer_neither_shape_matches_is_not_a_use(self, tmp_path: Path) -> None:
-        """Every site `navigation.index()` ever records here matches one of the two shapes below -
-        that is what the pinning test at the bottom of this file holds it to - so nothing the
-        loader would write reaches this arm. Forced by hand, because the alternative is a branch
-        the coverage gate cannot see anyone take: a pointer neither pattern recognises has to be
-        skipped rather than trusted, and skipped is what this checks, not merely assumed."""
-        built, root = built_of(tmp_path, **TWO_HOMES)
-        built.constant_uses.setdefault("TREND_SAMPLES", []).append(
-            Site(root / "a.ddd.json", "component.interface[0].definition.unit")
-        )
+    def test_two_declarations_of_one_variable_keep_their_own_components(
+        self, tmp_path: Path
+    ) -> None:
+        """Two components may each declare a variable of the same name - one producing it, one
+        reading it - and both may restate its `dimensions`. Keyed by name alone,
+        `declarations_of` returns both, and the first found would swallow the second: this pins
+        the site filter that tells them apart, the one `ddd.project_types.uses_of` needed the
+        identical test for - `test_project_types.py`'s own
+        `test_a_declaration_naming_a_type_comes_with_its_component_and_role`."""
+        built, _ = built_of(tmp_path, **_TWO_DECLARATIONS)
         cache: dict[Path, Document] = {}
         used = constant_uses(built, "TREND_SAMPLES", cache)
-        assert [(use.kind, use.name) for use in used] == [("variable", "Trend")]
+        assert [(use.kind, use.name, use.component) for use in used] == [
+            ("variable", "Trend", "A"),
+            ("variable", "Trend", "B"),
+        ]
 
     def test_a_use_whose_declaration_has_moved_is_left_out(self, tmp_path: Path) -> None:
         """The index recorded where the analysis read it; the file has changed since. The next

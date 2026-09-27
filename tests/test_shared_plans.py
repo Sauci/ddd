@@ -21,8 +21,10 @@ from ddd.shared_plans import (
     _raw,
     add_constant,
     remove_constant,
+    remove_entry,
     rename_constant,
     set_constant,
+    set_entry,
     shared_project,
 )
 
@@ -766,3 +768,56 @@ class TestDeclaringOne:
         with pytest.raises(SharedRefusalError) as raised:
             add_constant(built, found, "CELLS", '"eight"', cache)
         assert raised.value.code == "invalid"
+
+
+# A fourth tree, for the one test whose constant is both the sole entry of its file and named by
+# a shape at once: `remove_entry`'s two guards both apply, and which sentence a reader meets must
+# not depend on the order a dict happened to yield. Copied in the corrected shape the trees above
+# use - a `scope` of `output`, a `kind` of `measurement`, `conversion` and `volatile` both present.
+SOLE_AND_NAMED = {
+    "c.ddd.json": {"constants": [{"name": "TREND_SAMPLES", "value": 16}]},
+    "a.ddd.json": {
+        "component": {
+            "name": "A",
+            "interface": [
+                {
+                    "scope": "output",
+                    "definition": {
+                        "kind": "measurement",
+                        "name": "Trend",
+                        "datatype": "uint16",
+                        "conversion": {"kind": "identity"},
+                        "volatile": False,
+                        "dimensions": ["TREND_SAMPLES"],
+                    },
+                }
+            ],
+        }
+    },
+}
+
+
+class TestTheDescriptorsVerbs:
+    def test_a_key_is_set_through_the_vocabulary_it_belongs_to(self, tmp_path: Path) -> None:
+        from ddd.project_shared import CONSTANTS
+
+        built, _root = built_of(tmp_path, **TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        assert set_entry(CONSTANTS, built, "TREND_SAMPLES", "value", "2.0", cache) == set_constant(
+            built, "TREND_SAMPLES", "value", "2.0", cache
+        )
+
+    def test_a_constant_both_named_and_alone_is_refused_for_being_named(
+        self, tmp_path: Path
+    ) -> None:
+        from ddd.project_shared import CONSTANTS
+
+        # Both guards apply at once, and which sentence a reader meets must not depend on the
+        # order a dict happened to yield. Named-by-something is checked first, because it names a
+        # place the reader can go and undo; being alone in its file names only the file.
+        built, _root = built_of(tmp_path, **SOLE_AND_NAMED)
+        cache: dict[Path, Document] = {}
+        with pytest.raises(SharedRefusalError) as raised:
+            remove_entry(CONSTANTS, built, "TREND_SAMPLES", cache)
+        assert "is named by" in raised.value.message
+        assert "is all" not in raised.value.message

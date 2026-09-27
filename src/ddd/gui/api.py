@@ -82,6 +82,7 @@ from ddd.lsp.units import (
 )
 from ddd.object_values import ValueRefusalError, grid_of, set_cell, set_values
 from ddd.project_shared import (
+    CONSTANTS,
     constant_string,
     constant_text,
     constant_uses,
@@ -818,7 +819,10 @@ class Api:
             )
         cache: dict[Path, Document] = {}
         project = shared_project(
-            revision.project, [file.path for file in revision.files if not file.loaded], cache
+            revision.project,
+            [file.path for file in revision.files if not file.loaded],
+            cache,
+            CONSTANTS,
         )
         try:
             plan = _constant_plan_of(action, built, project, given, raw, cache)

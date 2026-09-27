@@ -21,16 +21,33 @@ import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Literal
+from typing import Any, Final, Literal
+
+from pydantic import TypeAdapter
 
 from ddd.diagnostics import Diagnostic
-from ddd.lsp.navigation import Index, Site
+from ddd.lsp.navigation import Index, Site, rename_problem
 from ddd.lsp.ranges import Document, read
+from ddd.models.constants import ConstantValue
 from ddd.variables import declarations_of
 
 CONSTANT: Final = "constant"
 """The ``kind`` a constant's row carries. The tab holds three kinds once sections and rasters land;
 the column is what tells a reader how to read the rest of the row."""
+
+
+@dataclass(frozen=True, slots=True)
+class Judgement:
+    """What a key's json text is judged by, and the clause naming what it should have been.
+
+    Kept apart from a bare :class:`~pydantic.TypeAdapter`: ``_judged`` in :mod:`ddd.shared_plans`
+    builds one refusal sentence for every key of every vocabulary, and ``tail`` is the one part an
+    adapter alone cannot supply back - a constant's value and its description share the sentence's
+    shape and differ only in this clause.
+    """
+
+    adapter: TypeAdapter[Any]
+    tail: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +101,27 @@ class Vocabulary:
     constant's own shapes are a dimension entry, an axis size, a structure member's dimension; a
     section's and a raster's are different shapes entirely - so unlike :attr:`entries`, :attr:`used`
     and :attr:`states`, each a one-line lambda, this is bound to a named function per vocabulary."""
+
+    required: frozenset[str]
+    """Of ``keys``, the ones the model gives no default, so a reader may not take them away: a
+    constant's ``value``, a section's ``access`` and ``alignment``. A file missing one does not
+    load, which is the outcome the interface refuses rather than writes."""
+
+    filename: str
+    """The file ``add`` writes beside the project description where the project includes none, named
+    for what it holds so that whoever opens the checkout can tell."""
+
+    judge: Mapping[str, Judgement]
+    """Per key, what its json text is judged by and the clause a refusal names it with. The
+    interface never restates a rule: a constant's value is judged by ``ConstantValue``, a section's
+    alignment by its own field's power-of-two rule."""
+
+    name_judge: Callable[[Index, str], str | None]
+    """What decides whether a name may be used: the index and the wanted name in, the sentence
+    refusing it or ``None`` out. Not a model of the string, because the answer depends on what the
+    project already holds. A constant's is ``rename_problem``, whose c identifier rule and
+    ``occupied`` check fit a constant and neither of the others: a section's name is a linker string
+    and a raster's an a2l short name, and neither joins the namespace ``occupied`` guards."""
 
 
 _DECLARATION_SHAPE: Final = re.compile(
@@ -333,6 +371,26 @@ def _constant_uses(built: Index, name: str, cache: dict[Path, Document]) -> tupl
     return tuple(found)
 
 
+_VALUE: Final[TypeAdapter[ConstantValue]] = TypeAdapter(ConstantValue)
+"""The format's own judge of what a constant's value may hold, so that the interface and the
+loader cannot come to different answers. Strict on both arms, which is what keeps ``2`` a whole
+constant and ``2.0`` a fractional one."""
+
+_DESCRIPTION: Final[TypeAdapter[str]] = TypeAdapter(str)
+"""The format's own judge of what a description may hold: any string, and nothing else -
+``ConstantDeclaration.description`` is a plain ``str``, so this need only refuse what a string can
+never be: a number, a bool, ``null``, an array, an object."""
+
+
+def _constant_name_judge(built: Index, to: str) -> str | None:
+    """:data:`CONSTANTS`'s :attr:`~Vocabulary.name_judge`: ``rename_problem``, called exactly as
+    ``rename_constant`` and ``add_constant`` always called it, so a constant's rename and its
+    declaration refuse a name in the same words they always have. Its c identifier rule and
+    ``occupied`` check fit a constant and neither of the other two: a section's name is a linker
+    string and a raster's an a2l short name."""
+    return rename_problem(built, to, "constant")
+
+
 CONSTANTS: Final = Vocabulary(
     kind=CONSTANT,
     containers=("constants", "component.constants"),
@@ -343,6 +401,16 @@ CONSTANTS: Final = Vocabulary(
     used=lambda built: built.constant_uses,
     states=lambda texts: texts["value"],
     uses=_constant_uses,
+    required=frozenset({"value"}),
+    filename="constants.ddd.json",
+    judge={
+        "value": Judgement(
+            _VALUE,
+            "a whole number a 64 bit target holds, of either sign, or a finite fractional one",
+        ),
+        "description": Judgement(_DESCRIPTION, "a json string"),
+    },
+    name_judge=_constant_name_judge,
 )
 
 HELD: Final = (CONSTANTS,)

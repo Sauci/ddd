@@ -2460,13 +2460,55 @@ names it. A screenshot of each, opened and looked at.
 
 ## Progress log
 
-| Task | Started | Duration | Tokens | Notes |
-| --- | --- | --- | --- | --- |
-| | | | | |
+Nine tasks, each with a fresh implementer and its own two-verdict review, then one whole-branch
+review and one fix wave. 26 commits off master at `8d9be79`.
 
-## Left open
+| Task | Delivered | Fix rounds | Review found |
+| --- | --- | --- | --- |
+| 1 | `loading.included_files` made public; `shared_plans`' foundations | 0 | clean |
+| 2 | `project_shared.py`: the rows and one constant's panel | 1 | the site filter had no test with a real second candidate |
+| 3 | `set_constant`, `remove_constant` | 1 | three assertions a mutation still slipped past |
+| 4 | `rename_constant`, `add_constant` with its creating arm | 1 | `constants_files[0]` and the collision check's position unpinned |
+| 5 | three routes, the contract, the `constant` finding route | 1 | `/api/shared`'s finding count untested for a nonzero value |
+| 6 | the page's own decisions under the Vitest gate | 0 | clean |
+| 7 | the table and the tab | 2 | a type assertion, then the unkeyed table that replaced it |
+| 8 | a constant's panel and its four changes | 1 | Remove offered where the server always refuses |
+| 9 | the way in from a dimension, the journey, the docs | 1 | a dead route shape; the named feature had no automated test |
 
-Filled in as the work goes. Each entry says what was not done and what it costs.
+Every task but 1 and 6 turned up at least one defect in this plan's own text. The list is in
+**What was left open** below, because a plan that was wrong nine times is worth recording as such.
+
+## What was left open
+
+- **`session._kind` answers `"unknown"` for a file that does not parse**, so spec §5.4's did-not-load
+  banner never names the commonest way a constants file fails - an editor saving it mid-write. The
+  reader gets a clear refusal when they press a button, but the table above says nothing. `TypesPage`
+  has the identical filter, so this is inherited rather than introduced. The last hole in the
+  refuse-or-report line.
+- **Three per-key tables keep the untied-key shape**: `ConstantPanel`'s `plans`, and `UnitPanel`'s and
+  `TypePanel`'s `requests` and `plans`. Closing them soundly needs the plan hook to carry its own
+  action, which changes three panels' call sites. `ConstantPanel`'s `requests` - the one whose mis-key
+  is silent and load-bearing - is closed here with a `satisfies` clause.
+- **Nothing executes a `.tsx` file under any gate**, so no hand-written table under `app/`, `screens/`
+  or `components/` can have a key/value mismatch caught unless its type ties the two together. Two
+  instances were found and fixed on this branch; the sweep named five more, all pre-existing.
+- **The blank add form is not addressable by a url**, where every other panel in the page is. The
+  pre-filled one is, through `?name=`. The `declare` route shape that would have carried it was
+  removed as dead: `isDeclared` makes one shape serve both cases.
+- **`add` still appends while an unrelated included file is mid-save.** The name it declares could
+  collide once that file is fixed. `add_unit` has the same bounded blind spot, for the same reason:
+  `rename_problem` only sees what loaded.
+- **No route for the `duplicate-unit` and `duplicate-type` family**, so `findings.ts` still tells a
+  reader that a units or types file "has no page yet" when both have had one for parts. The wording
+  became this branch's business only because this branch turned that condition into a named set.
+- **The Types tab's own finding count still ignores its uses**, which is the divergence this part
+  chose deliberately in the other direction. Worth bringing along when sections land.
+- **`tests/test_cmake.py::TestTheDocumentedAddressMapRecipe::test_two_file_local_statics_of_one_name_do_not_collide`**
+  failed once in five full runs and passed alone. Nothing to do with this branch - it drives two real
+  incremental cmake builds - but a 100 % gate that fails one run in five is not a gate.
+- **The `Kind` column means two different things on two adjacent tabs**: a type's shape on Types, a
+  row's vocabulary on Shared files. Cheap to reword now, expensive once sections and rasters ship and
+  readers have learned it.
 
 ## Rulings taken
 
@@ -2482,3 +2524,39 @@ Filled in as the work goes. Each entry says what was not done and what it costs.
 | 8 | `_included` moves into `loading.py` as `included_files` | Two clients asking which files a project includes must get the run's own answer, and each swallowing the three exceptions its own way is how they drift | A one-line revert |
 | 9 | `Value` in the table where the Types tab has `Description` | A constant's description is a full sentence that would fill the row; its value is what a reader scans the list for | A reader opens the panel to read a description |
 | 10 | One server module for the three kinds, written concretely for constants | An abstraction shaped by a single example is worse than two cases and then a shape | The sections part refactors rather than extends |
+
+### Rulings taken while executing
+
+Decisions I made on the maintainer's behalf, in the order I made them. Each is a place where the plan
+was silent, wrong, or contradicted itself, and somebody had to choose without asking.
+
+| # | Ruling | Why | Cost if wrong |
+| --- | --- | --- | --- |
+| 11 | `_raw` is defined in Task 3, not Task 1 | Task 1 has no caller, so the 100 % gate could not pass with it present | none; a helper moves one task |
+| 12 | Tests build their index with `conftest.built_of(tmp_path, **TREE)`, trees omitting `p.ddd.json` | The plan's `_index` does not exist; `built_of` writes the project description itself | a case `built_of` cannot express writes its own tree |
+| 13 | Tasks 3 and 4 define their own tree constant in their own test file | `TWO_HOMES` belongs to the other file; this repo does not import one test module from another | one tree spelled twice |
+| 14 | `client.ts` gets a private `constantQuery`, not a shared helper | `planQuery` and `typeQuery` are already per-route | a third near-identical builder |
+| 15 | The NUL-byte test forces its arm with a monkeypatched `Path.glob` | Measured: `resolve_path` swallows the error a frame before the `except` clause, so the given test could never pass | the arm is forced, not reached - the repo's own answer to a platform branch |
+| 16 | An implementer's commits carry its own model in the trailer | Truthful about who wrote the code, and what its harness instructed | the branch's trailers name two models |
+| 17 | `shared_plans.py` may forward-reference `ddd.project_shared` | Task 2 creates it on the same branch | a sphinx warning Task 9's build would catch |
+| 18 | A Minor rides along with an Important when it is one line in a file already being amended | Cheaper than a separate round, and the docstring rule is a global constraint | a Minor fixed a stage early |
+| 19 | `constant_uses`' unreachable arm becomes `assert`, its forcing test deleted | `navigation.py:722` does exactly this: "a branch that cannot be taken is a branch no test can cover and no reader can trust" | a drift raises rather than under-counting |
+| 20 | `set_constant` answers an empty plan for an absent key, not a refusal | `type_plans.set_key:83` does the same; "already absent" was never in the refusal taxonomy | a preview with no changes where a sentence might read better |
+| 21 | The "key not settable" refusal names its file though the sibling's does not | Every refusal names its file is a constraint; matching the sibling character for character is not | two modules word one refusal differently |
+| 22 | `_appended_at` is a function, not a conditional expression | The expression registers no branch; the statement form trips ruff's `SIM108` | one named helper |
+| 23 | Spec §4.5 is corrected to match the code, not the reverse | Two of my own decisions collided; reusing `rename_problem` verbatim is the load-bearing one | a reader searches for where a colliding name lives |
+| 24 | `CONSTANT_PLANS["add"]` requires `raw` | `add_constant` takes `str`, not `str \| None`; a constant with no value is not a thing | a caller omitting it gets 400 |
+| 25 | The `500` arm stays untested | A conditional expression at this and eight pre-existing routes; singling this one out would be inconsistent | an unknown code answers 500 untested, as at eight other routes |
+| 26 | `ConstantPlanRequest`'s `set` arm takes `raw?`, where the sibling's is `raw` | Both spell "may be absent"; the optional form is what `tsc` requires of the given test | one asymmetry between two request types |
+| 27 | The `as Route` assertion goes, replaced by a keyed lookup | A cast-free form makes the compiler check each view's shape, so a future view that needs more fails to compile | a table where a helper was |
+| 28 | That table gets a `satisfies` clause tying value to key | My own ruling traded a cast for an unkeyed table; a mis-key compiled and passed all 432 tests | one line of type machinery |
+| 29 | `onDeclare` stands, wired live by Task 8 | Required by the brief, the spec and one of the four stories; `Button` forwards `onPress` as optional, so an inert button was available and not taken | Task 8 prefers a link and edits one more file |
+| 30 | Four independent offers in the panel, not one active preview | The panel has the most verbs in the interface; a reader should not lose a typed value by opening a second offer | two previews on screen at once, which the review checked |
+| 31 | Remove goes back to gated, with a sentence saying why | `ComponentPage.tsx:129`: "a button that refused the moment it was pressed would be a button that lies". The sibling gates it too - but explains nothing, which was ruled insufficient | a reader who wants to be told no reads the uses list instead |
+| 32 | The panel links its declaration site though the types panel does not | Part 6's own "way in" argument; the types panel is the one behind | the two panels differ until someone brings the other along |
+| 33 | Task 9's way in is `VariableKeysTable`, not `DimensionsField` | Measured: that component is the add form's ComboBox editor, and `dimensions` is already a row of the keys table - where part 6 put its own way in | the way in sits in the keys table rather than the component table |
+| 34 | The dead `{kind, declare}` route shape is removed | Nothing produced it; my own "the page decides" ruling made it redundant, and a shape with tests reads as load-bearing | the blank add form is not addressable by url |
+| 35 | The journey is extended to click a healthy dimension's link | The feature the task is named for had no automated coverage; a refactor of that handler would get no signal | a slightly longer journey |
+| 36 | The redundant `dimensions` gate stays, with its reason | It guards a future array-shaped key; strengthening the test instead needs a fixture no real key produces | one line of belt-and-braces |
+| 37 | `plans`, `UnitPanel` and `TypePanel` keep the untied-key shape, as a follow-up | Closing it needs the hook to carry its own action, across three panels | the same mis-key stays possible in three tables |
+

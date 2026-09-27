@@ -185,7 +185,10 @@ Refused, before a file is touched:
 
 - a rename to a name `rename_problem` rejects — not a usable c identifier, reserved, already
   declared, or occupied by another constant;
-- an `add` of a name the project already declares anywhere, with the file that holds it named;
+- an `add` of a name the project already declares anywhere, refused in `rename_problem`'s own
+  sentence — which names what holds the name rather than which file holds it, because the tab asks
+  that function rather than deciding for itself, and wrapping its answer to append a path would mean
+  this module post-processing another's message;
 - an `add` while the constants file it would write to did not load, or while creating one would
   overwrite a file of that name already beside the project description;
 - a `remove` of a constant any shape names, with the count and the first of them named;

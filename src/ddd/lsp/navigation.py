@@ -85,6 +85,18 @@ _TYPENAME_KEY: Final = re.compile(
 _TYPE_NAME: Final = re.compile(r"^(?:component\.)?types\[\d+\]\.name$")
 _CONSTANT_NAME: Final = re.compile(r"^(?:component\.)?constants\[\d+\]\.name$")
 
+_SECTION_NAME: Final = re.compile(r"^sections\[\d+\]\.section$")
+_SECTION_KEY: Final = re.compile(r"^component\.interface\[\d+\]\.definition\.section$")
+"""The one place a definition places its data: a section is a project wide vocabulary, with
+no home inside a component the way a type or a constant may have one."""
+
+_RASTER_NAME: Final = re.compile(r"^rasters\[\d+\]\.raster$")
+_RASTER_KEY: Final = re.compile(
+    r"^(?:component\.raster|component\.interface\[\d+\]\.definition\.raster)$"
+)
+"""Where a raster is spelled: a definition's own, or the component's default for everything
+it produces - the one use written outside any definition at all."""
+
 _UNIT_KEY: Final = re.compile(
     rf"^(?:(?:component\.interface\[\d+\]\.definition|(?:component\.)?types\[\d+\]|{_MEMBER}"
     rf"|units\[\d+\])\.unit|units\[\d+\])$"
@@ -147,6 +159,19 @@ class Index:
     constant_uses: dict[str, list[Site]] = field(default_factory=dict)
     """Constant name -> every dimension entry and axis size that spells it."""
 
+    sections: dict[str, Site] = field(default_factory=dict)
+    """Section name -> where the sections file declares it."""
+
+    section_uses: dict[str, list[Site]] = field(default_factory=dict)
+    """Section name -> every definition placing data in it."""
+
+    rasters: dict[str, Site] = field(default_factory=dict)
+    """Raster name -> where the rasters file declares it."""
+
+    raster_uses: dict[str, list[Site]] = field(default_factory=dict)
+    """Raster name -> every definition naming it, and every component naming it as the
+    default raster for what it produces."""
+
     kinds: dict[str, str] = field(default_factory=dict)
     """Name -> the kind its first declaration states, in the order the project lists its
     components.
@@ -197,6 +222,11 @@ def index(workspace: Workspace) -> Index:
     """Read the positions out of an already loaded project."""
     built = Index()
     for loaded in workspace.components:
+        if isinstance(loaded.component.raster, str):
+            where = loaded.location("component.raster")
+            built.raster_uses.setdefault(loaded.component.raster, []).append(
+                Site(where.path, where.pointer)
+            )
         for position, declaration in enumerate(loaded.component.interface):
             location = loaded.declaration_location(position, "definition")
             site = Site(location.path, location.pointer)
@@ -220,6 +250,16 @@ def index(workspace: Workspace) -> Index:
             if named is not None:
                 where = loaded.declaration_location(position, "definition.typename")
                 built.type_uses.setdefault(named, []).append(Site(where.path, where.pointer))
+            if isinstance(declaration.definition.section, str):
+                where = loaded.declaration_location(position, "definition.section")
+                built.section_uses.setdefault(declaration.definition.section, []).append(
+                    Site(where.path, where.pointer)
+                )
+            if isinstance(declaration.definition.raster, str):
+                where = loaded.declaration_location(position, "definition.raster")
+                built.raster_uses.setdefault(declaration.definition.raster, []).append(
+                    Site(where.path, where.pointer)
+                )
             _occupy(built, declaration.definition.conversion)
             _unit_stated(
                 built,
@@ -262,6 +302,14 @@ def index(workspace: Workspace) -> Index:
     for constant in workspace.constants:
         built.constants[constant.name] = Site(constant.path, constant.location().pointer)
         built.occupied[constant.name] = f"the name of the declared constant '{constant.name}'"
+    # Neither a section nor a raster joins `occupied`. A constant's name reaches generated code
+    # as a c identifier, so a collision there is two objects sharing storage; a section's name
+    # is a linker string and a raster's an a2l short name, and neither is ever spelled into the
+    # generated header, so neither shares that namespace.
+    for section in workspace.sections:
+        built.sections[section.section] = Site(section.path, section.location().pointer)
+    for raster in workspace.rasters:
+        built.rasters[raster.raster] = Site(raster.path, raster.location().pointer)
     for listed in workspace.unit_entries:
         where = listed.location()
         built.vocabulary.setdefault(listed.unit, []).append(Site(where.path, where.pointer))
@@ -620,9 +668,12 @@ def renameable_at(document: Document, pointer: str) -> tuple[str, str] | None:
 
     A variable, from its name or from a reference naming it; a declared type, from the
     ``name`` of its entry or from any ``typename`` spelling it; a declared constant, from the
-    ``name`` of its entry or from any dimension or axis ``size`` spelling it; a unit, from any
-    place it is stated or from its entry in a units file. Narrow on purpose, like
-    :func:`variable_at`: the editor opens its box over the range this names.
+    ``name`` of its entry or from any dimension or axis ``size`` spelling it; a section or a
+    raster, from its own entry or from any definition placing data in it or naming it - a
+    raster's uses also include a component's own default, the one use written outside any
+    definition at all; a unit, from any place it is stated or from its entry in a units file.
+    Narrow on purpose, like :func:`variable_at`: the editor opens its box over the range this
+    names.
 
     A unit is renamed by :func:`ddd.lsp.units.rename_unit` rather than by :func:`rename_edits`:
     its rename rewrites the vocabulary too, and merges two spellings where a name would collide.
@@ -637,6 +688,10 @@ def renameable_at(document: Document, pointer: str) -> tuple[str, str] | None:
         return ("type", value)
     if _DIMENSION_KEY.match(pointer) or _CONSTANT_NAME.match(pointer):
         return ("constant", value)
+    if _SECTION_KEY.match(pointer) or _SECTION_NAME.match(pointer):
+        return ("section", value)
+    if _RASTER_KEY.match(pointer) or _RASTER_NAME.match(pointer):
+        return ("raster", value)
     # The empty unit is no unit - a dimensionless value states none - so there is nothing
     # spelled there to rename.
     if value and _UNIT_KEY.match(pointer):
@@ -649,10 +704,20 @@ def rename_sites(built: Index, kind: str, name: str) -> list[Site]:
 
     A variable's mentions are indexed as strings already. A type or a constant is indexed by
     its entry and by the places spelling it, so its own ``name`` is added here; a name nothing
-    declares - a ``typename`` the loader has already reported - renames its uses alone.
+    declares - a ``typename`` the loader has already reported - renames its uses alone. A
+    section or a raster is the same, its own entry added under its own key rather than
+    ``name``.
     """
     if kind == "variable":
         return list(built.mentions.get(name, ()))
+    if kind == "section":
+        section = built.sections.get(name)
+        own = [] if section is None else [Site(section.path, f"{section.pointer}.section")]
+        return [*own, *built.section_uses.get(name, ())]
+    if kind == "raster":
+        raster = built.rasters.get(name)
+        own = [] if raster is None else [Site(raster.path, f"{raster.pointer}.raster")]
+        return [*own, *built.raster_uses.get(name, ())]
     declared = (built.types if kind == "type" else built.constants).get(name)
     uses = (built.type_uses if kind == "type" else built.constant_uses).get(name, ())
     own = [] if declared is None else [Site(declared.path, f"{declared.pointer}.name")]

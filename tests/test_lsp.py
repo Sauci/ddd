@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ from conftest import (
     INCONSISTENT,
     answered,
     build_record,
+    built_of,
     checks,
     component,
     declare,
@@ -70,6 +72,7 @@ from ddd.lsp.units import (
     unit_drift,
     unit_project,
 )
+from test_variable_keys import edited
 
 
 def raw_frame(body: bytes) -> bytes:
@@ -2568,6 +2571,127 @@ class TestRename:
         (loaded,) = navigation.workspaces([], tmp_path / "units.ddd.json", tmp_path)
         assert [path.name for path in loaded.unreadable] == ["a.ddd.json", "units.ddd.json"]
         assert [path.name for path in loaded.unloaded] == ["a.ddd.json"]
+
+
+PLACED = {
+    "s.ddd.json": {"sections": [{"section": ".calib", "access": "read-write", "alignment": 4}]},
+    "a.ddd.json": component("A", declare("output", "X", section=".calib")),
+}
+"""A sections file declaring ``.calib``, and one definition placing data in it."""
+
+TIMED = {
+    "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
+    "a.ddd.json": component("A", declare("output", "X", raster="10ms"), raster="10ms"),
+}
+"""A rasters file declaring ``10ms``, a component naming it as its own default, and a
+definition naming it too."""
+
+
+def _placed_by_a_number() -> dict[str, Any]:
+    """``PLACED``, with the definition's ``section`` rewritten to ``4`` - the drift ``edited``
+    makes in ``test_variable_keys.py``, played once here rather than inside a test, since the
+    fixture has to already be a number by the time ``built_of`` loads it."""
+    with tempfile.TemporaryDirectory() as scratch:
+        root = Path(scratch)
+        write_tree(root, PLACED)
+        edited(root / "a.ddd.json", lambda definition: definition.__setitem__("section", 4))
+        return {**PLACED, "a.ddd.json": (root / "a.ddd.json").read_text(encoding="utf-8")}
+
+
+PLACED_BY_A_NUMBER = _placed_by_a_number()
+"""``PLACED``, drifted so the definition's ``section`` is a number rather than a string."""
+
+CALIB_TWICE = {
+    "s.ddd.json": {"sections": [{"section": "calib", "access": "read-write", "alignment": 4}]},
+    "a.ddd.json": component("A", declare("output", "calib")),
+}
+"""A section and a variable spelled the same way - the two namespaces that share nothing."""
+
+
+class TestSectionsAndRasters:
+    """The index learns the two vocabularies the loader always collected: a definition placing
+    data in a section, or updated on a raster, now leads somewhere - and both are renameable
+    like the four kinds the index already knew."""
+
+    def test_a_section_is_indexed_with_every_definition_placing_data_in_it(
+        self, tmp_path: Path
+    ) -> None:
+        built, _root = built_of(tmp_path, **PLACED)
+        assert set(built.sections) == {".calib"}
+        assert [site.pointer for site in built.section_uses[".calib"]] == [
+            "component.interface[0].definition.section"
+        ]
+
+    def test_a_raster_named_by_a_component_is_a_use_like_one_named_by_a_definition(
+        self, tmp_path: Path
+    ) -> None:
+        # `Component.raster` is the default for every variable the component produces - a use
+        # that is not inside a definition at all, which no constant use ever was.
+        built, _root = built_of(tmp_path, **TIMED)
+        assert [site.pointer for site in built.raster_uses["10ms"]] == [
+            "component.raster",
+            "component.interface[0].definition.raster",
+        ]
+
+    def test_a_section_key_that_is_no_longer_a_string_is_no_use(self, tmp_path: Path) -> None:
+        # The index is built from a file that loaded; a use is read from the file as it stands,
+        # which may have moved on. Anything but a string names no section, and must be left out
+        # rather than reach a caller as one.
+        built, _root = built_of(tmp_path, **PLACED_BY_A_NUMBER)
+        assert built.section_uses == {}
+
+    def test_a_section_may_share_a_spelling_with_a_variable(self, tmp_path: Path) -> None:
+        # A section's name is a linker string written into an attribute, not a c identifier, so
+        # it does not join the namespace `occupied` guards and a project may spell both the
+        # same way.
+        built, _root = built_of(tmp_path, **CALIB_TWICE)
+        assert "calib" not in built.occupied
+        assert "calib" in built.sections
+
+    def test_a_section_is_renameable_from_its_own_entry_and_from_a_use(
+        self, tmp_path: Path
+    ) -> None:
+        # Both ends, because a rename that reached the entry and not the uses would leave every
+        # definition placing data in a section nothing declares.
+        from ddd.lsp.navigation import rename_sites, renameable_at
+
+        built, root = built_of(tmp_path, **PLACED)
+        cache: dict[Path, Document] = {}
+        assert renameable_at(read(root / "s.ddd.json", cache), "sections[0].section") == (
+            "section",
+            ".calib",
+        )
+        assert renameable_at(
+            read(root / "a.ddd.json", cache), "component.interface[0].definition.section"
+        ) == ("section", ".calib")
+        assert [site.pointer for site in rename_sites(built, "section", ".calib")] == [
+            "sections[0].section",
+            "component.interface[0].definition.section",
+        ]
+
+    def test_a_raster_is_renameable_from_its_own_entry_and_from_a_use(self, tmp_path: Path) -> None:
+        # The same two ends as a section, plus the component's own default: a rename that left
+        # it alone would leave a component still handing out the old name to what it produces.
+        from ddd.lsp.navigation import rename_sites, renameable_at
+
+        built, root = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        assert renameable_at(read(root / "r.ddd.json", cache), "rasters[0].raster") == (
+            "raster",
+            "10ms",
+        )
+        assert renameable_at(read(root / "a.ddd.json", cache), "component.raster") == (
+            "raster",
+            "10ms",
+        )
+        assert renameable_at(
+            read(root / "a.ddd.json", cache), "component.interface[0].definition.raster"
+        ) == ("raster", "10ms")
+        assert [site.pointer for site in rename_sites(built, "raster", "10ms")] == [
+            "rasters[0].raster",
+            "component.raster",
+            "component.interface[0].definition.raster",
+        ]
 
 
 class TestAUnitPlanAsTextEdits:

@@ -29,6 +29,7 @@ from ddd.lsp.navigation import Index, Site, rename_problem, rename_sites
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
 from ddd.models.constants import ConstantValue
+from ddd.pointers import parent_pointer
 
 CONSTANTS_FILE: Final = "constants.ddd.json"
 """The constants file ``add_constant`` writes for a project that has none, beside its description.
@@ -56,7 +57,8 @@ never be: a number, a bool, ``null``, an array, an object."""
 @dataclass(frozen=True, slots=True)
 class SharedProject:
     """What a plan has to know of the project besides its index: where its constants are kept,
-    and which of its files did not load."""
+    which of its files could not be told apart from a place they are kept, and which of its files
+    did not load."""
 
     project: Path
     """The project description, resolved."""
@@ -65,6 +67,18 @@ class SharedProject:
     """Its constants files, in the order its ``project.includes`` lists them, each listed once:
     the first is where a new constant goes, so that it lands in the file a run of ``ddd check``
     reads first."""
+
+    untellable: tuple[Path, ...]
+    """The files it includes that are there and do not parse, in ``includes`` order, each listed
+    once: what each one is cannot be told, so each of them might be a constants file.
+
+    Kept apart from ``constants_files`` because nothing may be appended to a file nobody could
+    read, and kept at all because ``constants_files`` being empty otherwise reads as "this project
+    has no constants file" - and :func:`add_constant` would answer that by writing a second one
+    beside the description, unasked, while the first sat there mid-save.
+
+    A file the project includes and does not have is not one of them: it declares nothing, so it
+    hides no name a new file could collide with."""
 
     unread: tuple[Path, ...]
     """The project's files that did not load, resolved and sorted."""
@@ -83,7 +97,8 @@ class SharedRefusalError(Exception):
     code: Literal["unreadable", "invalid", "not-found"]
     """``unreadable``: a file the change has to see did not load. ``invalid``: the change cannot
     be made - a key a constant has not, a name that may not be used, a constant a shape still
-    names. ``not-found``: no file of the project declares a constant of that name."""
+    names, the only constant its list declares. ``not-found``: no file of the project declares a
+    constant of that name."""
 
     message: str
     """The sentence the refusal is shown with, naming the file it concerns."""
@@ -97,26 +112,37 @@ class SharedRefusalError(Exception):
 def shared_project(
     project: Path, unread: Sequence[Path], cache: dict[Path, Document]
 ) -> SharedProject:
-    """The project a constant's plans are made in: its description, its constants files and the
-    files of it that did not load.
+    """The project a constant's plans are made in: its description, its constants files, the
+    files it includes whose kind cannot be told, and the files of it that did not load.
 
     The constants files come out of the description's own ``includes``, each entry expanded by the
     loader's rule, so that the first of them is the first a run of ``ddd check`` reads. A
     constants file is a document with ``constants`` at its top, which is how the loader tells one;
     a file that does not parse is none, since what it is cannot be told - and a new entry must not
     be appended to a file nobody could read.
+
+    That answer is not the whole of it, which is what this function used to leave unsaid: a file
+    whose kind cannot be told might be a constants file, and counting it as none left
+    ``constants_files`` empty - which :func:`add_constant` read as "this project has no constants
+    file" and answered by creating a second one. So such a file is named in ``untellable``
+    instead of being passed over in silence, and ``add`` refuses rather than creates while one is
+    there.
     """
     path = resolve_path(project)
     listed = read(path, cache).value_at("project.includes")
     found: list[Path] = []
+    untellable: list[Path] = []
     for entry in listed if isinstance(listed, list) else ():
         for file in included_files(path, entry):
             document = read(file, cache).data
             if file not in found and isinstance(document, dict) and "constants" in document:
                 found.append(file)
+            elif document is None and file not in untellable and file.exists():
+                untellable.append(file)
     return SharedProject(
         path,
         tuple(found),
+        tuple(untellable),
         tuple(sorted({resolve_path(file) for file in unread}, key=Path.as_posix)),
     )
 
@@ -202,11 +228,28 @@ def add_constant(
     ``raw`` is embedded as the text it was given rather than parsed and reprinted: ``2.0`` declares
     a fractional constant and ``2`` a whole one, and a reader asking for one would otherwise get
     the other.
+
+    Creating is refused while the project includes a file whose kind cannot be told, because
+    "this project has no constants file" is then not something anyone knows: measured through the
+    endpoint, a project including a ``sizes.ddd.json`` truncated mid-save answered a two-edit
+    create plan for a second ``constants.ddd.json`` and an ``includes`` entry naming it, unasked.
+    The harm is the one the unreadable guard below exists to prevent - what that file declares is
+    unknown, so the new entry can collide with a name in it the moment it is saved - and
+    :func:`ddd.lsp.units.add_unit` refuses the same situation, having no creating arm to fall
+    into. Only the creating arm is refused: where a constants file of the project did load, this
+    knows both where the entry goes and what that file already declares.
     """
     problem = rename_problem(built, name, "constant")
     if problem is not None:
         raise SharedRefusalError("invalid", problem)
     if not project.constants_files:
+        if project.untellable:
+            raise SharedRefusalError(
+                "unreadable",
+                f"{_names(project.untellable)} did not parse, so whether this project already "
+                f"keeps its constants there is unknown and '{name}' cannot be declared into a "
+                "new file",
+            )
         return _created(project, name, raw, cache)
     file = project.constants_files[0]
     if file in project.unread:
@@ -228,6 +271,23 @@ def remove_constant(built: Index, name: str, cache: dict[Path, Document]) -> Sha
     an ``unknown-constant`` apiece in files the reader was not looking at - a worse answer than
     saying no. What is in use is asked of the index, never of a file's text: reading text to answer
     a question about meaning is the mistake part 11 filed against ``variable_keys._storage_of``.
+
+    Refused, too, where the entry is all its list holds, as :func:`ddd.lsp.units._taken_out`
+    refuses the last unit of a units file and for the same reason: ``constants`` is
+    ``min_length=1`` in both homes - :class:`ddd.models.constants.ConstantsFile` and
+    :class:`ddd.models.component.Component` - so the emptied list is a document the format
+    rejects. Measured: a constants file left ``{"constants": []}`` makes ``ddd check`` answer
+    ``error[schema]: Tuple should have at least 1 item after validation, not 0`` and exit 1, and a
+    component emptied that way stops loading altogether, so every variable it declares goes out of
+    the project with the constant. Two clicks reach it from this tab - declare a constant into a
+    project that has none, then remove it, since nothing names it and Remove is offered. Taking
+    the whole ``constants`` key out instead would load for a component, whose key is optional, and
+    not for a constants file, whose key is what makes it one - and a Remove meaning a different
+    edit in each home is not the design's "the entry, and nothing else".
+
+    The list is read from the file rather than counted off the index because the index holds the
+    project's constants by name across every file, not the entries of one list; ``cache`` is the
+    one this plan's other reads already share.
     """
     entry = _entry(built, name)
     used = built.constant_uses.get(name, ())
@@ -236,6 +296,13 @@ def remove_constant(built: Index, name: str, cache: dict[Path, Document]) -> Sha
             "invalid",
             f"'{name}' is named by {_plural(len(used), 'shape')}, the first in "
             f"{used[0].path.name}; nothing may name it before it goes",
+        )
+    listed = read(entry.path, cache).value_at(parent_pointer(entry.pointer))
+    if isinstance(listed, list) and len(listed) <= 1:
+        raise SharedRefusalError(
+            "invalid",
+            f"'{name}' is all {entry.path.name} declares, and a list of constants declares at "
+            "least one; emptied, the file would no longer load",
         )
     return _plan({entry.path: [Operation("remove", entry.pointer)]})
 
@@ -292,6 +359,13 @@ def _plan(operations: Mapping[Path, Sequence[Operation]]) -> SharedPlan:
             for path in sorted(operations, key=Path.as_posix)
         )
     )
+
+
+def _names(files: Sequence[Path]) -> str:
+    """The files a refusal is about, by name, as :func:`ddd.lsp.units._names` spells them: a
+    refusal names the file it concerns, and a project can include more than one nobody could
+    read."""
+    return ", ".join(file.name for file in files)
 
 
 def _plural(count: int, noun: str) -> str:

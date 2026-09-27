@@ -99,6 +99,34 @@ STRAY_CONSTANTS_FILE = {
     "constants.ddd.json": "not a file `add` wrote",
 }
 
+# The case the fixture below was written around: one constant and nothing else in the list, so
+# removing it would leave `"constants": []` - which `ddd check` answers `error[schema]: Tuple
+# should have at least 1 item after validation, not 0` and exit 1 for. Two clicks from this tab's
+# own add flow, since nothing names it and Remove is offered.
+SOLE_CONSTANT_IN_A_FILE = {
+    "p.ddd.json": project("P", "c.ddd.json"),
+    "c.ddd.json": {"constants": [{"name": "SOLE", "value": 4, "description": "the only one"}]},
+}
+
+# The same case in the other home, where emptying the list costs more: `Component.constants`
+# carries the same `min_length=1`, and a component that stops loading takes every variable it
+# declares out of the project with it.
+SOLE_CONSTANT_IN_A_COMPONENT = {
+    "p.ddd.json": project("P", "a.ddd.json"),
+    "a.ddd.json": component(
+        "A", declare("output", "Speed", unit="rpm"), constants=[{"name": "SOLE", "value": 4}]
+    ),
+}
+
+# A project whose only constants file is truncated the way an editor leaves one being typed
+# into. It parses as nothing, so its kind cannot be told - and `add` must not read that as "this
+# project has no constants file" and write a second one beside the description.
+HALF_WRITTEN_CONSTANTS = {
+    "p.ddd.json": project("P", "sizes.ddd.json", "a.ddd.json"),
+    "sizes.ddd.json": '{"constants": [{"name": "',
+    "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+}
+
 # Two constants, neither used: removing one must not empty the file below the format's own
 # `min_length=1` on `constants` (measured - a file it would leave holding `"constants": []`
 # fails to load, same as one that never had any, which is not what this fixture is for).
@@ -2750,6 +2778,31 @@ class TestConstant:
         assert applied(api, preview, "SPARE removed").status == 200
         assert get(api, "/api/constant", name="SPARE").status == 404
 
+    def test_removing_the_only_constant_a_file_declares_is_refused(self, tmp_path: Path) -> None:
+        """Measured before it was guarded: this same request answered 200 with a one-operation
+        plan, `POST /api/edit` wrote `{"constants": []}`, and `ddd check` on what was left
+        answered `error[schema]: Tuple should have at least 1 item after validation, not 0` and
+        exited 1. The whole point of the refusal is that the file is still there afterwards."""
+        api = opened(tmp_path, SOLE_CONSTANT_IN_A_FILE)
+        before = contents(tmp_path)
+        reply = get(api, "/api/constant-plan", action="remove", name="SOLE")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert "'SOLE' is all c.ddd.json declares" in reply.body["message"]
+        assert contents(tmp_path) == before
+
+    def test_removing_the_only_constant_a_component_declares_inline_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """The other home. Worse than a constants file that stops loading: the component stops
+        loading, so `Speed` - every variable it declares - leaves the project along with the
+        constant the reader meant to remove."""
+        api = opened(tmp_path, SOLE_CONSTANT_IN_A_COMPONENT)
+        before = contents(tmp_path)
+        reply = get(api, "/api/constant-plan", action="remove", name="SOLE")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert "'SOLE' is all a.ddd.json declares" in reply.body["message"]
+        assert contents(tmp_path) == before
+
     def test_removing_a_constant_a_shape_names_is_refused(self, tmp_path: Path) -> None:
         api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
         before = contents(root)
@@ -2812,6 +2865,21 @@ class TestConstant:
         )
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
         assert "c.ddd.json" in reply.body["message"]
+
+    def test_an_add_while_a_file_nobody_could_read_is_included_creates_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """Measured before it was guarded: with `sizes.ddd.json` truncated mid-save, the index is
+        still built - so the 409 the route gives an unreadable project never fires - and this
+        request answered 200 with a two-edit plan creating a second `constants.ddd.json` and
+        adding it to `project.includes`. What the truncated file declares is unknown, so the name
+        declared here can collide with one in it the moment it is saved."""
+        api = opened(tmp_path, HALF_WRITTEN_CONSTANTS)
+        before = contents(tmp_path)
+        reply = get(api, "/api/constant-plan", action="add", name="NEW_ONE", raw="8")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert "sizes.ddd.json did not parse" in reply.body["message"]
+        assert contents(tmp_path) == before
 
     def test_an_add_that_would_overwrite_a_stray_file_is_refused(self, tmp_path: Path) -> None:
         reply = get(

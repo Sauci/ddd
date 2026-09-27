@@ -84,6 +84,32 @@ class TestTheProjectAPlanIsMadeIn:
         cache: dict[Path, Document] = {}
         assert shared_project(tmp_path / "p.ddd.json", (), cache).constants_files == ()
 
+    def test_a_file_that_does_not_parse_is_named_among_the_ones_that_cannot_be_told(
+        self, tmp_path: Path
+    ) -> None:
+        """Not counted is not the same as not there: counting it as no constants file at all left
+        `constants_files` empty, which `add_constant` read as "this project has no constants file"
+        and answered by writing a second one beside the description. Named here instead, so the
+        one verb that would create a file can see what it does not know."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", "c.ddd.json"), "c.ddd.json": "{"})
+        cache: dict[Path, Document] = {}
+        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        assert [file.name for file in found.untellable] == ["c.ddd.json"]
+
+    def test_a_file_the_project_includes_and_does_not_have_cannot_hide_a_constant(
+        self, tmp_path: Path
+    ) -> None:
+        """A file that is not there reads exactly as one that did not parse - `Document.data` is
+        `None` for both - and the two must not be answered the same way: a file that does not
+        exist declares nothing, so it hides no name a new constants file could collide with, and
+        an `includes` entry naming nothing is a finding `ddd check` already files. Counted as
+        untellable it would stop `add` creating for every project that has a stale entry in its
+        `includes`."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", "gone.ddd.json")})
+        cache: dict[Path, Document] = {}
+        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        assert (found.constants_files, found.untellable) == ((), ())
+
     def test_a_project_naming_no_constants_file_has_none(self, tmp_path: Path) -> None:
         write_tree(
             tmp_path,
@@ -213,6 +239,25 @@ _TWO_USES = {
 }
 
 
+# A third tree, for the removals that are allowed: a constants file and a component's own list,
+# each holding two constants, and no shape naming any of them. `TWO_HOMES` cannot serve - each of
+# its two lists holds exactly one entry, which is the case a removal is now refused in, since the
+# list left behind would be empty and `constants` is `min_length=1` in both homes.
+_TWO_EACH = {
+    "c.ddd.json": {
+        "constants": [
+            {"name": "SPARE", "value": 3, "description": "goes"},
+            {"name": "KEPT", "value": 1, "description": "stays"},
+        ]
+    },
+    "a.ddd.json": component(
+        "A",
+        declare("output", "Speed", unit="rpm"),
+        constants=[{"name": "CELLS", "value": 2.0}, {"name": "ROWS", "value": 4}],
+    ),
+}
+
+
 class TestSettingAKey:
     def test_a_value_is_set_as_the_text_it_was_given(self, tmp_path: Path) -> None:
         """`2.0` stays fractional: the operation carries the three characters, not a parsed 2."""
@@ -332,12 +377,52 @@ class TestSettingAKey:
 
 class TestRemoving:
     def test_an_entry_nothing_names_is_taken_out(self, tmp_path: Path) -> None:
-        built = _index(tmp_path, TWO_HOMES)
+        built = _index(tmp_path, _TWO_EACH)
+        cache: dict[Path, Document] = {}
+        plan = remove_constant(built, "SPARE", cache)
+        assert [(edit.path.name, edit.operations) for edit in plan.edits] == [
+            ("c.ddd.json", (Operation("remove", "constants[0]"),))
+        ]
+
+    def test_an_entry_of_a_component_s_own_list_is_taken_out_of_that_list(
+        self, tmp_path: Path
+    ) -> None:
+        """The other home, whose entries sit at `component.constants[i]` rather than
+        `constants[i]`: the list a removal has to count is the one holding the entry, which is a
+        different pointer in each home - `parent_pointer` is what turns one into the other, as
+        `lsp/units.py` already uses it to."""
+        built = _index(tmp_path, _TWO_EACH)
         cache: dict[Path, Document] = {}
         plan = remove_constant(built, "CELLS", cache)
         assert [(edit.path.name, edit.operations) for edit in plan.edits] == [
             ("a.ddd.json", (Operation("remove", "component.constants[0]"),))
         ]
+
+    def test_the_only_constant_a_constants_file_declares_stays(self, tmp_path: Path) -> None:
+        """`ConstantsFile.constants` is `min_length=1`, so the file this would leave holding
+        `{"constants": []}` no longer loads: measured through the endpoint, `ddd check` answers
+        `error[schema]: Tuple should have at least 1 item after validation, not 0` and exits 1.
+        `lsp/units.py`'s `_taken_out` refuses the last unit of a units file in the same words and
+        for the same reason."""
+        built = _index(tmp_path, {"c.ddd.json": CONSTANTS})
+        cache: dict[Path, Document] = {}
+        with pytest.raises(SharedRefusalError) as raised:
+            remove_constant(built, "TREND_SAMPLES", cache)
+        assert raised.value.code == "invalid"
+        assert "'TREND_SAMPLES' is all c.ddd.json declares" in raised.value.message
+
+    def test_the_only_constant_a_component_declares_inline_stays(self, tmp_path: Path) -> None:
+        """`Component.constants` carries the same `min_length=1`, and the consequence there is
+        worse than a file that does not load: the component stops loading, so every variable it
+        declares leaves the project along with the constant. Two clicks from this branch's own
+        add flow - declare a constant into a project that has none, then remove it, since nothing
+        names it and Remove is offered."""
+        built = _index(tmp_path, TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        with pytest.raises(SharedRefusalError) as raised:
+            remove_constant(built, "CELLS", cache)
+        assert raised.value.code == "invalid"
+        assert "'CELLS' is all a.ddd.json declares" in raised.value.message
 
     def test_a_constant_a_shape_names_is_refused_with_where_it_is_named(
         self, tmp_path: Path
@@ -514,7 +599,7 @@ class TestDeclaringOne:
         built = _index(tmp_path, TWO_HOMES)
         write_tree(tmp_path, {"weird.ddd.json": {"constants": "oops"}})
         cache: dict[Path, Document] = {}
-        broken = SharedProject(tmp_path / "p.ddd.json", (tmp_path / "weird.ddd.json",), ())
+        broken = SharedProject(tmp_path / "p.ddd.json", (tmp_path / "weird.ddd.json",), (), ())
         plan = add_constant(built, broken, "NEW_CONST", "8", cache)
         assert plan.edits[0].path.name == "weird.ddd.json"
         assert plan.edits[0].operations[0].pointer == "constants[0]"
@@ -551,7 +636,7 @@ class TestDeclaringOne:
         built = _index(tmp_path, TWO_HOMES)
         write_tree(tmp_path, {"solo.ddd.json": {"project": {"name": "P", "includes": 3}}})
         cache: dict[Path, Document] = {}
-        broken = SharedProject(tmp_path / "solo.ddd.json", (), ())
+        broken = SharedProject(tmp_path / "solo.ddd.json", (), (), ())
         plan = add_constant(built, broken, "NEW_CONST", "8", cache)
         assert [(edit.path.name, edit.creates) for edit in plan.edits] == [
             ("constants.ddd.json", True),
@@ -573,6 +658,50 @@ class TestDeclaringOne:
             add_constant(built, found, "CELLS", "8", cache)
         assert raised.value.code == "invalid"
         assert "constants.ddd.json" in raised.value.message
+
+    def test_a_file_nobody_could_read_stops_a_second_constants_file_being_created(
+        self, tmp_path: Path
+    ) -> None:
+        """The creating arm's premise is "this project has no constants file", and that is not
+        something anyone knows while one of its files is mid-save: measured through the endpoint,
+        a project including a `sizes.ddd.json` truncated as an editor leaves it answered a
+        two-edit plan creating a second `constants.ddd.json` and an `includes` entry naming it.
+        The harm is the one `test_a_constants_file_that_did_not_load_is_not_appended_to` below
+        exists to prevent - what that file declares is unknown, so the name declared here can
+        collide with one in it the moment it is saved. `lsp/units.py`'s `add_unit` refuses the
+        same situation, having no creating arm to fall into."""
+        files = {"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}
+        built = _index(tmp_path, files)
+        write_tree(tmp_path, {"p.ddd.json": project("P", "sizes.ddd.json", "a.ddd.json")})
+        (tmp_path / "sizes.ddd.json").write_text('{"constants": [{"name": "', encoding="utf-8")
+        cache: dict[Path, Document] = {}
+        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        assert found.constants_files == ()
+        with pytest.raises(SharedRefusalError) as raised:
+            add_constant(built, found, "NEW_ONE", "8", cache)
+        assert raised.value.code == "unreadable"
+        assert "sizes.ddd.json did not parse" in raised.value.message
+        assert not (tmp_path / CONSTANTS_FILE).exists()
+
+    def test_a_file_nobody_could_read_does_not_stop_an_append_to_one_that_loaded(
+        self, tmp_path: Path
+    ) -> None:
+        """The refusal above belongs to the creating arm alone. Where the project has a constants
+        file that loaded, `add` knows both where the entry goes and what that file declares, and
+        the name is refused by `rename_problem` if the project declares it already - so a second
+        file nobody could read is no reason to refuse the one thing this project asked for. The
+        guard placed a line earlier, before the branch, would have refused it."""
+        built = _index(tmp_path, TWO_HOMES)
+        write_tree(
+            tmp_path,
+            {"p.ddd.json": project("P", "c.ddd.json", "sizes.ddd.json", "a.ddd.json")},
+        )
+        (tmp_path / "sizes.ddd.json").write_text("{", encoding="utf-8")
+        cache: dict[Path, Document] = {}
+        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        assert [file.name for file in found.untellable] == ["sizes.ddd.json"]
+        plan = add_constant(built, found, "NEW_ONE", "8", cache)
+        assert [edit.path.name for edit in plan.edits] == ["c.ddd.json"]
 
     def test_a_constants_file_that_did_not_load_is_not_appended_to(self, tmp_path: Path) -> None:
         """It parses, so it is a constants file; it did not load, so what it already declares is

@@ -38,7 +38,11 @@ const PROJECT_VIEWS = [
  * here, instead of asserting the widened union as a `Route`, means a `ProjectView` whose bare
  * route ever needs more than `{ page, view }` fails to compile right here - which is exactly what
  * `shared` needing `kind`/`name`/`declare` for its other two shapes would have hidden behind a
- * cast, rather than a wrong `Route` reaching `navigate` at runtime. */
+ * cast, rather than a wrong `Route` reaching `navigate` at runtime. The `Record<ProjectView,
+ * Route>` annotation is what keeps `BARE_ROUTES[view]` typed as `Route` at the call sites below;
+ * the `satisfies` clause beside it is what stops an entry naming a view other than its own key -
+ * `Record` alone accepts `table`'s route under `graph` just as readily, a mistake nothing else
+ * here would catch. */
 const BARE_ROUTES: Record<ProjectView, Route> = {
   graph: { page: "project", view: "graph" },
   table: { page: "project", view: "table" },
@@ -47,7 +51,7 @@ const BARE_ROUTES: Record<ProjectView, Route> = {
   shared: { page: "project", view: "shared" },
   findings: { page: "project", view: "findings" },
   compare: { page: "project", view: "compare" },
-};
+} satisfies { [K in ProjectView]: { page: "project"; view: K } };
 
 export function App() {
   const queries = useQueryClient();

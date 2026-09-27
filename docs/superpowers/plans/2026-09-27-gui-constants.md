@@ -796,7 +796,7 @@ class TestOneConstantsPanel:
 
     def test_an_axis_size_is_a_use_like_a_dimension(self, tmp_path: Path) -> None:
         """A curve's axis states its length as `size`, which is the second of the three places a
-        shape is written. `examples/vocabulary/pump.ddd.json` has one if you need the exact json."""
+        shape is written; nothing shipped in `examples/` declares one, so this tree writes it."""
         built = _index(tmp_path, _WITH_AN_AXIS)
         cache: dict[Path, Document] = {}
         used = constant_uses(built, "TREND_SAMPLES", cache)
@@ -847,7 +847,10 @@ def test_the_two_shape_patterns_match_what_the_index_calls_a_shape() -> None:
 `_WITH_AN_AXIS` and `_WITH_A_STRUCTURE` are two more trees in the same shape as `TWO_HOMES`: one
 declaring a curve whose axis `size` is `"TREND_SAMPLES"`, one declaring a structure `Sample_t` with
 a member `history` whose `dimensions` is `["TREND_SAMPLES"]`. Copy the exact json for both out of
-`examples/vocabulary/pump.ddd.json`, which spells each of them.
+hand: `examples/vocabulary/pump.ddd.json` declares neither, whatever an earlier draft of this plan
+said, so there is nothing to copy. A declaration's `scope` is one of `input`, `output`, `local`, its
+`kind` one of `measurement`, `parameter`, `value_block`, `curve`, `map`, `axis`, and `conversion` and
+`volatile` are required - read `src/ddd/models/` for the rest rather than guessing.
 
 - [ ] **Step 2: Run them to verify they fail**
 

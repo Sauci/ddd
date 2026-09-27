@@ -15,10 +15,12 @@ function Tab({
   reply = PROJECT_SHARED,
   on,
   unreadable = [],
+  untold = [],
 }: {
   reply?: SharedReply;
   on?: string;
   unreadable?: readonly string[];
+  untold?: readonly string[];
 }) {
   const [selected, setSelected] = useState<string | undefined>(on);
   return (
@@ -27,6 +29,7 @@ function Tab({
       selected={selected}
       onSelect={setSelected}
       unreadable={unreadable}
+      untold={untold}
       // Task 8 gives this somewhere to open; no story here presses it, so what it does once
       // pressed is not this task's to show.
       onDeclare={() => undefined}
@@ -49,4 +52,12 @@ export const NothingDeclared = () => <Tab reply={NO_SHARED} />;
  * still listed since it is declared inline rather than in the file that failed. */
 export const AFileDidNotLoad = () => (
   <Tab reply={SHARED_MISSING_FILE} unreadable={["constants.ddd.json"]} />
+);
+
+/** A file nobody could parse - an editor saving it half-written. The server cannot say what kind
+ * it is, so this tab cannot claim its entries were constants; it says only that whatever is
+ * declared there is missing. Both this tab and the Types tab show the same sentence, because
+ * neither can tell whose file it was. */
+export const AFileOfNoTellableKind = () => (
+  <Tab reply={SHARED_MISSING_FILE} untold={["sizes.ddd.json"]} />
 );

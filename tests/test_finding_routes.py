@@ -147,6 +147,39 @@ class TestRoutes:
         route = route_of("unknown-unit", root / "t.ddd.json", "types[0].unit", "types", True, {})
         assert route == Route(kind="unit", name="degC")
 
+    def test_a_duplicate_unit_leads_to_the_unit_it_names(self, tmp_path: Path) -> None:
+        # Filed at the vocabulary entry itself - measured: `u.ddd.json#units[1]`. The unit's own
+        # panel lists every place stating it and the vocabulary entries too, so the finding has
+        # somewhere to go; until now the page told the reader a units file "has no page yet".
+        root = built(
+            tmp_path,
+            **{
+                "u.ddd.json": {"units": ["rpm", "rpm"]},
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        route = route_of("duplicate-unit", root / "u.ddd.json", "units[1]", "units", True, {})
+        assert route == Route(kind="unit", name="rpm")
+
+    def test_a_duplicate_unit_written_as_an_object_leads_there_too(self, tmp_path: Path) -> None:
+        # A vocabulary entry is a spelling on its own or an object carrying a description, and
+        # `ddd.lsp.units` writes whichever the file already uses. Read as a whole value, the
+        # object is no string and the finding would lead nowhere.
+        root = built(
+            tmp_path,
+            **{
+                "u.ddd.json": {
+                    "units": [
+                        {"unit": "rpm", "description": "revolutions"},
+                        {"unit": "rpm", "description": "again"},
+                    ]
+                },
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        route = route_of("duplicate-unit", root / "u.ddd.json", "units[1]", "units", True, {})
+        assert route == Route(kind="unit", name="rpm")
+
     def test_a_finding_inside_a_type_leads_to_that_type(self, structures, cache) -> None:
         route = route_of(
             "type-kind", structures / "types.ddd.json", "types[0].datatype", "types", True, cache

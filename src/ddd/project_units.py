@@ -15,16 +15,13 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
 
 from ddd.diagnostics import Diagnostic
+from ddd.finding_routes import UNIT_CHECKS
 from ddd.lsp.navigation import Index, Site, UnitSite
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
 from ddd.variables import Planned, declarations_of, hunks, planned
-
-UNIT_CHECKS: Final = frozenset({"unknown-unit", "duplicate-unit"})
-"""The findings that are a unit's own: stated outside the vocabulary, or listed in it twice."""
 
 
 @dataclass(frozen=True, slots=True)

@@ -30,15 +30,24 @@ const PROJECT_VIEWS = [
   ["compare", "Compare"],
 ] as const;
 
-/** The tab strip's own address: always the bare view, never `shared`'s own `kind`/`name`/
- * `declare`. `PROJECT_VIEWS.map()` below reads `view` widened to the union of all seven tab
- * literals, and TypeScript refuses that union to a `Route` directly once one literal - `shared` -
- * names more than one of `Route`'s own shapes: a discriminant with more than one shape behind a
- * value stops the check from trying each shape in turn. The assertion is exact here, not a
- * loophole, because nothing reached through this list ever carries `shared`'s other two shapes. */
-function bareRoute(view: ProjectView): Route {
-  return { page: "project", view } as Route;
-}
+/** Each tab's own address, written out one view at a time rather than built from it: `PROJECT_
+ * VIEWS.map()` below reads `view` widened to the union of all seven tab literals, and passing
+ * that union straight to `hrefOf`/`navigate` stopped type-checking the moment one literal -
+ * `shared` - came to name more than one of `Route`'s own shapes (a discriminant with more than
+ * one shape behind a value stops the checker from trying each shape in turn). Spelling every key
+ * here, instead of asserting the widened union as a `Route`, means a `ProjectView` whose bare
+ * route ever needs more than `{ page, view }` fails to compile right here - which is exactly what
+ * `shared` needing `kind`/`name`/`declare` for its other two shapes would have hidden behind a
+ * cast, rather than a wrong `Route` reaching `navigate` at runtime. */
+const BARE_ROUTES: Record<ProjectView, Route> = {
+  graph: { page: "project", view: "graph" },
+  table: { page: "project", view: "table" },
+  units: { page: "project", view: "units" },
+  types: { page: "project", view: "types" },
+  shared: { page: "project", view: "shared" },
+  findings: { page: "project", view: "findings" },
+  compare: { page: "project", view: "compare" },
+};
 
 export function App() {
   const queries = useQueryClient();
@@ -124,10 +133,10 @@ export function App() {
         <LinkTabs
           label="Project views"
           tabs={PROJECT_VIEWS.map(([view, label]) => ({
-            href: hrefOf(bareRoute(view)),
+            href: hrefOf(BARE_ROUTES[view]),
             label,
             current: route.view === view,
-            onFollow: () => navigate(bareRoute(view)),
+            onFollow: () => navigate(BARE_ROUTES[view]),
           }))}
         />
         {route.view === "graph" ? (

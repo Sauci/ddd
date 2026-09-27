@@ -245,6 +245,10 @@ class TestSettingAKey:
             set_constant(built, "TREND_SAMPLES", "value", None, cache)
         assert raised.value.code == "invalid"
         assert "c.ddd.json" in raised.value.message
+        # Not just "invalid" naming the file: falling through to `_value(None, ...)` instead of
+        # refusing explicitly raises the same code, naming the same file, in the confusing
+        # wording "None is not a value a constant may state" - this phrase is the guard's own.
+        assert "cannot be left without one" in raised.value.message
 
     def test_a_key_already_left_out_answers_no_edit_at_all(self, tmp_path: Path) -> None:
         """`CELLS` has no description to begin with. Asked to remove one anyway, the edit engine
@@ -264,6 +268,9 @@ class TestSettingAKey:
             set_constant(built, "TREND_SAMPLES", "unit", '"rpm"', cache)
         assert raised.value.code == "invalid"
         assert "description" in raised.value.message and "value" in raised.value.message
+        # Not just what a constant *does* have: the key actually asked about, so a rewording
+        # that drops `{key}` and only lists `SETTABLE` would still read as a correct refusal.
+        assert "'unit'" in raised.value.message
 
     def test_a_key_a_constant_has_not_names_the_file_it_concerns(self, tmp_path: Path) -> None:
         """Every refusal names the file it concerns, the way `UnitRefusalError`'s docstring
@@ -339,6 +346,10 @@ class TestRemoving:
         with pytest.raises(SharedRefusalError) as raised:
             remove_constant(built, "TREND_SAMPLES", cache)
         assert "is named by 2 shapes," in raised.value.message
+        # The message names *the first* blocking shape. `a.ddd.json` comes before `b.ddd.json`
+        # in `built.constant_uses["TREND_SAMPLES"]` here, so `used[0]` and `used[-1]` disagree -
+        # the one place the single-use tests above cannot tell the two apart.
+        assert "a.ddd.json" in raised.value.message
 
     def test_a_name_no_file_declares_is_not_found(self, tmp_path: Path) -> None:
         built = _index(tmp_path, TWO_HOMES)

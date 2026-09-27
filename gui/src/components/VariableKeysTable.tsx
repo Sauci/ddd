@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import { Fragment, type MouseEvent } from "react";
 import type { SettleReply, VariableReply } from "../api/types";
 import { keyColumns, keyRows } from "../lib/variableKeys";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
@@ -12,6 +12,11 @@ export interface VariableKeysTableProps {
   onSelect: (key: string | undefined) => void;
   /** Following a cell's `from` to the type that fixes it, without a reload. */
   onOpenType: (name: string) => void;
+  /** Following a `dimensions` entry that names a constant, declared or not, to the Shared files
+   * tab without a reload - the tab itself decides between the constant's panel and the pre-filled
+   * add form (spec 5.3), so this needs to know nothing about which constants the project
+   * declares. */
+  onOpenConstant: (name: string) => void;
 }
 
 /** The panel's table (spec 5.1): a row per key, a column per declaration, drawn from what the
@@ -22,6 +27,7 @@ export function VariableKeysTable({
   selected,
   onSelect,
   onOpenType,
+  onOpenConstant,
 }: VariableKeysTableProps) {
   const rows = keyRows(variable, preview);
   // The producer's column first, as `keyRows` orders every row's cells. The `at` built here is
@@ -72,7 +78,43 @@ export function VariableKeysTable({
               const href = cell.href;
               return (
                 <Cell className={also(cell.quiet ? "quiet" : "")}>
-                  {cell.text}
+                  {cell.parts === null
+                    ? cell.text
+                    : cell.parts.map((part, index) => {
+                        // `constant` and `href` are `null` together (`DimensionEntry`'s own doc),
+                        // narrowed through locals for the same reason `type`/`href` are above.
+                        const constant = part.constant;
+                        const opens = part.href;
+                        return (
+                          // The index is the identity here, as `DimensionsField`'s own row is: a
+                          // dimension has no name, and two of the same size are two different
+                          // dimensions of one shape.
+                          // biome-ignore lint/suspicious/noArrayIndexKey: a dimension is its position
+                          <Fragment key={index}>
+                            {index > 0 && " × "}
+                            {constant === null || opens === null ? (
+                              part.text
+                            ) : (
+                              <a
+                                className="button link"
+                                href={opens}
+                                onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+                                  const modified =
+                                    event.ctrlKey ||
+                                    event.metaKey ||
+                                    event.shiftKey ||
+                                    event.altKey;
+                                  if (modified || event.button !== 0) return;
+                                  event.preventDefault();
+                                  onOpenConstant(constant);
+                                }}
+                              >
+                                {part.text}
+                              </a>
+                            )}
+                          </Fragment>
+                        );
+                      })}
                   {type !== null && href !== null && (
                     <>
                       {/* Coloured and sized to match the link right after it - `.button.link`'s

@@ -384,3 +384,166 @@ class TestRoutes:
             {},
         )
         assert route is None
+
+
+# The three places a shape names a constant (a declaration's `dimensions[i]`, a declaration's
+# `size` - the axis case - and a structure member's `dimensions[i]`), a constant declared in a
+# constants file and one declared inline by a component, and one file of neither kind.
+SHAPES = {
+    "a.ddd.json": {
+        "component": {
+            "name": "A",
+            "constants": [{"name": "CELLS", "value": 8}],
+            "interface": [
+                {
+                    "scope": "public",
+                    "definition": {
+                        "kind": "value",
+                        "name": "Trend",
+                        "datatype": "uint16",
+                        "unit": "rpm",
+                        "dimensions": ["MISSING_CELLS"],
+                    },
+                },
+                {
+                    "scope": "public",
+                    "definition": {
+                        "kind": "axis",
+                        "name": "TrendAxis",
+                        "datatype": "uint16",
+                        "unit": "rpm",
+                        "size": "MISSING_CELLS",
+                    },
+                },
+            ],
+            "types": [
+                {
+                    "type": "struct",
+                    "name": "Sample_t",
+                    "members": [
+                        {"name": "history", "datatype": "uint16", "dimensions": ["MISSING_CELLS"]}
+                    ],
+                }
+            ],
+        }
+    },
+    "c.ddd.json": {"constants": [{"name": "TREND_SAMPLES", "value": 16}]},
+}
+
+
+class TestAConstant:
+    def test_unknown_constant_leads_to_the_name_the_shape_spells(self, tmp_path: Path) -> None:
+        """The name does not exist - that is what the finding says - and the route still carries
+        it: the page opens the add form with it filled in, which is the whole point of the tab
+        for this check."""
+        path = write_tree(tmp_path, SHAPES) / "a.ddd.json"
+        assert route_of(
+            "unknown-constant",
+            path,
+            "component.interface[0].definition.dimensions[0]",
+            "component",
+            True,
+            {},
+        ) == Route("constant", "MISSING_CELLS")
+
+    def test_dimension_value_leads_to_the_constant_whose_value_is_wrong(
+        self, tmp_path: Path
+    ) -> None:
+        """The one check of the three whose target is directly editable: the value is what has to
+        change, and the panel is where it changes."""
+        path = write_tree(tmp_path, SHAPES) / "a.ddd.json"
+        assert route_of(
+            "dimension-value",
+            path,
+            "component.interface[0].definition.dimensions[0]",
+            "component",
+            True,
+            {},
+        ) == Route("constant", "MISSING_CELLS")
+
+    def test_an_axis_size_leads_there_too(self, tmp_path: Path) -> None:
+        """The second of the three places a shape is written: an axis states its length as
+        `size`, not as a `dimensions` entry."""
+        path = write_tree(tmp_path, SHAPES) / "a.ddd.json"
+        assert route_of(
+            "unknown-constant",
+            path,
+            "component.interface[1].definition.size",
+            "component",
+            True,
+            {},
+        ) == Route("constant", "MISSING_CELLS")
+
+    def test_a_constant_check_inside_a_type_beats_the_type_route(self, tmp_path: Path) -> None:
+        """A structure member's dimension is inside `types[i]`, which `WITHIN_TYPE` matches. Tried
+        after it, an `unknown-constant` on a member would open the type instead of the constant -
+        the same ordering `UNIT_CHECKS` already needs and already has."""
+        path = write_tree(tmp_path, SHAPES) / "a.ddd.json"
+        assert route_of(
+            "unknown-constant",
+            path,
+            "component.types[0].members[0].dimensions[0]",
+            "component",
+            True,
+            {},
+        ) == Route("constant", "MISSING_CELLS")
+
+    def test_duplicate_constant_leads_to_the_constant_its_entry_declares(
+        self, tmp_path: Path
+    ) -> None:
+        path = write_tree(tmp_path, SHAPES) / "c.ddd.json"
+        assert route_of(
+            "duplicate-constant", path, "constants[0].name", "constants", True, {}
+        ) == Route("constant", "TREND_SAMPLES")
+
+    def test_a_constant_declared_inline_by_a_component_leads_there_as_well(
+        self, tmp_path: Path
+    ) -> None:
+        """`ddd.loading` registers `component.constants[i]` and a constants file's `constants[i]`
+        under one name, so the tab lists both and a finding on either leads to the same panel."""
+        path = write_tree(tmp_path, SHAPES) / "a.ddd.json"
+        assert route_of(
+            "duplicate-constant", path, "component.constants[0].name", "component", True, {}
+        ) == Route("constant", "CELLS")
+
+    def test_a_shape_holding_no_string_leads_nowhere(self, tmp_path: Path) -> None:
+        """A dimension written as a number names no constant, and a file that changed since the
+        analysis can have anything there.
+
+        Measured against the brief: the pointer the brief names for this test
+        (`component.interface[0].definition.dimensions[0]`) holds the string `"MISSING_CELLS"` in
+        `SHAPES`, the same as the first three tests above, so asserting `None` of it would fail
+        against a correct `route_of` - it would answer `Route("constant", "MISSING_CELLS")`, not
+        nothing. `component.constants[0].value` is the one place in `SHAPES` a `CONSTANT_CHECKS`
+        pointer can be aimed at that actually holds a number rather than a string.
+        """
+        path = write_tree(tmp_path, SHAPES) / "a.ddd.json"
+        assert (
+            route_of(
+                "unknown-constant",
+                path,
+                "component.constants[0].value",
+                "component",
+                True,
+                {},
+            )
+            is None
+        )
+
+    def test_a_sections_file_still_leads_nowhere(self, tmp_path: Path) -> None:
+        """Sections and rasters are the parts after this one; their findings keep saying so."""
+        path = write_tree(tmp_path, SHAPES) / "a.ddd.json"
+        assert (
+            route_of("duplicate-section", path, "sections[0].section", "sections", True, {}) is None
+        )
+
+    def test_a_constant_the_file_no_longer_holds_leads_nowhere(self, tmp_path: Path) -> None:
+        """The analysis read the file; the pointer describes where the entry was then - the same
+        "moved on since" case `WITHIN_TYPE` already has a test for
+        (`test_a_type_the_file_no_longer_holds_leads_nowhere`), pinning `WITHIN_CONSTANT`'s own
+        `isinstance(name, str)` guard rather than leaving it exercised only by the happy path."""
+        path = write_tree(tmp_path, SHAPES) / "c.ddd.json"
+        assert (
+            route_of("duplicate-constant", path, "constants[99].name", "constants", True, {})
+            is None
+        )

@@ -1,12 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useCallback } from "react";
 import { getSession } from "../api/client";
-import { hrefOf } from "../lib/route";
+import { hrefOf, type ProjectView, type Route } from "../lib/route";
 import { ComparePage } from "../screens/ComparePage";
 import { ComponentPage } from "../screens/ComponentPage";
 import { FindingsPage } from "../screens/FindingsPage";
 import { GraphPage } from "../screens/GraphPage";
 import { ProjectPage } from "../screens/ProjectPage";
+import { SharedPage } from "../screens/SharedPage";
 import { StartPage } from "../screens/StartPage";
 import { TypesPage } from "../screens/TypesPage";
 import { UndoStrip } from "../screens/UndoStrip";
@@ -24,9 +25,33 @@ const PROJECT_VIEWS = [
   ["table", "Table"],
   ["units", "Units"],
   ["types", "Types"],
+  ["shared", "Shared files"],
   ["findings", "Findings"],
   ["compare", "Compare"],
 ] as const;
+
+/** Each tab's own address, written out one view at a time rather than built from it: `PROJECT_
+ * VIEWS.map()` below reads `view` widened to the union of all seven tab literals, and passing
+ * that union straight to `hrefOf`/`navigate` stopped type-checking the moment one literal -
+ * `shared` - came to name more than one of `Route`'s own shapes (a discriminant with more than
+ * one shape behind a value stops the checker from trying each shape in turn). Spelling every key
+ * here, instead of asserting the widened union as a `Route`, means a `ProjectView` whose bare
+ * route ever needs more than `{ page, view }` fails to compile right here - which is exactly what
+ * `shared` needing `kind`/`name` for its other shape would have hidden behind a cast, rather than
+ * a wrong `Route` reaching `navigate` at runtime. The `Record<ProjectView,
+ * Route>` annotation is what keeps `BARE_ROUTES[view]` typed as `Route` at the call sites below;
+ * the `satisfies` clause beside it is what stops an entry naming a view other than its own key -
+ * `Record` alone accepts `table`'s route under `graph` just as readily, a mistake nothing else
+ * here would catch. */
+const BARE_ROUTES: Record<ProjectView, Route> = {
+  graph: { page: "project", view: "graph" },
+  table: { page: "project", view: "table" },
+  units: { page: "project", view: "units" },
+  types: { page: "project", view: "types" },
+  shared: { page: "project", view: "shared" },
+  findings: { page: "project", view: "findings" },
+  compare: { page: "project", view: "compare" },
+} satisfies { [K in ProjectView]: { page: "project"; view: K } };
 
 export function App() {
   const queries = useQueryClient();
@@ -74,6 +99,26 @@ export function App() {
       ),
     [navigate],
   );
+  // Selecting a constant replaces the address, as selecting a type does. `SharedPage` itself
+  // decides whether a name is a declared constant's panel or an undeclared one's pre-filled add
+  // form, purely from `isDeclared` (design §2, "one route kind, and the page decides"). So
+  // `route.ts`'s own shape for this tab carries a name and nothing else - this callback, the two
+  // `onOpenConstant` callbacks below and `routeOf` (`lib/findings.ts`) all write that one shape,
+  // whichever of the two outcomes it turns out to be, and none of them needs a second shape
+  // naming one to declare directly. One address is unreachable as a result: `SharedPage`'s own
+  // *blank* form, opened only by its Declare a constant button, has no route of its own and so
+  // does not survive a reload the way every other panel on this page does. A pre-filled form is
+  // not affected - it opens through the same address a declared name's own panel does.
+  const openShared = useCallback(
+    (name: string | undefined) =>
+      navigate(
+        name === undefined
+          ? { page: "project", view: "shared" }
+          : { page: "project", view: "shared", kind: "constant", name },
+        { replace: true },
+      ),
+    [navigate],
+  );
 
   let page: ReactNode;
   if (session.isPending) {
@@ -99,10 +144,10 @@ export function App() {
         <LinkTabs
           label="Project views"
           tabs={PROJECT_VIEWS.map(([view, label]) => ({
-            href: hrefOf({ page: "project", view }),
+            href: hrefOf(BARE_ROUTES[view]),
             label,
             current: route.view === view,
-            onFollow: () => navigate({ page: "project", view }),
+            onFollow: () => navigate(BARE_ROUTES[view]),
           }))}
         />
         {route.view === "graph" ? (
@@ -114,6 +159,9 @@ export function App() {
             onComponent={openComponent}
             onVariable={openVariable}
             onOpenType={(type) => navigate({ page: "project", view: "types", type })}
+            onOpenConstant={(name) =>
+              navigate({ page: "project", view: "shared", kind: "constant", name })
+            }
           />
         ) : route.view === "units" ? (
           <UnitsPage state={state} unit={route.unit} stopped={stopped} onUnit={openUnit} />
@@ -123,6 +171,14 @@ export function App() {
             type={route.type}
             stopped={stopped}
             onType={openType}
+            onOpen={navigate}
+          />
+        ) : route.view === "shared" ? (
+          <SharedPage
+            state={state}
+            name={"name" in route ? route.name : undefined}
+            onName={openShared}
+            stopped={stopped}
             onOpen={navigate}
           />
         ) : route.view === "findings" ? (
@@ -166,6 +222,9 @@ export function App() {
           navigate({ page: "component", file: route.file, variable, view: "values" })
         }
         onOpenType={(type) => navigate({ page: "project", view: "types", type })}
+        onOpenConstant={(name) =>
+          navigate({ page: "project", view: "shared", kind: "constant", name })
+        }
       />
     );
   }

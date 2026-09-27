@@ -119,6 +119,13 @@ export function routeOf(finding: Finding): Route | null {
   if (route.kind === "type" && route.name !== null) {
     return { page: "project", view: "types", type: route.name };
   }
+  if (route.kind === "constant" && route.name !== null) {
+    // The one route kind, whether or not the name is declared (design §2 "the page decides"):
+    // `SharedPage` asks `isDeclared` of its own table and opens the panel or the pre-filled add
+    // form accordingly, which is also what `unknown-constant` needs - the name it carries names
+    // nothing yet.
+    return { page: "project", view: "shared", kind: "constant", name: route.name };
+  }
   return { page: "component", file: finding.file };
 }
 
@@ -145,6 +152,10 @@ export function namesThisVariable(finding: Finding, name: string): boolean {
   return route !== null && route.page === "component" && route.variable === name;
 }
 
+/** The file kinds the page has a screen for. Sections and rasters are the parts after this one,
+ * and their findings keep saying so rather than leading somewhere blank. */
+const SHOWN = new Set(["component", "constants"]);
+
 /** Why a finding leads nowhere, in the words the panel says it.
  *
  * The three the server answers `null` for are said in its own terms (`ddd.finding_routes`): a
@@ -158,7 +169,7 @@ export function noRouteReason(finding: Finding, state: State): string {
   const listed = state.files.find((file) => file.path === finding.file);
   if (listed === undefined) return `${name} is not a file of this project`;
   if (!listed.loaded) return `${name} did not load`;
-  if (listed.kind !== "component") return `${name} is a ${listed.kind} file, which has no page yet`;
+  if (!SHOWN.has(listed.kind)) return `${name} is a ${listed.kind} file, which has no page yet`;
   if (finding.pointer === "") return "it is about the project rather than a place in a file";
   return "there is nothing at that place any more";
 }

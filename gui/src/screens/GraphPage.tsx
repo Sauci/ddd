@@ -49,6 +49,8 @@ interface Props {
   onVariable: (variable: string | undefined) => void;
   /** Following a fixed key of the open variable's panel to the type that fixes it. */
   onOpenType: (name: string) => void;
+  /** Following a `dimensions` entry of the open variable's panel to the constant it names. */
+  onOpenConstant: (name: string) => void;
 }
 
 /** The open project as a canvas: one node per module, one arrow per producing-consuming pair. */
@@ -60,6 +62,7 @@ export function GraphPage({
   onComponent,
   onVariable,
   onOpenType,
+  onOpenConstant,
 }: Props) {
   const graph = useQuery({
     // The project is in the key beside the revision: until the first state answer arrives the
@@ -97,6 +100,7 @@ export function GraphPage({
           onComponent={onComponent}
           onVariable={onVariable}
           onOpenType={onOpenType}
+          onOpenConstant={onOpenConstant}
         />
       </ReactFlowProvider>
     </>
@@ -119,6 +123,7 @@ function Canvas({
   onComponent,
   onVariable,
   onOpenType,
+  onOpenConstant,
 }: {
   graph: GraphReply;
   project: string;
@@ -128,6 +133,7 @@ function Canvas({
   onComponent: (file: string) => void;
   onVariable: (variable: string | undefined) => void;
   onOpenType: (name: string) => void;
+  onOpenConstant: (name: string) => void;
 }) {
   const flow = useReactFlow();
   const [hovered, setHovered] = useState<string | null>(null);
@@ -274,6 +280,7 @@ function Canvas({
             onVariable(undefined);
           }}
           onOpenType={onOpenType}
+          onOpenConstant={onOpenConstant}
         />
       ) : (
         chooser !== null && (

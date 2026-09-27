@@ -41,6 +41,8 @@ __all__ = [
     "CheckInfo",
     "ChecksReply",
     "CompareReply",
+    "ConstantReply",
+    "ConstantUse",
     "DeclarableName",
     "DeclarableReply",
     "DictionaryReply",
@@ -74,6 +76,8 @@ __all__ = [
     "Renamed",
     "SessionInfo",
     "SettleReply",
+    "SharedEntry",
+    "SharedReply",
     "SourceFile",
     "State",
     "TypeMember",
@@ -257,9 +261,10 @@ class Note(_Frozen):
 class FindingRoute(_Frozen):
     """What the page can open for a finding."""
 
-    kind: Literal["variable", "unit", "component", "type", "values"]
+    kind: Literal["variable", "unit", "component", "type", "values", "constant"]
     """Which screen: a variable's panel, a unit's panel, the component's own page, the type's
-    own panel on the Types tab, or an object's values grid."""
+    own panel on the Types tab, an object's values grid, or a constant's own panel on the Shared
+    files tab."""
 
     name: str | None
     """The variable's name, the unit's spelling or the type's name; ``None`` for a component,
@@ -881,6 +886,91 @@ class TypeReply(_Frozen):
     findings: tuple[Finding, ...]
 
 
+# --- GET /api/shared, GET /api/constant ------------------------------------------------------
+
+
+class SharedEntry(_Frozen):
+    """One row of the Shared files tab."""
+
+    kind: str
+    """``constant``. Sections and rasters bring their own words here."""
+
+    name: str
+    """Its name, as its entry spells it."""
+
+    value: str
+    """What the entry states, as the json text its file spells: ``16``, ``2.0``."""
+
+    uses: int
+    """How many shapes name it."""
+
+    findings: int
+    """How many findings are filed inside its entry or at a shape naming it."""
+
+
+class SharedReply(_Frozen):
+    """What ``GET /api/shared`` answers: every entry the project declares, across the kinds this
+    tab holds, sorted by kind then name."""
+
+    revision: int
+    """The revision this answer was read from."""
+
+    entries: tuple[SharedEntry, ...]
+
+
+class ConstantUse(_Frozen):
+    """One shape that names a constant."""
+
+    path: str
+    """Absolute, posix-separated path of the file naming it."""
+
+    pointer: str
+    """Dotted path of the constant's own string inside that file: a declaration's ``dimensions``
+    entry or its axis ``size``, or a structure member's ``dimensions`` entry."""
+
+    kind: Literal["variable", "member"]
+    """A declaration's dimension or axis size, or a structure member's dimension."""
+
+    name: str
+    """The variable's name, or ``Sample_t.history`` for a structure member."""
+
+    component: str | None
+    """The component declaring the variable; ``None`` for a member, whose structure may be
+    declared in a types file no component owns."""
+
+
+class ConstantReply(_Frozen):
+    """What ``GET /api/constant`` answers: one constant's panel."""
+
+    revision: int
+    """The revision this answer was read from."""
+
+    name: str
+    """The constant named in the request."""
+
+    value: str
+    """The json text its entry states as ``value``, exactly as its file spells it: ``16``,
+    ``2.0`` - never re-serialised, so a whole constant and a fractional one keep the spelling
+    that tells them apart."""
+
+    description: str
+    """What its entry states as ``description``; ``""`` where it states none."""
+
+    file: str
+    """Absolute, posix-separated path of the file declaring it: a constants file, or a component
+    that declares it inline alongside its interface."""
+
+    pointer: str
+    """Dotted path of its entry: ``constants[i]`` in a constants file, or
+    ``component.constants[i]`` in a component that declares it inline."""
+
+    uses: tuple[ConstantUse, ...]
+    """Every shape naming it, in the order the navigation index recorded them."""
+
+    findings: tuple[Finding, ...]
+    """Every finding filed inside its entry or at a shape naming it."""
+
+
 # --- GET /api/declarable ---------------------------------------------------------------------
 
 
@@ -1259,6 +1349,8 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (UnitReply, "serialization"),
     (TypesReply, "serialization"),
     (TypeReply, "serialization"),
+    (SharedReply, "serialization"),
+    (ConstantReply, "serialization"),
     (DeclarableReply, "serialization"),
     (PlanReply, "serialization"),
     (ValuesReply, "serialization"),

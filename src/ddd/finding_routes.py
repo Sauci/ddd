@@ -24,13 +24,27 @@ from ddd.lsp.ranges import Document, read
 UNIT_CHECKS: Final = frozenset({"unknown-unit"})
 """The checks filed where a unit is stated, whose finding leads to that unit's own panel."""
 
+CONSTANT_CHECKS: Final = frozenset({"unknown-constant", "dimension-value"})
+"""The checks filed where a shape names a constant, whose finding leads to that constant.
+
+``unknown-constant`` names one no file declares, and the route carries the name anyway: the page
+opens its add form with it filled in. ``dimension-value`` names one whose value is no array length,
+and the value is the thing to change.
+"""
+
 COMPONENT_KIND: Final = "component"
-"""The one file kind the page has a screen for; the rest are milestone 6's."""
+"""The one file kind the page has a screen for; sections and rasters are what is left of
+milestone 6."""
 
 WITHIN_TYPE: Final = re.compile(r"^(?:component\.)?types\[\d+\]")
 """The entry a pointer inside a type lies in: the type itself, one of its keys, or a member of
 it, all of which the same panel shows - whether the type was declared in a types file
 (``types[i]``) or inline by a component (``component.types[i]``)."""
+
+WITHIN_CONSTANT: Final = re.compile(r"^(?:component\.)?constants\[\d+\]")
+"""The entry a pointer inside a constant lies in - whether the constant was declared in a constants
+file (``constants[i]``) or inline by a component (``component.constants[i]``), which
+:mod:`ddd.loading` registers the same way."""
 
 WITHIN_INIT: Final = re.compile(r"^(component\.interface\[\d+\])\.definition\.init\b")
 """A pointer inside a declaration's ``init``: the values grid is what opens on it.
@@ -47,7 +61,7 @@ class Route:
     """Where a finding leads."""
 
     kind: str
-    """``variable``, ``unit``, ``component``, ``type`` or ``values``."""
+    """``variable``, ``unit``, ``component``, ``type``, ``values`` or ``constant``."""
 
     name: str | None
     """The variable's name, the unit's spelling or the type's name; ``None`` for a component,
@@ -76,6 +90,18 @@ def route_of(
         # 2's panel lists all three: the one route that does not care which file it was on.
         stated = read(path, cache).value_at(pointer)
         return Route("unit", stated) if isinstance(stated, str) and stated else None
+    if check in CONSTANT_CHECKS:
+        # Before WITHIN_TYPE below, exactly as UNIT_CHECKS is and for the same reason: a structure
+        # member's dimension is inside `types[i]`, so tried after it an unknown-constant on a
+        # member would open the type rather than the constant the finding is about.
+        named = read(path, cache).value_at(pointer)
+        return Route("constant", named) if isinstance(named, str) and named else None
+    within_constant = WITHIN_CONSTANT.match(pointer)
+    if within_constant is not None:
+        # Before the kind check below, as WITHIN_TYPE is: a constants file's kind is `constants`,
+        # and a component may declare a constant inline at `component.constants[i]`.
+        name = read(path, cache).value_at(f"{within_constant.group()}.name")
+        return Route("constant", name) if isinstance(name, str) else None
     within_type = WITHIN_TYPE.match(pointer)
     if within_type is not None:
         # A pointer anywhere inside an entry - its own keys, a member's, an enumerator's - is

@@ -22,6 +22,7 @@ function View({ variable, preview = null, initialSelected }: Props) {
       selected={selected}
       onSelect={setSelected}
       onOpenType={() => undefined}
+      onOpenConstant={() => undefined}
     />
   );
 }

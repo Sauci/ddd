@@ -1,5 +1,7 @@
 import type {
   CompareReply,
+  ConstantReply,
+  ConstantUse,
   DeclarableName,
   DeclarableReply,
   Finding,
@@ -10,6 +12,8 @@ import type {
   ProjectUnit,
   Renamed,
   SettleReply,
+  SharedEntry,
+  SharedReply,
   State,
   TypeReply,
   TypesReply,
@@ -1796,3 +1800,157 @@ export const CANNOT_REPLACE: CompareReply = {
  */
 export const REFUSED_OUTSIDE_ROOT =
   "the baseline 'C:/archives/demo.ddd.json' is outside the session root 'C:/work/demo'";
+
+// examples/vocabulary's own two constants (spec 5.1): TREND_SAMPLES in constants.ddd.json,
+// PRESSURE_CELLS declared inline in pump.ddd.json - modelled on it, not transcribed, as
+// PROJECT_TYPES already is not: the real project uses each constant once, but PRESSURE_CELLS is
+// used twice here, so the "Used by" column's plural ("2 places") has a row to draw beside
+// TREND_SAMPLES's singular ("1 place").
+
+/** Declared in constants.ddd.json, a constants file. `SharedEntry` carries no file, so nothing in
+ * the row itself says so - which is the point the BothHomes story makes. */
+const TREND_SAMPLES: SharedEntry = {
+  kind: "constant",
+  name: "TREND_SAMPLES",
+  value: "16",
+  uses: 1,
+  findings: 0,
+};
+
+/** Declared inline in pump.ddd.json's own `component.constants`, the tab's other home for one. */
+const PRESSURE_CELLS: SharedEntry = {
+  kind: "constant",
+  name: "PRESSURE_CELLS",
+  value: "8",
+  uses: 2,
+  findings: 0,
+};
+
+/** Both homes a constant may be declared in, listed in the one table (spec 5.1): sorted by name,
+ * as `GET /api/shared` sorts them, since both share the one kind the project declares today. */
+export const PROJECT_SHARED: SharedReply = {
+  revision: 7,
+  entries: [PRESSURE_CELLS, TREND_SAMPLES],
+};
+
+/** TREND_SAMPLES carrying a finding. `SharedEntry.findings` is a count, not a list - it is filed
+ * inside the entry or at any shape naming it (spec 4.2), and `dimension-value` is the latter: a
+ * value no longer an array length, filed at PressureTrend's own `dimensions[0]`, not at the
+ * constant's entry. */
+export const SHARED_WITH_FINDING: SharedReply = {
+  revision: 7,
+  entries: [PRESSURE_CELLS, { ...TREND_SAMPLES, findings: 1 }],
+};
+
+/** A project that declares no constants, for the story that says so and offers to declare one. */
+export const NO_SHARED: SharedReply = { revision: 7, entries: [] };
+
+/** constants.ddd.json did not load: TREND_SAMPLES's entry is in no index and so in no row (spec
+ * 5.4), but PRESSURE_CELLS still lists, declared inline in pump.ddd.json rather than in the file
+ * that failed. */
+export const SHARED_MISSING_FILE: SharedReply = { revision: 7, entries: [PRESSURE_CELLS] };
+
+// --- ConstantPanelView (Task 8, spec 5.2/5.4) -------------------------------------------------
+//
+// examples/vocabulary's own TREND_SAMPLES (constants.ddd.json, value 16), with a second use
+// invented - Sensor_t.history, the structure member STRUCT_TYPE above already carries a
+// dimension for - so the panel's "Used by" table has one row of each `ConstantUse` kind; the
+// real project only names TREND_SAMPLES once.
+
+const CONSTANTS_FILE = "C:/work/demo/constants.ddd.json";
+
+const TREND_SAMPLES_VARIABLE_USE: ConstantUse = {
+  path: PUMP,
+  pointer: "component.interface[2].definition.dimensions[0]",
+  kind: "variable",
+  name: "PressureTrend",
+  component: "Pump",
+};
+
+const TREND_SAMPLES_MEMBER_USE: ConstantUse = {
+  path: TYPES,
+  // Sensor_t's own position among STRUCT_TYPE's fixtures above (`types[4]`), its "history" member
+  // dimensioned by TREND_SAMPLES here rather than by the literal "8" that scenario gives it - a
+  // different scenario, the way SharedTableView's own fixtures give PRESSURE_CELLS 2 uses where
+  // the real project has 1.
+  pointer: "types[4].members[3].dimensions[0]",
+  kind: "member",
+  name: "Sensor_t.history",
+  component: null,
+};
+
+/** TREND_SAMPLES as constants.ddd.json declares it: two shapes name it - a variable's dimension
+ * and a structure member's - and nothing is wrong with it yet. */
+export const CONSTANT_REPLY: ConstantReply = {
+  revision: 7,
+  name: "TREND_SAMPLES",
+  value: "16",
+  description:
+    "sample slots of a pressure trend buffer, a device wide size no single component owns",
+  file: CONSTANTS_FILE,
+  pointer: "constants[0]",
+  uses: [TREND_SAMPLES_VARIABLE_USE, TREND_SAMPLES_MEMBER_USE],
+  findings: [],
+};
+
+/** `dimension-value`, filed at PressureTrend's own dimension rather than at the constant's entry
+ * (measured on examples/vocabulary with TREND_SAMPLES's `value` changed to `2.5`: `ddd check`
+ * then says "'PressureTrend' is dimensioned by 'TREND_SAMPLES', whose value is 2.5; a dimension
+ * is a whole number of at least 1"). `ConstantReply.findings` carries both the entry's own and
+ * its uses' (design §4.2), which is how this one reaches a panel that never touches pump.ddd.json. */
+const DIMENSION_VALUE: Finding = {
+  file: PUMP,
+  check: "dimension-value",
+  severity: "error",
+  message:
+    "'PressureTrend' is dimensioned by 'TREND_SAMPLES', whose value is 2.5; a dimension is a " +
+    "whole number of at least 1",
+  pointer: "component.interface[2].definition.dimensions[0]",
+  notes: [],
+  route: { kind: "constant", name: "TREND_SAMPLES" },
+};
+
+/** The same constant set to a value no shape can use: a legal edit of a legal file, so it is
+ * reported rather than refused (design §4.5) - the state this tab exists to let a reader fix. */
+export const CONSTANT_BAD_VALUE: ConstantReply = {
+  ...CONSTANT_REPLY,
+  value: "2.5",
+  findings: [DIMENSION_VALUE],
+};
+
+/** A constant nothing names: Remove is offered rather than refused (§4.5 refuses it only while a
+ * shape still names it), which needs a constant of its own - TREND_SAMPLES is named twice above. */
+export const CONSTANT_UNUSED: ConstantReply = {
+  revision: 7,
+  name: "SPARE_TOLERANCE",
+  value: "3",
+  description: "kept in reserve; nothing reads it yet",
+  file: CONSTANTS_FILE,
+  pointer: "constants[1]",
+  uses: [],
+  findings: [],
+};
+
+/** Removing SPARE_TOLERANCE: its entry taken out of constants.ddd.json, and nothing else
+ * (`remove_constant`'s own doc) - the plan the NothingNamesIt story's Remove is already offered
+ * with, since nothing has to be typed first for a change with no field of its own to preview. */
+export const REMOVE_CONSTANT: PlanReply = {
+  revision: 7,
+  changes: [
+    {
+      file: CONSTANTS_FILE,
+      fingerprint: "1a2b3c4d5e6f70819a2b3c4d5e6f70819a2b3c4d5e6f70819a2b3c4d5e6f7081",
+      operations: [{ op: "remove", pointer: "constants[1]", raw: null }],
+      hunks: [
+        {
+          line: 6,
+          before: [
+            '    { "name": "SPARE_TOLERANCE", "value": 3, "description": "kept in reserve; nothing ' +
+              'reads it yet" }',
+          ],
+          after: [],
+        },
+      ],
+    },
+  ],
+};

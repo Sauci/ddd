@@ -1,6 +1,7 @@
 import type {
   Changes,
   CompareReply,
+  ConstantReply,
   DeclarableReply,
   EditReply,
   FileContent,
@@ -10,6 +11,7 @@ import type {
   PlanReply,
   SessionInfo,
   SettleReply,
+  SharedReply,
   State,
   TypeReply,
   TypesReply,
@@ -180,6 +182,43 @@ function typeQuery(plan: TypePlanRequest): string {
     if (plan.raw !== null) parts.push(["raw", plan.raw]);
   } else {
     parts.push(["to", plan.to]);
+  }
+  return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
+}
+
+export const getShared = (fetchImpl: Fetch = fetch) =>
+  request<SharedReply>("/api/shared", {}, fetchImpl);
+
+export const getConstant = (name: string, fetchImpl: Fetch = fetch) =>
+  request<ConstantReply>(`/api/constant?name=${encodeURIComponent(name)}`, {}, fetchImpl);
+
+/** One change to a constant, as `GET /api/constant-plan` takes it: what each action needs, and
+ * nothing it does not - `add`'s `raw` is a value it cannot go without, the way `set`'s can be
+ * asked for before a reader has typed anything into the value field. */
+export type ConstantPlanRequest =
+  | { action: "set"; name: string; key: string; raw?: string | null }
+  | { action: "rename"; name: string; to: string }
+  | { action: "add"; name: string; raw: string }
+  | { action: "remove"; name: string };
+
+export const getConstantPlan = (plan: ConstantPlanRequest, fetchImpl: Fetch = fetch) =>
+  request<PlanReply>(`/api/constant-plan?${constantQuery(plan)}`, {}, fetchImpl);
+
+/** A plan's query: the action and the name, then whichever of `key`, `raw` and `to` it takes.
+ * `set`'s `raw` left out - whether omitted or given as `null` - is how the server reads "leave
+ * the key out"; `add`'s `raw` is neither, so it always travels. */
+function constantQuery(plan: ConstantPlanRequest): string {
+  const parts: [string, string][] = [
+    ["action", plan.action],
+    ["name", plan.name],
+  ];
+  if (plan.action === "set") {
+    parts.push(["key", plan.key]);
+    if (plan.raw !== undefined && plan.raw !== null) parts.push(["raw", plan.raw]);
+  } else if (plan.action === "rename") {
+    parts.push(["to", plan.to]);
+  } else if (plan.action === "add") {
+    parts.push(["raw", plan.raw]);
   }
   return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
 }

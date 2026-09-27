@@ -150,6 +150,7 @@ function View({
       selected={selected}
       onSelect={select}
       onOpenType={() => undefined}
+      onOpenConstant={() => undefined}
       typed={
         typed ??
         (selected === undefined || broken !== null ? "" : labelOfRaw(variable, selected, target))

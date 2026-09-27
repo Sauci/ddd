@@ -2,6 +2,8 @@ import { describe, expect, test, vi } from "vitest";
 import {
   ApiError,
   getCompare,
+  getConstant,
+  getConstantPlan,
   getDeclarable,
   getDeclarationPlan,
   getFile,
@@ -10,6 +12,7 @@ import {
   getProjects,
   getSession,
   getSettle,
+  getShared,
   getState,
   getType,
   getTypePlan,
@@ -123,6 +126,23 @@ describe("requests to the server", () => {
     await getTypePlan({ action: "set", name: "Temperature_t", key: "unit", raw: '"K"' }, fetchImpl);
     await getTypePlan({ action: "set", name: "Temperature_t", key: "unit", raw: null }, fetchImpl);
     await getTypePlan({ action: "rename", name: "Sensor_t", to: "Probe_t" }, fetchImpl);
+    await getShared(fetchImpl);
+    await getConstant("TREND SAMPLES#1", fetchImpl);
+    await getConstantPlan(
+      { action: "set", name: "TREND_SAMPLES", key: "value", raw: "16" },
+      fetchImpl,
+    );
+    await getConstantPlan({ action: "set", name: "TREND_SAMPLES", key: "description" }, fetchImpl);
+    await getConstantPlan(
+      { action: "set", name: "TREND_SAMPLES", key: "description", raw: null },
+      fetchImpl,
+    );
+    await getConstantPlan(
+      { action: "rename", name: "TREND_SAMPLES", to: "TREND_SLOTS" },
+      fetchImpl,
+    );
+    await getConstantPlan({ action: "add", name: "CELLS", raw: "8" }, fetchImpl);
+    await getConstantPlan({ action: "remove", name: "CELLS" }, fetchImpl);
     await getDeclarable("/tmp/c.ddd.json", fetchImpl);
     await getDeclarationPlan(
       { action: "read", file: "/tmp/c.ddd.json", name: "ValueC", scope: "input" },
@@ -189,6 +209,26 @@ describe("requests to the server", () => {
       ],
       ["/api/type-plan?action=set&name=Temperature_t&key=unit", { credentials: "same-origin" }],
       ["/api/type-plan?action=rename&name=Sensor_t&to=Probe_t", { credentials: "same-origin" }],
+      ["/api/shared", { credentials: "same-origin" }],
+      ["/api/constant?name=TREND%20SAMPLES%231", { credentials: "same-origin" }],
+      [
+        "/api/constant-plan?action=set&name=TREND_SAMPLES&key=value&raw=16",
+        { credentials: "same-origin" },
+      ],
+      [
+        "/api/constant-plan?action=set&name=TREND_SAMPLES&key=description",
+        { credentials: "same-origin" },
+      ],
+      [
+        "/api/constant-plan?action=set&name=TREND_SAMPLES&key=description",
+        { credentials: "same-origin" },
+      ],
+      [
+        "/api/constant-plan?action=rename&name=TREND_SAMPLES&to=TREND_SLOTS",
+        { credentials: "same-origin" },
+      ],
+      ["/api/constant-plan?action=add&name=CELLS&raw=8", { credentials: "same-origin" }],
+      ["/api/constant-plan?action=remove&name=CELLS", { credentials: "same-origin" }],
       ["/api/declarable?file=%2Ftmp%2Fc.ddd.json", { credentials: "same-origin" }],
       [
         "/api/declaration-plan?action=read&file=%2Ftmp%2Fc.ddd.json&name=ValueC&scope=input",

@@ -41,6 +41,9 @@ interface Props {
   /** Following a fixed key to the type that fixes it, without a reload - the project's Types
    * tab, since the type is the project's rather than this variable's own. */
   onOpenType: (name: string) => void;
+  /** Following a `dimensions` entry that names a constant to the Shared files tab, without a
+   * reload (spec 5.3). */
+  onOpenConstant: (name: string) => void;
 }
 
 const STALE =
@@ -56,6 +59,7 @@ export function VariablePanel({
   onClose,
   onUndeclared,
   onOpenType,
+  onOpenConstant,
 }: Props) {
   const queries = useQueryClient();
   const variable = useQuery({
@@ -314,6 +318,7 @@ export function VariablePanel({
       selected={selected}
       onSelect={select}
       onOpenType={onOpenType}
+      onOpenConstant={onOpenConstant}
       // A range the fields do not make is no value, so the field above them reads empty and
       // the note says why, rather than naming a value nothing would be settled on.
       typed={

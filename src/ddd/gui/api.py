@@ -81,6 +81,13 @@ from ddd.lsp.units import (
     unit_project,
 )
 from ddd.object_values import ValueRefusalError, grid_of, set_cell, set_values
+from ddd.project_shared import (
+    constant_string,
+    constant_text,
+    constant_uses,
+    located_on_constant,
+    shared_rows,
+)
 from ddd.project_types import (
     SCALAR_KEYS,
     fixed_by,
@@ -97,6 +104,16 @@ from ddd.project_units import (
     places_of,
     previewed,
     unit_rows,
+)
+from ddd.shared_plans import (
+    SharedPlan,
+    SharedProject,
+    SharedRefusalError,
+    add_constant,
+    remove_constant,
+    rename_constant,
+    set_constant,
+    shared_project,
 )
 from ddd.type_plans import REQUIRED, TypePlan, TypeRefusalError, rename_type, set_key
 from ddd.variable_keys import offer_for, offers
@@ -134,6 +151,17 @@ TYPE_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
 }
 """What each change of a type takes, beside the action itself. ``set`` takes ``raw`` too, which
 may be absent: leaving a key out is what its absence means."""
+
+CONSTANT_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
+    "set": ("name", "key"),
+    "rename": ("name", "to"),
+    "add": ("name", "raw"),
+    "remove": ("name",),
+}
+"""What each change of a constant takes, beside the action itself. ``set`` takes ``raw`` too,
+which may be absent: leaving it out is what taking the key away means. ``add`` takes ``raw`` as
+one of its required parameters instead: a constant declared with no value is not what ``add``
+means, unlike ``set``, which a reader may ask of a row without having typed anything yet."""
 
 DECLARATION_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
     "read": ("file", "name", "scope"),
@@ -692,6 +720,123 @@ class Api:
             ).model_dump(mode="json"),
         )
 
+    def _shared(self, query: Query, body: bytes | None) -> Reply:
+        revision = self._opened()
+        built = revision.index
+        cache: dict[Path, Document] = {}
+        rows = (
+            ()
+            if built is None
+            else shared_rows(built, [(f.file, f.diagnostic) for f in revision.findings], cache)
+        )
+        return Reply(
+            200,
+            contract.SharedReply(
+                revision=revision.number,
+                entries=[
+                    {
+                        "kind": row.kind,
+                        "name": row.name,
+                        "value": row.value,
+                        "uses": row.uses,
+                        "findings": row.findings,
+                    }
+                    for row in rows
+                ],
+            ).model_dump(mode="json"),
+        )
+
+    def _constant(self, query: Query, body: bytes | None) -> Reply:
+        revision = self._opened()
+        name = _single(query.get("name"))
+        if not name:
+            return _error(400, "bad-request", "constant takes ?name=")
+        built = revision.index
+        if built is None or name not in built.constants:
+            return _undeclared(revision, name)
+        cache: dict[Path, Document] = {}
+        site = built.constants[name]
+        sources = {file.path.resolve(): file for file in revision.files}
+        return Reply(
+            200,
+            contract.ConstantReply(
+                revision=revision.number,
+                name=name,
+                value=constant_text(built, name, "value", cache),
+                description=constant_string(built, name, "description", cache),
+                file=site.path.resolve().as_posix(),
+                pointer=site.pointer,
+                uses=[
+                    {
+                        "path": use.site.path.resolve().as_posix(),
+                        "pointer": use.site.pointer,
+                        "kind": use.kind,
+                        "name": use.name,
+                        "component": use.component,
+                    }
+                    for use in constant_uses(built, name, cache)
+                ],
+                findings=[
+                    _finding(filed, sources.get(filed.file.resolve()), cache)
+                    for filed in revision.findings
+                    if located_on_constant(built, name, filed.file, filed.diagnostic)
+                ],
+            ).model_dump(mode="json"),
+        )
+
+    def _constant_plan(self, query: Query, body: bytes | None) -> Reply:
+        revision = self._opened()
+        action = _single(query.get("action")) or ""
+        takes = CONSTANT_PLANS.get(action)
+        if takes is None:
+            return _error(
+                400,
+                "bad-request",
+                f"constant-plan takes ?action= one of {', '.join(CONSTANT_PLANS)}",
+            )
+        given = {part: value for part in takes if (value := _single(query.get(part))) is not None}
+        if len(given) < len(takes) or given.get("name") == "" or given.get("raw") == "":
+            wanted = " and ".join(f"?{part}=" for part in takes)
+            return _error(400, "bad-request", f"{action} takes {wanted}")
+        # Validated before any plan is asked for, as `_settle` already validates its own `raw`:
+        # a request that is not json is a mistake about the request, not a refusal about the
+        # project, so it answers 400 rather than being folded into a `SharedRefusalError`.
+        raw = _single(query.get("raw")) or None
+        if raw is not None:
+            try:
+                parse_raw(raw)
+            except EditError as refused:
+                return _error(400, "bad-request", str(refused))
+        built = revision.index
+        if built is None:
+            unread = [file.path.name for file in revision.files if not file.loaded]
+            return _error(
+                409,
+                UNREADABLE,
+                f"{', '.join(unread) or revision.project.name} did not load, "
+                "so no constant of the project can be changed",
+            )
+        cache: dict[Path, Document] = {}
+        project = shared_project(
+            revision.project, [file.path for file in revision.files if not file.loaded], cache
+        )
+        try:
+            plan = _constant_plan_of(action, built, project, given, raw, cache)
+        except SharedRefusalError as refused:
+            status = 404 if refused.code == "not-found" else 409
+            return _error(status, refused.code, refused.message)
+        stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
+        try:
+            made = previewed(plan.edits, stamps)
+        except EditError as refused:
+            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+        return Reply(
+            200,
+            contract.PlanReply(
+                revision=revision.number, changes=_planned_changes(revision, made)
+            ).model_dump(mode="json"),
+        )
+
     def _settle(self, query: Query, body: bytes | None) -> Reply:
         revision = self._opened()
         name, key = (_single(query.get(part)) for part in ("name", "key"))
@@ -1054,6 +1199,9 @@ _ROUTES: Final[dict[str, dict[str, Answer]]] = {
     "/api/types": {"GET": Api._types},
     "/api/type": {"GET": Api._type},
     "/api/type-plan": {"GET": Api._type_plan},
+    "/api/shared": {"GET": Api._shared},
+    "/api/constant": {"GET": Api._constant},
+    "/api/constant-plan": {"GET": Api._constant_plan},
     "/api/declarable": {"GET": Api._declarable},
     "/api/declaration-plan": {"GET": Api._declaration_plan},
     "/api/values": {"GET": Api._values},
@@ -1202,6 +1350,28 @@ def _type_plan_of(
     if action == "set":
         return set_key(built, given["name"], given["key"], raw, cache)
     return rename_type(built, given["name"], given["to"], cache)
+
+
+def _constant_plan_of(
+    action: str,
+    built: Index,
+    project: SharedProject,
+    given: Mapping[str, str],
+    raw: str | None,
+    cache: dict[Path, Document],
+) -> SharedPlan:
+    """The plan ``action`` names, over the parameters :data:`CONSTANT_PLANS` says it takes.
+
+    ``project`` is unused by three of the four: only ``add`` may have to create a constants
+    file, which is the one verb that needs to know where the project's constants files are.
+    """
+    if action == "set":
+        return set_constant(built, given["name"], given["key"], raw, cache)
+    if action == "rename":
+        return rename_constant(built, given["name"], given["to"], cache)
+    if action == "remove":
+        return remove_constant(built, given["name"], cache)
+    return add_constant(built, project, given["name"], given["raw"], cache)
 
 
 def _declaration_plan_of(

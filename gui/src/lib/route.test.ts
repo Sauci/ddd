@@ -102,6 +102,37 @@ test.each([
   expect(hrefOf(route)).toBe(href);
 });
 
+test("the shared files tab with nothing selected", () => {
+  expect(parseRoute("/project", "?view=shared")).toEqual({ page: "project", view: "shared" });
+  expect(hrefOf({ page: "project", view: "shared" })).toBe("/project?view=shared");
+});
+
+test("the shared files tab with a constant selected", () => {
+  const route = {
+    page: "project",
+    view: "shared",
+    kind: "constant",
+    name: "TREND_SAMPLES",
+  } as const;
+  expect(parseRoute("/project", "?view=shared&kind=constant&name=TREND_SAMPLES")).toEqual(route);
+  expect(hrefOf(route)).toBe("/project?view=shared&kind=constant&name=TREND_SAMPLES");
+});
+
+test("a selection with no kind is the bare tab", () => {
+  expect(parseRoute("/project", "?view=shared&name=TREND_SAMPLES")).toEqual({
+    page: "project",
+    view: "shared",
+  });
+});
+
+test("a kind with no name is the bare tab too", () => {
+  // `kind=constant` alone is as half-written an address as leaving `kind` out entirely.
+  expect(parseRoute("/project", "?view=shared&kind=constant")).toEqual({
+    page: "project",
+    view: "shared",
+  });
+});
+
 test.each([
   [
     "/component",

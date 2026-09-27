@@ -28,6 +28,9 @@ interface Props {
    * project's Types tab, which leaves this page: the type is the project's, not the
    * component's. */
   onOpenType: (name: string) => void;
+  /** Following a `dimensions` entry of the open variable's panel to the constant it names - the
+   * Shared files tab, which leaves this page too, for the same reason. */
+  onOpenConstant: (name: string) => void;
 }
 
 /** The kinds whose definition states no `dimensions` at all and reads its own word instead - a
@@ -62,6 +65,7 @@ export function ComponentPage({
   onVariable,
   onValues,
   onOpenType,
+  onOpenConstant,
 }: Props) {
   // A new number on every unit cell press, even a second press of the same cell, so the
   // picker's focus request always changes; null when a row selects its variable without one.
@@ -298,6 +302,7 @@ export function ComponentPage({
             onVariable(undefined);
           }}
           onOpenType={onOpenType}
+          onOpenConstant={onOpenConstant}
         />
       )}
       {adding && (

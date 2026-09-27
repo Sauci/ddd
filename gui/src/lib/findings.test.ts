@@ -17,6 +17,8 @@ import {
 const SENSOR_HUB = "C:/work/demo/components/sensor_hub.ddd.json";
 const TYPES = "C:/work/demo/types.ddd.json";
 const UNITS = "C:/work/demo/units.ddd.json";
+const CONSTANTS = "C:/work/demo/constants.ddd.json";
+const SECTIONS = "C:/work/demo/sections.ddd.json";
 
 function finding(fields: Partial<Finding> = {}): Finding {
   return {
@@ -171,6 +173,24 @@ describe("where a finding leads", () => {
     expect(routeHref(one)).toBe("/project?view=types&type=Sensor_t");
   });
 
+  test("a constant, by its name - the one route kind whether or not it is declared", () => {
+    // unknown-constant names one no file declares, the same route a duplicate-constant or a
+    // dimension-value on an already-declared one would carry - the tab's own `isDeclared` is
+    // what tells the two apart, not this route (design §2).
+    const one = finding({
+      check: "unknown-constant",
+      route: { kind: "constant", name: "TREND_SLOTS" },
+    });
+    expect(routeLabel(one, state([one]))).toBe("Open TREND_SLOTS");
+    expect(routeHref(one)).toBe("/project?view=shared&kind=constant&name=TREND_SLOTS");
+    expect(routeOf(one)).toEqual({
+      page: "project",
+      view: "shared",
+      kind: "constant",
+      name: "TREND_SLOTS",
+    });
+  });
+
   test("a component, by the name its file gives it", () => {
     const one = finding({ route: { kind: "component", name: null } });
     expect(routeLabel(one, state([one]))).toBe("Open SensorHub");
@@ -233,6 +253,57 @@ describe("why a finding leads nowhere", () => {
     ];
     expect(noRouteReason(one, withUnits)).toBe(
       "units.ddd.json is a units file, which has no page yet",
+    );
+  });
+
+  test("a finding on a constants file no longer says it has no page", () => {
+    // Part 13 gives constants a page, so a constants file joins `component` in the set the
+    // check reads from - what is left of this finding is that its pointer is empty, the same
+    // reason a component's own project-wide finding gets.
+    const one = finding({
+      file: CONSTANTS,
+      check: "duplicate-constant",
+      pointer: "",
+      route: null,
+    });
+    const withConstants = state([one]);
+    withConstants.files = [
+      ...withConstants.files,
+      {
+        path: CONSTANTS,
+        kind: "constants",
+        name: null,
+        loaded: true,
+        fingerprint: "d",
+        findings: { error: 1, warning: 0, info: 0 },
+      },
+    ];
+    expect(noRouteReason(one, withConstants)).toBe(
+      "it is about the project rather than a place in a file",
+    );
+  });
+
+  test("a finding on a sections file still says so, sections being the part after this", () => {
+    const one = finding({
+      file: SECTIONS,
+      check: "duplicate-section",
+      pointer: "sections[0]",
+      route: null,
+    });
+    const withSections = state([one]);
+    withSections.files = [
+      ...withSections.files,
+      {
+        path: SECTIONS,
+        kind: "sections",
+        name: null,
+        loaded: true,
+        fingerprint: "e",
+        findings: { error: 1, warning: 0, info: 0 },
+      },
+    ];
+    expect(noRouteReason(one, withSections)).toBe(
+      "sections.ddd.json is a sections file, which has no page yet",
     );
   });
 

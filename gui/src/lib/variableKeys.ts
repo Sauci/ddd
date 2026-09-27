@@ -7,6 +7,15 @@ import type {
 import { hrefOf } from "./route";
 import { textOf } from "./units";
 
+/** One entry of a `dimensions` value: the text it reads as, and - for a name - the constant it
+ * opens. `constant` and `href` are `null` together, exactly as `KeyCell`'s own `from`/`href` are:
+ * a literal number names nothing to open (spec 5.3). */
+export interface DimensionEntry {
+  text: string;
+  constant: string | null;
+  href: string | null;
+}
+
 /** What one declaration's cell of a row reads. */
 export interface KeyCell {
   /** The value as a reader reads it, `none` where nothing is stated, or why there is no cell. */
@@ -20,6 +29,12 @@ export interface KeyCell {
   href: string | null;
   /** The preview writes this key into this declaration. */
   changing: boolean;
+  /** `text` split into one part per entry of a `dimensions` value, a name among them a link of
+   * its own (spec 5.3) - `null` for every other key, and for a `dimensions` cell whose raw text
+   * is not a json array. `VariableKeysTable` draws these in place of `text` when they are given,
+   * since a `dimensions` value joined into one string, the way `text` reads it, has nowhere to
+   * hang a second entry's own link. */
+  parts: readonly DimensionEntry[] | null;
 }
 
 /** One row of the panel's table: a key, and what each declaration says about it. */
@@ -100,6 +115,7 @@ export function keyRows(variable: VariableReply, preview: SettleReply | null): K
       from: null,
       href: null,
       changing: false,
+      parts: null,
     })),
     disagrees: new Set(kinds).size > 1,
     settleable: false,
@@ -145,12 +161,15 @@ function cellOf(
       from: null,
       href: null,
       changing,
+      parts: null,
     };
   }
   const stated = declaration.stated[offer.key];
   const fixed = declaration.fixed[offer.key];
   const raw = stated ?? fixed;
-  if (raw === undefined) return { text: "none", quiet: true, from: null, href: null, changing };
+  if (raw === undefined) {
+    return { text: "none", quiet: true, from: null, href: null, changing, parts: null };
+  }
   const from = stated === undefined ? declaration.type : null;
   return {
     text: shortValue(offer.key, raw),
@@ -158,7 +177,38 @@ function cellOf(
     from,
     href: from === null ? null : hrefOf({ page: "project", view: "types", type: from }),
     changing,
+    // Redundant today with dimensionEntries's own `Array.isArray` check: no key in KEY_ORDER
+    // other than `dimensions` is ever array-shaped, so calling it unconditionally would answer
+    // `null` for every one of them anyway. Kept explicit rather than relying on that, because
+    // whether an array of constant links belongs on a key is this table's own decision - a
+    // future key that happens to be array-shaped too should not start rendering them merely
+    // because its raw text happens to parse the same way `dimensions`'s does.
+    parts: offer.key === "dimensions" ? dimensionEntries(raw) : null,
   };
+}
+
+/** `raw`'s own entries, each a literal number's text or a name paired with where it opens - `null`
+ * where `raw` is not a json array, which leaves `text` to show it whole (spec 5.3: a dimension is
+ * the one key naming a constant that this table draws, `dimensions` on a variable's declaration -
+ * `_DIMENSION_KEY`'s other two places, a declaration's `size` and a structure member's own
+ * `dimensions`, are neither this table's row). */
+function dimensionEntries(raw: string): readonly DimensionEntry[] | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(value)) return null;
+  return value.map((entry) =>
+    typeof entry === "string"
+      ? {
+          text: entry,
+          constant: entry,
+          href: hrefOf({ page: "project", view: "shared", kind: "constant", name: entry }),
+        }
+      : { text: String(entry), constant: null, href: null },
+  );
 }
 
 /** Whether a preview writes this key into this declaration. */

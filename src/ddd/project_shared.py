@@ -78,21 +78,13 @@ class Vocabulary:
     section its access and its alignment; a raster its event and its cycle. `Value` was the column's
     header while constants were alone in the tab and fits nothing else."""
 
+    uses: Callable[[Index, str, dict[Path, Document]], tuple[Use, ...]]
+    """Every shape naming one entry, resolved rather than merely located: :attr:`used` only says
+    where the index recorded a naming shape, and this reads what each site there actually says. A
+    constant's own shapes are a dimension entry, an axis size, a structure member's dimension; a
+    section's and a raster's are different shapes entirely - so unlike :attr:`entries`, :attr:`used`
+    and :attr:`states`, each a one-line lambda, this is bound to a named function per vocabulary."""
 
-CONSTANTS: Final = Vocabulary(
-    kind=CONSTANT,
-    containers=("constants", "component.constants"),
-    name_key="name",
-    keys=("value", "description"),
-    strings=frozenset({"description"}),
-    entries=lambda built: built.constants,
-    used=lambda built: built.constant_uses,
-    states=lambda texts: texts["value"],
-)
-
-HELD: Final = (CONSTANTS,)
-"""Every vocabulary the Shared files tab holds. :func:`shared_rows` walks this; Task 4 adds a
-word."""
 
 _DECLARATION_SHAPE: Final = re.compile(
     r"^(component\.interface\[\d+\]\.definition)\.(?:dimensions\[\d+\]|size)$"
@@ -207,7 +199,7 @@ def shared_rows(
     rows = [
         row_of(vocabulary, built, name, filed, cache)
         for vocabulary in HELD
-        for name in sorted(vocabulary.entries(built))
+        for name in vocabulary.entries(built)
     ]
     return tuple(sorted(rows, key=lambda row: (row.kind, row.name)))
 
@@ -286,19 +278,28 @@ def string_of(
 def uses_of(
     vocabulary: Vocabulary, built: Index, name: str, cache: dict[Path, Document]
 ) -> tuple[Use, ...]:
-    """Every shape the index recorded naming ``name``, in the order it recorded them.
+    """Every shape the index recorded naming ``name``, in the order it recorded them: whatever
+    :attr:`Vocabulary.uses` ``vocabulary`` binds - a constant's own shapes for :data:`CONSTANTS`,
+    a different reading entirely for a vocabulary shaped differently."""
+    return vocabulary.uses(built, name, cache)
+
+
+def _constant_uses(built: Index, name: str, cache: dict[Path, Document]) -> tuple[Use, ...]:
+    """:data:`CONSTANTS`'s :attr:`~Vocabulary.uses`: a dimension entry, an axis size, or a
+    structure member's dimension, in the order the index recorded them.
 
     A declaration comes with the component declaring it, as :func:`ddd.variables.declarations_of`
     reads it, and one its file no longer declares where the index recorded it is left out, as that
     function leaves it out: the file changed since the analysis, and the next revision lists it
     where it went.
 
-    Written for a constant's own use shapes - a dimension entry, an axis size, a structure member's
-    dimension - which is all any vocabulary in :data:`HELD` has today; a vocabulary whose uses are
-    shaped differently is Task 4's to read.
+    Bound to :data:`CONSTANTS` rather than generalised: a section is named only at a definition's
+    ``section`` key and a raster at a definition's or a component's own ``raster`` - neither a
+    dimension entry, an axis size, nor a structure member - so each vocabulary reads its own uses
+    through its own function instead of sharing this one.
     """
     found: list[Use] = []
-    for site in vocabulary.used(built).get(name, ()):
+    for site in built.constant_uses.get(name, ()):
         document = read(site.path, cache)
         member = _MEMBER_SHAPE.match(site.pointer)
         if member is not None:
@@ -330,6 +331,23 @@ def uses_of(
         if declared is not None:
             found.append(Use(site, "variable", variable, declared.component))
     return tuple(found)
+
+
+CONSTANTS: Final = Vocabulary(
+    kind=CONSTANT,
+    containers=("constants", "component.constants"),
+    name_key="name",
+    keys=("value", "description"),
+    strings=frozenset({"description"}),
+    entries=lambda built: built.constants,
+    used=lambda built: built.constant_uses,
+    states=lambda texts: texts["value"],
+    uses=_constant_uses,
+)
+
+HELD: Final = (CONSTANTS,)
+"""Every vocabulary the Shared files tab holds. :func:`shared_rows` walks this; Task 4 adds a
+word."""
 
 
 # Bindings, for one task only. `tests/test_project_shared.py` passing untouched across the

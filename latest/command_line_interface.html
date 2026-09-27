@@ -404,11 +404,12 @@ so an editor reports the checks while a description file is being written; see
 computer by default, and open the browser on it. The project opens on a graph
 of its modules, an arrow per pair coloured by the worst disagreement between
 them, with the component table, a Units tab - listing the project’s units and
-maintaining its vocabulary - and a Findings tab of every finding, worst first,
-one tab away; a variable’s panel shows every key its declarations share, says
-which of them they disagree about, and settles one on every declaration at
-once. A <code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code> finding carries that settlement as a button of its own,
-one per disagreeing key, reaching every declaration that disagrees, not only the
+maintaining its vocabulary - a Findings tab of every finding, worst first, and a
+Compare tab asking whether the open project can replace a baseline delivery the
+reader names, one tab away. A variable’s panel shows every key its declarations
+share, says which of them they disagree about, and settles one on every declaration
+at once. A <code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code> finding carries that settlement as a button of
+its own, one per disagreeing key, reaching every declaration that disagrees, not only the
 one the finding names. Opened on a consumer it takes the producing component’s
 value; opened on the producer’s own row, where the same disagreement is filed a
 second time, it sends that value outward - never a direction the reader chooses.
@@ -459,6 +460,21 @@ the server runs, from a button beside the project’s name naming what it would
 put back: the files are shown first, the lines on request, and a file that
 changed on disk since is named and left alone. The list of what can be undone
 lives in the running server and ends with it.
+The Compare tab’s baseline is a dumped dictionary, or a project or component
+description, at a path under the directory <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> was started in, refused, and
+told why, when it is outside that directory, unreadable, not valid json, a
+description or a dictionary this DDD could not read, or json that is neither. Its
+verdict answers only whether the project can replace that
+baseline, not whether the project is itself consistent: the project’s own findings,
+the Findings tab’s own question, take no part in it. A finding that names a place in
+this project leads there, as on the Findings tab: a plugin’s comparison rule files at
+the declaration it is about. The comparison’s own findings name the whole delivery
+rather than a place in one file, and the baseline’s own, marked <code class="docutils literal notranslate"><span class="pre">in</span> <span class="pre">the</span> <span class="pre">baseline:</span></code>,
+name a place in the baseline’s files rather than in this project’s - for those the
+panel says so rather than offering to go anywhere. The renames the comparison finds
+are drawn here as a
+table, exactly what <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span> <span class="pre">--renames</span></code> would write to a file, and are not
+written from this tab.
 <code class="docutils literal notranslate"><span class="pre">-b</span> <span class="pre">DIR</span></code> names a build directory as for <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">lsp</span></code>, <code class="docutils literal notranslate"><span class="pre">--host</span> <span class="pre">ADDRESS</span></code>
 listens beyond this computer for a container, <code class="docutils literal notranslate"><span class="pre">--port</span> <span class="pre">N</span></code> fixes the port and
 <code class="docutils literal notranslate"><span class="pre">--no-browser</span></code> only prints the address. It serves until interrupted, and its

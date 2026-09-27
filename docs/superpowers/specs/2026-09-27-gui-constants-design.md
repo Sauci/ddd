@@ -224,10 +224,11 @@ other edit uses, and applied by the same button.
 
 ### 5.3 The way in from a declaration
 
-A variable's panel draws `dimensions` through `DimensionsField`. An entry that names a declared
-constant becomes a link to it; an entry that is a literal number stays text; an entry that names
-nothing the project declares becomes a link too, to the pre-filled add form — that name is exactly
-what `unknown-constant` is about, and the reader is one click from declaring it.
+A variable's panel lists `dimensions` among its keys, in `VariableKeysTable` - the same table where
+part 6 turned a type's name into a way in, through an `onOpenType` callback. An entry that names a
+declared constant becomes a link to it; an entry that is a literal number stays text; an entry that
+names nothing the project declares becomes a link too, to the pre-filled add form - that name is
+exactly what `unknown-constant` is about, and the reader is one click from declaring it.
 
 ### 5.4 What the reader sees when something goes wrong
 

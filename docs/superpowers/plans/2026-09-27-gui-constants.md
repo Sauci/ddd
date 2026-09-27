@@ -245,7 +245,7 @@ export const getConstant: (name: string, fetchImpl?: Fetch) => Promise<ConstantR
 export const getConstantPlan: (query: ConstantPlanRequest, fetchImpl?: Fetch) => Promise<PlanReply>;
 ```
 
-`ConstantPlanRequest` is the discriminated union `lib/undo.ts` takes, declared in `gui/src/api/types.ts` beside `UnitPlanRequest` and `TypePlanRequest`:
+`ConstantPlanRequest` is the discriminated union `lib/undo.ts` takes, declared in `gui/src/api/client.ts` beside `UnitPlanRequest` (`client.ts:138`) and `TypePlanRequest` (`client.ts:166`) - **not** in `api/types.ts`, which holds nothing hand-written, only the generated re-exports:
 
 ```ts
 export type ConstantPlanRequest =
@@ -2367,14 +2367,19 @@ git commit -m "$(printf "a constant's panel, and the four changes it makes\n\nIt
 
 - [ ] **Step 1: Make a dimension a way in**
 
-`DimensionsField` draws a declaration's `dimensions`. An entry that is a literal number stays text.
-An entry that is a name becomes a link to the Shared files tab, carrying `kind=constant` and that
-name — and the tab decides what to show, so the same link serves a constant that is declared and one
-that is not. That is the second entry point this part adds and it needs no knowledge of which
-constants exist: `isDeclared` already answers that on the other side.
+**Not `DimensionsField`** — that is the add-a-declaration form's `ComboBox` editor, not a display, and
+an earlier draft of this plan named it wrongly. `dimensions` is one of a variable's own keys
+(`src/ddd/variable_keys.py:35`), so it is already a row of `gui/src/components/VariableKeysTable.tsx`.
 
-This mirrors part 6's *fixed by the type* link, which made a variable's greyed row a way in to the
-type fixing it. Read that link's markup in `VariablePanelView.tsx` and follow it.
+That file is also where part 6 put its own way in: it takes `onOpenType: (name: string) => void`
+(`:14`) and calls it from a type's value at `:92`, wired from `gui/src/app/App.tsx:156` and `:216`.
+Mirror it with an `onOpenConstant`, wired the same way, called from the `dimensions` row.
+
+An entry that is a literal number stays text; an entry that is a name becomes a link to the Shared
+files tab carrying `kind=constant` and that name. The tab decides what to show, so one link serves a
+constant that is declared and one that is not — `isDeclared` answers that on the other side, and this
+end needs to know nothing about which constants exist. Where the row renders its entries joined into
+one string, they have to be split so each name is its own link.
 
 - [ ] **Step 2: Write the journey**
 

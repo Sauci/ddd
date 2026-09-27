@@ -36,7 +36,7 @@ from ddd.editing import (
     removal,
     replacement,
 )
-from ddd.loading import expand_include, resolve_path
+from ddd.loading import included_files, resolve_path
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document, read
 from ddd.pointers import parent_pointer
@@ -108,7 +108,7 @@ def unit_project(project: Path, unread: Sequence[Path], cache: dict[Path, Docume
     listed = read(path, cache).value_at("project.includes")
     found: list[Path] = []
     for entry in listed if isinstance(listed, list) else ():
-        for file in _included(path, entry):
+        for file in included_files(path, entry):
             document = read(file, cache).data
             if file not in found and isinstance(document, dict) and "units" in document:
                 found.append(file)
@@ -324,17 +324,6 @@ def _taken_out(
     for entry in sorted(entries, key=lambda entry: (entry.path.as_posix(), -_position(entry))):
         operations.setdefault(entry.path, []).append(Operation("remove", entry.pointer))
     return operations
-
-
-def _included(project: Path, entry: Any) -> list[Path]:
-    """The files one ``includes`` entry names, or none for an entry the loader cannot expand -
-    one that is not a string, or a pattern pathlib refuses - which it has reported already."""
-    if not isinstance(entry, str):
-        return []
-    try:
-        return expand_include(project, entry, {project})
-    except (OSError, ValueError, NotImplementedError):
-        return []
 
 
 def _position(entry: Site) -> int:

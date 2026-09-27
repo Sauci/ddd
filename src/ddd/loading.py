@@ -1385,6 +1385,23 @@ def expand_include(
     )
 
 
+def included_files(source: Path, entry: Any) -> list[Path]:
+    """The files one ``includes`` entry names, or none for an entry the loader cannot expand -
+    one that is not a string, or a pattern pathlib refuses - which the run has reported already.
+
+    Beside :func:`expand_include` and public for the same reason it is: two clients that ask
+    which files a project includes - the unit plans, and the constants a shared files tab adds
+    to - must not come to a different answer than the run that checks the project, and each
+    swallowing the three exceptions its own way is how they would drift apart.
+    """
+    if not isinstance(entry, str):
+        return []
+    try:
+        return expand_include(source, entry, {source})
+    except (OSError, ValueError, NotImplementedError):
+        return []
+
+
 def _pattern_anchor[Directory: PurePath](directory: Directory, pattern: PurePath) -> Directory:
     """Where a wildcard include starts walking: its own anchor, joined onto the project's.
 

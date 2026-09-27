@@ -111,6 +111,17 @@ export function ConstantPanel({
   // Named before the plans that ask for them, so that applying one can say what it was: the
   // label an undo of this edit will offer comes from the same request the preview was made
   // from, rather than from a second reading of the panel's state.
+  //
+  // `Record<ConstantAction, …>` is what keeps `requests[action]` typed at the call sites below
+  // and forces an entry for every action; the `satisfies` clause beside it is what ties each
+  // entry to its own key, as `App.tsx`'s `BARE_ROUTES` ties each route to the view naming it.
+  // `Record` alone accepts `describe`'s request under `value` just as readily: swapping those two
+  // entries compiles, lints and leaves all 436 vitest tests green - measured - because nothing in
+  // this repo executes a `.tsx` file under the gate, and the panel then applies a description
+  // change when the Value field is saved and labels the undo "the description of X". The two
+  // `set` arms are the ones that can swap silently, `ConstantAction` not being 1:1 with the
+  // request's own `action`: both are `set`, told apart by `key` alone, which is why it is the
+  // `key` literal each of them is pinned to here.
   const requests: Record<ConstantAction, ConstantPlanRequest | null> = {
     value: draftValue === null ? null : { action: "set", name, key: "value", raw: draftValue },
     describe:
@@ -124,6 +135,11 @@ export function ConstantPanel({
     // reads `reply.uses.length` itself to say why in words instead, so the reader is never left
     // looking at a control - or a gap where one might have been - with no explanation either way.
     remove: entry !== undefined && entry.uses.length === 0 ? { action: "remove", name } : null,
+  } satisfies {
+    value: (Extract<ConstantPlanRequest, { action: "set" }> & { key: "value" }) | null;
+    describe: (Extract<ConstantPlanRequest, { action: "set" }> & { key: "description" }) | null;
+    rename: Extract<ConstantPlanRequest, { action: "rename" }> | null;
+    remove: Extract<ConstantPlanRequest, { action: "remove" }> | null;
   };
   const plans = {
     value: useConstantPlan(requests.value, revision, true),

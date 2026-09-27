@@ -361,6 +361,20 @@ The commands
        are drawn here as a
        table, exactly what ``ddd compare --renames`` would write to a file, and are not
        written from this tab.
+       A Shared files tab lists every constant the project declares, from a constants file
+       or a component's own list, with its value and what names it; its value and its
+       description are changed there, and renaming one rewrites every shape naming it in one
+       edit. One is declared there too, writing ``constants.ddd.json`` beside the project
+       description and adding it to ``includes`` where the project has none - refused instead
+       of written while a file the project includes could not be read at all, since one of
+       those may be the constants file the new one would be a second of. Removing one is
+       refused while any shape still names it, and while it is all its own list declares: a
+       list of constants declares at least one, in a constants file and in a component alike,
+       so an emptied list is a file that no longer loads. A value no shape can use is
+       reported there by
+       ``dimension-value`` rather than refused: the interface does not invent a rule the
+       format itself does not have. A finding naming a constant leads to the tab, a name no
+       file declares landing on the form that declares it.
        What the page reads and writes is bounded by the directory ``ddd gui`` was started in,
        and by the project's own where a project elsewhere was named on the command line. A file
        the project includes from outside those is read by ``ddd check`` like any other and named

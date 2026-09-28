@@ -216,11 +216,13 @@ class Use:
     section is named only by a definition, so this third word arrives with rasters."""
 
     name: str
-    """The variable's name, or ``Sample_t.history`` for a structure member."""
+    """The variable's name, ``Sample_t.history`` for a structure member, or - for a component's
+    own default raster, which names no variable - the component's own name again."""
 
     component: str | None
-    """The component declaring the variable; ``None`` for a member, whose structure may be
-    declared in a types file no component owns, and which ``name`` locates instead."""
+    """The component declaring the variable, or naming a raster as its own default; ``None`` for
+    a member, whose structure may be declared in a types file no component owns, and which
+    ``name`` locates instead."""
 
 
 def located_on(
@@ -470,15 +472,17 @@ first of the two shapes a raster may be named at."""
 
 _RASTER_DEFINITION_SHAPE: Final = re.compile(r"^(component\.interface\[\d+\]\.definition)\.raster$")
 """A definition's own raster, and the definition it belongs to, whose ``name`` names the variable
-placed on it - the second of the two shapes, read exactly as ``_PLACEMENT_SHAPE`` reads a
+sampled on it - the second of the two shapes, read exactly as ``_PLACEMENT_SHAPE`` reads a
 section's one."""
 
 
 def _raster_uses(built: Index, name: str, cache: dict[Path, Document]) -> tuple[Use, ...]:
     """Every component naming this raster as its own default, and every definition naming it
-    directly, in the order the index recorded them - the component's own first, as
-    :func:`ddd.lsp.navigation.index` writes it. This is what a raster's own :attr:`Vocabulary.uses`
-    will read through, once a rasters part binds one.
+    directly, in the order the index recorded them: per component, its own default ahead of its
+    own definitions', as :func:`ddd.lsp.navigation.index` writes it - two components interleave
+    rather than group by kind, one's default and definitions together before the next one's. This
+    is what a raster's own :attr:`Vocabulary.uses` will read through, once a rasters part binds
+    one.
 
     The one vocabulary :attr:`Use.kind` was widened for: a component's own default is a use
     inside no definition at all, so unlike :func:`_section_uses` this cannot say every use is the

@@ -201,6 +201,17 @@ TIMED = {
     "a.ddd.json": component("A", declare("output", "X", raster="10ms"), raster="10ms"),
 }
 
+# Two components each declaring a variable called `X`, each naming `10ms` on its own definition
+# rather than as a component-wide default - the raster's own version of `_TWO_DECLARATIONS` above,
+# needed for the identical reason: `declarations_of(built, "X", cache)` returns one `Declared` per
+# component under the one name, and the first found would swallow the second unless `_raster_uses`
+# matches each use back to its own site rather than taking whichever declaration comes first.
+TWO_RASTER_DECLARATIONS = {
+    "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
+    "a.ddd.json": component("A", declare("output", "X", raster="10ms")),
+    "b.ddd.json": component("B", declare("input", "X", raster="10ms")),
+}
+
 
 class TestTheRows:
     def test_every_constant_of_both_homes_is_a_row(self, tmp_path: Path) -> None:
@@ -715,6 +726,44 @@ class TestSections:
         cache: dict[Path, Document] = {}
         assert uses_of(SECTIONS, built, ".calib", cache) == ()
 
+    def test_a_definition_whose_name_has_drifted_to_something_unhashable_is_no_use(
+        self, tmp_path: Path
+    ) -> None:
+        """The drop test above tests nothing about the `isinstance` guard it sits beside: with the
+        key merely missing, `variable` is `None`, and `declarations_of`'s own
+        `built.declarations.get(None, ())` (`variables.py`) already answers `()` with no help from
+        the guard - so it passes whether or not the guard is there. A json array is what the guard
+        actually stops: unlike `None`, a `list` is unhashable, and
+        `built.declarations.get([], ())` raises `TypeError` where only the guard's `continue`
+        catches it first - part 14's own hole, pinned here alongside the drop test it sits beside
+        rather than left for a later reviewer to re-find."""
+        built, _ = built_of(tmp_path, **PLACED)
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": {
+                    "component": {
+                        "name": "A",
+                        "interface": [
+                            {
+                                "scope": "output",
+                                "definition": {
+                                    "name": [],
+                                    "kind": "measurement",
+                                    "datatype": "uint8",
+                                    "conversion": {"kind": "identity"},
+                                    "volatile": False,
+                                    "section": ".calib",
+                                },
+                            }
+                        ],
+                    }
+                }
+            },
+        )
+        cache: dict[Path, Document] = {}
+        assert uses_of(SECTIONS, built, ".calib", cache) == ()
+
     def test_a_definition_renamed_since_is_no_use(self, tmp_path: Path) -> None:
         """A different drift than the definition losing its name above: a name is still written
         there, and it belongs to nobody the index ever declared - so `declarations_of` is asked
@@ -747,12 +796,17 @@ class TestRasters:
             ("variable", "X", "A"),
         ]
 
-    def test_a_definition_that_has_lost_its_name_is_no_use(self, tmp_path: Path) -> None:
-        """The drift `_section_uses` guards against, mirrored for the definition arm: the index
-        recorded where the analysis read it, the file has changed since, and a definition with no
-        `name` left at that pointer names no variable. The component's own default is read fresh
-        from the same document rather than carried from the index, so it is untouched and stays a
-        use."""
+    def test_a_definition_whose_name_has_drifted_to_something_unhashable_is_no_use(
+        self, tmp_path: Path
+    ) -> None:
+        """Not the drift a dropped `name` would show: with the key merely missing, `variable` is
+        `None`, and `declarations_of`'s own `built.declarations.get(None, ())` (`variables.py`)
+        already answers `()` with no help from the `isinstance` guard - so a fixture that only
+        drops the key passes whether or not the guard is there, and defends nothing. A json array
+        is what the guard actually stops: unlike `None`, a `list` is unhashable, and
+        `built.declarations.get([], ())` raises `TypeError` where only the guard's `continue`
+        catches it first. The component's own default is read fresh from the same document rather
+        than carried from the index, so it is untouched and stays a use."""
         built, _ = built_of(tmp_path, **TIMED)
         write_tree(
             tmp_path,
@@ -765,6 +819,7 @@ class TestRasters:
                             {
                                 "scope": "output",
                                 "definition": {
+                                    "name": [],
                                     "kind": "measurement",
                                     "datatype": "uint8",
                                     "conversion": {"kind": "identity"},
@@ -780,6 +835,36 @@ class TestRasters:
         cache: dict[Path, Document] = {}
         used = _raster_uses(built, "10ms", cache)
         assert [(use.kind, use.name, use.component) for use in used] == [("component", "A", "A")]
+
+    def test_a_component_that_has_dropped_its_own_name_is_named_by_its_file(
+        self, tmp_path: Path
+    ) -> None:
+        """`component_of`'s own fallback, unpinned until now: every other test in this class
+        states a `component.name`, so a bare `value_at("component.name")` in its place would
+        answer exactly the same `"A"` they all expect and none of them would notice the swap. Drop
+        the component's own `name` here instead - correct code still names the use, by the file,
+        `component_of`'s documented fallback; the bare read would answer `None` for both
+        `Use.name` and `Use.component`."""
+        built, _ = built_of(tmp_path, **TIMED)
+        write_tree(tmp_path, {"a.ddd.json": {"component": {"raster": "10ms", "interface": []}}})
+        cache: dict[Path, Document] = {}
+        used = _raster_uses(built, "10ms", cache)
+        assert [(use.kind, use.name, use.component) for use in used] == [("component", "a", "a")]
+
+    def test_two_declarations_of_one_variable_keep_their_own_components(
+        self, tmp_path: Path
+    ) -> None:
+        """The raster's own version of `TestOneConstantsPanel`'s identical test: two components
+        may each declare a variable of the same name, each naming `10ms` on its own definition.
+        Keyed by name alone, `declarations_of` returns both, and the first found would swallow the
+        second - this pins the site filter that tells them apart."""
+        built, _ = built_of(tmp_path, **TWO_RASTER_DECLARATIONS)
+        cache: dict[Path, Document] = {}
+        used = _raster_uses(built, "10ms", cache)
+        assert [(use.kind, use.name, use.component) for use in used] == [
+            ("variable", "X", "A"),
+            ("variable", "X", "B"),
+        ]
 
     def test_a_definition_renamed_since_is_no_use(self, tmp_path: Path) -> None:
         """A different drift than the definition losing its name above, mirrored from

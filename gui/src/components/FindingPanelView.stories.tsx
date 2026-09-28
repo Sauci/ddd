@@ -10,6 +10,7 @@ import {
   MISSING_ID,
   PROJECT_FINDINGS,
   STORAGE_MISMATCH,
+  UNKNOWN_RASTER,
   UNKNOWN_RPM_FINDING,
 } from "../stories/fixtures";
 import { FindingPanelView } from "./FindingPanelView";
@@ -64,6 +65,18 @@ function View({
 export const LeadsToAVariable = () => <View finding={STORAGE_MISMATCH} state={PROJECT_FINDINGS} />;
 
 export const LeadsToAUnit = () => <View finding={UNKNOWN_RPM_FINDING} state={PROJECT_FINDINGS} />;
+
+/** A finding filed on a component that leads away from it: `unknown-raster` sits at
+ * `component.raster`, so the file it was filed in is UserInterface's, and the thing to go and fix
+ * is the raster it names. The button therefore reads "Open 20ms" and not "Open UserInterface".
+ *
+ * This story is the only photograph in the interface of a finding leading to a raster, and it
+ * exists because the fixture behind it was wrong: UNKNOWN_RASTER carried a component route until
+ * this part's last task, which `RASTER_CHECKS` had already stopped the server from answering. With
+ * no story rendering it, `routeLabel` and `routeHref` changed under the fix and not one reference
+ * image moved - the table draws no route at all, and every other panel story names a different
+ * finding. A fixture no photograph looks at is a fixture nothing checks. */
+export const LeadsToARaster = () => <View finding={UNKNOWN_RASTER} state={PROJECT_FINDINGS} />;
 
 export const LeadsNowhere = () => <View finding={DID_NOT_LOAD} state={PROJECT_FINDINGS} />;
 

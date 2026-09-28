@@ -1,13 +1,18 @@
 import { describe, expect, test } from "vitest";
-import type { PlanReply, SharedEntry, SharedReply } from "../api/types";
+import type { PlanReply, RasterUse, SharedEntry, SharedReply } from "../api/types";
 import {
   addTitle,
   constantAdd,
   isDeclared,
   kindNamed,
   planEdit,
+  rasterAdd,
   rasterRaw,
+  rasterRemovable,
+  rasterRemoveBlocked,
   rasterSet,
+  rasterUseRoute,
+  rasterUseWhat,
   rowKey,
   SECTION_ACCESSES,
   SHARED_KINDS,
@@ -30,6 +35,18 @@ const reply = (names: string[]): SharedReply => ({
     uses: 0,
     findings: 0,
   })),
+});
+
+const PUMP_FILE = "C:/w/pump.ddd.json";
+
+/** One shape naming a raster, of whichever of the two kinds `RasterUse.kind` spells: the pointer
+ * is the one the kind implies, so a use built here is one the server could really answer. */
+const use = (kind: RasterUse["kind"], name: string, component: string | null): RasterUse => ({
+  path: PUMP_FILE,
+  pointer: kind === "component" ? "component.raster" : "component.interface[0].definition.raster",
+  kind,
+  name,
+  component,
 });
 
 /** A constant and a section both called FOO - a table of the one shape a row keyed by name alone
@@ -250,6 +267,86 @@ describe("the json text a raster's key travels as", () => {
       name: "10ms",
       key: "description",
       raw: '"the 10 ms control task"',
+    });
+  });
+});
+
+describe("declaring a raster", () => {
+  test("asks for nothing until both a name and an event are typed", () => {
+    expect(rasterAdd("", "3")).toBeNull();
+    expect(rasterAdd("20ms", "")).toBeNull();
+  });
+
+  test("a field holding only spaces is a field not filled in, each on its own", () => {
+    expect(rasterAdd(" ", "3")).toBeNull();
+    expect(rasterAdd("20ms", " ")).toBeNull();
+  });
+
+  test("carries its one required key as json text, the event bare", () => {
+    // The trap this pins, a section's own `add` case the other way round: `event` is judged as
+    // json and is the one key `add` requires, so an event sent in quotes declares a string where
+    // the model wants a whole number, and the file it writes would no longer load.
+    expect(rasterAdd("20ms", "3")).toEqual({ action: "add", name: "20ms", event: "3" });
+  });
+});
+
+describe("whether a raster may be removed at all", () => {
+  test("only while nothing names it", () => {
+    expect(rasterRemovable([])).toBe(true);
+    expect(rasterRemovable([use("variable", "PumpSpeed", "Pump")])).toBe(false);
+  });
+
+  test("a component's own default blocks it exactly as a definition does", () => {
+    // The case that makes this a function rather than a `uses.length === 0` in each of the two
+    // `.tsx` files that need it: a raster named only by a component default is named all the
+    // same, and a panel counting definitions alone would offer a Remove the api refuses.
+    expect(rasterRemovable([use("component", "Pump", "Pump")])).toBe(false);
+  });
+});
+
+describe("why a raster cannot be removed", () => {
+  test("counts the shapes naming it", () => {
+    expect(rasterRemoveBlocked("10ms", 2)).toBe("2 shapes name 10ms, so it cannot be removed.");
+  });
+
+  test("says one of them in the singular, verb and all", () => {
+    // Two plurals in one sentence, as a section's own case pins: `toBe` on the whole line is
+    // what catches a mutation that only pluralises the noun.
+    expect(rasterRemoveBlocked("1ms", 1)).toBe("1 shape names 1ms, so it cannot be removed.");
+  });
+});
+
+describe("what a raster's use is, and where its row leads", () => {
+  test("a definition names the component declaring it", () => {
+    expect(rasterUseWhat(use("variable", "PumpSpeed", "Pump"))).toBe("a definition of Pump");
+  });
+
+  test("a component's own default says what it covers, not whose - its row already names it", () => {
+    expect(rasterUseWhat(use("component", "Pump", "Pump"))).toBe("everything it produces");
+  });
+
+  test("a definition whose component the reply left out is still told apart from a default", () => {
+    // `RasterUse.component` is optional on the wire and never absent in an answer about a
+    // raster, so this is the shape the type admits rather than one the server sends. What it
+    // must not do is read as a component's default: the two are the reason `kind` has two words.
+    expect(rasterUseWhat(use("variable", "PumpSpeed", null))).toBe("a definition");
+  });
+
+  test("a definition leads to its variable, on its component's page", () => {
+    expect(rasterUseRoute(use("variable", "PumpSpeed", "Pump"))).toEqual({
+      page: "component",
+      file: PUMP_FILE,
+      variable: "PumpSpeed",
+    });
+  });
+
+  test("a component's default leads to the component's page and names no variable", () => {
+    // There is no variable between a component and its default to open: `RasterUse.name` is the
+    // component's own name there, and a route carrying it as `variable` would open a panel for a
+    // variable no file declares.
+    expect(rasterUseRoute(use("component", "Pump", "Pump"))).toEqual({
+      page: "component",
+      file: PUMP_FILE,
     });
   });
 });

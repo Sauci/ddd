@@ -1,5 +1,5 @@
 import type { ConstantPlanRequest, RasterPlanRequest, SectionPlanRequest } from "../api/client";
-import type { Changes, PlanReply, SharedEntry, SharedReply } from "../api/types";
+import type { Changes, PlanReply, RasterUse, SharedEntry, SharedReply } from "../api/types";
 import type { SectionAccess } from "../generated/sections";
 import { planEdit as editOfPlan } from "./projectUnits";
 import type { Route } from "./route";
@@ -62,9 +62,10 @@ export const SECTION_ACCESSES = valuesOf<SectionAccess>({
  *
  * All three of the tab's kinds pluralise with a plain `s`. `vocabularyOf` takes a bare `string`,
  * not a `SharedKind`, so it pluralises whatever kind it is handed regardless of whether the page
- * can route to it or open a panel for it yet - which is what lets a kind's row read correctly in
- * the table before either does. A fourth vocabulary that does not pluralise that way would need
- * its own answer here. */
+ * can route to it or open a panel for it - which is what lets a kind's row read correctly in the
+ * table while either is still being built. All three vocabularies have both now, so nothing today
+ * relies on that; the bare parameter is kept for the fourth, which will be built the same way. A
+ * fourth vocabulary that does not pluralise with a plain `s` would need its own answer here. */
 export function vocabularyOf(kind: string): string {
   return `${kind}s`;
 }
@@ -131,7 +132,10 @@ export interface SharedSelection {
  * name, which together are unique where the name alone is not.
  *
  * Takes the kind as it comes off the wire rather than as a `SharedKind`, because every row needs a
- * key of its own, a raster's among them, and the tab lists rows of kinds it has no panel for.
+ * key of its own whether or not the page can do anything with the row once it is clicked. Every
+ * kind the tab lists has a panel now, a raster's included, so nothing exercises that today; it is
+ * `SharedEntry.kind` being a plain string on the wire that this follows, and a fourth vocabulary's
+ * rows would be keyed correctly here before its panel existed, exactly as a raster's were.
  *
  * A space joins the two, being a character neither half can hold: a kind is one of the server's
  * own vocabulary words and a name is a c identifier or a linker section name. `selectionAt` splits
@@ -263,6 +267,88 @@ export function sectionAdd(
 export function sectionRemoveBlocked(name: string, uses: number): string {
   const definitions = uses === 1 ? "1 definition places" : `${uses} definitions place`;
   return `${definitions} data in ${name}, so it cannot be removed.`;
+}
+
+/** The declaration a raster's add form comes to, or `null` while a parameter `add` requires is
+ * still empty.
+ *
+ * One required parameter where a section has two and a constant one: `RASTERS.required` holds
+ * `event` alone, the model defaulting `cycle` and `description` both - and an event that is not
+ * cyclic is a real kind of raster rather than an omission, so a form asking for a cycle would be
+ * asking for something the reader may have nothing to put in.
+ *
+ * The event goes through `rasterRaw` rather than straight from the field, as a section's access
+ * and alignment do through `sectionRaw`: `add` carries json text, and the one place that decides
+ * which of a raster's keys wear quotes is that function. It answers `event` unquoted today, and
+ * would keep answering correctly if the model ever made the key a string. */
+export function rasterAdd(name: string, event: string): RasterPlanRequest | null {
+  if (name.trim() === "" || event.trim() === "") return null;
+  return { action: "add", name, event: rasterRaw("event", event) };
+}
+
+/** Whether a raster's Remove may be offered at all: only while nothing names it.
+ *
+ * A function rather than a `uses.length === 0` written into each of the two `.tsx` files that
+ * need it - `RasterPanelView`, which draws the control or the sentence below instead, and
+ * `RasterPanel`, which asks for the plan or does not. A section's own rule is spelled twice that
+ * way, and neither spelling is executed by any gate in this repo; here one fact has one home and
+ * a test can hold it to account.
+ *
+ * Takes the uses rather than a count, so that a caller cannot pass the wrong number: the two that
+ * matter are `reply.uses.length === 0` and nothing else, and a raster is named by a component's
+ * own default as readily as by a definition - `remove_entry` refuses on either, and a panel
+ * counting definitions alone would draw a Remove that refuses the moment it is pressed. */
+export function rasterRemovable(uses: readonly RasterUse[]): boolean {
+  return uses.length === 0;
+}
+
+/** What stands where a raster's Remove would be while a shape still names it: the count that
+ * would make the api refuse, read off the reply already on screen - `sectionRemoveBlocked`'s own
+ * sentence over a raster's uses.
+ *
+ * "shape" and not "definition", which is the whole difference between this and a section's: a
+ * raster is named by a component's own default as well as by a definition, so a sentence counting
+ * definitions would under-report a project whose only use is a default. It is the server's own
+ * word for the pair, too - `ddd.shared_plans.remove_entry` refuses with "is named by N shapes". */
+export function rasterRemoveBlocked(name: string, uses: number): string {
+  const shapes = uses === 1 ? "1 shape names" : `${uses} shapes name`;
+  return `${shapes} ${name}, so it cannot be removed.`;
+}
+
+/** What one use is, for the What column of a raster's panel: which of the two shapes
+ * `RasterUse.kind` spells, in words rather than in the wire's own vocabulary.
+ *
+ * The column a section's panel fills with the component's name alone, because a section has one
+ * shape naming it and the component is the only thing left to say. A raster has two, and a panel
+ * that did not say which is which would list a component's default as though it were a definition
+ * - the silent omission `RasterUse.kind` exists to prevent.
+ *
+ * A component's default says what it covers rather than whose it is: `RasterUse.name` is the
+ * component's own name there, already in the row's first cell, so naming it again would be the
+ * one cell that repeats its neighbour. A definition names its component, which is the fact its
+ * own first cell does not carry.
+ *
+ * `component` is `string | null` on the wire and never null in an answer about a raster
+ * (`RasterUse.component`'s own doc: a definition whose file has dropped the variable is left out
+ * of `uses` altogether, and a component's default falls back to its file's name). The shape the
+ * type admits is still answered, and answered as a definition: what it must never read as is a
+ * default. */
+export function rasterUseWhat(use: RasterUse): string {
+  if (use.kind === "component") return "everything it produces";
+  return use.component === null ? "a definition" : `a definition of ${use.component}`;
+}
+
+/** Where a use's row leads: the variable measured in the raster, on its component's page, or that
+ * component's own page where the component names the raster for everything it produces.
+ *
+ * Two shapes where a section's own `routeOfUse` has one, for the reason `RasterUse.kind` has two
+ * words: a component's default sits inside no definition, so there is no variable to open. A
+ * route carrying `RasterUse.name` as its `variable` would ask the component's page for a variable
+ * of the component's own name, which no file declares. */
+export function rasterUseRoute(use: RasterUse): Route {
+  return use.kind === "component"
+    ? { page: "component", file: use.path }
+    : { page: "component", file: use.path, variable: use.name };
 }
 
 /** A preview's changes as `POST /api/edit` takes them, under the label an undo of it offers.

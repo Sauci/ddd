@@ -101,7 +101,7 @@ export function App() {
     [navigate],
   );
   // Selecting a shared entry replaces the address, as selecting a type does. The address carries
-  // the vocabulary beside the name, because the tab holds two and a name alone cannot say which
+  // the vocabulary beside the name, because the tab holds three and a name alone cannot say which
   // one a reader picked; what it does not carry is whether that entry is declared. `SharedPage`
   // decides that itself, from `isDeclared` (design §2, "one route kind, and the page decides"),
   // so one address shape serves both the entry's own panel and the add form pre-filled with a

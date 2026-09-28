@@ -132,16 +132,36 @@ class Vocabulary:
     interface never restates a rule: a constant's value is judged by ``ConstantValue``, a section's
     alignment by its own field's power-of-two rule."""
 
-    name_judge: Callable[[Index, str], str | None]
-    """What decides whether a name may be used: the index and the wanted name in, the sentence
-    refusing it or ``None`` out. Not a model of the string, because the answer depends on what the
-    project already holds. A constant's is ``rename_problem``, whose c identifier rule and
-    ``occupied`` check fit a constant and neither of the others: a section's name is a linker string
-    and a raster's an a2l short name, and neither joins the namespace ``occupied`` guards."""
+    taken: Mapping[str, Callable[[Index, str | None, str, dict[Path, Document]], str | None]]
+    """Per key whose value is the project's alone, what refuses a value another entry claims.
+
+    The index, the entry whose key is being set - ``None`` where there is no entry yet, as an
+    ``add`` has none - the wanted value, and the document cache; the sentence refusing it, or
+    ``None``.
+
+    A map rather than the single ``name_judge`` it replaces, because a raster has **two** such
+    keys: its name and its ``event``. :func:`~ddd.shared_plans._judged` takes no :class:`Index`,
+    so a key's own judge can ask whether a value is legal and never whether it is taken.
+
+    The entry is given because an event needs it: a panel asks for a plan on every keystroke, so a
+    reader re-typing the event their raster already claims must not be told it is taken by
+    themselves. A name judge ignores it, which preserves what part 14 settled - a rename of a name
+    to itself is refused, and says nothing about a reader's real mistake either way.
+
+    The cache is given because :attr:`Index.rasters` maps a name to a :class:`Site` and **not** to
+    its event: asking which raster claims one means reading each entry's own text, as
+    :func:`text_of` does and takes a cache for. A name judge ignores this too - a name is in the
+    index - so both name judges carry two arguments they do not read. That is the price of one map
+    over two fields, and it is paid once.
+
+    A constant's judge is ``rename_problem``, whose c identifier rule and ``occupied`` check fit a
+    constant and neither of the others: a section's name is a linker string and a raster's an a2l
+    short name, and neither joins the namespace ``occupied`` guards.
+    """
 
     def __post_init__(self) -> None:
-        """Four checks tying ``keys``, ``required``, ``judge``, ``name_key`` and ``containers``
-        together, so a
+        """Five checks tying ``keys``, ``required``, ``judge``, ``name_key``, ``taken`` and
+        ``containers`` together, so a
         descriptor that drops a key from one of these tables fails at construction rather than the
         first time a reader reaches the one that fell out of step.
 
@@ -168,6 +188,13 @@ class Vocabulary:
             raise ValueError(msg)
         if "." in self.containers[0]:
             msg = f"{self.kind}: containers[0] '{self.containers[0]}' is not a bare top-level key"
+            raise ValueError(msg)
+        for key in sorted(self.taken):
+            if key == self.name_key:
+                continue
+            if key in self.keys:
+                continue
+            msg = f"{self.kind}: taken names '{key}', which is neither the name key nor settable"
             raise ValueError(msg)
 
 
@@ -553,12 +580,16 @@ array, an object. One adapter for both, because the two fields are the same fiel
 vocabulary whose description were constrained would bring its own."""
 
 
-def _constant_name_judge(built: Index, to: str) -> str | None:
-    """:data:`CONSTANTS`'s :attr:`~Vocabulary.name_judge`: ``rename_problem``, called exactly as
-    ``rename_entry`` and ``add_entry`` call it for a constant, so a constant's rename and its
-    declaration refuse a name in the same words they always have. Its c identifier rule and
+def _constant_name_judge(
+    built: Index, _entry: str | None, to: str, _cache: dict[Path, Document]
+) -> str | None:
+    """:data:`CONSTANTS`'s :attr:`~Vocabulary.taken` entry for its name: ``rename_problem``, called
+    exactly as ``rename_entry`` and ``add_entry`` call it for a constant, so a constant's rename and
+    its declaration refuse a name in the same words they always have. Its c identifier rule and
     ``occupied`` check fit a constant and neither of the other two: a section's name is a linker
-    string and a raster's an a2l short name."""
+    string and a raster's an a2l short name.
+
+    The entry and the cache go unread, for the reason :attr:`~Vocabulary.taken` gives."""
     return rename_problem(built, to, "constant")
 
 
@@ -581,7 +612,7 @@ CONSTANTS: Final = Vocabulary(
         ),
         "description": Judgement(_DESCRIPTION, "a json string"),
     },
-    name_judge=_constant_name_judge,
+    taken={"name": _constant_name_judge},
 )
 
 _ACCESS: Final[TypeAdapter[SectionAccess]] = TypeAdapter(SectionAccess)
@@ -626,12 +657,16 @@ A ``BeforeValidator`` wrapping the value into an entry rather than
 field has to be the thing doing the validating."""
 
 
-def _section_name_judge(built: Index, to: str) -> str | None:
-    """:data:`SECTIONS`'s :attr:`~Vocabulary.name_judge`: ``rename_problem``'s own section arm,
-    asked exactly as :func:`_constant_name_judge` asks for a constant's, so that the tab and the
-    editor's F2 refuse a section's name in the same words. The rule lives there rather than here
-    because :mod:`ddd.lsp.navigation` cannot import this module - :class:`Index` is its own - and
-    writing it twice is the defect one entry point exists to avoid."""
+def _section_name_judge(
+    built: Index, _entry: str | None, to: str, _cache: dict[Path, Document]
+) -> str | None:
+    """:data:`SECTIONS`'s :attr:`~Vocabulary.taken` entry for its name: ``rename_problem``'s own
+    section arm, asked exactly as :func:`_constant_name_judge` asks for a constant's, so that the
+    tab and the editor's F2 refuse a section's name in the same words. The rule lives there rather
+    than here because :mod:`ddd.lsp.navigation` cannot import this module - :class:`Index` is its
+    own - and writing it twice is the defect one entry point exists to avoid.
+
+    The entry and the cache go unread, for the reason :attr:`~Vocabulary.taken` gives."""
     return rename_problem(built, to, SECTION)
 
 
@@ -655,7 +690,7 @@ SECTIONS: Final = Vocabulary(
         ),
         "description": Judgement(_DESCRIPTION, "a json string"),
     },
-    name_judge=_section_name_judge,
+    taken={"section": _section_name_judge},
 )
 
 HELD: Final = (CONSTANTS, SECTIONS)

@@ -900,3 +900,35 @@ class TestRasters:
         built, _ = built_of(tmp_path, **TIMED)
         cache: dict[Path, Document] = {}
         assert _raster_uses(built, "20ms", cache) == ()
+
+
+class TestTakenReplacesTheNameJudge:
+    def test_a_name_is_judged_through_the_map_it_now_lives_in(self, tmp_path: Path) -> None:
+        """One judge, reached where it now lives and keyed by the vocabulary's own `name_key`: a
+        name the project already holds is refused and a fresh one is not, in the words
+        `rename_problem` has always answered in. The entry and the cache are handed over because
+        the signature takes them and a name judge reads neither - a name is in the index."""
+        built, _ = built_of(tmp_path, **TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        judge = CONSTANTS.taken[CONSTANTS.name_key]
+        assert judge(built, None, "TREND_SAMPLES", cache) is not None
+        assert judge(built, None, "FRESH", cache) is None
+
+    def test_a_taken_key_that_is_neither_the_name_nor_settable_is_refused(self) -> None:
+        """The fifth invariant. A third descriptor is written by hand, and a `taken` naming a key
+        the vocabulary does not have would judge nothing while reading as though it did. The judge
+        is taken from the map it is already in rather than imported: which function sits under the
+        key is beside the point, and the key is the whole of it."""
+        with pytest.raises(ValueError, match="taken"):
+            dataclasses.replace(SECTIONS, taken={"nowhere": SECTIONS.taken["section"]})
+
+    def test_a_taken_key_a_reader_may_also_set_is_accepted(self) -> None:
+        """The invariant's other arm, and the shape the rasters descriptor is written to have: an
+        `event` is both a key a reader sets and a value the project alone owns, so a settable key
+        in `taken` is legal where a key in neither table is not. Both shipped descriptors take
+        exactly their name key, so nothing else reaches this arm - and a check written without it
+        would refuse the descriptor it exists to allow while the test above passed unchanged."""
+        widened = dataclasses.replace(
+            SECTIONS, taken={**SECTIONS.taken, "access": SECTIONS.taken["section"]}
+        )
+        assert sorted(widened.taken) == ["access", "section"]

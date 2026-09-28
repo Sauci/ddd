@@ -206,7 +206,7 @@ def rename_entry(
 
     The editor's rename, asked for rather than reimplemented. :func:`ddd.lsp.navigation.
     rename_sites` knows the three places a shape is written and
-    :attr:`~ddd.project_shared.Vocabulary.name_judge` knows why a name may not be used - a
+    :attr:`~ddd.project_shared.Vocabulary.taken` knows why a name may not be used - a
     constant's asks :func:`~ddd.lsp.navigation.rename_problem`, with ``Index.occupied`` already
     holding *the name of the declared constant* - so the tab and the editor cannot disagree about
     what a rename reaches or which names it refuses.
@@ -215,7 +215,7 @@ def rename_entry(
     name that turned out to be unusable would leave the project broken across all of them at once.
     """
     _entry(vocabulary, built, name)
-    problem = vocabulary.name_judge(built, to)
+    problem = vocabulary.taken[vocabulary.name_key](built, name, to, cache)
     if problem is not None:
         raise SharedRefusalError("invalid", problem)
     by_file: dict[Path, list[Operation]] = {}
@@ -256,7 +256,7 @@ def add_entry(
     to fall into. Only the creating arm is refused: where a file of the vocabulary did load, this
     knows both where the entry goes and what that file already declares.
     """
-    problem = vocabulary.name_judge(built, name)
+    problem = vocabulary.taken[vocabulary.name_key](built, None, name, cache)
     if problem is not None:
         raise SharedRefusalError("invalid", problem)
     if not project.files:

@@ -747,7 +747,7 @@ def rename_problem(built: Index, name: str, kind: str = "variable") -> str | Non
     them is about a c identifier, and a section's name is a linker string. Answered here rather
     than in :mod:`ddd.project_shared`, which is where the Shared files tab would otherwise have
     written the rule a second time: that module imports this one - :class:`Index` is this
-    module's - so the tab reaches this function through its descriptor's ``name_judge`` and the
+    module's - so the tab reaches this function through its descriptor's ``taken`` and the
     editor's F2 reaches it through :meth:`ddd.lsp.server.Server._rename`, and the two cannot come
     to different answers about a name.
 

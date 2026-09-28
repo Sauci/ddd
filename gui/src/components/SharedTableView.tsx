@@ -24,8 +24,8 @@ export interface SharedTableViewProps {
 }
 
 /** The Shared files tab's table (spec 5.1): a picture of its props. One table for every kind the
- * tab holds - constants today, sections and rasters later (design §2) - each entry's own `kind`
- * told apart in its own column rather than by a table per kind. */
+ * tab holds - constants and sections today, rasters the part still to come (design §2) - each
+ * entry's own `kind` told apart in its own column rather than by a table per kind. */
 export function SharedTableView({
   reply,
   selected,
@@ -118,8 +118,8 @@ function used(count: number): string {
  *
  * `Vocabulary` rather than `Kind`, which the Types tab already uses for a different fact - the
  * shape of a type, `scalar` or `external` or `struct`. One header meaning two things on adjacent
- * tabs is cheap to change now and expensive once sections and rasters have shipped and readers
- * have learned it.
+ * tabs was cheap to change then and would have been expensive once sections and rasters had
+ * shipped and readers had learned it.
  *
  * All three of this tab's kinds pluralise with a plain `s`, and the plural is the vocabulary's own
  * name - the same word the file kind uses. A fourth that does not would need its own answer here. */

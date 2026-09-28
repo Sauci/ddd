@@ -118,6 +118,17 @@ test("the shared files tab with a constant selected", () => {
   expect(hrefOf(route)).toBe("/project?view=shared&kind=constant&name=TREND_SAMPLES");
 });
 
+test("the shared files tab with a section selected", () => {
+  const route = {
+    page: "project",
+    view: "shared",
+    kind: "section",
+    name: ".calib",
+  } as const;
+  expect(parseRoute("/project", "?view=shared&kind=section&name=.calib")).toEqual(route);
+  expect(hrefOf(route)).toBe("/project?view=shared&kind=section&name=.calib");
+});
+
 test("a selection with no kind is the bare tab", () => {
   expect(parseRoute("/project", "?view=shared&name=TREND_SAMPLES")).toEqual({
     page: "project",
@@ -128,6 +139,14 @@ test("a selection with no kind is the bare tab", () => {
 test("a kind with no name is the bare tab too", () => {
   // `kind=constant` alone is as half-written an address as leaving `kind` out entirely.
   expect(parseRoute("/project", "?view=shared&kind=constant")).toEqual({
+    page: "project",
+    view: "shared",
+  });
+});
+
+test("a kind neither vocabulary spells is the bare tab too", () => {
+  // A raster's word does not exist yet, so it is as unrecognised as a typo would be.
+  expect(parseRoute("/project", "?view=shared&kind=raster&name=x")).toEqual({
     page: "project",
     view: "shared",
   });

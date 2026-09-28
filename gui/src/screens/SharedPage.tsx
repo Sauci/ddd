@@ -44,7 +44,7 @@ export function SharedPage({ state, name, onName, stopped, onOpen }: Props) {
   // Whether the add form is open with nothing pre-filled, because the reader pressed "Declare a
   // constant" rather than following a route that already names one.
   const [declaring, setDeclaring] = useState(false);
-  const missing = unreadable(state, "constants");
+  const missing = unreadable(state, ["constants"]);
 
   if (shared.data === undefined) {
     if (shared.isError) return <Banner tone="error">{shared.error.message}</Banner>;

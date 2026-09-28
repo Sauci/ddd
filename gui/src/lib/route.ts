@@ -8,7 +8,7 @@ export type Route =
   | { page: "project"; view: "units"; unit?: string }
   | { page: "project"; view: "types"; type?: string }
   | { page: "project"; view: "shared" }
-  | { page: "project"; view: "shared"; kind: "constant"; name: string }
+  | { page: "project"; view: "shared"; kind: "constant" | "section"; name: string }
   | { page: "project"; view: "findings" }
   | { page: "project"; view: "compare" }
   | { page: "component"; file: string; variable?: string }
@@ -38,19 +38,18 @@ export function parseRoute(pathname: string, search: string): Route {
         : { page: "project", view: "types", type };
     }
     if (view === "shared") {
-      // `kind` names which of the tab's vocabularies the selection is - only "constant" today -
-      // and a `kind` with no `name`, or no `kind` at all, is as bare an address as the tab
-      // itself: a half-written address is the tab, never a crash and never a guess at what it
-      // meant to select. One shape only: `isDeclared` on the tab's own side is what turns a name
-      // nothing declares into the add form, pre-filled - so the address that reaches it is the
-      // very same one a declared name's own panel opens from (design §2, "one route kind, and
-      // the page decides").
+      // `kind` names which of the tab's vocabularies the selection is - "constant" or "section"
+      // today, a raster's word to come - and a `kind` neither of those, a `kind` with no `name`,
+      // or no `kind` at all, is as bare an address as the tab itself: a half-written address is
+      // the tab, never a crash and never a guess at what it meant to select. One shape only:
+      // `isDeclared` on the tab's own side is what turns a name nothing declares into the add
+      // form, pre-filled - so the address that reaches it is the very same one a declared name's
+      // own panel opens from (design §2, "one route kind, and the page decides").
       const kind = query.get("kind");
-      if (kind !== "constant") return { page: "project", view: "shared" };
       const name = query.get("name") || undefined;
-      return name === undefined
-        ? { page: "project", view: "shared" }
-        : { page: "project", view: "shared", kind, name };
+      return (kind === "constant" || kind === "section") && name !== undefined
+        ? { page: "project", view: "shared", kind, name }
+        : { page: "project", view: "shared" };
     }
     if (view === "findings") return { page: "project", view: "findings" };
     if (view === "compare") return { page: "project", view: "compare" };

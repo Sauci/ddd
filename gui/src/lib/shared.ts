@@ -1,14 +1,22 @@
 import type { Changes, PlanReply, SharedEntry, SharedReply } from "../api/types";
 import { planEdit as editOfPlan } from "./projectUnits";
 
-/** The line above the table: what this tab holds, or that the project has nothing of the kind.
+/** The line above the table: one count per vocabulary that has entries, or that the project has
+ * nothing shared at all.
  *
- * A project with no constants is told so in words rather than shown a table with a zero in it:
- * the tab is where a constant is declared, and an empty table with a count above it reads as a
- * screen that failed to load. */
+ * A project with nothing shared is told so in words rather than shown a table with a zero in it:
+ * the tab is where a constant or a section is declared, and an empty table with a count above it
+ * reads as a screen that failed to load. Counted by `entry.kind` itself rather than a fixed list
+ * of the vocabularies known today: `SharedEntry.kind` is a plain string on the wire for exactly
+ * this reason (its own doc: "no generic function had to change when sections joined the tab"), so
+ * a third vocabulary's rows count themselves the moment they arrive, with nothing here to change. */
 export function tabTitle(entries: readonly SharedEntry[]): string {
-  if (entries.length === 0) return "This project declares no constants.";
-  return `${entries.length} constant${entries.length === 1 ? "" : "s"}`;
+  if (entries.length === 0) return "This project declares nothing in its shared files.";
+  const counts = new Map<string, number>();
+  for (const { kind } of entries) counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  return [...counts]
+    .map(([kind, count]) => `${count} ${kind}${count === 1 ? "" : "s"}`)
+    .join(" · ");
 }
 
 /** Whether the table holds that entry.

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { PlanReply, SharedReply } from "../api/types";
+import type { PlanReply, SharedEntry, SharedReply } from "../api/types";
 import { isDeclared, planEdit, tabTitle } from "./shared";
 
 const reply = (names: string[]): SharedReply => ({
@@ -13,17 +13,36 @@ const reply = (names: string[]): SharedReply => ({
   })),
 });
 
+/** A `SharedEntry` per kind word, named `N0`, `N1`, ... so a row is never mistaken for another of
+ * the same kind - `tabTitle` counts by `kind` alone, and the name only has to keep entries apart. */
+function entries(kinds: string[]): SharedEntry[] {
+  return kinds.map((kind, index) => ({
+    kind,
+    name: `N${index}`,
+    states: "x",
+    uses: 0,
+    findings: 0,
+  }));
+}
+
 describe("the tab's summary line", () => {
-  test("names how many constants the project declares", () => {
-    expect(tabTitle(reply(["A", "B"]).entries)).toBe("2 constants");
+  test("names each vocabulary that has entries", () => {
+    expect(tabTitle(entries(["constant", "constant", "section"]))).toBe("2 constants · 1 section");
   });
 
-  test("says one constant in the singular", () => {
-    expect(tabTitle(reply(["A"]).entries)).toBe("1 constant");
+  test("says one of a kind in the singular", () => {
+    // Part 13 shipped a plural no assertion could tell from the wrong one, because "1 shape" is a
+    // substring of "1 shapes". `toBe` on the whole line is what catches a mutation that always
+    // pluralises.
+    expect(tabTitle(entries(["constant"]))).toBe("1 constant");
   });
 
-  test("says a project with none declares none, rather than showing a zero", () => {
-    expect(tabTitle([])).toBe("This project declares no constants.");
+  test("names only the kinds that have any", () => {
+    expect(tabTitle(entries(["section", "section"]))).toBe("2 sections");
+  });
+
+  test("says a project with none declares none", () => {
+    expect(tabTitle([])).toBe("This project declares nothing in its shared files.");
   });
 });
 

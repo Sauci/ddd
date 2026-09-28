@@ -119,12 +119,14 @@ export function routeOf(finding: Finding): Route | null {
   if (route.kind === "type" && route.name !== null) {
     return { page: "project", view: "types", type: route.name };
   }
-  if (route.kind === "constant" && route.name !== null) {
+  if ((route.kind === "constant" || route.kind === "section") && route.name !== null) {
     // The one route kind, whether or not the name is declared (design §2 "the page decides"):
     // `SharedPage` asks `isDeclared` of its own table and opens the panel or the pre-filled add
-    // form accordingly, which is also what `unknown-constant` needs - the name it carries names
-    // nothing yet.
-    return { page: "project", view: "shared", kind: "constant", name: route.name };
+    // form accordingly, which is also what `unknown-constant` and `unknown-section` need - the
+    // name either carries names nothing yet. One tab for all three vocabularies is the design
+    // decision this rests on, so a raster joining it should widen this arm's condition, not add
+    // a third one beside it.
+    return { page: "project", view: "shared", kind: route.kind, name: route.name };
   }
   return { page: "component", file: finding.file };
 }
@@ -152,8 +154,8 @@ export function namesThisVariable(finding: Finding, name: string): boolean {
   return route !== null && route.page === "component" && route.variable === name;
 }
 
-/** The files a tab's table cannot show the contents of, by name: those of its own kind that did not
- * load, and those that did not load without saying what kind they are.
+/** The files a tab's table cannot show the contents of, by name: those of the tab's own kinds
+ * that did not load, and those that did not load without saying what kind they are.
  *
  * Two lists because the tab can only speak for the first. `ddd.gui.session._kind` reads a file's
  * kind off its own top-level key, so a file nobody could parse has none to read and the server
@@ -162,26 +164,34 @@ export function namesThisVariable(finding: Finding, name: string): boolean {
  * fails: an editor saving it half-written. The reader saw a table missing entries and nothing
  * saying why.
  *
+ * `kinds` rather than one: the Shared files tab holds two vocabularies in one table, each with its
+ * own file kind, and a failed sections file must be named beside a failed constants file rather
+ * than silently dropped because it was not the one kind the tab used to ask about (ruling R1).
+ *
  * Here rather than in each screen because a screen is a `.tsx` file, which no gate in this repo
  * executes - the filter that decides what a reader is told about a missing file belongs where its
  * tests can reach it. */
-export function unreadable(state: State | null, kind: string): { own: string[]; untold: string[] } {
+export function unreadable(
+  state: State | null,
+  kinds: readonly string[],
+): { own: string[]; untold: string[] } {
   const missing = (state?.files ?? []).filter((file) => !file.loaded);
   return {
-    own: missing.filter((file) => file.kind === kind).map((file) => baseName(file.path)),
+    own: missing.filter((file) => kinds.includes(file.kind)).map((file) => baseName(file.path)),
     untold: missing.filter((file) => file.kind === "unknown").map((file) => baseName(file.path)),
   };
 }
 
 /** The file kinds the page opens a screen on: a component's own page, and the tab each vocabulary
- * with one is listed in. Sections and rasters are the parts after this, and their findings say so
- * rather than leading somewhere blank.
+ * with one is listed in. Rasters is the part after this, and its findings say so rather than
+ * leading somewhere blank.
  *
- * Units and types belong here and were missing: both have had a tab for parts, and a reader whose
- * finding led nowhere was told their file had no page. What reaches this line for one of them now
- * is a pointer the file has moved on from - `duplicate-unit`, the one check that used to arrive
- * here with somewhere to go, routes to the unit it names. */
-const SHOWN = new Set(["component", "constants", "types", "units"]);
+ * Units, types and sections belong here and were missing in turn: each had a tab before its own
+ * kind joined this set, and a reader whose finding led nowhere was told their file had no page.
+ * What reaches this line for one of them now is a pointer the file has moved on from -
+ * `duplicate-unit` and `duplicate-section`, the checks that used to arrive here with somewhere to
+ * go, route to the unit or the section they name instead. */
+const SHOWN = new Set(["component", "constants", "types", "units", "sections"]);
 
 /** Why a finding leads nowhere, in the words the panel says it.
  *

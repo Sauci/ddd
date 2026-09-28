@@ -10,6 +10,8 @@ import {
   getFix,
   getGraph,
   getProjects,
+  getSection,
+  getSectionPlan,
   getSession,
   getSettle,
   getShared,
@@ -143,6 +145,22 @@ describe("requests to the server", () => {
     );
     await getConstantPlan({ action: "add", name: "CELLS", raw: "8" }, fetchImpl);
     await getConstantPlan({ action: "remove", name: "CELLS" }, fetchImpl);
+    // A section's name carries a leading dot, unlike a constant's, and may carry a `$` too
+    // (`SECTION_NAME_PATTERN`) - `.calib$1` proves both that the dot survives encoding untouched
+    // and that a character encoding must actually change (`$` to `%24`) is not skipped.
+    await getSection(".calib$1", fetchImpl);
+    await getSectionPlan(
+      { action: "set", name: ".calib", key: "access", raw: '"read-only"' },
+      fetchImpl,
+    );
+    await getSectionPlan({ action: "set", name: ".calib", key: "alignment" }, fetchImpl);
+    await getSectionPlan({ action: "set", name: ".calib", key: "alignment", raw: null }, fetchImpl);
+    await getSectionPlan({ action: "rename", name: ".calib", to: ".trend" }, fetchImpl);
+    await getSectionPlan(
+      { action: "add", name: ".calib", access: '"read-only"', alignment: "4" },
+      fetchImpl,
+    );
+    await getSectionPlan({ action: "remove", name: ".calib" }, fetchImpl);
     await getDeclarable("/tmp/c.ddd.json", fetchImpl);
     await getDeclarationPlan(
       { action: "read", file: "/tmp/c.ddd.json", name: "ValueC", scope: "input" },
@@ -229,6 +247,19 @@ describe("requests to the server", () => {
       ],
       ["/api/constant-plan?action=add&name=CELLS&raw=8", { credentials: "same-origin" }],
       ["/api/constant-plan?action=remove&name=CELLS", { credentials: "same-origin" }],
+      ["/api/section?name=.calib%241", { credentials: "same-origin" }],
+      [
+        "/api/section-plan?action=set&name=.calib&key=access&raw=%22read-only%22",
+        { credentials: "same-origin" },
+      ],
+      ["/api/section-plan?action=set&name=.calib&key=alignment", { credentials: "same-origin" }],
+      ["/api/section-plan?action=set&name=.calib&key=alignment", { credentials: "same-origin" }],
+      ["/api/section-plan?action=rename&name=.calib&to=.trend", { credentials: "same-origin" }],
+      [
+        "/api/section-plan?action=add&name=.calib&access=%22read-only%22&alignment=4",
+        { credentials: "same-origin" },
+      ],
+      ["/api/section-plan?action=remove&name=.calib", { credentials: "same-origin" }],
       ["/api/declarable?file=%2Ftmp%2Fc.ddd.json", { credentials: "same-origin" }],
       [
         "/api/declaration-plan?action=read&file=%2Ftmp%2Fc.ddd.json&name=ValueC&scope=input",

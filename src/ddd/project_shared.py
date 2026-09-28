@@ -1,10 +1,11 @@
-"""A project's constants as the Shared files tab shows them.
+"""A project's constants and its memory sections as the Shared files tab shows them.
 
 Transport-neutral, like :mod:`ddd.project_types` and :mod:`ddd.project_units`: nothing here knows
-about http or the session. Where a constant is declared and which shapes name it is the navigation
-index's own record (:attr:`ddd.lsp.navigation.Index.constants` and
-:attr:`~ddd.lsp.navigation.Index.constant_uses`), and what an entry *says* is read from the
-document at that entry, the way a type's keys are.
+about http or the session. Where an entry is declared and which shapes name it is the navigation
+index's own record, one pair of dictionaries per vocabulary
+(:attr:`ddd.lsp.navigation.Index.constants` and :attr:`~ddd.lsp.navigation.Index.constant_uses`,
+:attr:`~ddd.lsp.navigation.Index.sections` and :attr:`~ddd.lsp.navigation.Index.section_uses`),
+and what an entry *says* is read from the document at that entry, the way a type's keys are.
 
 Nothing is parsed into the models: a value travels as the json text it is written as, so ``2.0``
 reaches the page - and comes back to an edit - as the three characters its author typed. The format
@@ -21,19 +22,25 @@ import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final, Literal
+from typing import Annotated, Any, Final, Literal
 
-from pydantic import TypeAdapter
+from pydantic import BeforeValidator, TypeAdapter
 
 from ddd.diagnostics import Diagnostic
 from ddd.lsp.navigation import Index, Site, rename_problem
 from ddd.lsp.ranges import Document, read
 from ddd.models.constants import ConstantValue
+from ddd.models.sections import SectionAccess, SectionDeclaration
 from ddd.variables import declarations_of
 
 CONSTANT: Final = "constant"
 """The ``kind`` a constant's row carries. The tab holds three kinds once sections and rasters land;
 the column is what tells a reader how to read the rest of the row."""
+
+SECTION: Final = "section"
+"""The ``kind`` a section's row carries, and the word :func:`~ddd.lsp.navigation.rename_problem`
+knows a section's name rule by - one string, so that the row a reader clicks and the judge that
+refuses their new name cannot be about two different things."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,14 +186,14 @@ class SharedRow:
     """One row of the Shared files tab."""
 
     kind: str
-    """``constant``. Sections and rasters bring their own words here."""
+    """``constant`` or ``section``; a raster brings its own word here when it lands."""
 
     name: str
 
     states: str
     """What the entry states, built by its vocabulary's own :attr:`Vocabulary.states` rule from the
-    display text of its keys - a constant's value as the json text its file spells: ``16``,
-    ``2.0``."""
+    display text of its keys - a constant's value as the json text its file spells (``16``,
+    ``2.0``), a section's access and alignment in one cell (``read-only, align 4``)."""
 
     uses: int
     """How many shapes name it."""
@@ -403,6 +410,58 @@ def _constant_uses(built: Index, name: str, cache: dict[Path, Document]) -> tupl
     return tuple(found)
 
 
+_PLACEMENT_SHAPE: Final = re.compile(r"^(component\.interface\[\d+\]\.definition)\.section$")
+"""The one shape that names a section - a definition's own ``section`` key - and the definition it
+belongs to, whose ``name`` names the variable placed there.
+
+One where a constant has three, and no second home: a section is a project wide vocabulary with no
+place inside a component the way a constant has ``component.constants``, which
+:data:`ddd.lsp.navigation._SECTION_KEY` is the authority for and
+``test_the_placement_pattern_matches_what_the_index_calls_a_placement`` pins this pattern to.
+"""
+
+
+def _section_uses(built: Index, name: str, cache: dict[Path, Document]) -> tuple[Use, ...]:
+    """:data:`SECTIONS`'s :attr:`~Vocabulary.uses`: every definition placing its data in the
+    section, in the order the index recorded them.
+
+    The use is the *variable's*, not the section's own: a section is named by a definition, so
+    what a reader wants beside the row is which variable sits there and in which component -
+    which is why :attr:`Use.kind` needs no widening for this vocabulary. Only a raster breaks
+    that, a component naming one directly for everything it produces.
+
+    Drift is handled as :func:`_constant_uses` handles it, and for the same reason: the index
+    recorded where the analysis read the definition, the file may have changed since, and a panel
+    naming a variable that is no longer there is worse than one row short. A definition with no
+    ``name`` left at that pointer names nothing, and one whose name belongs to no declaration the
+    index holds has moved - the next revision lists it where it went.
+    """
+    found: list[Use] = []
+    for site in built.section_uses.get(name, ()):
+        document = read(site.path, cache)
+        shape = _PLACEMENT_SHAPE.match(site.pointer)
+        # As in `_constant_uses`: `_SECTION_KEY` is the shape navigation.index() writes here, and
+        # the test named above pins this pattern to it. A pointer this fails to match would mean
+        # the two have drifted apart, and undercounting a section's uses silently is worse than
+        # failing loudly the moment they do.
+        assert shape is not None
+        definition = shape.group(1)
+        variable = document.value_at(f"{definition}.name")
+        if not isinstance(variable, str):
+            continue
+        declared = next(
+            (
+                entry
+                for entry in declarations_of(built, variable, cache)
+                if entry.site == Site(site.path, definition)
+            ),
+            None,
+        )
+        if declared is not None:
+            found.append(Use(site, "variable", variable, declared.component))
+    return tuple(found)
+
+
 _VALUE: Final[TypeAdapter[ConstantValue]] = TypeAdapter(ConstantValue)
 """The format's own judge of what a constant's value may hold, so that the interface and the
 loader cannot come to different answers. Strict on both arms, which is what keeps ``2`` a whole
@@ -410,8 +469,10 @@ constant and ``2.0`` a fractional one."""
 
 _DESCRIPTION: Final[TypeAdapter[str]] = TypeAdapter(str)
 """The format's own judge of what a description may hold: any string, and nothing else -
-``ConstantDeclaration.description`` is a plain ``str``, so this need only refuse what a string can
-never be: a number, a bool, ``null``, an array, an object."""
+``ConstantDeclaration.description`` and ``SectionDeclaration.description`` are both a plain
+``str``, so this need only refuse what a string can never be: a number, a bool, ``null``, an
+array, an object. One adapter for both, because the two fields are the same field twice; a
+vocabulary whose description were constrained would bring its own."""
 
 
 def _constant_name_judge(built: Index, to: str) -> str | None:
@@ -445,9 +506,84 @@ CONSTANTS: Final = Vocabulary(
     name_judge=_constant_name_judge,
 )
 
-HELD: Final = (CONSTANTS,)
-"""Every vocabulary the Shared files tab holds. :func:`shared_rows` walks this; Task 4 adds a
-word."""
+_ACCESS: Final[TypeAdapter[SectionAccess]] = TypeAdapter(SectionAccess)
+"""The format's own judge of what a section's ``access`` may say: the two members of
+:class:`~ddd.models.sections.SectionAccess` and nothing else. Whatever the panel's chooser offers,
+the value reaches the plan through the api as text, so a third word is refused here."""
+
+
+def _aligned(value: Any) -> dict[str, Any]:
+    """One whole section entry built around the alignment being judged, for :data:`_ALIGNMENT`.
+
+    The power-of-two rule is a ``@model_validator(mode="after")`` on
+    :class:`~ddd.models.sections.SectionDeclaration`, not a constraint on the field, so no adapter
+    over the field's annotation alone can reach it - and this interface never restates a rule, which
+    is the one thing :attr:`Vocabulary.judge` promises. Validating the whole entry is what asks the
+    model itself, and it answers in the loader's own words: ``alignment 3 is not a power of two``.
+
+    The other two keys cannot affect the answer. They are the only ones the model has besides
+    ``description``, which defaults, and ``extra="forbid"`` means there are no others; both are
+    fixed here and both are valid - ``.ddd`` matches ``SECTION_NAME_PATTERN`` and ``read-write`` is
+    a member of the enum - so neither can contribute a refusal of its own. Nor can either change
+    what the alignment is judged by: the model's single cross-field rule reads ``alignment`` and
+    nothing else. ``test_an_alignment_the_model_takes_is_planned`` is what pins that, since a
+    placeholder the model refused would refuse every alignment and leave the refusal cases passing.
+
+    A dict rather than a keyword call so that the model's own validation reports which key was
+    refused, and taken as ``Any`` rather than ``int`` for the reason :data:`_ALIGNMENT` gives.
+    """
+    return {"section": ".ddd", "access": SectionAccess.READ_WRITE, "alignment": value}
+
+
+_ALIGNMENT: Final[TypeAdapter[SectionDeclaration]] = TypeAdapter(
+    Annotated[SectionDeclaration, BeforeValidator(_aligned)]
+)
+"""The format's own judge of what a section's ``alignment`` may hold: the model's own field, asked
+through the model, so the interface and the loader cannot come to different answers.
+
+A ``BeforeValidator`` wrapping the value into an entry rather than
+``Annotated[int, AfterValidator(...)]`` over the same rule, because an adapter whose type is ``int``
+**coerces**: ``4.0`` would arrive at the validator as ``4`` and be accepted, where the field's own
+``strict=True`` refuses it and the loader refuses the file. Strictness belongs to the field, so the
+field has to be the thing doing the validating."""
+
+
+def _section_name_judge(built: Index, to: str) -> str | None:
+    """:data:`SECTIONS`'s :attr:`~Vocabulary.name_judge`: ``rename_problem``'s own section arm,
+    asked exactly as :func:`_constant_name_judge` asks for a constant's, so that the tab and the
+    editor's F2 refuse a section's name in the same words. The rule lives there rather than here
+    because :mod:`ddd.lsp.navigation` cannot import this module - :class:`Index` is its own - and
+    writing it twice is the defect one entry point exists to avoid."""
+    return rename_problem(built, to, SECTION)
+
+
+SECTIONS: Final = Vocabulary(
+    kind=SECTION,
+    containers=("sections",),
+    name_key="section",
+    keys=("access", "alignment", "description"),
+    strings=frozenset({"access", "description"}),
+    entries=lambda built: built.sections,
+    used=lambda built: built.section_uses,
+    states=lambda texts: f"{texts['access']}, align {texts['alignment']}",
+    uses=_section_uses,
+    required=frozenset({"access", "alignment"}),
+    filename="sections.ddd.json",
+    judge={
+        "access": Judgement(_ACCESS, "read-write or read-only, as the running software sees it"),
+        "alignment": Judgement(
+            _ALIGNMENT,
+            "a power of two, written as a whole number a 64 bit address could satisfy",
+        ),
+        "description": Judgement(_DESCRIPTION, "a json string"),
+    },
+    name_judge=_section_name_judge,
+)
+
+HELD: Final = (CONSTANTS, SECTIONS)
+"""Every vocabulary the Shared files tab holds, and the order :func:`shared_rows` walks them in -
+which the sort by kind then name makes invisible to a reader. A rasters part adds a third word and
+nothing else: that is what the descriptor is for."""
 
 
 # Bindings, for one task only. `tests/test_project_shared.py` passing untouched across the

@@ -15,6 +15,7 @@ from ddd.loading import included_files
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document
 from ddd.lsp.units import PlannedEdit
+from ddd.project_shared import SECTIONS
 from ddd.shared_plans import (
     CONSTANTS_FILE,
     SharedPlan,
@@ -26,6 +27,7 @@ from ddd.shared_plans import (
     remove_constant,
     remove_entry,
     rename_constant,
+    rename_entry,
     set_constant,
     set_entry,
     shared_project,
@@ -853,3 +855,108 @@ class TestTheDescriptorsVerbs:
         assert raised.value.code == "invalid"
         assert "'unit'" in raised.value.message
         assert "description and value" in raised.value.message
+
+
+# The second vocabulary, in the spelling `tests/test_project_shared.py` and `tests/test_lsp.py`
+# both hold: copied by hand for the reason `TWO_HOMES` above is.
+PLACED = {
+    "s.ddd.json": {"sections": [{"section": ".calib", "access": "read-only", "alignment": 4}]},
+    "a.ddd.json": component("A", declare("output", "Gain", section=".calib")),
+}
+
+# Two sections, for the one refusal a project with a single section cannot reach: a rename onto a
+# name the vocabulary already declares. Renaming `.calib` to itself would reach the same guard and
+# say nothing about a reader's real mistake, which is picking a name another section took.
+TWO_SECTIONS = {
+    "s.ddd.json": {
+        "sections": [
+            {"section": ".calib", "access": "read-only", "alignment": 4},
+            {"section": ".nvm", "access": "read-write", "alignment": 8},
+        ]
+    },
+    "a.ddd.json": component("A", declare("output", "Gain", section=".calib")),
+}
+
+
+class TestSectionRefusals:
+    @pytest.mark.parametrize(
+        ("key", "raw"),
+        [("access", '"read-sideways"'), ("alignment", "3"), ("alignment", "4.0")],
+    )
+    def test_a_value_the_model_would_refuse_is_refused_here(
+        self, tmp_path: Path, key: str, raw: str
+    ) -> None:
+        # Measured on this checkout: `alignment: 3` answers `error[schema]: alignment 3 is not a
+        # power of two`, and `4.0` is refused as not a whole number. Written, the file would not
+        # load and every tab would empty because of one keystroke in this one. `access` reaches
+        # here through the api whatever the panel's chooser offers.
+        built, _root = built_of(tmp_path, **PLACED)
+        cache: dict[Path, Document] = {}
+        with pytest.raises(SharedRefusalError) as raised:
+            set_entry(SECTIONS, built, ".calib", key, raw, cache)
+        assert raised.value.code == "invalid"
+        assert "s.ddd.json" in raised.value.message
+
+    def test_an_alignment_the_model_takes_is_planned(self, tmp_path: Path) -> None:
+        """The other arm of the same judge, and the one that pins the placeholders `_aligned`
+        builds its entry with: were either of them a value `SectionDeclaration` refuses, every
+        alignment would be refused too and the three cases above would still pass."""
+        built, _root = built_of(tmp_path, **PLACED)
+        cache: dict[Path, Document] = {}
+        assert set_entry(SECTIONS, built, ".calib", "alignment", "8", cache) == SharedPlan(
+            (
+                PlannedEdit(
+                    (tmp_path / "s.ddd.json").resolve(),
+                    (Operation("set", "sections[0].alignment", "8"),),
+                ),
+            )
+        )
+
+    def test_a_name_the_pattern_refuses_is_refused(self, tmp_path: Path) -> None:
+        built, _root = built_of(tmp_path, **PLACED)
+        cache: dict[Path, Document] = {}
+        with pytest.raises(SharedRefusalError) as raised:
+            rename_entry(SECTIONS, built, ".calib", ".cal ib", cache)
+        assert raised.value.code == "invalid"
+
+    def test_a_name_another_section_already_declares_is_refused(self, tmp_path: Path) -> None:
+        """Refused rather than reported, though the file would still load: `duplicate-section` is
+        a check and not a schema error, so the format permits two sections under one name - but
+        they carry different `access` and `alignment`, and merging them would silently move data.
+        The interface can see the name is taken and the reader can pick another."""
+        built, _root = built_of(tmp_path, **TWO_SECTIONS)
+        cache: dict[Path, Document] = {}
+        with pytest.raises(SharedRefusalError) as raised:
+            rename_entry(SECTIONS, built, ".calib", ".nvm", cache)
+        assert raised.value.code == "invalid"
+        assert "already" in raised.value.message
+
+    def test_a_section_may_be_renamed_to_a_name_no_c_identifier_allows(
+        self, tmp_path: Path
+    ) -> None:
+        # The judge is the model's own pattern, not `rename_problem`: a leading dot is a normal
+        # linker name and would fail a c identifier rule outright.
+        built, _root = built_of(tmp_path, **PLACED)
+        cache: dict[Path, Document] = {}
+        assert rename_entry(SECTIONS, built, ".calib", ".nvm", cache).edits
+
+    def test_a_rename_reaches_the_entry_and_every_definition_placing_data_in_it(
+        self, tmp_path: Path
+    ) -> None:
+        """What the assertion above only counts. A rename that reached the entry and not the
+        placements would leave every definition naming a section nothing declares - an
+        `unknown-section` apiece, in files the reader was not looking at."""
+        built, _root = built_of(tmp_path, **PLACED)
+        cache: dict[Path, Document] = {}
+        assert rename_entry(SECTIONS, built, ".calib", ".nvm", cache) == SharedPlan(
+            (
+                PlannedEdit(
+                    (tmp_path / "a.ddd.json").resolve(),
+                    (Operation("set", "component.interface[0].definition.section", _raw(".nvm")),),
+                ),
+                PlannedEdit(
+                    (tmp_path / "s.ddd.json").resolve(),
+                    (Operation("set", "sections[0].section", _raw(".nvm")),),
+                ),
+            )
+        )

@@ -1,4 +1,4 @@
-"""A project's constants as the Shared files tab shows them."""
+"""A project's constants and its memory sections as the Shared files tab shows them."""
 
 from __future__ import annotations
 
@@ -7,14 +7,16 @@ from pathlib import Path
 
 import pytest
 
-from conftest import built_of, write_tree
+from conftest import built_of, component, declare, write_tree
 from ddd.diagnostics import Diagnostic, Location, Severity
-from ddd.lsp.navigation import _DIMENSION_KEY
+from ddd.lsp.navigation import _DIMENSION_KEY, _SECTION_KEY
 from ddd.lsp.ranges import Document
 from ddd.project_shared import (
     _DECLARATION_SHAPE,
     _MEMBER_SHAPE,
+    _PLACEMENT_SHAPE,
     CONSTANTS,
+    SECTIONS,
     constant_row,
     constant_string,
     constant_text,
@@ -23,6 +25,7 @@ from ddd.project_shared import (
     row_of,
     shared_rows,
     shown,
+    uses_of,
 )
 
 # `p.ddd.json` is deliberately absent from every tree below: `conftest.built_of` writes it
@@ -164,6 +167,28 @@ _TWO_DECLARATIONS = {
             ],
         }
     },
+}
+
+
+# The second vocabulary, spelled as `tests/test_lsp.py` spells its own `PLACED` - a sections file
+# and one definition placing data in it - with the access and the name this module asserts on. Held
+# here rather than imported from that module for the reason `conftest` gives for the fixtures it
+# took out of it: reaching into a 5 000 line suite for a four line tree couples every reader of
+# this file to it. `TWO_HOMES` is copied by hand into `tests/test_shared_plans.py` for the same
+# reason.
+PLACED = {
+    "s.ddd.json": {"sections": [{"section": ".calib", "access": "read-only", "alignment": 4}]},
+    "a.ddd.json": component("A", declare("output", "Gain", section=".calib")),
+}
+
+# Both vocabularies at once, which is the only tree that can say the table holds them in one
+# order: a constant naming the size of the variable the section holds.
+PLACED_AND_SIZED = {
+    "s.ddd.json": {"sections": [{"section": ".calib", "access": "read-only", "alignment": 4}]},
+    "c.ddd.json": {"constants": [{"name": "TREND_SAMPLES", "value": 16}]},
+    "a.ddd.json": component(
+        "A", declare("output", "Gain", section=".calib", dimensions=["TREND_SAMPLES"])
+    ),
 }
 
 
@@ -501,6 +526,23 @@ def test_the_two_shape_patterns_match_what_the_index_calls_a_shape() -> None:
         assert bool(mine) == bool(_DIMENSION_KEY.match(pointer)), pointer
 
 
+def test_the_placement_pattern_matches_what_the_index_calls_a_placement() -> None:
+    """The same authority, for the one shape that names a section: `_SECTION_KEY` decides where a
+    section may be named, and a pointer this module fails to recognise is a use the panel silently
+    drops - which is why `_section_uses` asserts on its own pattern rather than skipping what it
+    does not know."""
+    pointers = [
+        "component.interface[0].definition.section",
+        "component.interface[12].definition.section",
+        "sections[0].section",
+        "component.interface[0].definition.sections",
+        "component.interface[0].definition.section.extra",
+        "component.interface[0].definition.dimensions[0]",
+    ]
+    for pointer in pointers:
+        assert bool(_PLACEMENT_SHAPE.match(pointer)) == bool(_SECTION_KEY.match(pointer)), pointer
+
+
 class TestTheDescriptor:
     def test_a_row_is_read_through_the_vocabulary_it_belongs_to(self, tmp_path: Path) -> None:
         # The same answer the constants-named reader gives, asked the generic way. Until sections
@@ -552,3 +594,83 @@ class TestTheDescriptorsInvariants:
     def test_a_nested_first_container_is_refused_at_construction(self) -> None:
         with pytest.raises(ValueError, match="containers"):
             dataclasses.replace(CONSTANTS, containers=("component.constants", "constants"))
+
+
+class TestSections:
+    def test_a_section_reads_its_access_and_its_alignment_into_one_cell(
+        self, tmp_path: Path
+    ) -> None:
+        built, _root = built_of(tmp_path, **PLACED)
+        cache: dict[Path, Document] = {}
+        row = row_of(SECTIONS, built, ".calib", (), cache)
+        assert (row.kind, row.name, row.states) == ("section", ".calib", "read-only, align 4")
+
+    def test_a_definition_placing_data_in_it_is_a_use_naming_its_variable(
+        self, tmp_path: Path
+    ) -> None:
+        built, _root = built_of(tmp_path, **PLACED)
+        cache: dict[Path, Document] = {}
+        used = uses_of(SECTIONS, built, ".calib", cache)
+        assert [(use.kind, use.name, use.component) for use in used] == [("variable", "Gain", "A")]
+
+    def test_both_vocabularies_share_the_table_sorted_by_kind_then_name(
+        self, tmp_path: Path
+    ) -> None:
+        # The whole point of one tab: a reader looking for a name does not first choose which
+        # vocabulary it is in.
+        built, _root = built_of(tmp_path, **PLACED_AND_SIZED)
+        cache: dict[Path, Document] = {}
+        assert [(row.kind, row.name) for row in shared_rows(built, (), cache)] == [
+            ("constant", "TREND_SAMPLES"),
+            ("section", ".calib"),
+        ]
+
+    def test_a_definition_that_has_lost_its_name_is_no_use(self, tmp_path: Path) -> None:
+        """The index recorded where the analysis read it; the file has changed since. A definition
+        with no `name` left at that pointer names no variable, and a panel saying a section holds
+        one it cannot name is worse than one row short - the drift
+        `test_a_use_whose_declaration_has_moved_is_left_out` sees for a constant."""
+        built, _ = built_of(tmp_path, **PLACED)
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": {
+                    "component": {
+                        "name": "A",
+                        "interface": [
+                            {
+                                "scope": "output",
+                                "definition": {
+                                    "kind": "measurement",
+                                    "datatype": "uint8",
+                                    "conversion": {"kind": "identity"},
+                                    "volatile": False,
+                                    "section": ".calib",
+                                },
+                            }
+                        ],
+                    }
+                }
+            },
+        )
+        cache: dict[Path, Document] = {}
+        assert uses_of(SECTIONS, built, ".calib", cache) == ()
+
+    def test_a_definition_renamed_since_is_no_use(self, tmp_path: Path) -> None:
+        """A different drift than the definition losing its name above: a name is still written
+        there, and it belongs to nobody the index ever declared - so `declarations_of` is asked
+        about a name it never indexed and there is no declaration to take the component from."""
+        built, _ = built_of(tmp_path, **PLACED)
+        write_tree(
+            tmp_path,
+            {"a.ddd.json": component("A", declare("output", "Renamed", section=".calib"))},
+        )
+        cache: dict[Path, Document] = {}
+        assert uses_of(SECTIONS, built, ".calib", cache) == ()
+
+    def test_a_name_the_index_does_not_hold_names_no_use(self, tmp_path: Path) -> None:
+        """The api looks a name up before it asks, so this arm is only reachable from a test -
+        which is where the constants side covers its own."""
+        built, _ = built_of(tmp_path, **PLACED)
+        cache: dict[Path, Document] = {}
+        assert uses_of(SECTIONS, built, ".nvm", cache) == ()

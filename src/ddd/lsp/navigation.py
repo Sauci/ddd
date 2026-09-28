@@ -44,6 +44,7 @@ from ddd.models import (
     is_reserved_identifier,
     spelled_dimensions,
 )
+from ddd.models.common import SECTION_NAME_PATTERN
 from ddd.plugins import PluginError
 
 _WITHIN_DECLARATION: Final = re.compile(r"^component\.interface\[\d+\]")
@@ -740,7 +741,26 @@ def rename_problem(built: Index, name: str, kind: str = "variable") -> str | Non
     mentions the object, so a name that turns out to be unusable would leave a project broken
     across several files at once - and the c compiler, which is where an unusable name is
     otherwise noticed, only sees it a build later.
+
+    A section is judged by its own rule and leaves before the first check below: every one of
+    them is about a c identifier, and a section's name is a linker string. Answered here rather
+    than in :mod:`ddd.project_shared`, which is where the Shared files tab would otherwise have
+    written the rule a second time: that module imports this one - :class:`Index` is this
+    module's - so the tab reaches this function through its descriptor's ``name_judge`` and the
+    editor's F2 reaches it through :meth:`ddd.lsp.server.Server._rename`, and the two cannot come
+    to different answers about a name.
+
+    A raster is not dispatched yet, and so is still answered as a variable: nothing declares a
+    raster vocabulary for its arm to be exercised from, and an arm no test reaches is an arm the
+    coverage gate refuses. What it answers meanwhile is wrong - ``10ms`` is no c identifier and is
+    a perfectly usable a2l short name. The wrong answer was latent before part 14's third task and
+    is reachable after it: :func:`renameable_at` had no raster arm, so it never answered
+    ``("raster", …)`` and :meth:`ddd.lsp.server.Server._rename` could not hand this function that
+    kind at all. Teaching the index to see rasters is what made F2 on one arrive here, so the
+    rasters part owes this its arm beside the section's.
     """
+    if kind == "section":
+        return _section_problem(built, name)
     if not re.fullmatch(C_IDENTIFIER_PATTERN, name) or len(name) > IDENTIFIER_MAX_LENGTH:
         return f"'{name}' is not a usable c identifier"
     if kind == "type" and name.lower() in _BASE_DATATYPES:
@@ -760,6 +780,37 @@ def rename_problem(built: Index, name: str, kind: str = "variable") -> str | Non
         # right finding in the wrong place: by then it is spread over every file the rename
         # touched, and the author has to undo a rewrite rather than pick another name.
         return f"'{name}' is {occupant}, which shares c's namespace with the variables"
+    return None
+
+
+def _section_problem(built: Index, name: str) -> str | None:
+    """Why the project may not have a section called ``name``, or nothing if it may.
+
+    Two checks, and none of the five :func:`rename_problem` applies to the other kinds. The c
+    identifier rule and the reserved word rule would refuse ``.calib`` outright, a leading dot
+    being an ordinary linker name; ``declarations`` and ``occupied`` guard c's file scope
+    namespace, which a section's name never joins - it is spliced into a ``section`` attribute
+    and never emitted as an identifier, which is what
+    ``test_a_section_may_share_a_spelling_with_a_variable`` pins. No length limit either:
+    :data:`~ddd.models.common.IDENTIFIER_MAX_LENGTH` bounds a c identifier, and the model sets a
+    section's name no length at all.
+
+    :data:`~ddd.models.common.SECTION_NAME_PATTERN` is the rule rather than a restatement of it:
+    :class:`ddd.models.sections.SectionDeclaration` constrains its own ``section`` to that same
+    constant, so a name refused here is exactly a name whose file would not load - and its
+    ``min_length=1`` is what the pattern's ``+`` already says.
+
+    A name the vocabulary already declares is refused although the file would still load:
+    ``duplicate-section`` is a check and not a schema error, so the format permits two sections
+    under one name - but each carries its own ``access`` and ``alignment``, and a rename that
+    merged them would silently move data into memory with different properties. The reader can
+    see the name is taken and pick another, which is the line part 14's design draws between what
+    the interface refuses and what it lets a check report.
+    """
+    if not re.fullmatch(SECTION_NAME_PATTERN, name):
+        return f"'{name}' is not a usable linker section name"
+    if name in built.sections:
+        return f"'{name}' is already a section this project declares"
     return None
 
 

@@ -2731,15 +2731,24 @@ class TestTheTypesTab:
 class TestShared:
     """``GET /api/shared``: the Shared files tab's one table, over examples/vocabulary - the one
     example declaring a constant in a constants file (`TREND_SAMPLES`) and one inline in a
-    component (`PRESSURE_CELLS`), both named by a dimension, checking clean."""
+    component (`PRESSURE_CELLS`), both named by a dimension, and two memory sections its pump
+    places data in, checking clean."""
 
-    def test_the_table_lists_every_constant_with_its_value_as_text(self, tmp_path: Path) -> None:
+    def test_the_table_lists_every_entry_of_every_kind_with_what_it_states(
+        self, tmp_path: Path
+    ) -> None:
+        """Both vocabularies in one table, sorted by kind then name: the endpoint answers whatever
+        `ddd.project_shared.HELD` holds, so a section row arrives here without this route learning
+        that sections exist. A constant states the json text of its value; a section its access and
+        its alignment, which is why the column is headed `States` and not `Value`."""
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         body = get(api, "/api/shared").body
         assert body["revision"] == 1
         assert [(e["kind"], e["name"], e["value"]) for e in body["entries"]] == [
             ("constant", "PRESSURE_CELLS", "8"),
             ("constant", "TREND_SAMPLES", "16"),
+            ("section", ".calib", "read-only, align 4"),
+            ("section", ".fast_ram", "read-write, align 4"),
         ]
 
     def test_each_row_counts_its_uses_and_its_findings(self, tmp_path: Path) -> None:
@@ -2764,8 +2773,8 @@ class TestShared:
         assert rows["TREND_SAMPLES"]["findings"] == 1
         assert rows["PRESSURE_CELLS"]["findings"] == 0
 
-    def test_a_project_declaring_no_constants_has_an_empty_table(self, api: Api) -> None:
-        # The `api` fixture's project has no constants file at all.
+    def test_a_project_declaring_none_of_them_has_an_empty_table(self, api: Api) -> None:
+        # The `api` fixture's project includes neither a constants file nor a sections one.
         assert get(api, "/api/shared").body["entries"] == []
 
     def test_a_project_the_analysis_could_not_read_has_an_empty_table(self, tmp_path: Path) -> None:

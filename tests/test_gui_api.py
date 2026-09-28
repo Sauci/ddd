@@ -4155,7 +4155,15 @@ class TestRaster:
                 {"action": "set", "name": "10ms", "key": "cycle", "raw": '"potato"'},
                 "\"potato\" is not a cycle a raster may state, so '10ms' cannot take it in "
                 "rasters.ddd.json: a count of 1 to 255 times a decade from 1ns to 1s, written "
-                "as one string - '1500us', '10ms' - or nothing",
+                "as one string - '1500us', '10ms'. A raster that is not cyclic states no cycle "
+                "at all: the key is left out of its entry, which no value set here can do",
+            ),
+            (
+                {"action": "set", "name": "10ms", "key": "cycle", "raw": '""'},
+                "\"\" is not a cycle a raster may state, so '10ms' cannot take it in "
+                "rasters.ddd.json: a count of 1 to 255 times a decade from 1ns to 1s, written "
+                "as one string - '1500us', '10ms'. A raster that is not cyclic states no cycle "
+                "at all: the key is left out of its entry, which no value set here can do",
             ),
             (
                 {"action": "set", "name": "10ms", "key": "event", "raw": "0"},
@@ -4195,6 +4203,14 @@ class TestRaster:
         half of what its field refuses. Both were corrected after Task 4's review, and every
         sentence here was rendered from the current source rather than copied from the plan or
         from the sections pair beside it.
+
+        The `cycle` pair is why there are two rows for one tail. That correction left the tail's
+        own `or nothing` standing, and the field a reader clears sends `""` - so the sentence met
+        on the likelier keystroke still ended by naming the state that had just been refused.
+        `""` is what the panel sends for an emptied Cycle field (`rasterRaw`), and `"potato"` what
+        it sends for a mistyped period; both are here because the defect was found at one of them
+        and fixed only there. The key is taken out for a `raw` of `None` alone, which this field
+        has no way to send - the open item the tail now points at instead of promising.
 
         The two `already claimed` rows are the raster's own refusal, which neither of the other
         vocabularies has: a value, not a name, that is the project's alone. Both verbs that write

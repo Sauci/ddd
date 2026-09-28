@@ -860,8 +860,15 @@ Each entry says what was not done and what it costs.
   `str | None` where `None` is a real kind of raster - crank synchronous, on change, on demand - and
   `RasterReply.cycle` renders it as `""`, so the panel **displays a state it cannot write**. It is
   the only field on that panel that does not round-trip. Declaring an acyclic raster works, since the
-  key simply defaults; only clearing one later does not. How a reader clears an optional string wants
-  a design answer rather than a fix.
+  key simply defaults; only clearing one later does not. The arm that *would* work is a request with
+  no `?raw=` at all, which `set_entry` reads as `None` and answers with a plan taking the key out -
+  measured, and it is what the Event field's own empty send reaches. The panel has no way to send
+  it, `rasterRaw("cycle", "")` answering `'""'`. How a reader clears an optional string wants a
+  design answer rather than a fix.
+  **The sentence inside this item was a defect and is fixed**: the refusal's tail ended `or nothing`,
+  so a reader who cleared the field was told nothing was allowed. It now names what an acyclic raster
+  is - its entry with the key left out - and says no value set there reaches one. The behaviour is
+  still open; the advertisement of it is not.
 - **`SharedPage.tsx`'s panel chain is not exhaustive over `SharedKind`**, and neither are three
   sibling chains in that file. A fourth vocabulary stops the build at exactly one place -
   `SHARED_VOCABULARIES`'s object literal - and once that is widened `tsc` is silent, so a fourth
@@ -872,7 +879,12 @@ Each entry says what was not done and what it costs.
   the values this branch was burned by. The honest cost of sharing it is a trip to another file.
 - **No Ladle story renders a raster named only by a component default.** It is pinned at the unit
   level and photographed by hand during the milestone gate, but the screenshot suite has no picture
-  of the use shape this part added.
+  of the use shape this part added. This list said this was the only story gap, and it was short by
+  one: the final review found that `SectionPanelView.stories.tsx`'s `TheOnlyOneItsFileDeclares` had
+  no raster twin, so the sole-entry removal refusal - claimed in prose at `RasterPanelView.tsx`'s
+  `removeOffer` and again in `screens/RasterPanel.tsx` - was checked by nothing on the page side.
+  **That one is now closed**: `RasterPanelView.stories.tsx` has the story and the screenshot suite
+  its reference. The component-default gap above is the one that stays open.
 
 ## Rulings taken
 

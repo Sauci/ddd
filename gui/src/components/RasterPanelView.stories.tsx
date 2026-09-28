@@ -5,8 +5,10 @@ import {
   RASTER_1MS_REPLY,
   RASTER_EVENT_REFUSED,
   RASTER_REPLY,
+  RASTER_SOLE_ENTRY,
   RASTER_UNUSED,
   REMOVE_RASTER,
+  REMOVE_RASTER_REFUSED,
   RENAME_RASTER_REFUSED,
 } from "../stories/fixtures";
 import { RasterPanelView } from "./RasterPanelView";
@@ -26,6 +28,9 @@ interface Props {
   /** Remove's own plan, for a raster nothing names - `null` (nothing asked for) wherever a shape
    * still does, `RasterPanelView`'s own concern to say why from `reply.uses` alone. */
   removePlan?: PlanReply;
+  /** Why Remove was refused although nothing samples on the raster: the sole-entry refusal, which
+   * is the api's to give and not a fact `RasterReply` carries. */
+  removeRefusal?: string;
 }
 
 /** The panel over one scenario's fixtures, with its own event, cycle, description and rename
@@ -37,6 +42,7 @@ function PanelStory({
   renameTo: renameSeed = null,
   renameRefusal,
   removePlan,
+  removeRefusal,
 }: Props) {
   const [event, setEvent] = useState(eventSeed ?? reply.event);
   const [cycle, setCycle] = useState(reply.cycle);
@@ -66,7 +72,7 @@ function PanelStory({
         // A story standing in for the screen has to stand in for the screen's judgement too, or
         // the photographs stop being evidence about what the screen would draw.
         rasterRemovable(reply.uses)
-          ? { plan: removePlan ?? null, refusal: null, pending: false }
+          ? { plan: removePlan ?? null, refusal: removeRefusal ?? null, pending: false }
           : null
       }
       shown={null}
@@ -92,6 +98,16 @@ export const NamedByADefinitionAndAComponent = () => <PanelStory reply={RASTER_R
  * example's own unused raster, so this is the real case and not a constructed one. */
 export const NothingMeasuresInIt = () => (
   <PanelStory reply={RASTER_UNUSED} removePlan={REMOVE_RASTER} />
+);
+
+/** The other way Remove is refused, and the one `RasterReply` has no field for: nothing samples on
+ * bench either, so `rasterRemovable` says yes and the plan is asked for - but it is all its file
+ * declares, and a rasters list is never empty. The api's own sentence stands where the consequence
+ * line would, with no button under it. Photographs what `RasterPanelView`'s `removeOffer` doc and
+ * `screens/RasterPanel.tsx`'s `remove` comment both claim in prose and nothing on this side
+ * checked; `SectionPanelView`'s story of the same name is what it was transposed from. */
+export const TheOnlyOneItsFileDeclares = () => (
+  <PanelStory reply={RASTER_SOLE_ENTRY} removeRefusal={REMOVE_RASTER_REFUSED} />
 );
 
 /** Renaming 1ms to a raster the project already declares: the editor's own sentence, where the

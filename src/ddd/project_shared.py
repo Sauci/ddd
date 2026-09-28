@@ -808,7 +808,18 @@ may state ... : a json string, or nothing`` tells them to write what they just w
 names the type can only ever describe what the adapter would have refused on its own, which for
 this key is not what refuses anything. The count comes from
 :data:`~ddd.models.rasters.CYCLE_COUNT_MAX`, and the rest is the sentence
-``_cycle_is_a_period_xcp_carries`` answers in, so the tab and ``ddd check`` say the same thing."""
+``_cycle_is_a_period_xcp_carries`` answers in, so the tab and ``ddd check`` say the same thing.
+
+The trailing ``or nothing`` was that same defect surviving the correction that named it. A
+mistyped period was the case the rewording above was made for; **clearing the field** is the
+commoner keystroke and sends ``""``, so the sentence a reader met after asking for no cycle ended
+by telling them that no cycle was allowed. It was true of the *file* - ``cycle`` is ``str | None``,
+and a raster that is not cyclic is a real kind of raster - and false of the field, which cannot
+send it: :func:`ddd.shared_plans.set_entry` takes a key out only for a ``raw`` of ``None``, and
+``rasterRaw("cycle", "")`` in ``gui/src/lib/shared.ts`` answers ``'""'``. So the tail now says what
+an acyclic raster *is* - its entry with the key left out - and that no value set here reaches one.
+The behaviour stays open, and the plan's "What was left open" carries it; a sentence advertising
+the state the reader has just been refused is not a way to leave it open."""
 
 
 def _raster_states(texts: Mapping[str, str]) -> str:
@@ -909,7 +920,8 @@ RASTERS: Final = Vocabulary(
         "cycle": Judgement(
             _CYCLE,
             f"a count of 1 to {CYCLE_COUNT_MAX} times a decade from 1ns to 1s, written as one "
-            "string - '1500us', '10ms' - or nothing",
+            "string - '1500us', '10ms'. A raster that is not cyclic states no cycle at all: the "
+            "key is left out of its entry, which no value set here can do",
         ),
         "description": Judgement(_DESCRIPTION, "a json string"),
     },

@@ -400,7 +400,10 @@ The commands
        synchronous, on change, on demand - a real kind of raster and not an omission. A refusal
        names what either may say - the event a channel number from 0 to 65535 written without a
        decimal point, the cycle a count of 1 to 255 times a decade from 1ns to 1s written as one
-       string, or nothing. An event another raster already states is refused too, naming which
+       string. Making a raster that is already declared acyclic is not something the tab does:
+       a raster states no cycle by leaving the key out of its entry, and an emptied Cycle field
+       asks for the empty string instead, which is no period and is refused as one. An event
+       another raster already states is refused too, naming which
        one - ``event 1 is already claimed by raster '10ms'`` - whether it is being declared or
        changed: an event is a property of the target's XCP configuration, distinct across the
        project, so not free for a second raster to claim. Removing one is refused while anything

@@ -1216,7 +1216,8 @@ class TestRasterRefusals:
     _EVENT_TAIL = "a channel number xcp addresses - 0 to 65535 - written without a decimal point"
     _CYCLE_TAIL = (
         "a count of 1 to 255 times a decade from 1ns to 1s, written as one string - "
-        "'1500us', '10ms' - or nothing"
+        "'1500us', '10ms'. A raster that is not cyclic states no cycle at all: the key is left "
+        "out of its entry, which no value set here can do"
     )
 
     @pytest.mark.parametrize(
@@ -1258,6 +1259,13 @@ class TestRasterRefusals:
                 id="cycle-that-is-no-period",
             ),
             pytest.param(
+                "cycle",
+                '""',
+                "\"\" is not a cycle a raster may state, so '10ms' cannot take it in "
+                f"r.ddd.json: {_CYCLE_TAIL}",
+                id="cycle-cleared",
+            ),
+            pytest.param(
                 "description",
                 "123",
                 "123 is not a description a raster may state, so '10ms' cannot take it in "
@@ -1283,8 +1291,13 @@ class TestRasterRefusals:
         suite passed, because the tail is everything after the colon and nothing read it. That is
         how `cycle`'s shipped as `a json string, or nothing` - which is what `"potato"` already
         is, so the one actionable sentence a reader with a mistyped period ever sees told them to
-        write what they had just written. Sections escape by accident, their clauses being pinned
-        at the http layer by `test_a_change_the_project_refuses_says_why_in_the_format_s_own_words`;
+        write what they had just written. The `cycle-cleared` row is the same defect's second
+        half, and is why `""` is here beside `"potato"`: the corrected tail kept its `or nothing`,
+        and clearing the field - which sends `""`, not the `raw=None` that would take the key
+        out - is the commoner keystroke of the two, so the refusal still ended by offering the
+        reader what they had just asked for and been refused. Sections escape by accident, their
+        clauses being pinned at the http layer by
+        `test_a_change_the_project_refuses_says_why_in_the_format_s_own_words`;
         these rows were written while rasters had no route at all, standing in for the http test
         that Task 5 has since added - `TestRaster`'s own copy of that name, which asserts the same
         three tails through `GET /api/raster-plan`. Kept rather than folded into it: a plan refused

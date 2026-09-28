@@ -1932,7 +1932,7 @@ export const CONSTANT_UNUSED: ConstantReply = {
 };
 
 /** Removing SPARE_TOLERANCE: its entry taken out of constants.ddd.json, and nothing else
- * (`remove_constant`'s own doc) - the plan the NothingNamesIt story's Remove is already offered
+ * (`remove_entry`'s own doc) - the plan the NothingNamesIt story's Remove is already offered
  * with, since nothing has to be typed first for a change with no field of its own to preview. */
 export const REMOVE_CONSTANT: PlanReply = {
   revision: 7,

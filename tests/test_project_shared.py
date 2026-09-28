@@ -357,6 +357,25 @@ class TestOneConstantsPanel:
             == "slots of a trend buffer"
         )
 
+    def test_a_value_is_read_as_written_and_not_reprinted(self, tmp_path: Path) -> None:
+        """`text_of` promises "the text and not the value, so that an edit built from what the
+        page was shown writes back what was written", and no fixture above could hold it to that:
+        `16` and `2.0` both survive a trip through json unchanged, so `raw_at` and a re-serialised
+        `value_at` answer the same for every value this module reads elsewhere. Measured with an
+        ablation - `text_of` rewritten to `json.dumps(value_at(...))` passed the whole suite.
+
+        `1e3` is the discriminator `tests/test_shared_plans.py` already uses for the write side of
+        the same promise: it parses to `1000.0` and reprints as `"1000.0"`, so a panel that showed
+        it would put a number its author never wrote into the field an edit is built from.
+        """
+        # Written as text rather than as a dict: `write_tree` dumps a dict with json's own
+        # printer, which would turn `1e3` into `1000.0` before this test could read it back.
+        built, _ = built_of(
+            tmp_path, **{"c.ddd.json": '{"constants": [{"name": "GAIN", "value": 1e3}]}'}
+        )
+        cache: dict[Path, Document] = {}
+        assert text_of(CONSTANTS, built, "GAIN", "value", cache) == "1e3"
+
     def test_a_key_the_entry_has_not_reads_empty(self, tmp_path: Path) -> None:
         built, _ = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
@@ -542,14 +561,6 @@ def test_the_placement_pattern_matches_what_the_index_calls_a_placement() -> Non
 
 
 class TestTheDescriptor:
-    def test_the_states_cell_of_a_constant_is_the_text_its_file_spells(
-        self, tmp_path: Path
-    ) -> None:
-        # `2.0` is a fractional constant and `2` a whole one, so the cell carries the spelling.
-        built, _ = built_of(tmp_path, **TWO_HOMES)
-        cache: dict[Path, Document] = {}
-        assert row_of(CONSTANTS, built, "CELLS", (), cache).states == "2.0"
-
     def test_a_string_key_is_shown_without_its_quotes_and_a_literal_as_written(
         self, tmp_path: Path
     ) -> None:

@@ -921,9 +921,12 @@ class TestTheDescriptorsVerbs:
         built, _root = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
         plan = set_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "value", "2.0", cache)
-        # An expected plan written out, not just `set_entry`'s own answer: `set_entry` is
-        # `return set_entry(CONSTANTS, ...)`, so comparing only against it compares a call with
-        # itself and would stay green were `set_entry` ablated to `return SharedPlan(())`.
+        # The whole expected plan spelled out - the file it lands in, the pointer inside it, and
+        # the json text as written - rather than anything derived from another call of the verb
+        # under test. Every part of the answer is stated here independently, so `set_entry`
+        # ablated to `return SharedPlan(())`, or to an edit of the wrong file or the wrong key,
+        # fails this line. Comparing one call against another cannot say any of that: it holds
+        # whatever the function does today, which is the shape of an assertion that never fails.
         assert plan == SharedPlan(
             (
                 PlannedEdit(
@@ -931,11 +934,6 @@ class TestTheDescriptorsVerbs:
                     (Operation("set", "constants[0].value", "2.0"),),
                 ),
             )
-        )
-        # Worth keeping too, once it is not the only assertion: the binding really does forward
-        # to the generic verb unchanged.
-        assert plan == set_entry(
-            project_shared.CONSTANTS, built, "TREND_SAMPLES", "value", "2.0", cache
         )
 
     def test_a_constant_both_named_and_alone_is_refused_for_being_named(

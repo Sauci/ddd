@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 import shutil
@@ -26,7 +27,7 @@ from ddd import __version__
 from ddd.cli import EXIT_OK, main
 from ddd.diagnostics import CHECKS
 from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
-from ddd.gui.api import SECTION_PLANS, Api, Reply
+from ddd.gui.api import SECTION_PLANS, Api, Reply, _declared, _json_texts
 from ddd.gui.session import Session
 from ddd.project_shared import SECTIONS
 from ddd.variable_keys import KEY_ORDER
@@ -188,6 +189,20 @@ STRAY_SECTIONS_FILE = {
     "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
     "sections.ddd.json": "not a file `add` wrote",
 }
+
+# A vocabulary with six required keys, for the two tests that ask whether `_json_texts` and
+# `_declared` read them in an order at all. Six rather than the two a section has: a frozenset of
+# two strings iterates in sorted order under about half the interpreter's hash seeds, so a test
+# over `SECTIONS` itself would only notice the sort going missing on about half of its runs.
+# Nothing about this descriptor is meant to describe a real vocabulary; `judge` covers every key
+# only because `Vocabulary.__post_init__` refuses a descriptor whose tables disagree.
+WIDE_KEYS: Final = ("a", "b", "c", "d", "e", "f")
+WIDE: Final = dataclasses.replace(
+    SECTIONS,
+    keys=(*WIDE_KEYS, "description"),
+    required=frozenset(WIDE_KEYS),
+    judge=dict.fromkeys((*WIDE_KEYS, "description"), SECTIONS.judge["description"]),
+)
 
 # A definition placed in a section no file declares, which is what `unknown-section` reports and
 # the one route a reader follows to an add form rather than to a panel.
@@ -3576,6 +3591,69 @@ class TestSection:
         reply = get(api, "/api/section-plan", **query)
         assert (reply.status, reply.body["error"]) == (400, "bad-request")
         assert f"{query[whose]!r} is not one json value" in reply.body["message"]
+
+    def test_two_values_that_are_not_json_are_refused_in_a_fixed_order(
+        self, tmp_path: Path
+    ) -> None:
+        """One bad value has only one sentence to answer with; two have a choice, and the choice
+        must not be the interpreter's. `_json_texts` walks `SECTIONS.required`, a frozenset whose
+        order changes with the hash seed - measured on this checkout, `PYTHONHASHSEED=1` yields
+        `alignment` before `access` and `PYTHONHASHSEED=0` the reverse - and the caller stops at
+        the first text that is not json. Sorted, `access` is always the one named."""
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(
+            api,
+            "/api/section-plan",
+            action="add",
+            name=".nvm",
+            access="read-write",
+            alignment="4 8",
+        )
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply.body["message"].startswith("'read-write' is not one json value")
+
+    def test_two_values_the_model_refuses_name_the_same_one_every_run(self, tmp_path: Path) -> None:
+        """The same hazard one layer down, and the one the written file cannot show: `_entry_text`
+        composes the entry in `SECTIONS.keys` order, so the bytes an `add` writes do not depend on
+        how `raws` was built - but `add_entry` and `_created` both judge `raws.items()` in
+        insertion order and stop at the first key the model refuses. `_declared` sorts, so a
+        request with a bad `access` and a bad `alignment` always meets the access refusal."""
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(
+            api,
+            "/api/section-plan",
+            action="add",
+            name=".nvm",
+            access='"read-sideways"',
+            alignment="3",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"].startswith(
+            '"read-sideways" is not an access a section may state'
+        )
+
+    def test_the_json_texts_of_a_request_are_ordered_whatever_the_hash_seed(self) -> None:
+        """The two tests above pin the sentence a reader meets; this pins the reason they can.
+
+        Both are asked of `SECTIONS`, whose `required` holds two keys, so an unsorted frozenset
+        already iterates them the right way for about half of the interpreter's hash seeds -
+        measured: with the sorts removed both pass under `PYTHONHASHSEED=0` and fail under
+        `PYTHONHASHSEED=1`. A guard that catches a regression on a coin toss is most of the way to
+        no guard, and it is why the sort read as unpinned to begin with.
+
+        Six required keys instead of two, over a descriptor built for this and nothing else: a
+        frozenset of them falls into sorted order by luck once in 720 seeds rather than once in
+        two, so the sort going missing fails here whatever the run happened to start with. The
+        helpers take a `Vocabulary` precisely so this is askable without an endpoint."""
+        given = {key: f'"{key}"' for key in WIDE_KEYS}
+        assert _json_texts(WIDE, given, None) == [given[key] for key in WIDE_KEYS]
+
+    def test_a_declared_entry_is_built_in_the_same_fixed_order(self) -> None:
+        """The other walk, pinned the same way. `description` is appended after the required keys
+        rather than sorted among them, which is its own small promise: it is the one key `add`
+        supplies itself, and a refusal can never be about it."""
+        given = {key: f'"{key}"' for key in WIDE_KEYS}
+        assert list(_declared(WIDE, given)) == [*WIDE_KEYS, "description"]
 
     @pytest.mark.parametrize(
         "query",

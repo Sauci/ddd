@@ -1485,9 +1485,18 @@ def _declared(vocabulary: Vocabulary, given: Mapping[str, str]) -> dict[str, str
     """The json text per key an ``add`` of ``vocabulary`` was given, and an empty ``description``
     beside them.
 
-    Sorted, so that a refusal about two bad keys names the same one every run: ``raws`` is walked
-    in its own order by :func:`~ddd.shared_plans.add_entry`, and a message that depended on a
-    set's iteration order would be a test that passed most of the time.
+    **Sorted, and observably so.** The file this builds is not what the order decides - that is
+    :func:`~ddd.shared_plans._entry_text`, which composes the entry in
+    :attr:`~ddd.project_shared.Vocabulary.keys` order whatever order ``raws`` arrives in. What the
+    order decides is *which refusal a reader meets*: both
+    :func:`~ddd.shared_plans.add_entry` and :func:`~ddd.shared_plans._created` walk
+    ``raws.items()`` and stop at the first key :func:`~ddd.shared_plans._judged` refuses, so an
+    ``add`` naming two bad values answers whichever came first.
+    :attr:`~ddd.project_shared.Vocabulary.required` is a frozenset, whose order changes with the
+    interpreter's hash seed - measured on this checkout, ``PYTHONHASHSEED=1`` yields ``alignment``
+    before ``access`` and ``PYTHONHASHSEED=0`` the reverse - so without the sort a reader would
+    meet one sentence or the other depending on how the process happened to start.
+    ``test_two_values_the_model_refuses_name_the_same_one_every_run`` is what pins it.
     """
     declared = {key: given[key] for key in sorted(vocabulary.required)}
     declared["description"] = '""'
@@ -1504,6 +1513,11 @@ def _json_texts(vocabulary: Vocabulary, given: Mapping[str, str], raw: str | Non
     naming the value it refuses among the ones it allows.
 
     ``name``, ``to`` and ``key`` are not here: each is a plain string the verb quotes itself.
+
+    Sorted for the reason :func:`_declared` is: the caller stops at the first text that is not
+    json, so a request carrying two of them would name one or the other depending on the
+    interpreter's hash seed. ``test_two_values_that_are_not_json_are_refused_in_a_fixed_order``
+    is what pins it.
     """
     texts = [] if raw is None else [raw]
     texts.extend(given[key] for key in sorted(vocabulary.required) if key in given)

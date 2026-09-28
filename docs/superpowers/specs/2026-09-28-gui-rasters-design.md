@@ -92,11 +92,20 @@ name, but is the project's alone.
   one of `keys`. The map cannot drift from the table beside it, which is the hazard that shipped four
   unpinned descriptor values in part 14 and was found by a review rather than by a gate.
 
-**A judge takes the entry as well as the value.** `Callable[[Index, str, str], str | None]` — the
-index, the entry whose key is being set, and the wanted value. The name case never needed this: a
-rename of a name to itself is a no-op and refusing it says nothing a reader can act on. An event does
-need it. A panel asks for a plan on every keystroke, so a reader re-typing the `3` their raster
-already claims would otherwise be told that `3` is taken — by themselves.
+**A judge takes the entry and the cache as well as the value.**
+`Callable[[Index, str | None, str, dict[Path, Document]], str | None]` — the index, the entry whose
+key is being set or `None` where there is none yet, the wanted value, and the document cache.
+
+The entry is there because an event needs it. A panel asks for a plan on every keystroke, so a reader
+re-typing the `3` their raster already claims would otherwise be told that `3` is taken — by
+themselves. A name judge ignores it: part 14 settled that renaming a name to itself is refused and
+says nothing about a reader's real mistake either way, so ignoring it preserves a decision.
+
+The cache is there because `Index.rasters` maps a name to a `Site` and **not to its event**. Asking
+which raster claims event 3 means reading each entry's own text, which is what `text_of` and
+`string_of` already do and what they already take a cache for. A name judge ignores this too — a name
+is in the index — so both name judges carry two arguments they do not read, which is the price of one
+map over two fields. `set_entry` and `add_entry` both hold a cache already and pass their own.
 
 ## 4 What is refused, and what is reported
 

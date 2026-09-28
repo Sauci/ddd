@@ -268,12 +268,30 @@ def add_entry(
     to fall into. Only the creating arm is refused: where a file of the vocabulary did load, this
     knows both where the entry goes and what that file already declares.
 
-    Every raw is asked of :func:`_untaken` as well as of :func:`_judged`, in the loop that already
-    settles and judges them: a value the project has already given away is refused on create for
-    the same reason :func:`set_entry` refuses it on edit. Asked in only one of the two, the
-    interface would refuse a raster's event on edit and write the collision on create - the reader
-    reaching the same wrong project by the longer route. ``None`` is passed for the entry, there
-    being none yet for one to be exempt from.
+    Every raw the appending path writes is asked of :func:`_untaken` as well as of
+    :func:`_judged`, in the loop that already settles and judges them: a value the project has
+    already given away is refused on declaring for the same reason :func:`set_entry` refuses it on
+    edit. Asked in one verb and not the other, the interface would refuse a raster's event on edit
+    and write the collision on declaring - the reader reaching the same wrong project by the
+    longer route. ``None`` is passed for the entry, there being none yet for one to be exempt
+    from.
+
+    The creating path - :func:`_created` - does not ask, and today cannot need to. It is reached
+    only where ``project.files`` is empty, which is to say where the project includes no file of
+    this vocabulary; an entry a judge could answer about would then have to have come from some
+    other home. Only :data:`~ddd.project_shared.CONSTANTS` has one (``component.constants``), and
+    a constant's :attr:`~ddd.project_shared.Vocabulary.taken` holds its name alone, which
+    ``add_entry`` asks above this loop and not in it. So on that path every judge that could be
+    asked would answer ``None``: a fallback agreeing with its guard, which no test can tell from
+    its absence and which would cost :func:`_created` an :class:`~ddd.lsp.navigation.Index`
+    parameter it has no other use for. Written down rather than written, and the exception stated
+    rather than the claim overstated.
+
+    **What reopens it:** a vocabulary with both a second home and a key of its own in ``taken``.
+    That one reaches :func:`_created` with entries already in the index, and would write on
+    declaring the collision it is refused on editing - the failure this paragraph's first half
+    exists to prevent, arriving by the third route. Wire the call then; it is one line and the
+    parameter.
     """
     problem = vocabulary.taken[vocabulary.name_key](built, None, name, cache)
     if problem is not None:

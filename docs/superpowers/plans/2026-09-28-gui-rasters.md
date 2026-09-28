@@ -40,7 +40,7 @@ Every task's requirements implicitly include this section.
 - **A coverage gate cannot see data.** Part 14 shipped four `SECTIONS` field values pinned by no test, because every line reading them is covered through `CONSTANTS`. **Ablate every new descriptor value and confirm a named test dies.** If none does, write the one that does.
 - **A survival under ablation can be luck.** Python randomises string hashing per process, so a `frozenset` of strings iterates differently run to run — one part 14 reviewer's "the sort is unpinned" was a coin toss. Re-run a survival under `PYTHONHASHSEED=0`, `1`, `4` and `7` before believing it. A death proves the point; a survival does not.
 - **Ablate only in a `git worktree add` scratch checkout, and run pytest with that worktree as the working directory.** `pyproject.toml:122` sets `pythonpath = ["src", "tools", "docker"]`, which pytest resolves against **rootdir** and puts ahead of any `PYTHONPATH` you export — so a run started from the main repository measures the main repository however `PYTHONPATH` is set, every rot "survives", and the conclusion is that nothing pins anything. Measured on this branch, twice, by the controller. The tell is pytest's own `rootdir:` line, and the guard is to **confirm the ablation kills something before trusting that it kills nothing**. Set `PYTHONHASHSEED` too. Remove the worktree afterwards and confirm a clean tree.
-- **No decision may live in a `.tsx` file.** Nothing in this repository executes one under any gate; lint, typecheck, build and the screenshot diff are all the scrutiny they get. Part 14 shipped four defects there that every gate passed. Judgements live in `gui/src/lib` behind the Vitest gate.
+- **No decision may live in a `.tsx` file.** Almost nothing in this repository executes one under any gate; lint, typecheck, build and the screenshot diff are all the scrutiny most of them get. The exception, which the final review measured rather than assumed: `gui/e2e/rasters.spec.ts` drives the *compiled* panel and asserts the Used by row reads "everything it produces", so `rasterUseWhat` is exercised through `RasterPanelView` — one narrow happy path, but not nothing. It presses nothing, so no refusal, no Save and no Remove is reached that way. Part 14 shipped four defects in `.tsx` that every gate passed. Judgements live in `gui/src/lib` behind the Vitest gate.
 - **Write the prose as carefully as the code.** Five stale or false cross-references in part 14 all arrived the same way: text copied from the constants version without re-reading it against what is now true. Cite a mechanism in the code rather than a section number, and grep a quoted phrase rather than trusting it.
 
 **Conventions**
@@ -643,7 +643,7 @@ git commit -m "$(printf "serve the project's rasters, and lead a finding to one\
 - Consumes: Task 5's `RasterReply`, `RasterUse`, the two endpoints.
 - Produces: `getRaster`, `getRasterPlan`, `RasterPlanRequest`, `rasterLabel`, `rasterSet`; `SHARED_KINDS` and `SHARED_VOCABULARIES` gaining a third word; `route.ts`'s widened `kind`.
 
-**Everything the page decides lives here.** `gui/src/lib` runs under a 100 % Vitest gate on statements, branches, functions and lines; the `.tsx` of Tasks 7 and 8 runs under no gate at all.
+**Everything the page decides lives here.** `gui/src/lib` runs under a 100 % Vitest gate on statements, branches, functions and lines; the `.tsx` of Tasks 7 and 8 runs under nothing but lint, typecheck, build and the screenshot diff — bar the one happy path `gui/e2e/rasters.spec.ts` drives through the compiled panel, which presses no control.
 
 - [ ] **Step 1: Widen what the tab holds**
 
@@ -834,10 +834,19 @@ MYPY=0`; `LINT=0 TSC=0 VITEST=0` 503 passed at 100 % on all four metrics; `BUILD
 **By hand, on a copy of `examples/vocabulary`:** an `unknown-raster` on a component's own default
 followed to an add form with the name already in it, applied, the finding gone and the surviving one
 gaining *"did you mean '10ms'?"*; `event 0 is already claimed by raster '1ms'` on a keystroke, and
-the same field retyped with its **own** event refused nothing; a rename rewriting all three naming
-sites in one plan - the component default, the definition, and the declaration with its event, cycle
-and description untouched; a project with no rasters file getting one, `includes` and all; and
-`2 shapes name 10ms, so it cannot be removed.`
+the same field retyped with its **own** event refused nothing; a rename rewriting every naming site
+in one plan - the reference and the declaration, whose event, cycle and description were untouched;
+a project with no rasters file getting one, `includes` and all; and a Remove refused by the shape
+still naming the raster.
+
+**The copy it was driven on had been edited during the session**, so the two counts this paragraph
+first quoted - *"all three naming sites"* and `2 shapes name 10ms, so it cannot be removed.` -
+were that copy's and not a clean one's, and neither the wording nor the number reproduces. Measured
+afresh on an unmodified `examples/vocabulary`: `10ms` has exactly one use, Pump's own default, and
+`1ms` one, PumpSpeed's definition; `remove` answers `'10ms' is named by 1 shape, the first in
+pump.ddd.json; nothing may name it before it goes`, and a rename of either rewrites **two** sites,
+its own entry and the one shape naming it. `fixtures.ts` already says this of the same fixture -
+its second use of `10ms` is marked invented, and for a reason it states.
 
 ## What was left open
 

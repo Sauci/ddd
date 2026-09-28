@@ -172,8 +172,8 @@ class Vocabulary:
     The cache is given because :attr:`Index.rasters` maps a name to a :class:`Site` and **not** to
     its event: asking which raster claims one means reading each entry's own text, as
     :func:`text_of` does and takes a cache for. A name judge ignores this too - a name is in the
-    index - so both name judges carry two arguments they do not read. That is the price of one map
-    over two fields, and it is paid once.
+    index - so every name judge carries two arguments it does not read, this vocabulary's and the
+    next one's alike. That is the price of one map over two fields, and it is paid once.
 
     A constant's judge is ``rename_problem``, whose c identifier rule and ``occupied`` check fit a
     constant and neither of the others: a section's name is a linker string and a raster's an a2l
@@ -553,8 +553,8 @@ def _raster_uses(built: Index, name: str, cache: dict[Path, Document]) -> tuple[
     directly, in the order the index recorded them: per component, its own default ahead of its
     own definitions', as :func:`ddd.lsp.navigation.index` writes it - two components interleave
     rather than group by kind, one's default and definitions together before the next one's. This
-    is what a raster's own :attr:`Vocabulary.uses` will read through, once a rasters part binds
-    one.
+    is what :data:`RASTERS`'s :attr:`~Vocabulary.uses` is bound to, and so what every reader of a
+    raster's uses - the panel's Used by list among them - is answered through.
 
     The one vocabulary :attr:`Use.kind` was widened for: a component's own default is a use
     inside no definition at all, so unlike :func:`_section_uses` this cannot say every use is the
@@ -608,10 +608,11 @@ constant and ``2.0`` a fractional one."""
 
 _DESCRIPTION: Final[TypeAdapter[str]] = TypeAdapter(str)
 """The format's own judge of what a description may hold: any string, and nothing else -
-``ConstantDeclaration.description`` and ``SectionDeclaration.description`` are both a plain
-``str``, so this need only refuse what a string can never be: a number, a bool, ``null``, an
-array, an object. One adapter for both, because the two fields are the same field twice; a
-vocabulary whose description were constrained would bring its own."""
+``ConstantDeclaration.description``, ``SectionDeclaration.description`` and
+``RasterDeclaration.description`` are each a plain ``str``, so this need only refuse what a string
+can never be: a number, a bool, ``null``, an array, an object. One adapter for every vocabulary
+whose description is that field written out again, however many that comes to; one whose
+description were constrained would bring its own."""
 
 
 def _constant_name_judge(

@@ -1072,11 +1072,13 @@ class RasterUse(_Frozen):
     shapes :data:`ddd.lsp.navigation._RASTER_KEY` spells."""
 
     kind: Literal["variable", "component"]
-    """Which of the two the use is. Wider than :class:`SectionUse.kind` and narrower than
-    :class:`ConstantUse.kind`, and the widening is the one :class:`SectionUse.kind`'s own
-    docstring predicted: a component's default sits inside no definition at all, so unlike a
-    placement it names no variable. Never ``member`` - a structure member states a unit and a
-    dimension, and nothing samples it."""
+    """Which of the two the use is. Wider than :class:`SectionUse.kind`, and the widening is the
+    one :class:`SectionUse.kind`'s own docstring predicted: a component's default sits inside no
+    definition at all, so unlike a placement it names no variable. Not nested with
+    :class:`ConstantUse.kind` either way, though, and no ``kind`` literal here is nested with
+    another: each names the shapes its own vocabulary is named at, and those are different
+    questions. A constant's second word is ``member``, which this one never carries - a structure
+    member states a unit and a dimension, and nothing samples it."""
 
     name: str
     """The variable's name, or the component's own where it names the raster directly: there is

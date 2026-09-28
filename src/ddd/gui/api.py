@@ -1577,8 +1577,10 @@ def _required_keys(vocabulary: Vocabulary) -> list[str]:
     of the alphabet, where this answers it because that is the field a reader sees first.
 
     A loop and not a comprehension, for the reason :func:`ddd.project_shared.shown` gives: coverage
-    counts no branch in a comprehension's filter, so the key that is *not* required - a
-    ``description``, in both vocabularies - could stop being skipped and the gate would not say so.
+    counts no branch in a comprehension's filter, so a key that is *not* required - a
+    ``description``, and a raster's ``cycle`` beside it - could stop being skipped and the gate
+    would not say so. Nothing bounds how many a vocabulary leaves out: ``keys`` minus ``required``
+    is however many the model gives a default for.
 
     Why the order is visible at all: both :func:`~ddd.shared_plans.add_entry` and
     :func:`~ddd.shared_plans._created` walk ``raws.items()`` and stop at the first key

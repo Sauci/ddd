@@ -75,11 +75,11 @@ export function SharedTableView({
           <TableHeader>
             <Column isRowHeader>Name</Column>
             <Column>Vocabulary</Column>
-            {/* No Description column, unlike TypesTableView: a constant's description is a full
+            {/* No Description column, unlike TypesTableView: an entry's description is a full
                 sentence - the shipped example's is "sample slots of a pressure trend buffer, a
                 device wide size no single component owns" - which would dominate every row, where
-                the value is short and is what a reader scans a list of constants for (spec 5.1).
-                The description is in the panel (Task 8). */}
+                what a reader scans this list for is an entry's States, not a paragraph explaining
+                it (spec 5.1). The description is in the panel (Task 8). */}
             {/* States, not Value: the word has to fit a constant's own state ("16") as well as a
                 section's ("read-only, align 4"), which Value does not - the same call as the
                 Vocabulary rename above, from PR #68: cheap before a second vocabulary ships into
@@ -105,7 +105,7 @@ export function SharedTableView({
   );
 }
 
-/** "2 places", and nothing at all where a constant is named nowhere - a count of zero is noise in
+/** "2 places", and nothing at all where an entry is named nowhere - a count of zero is noise in
  * a column a reader scans for the ones that are used. Not imported from TypesTableView's own
  * `used`: each table draws its own count from its own row shape, the way the design keeps every
  * table's facts concrete rather than sharing them through an abstraction built to fit whichever

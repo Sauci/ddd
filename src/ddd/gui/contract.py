@@ -898,12 +898,12 @@ class SharedEntry(_Frozen):
     """One row of the Shared files tab."""
 
     kind: str
-    """Which vocabulary the row belongs to: ``constant`` or ``section``; a raster brings its own
-    word here when it lands.
+    """Which vocabulary the row belongs to: ``constant``, ``section`` or ``raster``.
 
     A plain ``str`` and not a ``Literal``, which is why no generic function had to change when
-    sections joined the tab: the table holds whatever :data:`ddd.project_shared.HELD` holds, and
-    the word is the descriptor's own :attr:`~ddd.project_shared.Vocabulary.kind`.
+    sections joined the tab, nor when rasters did: the table holds whatever
+    :data:`ddd.project_shared.HELD` holds, and the word is the descriptor's own
+    :attr:`~ddd.project_shared.Vocabulary.kind`.
     """
 
     name: str
@@ -912,7 +912,7 @@ class SharedEntry(_Frozen):
     states: str
     """What the entry states, in the one cell the table gives a row for it: a constant its value
     as the json text its file spells (``16``, ``2.0``), a section its access and its alignment
-    together (``read-only, align 4``).
+    together (``read-only, align 4``), a raster its event and its cycle (``event 1, 10ms``).
 
     Composed per vocabulary on the server, by
     :attr:`ddd.project_shared.Vocabulary.states`, so the table learns nothing about what any one

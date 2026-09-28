@@ -1,4 +1,5 @@
-"""A project's constants and its memory sections as the Shared files tab shows them."""
+"""A project's constants, its memory sections and its rasters as the Shared files tab shows
+them."""
 
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from ddd.project_shared import (
     _RASTER_DEFAULT_SHAPE,
     _RASTER_DEFINITION_SHAPE,
     CONSTANTS,
+    RASTERS,
     SECTIONS,
     _raster_uses,
     located_on,
@@ -210,6 +212,36 @@ TWO_RASTER_DECLARATIONS = {
     "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
     "a.ddd.json": component("A", declare("output", "X", raster="10ms")),
     "b.ddd.json": component("B", declare("input", "X", raster="10ms")),
+}
+
+# A raster with no `cycle` key at all, which the model permits and gives no derived default: the
+# event is not cyclic - crank synchronous, on change, on demand - and `RasterDeclaration.cycle`
+# says that is a real kind of raster rather than an omission. The one tree that reaches
+# `_raster_states`'s other arm, and the first key of any vocabulary that may simply not be there.
+UNTIMED = {
+    "r.ddd.json": {"rasters": [{"raster": "20ms", "event": 2}]},
+    "a.ddd.json": component("A", declare("output", "X", raster="20ms")),
+}
+
+# The same raster writing its absent cycle out as `null`, which the model permits too: `cycle` is
+# `str | None`. `cycle` is one of `RASTERS.strings`, so `string_of` answers `""` for a value that
+# is not a string - the reason `_raster_states` can index rather than default.
+NULL_CYCLE = {
+    "r.ddd.json": {"rasters": [{"raster": "20ms", "event": 2, "cycle": None}]},
+    "a.ddd.json": component("A", declare("output", "X", raster="20ms")),
+}
+
+# One entry of each of the three vocabularies, which is the only tree that can say the table holds
+# all of them in one order - `PLACED_AND_SIZED` above says it for two. One definition names all
+# three, so the project is a whole one rather than three files that never meet.
+ONE_OF_EACH = {
+    "c.ddd.json": {"constants": [{"name": "TREND_SAMPLES", "value": 16}]},
+    "s.ddd.json": {"sections": [{"section": ".calib", "access": "read-only", "alignment": 4}]},
+    "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
+    "a.ddd.json": component(
+        "A",
+        declare("output", "Gain", section=".calib", raster="10ms", dimensions=["TREND_SAMPLES"]),
+    ),
 }
 
 
@@ -615,6 +647,24 @@ class TestTheDescriptor:
             "description": "slots of a trend buffer",
         }
 
+    def test_every_key_is_filled_even_where_the_entry_states_none(self, tmp_path: Path) -> None:
+        """The premise `_raster_states` indexes `texts["cycle"]` against rather than defaulting it:
+        `shown` fills every key of `keys` for every entry, `""` where the entry states none.
+
+        Pinned here because nothing can pin it where it is used. While `shown` holds to this,
+        `texts["cycle"]` and `texts.get("cycle", "")` cannot behave differently - measured, the
+        whole suite passes with either, under four hash seeds - so the default is unreachable
+        code, which is why it is not written. A `shown` that began leaving an absent key out would
+        make the two differ, one raising where the other quietly defaulted, and it fails here
+        rather than in a row cell."""
+        built, _ = built_of(tmp_path, **UNTIMED)
+        cache: dict[Path, Document] = {}
+        assert shown(RASTERS, built, "20ms", cache) == {
+            "event": "2",
+            "cycle": "",
+            "description": "",
+        }
+
 
 class TestTheDescriptorsInvariants:
     """`CONSTANTS` itself exercises the arm of each check in `Vocabulary.__post_init__` that
@@ -794,6 +844,64 @@ class TestSections:
 
 
 class TestRasters:
+    def test_a_raster_states_its_event_and_its_cycle(self, tmp_path: Path) -> None:
+        built, _ = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        row = row_of(RASTERS, built, "10ms", (), cache)
+        assert (row.kind, row.name, row.states) == ("raster", "10ms", "event 1, 10ms")
+
+    def test_a_raster_with_no_cycle_states_its_event_alone(self, tmp_path: Path) -> None:
+        """`cycle` is `str | None`, where a section's two keys are both required. This is the
+        first row cell composed from a key that may not be there."""
+        built, _ = built_of(tmp_path, **UNTIMED)
+        cache: dict[Path, Document] = {}
+        assert row_of(RASTERS, built, "20ms", (), cache).states == "event 2"
+
+    def test_a_raster_writing_its_absent_cycle_out_as_null_states_its_event_alone(
+        self, tmp_path: Path
+    ) -> None:
+        """The same cell by the other route, and what lets `_raster_states` index `texts["cycle"]`
+        instead of defaulting it: `shown` fills every key of `keys` for every entry, and `cycle`
+        being one of `RASTERS.strings` means `string_of` answers `""` for the `null` rather than
+        the four characters `text_of` would have read. Dropped from `strings`, this row would read
+        `event 2, null` and the row above `event 1, "10ms"`."""
+        built, _ = built_of(tmp_path, **NULL_CYCLE)
+        cache: dict[Path, Document] = {}
+        assert row_of(RASTERS, built, "20ms", (), cache).states == "event 2"
+
+    def test_all_three_vocabularies_share_the_table(self, tmp_path: Path) -> None:
+        # The whole point of one tab, now said for the third vocabulary: a reader looking for a
+        # name does not first choose which of the three it is in.
+        built, _ = built_of(tmp_path, **ONE_OF_EACH)
+        cache: dict[Path, Document] = {}
+        assert [(row.kind, row.name) for row in shared_rows(built, (), cache)] == [
+            ("constant", "TREND_SAMPLES"),
+            ("raster", "10ms"),
+            ("section", ".calib"),
+        ]
+
+    def test_a_rasters_row_counts_both_shapes_that_name_it(self, tmp_path: Path) -> None:
+        """What `RASTERS.used` is for: a component naming the raster as its own default and a
+        definition naming it directly are two shapes, and the tab's Uses column counts both."""
+        built, _ = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        assert row_of(RASTERS, built, "10ms", (), cache).uses == 2
+
+    def test_the_uses_a_panel_lists_come_through_the_descriptors_own_reader(
+        self, tmp_path: Path
+    ) -> None:
+        """What `RASTERS.uses` is for, and the only test that asks `uses_of` for a raster rather
+        than `_raster_uses` directly: bound to `_section_uses`, the descriptor would answer `()`
+        here, since a raster's uses are recorded in `raster_uses` and a section's reader looks in
+        `section_uses`."""
+        built, _ = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        used = uses_of(RASTERS, built, "10ms", cache)
+        assert [(use.kind, use.name, use.component) for use in used] == [
+            ("component", "A", "A"),
+            ("variable", "X", "A"),
+        ]
+
     def test_a_component_naming_a_raster_is_a_use_of_its_own_kind(self, tmp_path: Path) -> None:
         """`Component.raster` is the default for everything the component produces - a use inside
         no definition at all, which neither of the other two vocabularies has."""

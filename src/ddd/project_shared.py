@@ -1,10 +1,12 @@
-"""A project's constants and its memory sections as the Shared files tab shows them.
+"""A project's constants, its memory sections and its measurement rasters as the Shared files tab
+shows them.
 
 Transport-neutral, like :mod:`ddd.project_types` and :mod:`ddd.project_units`: nothing here knows
 about http or the session. Where an entry is declared and which shapes name it is the navigation
 index's own record, one pair of dictionaries per vocabulary
 (:attr:`ddd.lsp.navigation.Index.constants` and :attr:`~ddd.lsp.navigation.Index.constant_uses`,
-:attr:`~ddd.lsp.navigation.Index.sections` and :attr:`~ddd.lsp.navigation.Index.section_uses`),
+:attr:`~ddd.lsp.navigation.Index.sections` and :attr:`~ddd.lsp.navigation.Index.section_uses`,
+:attr:`~ddd.lsp.navigation.Index.rasters` and :attr:`~ddd.lsp.navigation.Index.raster_uses`),
 and what an entry *says* is read from the document at that entry, the way a type's keys are.
 
 Nothing is parsed into the models: a value travels as the json text it is written as, so ``2.0``
@@ -18,6 +20,7 @@ asks, so that arm is only reachable from a test - which is where it is covered.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
@@ -31,17 +34,23 @@ from ddd.finding_routes import ABOUT_THE_DECLARATION
 from ddd.lsp.navigation import Index, Site, rename_problem
 from ddd.lsp.ranges import Document, read
 from ddd.models.constants import ConstantValue
+from ddd.models.rasters import RasterDeclaration
 from ddd.models.sections import SectionAccess, SectionDeclaration
 from ddd.variables import component_of, declarations_of
 
 CONSTANT: Final = "constant"
-"""The ``kind`` a constant's row carries. The tab holds three kinds once sections and rasters land;
-the column is what tells a reader how to read the rest of the row."""
+"""The ``kind`` a constant's row carries. The tab holds three kinds; the column is what tells a
+reader how to read the rest of the row."""
 
 SECTION: Final = "section"
 """The ``kind`` a section's row carries, and the word :func:`~ddd.lsp.navigation.rename_problem`
 knows a section's name rule by - one string, so that the row a reader clicks and the judge that
 refuses their new name cannot be about two different things."""
+
+RASTER: Final = "raster"
+"""The ``kind`` a raster's row carries, and the word
+:func:`~ddd.lsp.navigation.rename_problem` knows a raster's name rule by - one string, for the
+reason :data:`SECTION` is one."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,8 +129,13 @@ class Vocabulary:
 
     required: frozenset[str]
     """Of ``keys``, the ones the model gives no default, so a reader may not take them away: a
-    constant's ``value``, a section's ``access`` and ``alignment``. A file missing one does not
-    load, which is the outcome the interface refuses rather than writes."""
+    constant's ``value``, a section's ``access`` and ``alignment``, a raster's ``event``. A file
+    missing one does not load, which is the outcome the interface refuses rather than writes.
+
+    A raster's ``cycle`` is deliberately not one of them, and is the first key of any vocabulary a
+    reader may take away: :class:`~ddd.models.rasters.RasterDeclaration` gives it the default
+    ``None`` and says why - an event that is not cyclic is a real kind of raster rather than an
+    omission."""
 
     filename: str
     """The file ``add`` writes beside the project description where the project includes none, named
@@ -240,14 +254,15 @@ class SharedRow:
     """One row of the Shared files tab."""
 
     kind: str
-    """``constant`` or ``section``; a raster brings its own word here when it lands."""
+    """``constant``, ``section`` or ``raster``."""
 
     name: str
 
     states: str
     """What the entry states, built by its vocabulary's own :attr:`Vocabulary.states` rule from the
     display text of its keys - a constant's value as the json text its file spells (``16``,
-    ``2.0``), a section's access and alignment in one cell (``read-only, align 4``)."""
+    ``2.0``), a section's access and alignment in one cell (``read-only, align 4``), a raster's
+    event and cycle in one too (``event 1, 10ms``)."""
 
     uses: int
     """How many shapes name it."""
@@ -712,7 +727,171 @@ SECTIONS: Final = Vocabulary(
     taken={"section": _section_name_judge},
 )
 
-HELD: Final = (CONSTANTS, SECTIONS)
+
+def _evented(value: Any) -> dict[str, Any]:
+    """One whole raster entry built around the event being judged, for :data:`_EVENT`.
+
+    Built as :func:`_aligned` is, and for the same reason in a different place: the strictness
+    lives on the field rather than on its annotation. ``RasterDeclaration.event`` is
+    ``Field(strict=True, ge=0, le=EVENT_MAX)``, so ``TypeAdapter(int)`` over the annotation alone
+    would **coerce** - ``1e3`` is the float ``1000.0``, which the published schema accepts, the
+    loader refuses, and a bare adapter would wave through as ``1000``. Strictness belongs to the
+    field, so the field has to be the thing doing the validating.
+
+    The other keys cannot affect the answer. ``raster`` is fixed to ``ddd``, which
+    :data:`~ddd.models.common.RASTER_NAME_PATTERN` admits and
+    :data:`~ddd.models.common.RASTER_NAME_LENGTH` leaves room for, so it can contribute no refusal
+    of its own; ``cycle`` and ``description`` are left out and take the model's own defaults, and
+    ``extra="forbid"`` means there are no others. Leaving ``cycle`` out is what keeps this about
+    the event alone: :class:`~ddd.models.rasters.RasterDeclaration`'s single cross-field rule,
+    ``_cycle_is_a_period_xcp_carries``, returns at its first line for a ``cycle`` of ``None``, so
+    it can never surface a cycle's refusal here. ``test_an_event_the_model_takes_is_planned`` is
+    what pins all of that, since a placeholder the model refused would refuse every event and
+    leave the refusal cases passing.
+
+    A dict rather than a keyword call so that the model's own validation reports which key was
+    refused, and taken as ``Any`` rather than ``int`` for the reason :data:`_ALIGNMENT` gives.
+    """
+    return {"raster": "ddd", "event": value}
+
+
+_EVENT: Final[TypeAdapter[RasterDeclaration]] = TypeAdapter(
+    Annotated[RasterDeclaration, BeforeValidator(_evented)]
+)
+"""The format's own judge of what a raster's ``event`` may hold: the model's own field, asked
+through the model, so the interface and the loader cannot come to different answers. A
+``BeforeValidator`` wrapping the value into an entry rather than an adapter over the field's
+annotation, for the reason :func:`_evented` gives."""
+
+
+def _cycled(value: Any) -> dict[str, Any]:
+    """One whole raster entry built around the cycle being judged, for :data:`_CYCLE`.
+
+    The period rule is a ``@model_validator(mode="after")`` on
+    :class:`~ddd.models.rasters.RasterDeclaration`, not a constraint on the field, exactly as a
+    section's power-of-two rule is - so ``TypeAdapter(str | None)`` over the annotation alone would
+    take ``"1234ms"`` and ``"potato"``, neither of which is a period the loader accepts. Written,
+    the file stops loading and every tab empties, which is the failure
+    :func:`ddd.shared_plans.set_entry`'s own docstring says it exists to prevent.
+
+    The other two keys cannot affect the answer. ``raster`` is fixed to ``ddd`` as above, and
+    ``event`` to ``0``, which ``ge=0`` admits and ``strict=True`` takes for a python ``int``, so
+    neither can contribute a refusal of its own; ``description`` is left out and defaults, and
+    ``extra="forbid"`` means there are no others. Nor can either change what the cycle is judged
+    by: the model's single cross-field rule reads ``cycle`` and nothing else.
+    ``test_a_cycle_the_model_takes_is_planned`` is what pins that, and it asks for ``null`` too -
+    ``cycle`` is ``str | None``, and an event that is not cyclic is a real kind of raster rather
+    than an omission.
+    """
+    return {"raster": "ddd", "event": 0, "cycle": value}
+
+
+_CYCLE: Final[TypeAdapter[RasterDeclaration]] = TypeAdapter(
+    Annotated[RasterDeclaration, BeforeValidator(_cycled)]
+)
+"""The format's own judge of what a raster's ``cycle`` may hold: the model's own field and the
+model's own period rule, for the reason :func:`_cycled` gives."""
+
+
+def _raster_states(texts: Mapping[str, str]) -> str:
+    """``event 3, 10ms``, or ``event 3`` where the raster states no cycle.
+
+    The first row cell composed from a key that may not be there, and the reason this is a named
+    function where the other two vocabularies' are lambdas. Written as statements: a conditional
+    expression registers no branch with coverage.py, and the arm for a raster with no cycle would
+    then be one no gate could tell had run.
+
+    Both keys are indexed rather than read with ``.get``: :func:`shown` fills every key of
+    :attr:`Vocabulary.keys` for every entry, so ``texts["cycle"]`` is always there - ``""`` where
+    the entry states none, and ``""`` too where it states an explicit ``null``, since ``cycle`` is
+    one of :attr:`Vocabulary.strings` and :func:`string_of` answers ``""`` for a value that is not
+    a string. A default would be one no call could reach.
+    """
+    cycle = texts["cycle"]
+    if not cycle:
+        return f"event {texts['event']}"
+    return f"event {texts['event']}, {cycle}"
+
+
+def _raster_name_judge(
+    built: Index, _entry: str | None, to: str, _cache: dict[Path, Document]
+) -> str | None:
+    """:data:`RASTERS`'s :attr:`~Vocabulary.taken` entry for its name: ``rename_problem``'s own
+    raster arm, asked exactly as :func:`_constant_name_judge` and :func:`_section_name_judge` ask
+    for theirs, so that the tab and the editor's F2 refuse a name in the same words. The rule lives
+    there rather than here for the reason :func:`_section_name_judge` gives.
+
+    The entry and the cache go unread, for the reason :attr:`~Vocabulary.taken` gives."""
+    return rename_problem(built, to, RASTER)
+
+
+def _event_taken(
+    built: Index, entry: str | None, wanted: str, cache: dict[Path, Document]
+) -> str | None:
+    """Why this event may not be claimed, or nothing if it may.
+
+    The second judge of :data:`RASTERS`'s :attr:`~Vocabulary.taken`, and the reason that field is a
+    map where part 13 had a single name judge: a raster has two keys whose value is the project's
+    alone. What the model will take is a different question from what another raster has already
+    got, and only the second needs an :class:`Index` to answer.
+
+    ``entry`` is the raster whose event is being set, and is exempt from itself: the panel asks for
+    a plan on every keystroke, so a reader who has typed nothing new must not be refused. An
+    ``add`` passes ``None``, there being no entry yet for one to be exempt from.
+
+    Which rasters there are is asked of the index, for the reason
+    :func:`ddd.shared_plans.remove_entry` gives about what is in use: reading text to answer a
+    question about meaning is the mistake part 11 filed against ``variable_keys._storage_of``.
+    What each of them *claims* cannot be asked of it - :attr:`ddd.lsp.navigation.Index.rasters`
+    maps a name to a :class:`Site` and not to its event - so the event is read from the entry's
+    own text through :func:`text_of`, which is why :attr:`Vocabulary.taken` hands a judge the
+    cache.
+
+    ``wanted`` is parsed with no guard of its own. ``ddd.shared_plans._untaken`` asks this only
+    after ``_judged`` has taken the same text through :data:`_EVENT`, so it is already json the
+    model accepted; a guard here would be a line no test could reach, and text the model would
+    refuse must leave through the model's refusal rather than this one - two refusals for one
+    keystroke is one too many, and the model's is the one that says what a legal event looks like.
+
+    What another raster states is guarded, because that one is reachable: the index recorded where
+    the analysis read a declaration and the file may have dropped its ``event`` since, the drift
+    :func:`_raster_uses` and :func:`ddd.lsp.navigation.rename_edits` both handle. Unguarded,
+    ``json.loads("")`` would raise out of a plan the panel asked for; a declaration that states no
+    event claims none, and the next revision says what it claims instead.
+    """
+    event = json.loads(wanted)
+    for other in built.rasters:
+        if other == entry:
+            continue
+        claimed = text_of(RASTERS, built, other, "event", cache)
+        if not claimed:
+            continue
+        if json.loads(claimed) == event:
+            return f"event {event} is already claimed by raster '{other}'"
+    return None
+
+
+RASTERS: Final = Vocabulary(
+    kind=RASTER,
+    containers=("rasters",),
+    name_key="raster",
+    keys=("event", "cycle", "description"),
+    strings=frozenset({"cycle", "description"}),
+    entries=lambda built: built.rasters,
+    used=lambda built: built.raster_uses,
+    states=_raster_states,
+    uses=_raster_uses,
+    required=frozenset({"event"}),
+    filename="rasters.ddd.json",
+    judge={
+        "event": Judgement(_EVENT, "a whole number the target offers as a channel"),
+        "cycle": Judgement(_CYCLE, "a json string, or nothing"),
+        "description": Judgement(_DESCRIPTION, "a json string"),
+    },
+    taken={"raster": _raster_name_judge, "event": _event_taken},
+)
+
+HELD: Final = (CONSTANTS, SECTIONS, RASTERS)
 """Every vocabulary the Shared files tab holds, and the order :func:`shared_rows` walks them in -
-which the sort by kind then name makes invisible to a reader. A rasters part adds a third word and
-nothing else: that is what the descriptor is for."""
+which the sort by kind then name makes invisible to a reader. The third of them added a word here
+and nothing else, which is what the descriptor was for."""

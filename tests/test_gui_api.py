@@ -2820,22 +2820,27 @@ class TestTheTypesTab:
 class TestShared:
     """``GET /api/shared``: the Shared files tab's one table, over examples/vocabulary - the one
     example declaring a constant in a constants file (`TREND_SAMPLES`) and one inline in a
-    component (`PRESSURE_CELLS`), both named by a dimension, and two memory sections its pump
-    places data in, checking clean."""
+    component (`PRESSURE_CELLS`), both named by a dimension, two memory sections its pump places
+    data in, and three measurement rasters it samples on, checking clean."""
 
     def test_the_table_lists_every_entry_of_every_kind_with_what_it_states(
         self, tmp_path: Path
     ) -> None:
-        """Both vocabularies in one table, sorted by kind then name: the endpoint answers whatever
-        `ddd.project_shared.HELD` holds, so a section row arrives here without this route learning
-        that sections exist. A constant states the json text of its value; a section its access and
-        its alignment, which is why the column is headed `States` and not `Value`."""
+        """All three vocabularies in one table, sorted by kind then name: the endpoint answers
+        whatever `ddd.project_shared.HELD` holds, so a section row and then a raster row each
+        arrived here without this route learning that either exists. A constant states the json
+        text of its value; a section its access and its alignment; a raster its event and its
+        cycle - which is why the column is headed `States` and not `Value`. The three rasters sort
+        by name as strings, which puts `100ms` in front of `1ms`."""
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         body = get(api, "/api/shared").body
         assert body["revision"] == 1
         assert [(e["kind"], e["name"], e["states"]) for e in body["entries"]] == [
             ("constant", "PRESSURE_CELLS", "8"),
             ("constant", "TREND_SAMPLES", "16"),
+            ("raster", "100ms", "event 2, 100ms"),
+            ("raster", "10ms", "event 1, 10ms"),
+            ("raster", "1ms", "event 0, 1ms"),
             ("section", ".calib", "read-only, align 4"),
             ("section", ".fast_ram", "read-write, align 4"),
         ]

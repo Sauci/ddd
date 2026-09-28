@@ -178,23 +178,34 @@ def set_entry(
     removal, as :func:`ddd.type_plans.set_key` also does for a type: there is nothing to remove,
     and a reader who has only selected the row - not typed anything - must not be refused before
     they have.
+
+    A value the format would take may still be one the project has already given away, which is
+    what :func:`_untaken` asks :attr:`~ddd.project_shared.Vocabulary.taken` about. The two verbs
+    that write a name have always asked it for that one; this asks it for every key a descriptor
+    names, which is what a raster's ``event`` needs - it is settable *and* the project's alone,
+    where a name is only ever the second. Asked after :func:`_judged`, so that text the model
+    would refuse meets the model's refusal and not a second one about who holds it.
+
+    The two arms this function had - the required key's and the ordinary one's - ended in the same
+    three lines apiece, and the consult would have had to be written into both. Turned inside out
+    instead, on ``raw is None`` rather than on ``required``, so that judging and asking happen in
+    exactly one place. The refusal of a required key taken away still comes before any judging,
+    since nothing is judged on that arm at all, and its sentence is untouched.
     """
     entry = _entry(vocabulary, built, name)
     _settable(vocabulary, key, entry.path)
-    if key in vocabulary.required:
-        if raw is None:
+    if raw is None:
+        if key in vocabulary.required:
             raise SharedRefusalError(
                 "invalid",
                 f"{_article(vocabulary.kind)} {vocabulary.kind} states {_article(key)} {key}, so "
                 f"'{name}' cannot be left without one in {entry.path.name}",
             )
-        _judged(vocabulary, key, raw, name, entry.path)
-        return _plan({entry.path: [Operation("set", f"{entry.pointer}.{key}", raw)]})
-    if raw is None:
         if read(entry.path, cache).value_at(f"{entry.pointer}.{key}") is None:
             return SharedPlan(())
         return _plan({entry.path: [Operation("remove", f"{entry.pointer}.{key}")]})
     _judged(vocabulary, key, raw, name, entry.path)
+    _untaken(vocabulary, built, name, key, raw, cache)
     return _plan({entry.path: [Operation("set", f"{entry.pointer}.{key}", raw)]})
 
 
@@ -255,6 +266,13 @@ def add_entry(
     saved - and :func:`ddd.lsp.units.add_unit` refuses the same situation, having no creating arm
     to fall into. Only the creating arm is refused: where a file of the vocabulary did load, this
     knows both where the entry goes and what that file already declares.
+
+    Every raw is asked of :func:`_untaken` as well as of :func:`_judged`, in the loop that already
+    settles and judges them: a value the project has already given away is refused on create for
+    the same reason :func:`set_entry` refuses it on edit. Asked in only one of the two, the
+    interface would refuse a raster's event on edit and write the collision on create - the reader
+    reaching the same wrong project by the longer route. ``None`` is passed for the entry, there
+    being none yet for one to be exempt from.
     """
     problem = vocabulary.taken[vocabulary.name_key](built, None, name, cache)
     if problem is not None:
@@ -278,6 +296,7 @@ def add_entry(
     for key, raw in raws.items():
         _settable(vocabulary, key, file)
         _judged(vocabulary, key, raw, name, file)
+        _untaken(vocabulary, built, None, key, raw, cache)
     listed = read(file, cache).value_at(vocabulary.containers[0])
     position = _appended_at(listed)
     operation = Operation(
@@ -388,6 +407,47 @@ def _judged(vocabulary: Vocabulary, key: str, raw: str, name: str, file: Path) -
             f"{raw} is not {_article(key)} {key} {_article(vocabulary.kind)} {vocabulary.kind} "
             f"may state, so '{name}' cannot take it in {file.name}: {judgement.tail}",
         ) from refused
+
+
+def _untaken(
+    vocabulary: Vocabulary,
+    built: Index,
+    entry: str | None,
+    key: str,
+    raw: str,
+    cache: dict[Path, Document],
+) -> None:
+    """Refuse a value another entry of ``vocabulary`` has already got, where ``key`` is one whose
+    value is the project's alone.
+
+    The one place either verb that writes a value asks
+    :attr:`~ddd.project_shared.Vocabulary.taken`, so that a collision is refused in the same words
+    however a reader arrives at it. What a key's own :class:`~ddd.project_shared.Judgement` can
+    say and what this can say are different questions asked of different things:
+    :func:`_judged` takes no :class:`Index` and settles what the format permits at all, and this
+    one settles what is still free in *this* project.
+
+    A key with no judge is the ordinary case and returns at once - a constant's ``value`` and a
+    section's ``alignment`` are nobody's to hold, and ``taken`` names only the keys that are.
+    Written as two early returns rather than one nested ``if`` so that each is its own branch:
+    the arm neither of the first two vocabularies can reach - a settable key that *is* in
+    ``taken`` - is then one the gate can tell apart from the arm every constant and section takes.
+
+    ``entry`` is the entry being changed, which a judge may exempt from itself, and ``None`` from
+    an ``add``, which has no entry yet. All three name judges read neither it nor ``cache``; a
+    raster's event judge reads both, for the reason
+    :attr:`~ddd.project_shared.Vocabulary.taken` gives.
+
+    ``"invalid"`` is the code, which is what the ``taken`` refusals in :func:`rename_entry` and
+    :func:`add_entry` already raise: the change cannot be made, and no file failed to load.
+    """
+    judge = vocabulary.taken.get(key)
+    if judge is None:
+        return
+    problem = judge(built, entry, raw, cache)
+    if problem is None:
+        return
+    raise SharedRefusalError("invalid", problem)
 
 
 def _plan(operations: Mapping[Path, Sequence[Operation]]) -> SharedPlan:

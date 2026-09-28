@@ -819,10 +819,13 @@ def _section_problem(built: Index, name: str) -> str | None:
 def _raster_problem(built: Index, name: str) -> str | None:
     """Why the project may not have a raster called ``name``, or nothing if it may.
 
-    Judged by :data:`~ddd.models.common.RASTER_NAME_PATTERN` rather than by the c identifier rule
-    the other kinds answer to: a raster's name is the short name of its XCP event, which `10ms`
-    spells and no c identifier may. It joins no namespace ``occupied`` guards, for the reason
-    `_section_problem` gives about a section's.
+    Judged by :data:`~ddd.models.common.RASTER_NAME_PATTERN` and, unlike a section,
+    :data:`~ddd.models.common.RASTER_NAME_LENGTH` too - rather than by the c identifier rule the
+    other kinds answer to: a raster's name is the short name of its XCP event, which ``10ms``
+    spells and no c identifier may. The length is the model's own, not
+    :data:`~ddd.models.common.IDENTIFIER_MAX_LENGTH`, which bounds a c identifier and is a
+    different number for a different reason. It joins no namespace ``occupied`` guards, for the
+    reason :func:`_section_problem` gives about a section's.
 
     A name the vocabulary already declares is refused although the file would still load, exactly
     as a section's is: ``duplicate-raster`` is a check, not a schema error, so two rasters may share

@@ -37,6 +37,11 @@ test("a finding nobody could act on becomes a section declared in two clicks", a
   await page.getByRole("row", { name: "unknown-section" }).click();
   const finding = page.getByRole("complementary", { name: "unknown-section" });
   await expect(finding.locator(".chip")).toHaveText("error");
+  // The subject as well as the check, where the finding is read: which definition, and which
+  // section it names. The check id and the clause below are true of a complaint about any
+  // definition in any project, and this copy is broken in exactly one place on purpose - the
+  // assertion that says so belongs here rather than only in the route the next line follows.
+  await expect(finding).toContainText("'PumpSpeed' is placed in '.fast_buffer'");
   await expect(
     finding.getByText("is not a section any file of this project declares"),
   ).toBeVisible();
@@ -44,9 +49,11 @@ test("a finding nobody could act on becomes a section declared in two clicks", a
   await finding.getByRole("link", { name: "Open .fast_buffer" }).click();
 
   // The Shared files tab, the add form open and pre-filled: `.fast_buffer` names nothing the
-  // project declares yet, which is what sends the one route to the form rather than a panel
-  // (design §2, "the page decides") - the very same address a declared section's own panel
-  // opens from, and the same shape the constants journey lands on with `kind=constant`.
+  // project declares yet, and `SharedPage`'s own `isDeclared` is what turns that into the form
+  // rather than a panel - the very same address a declared section's own panel opens from, and
+  // the same shape the constants journey lands on with `kind=constant`. "One route kind, and the
+  // page decides" is part 13's design saying it, which this part inherits rather than restates;
+  // its own design says only that `route_of` gains a section route (§4.5).
   await expect(page).toHaveURL(/\/project\?view=shared&kind=section&name=\.fast_buffer$/);
   const form = page.getByRole("complementary", { name: "Declare a section" });
   await expect(form.getByRole("textbox", { name: "Name" })).toHaveValue(".fast_buffer");

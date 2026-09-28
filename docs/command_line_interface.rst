@@ -372,9 +372,11 @@ The commands
        placing data in it, since a rename reaching the entry alone would leave those
        definitions placing data in a section nothing declares. A section's name is judged as the
        linker string it is rather than as a c identifier, which is why a leading dot is an
-       ordinary spelling; a name the project already declares as a section is refused, for a
-       rename and for a new entry alike, because each entry carries its own access and
-       alignment and merging two would move data into memory with different properties.
+       ordinary spelling; a name outside the letters, digits, ``.``, ``_`` and ``$`` that
+       spelling allows is refused, being one whose file would then not load, and so is a name
+       the project already declares as a section, for a rename and for a new entry alike,
+       because each entry carries its own access and alignment and merging two would move data
+       into memory with different properties.
        One of either is declared there too, writing ``constants.ddd.json`` or
        ``sections.ddd.json`` beside the project description and adding it to ``includes`` where
        the project has no file of that kind - refused instead of written while a file the

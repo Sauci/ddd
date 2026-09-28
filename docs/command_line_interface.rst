@@ -373,15 +373,15 @@ The commands
        rewrites every place naming it in one edit - for a constant every shape spelling it; for
        a section its own entry and every definition placing data in it; for a raster its own
        entry, every definition measured in it and a component's own default naming it for
-       everything it produces - since a rename reaching the entry alone would leave every one of
-       those naming a section or a raster nothing declares. A section's name is judged as the
-       linker string it is rather than as a c identifier, which is why a leading dot is an
-       ordinary spelling; a name outside the letters, digits, ``.``, ``_`` and ``$`` that
-       spelling allows is refused, being one whose file would then not load, and so is a name
-       the project already declares as a section, for a rename and for a new entry alike,
-       because each entry carries its own access and alignment and merging two would move data
-       into memory with different properties. A raster's name is judged as the short name of an
-       XCP event it is, rather than as a c identifier either: a name outside the printable
+       everything it produces - since a rename reaching the entry alone would leave those
+       definitions, or that default, naming a section or a raster nothing declares. A section's
+       name is judged as the linker string it is rather than as a c identifier, which is why a
+       leading dot is an ordinary spelling; a name outside the letters, digits, ``.``, ``_`` and
+       ``$`` that spelling allows is refused, being one whose file would then not load, and so
+       is a name the project already declares as a section, for a rename and for a new entry
+       alike, because each entry carries its own access and alignment and merging two would move
+       data into memory with different properties. A raster's name is judged as the short name
+       of an XCP event it is, rather than as a c identifier either: a name outside the printable
        ASCII, with no space, that a short name allows, or one longer than the eight characters
        the a2l field holds, is refused, being one whose file would then not load, and so is a
        name the project already declares as a raster - ``'10ms' is already a raster this project

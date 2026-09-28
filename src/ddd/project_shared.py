@@ -140,7 +140,8 @@ class Vocabulary:
     and a raster's an a2l short name, and neither joins the namespace ``occupied`` guards."""
 
     def __post_init__(self) -> None:
-        """Three checks tying ``keys``, ``required``, ``judge`` and ``containers`` together, so a
+        """Four checks tying ``keys``, ``required``, ``judge``, ``name_key`` and ``containers``
+        together, so a
         descriptor that drops a key from one of these tables fails at construction rather than the
         first time a reader reaches the one that fell out of step.
 
@@ -158,6 +159,12 @@ class Vocabulary:
         ungiven = sorted(self.required - set(self.keys))
         if ungiven:
             msg = f"{self.kind}: {ungiven} in required but not in keys"
+            raise ValueError(msg)
+        if self.name_key in self.keys:
+            msg = (
+                f"{self.kind}: name_key '{self.name_key}' is also in keys, so the api would offer "
+                "the name through set, which renames the entry and nothing that spells it"
+            )
             raise ValueError(msg)
         if "." in self.containers[0]:
             msg = f"{self.kind}: containers[0] '{self.containers[0]}' is not a bare top-level key"

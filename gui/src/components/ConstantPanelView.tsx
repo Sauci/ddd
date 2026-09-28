@@ -1,5 +1,6 @@
 import type { ConstantReply, ConstantUse, PlanReply } from "../api/types";
 import { distinctFindings, keyedFindings } from "../lib/findings";
+import type { Offer } from "../lib/panels";
 import type { Route } from "../lib/route";
 import { baseName, consequence, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
@@ -18,15 +19,8 @@ export type ConstantAction = "value" | "describe" | "rename" | "remove";
  * own, and importing a unit's would couple the two so that a shape grown for a unit's reason -
  * one neither this panel nor a constant's plan has - would have to be carried here too.
  */
-export interface Offer {
-  /** The plan; `null` while it is being asked for, or when it was refused. */
-  plan: PlanReply | null;
-  /** Why the plan was refused, or why applying it was; `null` when neither was. */
-  refusal: string | null;
-  /** The plan shown is an earlier one's, kept on screen while this one is asked for: a value or
-   * a description, both of which change with every key typed. It cannot be applied. */
-  pending: boolean;
-}
+/** This panel's plan is pending while an earlier one is on screen: a value or a description, both of which change with every key typed. */
+export type { Offer };
 
 export interface ConstantPanelViewProps {
   reply: ConstantReply;

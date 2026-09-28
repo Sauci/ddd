@@ -29,8 +29,16 @@ export type SharedKind = Extract<Route, { view: "shared"; kind: string }>["kind"
  *
  * `Record<T, null>` is what earns this its cast: an object literal has to carry one key per value
  * of `T` and may carry no others, so a value the union gains - a third `SectionAccess` in a
- * regenerated schema, a third vocabulary in `Route` - stops the build here rather than going
- * quietly missing from a chooser, which is the failure a `.tsx` list of literals would ship.
+ * regenerated schema, a fourth vocabulary in `Route` - stops the build here rather than going
+ * quietly missing from a chooser, which is the failure a `.tsx` list of literals would ship. The
+ * third vocabulary is in, so that example is spent; a fourth is the live one.
+ *
+ * Measured, because it is worth knowing how far this reaches and how far it does not. Adding a
+ * fourth kind to `Route` stops the build at exactly one place - `SHARED_VOCABULARIES`'s literal
+ * below, through this signature - and widening that literal alone makes `tsc` exit 0 again with
+ * nothing else to say. So this is the whole of the compiler's help with a new vocabulary: the
+ * chooser cannot go stale, and every kind chain in `screens/SharedPage.tsx` and
+ * `components/SharedAddView.tsx` can, which that file's panel chain records in full.
  */
 function valuesOf<T extends string>(record: Record<T, null>): readonly T[] {
   return Object.keys(record) as T[];
@@ -92,11 +100,12 @@ export function addTitle(kind: SharedKind | undefined): string {
  * nothing shared at all.
  *
  * A project with nothing shared is told so in words rather than shown a table with a zero in it:
- * the tab is where a constant or a section is declared, and an empty table with a count above it
- * reads as a screen that failed to load. Counted by `entry.kind` itself rather than a fixed list
- * of the vocabularies known today: `SharedEntry.kind` is a plain string on the wire for exactly
- * this reason (its own doc: "no generic function had to change when sections joined the tab"), so
- * a third vocabulary's rows count themselves the moment they arrive, with nothing here to change. */
+ * the tab is where a constant, a section or a raster is declared, and an empty table with a count
+ * above it reads as a screen that failed to load. Counted by `entry.kind` itself rather than a
+ * fixed list of the vocabularies known today: `SharedEntry.kind` is a plain string on the wire for
+ * exactly this reason (its own doc: "no generic function had to change when sections joined the
+ * tab"), which held again when rasters joined - their rows counted themselves and this function
+ * did not change, and a fourth vocabulary's would too. */
 export function tabTitle(entries: readonly SharedEntry[]): string {
   if (entries.length === 0) return "This project declares nothing in its shared files.";
   const counts = new Map<string, number>();
@@ -286,18 +295,27 @@ export function rasterAdd(name: string, event: string): RasterPlanRequest | null
   return { action: "add", name, event: rasterRaw("event", event) };
 }
 
-/** Whether a raster's Remove may be offered at all: only while nothing names it.
+/** Whether anything in the project names the raster - which is both whether Remove may be offered
+ * and whether there is a Used by table to draw.
  *
- * A function rather than a `uses.length === 0` written into each of the two `.tsx` files that
- * need it - `RasterPanelView`, which draws the control or the sentence below instead, and
- * `RasterPanel`, which asks for the plan or does not. A section's own rule is spelled twice that
- * way, and neither spelling is executed by any gate in this repo; here one fact has one home and
- * a test can hold it to account.
+ * A function rather than a `uses.length === 0` written out at each place that needs it. Every one
+ * of them now asks this: `RasterPanelView` twice, for the Used by section and for the Remove
+ * control, `RasterPanel` for whether to ask the api for a removal plan at all, and the panel's own
+ * stories, which stand in for the screen and so have to stand in for its judgement too. None of
+ * those four is executed by any gate in this repo, and a section's equivalent is spelled out at
+ * each of its own sites; here the fact has one home and a test can hold it to account.
  *
- * Takes the uses rather than a count, so that a caller cannot pass the wrong number: the two that
- * matter are `reply.uses.length === 0` and nothing else, and a raster is named by a component's
- * own default as readily as by a definition - `remove_entry` refuses on either, and a panel
- * counting definitions alone would draw a Remove that refuses the moment it is pressed. */
+ * One question and not two that happen to agree. "Is there anything to list" and "may this go" are
+ * different sentences about one state, and a raster nothing names has to answer both the same way:
+ * were a second clause ever added here, a panel spelling the predicate out beside it would say
+ * nothing names the raster while refusing to remove it, and no gate would notice.
+ *
+ * Takes the uses rather than a count, where `rasterRemoveBlocked` below takes a count, and the
+ * asymmetry is deliberate: this one answers a question about the uses, so handing it the uses
+ * leaves a caller nothing to get wrong, while that one only ever prints a number and has no use
+ * for the rest. A raster is named by a component's own default as readily as by a definition -
+ * `remove_entry` refuses on either - so a caller counting definitions alone would draw a Remove
+ * that refuses the moment it is pressed. */
 export function rasterRemovable(uses: readonly RasterUse[]): boolean {
   return uses.length === 0;
 }
@@ -308,8 +326,14 @@ export function rasterRemovable(uses: readonly RasterUse[]): boolean {
  *
  * "shape" and not "definition", which is the whole difference between this and a section's: a
  * raster is named by a component's own default as well as by a definition, so a sentence counting
- * definitions would under-report a project whose only use is a default. It is the server's own
- * word for the pair, too - `ddd.shared_plans.remove_entry` refuses with "is named by N shapes". */
+ * definitions would under-report a project whose only use is a default. That reason stands alone,
+ * and is the only one.
+ *
+ * It is not that "shape" is the server's word for a raster's uses. `remove_entry` does say "is
+ * named by N shapes", but it says it for every vocabulary - it is one generic function over a
+ * `Vocabulary` and names no kind - so it is no evidence about this one. `sectionRemoveBlocked`
+ * above already departs from it ("N definitions place data in X"), which is what a panel should do
+ * when it can say something more exact than the generic refusal could. */
 export function rasterRemoveBlocked(name: string, uses: number): string {
   const shapes = uses === 1 ? "1 shape names" : `${uses} shapes name`;
   return `${shapes} ${name}, so it cannot be removed.`;

@@ -78,10 +78,12 @@ describe("the tab's summary line", () => {
   });
 
   test("counts a third vocabulary exactly as the first two - it does not know their words", () => {
-    // A `for (const kind of ["constant", "section"])` fixed to the two vocabularies known today
-    // would pass every other test in this file without ever consulting a third word. `raster` is
-    // not one the tab holds yet; `tabTitle` does not need to know that; it counts whichever kinds
-    // `entries` actually carries, which is what makes the next vocabulary a data change.
+    // A `for (const kind of ["constant", "section"])` fixed to the two vocabularies of the day
+    // would pass every other test in this file without ever consulting a third word. This case was
+    // written while `raster` was not yet one the tab held, and it passed then for the reason it
+    // passes now: `tabTitle` does not know any vocabulary's word, and counts whichever kinds
+    // `entries` actually carries - which is what made the third vocabulary a data change, and what
+    // would make a fourth one.
     expect(tabTitle(entries(["constant", "raster", "raster", "section"]))).toBe(
       "1 constant · 2 rasters · 1 section",
     );
@@ -297,9 +299,14 @@ describe("whether a raster may be removed at all", () => {
   });
 
   test("a component's own default blocks it exactly as a definition does", () => {
-    // The case that makes this a function rather than a `uses.length === 0` in each of the two
-    // `.tsx` files that need it: a raster named only by a component default is named all the
-    // same, and a panel counting definitions alone would offer a Remove the api refuses.
+    // Honest about what this pins and what it does not. It exercises the same arm as the case
+    // above - `rasterRemovable` reads the length and never the kind - so it adds no branch, and
+    // it is documentation rather than a second assertion about behaviour.
+    //
+    // What it does fix is the contract: a component default counts as a use, so a caller handing
+    // this only the definitions would offer a Remove the api refuses. That mistake lives in the
+    // caller, which passes `reply.uses`, and no test here can reach it. If `rasterRemovable` ever
+    // learns to read `kind`, this case stops being a duplicate and starts being the arm.
     expect(rasterRemovable([use("component", "Pump", "Pump")])).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { PlanReply, RasterReply } from "../api/types";
+import { rasterRemovable } from "../lib/shared";
 import {
   RASTER_1MS_REPLY,
   RASTER_EVENT_REFUSED,
@@ -61,7 +62,12 @@ function PanelStory({
         renameTo === null ? null : { plan: null, refusal: renameRefusal ?? null, pending: false }
       }
       removeOffer={
-        reply.uses.length === 0 ? { plan: removePlan ?? null, refusal: null, pending: false } : null
+        // `rasterRemovable`, as RasterPanel.tsx asks it - not a `uses.length === 0` of its own.
+        // A story standing in for the screen has to stand in for the screen's judgement too, or
+        // the photographs stop being evidence about what the screen would draw.
+        rasterRemovable(reply.uses)
+          ? { plan: removePlan ?? null, refusal: null, pending: false }
+          : null
       }
       shown={null}
       onShown={() => undefined}

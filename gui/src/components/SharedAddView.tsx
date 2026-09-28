@@ -101,6 +101,11 @@ export function SharedAddView(props: SharedAddViewProps) {
             />
           </label>
         )}
+        {/* One arm per vocabulary below, and no arm for a kind none of them names: a fourth
+            vocabulary would draw the title, the Name field above, and not one field of its own -
+            a form that cannot be filled in. `tsc` does not catch it; `screens/SharedPage.tsx`'s
+            panel chain carries the inventory of all four places that fall through this way, and
+            the measurement of the one place a fourth word does stop the build. */}
         {kind === "constant" && (
           <label className="panel-field">
             Value

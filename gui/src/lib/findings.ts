@@ -167,9 +167,11 @@ export function namesThisVariable(finding: Finding, name: string): boolean {
  * fails: an editor saving it half-written. The reader saw a table missing entries and nothing
  * saying why.
  *
- * `kinds` rather than one: the Shared files tab holds two vocabularies in one table, each with its
- * own file kind, and a failed sections file must be named beside a failed constants file rather
- * than silently dropped because it was not the one kind the tab used to ask about (ruling R1).
+ * `kinds` rather than one: the Shared files tab holds three vocabularies in one table, each with
+ * its own file kind, and a failed sections or rasters file must be named beside a failed constants
+ * file rather than silently dropped because it was not the one kind the tab used to ask about
+ * (ruling R1). Which three is not spelled here - `SharedPage` passes `SHARED_KINDS`, and that list
+ * is the one fact saying which vocabularies the tab holds.
  *
  * Here rather than in each screen because a screen is a `.tsx` file, which no gate in this repo
  * executes - the filter that decides what a reader is told about a missing file belongs where its

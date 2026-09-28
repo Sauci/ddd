@@ -38,11 +38,17 @@ interface Props {
   kind: SharedKind | undefined;
   onName: (name: string | undefined, kind: SharedKind | undefined) => void;
   stopped: boolean;
-  /** Following a use's variable, a member's type, or the component declaring a constant inline,
-   * without a reload - whichever panel is open, since a section's uses lead to the first of those
-   * and a constant's to all three. A raster's lead to the first of them too, and to one no other
-   * panel here reaches: a component's own page, where the component measures everything it
-   * produces in that raster and there is no variable between the two to open instead. */
+  /** Following a use's variable, a member's type, or a component's own page, without a reload -
+   * whichever panel is open, since a section's uses lead to the first of those and a constant's to
+   * all three. A raster's lead to the first and the third.
+   *
+   * The third is reached from two panels for two different reasons, and a reader changing this
+   * prop has to satisfy both. A constant's is the home it is declared in - `ConstantPanelView`'s
+   * Declared in link, where a component declares the constant inline. A raster's is a use: the
+   * component measures everything it produces in that raster, and a component's default sits
+   * inside no definition, so there is no variable between the two to open instead. Same route
+   * shape, opposite relations - one says "this is where it lives", the other "this is what names
+   * it". */
   onOpen: (route: Route) => void;
 }
 
@@ -119,12 +125,25 @@ export function SharedPage({ state, name, kind, onName, stopped, onOpen }: Props
           //
           // A constant's is the fall-through arm, as it was when there were two, and nothing here
           // is checked against `SharedKind` for exhaustiveness - a chain of ternaries registers no
-          // complaint from `tsc` for a kind it does not name, and no gate executes this file. A
-          // fourth vocabulary would therefore open a constant's panel under its own route until an
-          // arm is written for it - and it would reach that route quietly, because the one place a
-          // fourth word does stop the build is `SHARED_VOCABULARIES`'s own object literal in
-          // `lib/shared.ts`, which `valuesOf` types to force a key per kind. That keeps a new
-          // vocabulary out of the chooser until someone names it, and says nothing about here.
+          // complaint from `tsc` for a kind it does not name, and no gate executes this file.
+          //
+          // Measured, twice: adding a fourth kind to `Route` stops the build at exactly one place,
+          // `SHARED_VOCABULARIES`'s object literal in `lib/shared.ts`, which `valuesOf` types to
+          // force a key per kind - and widening that literal alone makes `tsc` exit 0 again with
+          // nothing else to say. So that one literal is the whole of the compiler's help, and the
+          // four kind chains below it are on their own.
+          //
+          // All four, because fixing one and believing the hazard closed is the likely mistake:
+          //   - this chain: a fourth kind opens a *constant's* panel under its own route, which
+          //     then asks `GET /api/constant` for a name no constant has and reports the entry
+          //     gone. The only one of the four that does something actively wrong;
+          //   - `SharedAdd`'s `plan` ternary and its `mutationFn` chain below: both fall through to
+          //     a constant's, but a fourth kind builds no request at all, so the plan is never
+          //     asked for and the mutation is unreachable behind an Apply that is never drawn;
+          //   - `SharedAddView.tsx`'s field chain: the form draws "Declare a widget" and a Name
+          //     field and no other field, since none of its three arms matches - a form that
+          //     cannot be filled in.
+          // Three go quietly inert; this one misroutes. None of the four is caught by a gate.
           kind === "section" ? (
             <SectionPanel
               key={name}

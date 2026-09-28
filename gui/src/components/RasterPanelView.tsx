@@ -28,10 +28,17 @@ export type RasterAction = "event" | "cycle" | "describe" | "rename" | "remove";
  *
  * What sharing costs is readable in `components/VariablePanelView.tsx`, which took the other road:
  * its `removal.offer` is typed by an import from `UnitPanelView`, so a reader asking what a
- * variable's removal offers is sent to a unit's panel to find out - and the import buys nothing.
- * Measured rather than argued: dropping both that import and `screens/VariablePanel.tsx`'s
- * `removalOffer` annotation leaves `tsc --noEmit` passing, the literal being checked against the
- * prop either way. A view's props are its own contract, and this one is three lines.
+ * variable's removal offers is sent to a unit's panel to find out. That trip is the cost, and it
+ * is the whole of it - the import itself is load-bearing and cannot simply be deleted.
+ *
+ * Both halves measured, one ablation each, `tsc --noEmit` after every one. Dropping
+ * `components/VariablePanelView.tsx`'s own import fails: exit 1, `TS2304: Cannot find name 'Offer'`
+ * at the `removal.offer` prop it types. Dropping `screens/VariablePanel.tsx`'s import together with
+ * its `removalOffer` annotation passes: exit 0, no diagnostics, the literal being checked against
+ * that prop either way. So one panel's props really are typed from another panel's file, and the
+ * screen beneath it names the type for nothing.
+ *
+ * A view's props are its own contract, and this one is three lines.
  */
 export interface Offer {
   /** The plan; `null` while it is being asked for, or when it was refused. */
@@ -133,7 +140,20 @@ export function RasterPanelView(props: RasterPanelViewProps) {
               doc). The spellings the model takes are its own, and one it will not take is refused
               in its words rather than narrowed to a chooser here: unlike a section's `access`,
               `cycle` is a pattern over a count and a decade, not an enum there would be a list to
-              offer from. */}
+              offer from.
+
+              **The one field on this panel that does not round-trip, and it is left that way
+              knowingly.** `cycle` is `str | None` in the model and `None` is that acyclic raster;
+              `RasterReply.cycle` renders it `""`, so the panel shows a state it cannot write.
+              Emptying the field sends `'""'` and typing `null` sends `'"null"'`, and the model's
+              period rule refuses both - there is no path from here to `cycle: null`. A raster can
+              be made acyclic only at declaration time, where the add form omits the key entirely.
+
+              Not the same case as a section's Access, which is the comparison to resist: `access`
+              is required and its enum has no absent state, so clearing it is never a legitimate
+              intent and a section loses nothing. Here the intent is legitimate and unreachable.
+              What it wants is a deliberate answer about how a reader clears an optional string -
+              a change of its own, not a line added here. */}
           <input
             type="text"
             value={props.cycle}
@@ -156,7 +176,12 @@ export function RasterPanelView(props: RasterPanelViewProps) {
         {outcome("describe", props.describeOffer, () => "Save")}
       </section>
       <h3 className="panel-heading">Used by</h3>
-      {reply.uses.length === 0 ? (
+      {/* The same judge the Remove section below asks, and deliberately not a second
+          `uses.length === 0` written out here: the two ask one question in two voices - "is there
+          anything to list" and "may this go" - and a raster nothing names must answer both the
+          same way. Spelled twice, a second clause in `rasterRemovable` would leave this panel
+          saying nothing names the raster while refusing to remove it, in a file no gate runs. */}
+      {rasterRemovable(reply.uses) ? (
         <p className="quiet">Nothing in the project measures in {reply.name}.</p>
       ) : (
         <table className="panel-declarations">

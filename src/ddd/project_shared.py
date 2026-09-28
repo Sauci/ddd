@@ -34,7 +34,7 @@ from ddd.finding_routes import ABOUT_THE_DECLARATION
 from ddd.lsp.navigation import Index, Site, rename_problem
 from ddd.lsp.ranges import Document, read
 from ddd.models.constants import ConstantValue
-from ddd.models.rasters import RasterDeclaration
+from ddd.models.rasters import CYCLE_COUNT_MAX, EVENT_MAX, RasterDeclaration
 from ddd.models.sections import SectionAccess, SectionDeclaration
 from ddd.variables import component_of, declarations_of
 
@@ -761,7 +761,14 @@ _EVENT: Final[TypeAdapter[RasterDeclaration]] = TypeAdapter(
 """The format's own judge of what a raster's ``event`` may hold: the model's own field, asked
 through the model, so the interface and the loader cannot come to different answers. A
 ``BeforeValidator`` wrapping the value into an entry rather than an adapter over the field's
-annotation, for the reason :func:`_evented` gives."""
+annotation, for the reason :func:`_evented` gives.
+
+Its :attr:`Judgement.tail` names both halves of what the field refuses and takes the bound from
+:data:`~ddd.models.rasters.EVENT_MAX` rather than spelling it out, so the sentence follows the
+field if the field ever moves. ``a whole number the target offers as a channel``, which this task
+inherited from the plan, named neither: ``1e3`` *is* a whole number by value, and what refuses it
+is the spelling ``strict=True`` forbids - the one
+:attr:`ddd.models.rasters.RasterDeclaration.event` states itself as ``4``, not ``4.0``."""
 
 
 def _cycled(value: Any) -> dict[str, Any]:
@@ -790,7 +797,17 @@ _CYCLE: Final[TypeAdapter[RasterDeclaration]] = TypeAdapter(
     Annotated[RasterDeclaration, BeforeValidator(_cycled)]
 )
 """The format's own judge of what a raster's ``cycle`` may hold: the model's own field and the
-model's own period rule, for the reason :func:`_cycled` gives."""
+model's own period rule, for the reason :func:`_cycled` gives.
+
+Its :attr:`Judgement.tail` names the period rule rather than the annotation, as :data:`_ALIGNMENT`'s
+names the power-of-two rule rather than ``int``. ``a json string, or nothing`` - the plan's wording,
+written before the ruling that made this wrap the model - was the annotation, and it made the one
+sentence a reader with a mistyped period ever sees refute itself: ``"potato" is not a cycle a raster
+may state ... : a json string, or nothing`` tells them to write what they just wrote. A tail that
+names the type can only ever describe what the adapter would have refused on its own, which for
+this key is not what refuses anything. The count comes from
+:data:`~ddd.models.rasters.CYCLE_COUNT_MAX`, and the rest is the sentence
+``_cycle_is_a_period_xcp_carries`` answers in, so the tab and ``ddd check`` say the same thing."""
 
 
 def _raster_states(texts: Mapping[str, str]) -> str:
@@ -884,8 +901,15 @@ RASTERS: Final = Vocabulary(
     required=frozenset({"event"}),
     filename="rasters.ddd.json",
     judge={
-        "event": Judgement(_EVENT, "a whole number the target offers as a channel"),
-        "cycle": Judgement(_CYCLE, "a json string, or nothing"),
+        "event": Judgement(
+            _EVENT,
+            f"a channel number xcp addresses - 0 to {EVENT_MAX} - written without a decimal point",
+        ),
+        "cycle": Judgement(
+            _CYCLE,
+            f"a count of 1 to {CYCLE_COUNT_MAX} times a decade from 1ns to 1s, written as one "
+            "string - '1500us', '10ms' - or nothing",
+        ),
         "description": Judgement(_DESCRIPTION, "a json string"),
     },
     taken={"raster": _raster_name_judge, "event": _event_taken},
@@ -893,5 +917,13 @@ RASTERS: Final = Vocabulary(
 
 HELD: Final = (CONSTANTS, SECTIONS, RASTERS)
 """Every vocabulary the Shared files tab holds, and the order :func:`shared_rows` walks them in -
-which the sort by kind then name makes invisible to a reader. The third of them added a word here
-and nothing else, which is what the descriptor was for."""
+which the sort by kind then name makes invisible to a reader.
+
+The third of them added a word here and no branch anywhere: not one function that reads a
+:class:`Vocabulary` names a vocabulary or learned that rasters exist, and ``GET /api/shared``
+answered three new rows without its route changing at all. It was not free, though, and a fourth
+vocabulary's author should not read this line and think it was. A raster is the first entry whose
+**value** can be the project's alone rather than only its name, and
+:func:`ddd.shared_plans._untaken` and its two call sites are what that cost - written once, generic
+over :attr:`Vocabulary.taken`, and owed by any vocabulary with a key of that kind. What the record
+buys is that the cost lands in one place instead of in every verb."""

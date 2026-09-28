@@ -1210,19 +1210,64 @@ TWO_RASTERS = {
 
 
 class TestRasterRefusals:
+    # The whole sentence per case, written out rather than built from `RASTERS.judge`, because a
+    # tail read back off the descriptor would agree with itself however it were reworded. Each is
+    # the string this checkout actually produces, pasted from a run of `_judged`.
+    _EVENT_TAIL = "a channel number xcp addresses - 0 to 65535 - written without a decimal point"
+    _CYCLE_TAIL = (
+        "a count of 1 to 255 times a decade from 1ns to 1s, written as one string - "
+        "'1500us', '10ms' - or nothing"
+    )
+
     @pytest.mark.parametrize(
-        ("key", "raw"),
+        ("key", "raw", "says"),
         [
-            ("event", "-1"),
-            ("event", "1e3"),
-            ("cycle", "4"),
-            ("cycle", '"1234ms"'),
-            ("cycle", '"potato"'),
-            ("description", "123"),
+            pytest.param(
+                "event",
+                "-1",
+                "-1 is not an event a raster may state, so '10ms' cannot take it in "
+                f"r.ddd.json: {_EVENT_TAIL}",
+                id="event-below-zero",
+            ),
+            pytest.param(
+                "event",
+                "1e3",
+                "1e3 is not an event a raster may state, so '10ms' cannot take it in "
+                f"r.ddd.json: {_EVENT_TAIL}",
+                id="event-with-an-exponent",
+            ),
+            pytest.param(
+                "cycle",
+                "4",
+                "4 is not a cycle a raster may state, so '10ms' cannot take it in "
+                f"r.ddd.json: {_CYCLE_TAIL}",
+                id="cycle-that-is-no-string",
+            ),
+            pytest.param(
+                "cycle",
+                '"1234ms"',
+                "\"1234ms\" is not a cycle a raster may state, so '10ms' cannot take it in "
+                f"r.ddd.json: {_CYCLE_TAIL}",
+                id="cycle-xcp-cannot-carry",
+            ),
+            pytest.param(
+                "cycle",
+                '"potato"',
+                "\"potato\" is not a cycle a raster may state, so '10ms' cannot take it in "
+                f"r.ddd.json: {_CYCLE_TAIL}",
+                id="cycle-that-is-no-period",
+            ),
+            pytest.param(
+                "description",
+                "123",
+                "123 is not a description a raster may state, so '10ms' cannot take it in "
+                "r.ddd.json: a json string",
+                id="description-that-is-no-string",
+            ),
         ],
     )
     def test_a_value_the_model_would_refuse_is_refused_here(
-        self, tmp_path: Path, key: str, raw: str
+        self, tmp_path: Path, key: str, raw: str, says: str
     ) -> None:
         """Every one of them measured against `RasterDeclaration` on this checkout, and three of
         them are why both judges wrap the whole model rather than a field's annotation. `1e3` is
@@ -1231,13 +1276,22 @@ class TestRasterRefusals:
         `"1234ms"` and `"potato"` are strings, so `TypeAdapter(str | None)` would take both, and
         the rule that refuses them is `_cycle_is_a_period_xcp_carries`, a model validator no
         adapter over the annotation can reach. Written, the file stops loading and every tab
-        empties over one keystroke in this one."""
+        empties over one keystroke in this one.
+
+        The *whole* sentence is asserted, not the code and the file name. A `Judgement` is two
+        values and only the adapter was pinned: with all three tails replaced by `XXROTXX` the
+        suite passed, because the tail is everything after the colon and nothing read it. That is
+        how `cycle`'s shipped as `a json string, or nothing` - which is what `"potato"` already
+        is, so the one actionable sentence a reader with a mistyped period ever sees told them to
+        write what they had just written. Sections escape by accident, their clauses being pinned
+        at the http layer by `test_a_change_the_project_refuses_says_why_in_the_format_s_own_words`;
+        rasters have no route until Task 5, so this is the only thing standing in for it."""
         built, _root = built_of(tmp_path, **TIMED)
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:
             set_entry(RASTERS, built, "10ms", key, raw, cache)
         assert raised.value.code == "invalid"
-        assert "r.ddd.json" in raised.value.message
+        assert raised.value.message == says
 
     def test_an_event_the_model_takes_is_planned(self, tmp_path: Path) -> None:
         """The other arm of `_EVENT`, and the one that pins the placeholder `_evented` builds its

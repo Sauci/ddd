@@ -187,10 +187,11 @@ def set_entry(
     would refuse meets the model's refusal and not a second one about who holds it.
 
     The two arms this function had - the required key's and the ordinary one's - ended in the same
-    three lines apiece, and the consult would have had to be written into both. Turned inside out
-    instead, on ``raw is None`` rather than on ``required``, so that judging and asking happen in
-    exactly one place. The refusal of a required key taken away still comes before any judging,
-    since nothing is judged on that arm at all, and its sentence is untouched.
+    two lines apiece, a ``_judged`` and a ``return _plan(...)``, and the consult would have had to
+    be written into both. Turned inside out instead, on ``raw is None`` rather than on
+    ``required``, so that judging and asking happen in exactly one place. The refusal of a required
+    key taken away still comes before any judging, since nothing is judged on that arm at all, and
+    its sentence is untouched.
     """
     entry = _entry(vocabulary, built, name)
     _settable(vocabulary, key, entry.path)

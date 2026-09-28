@@ -216,8 +216,10 @@ TWO_RASTER_DECLARATIONS = {
 
 # A raster with no `cycle` key at all, which the model permits and gives no derived default: the
 # event is not cyclic - crank synchronous, on change, on demand - and `RasterDeclaration.cycle`
-# says that is a real kind of raster rather than an omission. The one tree that reaches
-# `_raster_states`'s other arm, and the first key of any vocabulary that may simply not be there.
+# says that is a real kind of raster rather than an omission. `cycle` is the first key of any
+# vocabulary that may simply not be there, and this is the tree where it is absent outright;
+# `NULL_CYCLE` below reaches the same arm of `_raster_states` by the other route, an explicit
+# `null`, which is why both are here.
 UNTIMED = {
     "r.ddd.json": {"rasters": [{"raster": "20ms", "event": 2}]},
     "a.ddd.json": component("A", declare("output", "X", raster="20ms")),
@@ -651,12 +653,10 @@ class TestTheDescriptor:
         """The premise `_raster_states` indexes `texts["cycle"]` against rather than defaulting it:
         `shown` fills every key of `keys` for every entry, `""` where the entry states none.
 
-        Pinned here because nothing can pin it where it is used. While `shown` holds to this,
-        `texts["cycle"]` and `texts.get("cycle", "")` cannot behave differently - measured, the
-        whole suite passes with either, under four hash seeds - so the default is unreachable
-        code, which is why it is not written. A `shown` that began leaving an absent key out would
-        make the two differ, one raising where the other quietly defaulted, and it fails here
-        rather than in a row cell."""
+        No *production* input distinguishes `texts["cycle"]` from `texts.get("cycle", "")` while
+        this holds - `vocabulary.states(...)` has one call site and is always handed `shown(...)` -
+        so the whole suite passes with either, measured under four hash seeds. This pins the
+        premise, and the test below pins what happens when a descriptor breaks it."""
         built, _ = built_of(tmp_path, **UNTIMED)
         cache: dict[Path, Document] = {}
         assert shown(RASTERS, built, "20ms", cache) == {
@@ -664,6 +664,28 @@ class TestTheDescriptor:
             "cycle": "",
             "description": "",
         }
+
+    def test_a_states_rule_is_owed_every_key_its_descriptor_names(self, tmp_path: Path) -> None:
+        """A descriptor whose `keys` drops one its `states` rule reads is one `_raster_states`
+        cannot serve, and it says so loudly rather than quietly showing an event alone.
+
+        The other half of the test above, and what a `.get("cycle", "")` default would swallow:
+        `shown` would then fill `event` and `description` only, and the cell would read `event 1`
+        for a raster that states `10ms` - a row silently missing what its author wrote, which is
+        worse than a raised `KeyError` naming the key that fell out. Reached through
+        `dataclasses.replace` the way `TestTheDescriptorsInvariants` below reaches what the shipped
+        descriptors cannot: `RASTERS` names all three keys, so nothing else exercises this.
+
+        `strings` is narrowed with `keys`, so the descriptor stays coherent and this is about the
+        one omission it is named for; all six of `__post_init__`'s checks pass, and `row_of` is the
+        real path a row is built by."""
+        built, _ = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        short = dataclasses.replace(
+            RASTERS, keys=("event", "description"), strings=frozenset({"description"})
+        )
+        with pytest.raises(KeyError, match="cycle"):
+            row_of(short, built, "10ms", (), cache)
 
 
 class TestTheDescriptorsInvariants:

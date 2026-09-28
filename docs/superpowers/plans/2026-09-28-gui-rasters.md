@@ -815,15 +815,55 @@ And by hand, on a copy of `examples/vocabulary`: an `unknown-raster` followed to
 
 ## Progress log
 
-| Task | Started | Duration | Notes |
+| Task | Commits | Review | Notes |
 | --- | --- | --- | --- |
-| | | | |
+| 1 name_judge becomes `taken` | `2477fba`, `f5f8024` | clean after 1 fix round | The descriptor's sixth invariant: a `taken` lacking the name key raises at construction rather than `KeyError` at the first rename. |
+| 2 `rename_problem`'s raster arm | in `a8c0177..` | clean | `'10ms' is not a usable c identifier` was the wrong answer; a raster's name is an a2l short name. |
+| 3 `Use.kind` widens, `_raster_uses` | in `a8c0177..` | clean | A component's own `raster` is a use sitting inside no definition. |
+| 4 the `RASTERS` descriptor | `a186951`, `06859f5` | clean after 1 fix round | **No generic function learned that rasters exist.** `set_entry` and `add_entry` gained a `_untaken` consult that reads `vocabulary.taken` and names no vocabulary. |
+| 5 routes, contract, api | `8d6ce98`, `24fedde` | clean after 1 fix round | Fixed a defect already live on its parent: a `consumer-raster` finding was counted on a raster's row while routing to the variable. |
+| 6 the page's lib | `cc4659c`, `89c6889` | clean after 1 fix round | Adding `rasters` to `SHOWN` orphaned the branch the rasters fixture had been the only thing reaching; `kind: "project"` is the one real kind left outside it. |
+| 7 raster rows in the table | `bfaaea4` | clean, no fix round | `SharedTableView.tsx` needed **no functional change** - already generic through `vocabularyOf(row.kind)` and `row.states`. |
+| 8 the panel and the chooser | `43149d8`, `828b430` | clean after 1 fix round | Five judgements moved out of `.tsx` into `lib` test-first. Three debts earlier tasks had deferred were paid here. |
+| 9 journey, docs, gate | `5c29b2c`, `d8b8104` | - | The journey drives the **component's** raster, the use shape this part added. |
+
+**Milestone gate, run at the tip:** `PYTEST=0` 4443 passed at 100 % line and branch; `RUFF=0 FMT=0
+MYPY=0`; `LINT=0 TSC=0 VITEST=0` 503 passed at 100 % on all four metrics; `BUILD=0 LADLE=0`;
+`SHOTS=0` 130 passed in **compare** mode with no drift; `DOCS=0`; `E2E=0` 79 passed.
+
+**By hand, on a copy of `examples/vocabulary`:** an `unknown-raster` on a component's own default
+followed to an add form with the name already in it, applied, the finding gone and the surviving one
+gaining *"did you mean '10ms'?"*; `event 0 is already claimed by raster '1ms'` on a keystroke, and
+the same field retyped with its **own** event refused nothing; a rename rewriting all three naming
+sites in one plan - the component default, the definition, and the declaration with its event, cycle
+and description untouched; a project with no rasters file getting one, `includes` and all; and
+`2 shapes name 10ms, so it cannot be removed.`
 
 ## What was left open
 
-Filled in as the work goes. Each entry says what was not done and what it costs.
+Each entry says what was not done and what it costs.
 
-- **Go to definition has no arm for a section or a raster.** `definition()` answers the declaration the cursor is already inside for a definition's `section` key; it was never taught either vocabulary, and this part does not teach it. Closing it is one small piece of work covering both at once.
+- **Go to definition has no arm for a section or a raster.** `definition()` answers the declaration
+  the cursor is already inside for a definition's `section` key; it was never taught either
+  vocabulary, and this part does not teach it. Closing it is one small piece of work covering both.
+- **A raster cannot be made acyclic from the panel.** Clearing the Cycle field sends `""`, which the
+  period rule refuses, and typing `null` sends `'"null"'`, refused the same way. `cycle` is
+  `str | None` where `None` is a real kind of raster - crank synchronous, on change, on demand - and
+  `RasterReply.cycle` renders it as `""`, so the panel **displays a state it cannot write**. It is
+  the only field on that panel that does not round-trip. Declaring an acyclic raster works, since the
+  key simply defaults; only clearing one later does not. How a reader clears an optional string wants
+  a design answer rather than a fix.
+- **`SharedPage.tsx`'s panel chain is not exhaustive over `SharedKind`**, and neither are three
+  sibling chains in that file. A fourth vocabulary stops the build at exactly one place -
+  `SHARED_VOCABULARIES`'s object literal - and once that is widened `tsc` is silent, so a fourth
+  word would silently open a *constant's* panel under its own route. Pre-existing; written down
+  where a reader will meet it, not fixed.
+- **`Offer` is declared a fourth time** rather than extracted. Measured rather than asserted:
+  `Offer` is never named at a call site, so four structural copies cannot disagree silently, unlike
+  the values this branch was burned by. The honest cost of sharing it is a trip to another file.
+- **No Ladle story renders a raster named only by a component default.** It is pinned at the unit
+  level and photographed by hand during the milestone gate, but the screenshot suite has no picture
+  of the use shape this part added.
 
 ## Rulings taken
 

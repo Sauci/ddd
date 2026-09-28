@@ -11,6 +11,8 @@ import type {
   PlanReply,
   ProjectUnit,
   Renamed,
+  SectionReply,
+  SectionUse,
   SettleReply,
   SharedEntry,
   SharedReply,
@@ -2000,6 +2002,187 @@ export const REMOVE_CONSTANT: PlanReply = {
               'reads it yet" }',
           ],
           after: [],
+        },
+      ],
+    },
+  ],
+};
+
+// --- SectionPanelView and SharedAddView (Task 8, spec 5.2/5.4) --------------------------------
+//
+// examples/vocabulary's own .fast_ram (sections.ddd.json: read-write, four byte aligned), with a
+// third definition invented - SensorHub's InletPressure - so that a panel showing three of them
+// can be told at a glance from one showing none; the real project places two there, and .calib
+// one. Modelled on it, not transcribed, exactly as TREND_SAMPLES's own uses above are not.
+
+const SECTIONS_FILE = "C:/work/demo/sections.ddd.json";
+
+/** A second sections file the project includes, declaring the one section the bench writes to -
+ * which is what makes removing that section a refusal rather than an offer. */
+const BENCH_SECTIONS = "C:/work/demo/bench.ddd.json";
+
+/** A definition placing its data in a section: `component.interface[i].definition.section`, the
+ * one shape that names one (`SectionUse.pointer`'s own doc), and always a variable's. */
+const FAST_RAM_PUMP_SPEED: SectionUse = {
+  path: PUMP,
+  pointer: "component.interface[0].definition.section",
+  kind: "variable",
+  name: "PumpSpeed",
+  component: "Pump",
+};
+
+const FAST_RAM_MANIFOLD_PRESSURE: SectionUse = {
+  path: PUMP,
+  pointer: "component.interface[1].definition.section",
+  kind: "variable",
+  name: "ManifoldPressure",
+  component: "Pump",
+};
+
+/** The invented third, in a second component: two files under the panel's File column rather than
+ * one, so a reader can see that a section is a device wide place several components write into. */
+const FAST_RAM_INLET_PRESSURE: SectionUse = {
+  path: SENSOR_HUB,
+  pointer: "component.interface[3].definition.section",
+  kind: "variable",
+  name: "InletPressure",
+  component: "SensorHub",
+};
+
+/** .fast_ram as sections.ddd.json declares it: three definitions place their data there, and
+ * nothing is wrong with it. Its alignment is text, as the wire carries it - `4`, the whole number
+ * the model wants, and never `4.0`. */
+export const SECTION_REPLY: SectionReply = {
+  revision: 7,
+  name: ".fast_ram",
+  access: "read-write",
+  alignment: "4",
+  description: "tightly coupled memory, single cycle access",
+  file: SECTIONS_FILE,
+  pointer: "sections[0]",
+  uses: [FAST_RAM_PUMP_SPEED, FAST_RAM_MANIFOLD_PRESSURE, FAST_RAM_INLET_PRESSURE],
+  findings: [],
+};
+
+/** A section nothing places data in, one of three its file declares: Remove is offered rather
+ * than refused, which needs a section of its own - .fast_ram above is named three times, and
+ * .calib once. */
+export const SECTION_UNUSED: SectionReply = {
+  revision: 7,
+  name: ".eol_log",
+  access: "read-write",
+  alignment: "8",
+  description: "end of line test log, written once on the bench",
+  file: SECTIONS_FILE,
+  pointer: "sections[2]",
+  uses: [],
+  findings: [],
+};
+
+/** Removing .eol_log: its entry taken out of sections.ddd.json, and nothing else - the plan the
+ * NothingPlacesDataInIt story's Remove is already offered with. */
+export const REMOVE_SECTION: PlanReply = {
+  revision: 7,
+  changes: [
+    {
+      file: SECTIONS_FILE,
+      fingerprint: "70819a2b3c4d5e6f70819a2b3c4d5e6f70819a2b3c4d5e6f1a2b3c4d5e6f7081",
+      operations: [{ op: "remove", pointer: "sections[2]", raw: null }],
+      hunks: [
+        {
+          line: 8,
+          before: [
+            '    { "section": ".eol_log", "access": "read-write", "alignment": 8,',
+            '      "description": "end of line test log, written once on the bench" }',
+          ],
+          after: [],
+        },
+      ],
+    },
+  ],
+};
+
+/** The one section bench.ddd.json declares, and nothing places data in it either - so the only
+ * thing standing between it and Remove is the file it would empty. */
+export const SECTION_SOLE_ENTRY: SectionReply = {
+  revision: 7,
+  name: ".bench_log",
+  access: "read-write",
+  alignment: "8",
+  description: "bench instrumentation buffer, absent from the shipped build",
+  file: BENCH_SECTIONS,
+  pointer: "sections[0]",
+  uses: [],
+  findings: [],
+};
+
+/** Why .bench_log cannot go although nothing names it: `remove_entry`'s own second refusal, in
+ * the server's words. A list of sections is `min_length=1` in the model, so the emptied file
+ * would no longer load - which the panel cannot know from `SectionReply` and so meets as this,
+ * the plan it asked for coming back refused. */
+export const REMOVE_SECTION_REFUSED =
+  "'.bench_log' is all bench.ddd.json declares, and a list of sections declares at least one; " +
+  "emptied, the file would no longer load";
+
+/** Renaming .calib to a name the project's sections already hold: `_section_problem`'s own
+ * sentence. The format would load two sections of one name - `duplicate-section` is a check, not
+ * a schema error - but each carries its own access and alignment, so a rename that merged them
+ * would move data into memory with different properties. */
+export const RENAME_SECTION_REFUSED = "'.fast_ram' is already a section this project declares";
+
+/** .calib as pump.ddd.json's TorqueLimit finds it: read-only, the one definition placing data
+ * there, which is what the rename story keeps on screen behind its refusal. */
+export const SECTION_CALIB: SectionReply = {
+  revision: 7,
+  name: ".calib",
+  access: "read-only",
+  alignment: "4",
+  description: "calibration flash, tool writable through the emulation overlay",
+  file: SECTIONS_FILE,
+  pointer: "sections[1]",
+  uses: [
+    {
+      path: PUMP,
+      pointer: "component.interface[3].definition.section",
+      kind: "variable",
+      name: "TorqueLimit",
+      component: "Pump",
+    },
+  ],
+  findings: [],
+};
+
+/** Declaring .eol_log into the sections file the project already includes: one entry appended
+ * after the last, with the two keys `add` requires and the empty description the api supplies
+ * itself (`_declared`), which the panel this form opens onto is where a reader fills in.
+ *
+ * Transcribed from a real plan, not imagined: `GET /api/section-plan?action=add` over a copy of
+ * examples/vocabulary answers this insert, and an entry whose access lost its quotes or whose
+ * alignment gained them would be a story showing a file the loader refuses. */
+export const ADD_SECTION: PlanReply = {
+  revision: 7,
+  changes: [
+    {
+      file: SECTIONS_FILE,
+      fingerprint: "5e6f70819a2b3c4d5e6f70819a2b3c4d1a2b3c4d5e6f70819a2b3c4d5e6f7081",
+      operations: [
+        {
+          op: "insert",
+          pointer: "sections[2]",
+          raw: '{"section": ".eol_log", "access": "read-write", "alignment": 8, "description": ""}',
+        },
+      ],
+      hunks: [
+        {
+          line: 7,
+          before: [
+            '      "description": "calibration flash, tool writable through the emulation overlay" }',
+          ],
+          after: [
+            '      "description": "calibration flash, tool writable through the emulation overlay" },',
+            '    { "section": ".eol_log", "access": "read-write", "alignment": 8, ' +
+              '"description": "" }',
+          ],
         },
       ],
     },

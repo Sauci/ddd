@@ -1,5 +1,5 @@
 import type { SharedReply } from "../api/types";
-import { tabTitle } from "../lib/shared";
+import { tabTitle, vocabularyOf } from "../lib/shared";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
@@ -19,7 +19,9 @@ export interface SharedTableViewProps {
    * cannot claim their entries were its own. */
   untold: readonly string[];
   /** Pressed only where the table is absent, because the project declares nothing. `SharedPage`
-   * opens the add form beside the table on it, blank. */
+   * opens the add form beside the table on it, with its chooser unset - which is why the button
+   * names no vocabulary: the reader picks one there, out of every vocabulary the tab holds, where
+   * part 13's button could only ever have meant the one. */
   onDeclare: () => void;
 }
 
@@ -60,7 +62,7 @@ export function SharedTableView({
       <p className="summary">{tabTitle(rows)}</p>
       {rows.length === 0 ? (
         <Button variant="primary" onPress={onDeclare}>
-          Declare a constant
+          Declare an entry
         </Button>
       ) : (
         <Table
@@ -112,17 +114,4 @@ export function SharedTableView({
  * table came first (design §2). */
 function used(count: number): string {
   return count === 0 ? "" : `${count} place${count === 1 ? "" : "s"}`;
-}
-
-/** Which vocabulary a row belongs to, from the singular word the server sends for the entry.
- *
- * `Vocabulary` rather than `Kind`, which the Types tab already uses for a different fact - the
- * shape of a type, `scalar` or `external` or `struct`. One header meaning two things on adjacent
- * tabs was cheap to change then and would have been expensive once sections and rasters had
- * shipped and readers had learned it.
- *
- * All three of this tab's kinds pluralise with a plain `s`, and the plural is the vocabulary's own
- * name - the same word the file kind uses. A fourth that does not would need its own answer here. */
-function vocabularyOf(kind: string): string {
-  return `${kind}s`;
 }

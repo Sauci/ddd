@@ -1,5 +1,8 @@
+import type { ConstantPlanRequest, SectionPlanRequest } from "../api/client";
 import type { Changes, PlanReply, SharedEntry, SharedReply } from "../api/types";
+import type { SectionAccess } from "../generated/sections";
 import { planEdit as editOfPlan } from "./projectUnits";
+import type { Route } from "./route";
 
 /** The file kinds the Shared files tab's table draws its rows from: a constant's file and a
  * section's, listed together (spec 5.1). `SharedPage` passes this to `lib/findings`'s
@@ -14,6 +17,69 @@ import { planEdit as editOfPlan } from "./projectUnits";
  * drawn at all, which a project with an entry-less table (every file of a kind failed) could
  * never answer by looking at `entries` alone. */
 export const SHARED_KINDS: readonly string[] = ["constants", "sections"];
+
+/** One of the tab's vocabularies, as an address names the selection and as a row's own `kind`
+ * spells it: the singular word, where `SHARED_KINDS` above holds the plural its *file* is known
+ * by. Read off `Route`'s own shape rather than spelled again here, so the words a page can route
+ * to and the words this file judges cannot come to be different sets. */
+export type SharedKind = Extract<Route, { view: "shared"; kind: string }>["kind"];
+
+/**
+ * The values of a union, as a list something can offer.
+ *
+ * `Record<T, null>` is what earns this its cast: an object literal has to carry one key per value
+ * of `T` and may carry no others, so a value the union gains - a third `SectionAccess` in a
+ * regenerated schema, a third vocabulary in `Route` - stops the build here rather than going
+ * quietly missing from a chooser, which is the failure a `.tsx` list of literals would ship.
+ */
+function valuesOf<T extends string>(record: Record<T, null>): readonly T[] {
+  return Object.keys(record) as T[];
+}
+
+/** The vocabularies the add form's chooser offers, in the order it lists them: constants first,
+ * as `ddd.project_shared.HELD` walks them and as `GET /api/shared` sorts the table's own rows. */
+export const SHARED_VOCABULARIES = valuesOf<SharedKind>({ constant: null, section: null });
+
+/** The values a section's `access` may take, in the order the panel's chooser offers them - the
+ * model's own two (`ddd.models.sections.SectionAccess`), by way of the type generated from its
+ * schema. The api judges what arrives against the same enum, so a word typed over the chooser is
+ * refused there rather than written; this list is what spares a reader having to guess one. */
+export const SECTION_ACCESSES = valuesOf<SectionAccess>({
+  "read-write": null,
+  "read-only": null,
+});
+
+/** Which vocabulary a row belongs to, in the word a reader knows it by: the plural, which is also
+ * the word its file kind uses (`SHARED_KINDS`).
+ *
+ * `Vocabulary` rather than `Kind`, which the Types tab already uses for a different fact - the
+ * shape of a type, `scalar` or `external` or `struct`. One header meaning two things on adjacent
+ * tabs was cheap to change before sections shipped and would not have been after.
+ *
+ * All three of the tab's kinds pluralise with a plain `s`, and a `kind` this page has no route for
+ * is pluralised just the same - the table lists a row before the tab has a panel for its kind. A
+ * fourth vocabulary that does not pluralise that way would need its own answer here. */
+export function vocabularyOf(kind: string): string {
+  return `${kind}s`;
+}
+
+/** Which vocabulary that word names, or `undefined` where it names none of them - what the add
+ * form's chooser settles on from the text its field holds, since a combo box takes anything
+ * typed. Undefined is the unset chooser: a form that declares nothing yet, never a guess at which
+ * vocabulary a half-typed word meant. */
+export function kindNamed(word: string): SharedKind | undefined {
+  return SHARED_VOCABULARIES.find((kind) => vocabularyOf(kind) === word);
+}
+
+/** What the add form is called while the chooser is on that vocabulary, and while it is on none.
+ *
+ * Every vocabulary the tab holds takes "a" - constant, section, raster - so the article is fixed
+ * here rather than chosen per word, as `ddd.project_shared._article` has to choose it server-side
+ * for sentences that also name an `entry`. "Declare a constant" is the name `e2e/constants.spec.
+ * ts` finds this form by, and the name part 13's own button gave it. */
+export function addTitle(kind: SharedKind | undefined): string {
+  return kind === undefined ? "Declare an entry" : `Declare a ${kind}`;
+}
 
 /** The line above the table: one count per vocabulary that has entries, or that the project has
  * nothing shared at all.
@@ -41,6 +107,77 @@ export function tabTitle(entries: readonly SharedEntry[]): string {
  * constant was declared between the analysis and the click. */
 export function isDeclared(reply: SharedReply, kind: string, name: string): boolean {
   return reply.entries.some((entry) => entry.kind === kind && entry.name === name);
+}
+
+/** Which vocabulary the row of that name belongs to, or `undefined` where the table holds no such
+ * row, or holds one whose kind is a word no address can name - a raster's, until rasters have a
+ * panel to be routed to.
+ *
+ * What turns a click in the table into an address: the row carries its own kind, and a selection
+ * is a name alone, so this is where the two meet. Undefined leaves the address bare - the tab
+ * itself - which is `route.ts`'s own rule for an address that does not say what it selected: the
+ * tab, never a guess at which vocabulary a name belonged to. Guessing is what the page did until
+ * now, and clicking a section opened a constant's form pre-filled with its name. */
+export function kindOf(reply: SharedReply, name: string): SharedKind | undefined {
+  const row = reply.entries.find((entry) => entry.name === name);
+  return row === undefined ? undefined : SHARED_VOCABULARIES.find((kind) => kind === row.kind);
+}
+
+/** Of a section's keys, the ones whose value is a json string - `ddd.project_shared.SECTIONS.
+ * strings`, the same two words. */
+const SECTION_STRINGS: readonly string[] = ["access", "description"];
+
+/** The json text one of a section's keys travels to the api as.
+ *
+ * `access` and `description` are strings, so they go in their quotes; `alignment` is a whole
+ * number and goes without, since `"4"` is a string where the model wants a number and the file
+ * would no longer load. The panel shows all three without quotes either way - `SectionReply` is
+ * read that way on purpose, "so the panel's chooser is given the value and not its source". */
+export function sectionRaw(key: string, text: string): string {
+  return SECTION_STRINGS.includes(key) ? JSON.stringify(text) : text;
+}
+
+/** The declaration a constant's add form comes to, or `null` while a parameter `add` requires is
+ * still empty.
+ *
+ * `add`'s own `raw` is required where `set`'s may be left out (`ConstantPlanRequest`'s own doc): a
+ * name with no value yet is not a request the api takes, and asking anyway would only ever come
+ * back `bad-request` for a reader who has not finished typing. */
+export function constantAdd(name: string, raw: string): ConstantPlanRequest | null {
+  return name.trim() === "" || raw.trim() === "" ? null : { action: "add", name, raw };
+}
+
+/** The declaration a section's add form comes to, or `null` while a parameter `add` requires is
+ * still empty.
+ *
+ * Two required parameters where a constant has one, because the model gives a default for neither
+ * (`SECTIONS.required`) and a section missing either is one whose file would not load. Each
+ * carries json text, as `?access="read-only"&alignment=4` - which is why the access goes through
+ * `sectionRaw` rather than straight from the chooser. */
+export function sectionAdd(
+  name: string,
+  access: string,
+  alignment: string,
+): SectionPlanRequest | null {
+  if (name.trim() === "" || access.trim() === "" || alignment.trim() === "") return null;
+  return {
+    action: "add",
+    name,
+    access: sectionRaw("access", access),
+    alignment: sectionRaw("alignment", alignment),
+  };
+}
+
+/** What stands where a section's Remove would be while a definition still places its data there:
+ * the count that would make the api refuse, read off the reply already on screen.
+ *
+ * Not the api's own refusal - asking for a plan only to prove it refuses is the lying button
+ * `ComponentPage.tsx` will not draw - and not silence either, which leaves a reader looking at a
+ * gap where a control might have been. The panel's own table above names each definition; this
+ * only says how many. */
+export function sectionRemoveBlocked(name: string, uses: number): string {
+  const definitions = uses === 1 ? "1 definition places" : `${uses} definitions place`;
+  return `${definitions} data in ${name}, so it cannot be removed.`;
 }
 
 /** A preview's changes as `POST /api/edit` takes them, under the label an undo of it offers.

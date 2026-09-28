@@ -6,7 +6,7 @@ import {
   CONSTANT_UNUSED,
   REMOVE_CONSTANT,
 } from "../stories/fixtures";
-import { ConstantAddView, ConstantPanelView } from "./ConstantPanelView";
+import { ConstantPanelView } from "./ConstantPanelView";
 
 export default { title: "Components / ConstantPanelView" };
 
@@ -78,20 +78,6 @@ export const RenameRefused = () => (
   />
 );
 
-/** The add form as `unknown-constant`'s route leaves it (design §5.3, a later part's territory):
- * the name filled in, no value typed yet, so nothing is previewed. */
-export const DeclaringOne = () => (
-  <ConstantAddView
-    typed="PRESSURE_CELLS"
-    onTyped={() => undefined}
-    raw=""
-    onRaw={() => undefined}
-    plan={null}
-    refusal={null}
-    changesShown={false}
-    onChangesShown={() => undefined}
-    onApply={() => undefined}
-    busy={false}
-    onClose={() => undefined}
-  />
-);
+/* The add form's own story moved with the form itself, to SharedAddView.stories.tsx: what
+ * `unknown-constant`'s route leaves on screen is now that form with its chooser already on
+ * constants, which is what the tab draws and so what a photograph of it has to show. */

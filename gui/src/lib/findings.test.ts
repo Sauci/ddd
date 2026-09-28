@@ -447,6 +447,18 @@ describe("why a finding leads nowhere", () => {
         untold: [],
       });
     });
+
+    test("a file of neither kind is named in neither list, even though it failed to load", () => {
+      // The blind spot a mutant found: `file.kind !== "unknown" && kinds.length > 0` also answers
+      // `own` correctly for every case above, because every one of them asks about a kind the
+      // failed file actually has. A types file failing to load must not be laid at this tab's
+      // door - the reader would go fix the wrong file - which only `kinds.includes(file.kind)`
+      // itself, not "is this kind known and were any kinds asked for", tells apart.
+      const one = finding({});
+      const withFiles = state([one]);
+      withFiles.files = [...withFiles.files, fileRow(TYPES, "types", false)];
+      expect(unreadable(withFiles, KINDS)).toEqual({ own: [], untold: [] });
+    });
   });
 
   test("the declaration it names has moved since the analysis read the file", () => {

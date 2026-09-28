@@ -30,6 +30,16 @@ describe("the tab's summary line", () => {
     expect(tabTitle(entries(["constant", "constant", "section"]))).toBe("2 constants · 1 section");
   });
 
+  test("counts a third vocabulary exactly as the first two - it does not know their words", () => {
+    // A `for (const kind of ["constant", "section"])` fixed to the two vocabularies known today
+    // would pass every other test in this file without ever consulting a third word. `raster` is
+    // not one the tab holds yet; `tabTitle` does not need to know that; it counts whichever kinds
+    // `entries` actually carries, which is what makes the next vocabulary a data change.
+    expect(tabTitle(entries(["constant", "raster", "raster", "section"]))).toBe(
+      "1 constant · 2 rasters · 1 section",
+    );
+  });
+
   test("says one of a kind in the singular", () => {
     // Part 13 shipped a plural no assertion could tell from the wrong one, because "1 shape" is a
     // substring of "1 shapes". `toBe` on the whole line is what catches a mutation that always

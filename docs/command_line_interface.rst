@@ -362,37 +362,58 @@ The commands
        table, exactly what ``ddd compare --renames`` would write to a file, and are not
        written from this tab.
        A Shared files tab lists what the project declares in its shared files: every constant,
-       from a constants file or a component's own list, and every memory section, which is
-       declared in a sections file and nowhere else. A row says which vocabulary an entry
-       belongs to, what it states - a constant its value, a section the access the running
-       software has to it and the alignment it guarantees - and what names it. What an entry
-       states is changed there: a constant's value and its description, a section's access, its
-       alignment and its description. Renaming one rewrites every place naming it in one edit -
-       for a constant every shape spelling it, for a section its own entry and every definition
-       placing data in it, since a rename reaching the entry alone would leave those
-       definitions placing data in a section nothing declares. A section's name is judged as the
+       from a constants file or a component's own list, every memory section, declared in a
+       sections file and nowhere else, and every measurement raster, declared in a rasters file
+       and nowhere else. A row says which vocabulary an entry belongs to, what it states - a
+       constant its value, a section the access the running software has to it and the alignment
+       it guarantees, a raster its event and its cycle, stated together as ``event 1, 10ms`` or
+       as ``event 2`` alone where it states none - and what names it. What an entry states is
+       changed there: a constant's value and its description, a section's access, its alignment
+       and its description, a raster's event, its cycle and its description. Renaming one
+       rewrites every place naming it in one edit - for a constant every shape spelling it; for
+       a section its own entry and every definition placing data in it; for a raster its own
+       entry, every definition measured in it and a component's own default naming it for
+       everything it produces - since a rename reaching the entry alone would leave every one of
+       those naming a section or a raster nothing declares. A section's name is judged as the
        linker string it is rather than as a c identifier, which is why a leading dot is an
        ordinary spelling; a name outside the letters, digits, ``.``, ``_`` and ``$`` that
        spelling allows is refused, being one whose file would then not load, and so is a name
        the project already declares as a section, for a rename and for a new entry alike,
        because each entry carries its own access and alignment and merging two would move data
-       into memory with different properties.
-       One of either is declared there too, writing ``constants.ddd.json`` or
-       ``sections.ddd.json`` beside the project description and adding it to ``includes`` where
+       into memory with different properties. A raster's name is judged as the short name of an
+       XCP event it is, rather than as a c identifier either: a name outside the printable
+       ASCII, with no space, that a short name allows, or one longer than the eight characters
+       the a2l field holds, is refused, being one whose file would then not load, and so is a
+       name the project already declares as a raster - ``'10ms' is already a raster this project
+       declares`` - for a rename and for a new entry alike, because each entry carries its own
+       event and cycle and merging two would sample one signal on another's channel. One of the
+       three is declared there too, writing ``constants.ddd.json``, ``sections.ddd.json`` or
+       ``rasters.ddd.json`` beside the project description and adding it to ``includes`` where
        the project has no file of that kind - refused instead of written while a file the
-       project includes could not be read at all, since one of those may be the file the new
-       one would be a second of. A section is declared with both an access and an alignment,
-       the format defaulting neither: an entry missing one is an entry whose file would not
-       load. What each may say is the model's rule rather than the interface's, and a refusal
-       names it - the access is one of two words, the alignment a power of two written as a
-       whole number. Removing one is refused while anything still names it - a shape, for a
-       constant; a definition placing data there, for a section - and while it is all its own
-       list declares: a list of constants or of sections declares at least one, in a constants
-       file, in a component and in a sections file alike, so an emptied list is a file that no
-       longer loads. A constant value no shape can use is reported there by
-       ``dimension-value`` rather than refused: the interface does not invent a rule the
-       format itself does not have. A finding naming a constant or a section leads to the tab,
-       a name no file declares landing on the form that declares it.
+       project includes could not be read at all, since one of those may be the file the new one
+       would be a second of. A section is declared with both an access and an alignment, the
+       format defaulting neither: an entry missing one is an entry whose file would not load.
+       What each may say is the model's rule rather than the interface's, and a refusal names it
+       - the access is one of two words, the alignment a power of two written as a whole number.
+       A raster is declared with an event alone, the format defaulting its cycle and its
+       description both: a raster whose cycle is left unstated is not cyclic - crank
+       synchronous, on change, on demand - a real kind of raster and not an omission. A refusal
+       names what either may say - the event a channel number from 0 to 65535 written without a
+       decimal point, the cycle a count of 1 to 255 times a decade from 1ns to 1s written as one
+       string, or nothing. An event another raster already states is refused too, naming which
+       one - ``event 1 is already claimed by raster '10ms'`` - whether it is being declared or
+       changed: an event is a property of the target's XCP configuration, distinct across the
+       project, so not free for a second raster to claim. Removing one is refused while anything
+       still names it - a shape, for a constant; a definition placing data there, for a section;
+       a definition measured in it or a component's own default naming it, for a raster, its own
+       refusal counting every shape rather than naming one: ``2 shapes name 10ms, so it cannot
+       be removed.`` - and while it is all its own list declares: a list of constants, of
+       sections or of rasters declares at least one, in a constants file, in a component, and in
+       a sections or a rasters file alike, so an emptied list is a file that no longer loads. A
+       constant value no shape can use is reported there by ``dimension-value`` rather than
+       refused: the interface does not invent a rule the format itself does not have. A finding
+       naming a constant, a section or a raster leads to the tab, a name no file declares
+       landing on the form that declares it.
        What the page reads and writes is bounded by the directory ``ddd gui`` was started in,
        and by the project's own where a project elsewhere was named on the command line. A file
        the project includes from outside those is read by ``ddd check`` like any other and named

@@ -9,14 +9,17 @@ import pytest
 
 from conftest import built_of, component, declare, write_tree
 from ddd.diagnostics import Diagnostic, Location, Severity
-from ddd.lsp.navigation import _DIMENSION_KEY, _SECTION_KEY
+from ddd.lsp.navigation import _DIMENSION_KEY, _RASTER_KEY, _SECTION_KEY
 from ddd.lsp.ranges import Document
 from ddd.project_shared import (
     _DECLARATION_SHAPE,
     _MEMBER_SHAPE,
     _PLACEMENT_SHAPE,
+    _RASTER_DEFAULT_SHAPE,
+    _RASTER_DEFINITION_SHAPE,
     CONSTANTS,
     SECTIONS,
+    _raster_uses,
     located_on,
     row_of,
     shared_rows,
@@ -187,6 +190,15 @@ PLACED_AND_SIZED = {
     "a.ddd.json": component(
         "A", declare("output", "Gain", section=".calib", dimensions=["TREND_SAMPLES"])
     ),
+}
+
+# The third vocabulary, copied by hand from `tests/test_lsp.py`'s own `TIMED` for the reason
+# `PLACED` above gives: a rasters file declaring `10ms`, a component naming it as its own default,
+# and a definition naming it too - the one tree that shows `_raster_uses`'s two shapes at once, in
+# the order part 14 pinned the index to record them, the component's own first.
+TIMED = {
+    "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
+    "a.ddd.json": component("A", declare("output", "X", raster="10ms"), raster="10ms"),
 }
 
 
@@ -560,6 +572,25 @@ def test_the_placement_pattern_matches_what_the_index_calls_a_placement() -> Non
         assert bool(_PLACEMENT_SHAPE.match(pointer)) == bool(_SECTION_KEY.match(pointer)), pointer
 
 
+def test_the_two_raster_patterns_match_what_the_index_calls_a_raster_key() -> None:
+    """The same authority again, for the two shapes that name a raster: `_RASTER_KEY` decides
+    where a raster may be named - a component's own default, or a definition's - and a pointer
+    this module fails to recognise is a use the panel silently drops, which is why `_raster_uses`
+    asserts on its own pattern rather than skipping what it does not know."""
+    pointers = [
+        "component.raster",
+        "component.interface[0].definition.raster",
+        "component.interface[12].definition.raster",
+        "rasters[0].raster",
+        "component.rasters",
+        "component.interface[0].definition.raster.extra",
+        "component.interface[0].definition.section",
+    ]
+    for pointer in pointers:
+        mine = _RASTER_DEFAULT_SHAPE.match(pointer) or _RASTER_DEFINITION_SHAPE.match(pointer)
+        assert bool(mine) == bool(_RASTER_KEY.match(pointer)), pointer
+
+
 class TestTheDescriptor:
     def test_a_string_key_is_shown_without_its_quotes_and_a_literal_as_written(
         self, tmp_path: Path
@@ -702,3 +733,76 @@ class TestSections:
         built, _ = built_of(tmp_path, **PLACED)
         cache: dict[Path, Document] = {}
         assert uses_of(SECTIONS, built, ".nvm", cache) == ()
+
+
+class TestRasters:
+    def test_a_component_naming_a_raster_is_a_use_of_its_own_kind(self, tmp_path: Path) -> None:
+        """`Component.raster` is the default for everything the component produces - a use inside
+        no definition at all, which neither of the other two vocabularies has."""
+        built, _root = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        used = _raster_uses(built, "10ms", cache)
+        assert [(use.kind, use.name, use.component) for use in used] == [
+            ("component", "A", "A"),
+            ("variable", "X", "A"),
+        ]
+
+    def test_a_definition_that_has_lost_its_name_is_no_use(self, tmp_path: Path) -> None:
+        """The drift `_section_uses` guards against, mirrored for the definition arm: the index
+        recorded where the analysis read it, the file has changed since, and a definition with no
+        `name` left at that pointer names no variable. The component's own default is read fresh
+        from the same document rather than carried from the index, so it is untouched and stays a
+        use."""
+        built, _ = built_of(tmp_path, **TIMED)
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": {
+                    "component": {
+                        "name": "A",
+                        "raster": "10ms",
+                        "interface": [
+                            {
+                                "scope": "output",
+                                "definition": {
+                                    "kind": "measurement",
+                                    "datatype": "uint8",
+                                    "conversion": {"kind": "identity"},
+                                    "volatile": False,
+                                    "raster": "10ms",
+                                },
+                            }
+                        ],
+                    }
+                }
+            },
+        )
+        cache: dict[Path, Document] = {}
+        used = _raster_uses(built, "10ms", cache)
+        assert [(use.kind, use.name, use.component) for use in used] == [("component", "A", "A")]
+
+    def test_a_definition_renamed_since_is_no_use(self, tmp_path: Path) -> None:
+        """A different drift than the definition losing its name above, mirrored from
+        `TestSections`: a name is still written there, and it belongs to nobody the index ever
+        declared, so `declarations_of` is asked about a name it never indexed and there is no
+        declaration to take the component from. The component's own default is unaffected, for
+        the same reason as above."""
+        built, _ = built_of(tmp_path, **TIMED)
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": component(
+                    "A", declare("output", "Renamed", raster="10ms"), raster="10ms"
+                )
+            },
+        )
+        cache: dict[Path, Document] = {}
+        used = _raster_uses(built, "10ms", cache)
+        assert [(use.kind, use.name, use.component) for use in used] == [("component", "A", "A")]
+
+    def test_a_name_the_index_does_not_hold_names_no_use(self, tmp_path: Path) -> None:
+        """The api looks a name up before it asks, so this arm is only reachable from a test -
+        which is where the other two vocabularies cover their own."""
+        built, _ = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        assert _raster_uses(built, "20ms", cache) == ()

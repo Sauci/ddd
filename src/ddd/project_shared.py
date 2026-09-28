@@ -32,7 +32,7 @@ from ddd.lsp.navigation import Index, Site, rename_problem
 from ddd.lsp.ranges import Document, read
 from ddd.models.constants import ConstantValue
 from ddd.models.sections import SectionAccess, SectionDeclaration
-from ddd.variables import declarations_of
+from ddd.variables import component_of, declarations_of
 
 CONSTANT: Final = "constant"
 """The ``kind`` a constant's row carries. The tab holds three kinds once sections and rasters land;
@@ -209,9 +209,11 @@ class Use:
 
     site: Site
 
-    kind: Literal["variable", "member"]
-    """``variable`` for a declaration's ``dimensions`` entry or its axis ``size``, ``member`` for
-    a structure member's ``dimensions`` entry."""
+    kind: Literal["variable", "member", "component"]
+    """Whose use this is: a variable's declaration, a structure member's, or a **component's own**
+    - the last being a raster named at ``component.raster`` as the default for everything that
+    component produces, which sits inside no definition. A constant is never named that way and a
+    section is named only by a definition, so this third word arrives with rasters."""
 
     name: str
     """The variable's name, or ``Sample_t.history`` for a structure member."""
@@ -444,6 +446,67 @@ def _section_uses(built: Index, name: str, cache: dict[Path, Document]) -> tuple
         # the test named above pins this pattern to it. A pointer this fails to match would mean
         # the two have drifted apart, and undercounting a section's uses silently is worse than
         # failing loudly the moment they do.
+        assert shape is not None
+        definition = shape.group(1)
+        variable = document.value_at(f"{definition}.name")
+        if not isinstance(variable, str):
+            continue
+        declared = next(
+            (
+                entry
+                for entry in declarations_of(built, variable, cache)
+                if entry.site == Site(site.path, definition)
+            ),
+            None,
+        )
+        if declared is not None:
+            found.append(Use(site, "variable", variable, declared.component))
+    return tuple(found)
+
+
+_RASTER_DEFAULT_SHAPE: Final = re.compile(r"^component\.raster$")
+"""A component's own default raster - the one use written outside any definition at all, and the
+first of the two shapes a raster may be named at."""
+
+_RASTER_DEFINITION_SHAPE: Final = re.compile(r"^(component\.interface\[\d+\]\.definition)\.raster$")
+"""A definition's own raster, and the definition it belongs to, whose ``name`` names the variable
+placed on it - the second of the two shapes, read exactly as ``_PLACEMENT_SHAPE`` reads a
+section's one."""
+
+
+def _raster_uses(built: Index, name: str, cache: dict[Path, Document]) -> tuple[Use, ...]:
+    """Every component naming this raster as its own default, and every definition naming it
+    directly, in the order the index recorded them - the component's own first, as
+    :func:`ddd.lsp.navigation.index` writes it. This is what a raster's own :attr:`Vocabulary.uses`
+    will read through, once a rasters part binds one.
+
+    The one vocabulary :attr:`Use.kind` was widened for: a component's own default is a use
+    inside no definition at all, so unlike :func:`_section_uses` this cannot say every use is the
+    variable's. ``component.raster`` reads as the ``"component"`` kind, its own name doing double
+    duty as both :attr:`Use.name` and :attr:`Use.component` - there being no variable between the
+    component and the raster to name instead. Read through :func:`~ddd.variables.component_of`
+    rather than a bare ``value_at``: a component that has dropped its own ``name`` since the
+    analysis is still named, by its file, exactly as every other reader of a component's name
+    already falls back to.
+
+    A definition's own raster is read exactly as :func:`_section_uses` reads a placement, drift
+    handled the same way and for the same reason: the index recorded where the analysis read the
+    definition, the file may have changed since, and a panel naming a variable that is no longer
+    there is worse than one row short.
+    """
+    found: list[Use] = []
+    for site in built.raster_uses.get(name, ()):
+        document = read(site.path, cache)
+        if _RASTER_DEFAULT_SHAPE.match(site.pointer):
+            component = component_of(document, site.path)
+            found.append(Use(site, "component", component, component))
+            continue
+        shape = _RASTER_DEFINITION_SHAPE.match(site.pointer)
+        # As in `_constant_uses` and `_section_uses`: `_RASTER_KEY` is the shape
+        # navigation.index() writes here, and
+        # `test_the_two_raster_patterns_match_what_the_index_calls_a_raster_key` pins these two
+        # patterns to it. A pointer neither matches would mean this module and `_RASTER_KEY` have
+        # drifted apart, not that the file holds anything unexpected.
         assert shape is not None
         definition = shape.group(1)
         variable = document.value_at(f"{definition}.name")

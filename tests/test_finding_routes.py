@@ -658,24 +658,28 @@ class TestASection:
             {},
         ) == Route("variable", "Gain")
 
-    def test_the_same_check_at_another_of_its_five_keys_leads_to_the_variable_too(
+    def test_the_same_check_at_its_other_key_opens_that_object_s_values(
         self, tmp_path: Path
     ) -> None:
-        """`PRODUCER_KEYS` gives `consumer-storage` five keys, and the one at `definition.init` is
-        already claimed by `WITHIN_INIT`, which opens the values grid - the variable's own screen.
-        So the check leads to the variable by two routes today, and the `section` key makes a third
-        that agrees rather than a third destination.
+        """`PRODUCER_KEYS` gives `consumer-storage` exactly two keys, `init` and `section` - the
+        other three entries there are `consumer-raster`, `consumer-identity` and
+        `consumer-extension`, one key each. The `init` copy is claimed by `WITHIN_INIT`, which
+        opens the values grid, so both of this check's keys lead to a screen of the variable's own
+        and the `section` key agrees with its sibling rather than inventing a third destination.
 
-        `definition.raster` is the plainest of the five to assert on, having no route of its own."""
+        That is the argument `ABOUT_THE_DECLARATION`'s docstring makes, and until the branch's
+        final review nothing asserted it: this test used to aim at `definition.raster`, which is
+        `consumer-raster`'s key and not this check's at all, so it pinned a pair the analysis never
+        files. It passed, and could not have failed for the right reason."""
         root = built(tmp_path, **PLACED)
         assert route_of(
             "consumer-storage",
             root / "a.ddd.json",
-            "component.interface[0].definition.raster",
+            "component.interface[0].definition.init",
             "component",
             True,
             {},
-        ) == Route("variable", "Gain")
+        ) == Route("values", "Gain")
 
     def test_duplicate_section_leads_to_the_section_its_entry_declares(
         self, tmp_path: Path

@@ -210,6 +210,17 @@ WIDE: Final = dataclasses.replace(
     judge=dict.fromkeys((*WIDE_KEYS, "description"), SECTIONS.judge["description"]),
 )
 
+# A consumer restating the producer's `section`, which is `consumer-storage`: a key only the
+# component producing a variable may state, filed at the same `definition.section` pointer the
+# section's own three checks are filed at. `.ram` is read-write so no `section-access` fires
+# beside it, leaving one finding in the project that names a section and is not about it.
+CONSUMER_PLACES = {
+    "p.ddd.json": project("P", "s.ddd.json", "a.ddd.json", "b.ddd.json"),
+    "s.ddd.json": {"sections": [{"section": ".ram", "access": "read-write", "alignment": 4}]},
+    "a.ddd.json": component("A", declare("output", "Gain", section=".ram")),
+    "b.ddd.json": component("B", declare("input", "Gain", section=".ram")),
+}
+
 # A definition placed in a section no file declares, which is what `unknown-section` reports and
 # the one route a reader follows to an add form rather than to a panel.
 PLACED_NOWHERE = {
@@ -3293,6 +3304,30 @@ class TestSection:
         assert [(f["check"], f["route"]) for f in body["findings"]] == [
             ("duplicate-section", {"kind": "section", "name": ".calib"})
         ]
+
+    def test_a_consumers_stray_section_key_is_neither_counted_nor_listed_on_the_section(
+        self, tmp_path: Path
+    ) -> None:
+        """Both halves of the same rule, end to end, which the branch's final review found the
+        route obeying and the reader's two screens not.
+
+        `consumer-storage` is filed at `component.interface[i].definition.section`, so it matched
+        every pointer test `located_on` makes: measured before the fix, this project's `.ram` row
+        read `findings: 1` and its panel listed a finding whose route left the panel, with nothing
+        in it a reader could act on. The Findings column is what a reader scans for what needs
+        attention, so a count they cannot act on is worse than no count.
+
+        The finding is not lost, only re-attributed, which the third assertion holds: the project
+        still reports it, at the declaration that states the key, where the fix is. And the `uses`
+        count stays at two - the consumer's key really does name the section, which is exactly what
+        `consumer-storage` complains about."""
+        api = opened(tmp_path, CONSUMER_PLACES)
+        row = {e["name"]: e for e in get(api, "/api/shared").body["entries"]}[".ram"]
+        assert (row["uses"], row["findings"]) == (2, 0)
+        assert get(api, "/api/section", name=".ram").body["findings"] == []
+        assert {f["check"]: f["route"] for f in get(api, "/api/state").body["findings"]}[
+            "consumer-storage"
+        ] == {"kind": "variable", "name": "Gain"}
 
     def test_an_unknown_section_leads_to_the_name_the_definition_names(
         self, tmp_path: Path

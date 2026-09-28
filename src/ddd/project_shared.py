@@ -27,6 +27,7 @@ from typing import Annotated, Any, Final, Literal
 from pydantic import BeforeValidator, TypeAdapter
 
 from ddd.diagnostics import Diagnostic
+from ddd.finding_routes import ABOUT_THE_DECLARATION
 from ddd.lsp.navigation import Index, Site, rename_problem
 from ddd.lsp.ranges import Document, read
 from ddd.models.constants import ConstantValue
@@ -233,7 +234,18 @@ def located_on(
 
     Answered for a name no file declares too, which is what ``unknown-constant`` is: the question
     is whether the finding concerns that name, and the shape naming it is where it is filed.
+
+    Where a finding sits does not by itself say whose it is, and
+    :data:`~ddd.finding_routes.ABOUT_THE_DECLARATION` is the one place that difference is written
+    down. This asks it for the same reason :func:`ddd.finding_routes.route_of` does, and asking it
+    in only one of the two is what the branch's final review caught: ``consumer-storage`` is filed
+    at a definition's ``section`` key, so it matched every pointer test here, and a section whose
+    name a consumer had wrongly stated showed ``1`` in the tab's Findings column and listed a
+    finding in its panel that routed away from it. That column is what a reader scans for what
+    needs attention; a count they can do nothing about is worse than no count.
     """
+    if found.check in ABOUT_THE_DECLARATION:
+        return False
     location = found.location
     if location is None:
         return False

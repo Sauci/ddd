@@ -85,7 +85,7 @@ variable" and "change this section" has to see.
 """
 
 ABOUT_THE_DECLARATION: Final = frozenset({"consumer-storage"})
-"""The checks filed at a definition's ``section`` key that are not about the section, and so are
+"""The checks filed where a vocabulary's entry is named that are not about that entry, and so are
 left to the declaration's own route.
 
 One, today. ``consumer-storage`` comes from :data:`ddd.analysis.PRODUCER_KEYS` rather than from
@@ -96,10 +96,19 @@ written rather than where it is overruled: the producer may be in a file this au
 opened, **and the fix is here**" - so routing it to the section would send the reader away from
 the place the analysis chose on purpose.
 
-Its sibling agrees. ``PRODUCER_KEYS`` gives this one check five keys, and the copy filed at
-``definition.init`` is already claimed by :data:`WITHIN_INIT`, which opens the values grid - the
-variable's own screen. So ``consumer-storage`` leads to the variable today by two routes, and a
-third destination for the ``section`` key would break a pattern that is currently whole.
+Its sibling agrees. ``PRODUCER_KEYS`` gives this check exactly two keys, ``init`` and ``section``;
+the other three entries in that table belong to ``consumer-raster``, ``consumer-identity`` and
+``consumer-extension``, one key each. The ``init`` copy is claimed by :data:`WITHIN_INIT`, which
+opens the values grid - the variable's own screen - so both of this check's keys lead to the
+variable, and a third destination for one of the two would break a pattern that is currently
+whole. ``test_the_same_check_at_its_other_key_opens_that_object_s_values`` is what pins the
+``init`` half, which nothing asserted until the branch's final review asked.
+
+Read by :func:`ddd.project_shared.located_on` as well as by :func:`route_of`, and that is the
+point of its being a name rather than a condition written twice. A finding this set holds is not
+the entry's, so it is neither routed to the entry's panel nor counted on the entry's row: a
+Findings column is what a reader scans for what needs attention, and a section reading ``1`` for a
+finding its panel can do nothing about is worse than one reading nothing.
 
 An exclusion with a reason, then, not a carve-out: the pointer says *where* the finding sits, this
 says *whose* it is.

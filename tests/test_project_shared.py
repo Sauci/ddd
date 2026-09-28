@@ -624,6 +624,35 @@ class TestSections:
             ("section", ".calib"),
         ]
 
+    def test_a_consumer_s_stray_section_key_is_not_the_sections_finding(
+        self, tmp_path: Path
+    ) -> None:
+        """Where a finding sits is not whose it is. `consumer-storage` is filed at a definition's
+        `section` key - the very pointer this function walks to decide what belongs to a section -
+        and it is about the declaration having a key only a producer may state, not about the
+        section, which may well be the right one. `finding_routes.route_of` already left it to the
+        declaration; counting it here anyway put a `1` in the tab's Findings column that the
+        section's own panel could do nothing about.
+
+        Both halves asserted, and the second is the one that matters: a `section-access` at the
+        *same pointer in the same file* is still the section's. So the exclusion has to be by check
+        id, and an implementation that simply stopped matching this pointer fails here."""
+        built, _root = built_of(tmp_path, **PLACED)
+        at_the_placement = Diagnostic(
+            check="consumer-storage",
+            severity=Severity.ERROR,
+            message="'Gain': the memory section is decided by the component that produces it",
+            location=Location(tmp_path / "a.ddd.json", "component.interface[0].definition.section"),
+        )
+        assert not located_on(SECTIONS, built, ".calib", tmp_path / "a.ddd.json", at_the_placement)
+        assert located_on(
+            SECTIONS,
+            built,
+            ".calib",
+            tmp_path / "a.ddd.json",
+            dataclasses.replace(at_the_placement, check="section-access"),
+        )
+
     def test_a_definition_that_has_lost_its_name_is_no_use(self, tmp_path: Path) -> None:
         """The index recorded where the analysis read it; the file has changed since. A definition
         with no `name` left at that pointer names no variable, and a panel saying a section holds

@@ -3,7 +3,10 @@ import type { SharedReply } from "../api/types";
 import {
   NO_SHARED,
   PROJECT_SHARED,
+  SHARED_BOTH_KINDS,
   SHARED_MISSING_FILE,
+  SHARED_ONE_OF_EACH,
+  SHARED_SECTION_FINDING,
   SHARED_WITH_FINDING,
 } from "../stories/fixtures";
 import { SharedTableView } from "./SharedTableView";
@@ -61,3 +64,18 @@ export const AFileDidNotLoad = () => (
 export const AFileOfNoTellableKind = () => (
   <Tab reply={SHARED_MISSING_FILE} untold={["sizes.ddd.json"]} />
 );
+
+/** .fast_ram and .calib beside TREND_SAMPLES and PRESSURE_CELLS: both vocabularies the tab holds,
+ * in the one table - the story this tab exists for. A section's States cell ("read-write, align
+ * 4") is nothing a constant's own ("16") could be mistaken for, so the two kinds read apart even
+ * before a reader looks at the Vocabulary column beside them. */
+export const BothVocabularies = () => <Tab reply={SHARED_BOTH_KINDS} />;
+
+/** .calib carrying a finding, counted on its own row exactly as TREND_SAMPLES's is in
+ * ADimensionValueFinding - the Findings column is not a constant's alone. */
+export const ASectionFinding = () => <Tab reply={SHARED_SECTION_FINDING} />;
+
+/** TREND_SAMPLES alone beside .fast_ram alone: the smallest table that still holds both
+ * vocabularies, nothing else declared of either kind - not even TREND_SAMPLES's own other home,
+ * the inline constant PROJECT_SHARED pairs it with. */
+export const OneOfEachKind = () => <Tab reply={SHARED_ONE_OF_EACH} />;

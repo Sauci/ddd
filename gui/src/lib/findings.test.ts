@@ -14,6 +14,7 @@ import {
   routeOf,
   unreadable,
 } from "./findings";
+import { SHARED_KINDS } from "./shared";
 
 const SENSOR_HUB = "C:/work/demo/components/sensor_hub.ddd.json";
 const TYPES = "C:/work/demo/types.ddd.json";
@@ -417,21 +418,30 @@ describe("why a finding leads nowhere", () => {
   describe("a tab whose table holds more than one vocabulary", () => {
     // The Shared files tab asks for both its file kinds in one call, so a failed sections file
     // must be named beside a failed constants file rather than dropped because it was not the
-    // one kind the tab used to ask about (ruling R1, moved here from Task 7).
-    const KINDS = ["constants", "sections"];
+    // one kind the tab used to ask about (ruling R1, moved here from Task 7). These call
+    // `unreadable` with `SHARED_KINDS` itself - the very list `SharedPage` passes - rather than a
+    // copy of it: asserting `SHARED_KINDS` equals a literal would repeat the source and prove
+    // nothing, but dropping either word from it fails "one of each at once" below, which is the
+    // property that actually matters (ruling 7).
 
     test("a constants file alone", () => {
       const one = finding({});
       const withFiles = state([one]);
       withFiles.files = [...withFiles.files, fileRow(CONSTANTS, "constants", false)];
-      expect(unreadable(withFiles, KINDS)).toEqual({ own: ["constants.ddd.json"], untold: [] });
+      expect(unreadable(withFiles, SHARED_KINDS)).toEqual({
+        own: ["constants.ddd.json"],
+        untold: [],
+      });
     });
 
     test("a sections file alone", () => {
       const one = finding({});
       const withFiles = state([one]);
       withFiles.files = [...withFiles.files, fileRow(SECTIONS, "sections", false)];
-      expect(unreadable(withFiles, KINDS)).toEqual({ own: ["sections.ddd.json"], untold: [] });
+      expect(unreadable(withFiles, SHARED_KINDS)).toEqual({
+        own: ["sections.ddd.json"],
+        untold: [],
+      });
     });
 
     test("one of each at once", () => {
@@ -442,7 +452,7 @@ describe("why a finding leads nowhere", () => {
         fileRow(CONSTANTS, "constants", false),
         fileRow(SECTIONS, "sections", false),
       ];
-      expect(unreadable(withFiles, KINDS)).toEqual({
+      expect(unreadable(withFiles, SHARED_KINDS)).toEqual({
         own: ["constants.ddd.json", "sections.ddd.json"],
         untold: [],
       });
@@ -457,7 +467,7 @@ describe("why a finding leads nowhere", () => {
       const one = finding({});
       const withFiles = state([one]);
       withFiles.files = [...withFiles.files, fileRow(TYPES, "types", false)];
-      expect(unreadable(withFiles, KINDS)).toEqual({ own: [], untold: [] });
+      expect(unreadable(withFiles, SHARED_KINDS)).toEqual({ own: [], untold: [] });
     });
   });
 

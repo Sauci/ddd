@@ -1,6 +1,20 @@
 import type { Changes, PlanReply, SharedEntry, SharedReply } from "../api/types";
 import { planEdit as editOfPlan } from "./projectUnits";
 
+/** The file kinds the Shared files tab's table draws its rows from: a constant's file and a
+ * section's, listed together (spec 5.1). `SharedPage` passes this to `lib/findings`'s
+ * `unreadable` rather than naming the two kinds itself - `.tsx` is executed by no gate in this
+ * repo, so the one fact left saying which vocabularies this tab holds belongs here, where a test
+ * can hold it to account, rather than in a screen nothing checks (ruling 7, task 7). Rasters join
+ * this list the day their own rows join the table.
+ *
+ * Not a `for (const kind of SHARED_KINDS)` inside `tabTitle` below, whose own count is read off
+ * each entry's `kind` instead: that function tells a reader what is in a table it already has:
+ * this one tells `unreadable` which failed *files* are this tab's business before the table is
+ * drawn at all, which a project with an entry-less table (every file of a kind failed) could
+ * never answer by looking at `entries` alone. */
+export const SHARED_KINDS: readonly string[] = ["constants", "sections"];
+
 /** The line above the table: one count per vocabulary that has entries, or that the project has
  * nothing shared at all.
  *

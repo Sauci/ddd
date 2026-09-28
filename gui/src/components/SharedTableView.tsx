@@ -78,7 +78,11 @@ export function SharedTableView({
                 device wide size no single component owns" - which would dominate every row, where
                 the value is short and is what a reader scans a list of constants for (spec 5.1).
                 The description is in the panel (Task 8). */}
-            <Column>Value</Column>
+            {/* States, not Value: the word has to fit a constant's own state ("16") as well as a
+                section's ("read-only, align 4"), which Value does not - the same call as the
+                Vocabulary rename above, from PR #68: cheap before a second vocabulary ships into
+                the word, expensive after. */}
+            <Column>States</Column>
             <Column>Used by</Column>
             <Column>Findings</Column>
           </TableHeader>

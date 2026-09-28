@@ -1850,6 +1850,57 @@ export const NO_SHARED: SharedReply = { revision: 7, entries: [] };
  * that failed. */
 export const SHARED_MISSING_FILE: SharedReply = { revision: 7, entries: [PRESSURE_CELLS] };
 
+// examples/vocabulary's own two sections (spec 5.1 as part 14 extends it): .fast_ram in
+// sections.ddd.json, tightly coupled memory PumpSpeed and ManifoldPressure both place themselves
+// in, and .calib, the one section TorqueLimit does (examples/vocabulary/pump.ddd.json) - modelled
+// on it, not transcribed, the way TREND_SAMPLES and PRESSURE_CELLS already are not.
+
+/** .fast_ram: read-write, four byte aligned, two definitions placing themselves in it. Its States
+ * cell ("read-write, align 4") is chosen, like .calib's, to be nothing a constant's own cell
+ * ("16") could be mistaken for - the point BothVocabularies exists to make. */
+const FAST_RAM: SharedEntry = {
+  kind: "section",
+  name: ".fast_ram",
+  states: "read-write, align 4",
+  uses: 2,
+  findings: 0,
+};
+
+/** .calib: read-only from the running software's side, four byte aligned, the one section
+ * TorqueLimit places itself in. */
+const CALIB: SharedEntry = {
+  kind: "section",
+  name: ".calib",
+  states: "read-only, align 4",
+  uses: 1,
+  findings: 0,
+};
+
+/** Both vocabularies the tab holds, in the one table (spec 5.1, extended by part 14): the same
+ * TREND_SAMPLES and PRESSURE_CELLS as PROJECT_SHARED, beside both sections - sorted kind then
+ * name, as `GET /api/shared` answers them (`project_shared.shared_rows`), so every constant's row
+ * precedes every section's. This is the story the tab exists for. */
+export const SHARED_BOTH_KINDS: SharedReply = {
+  revision: 7,
+  entries: [PRESSURE_CELLS, TREND_SAMPLES, CALIB, FAST_RAM],
+};
+
+/** .calib carrying a finding, sections declared alone: the section table's own counterpart to
+ * SHARED_WITH_FINDING, which is TREND_SAMPLES's - `SharedEntry.findings` is a count read the same
+ * way whichever vocabulary the row belongs to. */
+export const SHARED_SECTION_FINDING: SharedReply = {
+  revision: 7,
+  entries: [{ ...CALIB, findings: 1 }, FAST_RAM],
+};
+
+/** The smallest table that still holds both vocabularies: TREND_SAMPLES, declared in
+ * constants.ddd.json with nothing declared in its other home - no PRESSURE_CELLS-style inline
+ * constant here - beside .fast_ram alone. */
+export const SHARED_ONE_OF_EACH: SharedReply = {
+  revision: 7,
+  entries: [TREND_SAMPLES, FAST_RAM],
+};
+
 // --- ConstantPanelView (Task 8, spec 5.2/5.4) -------------------------------------------------
 //
 // examples/vocabulary's own TREND_SAMPLES (constants.ddd.json, value 16), with a second use

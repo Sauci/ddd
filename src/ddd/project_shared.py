@@ -235,6 +235,7 @@ def located_on(
     Answered for a name no file declares too, which is what ``unknown-constant`` is: the question
     is whether the finding concerns that name, and the shape naming it is where it is filed.
 
+
     Where a finding sits does not by itself say whose it is, and
     :data:`~ddd.finding_routes.ABOUT_THE_DECLARATION` is the one place that difference is written
     down. This asks it for the same reason :func:`ddd.finding_routes.route_of` does, and asking it
@@ -246,21 +247,24 @@ def located_on(
     """
     if found.check in ABOUT_THE_DECLARATION:
         return False
-    location = found.location
-    if location is None:
+    if found.location is None:
         return False
-    resolved = file.resolve()
     entry = vocabulary.entries(built).get(name)
-    places = [] if entry is None else [entry]
+    places: list[Site] = []
+    if entry is not None:
+        places.append(entry)
     places.extend(vocabulary.used(built).get(name, ()))
-    return any(
-        place.path.resolve() == resolved
-        and (
-            location.pointer == place.pointer
-            or location.pointer.startswith((f"{place.pointer}.", f"{place.pointer}["))
-        )
-        for place in places
-    )
+    wanted = file.resolve()
+    return any(_at(place, wanted, found.location.pointer) for place in places)
+
+
+def _at(place: Site, path: Path, pointer: str) -> bool:
+    """Whether ``pointer`` in ``path`` is that place, or somewhere inside it."""
+    if place.path.resolve() != path:
+        return False
+    if pointer == place.pointer:
+        return True
+    return pointer.startswith((f"{place.pointer}.", f"{place.pointer}["))
 
 
 def shared_rows(

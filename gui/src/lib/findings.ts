@@ -127,8 +127,8 @@ export function routeOf(finding: Finding): Route | null {
     // `SharedPage` asks `isDeclared` of its own table and opens the panel or the pre-filled add
     // form accordingly, which is also what `unknown-constant` and `unknown-section` need - the
     // name either carries names nothing yet. One tab for all three vocabularies is the design
-    // decision this rests on, so a raster joining it should widen this arm's condition, not add
-    // a third one beside it.
+    // decision this rests on, so a raster joining it widened this arm's condition, rather than
+    // adding a third one beside it.
     return { page: "project", view: "shared", kind: route.kind, name: route.name };
   }
   return { page: "component", file: finding.file };

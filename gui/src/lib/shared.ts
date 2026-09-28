@@ -60,9 +60,11 @@ export const SECTION_ACCESSES = valuesOf<SectionAccess>({
  * shape of a type, `scalar` or `external` or `struct`. One header meaning two things on adjacent
  * tabs was cheap to change before sections shipped and would not have been after.
  *
- * All three of the tab's kinds pluralise with a plain `s`, and a `kind` this page has no route for
- * is pluralised just the same - the table lists a row before the tab has a panel for its kind. A
- * fourth vocabulary that does not pluralise that way would need its own answer here. */
+ * All three of the tab's kinds pluralise with a plain `s`. `vocabularyOf` takes a bare `string`,
+ * not a `SharedKind`, so it pluralises whatever kind it is handed regardless of whether the page
+ * can route to it or open a panel for it yet - which is what lets a kind's row read correctly in
+ * the table before either does. A fourth vocabulary that does not pluralise that way would need
+ * its own answer here. */
 export function vocabularyOf(kind: string): string {
   return `${kind}s`;
 }

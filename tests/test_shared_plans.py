@@ -912,6 +912,22 @@ class TestSectionRefusals:
             )
         )
 
+    def test_a_key_beginning_with_a_vowel_is_refused_in_english(self, tmp_path: Path) -> None:
+        """Two of the three refusals that write an indefinite article in front of a word the
+        descriptor supplies, and `access` and `alignment` are the first two such words to begin
+        with a vowel: the sentences read `3 is not a alignment` and `a section states a access`
+        until `_article` was written. Constants were grammatical by luck - `value`, `description`
+        and `constant` all begin with a consonant - which is why one vocabulary could not have
+        found this."""
+        built, _root = built_of(tmp_path, **PLACED)
+        cache: dict[Path, Document] = {}
+        with pytest.raises(SharedRefusalError) as judged:
+            set_entry(SECTIONS, built, ".calib", "alignment", "3", cache)
+        assert "3 is not an alignment a section may state" in judged.value.message
+        with pytest.raises(SharedRefusalError) as required:
+            set_entry(SECTIONS, built, ".calib", "access", None, cache)
+        assert "a section states an access" in required.value.message
+
     def test_a_name_the_pattern_refuses_is_refused(self, tmp_path: Path) -> None:
         built, _root = built_of(tmp_path, **PLACED)
         cache: dict[Path, Document] = {}

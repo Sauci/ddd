@@ -38,6 +38,10 @@ from ddd.lsp.units import PlannedEdit
 from ddd.pointers import parent_pointer
 from ddd.project_shared import CONSTANTS, Vocabulary
 
+_VOWELS: Final = frozenset("aeio")
+"""The letters :func:`_article` writes ``an`` in front of. ``u`` is not one of them, for the reason
+that function gives."""
+
 CONSTANTS_FILE: Final = CONSTANTS.filename
 """The constants file ``add_constant`` writes for a project that has none, beside its description.
 
@@ -190,8 +194,8 @@ def set_entry(
         if raw is None:
             raise SharedRefusalError(
                 "invalid",
-                f"a {vocabulary.kind} states a {key}, so '{name}' cannot be left without one in "
-                f"{entry.path.name}",
+                f"{_article(vocabulary.kind)} {vocabulary.kind} states {_article(key)} {key}, so "
+                f"'{name}' cannot be left without one in {entry.path.name}",
             )
         _judged(vocabulary, key, raw, name, entry.path)
         return _plan({entry.path: [Operation("set", f"{entry.pointer}.{key}", raw)]})
@@ -346,7 +350,9 @@ def _entry(vocabulary: Vocabulary, built: Index, name: str) -> Site:
     entry = vocabulary.entries(built).get(name)
     if entry is None:
         raise SharedRefusalError(
-            "not-found", f"no file of this project declares a {vocabulary.kind} called '{name}'"
+            "not-found",
+            f"no file of this project declares {_article(vocabulary.kind)} {vocabulary.kind} "
+            f"called '{name}'",
         )
     return entry
 
@@ -375,15 +381,16 @@ def _judged(vocabulary: Vocabulary, key: str, raw: str, name: str, file: Path) -
     One sentence shape, shared by every key of every vocabulary and differing only in the tail
     :attr:`~ddd.project_shared.Judgement.tail` supplies - a constant's ``value`` and its
     ``description`` shared this shape and differed only there before this was written once for
-    both."""
+    both. Its two indefinite articles come from :func:`_article`, because a key is a word a
+    descriptor supplies and two of a section's three begin with a vowel."""
     judgement = vocabulary.judge[key]
     try:
         judgement.adapter.validate_python(json.loads(raw))
     except (ValueError, TypeError) as refused:
         raise SharedRefusalError(
             "invalid",
-            f"{raw} is not a {key} a {vocabulary.kind} may state, so '{name}' cannot take it in "
-            f"{file.name}: {judgement.tail}",
+            f"{raw} is not {_article(key)} {key} {_article(vocabulary.kind)} {vocabulary.kind} "
+            f"may state, so '{name}' cannot take it in {file.name}: {judgement.tail}",
         ) from refused
 
 
@@ -408,6 +415,31 @@ def _names(files: Sequence[Path]) -> str:
 def _plural(count: int, noun: str) -> str:
     """ "1 shape", "2 shapes" - the wording `remove_entry` names a blocking use's count with."""
     return f"{count} {noun}{'' if count == 1 else 's'}"
+
+
+def _article(word: str) -> str:
+    """``a`` or ``an``, for a word a descriptor supplies rather than this module: a key of
+    :attr:`~ddd.project_shared.Vocabulary.keys`, or a vocabulary's own
+    :attr:`~ddd.project_shared.Vocabulary.kind`.
+
+    Three refusals below write an indefinite article in front of such a word, and each had ``a``
+    written into it. That was grammatical by luck rather than by rule: every word the one
+    vocabulary of the day could put there - ``constant``, ``value``, ``description`` - begins with
+    a consonant, and the second vocabulary brought two that do not, so a reader setting an
+    alignment was told ``3 is not a alignment a section may state``. Nothing about the word's
+    vocabulary is consulted here, and nothing needs to be: this is the English rule the sentences
+    always meant, written once instead of assumed three times.
+
+    ``u`` is deliberately not a vowel here. The rule English follows is about sound, not spelling,
+    and every word a descriptor could put in these sentences that starts with one is said with a
+    consonant - ``a unit``, ``a uint16`` - so counting it in would fix two words and break the
+    next. Written as an early return rather than a conditional expression, which coverage.py
+    counts no branch in: the arm the keys of one vocabulary never reach would pass the gate unseen,
+    which is exactly how the missing ``an`` survived this long.
+    """
+    if word[:1].lower() in _VOWELS:
+        return "an"
+    return "a"
 
 
 def _raw(value: Any) -> str:

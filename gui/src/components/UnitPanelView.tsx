@@ -1,6 +1,5 @@
 import type { PlanReply, ProjectUnit, UnitReply, UnitsReply } from "../api/types";
 import { distinctFindings, keyedFindings } from "../lib/findings";
-import type { Offer } from "../lib/panels";
 import {
   offers,
   placeRole,
@@ -19,8 +18,15 @@ import { UnitPicker } from "./UnitPicker";
 export type UnitAction = "describe" | "add" | "remove" | "rename";
 
 /** Where one change stands: its plan once it has come, and why it cannot be applied. */
-/** This panel's plan is pending while an earlier one is on screen: a description's, which changes with every key typed. */
-export type { Offer };
+export interface Offer {
+  /** The plan; `null` while it is being asked for, or when it was refused. */
+  plan: PlanReply | null;
+  /** Why the plan was refused, or why applying it was; `null` when neither was. */
+  refusal: string | null;
+  /** The plan shown is an earlier one's, kept on screen while this one is asked for: a
+   * description's, which changes with every key typed. It cannot be applied. */
+  pending: boolean;
+}
 
 export interface UnitPanelViewProps {
   unit: ProjectUnit;

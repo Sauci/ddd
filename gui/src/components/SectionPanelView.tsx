@@ -1,6 +1,5 @@
 import type { PlanReply, SectionReply, SectionUse } from "../api/types";
 import { distinctFindings, keyedFindings } from "../lib/findings";
-import type { Offer } from "../lib/panels";
 import type { Route } from "../lib/route";
 import { SECTION_ACCESSES, sectionRemoveBlocked } from "../lib/shared";
 import { baseName, consequence, shownChanges } from "../lib/units";
@@ -23,9 +22,16 @@ export type SectionAction = "access" | "alignment" | "describe" | "rename" | "re
  * `UnitPanelView`: a section's five write paths are this panel's own, and sharing the shape would
  * tie it to a panel whose own reasons to grow are a constant's, not a section's.
  */
-/** This panel's plan is pending while an earlier one is on screen: any of the three keys, each of which changes with every key typed - the
- * access included, its chooser taking typed text like every other in this interface. */
-export type { Offer };
+export interface Offer {
+  /** The plan; `null` while it is being asked for, or when it was refused. */
+  plan: PlanReply | null;
+  /** Why the plan was refused, or why applying it was; `null` when neither was. */
+  refusal: string | null;
+  /** The plan shown is an earlier one's, kept on screen while this one is asked for: any of the
+   * three keys, each of which changes with every key typed - the access included, its chooser
+   * taking typed text like every other in this interface. It cannot be applied. */
+  pending: boolean;
+}
 
 export interface SectionPanelViewProps {
   reply: SectionReply;

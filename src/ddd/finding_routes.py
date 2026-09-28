@@ -66,24 +66,43 @@ matches".
 
 **Pointer shaped, where a unit's and a constant's routes are check-id shaped**
 (:data:`UNIT_CHECKS`, :data:`CONSTANT_CHECKS`), and the asymmetry is not an accident. A check id
-set exists to *override* the pointer, and is needed exactly where the pointer's shape belongs to
+set exists to *override* the pointer, and is needed wherever the pointer's shape belongs to
 something else as well: a constant is named at a declaration's ``dimensions[i]`` and at its axis
 ``size``, pointers that ``limits-out-of-range`` and the rest of the declaration's checks sit
 inside, so only the id can say which findings there are about the constant rather than about the
-variable. ``definition.section`` carries nothing but a placement. Every finding filed at it is
-about which section holds the data, so the pointer alone settles it and a set of ids would only
-be a list somebody has to remember to extend.
+variable. Nothing else is written at ``definition.section``, so the pointer carries the route and
+a placement check added to the analysis tomorrow leads here without this module being told - which
+is the whole benefit, and the reason this is not simply a list of three ids.
 
-Which is what it is: the four checks filed here today are ``unknown-section``, ``section-access``,
-``section-alignment`` (:meth:`ddd.analysis.Analysis._check_sections`) and ``consumer-storage``
-(:data:`ddd.analysis.PRODUCER_KEYS`, one check over five keys). All four lead to the section, and
-a fifth added to the analysis will too without this module being told. The section's panel is the
-right screen for each: it holds the ``access`` and the ``alignment`` the middle two name, and it
-lists every definition placing data there - so the variable a finding is *also* about is one click
-away, with the rest of the section's tenants visible beside it, which is what a reader deciding
-between "change this variable" and "change this section" needs to see. ``consumer-storage`` is the
-weakest of the four, the fix being to take the key out of the consumer's declaration, and the panel
-still names that declaration in its own list of uses.
+What the pointer does not settle on its own is *what the finding is about*, and that is
+:data:`ABOUT_THE_DECLARATION`'s business. Three of the four checks filed here are about the
+placement - ``unknown-section``, ``section-access``, ``section-alignment``, all from one ``where``
+in :meth:`ddd.analysis.Analysis._check_sections` - and the section's panel is the right screen for
+each: it holds the ``access`` and the ``alignment`` two of them name, and it lists every definition
+placing data there, so the variable a finding is *also* about is one click away with the rest of
+the section's tenants visible beside it. That is what a reader deciding between "change this
+variable" and "change this section" has to see.
+"""
+
+ABOUT_THE_DECLARATION: Final = frozenset({"consumer-storage"})
+"""The checks filed at a definition's ``section`` key that are not about the section, and so are
+left to the declaration's own route.
+
+One, today. ``consumer-storage`` comes from :data:`ddd.analysis.PRODUCER_KEYS` rather than from
+the section checks, and it says a *consumer* stated a key only the producing component may state.
+The section it names is innocent and may well be the right one; what is wrong is the declaration
+having the key at all. The check's own filing site says as much - "reported where the claim is
+written rather than where it is overruled: the producer may be in a file this author has never
+opened, **and the fix is here**" - so routing it to the section would send the reader away from
+the place the analysis chose on purpose.
+
+Its sibling agrees. ``PRODUCER_KEYS`` gives this one check five keys, and the copy filed at
+``definition.init`` is already claimed by :data:`WITHIN_INIT`, which opens the values grid - the
+variable's own screen. So ``consumer-storage`` leads to the variable today by two routes, and a
+third destination for the ``section`` key would break a pattern that is currently whole.
+
+An exclusion with a reason, then, not a carve-out: the pointer says *where* the finding sits, this
+says *whose* it is.
 """
 
 WITHIN_INIT: Final = re.compile(r"^(component\.interface\[\d+\])\.definition\.init\b")
@@ -141,9 +160,12 @@ def route_of(
         # member would open the type rather than the constant the finding is about.
         named = read(path, cache).value_at(pointer)
         return Route("constant", named) if isinstance(named, str) and named else None
-    if PLACEMENT_KEY.match(pointer) is not None:
-        # The value at the pointer is the name, as it is for a unit and a constant above; what
-        # differs is that no check id is consulted, for the reason PLACEMENT_KEY gives.
+    if check not in ABOUT_THE_DECLARATION and PLACEMENT_KEY.match(pointer) is not None:
+        # The value at the pointer is the name, as it is for a unit and a constant above. What
+        # differs is that the id is asked only whether the finding is the *declaration's* -
+        # `consumer-storage` alone - rather than which of the section's checks it is: the pointer
+        # carries the route, for the reason PLACEMENT_KEY gives, and a check the id set does not
+        # name falls through to the declaration's own route below.
         #
         # Ahead of WITHIN_DECLARATION, which matches this pointer too, being broader: caught
         # there first, every finding about where a variable's data sits would open the variable.

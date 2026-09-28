@@ -609,25 +609,21 @@ class TestASection:
             {},
         ) == Route("section", ".nvm")
 
-    @pytest.mark.parametrize(
-        "check", ["unknown-section", "section-access", "section-alignment", "consumer-storage"]
-    )
-    def test_every_check_filed_at_a_definitions_section_key_leads_to_the_section(
+    @pytest.mark.parametrize("check", ["unknown-section", "section-access", "section-alignment"])
+    def test_every_check_about_a_placement_leads_to_the_section(
         self, tmp_path: Path, check: str
     ) -> None:
-        """Spec 4.6's route is pointer shaped, not check-id shaped: every finding filed at
-        `component.interface[i].definition.section` is about where the data sits, so all four
-        checks the analysis files there lead to the same panel.
+        """Spec 4.6's route is pointer shaped, not check-id shaped: a finding filed at
+        `component.interface[i].definition.section` and about the placement leads to that section,
+        whichever check filed it.
 
         Each case fails if its check falls back to `WITHIN_DECLARATION`, which matches this pointer
         too and would answer `Route("variable", "Gain")` - the arbitrary split this test exists to
-        forbid, since two checks filed at one pointer cannot honestly open two screens.
+        forbid, since two checks about one thing cannot honestly open two screens.
 
-        The four are measured, not guessed: `unknown-section`, `section-access` and
-        `section-alignment` come off one `where` in `Analysis._check_sections`, and
-        `consumer-storage` off `PRODUCER_KEYS`, whose `section` entry is filed at
-        `ref.location("definition.section")` - the same pointer. A fifth would lead here without
-        this module hearing about it, which is the point of matching on the pointer.
+        The three are measured, not guessed: all of them come off one `where` in
+        `Analysis._check_sections`. A fourth placement check would lead here without this module
+        hearing about it, which is the point of matching on the pointer.
         """
         root = built(tmp_path, **PLACED)
         assert route_of(
@@ -639,12 +635,38 @@ class TestASection:
             {},
         ) == Route("section", ".calib")
 
-    def test_a_finding_elsewhere_in_the_same_declaration_still_leads_to_the_variable(
+    def test_a_consumer_stating_a_section_leads_to_the_declaration_that_states_it(
         self, tmp_path: Path
     ) -> None:
-        """The placement route must not swallow its neighbours, the way the init route must not:
-        `consumer-storage` is one check over five keys, and the one filed at `definition.raster` is
-        about the declaration, not about any section. Only the `section` key is this route's."""
+        """The one check filed at that pointer that is not about the section. `consumer-storage`
+        comes off `PRODUCER_KEYS`, not off the section checks, and says a consumer stated a key
+        only the producing component may state - the section it names may well be the right one,
+        and what has to go is the key. `analysis.py`'s own comment at the filing site says where
+        that is: "reported where the claim is written rather than where it is overruled ... and
+        the fix is here".
+
+        This is the test that fails if the exclusion is ever simplified away as a special case
+        nobody could explain. Its sibling below is the second half of the same argument.
+        """
+        root = built(tmp_path, **PLACED)
+        assert route_of(
+            "consumer-storage",
+            root / "a.ddd.json",
+            "component.interface[0].definition.section",
+            "component",
+            True,
+            {},
+        ) == Route("variable", "Gain")
+
+    def test_the_same_check_at_another_of_its_five_keys_leads_to_the_variable_too(
+        self, tmp_path: Path
+    ) -> None:
+        """`PRODUCER_KEYS` gives `consumer-storage` five keys, and the one at `definition.init` is
+        already claimed by `WITHIN_INIT`, which opens the values grid - the variable's own screen.
+        So the check leads to the variable by two routes today, and the `section` key makes a third
+        that agrees rather than a third destination.
+
+        `definition.raster` is the plainest of the five to assert on, having no route of its own."""
         root = built(tmp_path, **PLACED)
         assert route_of(
             "consumer-storage",

@@ -24,6 +24,7 @@ from ddd.shared_plans import (
     _raw,
     add_constant,
     add_entry,
+    project_of,
     remove_constant,
     remove_entry,
     rename_constant,
@@ -897,6 +898,42 @@ class TestSectionRefusals:
         assert raised.value.code == "invalid"
         assert "s.ddd.json" in raised.value.message
 
+    def test_a_key_a_section_has_not_names_the_three_keys_it_states(self, tmp_path: Path) -> None:
+        """The first vocabulary with three keys, and what `_listed` was written for: the generic
+        `' and '.join` had only ever met two and read "access and alignment and description". The
+        whole sentence is asserted, so the article in front of the kind is pinned here too. The
+        constants spelling of the same sentence must stay "description and value" byte for byte,
+        which `test_add_refuses_a_raw_key_the_vocabulary_does_not_have` above pins."""
+        built, _root = built_of(tmp_path, **PLACED)
+        cache: dict[Path, Document] = {}
+        with pytest.raises(SharedRefusalError) as raised:
+            set_entry(SECTIONS, built, ".calib", "value", "1", cache)
+        assert raised.value.code == "invalid"
+        assert raised.value.message == (
+            "a section has no 'value' to set in s.ddd.json: it states access, alignment and "
+            "description"
+        )
+
+    @pytest.mark.parametrize("key", ["access", "alignment"])
+    def test_a_key_the_model_gives_no_default_may_not_be_taken_away(
+        self, tmp_path: Path, key: str
+    ) -> None:
+        """Both of `SECTIONS.required`, deliberately and not as a side effect of some other
+        assertion. A descriptor's field values are data, and the coverage gate cannot see data:
+        `required` is a `frozenset` of two words, the `if key in vocabulary.required` branch is
+        taken by either of them, and dropping one leaves both suites green at 100 %. Measured
+        consequence of dropping `alignment`: `set_entry` plans
+        `Operation("remove", "sections[0].alignment")`, the file stops validating, and every tab
+        in the page empties over one keystroke in this one - the precise harm `set_entry`'s own
+        docstring says the required check exists to prevent."""
+        built, _root = built_of(tmp_path, **PLACED)
+        cache: dict[Path, Document] = {}
+        with pytest.raises(SharedRefusalError) as raised:
+            set_entry(SECTIONS, built, ".calib", key, None, cache)
+        assert raised.value.code == "invalid"
+        assert f"states an {key}" in raised.value.message
+        assert "cannot be left without one in s.ddd.json" in raised.value.message
+
     def test_an_alignment_the_model_takes_is_planned(self, tmp_path: Path) -> None:
         """The other arm of the same judge, and the one that pins the placeholders `_aligned`
         builds its entry with: were either of them a value `SectionDeclaration` refuses, every
@@ -913,20 +950,18 @@ class TestSectionRefusals:
         )
 
     def test_a_key_beginning_with_a_vowel_is_refused_in_english(self, tmp_path: Path) -> None:
-        """Two of the three refusals that write an indefinite article in front of a word the
-        descriptor supplies, and `access` and `alignment` are the first two such words to begin
-        with a vowel: the sentences read `3 is not a alignment` and `a section states a access`
-        until `_article` was written. Constants were grammatical by luck - `value`, `description`
-        and `constant` all begin with a consonant - which is why one vocabulary could not have
-        found this."""
+        """`_judged`'s sentence writes an indefinite article in front of a word the descriptor
+        supplies, and `alignment` and `access` are the first two such words to begin with a vowel:
+        it read `3 is not a alignment a section may state` until `_article` was written. Constants
+        were grammatical by luck - `value`, `description` and `constant` all begin with a consonant
+        - which is why one vocabulary could not have found this. The same article in the sentence
+        for a required key taken away is pinned by
+        `test_a_key_the_model_gives_no_default_may_not_be_taken_away` above, for both keys."""
         built, _root = built_of(tmp_path, **PLACED)
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as judged:
             set_entry(SECTIONS, built, ".calib", "alignment", "3", cache)
         assert "3 is not an alignment a section may state" in judged.value.message
-        with pytest.raises(SharedRefusalError) as required:
-            set_entry(SECTIONS, built, ".calib", "access", None, cache)
-        assert "a section states an access" in required.value.message
 
     def test_a_name_the_pattern_refuses_is_refused(self, tmp_path: Path) -> None:
         built, _root = built_of(tmp_path, **PLACED)
@@ -955,6 +990,67 @@ class TestSectionRefusals:
         built, _root = built_of(tmp_path, **PLACED)
         cache: dict[Path, Document] = {}
         assert rename_entry(SECTIONS, built, ".calib", ".nvm", cache).edits
+
+    def test_a_new_section_is_appended_to_the_file_the_project_keeps_them_in(
+        self, tmp_path: Path
+    ) -> None:
+        """What `containers` and `name_key` are for, and the only test that can tell either of them
+        has rotted: both are strings in the descriptor, and a descriptor's field values are data no
+        coverage gate can see. `containers[0]` is asked twice here - `project_of` tells a sections
+        file by that key at a document's top level, and the insert pointer is written from it - so
+        `("bogus",)` would leave `files` empty and answer a two-edit plan creating a *second*
+        sections file beside the project description. `name_key` is the first key of the entry text:
+        `"name"` would declare `{"name": ".fresh", ...}`, which `extra="forbid"` rejects, so the
+        file this wrote would no longer load. Latent until Task 5 wires the api, which is why it is
+        pinned now."""
+        built, _root = built_of(tmp_path, **PLACED)
+        cache: dict[Path, Document] = {}
+        found = project_of(SECTIONS, tmp_path / "p.ddd.json", (), cache)
+        assert [file.name for file in found.files] == ["s.ddd.json"]
+        plan = add_entry(
+            SECTIONS, built, found, ".fresh", {"access": '"read-write"', "alignment": "8"}, cache
+        )
+        assert plan == SharedPlan(
+            (
+                PlannedEdit(
+                    (tmp_path / "s.ddd.json").resolve(),
+                    (
+                        Operation(
+                            "insert",
+                            "sections[1]",
+                            '{"section": ".fresh", "access": "read-write", "alignment": 8}',
+                        ),
+                    ),
+                ),
+            )
+        )
+
+    def test_a_project_with_no_sections_file_gets_one_named_for_what_it_holds(
+        self, tmp_path: Path
+    ) -> None:
+        """What `filename` is for, and the only arm that reads it: the appending test above would
+        pass with any spelling of it. Both edits in one plan, so a project can never list a file
+        that was not written, and the whole created text is asserted rather than sampled - it is
+        the one place `filename`, `containers[0]` and `name_key` are all three visible at once."""
+        built = _index(tmp_path, {"a.ddd.json": component("A", declare("output", "Gain"))})
+        cache: dict[Path, Document] = {}
+        found = project_of(SECTIONS, tmp_path / "p.ddd.json", (), cache)
+        assert found.files == ()
+        plan = add_entry(
+            SECTIONS, built, found, ".fresh", {"access": '"read-write"', "alignment": "8"}, cache
+        )
+        assert [(edit.path.name, edit.creates) for edit in plan.edits] == [
+            ("p.ddd.json", False),
+            ("sections.ddd.json", True),
+        ]
+        assert plan.edits[0].operations == (
+            Operation("insert", "project.includes[1]", '"sections.ddd.json"'),
+        )
+        assert plan.edits[1].operations[0].raw == (
+            '{\n  "sections": [\n'
+            '    { "section": ".fresh", "access": "read-write", "alignment": 8 }\n'
+            "  ]\n}\n"
+        )
 
     def test_a_rename_reaches_the_entry_and_every_definition_placing_data_in_it(
         self, tmp_path: Path

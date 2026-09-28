@@ -365,12 +365,17 @@ def _settable(vocabulary: Vocabulary, key: str, file: Path) -> None:
     ``raws`` carries, before ``_judged`` ever sees it - a raw key outside ``vocabulary.keys`` is
     not a value the format would refuse, it is a key the interface does not offer at all, and the
     two must not be confused in what a reader is told.
+
+    The two words this sentence takes from the descriptor go through :func:`_article` and
+    :func:`_listed`: the article for the same reason the other three refusals need it, and the list
+    because ``' and '.join`` had only ever met the two keys of one vocabulary and read "access and
+    alignment and description" for the first that has three.
     """
     if key not in vocabulary.keys:
         raise SharedRefusalError(
             "invalid",
-            f"a {vocabulary.kind} has no '{key}' to set in {file.name}: it states "
-            f"{' and '.join(sorted(vocabulary.keys))}",
+            f"{_article(vocabulary.kind)} {vocabulary.kind} has no '{key}' to set in "
+            f"{file.name}: it states {_listed(sorted(vocabulary.keys))}",
         )
 
 
@@ -422,13 +427,19 @@ def _article(word: str) -> str:
     :attr:`~ddd.project_shared.Vocabulary.keys`, or a vocabulary's own
     :attr:`~ddd.project_shared.Vocabulary.kind`.
 
-    Three refusals below write an indefinite article in front of such a word, and each had ``a``
+    Four refusals below write an indefinite article in front of such a word, and each had ``a``
     written into it. That was grammatical by luck rather than by rule: every word the one
     vocabulary of the day could put there - ``constant``, ``value``, ``description`` - begins with
     a consonant, and the second vocabulary brought two that do not, so a reader setting an
     alignment was told ``3 is not a alignment a section may state``. Nothing about the word's
     vocabulary is consulted here, and nothing needs to be: this is the English rule the sentences
-    always meant, written once instead of assumed three times.
+    always meant, written once instead of assumed four times.
+
+    The four: :func:`_judged`, twice in one sentence; :func:`set_entry`'s refusal of a required key
+    taken away, also twice; :func:`_entry`'s not-found; and :func:`_settable`'s. Only the first two
+    say anything different today, because every ``kind`` begins with a consonant and only a key
+    can begin with a vowel - but the point of a rule written once is that the next vocabulary's
+    words are not a fifth thing to remember.
 
     ``u`` is deliberately not a vowel here. The rule English follows is about sound, not spelling,
     and every word a descriptor could put in these sentences that starts with one is said with a
@@ -440,6 +451,25 @@ def _article(word: str) -> str:
     if word[:1].lower() in _VOWELS:
         return "an"
     return "a"
+
+
+def _listed(words: Sequence[str]) -> str:
+    """The words of a set as a sentence names them: ``value``, ``description and value``,
+    ``access, alignment and description``.
+
+    :func:`_settable` tells a reader every key the vocabulary does offer, and wrote
+    ``' and '.join`` for it - which reads correctly for the one and two word cases the constants
+    vocabulary could produce and says "access and alignment and description" for the first
+    vocabulary with three keys. The same oversight as the article beside it, and found the same
+    way: a generic sentence met a second vocabulary.
+
+    Not a conditional expression, for the reason :func:`_article` is not one either: the three word
+    arm would be a path no test of a two key vocabulary reaches, and coverage.py counts no branch
+    in a conditional expression to say so.
+    """
+    if len(words) < 3:
+        return " and ".join(words)
+    return f"{', '.join(words[:-1])} and {words[-1]}"
 
 
 def _raw(value: Any) -> str:

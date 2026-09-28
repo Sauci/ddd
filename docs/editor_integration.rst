@@ -83,21 +83,34 @@ spells it, and from an ``includes`` entry to the files it matches, wildcards inc
 names it, across as many files as that takes. A declared type is renamed the same way, from
 the ``name`` of its entry or from any ``typename`` spelling it, in the file declaring it and
 in every definition and structure member naming it; a declared constant from its entry or from
-any dimension or axis ``size`` spelling it. A name c reserves, one that is not a usable
-identifier, or one the project already uses - for another object, an enum, an enumerator, a
-type or a declared constant - is refused with the reason before anything is written, because
-a rename that silently merges two objects compiles, links, and shares storage nobody
-intended to share; a type may not take the spelling of a base datatype either, which the
-loader would refuse. A unit is renamed from any place it is stated, or from its entry in a
-units file; renaming onto a unit that already exists merges the two instead of refusing the
-collision, as a variable's rename would. It is refused, naming the file, only while a file of
+any dimension or axis ``size`` spelling it. For those three, a name c reserves, one that is
+not a usable identifier, or one the project already uses - for another object, an enum, an
+enumerator, a type or a declared constant - is refused with the reason before anything is
+written, because a rename that silently merges two objects compiles, links, and shares
+storage nobody intended to share; a type may not take the spelling of a base datatype either,
+which the loader would refuse. A memory section is renamed from its entry in a
+:doc:`sections file <file_formats/sections>`, or from the ``section`` key of any definition
+placing its data there, and both ends are rewritten together: a rename reaching the entry
+alone would leave every one of those definitions naming a section nothing declares. One no
+file declares - what ``unknown-section`` reports - is renamed at its uses alone, so that the
+definitions naming it go on agreeing with each other. None of the refusals above is about it:
+a section's name is a linker string spliced into an attribute rather than a c identifier
+emitted as one - letters, digits, ``.``, ``_`` and ``$``, and no length limit - so a leading
+dot is an ordinary spelling, and a section may be spelled exactly as a variable is, sharing
+no namespace with it. What is refused is a name those characters do not spell, and one the
+project already declares as a section: the format permits two, reporting them as
+``duplicate-section``, but each carries its own ``access`` and ``alignment``, and a rename
+that merged them would move data into memory with different properties. A unit is renamed
+from any place it is stated, or from its entry in a units file; renaming onto a unit that
+already exists merges the two instead of refusing the collision, as a variable's rename
+would. It is refused, naming the file, only while a file of
 the project does not load at all - a unit listed twice, reported as ``duplicate-unit``, does
 not stop it, because renaming may be how such a mistake is fixed. Only the characters between
 the quotes are replaced, so formatting survives and free text is left alone.
 
-A variable's, a type's or a constant's rename, and every quick fix below, is also refused -
-naming the file, and before anything is written - while the project on disk is not the
-project the edit would be computed from: while an open document has unsaved changes that
+A variable's, a type's, a constant's or a section's rename, and every quick fix below, is
+also refused - naming the file, and before anything is written - while the project on disk is
+not the project the edit would be computed from: while an open document has unsaved changes that
 moved a declaration the edit would touch, and while a file of the project reported an error
 that stopped it being read. A project is indexed from what loaded, so a file a ``schema``
 error dropped mid edit declares nothing as far as the index knows: the rename would rewrite

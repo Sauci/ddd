@@ -122,9 +122,11 @@ export function SharedPage({ state, name, kind, onName, stopped, onOpen }: Props
                 setGone(name);
                 onName(undefined, undefined);
               }}
-              // The panel knows its own vocabulary, and says so: a rename's new spelling is not
-              // in the table yet, so asking `kindOf` for it here would answer nothing and send
-              // the reader back to the bare tab.
+              // The panel knows its own vocabulary and hands it back, here and in the constant's
+              // arm below. Written out rather than read off the table's rows, because a rename's
+              // new spelling is in no row until the next answer arrives: a kind looked up there
+              // would find nothing, the address would go bare, and the reader would be put back
+              // on the tab instead of onto the panel of what they just renamed.
               onMoved={(moved) => select(moved, moved === undefined ? undefined : "section")}
               onOpen={onOpen}
             />

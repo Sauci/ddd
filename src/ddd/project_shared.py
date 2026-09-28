@@ -143,6 +143,13 @@ class Vocabulary:
     keys: its name and its ``event``. :func:`~ddd.shared_plans._judged` takes no :class:`Index`,
     so a key's own judge can ask whether a value is legal and never whether it is taken.
 
+    Never empty, and never without :attr:`name_key`: every vocabulary has a name, and that name is
+    the project's alone in every one of them. ``rename_entry`` and ``add_entry`` both index
+    ``taken[name_key]`` with no guard of their own, so a map lacking it - the empty one, or one
+    holding only a second key, as a rasters descriptor written ``{"event": ...}`` would - imports
+    clean and raises ``KeyError`` at the first rename. :meth:`__post_init__` refuses it instead. A
+    vocabulary with nothing but its name carries a map of one, not a map of none.
+
     The entry is given because an event needs it: a panel asks for a plan on every keystroke, so a
     reader re-typing the event their raster already claims must not be told it is taken by
     themselves. A name judge ignores it, which preserves what part 14 settled - a rename of a name
@@ -160,7 +167,7 @@ class Vocabulary:
     """
 
     def __post_init__(self) -> None:
-        """Five checks tying ``keys``, ``required``, ``judge``, ``name_key``, ``taken`` and
+        """Six checks tying ``keys``, ``required``, ``judge``, ``name_key``, ``taken`` and
         ``containers`` together, so a
         descriptor that drops a key from one of these tables fails at construction rather than the
         first time a reader reaches the one that fell out of step.
@@ -195,6 +202,18 @@ class Vocabulary:
             if key in self.keys:
                 continue
             msg = f"{self.kind}: taken names '{key}', which is neither the name key nor settable"
+            raise ValueError(msg)
+        if self.name_key not in self.taken:
+            # The check above's other direction, and the one a map can fail while every key in it
+            # is legal: `{"event": ...}` alone is a plausible hand-written rasters map and holds
+            # nothing the check above can complain about. `rename_entry` and `add_entry` index
+            # `taken[name_key]` with no guard of their own, so that descriptor imports clean and
+            # raises `KeyError` at the first rename - the outcome this method exists to turn into
+            # a refusal, here for the same reason it does for `judge`.
+            msg = (
+                f"{self.kind}: taken has no judge for the name key '{self.name_key}', which "
+                "rename and add both ask it for unconditionally"
+            )
             raise ValueError(msg)
 
 

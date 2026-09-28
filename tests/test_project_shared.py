@@ -918,9 +918,24 @@ class TestTakenReplacesTheNameJudge:
         """The fifth invariant. A third descriptor is written by hand, and a `taken` naming a key
         the vocabulary does not have would judge nothing while reading as though it did. The judge
         is taken from the map it is already in rather than imported: which function sits under the
-        key is beside the point, and the key is the whole of it."""
-        with pytest.raises(ValueError, match="taken"):
+        key is beside the point, and the key is the whole of it.
+
+        Matched on the clause rather than on the word `taken`, because the check below raises about
+        `taken` too and a descriptor with a stray key usually lacks the name's as well - `match=
+        "taken"` would pass here on the other check's message."""
+        with pytest.raises(ValueError, match="neither the name key nor settable"):
             dataclasses.replace(SECTIONS, taken={"nowhere": SECTIONS.taken["section"]})
+
+    def test_a_taken_without_a_judge_for_the_name_key_is_refused(self) -> None:
+        """The invariant's other direction, and the omission the check above cannot see: every key
+        in `{"access": ...}` is one the vocabulary settles, so nothing there is stray, and the one
+        key both call sites index is simply absent. `rename_entry` and `add_entry` reach
+        `taken[name_key]` with no guard, so such a descriptor imports clean and raises `KeyError`
+        at the first rename or add - which is precisely what `__post_init__`'s own docstring says
+        it exists to turn into a refusal. A settable key rather than the empty map, so that the
+        check above is demonstrably not the thing catching it."""
+        with pytest.raises(ValueError, match="no judge for the name key"):
+            dataclasses.replace(SECTIONS, taken={"access": SECTIONS.taken["section"]})
 
     def test_a_taken_key_a_reader_may_also_set_is_accepted(self) -> None:
         """The invariant's other arm, and the shape the rasters descriptor is written to have: an

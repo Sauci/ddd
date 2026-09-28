@@ -9,6 +9,7 @@ import type {
   Found,
   GraphReply,
   PlanReply,
+  RasterReply,
   SectionReply,
   SessionInfo,
   SettleReply,
@@ -256,6 +257,41 @@ function sectionQuery(plan: SectionPlanRequest): string {
     parts.push(["to", plan.to]);
   } else if (plan.action === "add") {
     parts.push(["access", plan.access], ["alignment", plan.alignment]);
+  }
+  return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
+}
+
+export const getRaster = (name: string, fetchImpl: Fetch = fetch) =>
+  request<RasterReply>(`/api/raster?name=${encodeURIComponent(name)}`, {}, fetchImpl);
+
+/** One change to a raster, as `GET /api/raster-plan` takes it: the same four verbs as
+ * `SectionPlanRequest`, over the same three parameters, differing only in `add` - a raster is
+ * declared with the one json text for the one key the model gives no default for (`event`)
+ * rather than the two `access`/`alignment` a section needs, because `RASTERS.required` is
+ * `event` alone: `cycle` is optional and `description` defaults, so neither is `add`'s to supply. */
+export type RasterPlanRequest =
+  | { action: "set"; name: string; key: string; raw?: string | null }
+  | { action: "rename"; name: string; to: string }
+  | { action: "add"; name: string; event: string }
+  | { action: "remove"; name: string };
+
+export const getRasterPlan = (plan: RasterPlanRequest, fetchImpl: Fetch = fetch) =>
+  request<PlanReply>(`/api/raster-plan?${rasterQuery(plan)}`, {}, fetchImpl);
+
+/** A plan's query: the action and the name, then whichever of `key`/`raw`, `to` or `event` it
+ * takes - as `sectionQuery`'s, with `add`'s one required key in place of a section's two. */
+function rasterQuery(plan: RasterPlanRequest): string {
+  const parts: [string, string][] = [
+    ["action", plan.action],
+    ["name", plan.name],
+  ];
+  if (plan.action === "set") {
+    parts.push(["key", plan.key]);
+    if (plan.raw !== undefined && plan.raw !== null) parts.push(["raw", plan.raw]);
+  } else if (plan.action === "rename") {
+    parts.push(["to", plan.to]);
+  } else if (plan.action === "add") {
+    parts.push(["event", plan.event]);
   }
   return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
 }

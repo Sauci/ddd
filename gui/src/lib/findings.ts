@@ -119,7 +119,10 @@ export function routeOf(finding: Finding): Route | null {
   if (route.kind === "type" && route.name !== null) {
     return { page: "project", view: "types", type: route.name };
   }
-  if ((route.kind === "constant" || route.kind === "section") && route.name !== null) {
+  if (
+    (route.kind === "constant" || route.kind === "section" || route.kind === "raster") &&
+    route.name !== null
+  ) {
     // The one route kind, whether or not the name is declared (design §2 "the page decides"):
     // `SharedPage` asks `isDeclared` of its own table and opens the panel or the pre-filled add
     // form accordingly, which is also what `unknown-constant` and `unknown-section` need - the
@@ -183,15 +186,14 @@ export function unreadable(
 }
 
 /** The file kinds the page opens a screen on: a component's own page, and the tab each vocabulary
- * with one is listed in. Rasters is the part after this, and its findings say so rather than
- * leading somewhere blank.
+ * with one is listed in.
  *
- * Units, types and sections belong here and were missing in turn: each had a tab before its own
- * kind joined this set, and a reader whose finding led nowhere was told their file had no page.
- * What reaches this line for one of them now is a pointer the file has moved on from -
- * `duplicate-unit` and `duplicate-section`, the checks that used to arrive here with somewhere to
- * go, route to the unit or the section they name instead. */
-const SHOWN = new Set(["component", "constants", "types", "units", "sections"]);
+ * Units, types, sections and rasters belong here and were missing in turn: each had a tab before
+ * its own kind joined this set, and a reader whose finding led nowhere was told their file had no
+ * page. What reaches this line for one of them now is a pointer the file has moved on from -
+ * `duplicate-unit`, `duplicate-section` and `duplicate-raster`, the checks that used to arrive
+ * here with somewhere to go, route to the unit, the section or the raster they name instead. */
+const SHOWN = new Set(["component", "constants", "types", "units", "sections", "rasters"]);
 
 /** Why a finding leads nowhere, in the words the panel says it.
  *

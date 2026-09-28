@@ -5,6 +5,7 @@ import {
   declareLabel,
   fixLabel,
   pasteLabel,
+  rasterLabel,
   removeLabel,
   sectionLabel,
   settleLabel,
@@ -118,6 +119,16 @@ test.each([
   [{ action: "remove", name: ".calib" }, "'.calib' removed from the sections"],
 ] as const)("%o is undone as %s", (plan, label) => {
   expect(sectionLabel(plan)).toBe(label);
+});
+
+test.each([
+  [{ action: "set", name: "10ms", key: "cycle", raw: '"20ms"' }, "the cycle of 10ms"],
+  [{ action: "set", name: "10ms", key: "event" }, "the event of 10ms"],
+  [{ action: "rename", name: "10ms", to: "20ms" }, "the rename of '10ms' to '20ms'"],
+  [{ action: "add", name: "10ms", event: "1" }, "'10ms' declared as a raster"],
+  [{ action: "remove", name: "10ms" }, "'10ms' removed from the rasters"],
+] as const)("%o is undone as %s", (plan, label) => {
+  expect(rasterLabel(plan)).toBe(label);
 });
 
 test("an undone paste is named by the object whose table it replaced", () => {

@@ -6,6 +6,8 @@ import {
   isDeclared,
   kindNamed,
   planEdit,
+  rasterRaw,
+  rasterSet,
   rowKey,
   SECTION_ACCESSES,
   SHARED_KINDS,
@@ -99,8 +101,8 @@ describe("whether a name is declared", () => {
 });
 
 describe("which vocabularies the tab holds", () => {
-  test("offers both, constants first - the order the server walks and sorts them in", () => {
-    expect(SHARED_VOCABULARIES).toEqual(["constant", "section"]);
+  test("offers all three, constants first - the order the server walks and sorts them in", () => {
+    expect(SHARED_VOCABULARIES).toEqual(["constant", "section", "raster"]);
   });
 
   test("names each by its plural, which is also its file's own word", () => {
@@ -108,22 +110,23 @@ describe("which vocabularies the tab holds", () => {
   });
 
   test("pluralises a kind the page has no route for just the same", () => {
-    // A row of a vocabulary the tab lists before it has a panel for it - a raster's, next part -
-    // still has to read as something in its column.
-    expect(vocabularyOf("raster")).toBe("rasters");
+    // A hypothetical fourth vocabulary's row, were the table ever to list one before route.ts
+    // knew about it, still has to read as something in its column.
+    expect(vocabularyOf("widget")).toBe("widgets");
   });
 
   test("a word settles on the vocabulary it names", () => {
     expect(kindNamed("sections")).toBe("section");
     expect(kindNamed("constants")).toBe("constant");
+    expect(kindNamed("rasters")).toBe("raster");
   });
 
   test("a word naming none of them settles on nothing, rather than on the first", () => {
     // The chooser takes any text typed. "section" is the singular, which no vocabulary is known
-    // by here, and "rasters" is a vocabulary the tab cannot declare into yet: both leave the
-    // chooser unset rather than guessing.
+    // by here, and "widgets" is a vocabulary the tab does not hold at all: both leave the chooser
+    // unset rather than guessing.
     expect(kindNamed("section")).toBeUndefined();
-    expect(kindNamed("rasters")).toBeUndefined();
+    expect(kindNamed("widgets")).toBeUndefined();
     expect(kindNamed("")).toBeUndefined();
   });
 });
@@ -152,6 +155,7 @@ describe("the key a row is selected by", () => {
       kind: "constant",
       name: "TREND_SAMPLES",
     });
+    expect(selectionAt(rowKey("raster", "10ms"))).toEqual({ kind: "raster", name: "10ms" });
   });
 
   test("tells two rows of one spelling apart", () => {
@@ -166,9 +170,9 @@ describe("the key a row is selected by", () => {
   });
 
   test("a row of a kind no address can name comes back as no selection", () => {
-    // A raster's row, when they land: the tab lists it before it has a panel to open, so its key
-    // leaves the address bare rather than opening another vocabulary's.
-    expect(selectionAt(rowKey("raster", "10ms"))).toBeUndefined();
+    // A vocabulary the tab does not hold at all - a fourth one, were it to exist - leaves the
+    // address bare rather than opening another vocabulary's.
+    expect(selectionAt(rowKey("widget", "10ms"))).toBeUndefined();
   });
 
   test("a key with no vocabulary in it is no selection either", () => {
@@ -212,6 +216,40 @@ describe("the json text a section's key travels as", () => {
       name: ".calib",
       key: "description",
       raw: '"calibration flash"',
+    });
+  });
+});
+
+describe("the json text a raster's key travels as", () => {
+  test("a string key goes in its quotes", () => {
+    expect(rasterRaw("cycle", "10ms")).toBe('"10ms"');
+    expect(rasterRaw("description", "the 10 ms control task")).toBe('"the 10 ms control task"');
+  });
+
+  test("event goes without them - quoted, it is a string the file's loader refuses", () => {
+    expect(rasterRaw("event", "1")).toBe("1");
+  });
+
+  test("a set request quotes by the very key it carries", () => {
+    // As `sectionSet`'s own case pins: the key reaching the request is the key that decided the
+    // quoting, for each of a raster's three keys.
+    expect(rasterSet("10ms", "event", "1")).toEqual({
+      action: "set",
+      name: "10ms",
+      key: "event",
+      raw: "1",
+    });
+    expect(rasterSet("10ms", "cycle", "20ms")).toEqual({
+      action: "set",
+      name: "10ms",
+      key: "cycle",
+      raw: '"20ms"',
+    });
+    expect(rasterSet("10ms", "description", "the 10 ms control task")).toEqual({
+      action: "set",
+      name: "10ms",
+      key: "description",
+      raw: '"the 10 ms control task"',
     });
   });
 });

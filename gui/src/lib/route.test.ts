@@ -144,9 +144,20 @@ test("a kind with no name is the bare tab too", () => {
   });
 });
 
-test("a kind neither vocabulary spells is the bare tab too", () => {
-  // A raster's word does not exist yet, so it is as unrecognised as a typo would be.
-  expect(parseRoute("/project", "?view=shared&kind=raster&name=x")).toEqual({
+test("the shared files tab with a raster selected", () => {
+  const route = {
+    page: "project",
+    view: "shared",
+    kind: "raster",
+    name: "10ms",
+  } as const;
+  expect(parseRoute("/project", "?view=shared&kind=raster&name=10ms")).toEqual(route);
+  expect(hrefOf(route)).toBe("/project?view=shared&kind=raster&name=10ms");
+});
+
+test("a kind none of the tab's vocabularies spells is the bare tab too", () => {
+  // A word naming no vocabulary at all is as unrecognised as a typo would be.
+  expect(parseRoute("/project", "?view=shared&kind=nonsense&name=x")).toEqual({
     page: "project",
     view: "shared",
   });

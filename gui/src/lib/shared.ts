@@ -1,22 +1,22 @@
-import type { ConstantPlanRequest, SectionPlanRequest } from "../api/client";
+import type { ConstantPlanRequest, RasterPlanRequest, SectionPlanRequest } from "../api/client";
 import type { Changes, PlanReply, SharedEntry, SharedReply } from "../api/types";
 import type { SectionAccess } from "../generated/sections";
 import { planEdit as editOfPlan } from "./projectUnits";
 import type { Route } from "./route";
 
-/** The file kinds the Shared files tab's table draws its rows from: a constant's file and a
- * section's, listed together (spec 5.1). `SharedPage` passes this to `lib/findings`'s
- * `unreadable` rather than naming the two kinds itself - `.tsx` is executed by no gate in this
- * repo, so the one fact left saying which vocabularies this tab holds belongs here, where a test
- * can hold it to account, rather than in a screen nothing checks (ruling 7, task 7). Rasters join
- * this list the day their own rows join the table.
+/** The file kinds the Shared files tab's table draws its rows from: a constant's file, a
+ * section's and a raster's, listed together (spec 5.1). `SharedPage` passes this to
+ * `lib/findings`'s `unreadable` rather than naming the three kinds itself - `.tsx` is executed by
+ * no gate in this repo, so the one fact left saying which vocabularies this tab holds belongs
+ * here, where a test can hold it to account, rather than in a screen nothing checks (ruling 7,
+ * task 7).
  *
  * Not a `for (const kind of SHARED_KINDS)` inside `tabTitle` below, whose own count is read off
  * each entry's `kind` instead: that function tells a reader what is in a table it already has:
  * this one tells `unreadable` which failed *files* are this tab's business before the table is
  * drawn at all, which a project with an entry-less table (every file of a kind failed) could
  * never answer by looking at `entries` alone. */
-export const SHARED_KINDS: readonly string[] = ["constants", "sections"];
+export const SHARED_KINDS: readonly string[] = ["constants", "sections", "rasters"];
 
 /** One of the tab's vocabularies, as an address names the selection and as a row's own `kind`
  * spells it: the singular word, where `SHARED_KINDS` above holds the plural its *file* is known
@@ -38,7 +38,11 @@ function valuesOf<T extends string>(record: Record<T, null>): readonly T[] {
 
 /** The vocabularies the add form's chooser offers, in the order it lists them: constants first,
  * as `ddd.project_shared.HELD` walks them and as `GET /api/shared` sorts the table's own rows. */
-export const SHARED_VOCABULARIES = valuesOf<SharedKind>({ constant: null, section: null });
+export const SHARED_VOCABULARIES = valuesOf<SharedKind>({
+  constant: null,
+  section: null,
+  raster: null,
+});
 
 /** The values a section's `access` may take, in the order the panel's chooser offers them - the
  * model's own two (`ddd.models.sections.SectionAccess`), by way of the type generated from its
@@ -135,8 +139,8 @@ export function rowKey(kind: string, name: string): string {
   return `${kind} ${name}`;
 }
 
-/** Which entry that key names, or `undefined` where its vocabulary is one no address can name -
- * a raster's, until rasters have a panel to be routed to.
+/** Which entry that key names, or `undefined` where its vocabulary is one no address can name at
+ * all - a vocabulary outside `SHARED_VOCABULARIES`, or a key with none in it.
  *
  * What turns a click in the table into an address. The key carries the row's own kind, so nothing
  * has to look the name up again: where a project declares a constant and a section under one
@@ -186,6 +190,34 @@ export function sectionSet<K extends string>(
   text: string,
 ): Extract<SectionPlanRequest, { action: "set" }> & { key: K } {
   return { action: "set", name, key, raw: sectionRaw(key, text) };
+}
+
+/** Of a raster's keys, the ones whose value is a json string - `ddd.project_shared.RASTERS.
+ * strings`, the same two words as a section's own. */
+const RASTER_STRINGS: readonly string[] = ["cycle", "description"];
+
+/** The json text one of a raster's keys travels to the api as, as `sectionRaw`'s over a raster's
+ * own three keys: `cycle` and `description` are strings, so they go in their quotes; `event` is a
+ * whole number and goes without, since `"1"` is a string where the model wants a number and the
+ * file would no longer load. */
+export function rasterRaw(key: string, text: string): string {
+  return RASTER_STRINGS.includes(key) ? JSON.stringify(text) : text;
+}
+
+/**
+ * One of a raster's keys set to what its field holds, as `GET /api/raster-plan` takes it.
+ *
+ * Generic in the key exactly as `sectionSet` is, and for the same reason: `screens/SectionPanel.
+ * tsx`'s own `satisfies` clause pins each of its requests to its own `key` literal because
+ * `sectionSet` lets that literal survive into the return type - a plain `string` here would widen
+ * it away before a raster panel could rely on it the same way.
+ */
+export function rasterSet<K extends string>(
+  name: string,
+  key: K,
+  text: string,
+): Extract<RasterPlanRequest, { action: "set" }> & { key: K } {
+  return { action: "set", name, key, raw: rasterRaw(key, text) };
 }
 
 /** The declaration a constant's add form comes to, or `null` while a parameter `add` requires is

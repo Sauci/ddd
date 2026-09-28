@@ -2586,6 +2586,19 @@ TIMED = {
 definition naming it too."""
 
 
+TWO_RASTERS = {
+    "r.ddd.json": {
+        "rasters": [
+            {"raster": "10ms", "event": 1, "cycle": "10ms"},
+            {"raster": "20ms", "event": 2, "cycle": "20ms"},
+        ]
+    },
+    "a.ddd.json": component("A", declare("output", "X", raster="10ms"), raster="10ms"),
+}
+"""A rasters file declaring ``10ms`` and ``20ms``, and a component naming ``10ms`` as its own
+default."""
+
+
 CALIB_TWICE = {
     "s.ddd.json": {"sections": [{"section": "calib", "access": "read-write", "alignment": 4}]},
     "a.ddd.json": component("A", declare("output", "calib")),
@@ -2716,6 +2729,42 @@ class TestSectionsAndRasters:
         assert [site.pointer for site in rename_sites(built, "raster", "20ms")] == [
             "component.interface[0].definition.raster"
         ]
+
+    def test_a_raster_is_judged_as_the_a2l_short_name_it_is(self, tmp_path: Path) -> None:
+        """`10ms` starts with a digit, which no c identifier may. The rule that refuses it is a
+        constant's, and a raster does not share that namespace.
+
+        Judged against an empty project rather than against ``TIMED``: ``TIMED`` already declares
+        a raster called ``10ms``, which would be refused as a name the project declares already -
+        the very next check ``_raster_problem`` makes - and prove nothing about the c identifier
+        rule this test is about.
+        """
+        from ddd.lsp.navigation import rename_problem
+
+        built, _ = built_of(tmp_path)
+        assert rename_problem(built, "10ms", "raster") is None
+
+    def test_a_raster_may_not_take_a_name_the_project_declares(self, tmp_path: Path) -> None:
+        from ddd.lsp.navigation import rename_problem
+
+        built, _ = built_of(tmp_path, **TWO_RASTERS)
+        problem = rename_problem(built, "20ms", "raster")
+        assert problem is not None
+        assert "20ms" in problem
+
+    def test_a_raster_name_longer_than_the_model_allows_is_refused(self, tmp_path: Path) -> None:
+        """Unlike a section's, a raster's name has a length the model states -
+        ``RASTER_NAME_LENGTH`` - and that is what refuses a name past it here, not
+        ``IDENTIFIER_MAX_LENGTH``, which bounds a c identifier and is a different number for a
+        different reason."""
+        from ddd.lsp.navigation import rename_problem
+        from ddd.models.common import RASTER_NAME_LENGTH
+
+        built, _ = built_of(tmp_path)
+        too_long = "1" * (RASTER_NAME_LENGTH + 1)
+        problem = rename_problem(built, too_long, "raster")
+        assert problem is not None
+        assert too_long in problem
 
 
 class TestAUnitPlanAsTextEdits:

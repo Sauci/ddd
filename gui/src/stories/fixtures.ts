@@ -1903,6 +1903,21 @@ export const SHARED_ONE_OF_EACH: SharedReply = {
   entries: [TREND_SAMPLES, FAST_RAM],
 };
 
+/** One spelling, two vocabularies: a constant FOO and a section FOO, sorted kind then name as
+ * `shared_rows` answers them, so the constant's row comes first.
+ *
+ * Legal, not contrived: `SECTION_NAME_PATTERN` is `[A-Za-z0-9_.$]+`, so the leading dot the
+ * shipped example gives its sections is a convention and nothing more, and `FOO` is a name either
+ * vocabulary may hold. Kept short and identical on purpose - a row told apart by its Vocabulary
+ * cell alone is exactly the case a table keyed by name could not tell apart at all. */
+export const SHARED_ONE_SPELLING: SharedReply = {
+  revision: 7,
+  entries: [
+    { kind: "constant", name: "FOO", states: "4", uses: 1, findings: 0 },
+    { kind: "section", name: "FOO", states: "read-write, align 4", uses: 1, findings: 0 },
+  ],
+};
+
 // --- ConstantPanelView (Task 8, spec 5.2/5.4) -------------------------------------------------
 //
 // examples/vocabulary's own TREND_SAMPLES (constants.ddd.json, value 16), with a second use

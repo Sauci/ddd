@@ -10,7 +10,6 @@ import {
   constantAdd,
   isDeclared,
   kindNamed,
-  kindOf,
   planEdit,
   SHARED_KINDS,
   type SharedKind,
@@ -92,14 +91,13 @@ export function SharedPage({ state, name, kind, onName, stopped, onOpen }: Props
         <div>
           <SharedTableView
             reply={shared.data}
-            selected={name}
-            // A row carries its own vocabulary and a selection is a name alone, so which kind was
-            // picked is read back off the table by `kindOf` rather than assumed. A name it cannot
-            // place - none, today - leaves the address bare rather than opening the wrong
-            // vocabulary's panel.
-            onSelect={(next) =>
-              select(next, next === undefined ? undefined : kindOf(shared.data, next))
-            }
+            // Both halves of the address go to the table and both come back: a row is keyed by
+            // its vocabulary and its name together, so the row a reader clicked is the row that
+            // answers, even where a project declares a constant and a section under one spelling.
+            // A row of a kind no address can name - a raster's, when they land - comes back
+            // `undefined`, which leaves the address bare rather than opening another's panel.
+            selected={name !== undefined && kind !== undefined ? { kind, name } : undefined}
+            onSelect={(next) => select(next?.name, next?.kind)}
             unreadable={missing.own}
             untold={missing.untold}
             onDeclare={() => {

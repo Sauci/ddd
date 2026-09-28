@@ -74,7 +74,7 @@ export function kindNamed(word: string): SharedKind | undefined {
 /** What the add form is called while the chooser is on that vocabulary, and while it is on none.
  *
  * Every vocabulary the tab holds takes "a" - constant, section, raster - so the article is fixed
- * here rather than chosen per word, as `ddd.project_shared._article` has to choose it server-side
+ * here rather than chosen per word, as `ddd.shared_plans._article` has to choose it server-side
  * for sentences that also name an `entry`. "Declare a constant" is the name `e2e/constants.spec.
  * ts` finds this form by, and the name part 13's own button gave it. */
 export function addTitle(kind: SharedKind | undefined): string {
@@ -109,18 +109,47 @@ export function isDeclared(reply: SharedReply, kind: string, name: string): bool
   return reply.entries.some((entry) => entry.kind === kind && entry.name === name);
 }
 
-/** Which vocabulary the row of that name belongs to, or `undefined` where the table holds no such
- * row, or holds one whose kind is a word no address can name - a raster's, until rasters have a
- * panel to be routed to.
+/** One entry of the tab, as a selection and an address both name it: which vocabulary, and which
+ * name within it.
  *
- * What turns a click in the table into an address: the row carries its own kind, and a selection
- * is a name alone, so this is where the two meet. Undefined leaves the address bare - the tab
- * itself - which is `route.ts`'s own rule for an address that does not say what it selected: the
- * tab, never a guess at which vocabulary a name belonged to. Guessing is what the page did until
- * now, and clicking a section opened a constant's form pre-filled with its name. */
-export function kindOf(reply: SharedReply, name: string): SharedKind | undefined {
-  const row = reply.entries.find((entry) => entry.name === name);
-  return row === undefined ? undefined : SHARED_VOCABULARIES.find((kind) => kind === row.kind);
+ * Both halves, because neither identifies a row on its own. A section's name is a linker string,
+ * not a c identifier - `SECTION_NAME_PATTERN` is `[A-Za-z0-9_.$]+`, so the leading dot the shipped
+ * example uses is a convention and not a rule - and a project may therefore declare a constant
+ * `FOO` and a section `FOO` at once, two rows of one table under one spelling. */
+export interface SharedSelection {
+  kind: SharedKind;
+  name: string;
+}
+
+/** The key the table gives a row, and reads a selection back from: the row's vocabulary and its
+ * name, which together are unique where the name alone is not.
+ *
+ * Takes the kind as it comes off the wire rather than as a `SharedKind`, because every row needs a
+ * key of its own, a raster's among them, and the tab lists rows of kinds it has no panel for.
+ *
+ * A space joins the two, being a character neither half can hold: a kind is one of the server's
+ * own vocabulary words and a name is a c identifier or a linker section name. `selectionAt` splits
+ * at the first space all the same, so a vocabulary that ever admitted one in a name would still
+ * come back whole. */
+export function rowKey(kind: string, name: string): string {
+  return `${kind} ${name}`;
+}
+
+/** Which entry that key names, or `undefined` where its vocabulary is one no address can name -
+ * a raster's, until rasters have a panel to be routed to.
+ *
+ * What turns a click in the table into an address. The key carries the row's own kind, so nothing
+ * has to look the name up again: where a project declares a constant and a section under one
+ * spelling, the row the reader clicked is the row that opens. Looking it up by name is what the
+ * page did before, and `shared_rows` sorts by kind then name, so the constant always won and the
+ * section's row opened the constant's panel. Undefined leaves the address bare - the tab itself -
+ * which is `route.ts`'s own rule for an address that does not say what it selected: the tab, never
+ * a guess at which vocabulary a name belonged to. */
+export function selectionAt(key: string): SharedSelection | undefined {
+  const space = key.indexOf(" ");
+  if (space === -1) return undefined;
+  const kind = SHARED_VOCABULARIES.find((known) => known === key.slice(0, space));
+  return kind === undefined ? undefined : { kind, name: key.slice(space + 1) };
 }
 
 /** Of a section's keys, the ones whose value is a json string - `ddd.project_shared.SECTIONS.
@@ -135,6 +164,28 @@ const SECTION_STRINGS: readonly string[] = ["access", "description"];
  * read that way on purpose, "so the panel's chooser is given the value and not its source". */
 export function sectionRaw(key: string, text: string): string {
   return SECTION_STRINGS.includes(key) ? JSON.stringify(text) : text;
+}
+
+/**
+ * One of a section's keys set to what its field holds, as `GET /api/section-plan` takes it.
+ *
+ * The key travels to the request and to the quoting from one argument, which is the whole reason
+ * this exists. The panel's own `satisfies` clause pins each request to its own `key` literal, and
+ * cannot pin that the same literal reached `sectionRaw`: measured in fix round 1, writing
+ * `sectionRaw("access", draftAlignment)` under the alignment request passed biome, `tsc`, the
+ * build and all 474 tests, and sent `?raw="8"` for an alignment - a quoted string where the model
+ * wants a number, which the api refuses and a reader meets as a refusal they did nothing to earn.
+ * Here the two cannot disagree, and a test can say so.
+ *
+ * Generic in the key so the literal survives into the return type: the panel's `satisfies` clause
+ * reads `key: "access"`, and a plain `string` here would widen it away.
+ */
+export function sectionSet<K extends string>(
+  name: string,
+  key: K,
+  text: string,
+): Extract<SectionPlanRequest, { action: "set" }> & { key: K } {
+  return { action: "set", name, key, raw: sectionRaw(key, text) };
 }
 
 /** The declaration a constant's add form comes to, or `null` while a parameter `add` requires is

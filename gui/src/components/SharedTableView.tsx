@@ -1,14 +1,17 @@
 import type { SharedReply } from "../api/types";
-import { tabTitle, vocabularyOf } from "../lib/shared";
+import { rowKey, type SharedSelection, selectionAt, tabTitle, vocabularyOf } from "../lib/shared";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
 
 export interface SharedTableViewProps {
   reply: SharedReply;
-  /** The entry whose panel is open, as the address names it. */
-  selected: string | undefined;
-  onSelect: (name: string | undefined) => void;
+  /** The entry whose panel is open, as the address names it: its vocabulary as well as its name,
+   * since a name alone can belong to a row of either (`SharedSelection`'s own doc). `undefined`
+   * where nothing is selected, and where the address names an entry of a kind this page cannot
+   * route to - no row is marked then, which is also what a name nothing declares looks like. */
+  selected: SharedSelection | undefined;
+  onSelect: (selected: SharedSelection | undefined) => void;
   /** The names of the files, of this tab's own kinds, that did not load - which declare entries
    * this list cannot show (spec 5.4). A *file*'s own `kind` is the plural word (`"constants"`,
    * `"sections"`); an *entry*'s `kind` is the singular (`"constant"`, `"section"`) - `SharedPage`
@@ -68,10 +71,10 @@ export function SharedTableView({
         <Table
           aria-label="Shared files"
           selectionMode="single"
-          selectedKeys={selected === undefined ? [] : [selected]}
+          selectedKeys={selected === undefined ? [] : [rowKey(selected.kind, selected.name)]}
           onSelectionChange={(keys) => {
             const key = keys === "all" ? undefined : [...keys][0];
-            onSelect(typeof key === "string" ? key : undefined);
+            onSelect(typeof key === "string" ? selectionAt(key) : undefined);
           }}
         >
           <TableHeader>
@@ -91,8 +94,12 @@ export function SharedTableView({
             <Column>Findings</Column>
           </TableHeader>
           <TableBody items={rows}>
+            {/* Keyed by vocabulary and name, not by name alone: a section's name is a linker
+                string, so a project may declare a constant and a section spelling it the same
+                way, and two rows under one id are one row to React Aria - the second would lose
+                its selection to the first (fix round 1). */}
             {(row) => (
-              <Row id={row.name}>
+              <Row id={rowKey(row.kind, row.name)}>
                 <Cell>{row.name}</Cell>
                 <Cell>{vocabularyOf(row.kind)}</Cell>
                 <Cell>{row.states}</Cell>

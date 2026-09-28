@@ -1,11 +1,13 @@
 import { useState } from "react";
 import type { SharedReply } from "../api/types";
+import type { SharedSelection } from "../lib/shared";
 import {
   NO_SHARED,
   PROJECT_SHARED,
   SHARED_BOTH_KINDS,
   SHARED_MISSING_FILE,
   SHARED_ONE_OF_EACH,
+  SHARED_ONE_SPELLING,
   SHARED_SECTION_FINDING,
   SHARED_WITH_FINDING,
 } from "../stories/fixtures";
@@ -13,7 +15,8 @@ import { SharedTableView } from "./SharedTableView";
 
 export default { title: "Components / SharedTableView" };
 
-/** Holds its own selection, as the tab would: `on` seeds it, a click in the table moves it. */
+/** Holds its own selection, as the tab would: `on` seeds it, a click in the table moves it. A
+ * selection is a vocabulary and a name, not a name, which is what the last story below is for. */
 function Tab({
   reply = PROJECT_SHARED,
   on,
@@ -21,11 +24,11 @@ function Tab({
   untold = [],
 }: {
   reply?: SharedReply;
-  on?: string;
+  on?: SharedSelection;
   unreadable?: readonly string[];
   untold?: readonly string[];
 }) {
-  const [selected, setSelected] = useState<string | undefined>(on);
+  const [selected, setSelected] = useState<SharedSelection | undefined>(on);
   return (
     <SharedTableView
       reply={reply}
@@ -88,3 +91,11 @@ export const ASectionFinding = () => <Tab reply={SHARED_SECTION_FINDING} />;
  * vocabularies, nothing else declared of either kind - not even TREND_SAMPLES's own other home,
  * the inline constant PROJECT_SHARED pairs it with. */
 export const OneOfEachKind = () => <Tab reply={SHARED_ONE_OF_EACH} />;
+
+/** A constant and a section both called FOO, the section's row selected. A section's name is a
+ * linker string, so one spelling may belong to a row of either vocabulary, and a table keyed by
+ * name alone gave the two rows one id: the mark would sit on the constant's row above, whichever
+ * a reader clicked. Which row is highlighted here is the whole point of the photograph. */
+export const OneSpellingTwoVocabularies = () => (
+  <Tab reply={SHARED_ONE_SPELLING} on={{ kind: "section", name: "FOO" }} />
+);

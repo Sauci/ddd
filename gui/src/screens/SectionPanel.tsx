@@ -10,7 +10,7 @@ import {
 import { type Offer, type SectionAction, SectionPanelView } from "../components/SectionPanelView";
 import { type Refused, shownRefusal } from "../lib/refusals";
 import type { Route } from "../lib/route";
-import { planEdit, sectionRaw } from "../lib/shared";
+import { planEdit, sectionSet } from "../lib/shared";
 import { sectionLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
@@ -109,26 +109,14 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
   // description where the Access field was saved, and label the undo "the description of X". The
   // three `set` arms are the ones that can swap silently, `SectionAction` not being 1:1 with the
   // request's own `action` - all three are `set`, told apart by `key` alone - which is why it is
-  // the `key` literal each of them is pinned to here. `sectionRaw` is what decides which of them
-  // travels in json quotes, once, under its own test.
+  // the `key` literal each of them is pinned to here. Each goes through `sectionSet`, which is
+  // what carries that one literal to the request and to the quoting alike: a key spelled twice
+  // here could be spelled differently twice, and an alignment quoted like a string is a refusal
+  // the reader did nothing to earn (fix round 1).
   const requests: Record<SectionAction, SectionPlanRequest | null> = {
-    access:
-      draftAccess === null
-        ? null
-        : { action: "set", name, key: "access", raw: sectionRaw("access", draftAccess) },
-    alignment:
-      draftAlignment === null
-        ? null
-        : { action: "set", name, key: "alignment", raw: sectionRaw("alignment", draftAlignment) },
-    describe:
-      draftDescription === null
-        ? null
-        : {
-            action: "set",
-            name,
-            key: "description",
-            raw: sectionRaw("description", draftDescription),
-          },
+    access: draftAccess === null ? null : sectionSet(name, "access", draftAccess),
+    alignment: draftAlignment === null ? null : sectionSet(name, "alignment", draftAlignment),
+    describe: draftDescription === null ? null : sectionSet(name, "description", draftDescription),
     rename: to === null ? null : { action: "rename", name, to },
     // Asked for only while nothing places its data in the section: a definition still naming it
     // always refuses (design §4.5), and a control that would refuse the instant it was pressed is

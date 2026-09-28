@@ -49,8 +49,10 @@ export interface SharedAddViewProps {
  * opens it on that route's own kind, pre-filled.
  *
  * No description field for either kind: `add` takes none, and the entry it writes always states an
- * empty one - the api supplies it itself (`_declared`), for both vocabularies - so a reader states
- * theirs afterwards, from the panel this form opens onto once it is declared.
+ * empty one, which the api supplies itself. It reaches the two by different roads - a section's
+ * through `_declared`, which appends it after the keys `add` requires, and a constant's written
+ * into the call in `_constant_plan_of` - so a reader states theirs afterwards either way, from the
+ * panel this form opens onto once it is declared.
  */
 export function SharedAddView(props: SharedAddViewProps) {
   const kind = kindNamed(props.vocabulary);

@@ -5,14 +5,16 @@ import {
   constantAdd,
   isDeclared,
   kindNamed,
-  kindOf,
   planEdit,
+  rowKey,
   SECTION_ACCESSES,
   SHARED_KINDS,
   SHARED_VOCABULARIES,
   sectionAdd,
   sectionRaw,
   sectionRemoveBlocked,
+  sectionSet,
+  selectionAt,
   tabTitle,
   vocabularyOf,
 } from "./shared";
@@ -28,20 +30,16 @@ const reply = (names: string[]): SharedReply => ({
   })),
 });
 
-/** A table of rows of the kinds given, named `.a`, `.b`, ... so a row is told apart by name alone
- * whichever kind it carries - what `kindOf` is asked to answer from. */
-function mixed(kinds: string[]): SharedReply {
-  return {
-    revision: 1,
-    entries: kinds.map((kind, index) => ({
-      kind,
-      name: `.${String.fromCharCode(97 + index)}`,
-      states: "x",
-      uses: 0,
-      findings: 0,
-    })),
-  };
-}
+/** A constant and a section both called FOO - a table of the one shape a row keyed by name alone
+ * could not tell apart. `SECTION_NAME_PATTERN` is `[A-Za-z0-9_.$]+`, so a section called FOO is a
+ * name the loader takes, and the kind is then the only thing between the two rows. */
+const ONE_SPELLING: SharedReply = {
+  revision: 1,
+  entries: [
+    { kind: "constant", name: "FOO", states: "4", uses: 0, findings: 0 },
+    { kind: "section", name: "FOO", states: "read-write, align 4", uses: 0, findings: 0 },
+  ],
+};
 
 /** A `SharedEntry` per kind word, named `N0`, `N1`, ... so a row is never mistaken for another of
  * the same kind - `tabTitle` counts by `kind` alone, and the name only has to keep entries apart. */
@@ -147,21 +145,38 @@ describe("what the add form is called", () => {
   });
 });
 
-describe("which vocabulary a selected row belongs to", () => {
-  test("reads the row's own kind, not the name's spelling", () => {
-    const table = mixed(["constant", "section"]);
-    expect(kindOf(table, ".a")).toBe("constant");
-    expect(kindOf(table, ".b")).toBe("section");
+describe("the key a row is selected by", () => {
+  test("carries the row back whole, whichever vocabulary it belongs to", () => {
+    expect(selectionAt(rowKey("section", ".calib"))).toEqual({ kind: "section", name: ".calib" });
+    expect(selectionAt(rowKey("constant", "TREND_SAMPLES"))).toEqual({
+      kind: "constant",
+      name: "TREND_SAMPLES",
+    });
   });
 
-  test("a name the table does not hold belongs to none", () => {
-    // A rename's new spelling, in the moment before the table has been read again: the address
-    // goes bare rather than to the panel of whichever vocabulary happened to be first.
-    expect(kindOf(mixed(["section"]), ".calib")).toBeUndefined();
+  test("tells two rows of one spelling apart", () => {
+    // The collision this key exists for. Both rows of ONE_SPELLING are declared, each under its
+    // own kind, and a key of the name alone would have given them one id - `shared_rows` sorts by
+    // kind then name, so the constant's row would always have answered for both.
+    expect(isDeclared(ONE_SPELLING, "constant", "FOO")).toBe(true);
+    expect(isDeclared(ONE_SPELLING, "section", "FOO")).toBe(true);
+    expect(rowKey("constant", "FOO")).not.toBe(rowKey("section", "FOO"));
+    expect(selectionAt(rowKey("section", "FOO"))).toEqual({ kind: "section", name: "FOO" });
+    expect(selectionAt(rowKey("constant", "FOO"))).toEqual({ kind: "constant", name: "FOO" });
   });
 
-  test("a kind no address can name belongs to none", () => {
-    expect(kindOf(mixed(["raster"]), ".a")).toBeUndefined();
+  test("a row of a kind no address can name comes back as no selection", () => {
+    // A raster's row, when they land: the tab lists it before it has a panel to open, so its key
+    // leaves the address bare rather than opening another vocabulary's.
+    expect(selectionAt(rowKey("raster", "10ms"))).toBeUndefined();
+  });
+
+  test("a key with no vocabulary in it is no selection either", () => {
+    expect(selectionAt("FOO")).toBeUndefined();
+  });
+
+  test("splits at the first space, so a name holding one would still come back whole", () => {
+    expect(selectionAt("section .a b")).toEqual({ kind: "section", name: ".a b" });
   });
 });
 
@@ -174,13 +189,44 @@ describe("the json text a section's key travels as", () => {
   test("alignment goes without them - quoted, it is a string the file's loader refuses", () => {
     expect(sectionRaw("alignment", "8")).toBe("8");
   });
+
+  test("a set request quotes by the very key it carries", () => {
+    // What the panel's own `satisfies` clause cannot say: that the key reaching the request is the
+    // key that decided the quoting. Spelled twice, the two could be spelled differently - measured
+    // in fix round 1, `sectionRaw("access", draftAlignment)` under the alignment request passed
+    // every gate this repo has and sent `?raw="8"` for an alignment.
+    expect(sectionSet(".calib", "alignment", "8")).toEqual({
+      action: "set",
+      name: ".calib",
+      key: "alignment",
+      raw: "8",
+    });
+    expect(sectionSet(".calib", "access", "read-only")).toEqual({
+      action: "set",
+      name: ".calib",
+      key: "access",
+      raw: '"read-only"',
+    });
+    expect(sectionSet(".calib", "description", "calibration flash")).toEqual({
+      action: "set",
+      name: ".calib",
+      key: "description",
+      raw: '"calibration flash"',
+    });
+  });
 });
 
 describe("declaring a constant", () => {
   test("asks for nothing until both a name and a value are typed", () => {
     expect(constantAdd("", "12")).toBeNull();
     expect(constantAdd("TREND_SLOTS", "")).toBeNull();
-    expect(constantAdd("  ", " ")).toBeNull();
+  });
+
+  test("a field holding only spaces is a field not filled in, each on its own", () => {
+    // One field at a time, so that each `.trim()` is pinned by a case of its own: both dropped
+    // together still failed the joint case this replaces, and either dropped alone survived it.
+    expect(constantAdd(" ", "12")).toBeNull();
+    expect(constantAdd("TREND_SLOTS", " ")).toBeNull();
   });
 
   test("carries the name and the value as add takes them", () => {
@@ -197,6 +243,15 @@ describe("declaring a section", () => {
     expect(sectionAdd("", "read-write", "4")).toBeNull();
     expect(sectionAdd(".eol_log", "", "4")).toBeNull();
     expect(sectionAdd(".eol_log", "read-write", "")).toBeNull();
+  });
+
+  test("a field holding only spaces is a field not filled in, each on its own", () => {
+    // One field at a time, as a constant's above: a reader who types a space into Alignment and
+    // nothing else would otherwise be sent to the api and shown `bad-request` mid-keystroke,
+    // which is the whole reason this function answers null.
+    expect(sectionAdd(" ", "read-write", "4")).toBeNull();
+    expect(sectionAdd(".eol_log", " ", "4")).toBeNull();
+    expect(sectionAdd(".eol_log", "read-write", " ")).toBeNull();
   });
 
   test("carries its two required keys as json text, the access in its quotes", () => {

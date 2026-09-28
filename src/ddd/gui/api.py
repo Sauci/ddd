@@ -178,7 +178,8 @@ these are the query parameters of one url, and a table two urls read from would 
 either endpoint to the other.
 
 ``add`` is where the two differ, and where the descriptor decides: one parameter per key of
-:attr:`ddd.project_shared.SECTIONS.required`, because a section the model gives no default for
+:attr:`ddd.project_shared.SECTIONS.required`, in the order :func:`_required_keys` reads them off
+:attr:`~ddd.project_shared.Vocabulary.keys`, because a section the model gives no default for
 ``access`` or ``alignment`` is one whose file would not load the moment it was written -
 ``?raw=`` alone, which is all a constant's one required key needs, could not say either. Each
 carries json text, judged as ``set``'s ``raw`` is:
@@ -1481,46 +1482,76 @@ def _section_plan_of(
     return add_entry(SECTIONS, built, project, given["name"], _declared(SECTIONS, given), cache)
 
 
+def _required_keys(vocabulary: Vocabulary) -> list[str]:
+    """``vocabulary``'s required keys, in the order the panel draws them.
+
+    The order matters and is read off the one table that has one.
+    :attr:`~ddd.project_shared.Vocabulary.required` is a frozenset, so it has no order of its own -
+    it has whatever order the interpreter's hash seed gives it, measured to be ``access, alignment``
+    under ``PYTHONHASHSEED=0`` and the reverse under ``PYTHONHASHSEED=1``.
+    :attr:`~ddd.project_shared.Vocabulary.keys` is a tuple, ordered by construction and documented
+    as "the order the panel draws them", so filtering it answers a question the set cannot: which
+    required key comes *first*.
+
+    Filtered rather than intersected. ``set(vocabulary.keys) & vocabulary.required`` is the same
+    keys and throws the order away again, which is the whole of what this is for. ``sorted(
+    vocabulary.required)`` would also be deterministic, and was what stood here first, but a sort
+    exists only to undo the set's arbitrariness: it answers ``access`` before ``alignment`` because
+    of the alphabet, where this answers it because that is the field a reader sees first.
+
+    A loop and not a comprehension, for the reason :func:`ddd.project_shared.shown` gives: coverage
+    counts no branch in a comprehension's filter, so the key that is *not* required - a
+    ``description``, in both vocabularies - could stop being skipped and the gate would not say so.
+
+    Why the order is visible at all: both :func:`~ddd.shared_plans.add_entry` and
+    :func:`~ddd.shared_plans._created` walk ``raws.items()`` and stop at the first key
+    :func:`~ddd.shared_plans._judged` refuses, and :func:`_json_texts`'s caller stops at the first
+    text that is not json. So an ``add`` carrying two bad values answers about whichever came
+    first. What it does *not* decide is the file: :func:`~ddd.shared_plans._entry_text` composes
+    the entry in ``keys`` order whatever order ``raws`` arrives in.
+    """
+    ordered = []
+    for key in vocabulary.keys:
+        if key in vocabulary.required:
+            ordered.append(key)
+    return ordered
+
+
 def _declared(vocabulary: Vocabulary, given: Mapping[str, str]) -> dict[str, str]:
     """The json text per key an ``add`` of ``vocabulary`` was given, and an empty ``description``
-    beside them.
+    beside them, in the order :func:`_required_keys` gives.
 
-    **Sorted, and observably so.** The file this builds is not what the order decides - that is
-    :func:`~ddd.shared_plans._entry_text`, which composes the entry in
-    :attr:`~ddd.project_shared.Vocabulary.keys` order whatever order ``raws`` arrives in. What the
-    order decides is *which refusal a reader meets*: both
-    :func:`~ddd.shared_plans.add_entry` and :func:`~ddd.shared_plans._created` walk
-    ``raws.items()`` and stop at the first key :func:`~ddd.shared_plans._judged` refuses, so an
-    ``add`` naming two bad values answers whichever came first.
-    :attr:`~ddd.project_shared.Vocabulary.required` is a frozenset, whose order changes with the
-    interpreter's hash seed - measured on this checkout, ``PYTHONHASHSEED=1`` yields ``alignment``
-    before ``access`` and ``PYTHONHASHSEED=0`` the reverse - so without the sort a reader would
-    meet one sentence or the other depending on how the process happened to start.
-    ``test_two_values_the_model_refuses_name_the_same_one_every_run`` is what pins it.
+    ``description`` is appended after them rather than placed among them: it is the one key ``add``
+    supplies itself, so no refusal can ever be about it and it has no business being first.
+    ``test_a_declared_entry_is_built_in_the_panels_own_order`` is what pins both halves.
     """
-    declared = {key: given[key] for key in sorted(vocabulary.required)}
+    declared = {key: given[key] for key in _required_keys(vocabulary)}
     declared["description"] = '""'
     return declared
 
 
 def _json_texts(vocabulary: Vocabulary, given: Mapping[str, str], raw: str | None) -> list[str]:
-    """Every part of a shared plan request that has to be json, in a fixed order.
+    """Every part of a shared plan request that has to be json, in the order a refusal should
+    name them.
 
-    ``?raw=`` where there is one, and the value of each required key an ``add`` carries. Both are
-    embedded into a file verbatim, so both are the request's business to get right: read as text a
-    reader who typed ``read-only`` where ``"read-only"`` was wanted would otherwise meet
-    *"read-only is not an access a section may state ... : read-write or read-only"*, a sentence
-    naming the value it refuses among the ones it allows.
+    ``?raw=`` where there is one, and the value of each required key an ``add`` carries, through
+    :func:`_required_keys`. Both are embedded into a file verbatim, so both are the request's
+    business to get right: read as text a reader who typed ``read-only`` where ``"read-only"`` was
+    wanted would otherwise meet *"read-only is not an access a section may state ... : read-write
+    or read-only"*, a sentence naming the value it refuses among the ones it allows.
 
     ``name``, ``to`` and ``key`` are not here: each is a plain string the verb quotes itself.
 
-    Sorted for the reason :func:`_declared` is: the caller stops at the first text that is not
-    json, so a request carrying two of them would name one or the other depending on the
-    interpreter's hash seed. ``test_two_values_that_are_not_json_are_refused_in_a_fixed_order``
-    is what pins it.
+    Two statements rather than two conditional expressions, for the reason
+    :func:`_required_keys` gives: neither the request without a ``?raw=`` nor the action that
+    carries no required key would register a branch of its own.
     """
-    texts = [] if raw is None else [raw]
-    texts.extend(given[key] for key in sorted(vocabulary.required) if key in given)
+    texts = []
+    if raw is not None:
+        texts.append(raw)
+    for key in _required_keys(vocabulary):
+        if key in given:
+            texts.append(given[key])
     return texts
 
 

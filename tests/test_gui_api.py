@@ -27,7 +27,7 @@ from ddd import __version__
 from ddd.cli import EXIT_OK, main
 from ddd.diagnostics import CHECKS
 from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
-from ddd.gui.api import SECTION_PLANS, Api, Reply, _declared, _json_texts
+from ddd.gui.api import SECTION_PLANS, Api, Reply, _declared, _json_texts, _required_keys
 from ddd.gui.session import Session
 from ddd.project_shared import SECTIONS
 from ddd.variable_keys import KEY_ORDER
@@ -190,13 +190,19 @@ STRAY_SECTIONS_FILE = {
     "sections.ddd.json": "not a file `add` wrote",
 }
 
-# A vocabulary with six required keys, for the two tests that ask whether `_json_texts` and
-# `_declared` read them in an order at all. Six rather than the two a section has: a frozenset of
-# two strings iterates in sorted order under about half the interpreter's hash seeds, so a test
-# over `SECTIONS` itself would only notice the sort going missing on about half of its runs.
-# Nothing about this descriptor is meant to describe a real vocabulary; `judge` covers every key
-# only because `Vocabulary.__post_init__` refuses a descriptor whose tables disagree.
-WIDE_KEYS: Final = ("a", "b", "c", "d", "e", "f")
+# A vocabulary whose `keys` are deliberately out of alphabetical order, for the two tests that ask
+# which table `_required_keys` reads the order off. Every real vocabulary happens to draw its keys
+# alphabetically - a section's `access`, `alignment`, `description` - so over `SECTIONS` alone the
+# panel's order and `sorted(SECTIONS.required)` are the same list, and neither test could say which
+# of the two it was seeing. Here they disagree on every position.
+#
+# Six keys rather than a section's three for a second reason, now retired but worth the sentence:
+# while the order came off a frozenset it also changed with the interpreter's hash seed, and a set
+# of two strings falls into sorted order under about half of them.
+#
+# Nothing about this descriptor describes a real vocabulary; `judge` covers every key only because
+# `Vocabulary.__post_init__` refuses a descriptor whose tables disagree.
+WIDE_KEYS: Final = ("f", "d", "b", "e", "a", "c")
 WIDE: Final = dataclasses.replace(
     SECTIONS,
     keys=(*WIDE_KEYS, "description"),
@@ -3595,11 +3601,11 @@ class TestSection:
     def test_two_values_that_are_not_json_are_refused_in_a_fixed_order(
         self, tmp_path: Path
     ) -> None:
-        """One bad value has only one sentence to answer with; two have a choice, and the choice
-        must not be the interpreter's. `_json_texts` walks `SECTIONS.required`, a frozenset whose
-        order changes with the hash seed - measured on this checkout, `PYTHONHASHSEED=1` yields
-        `alignment` before `access` and `PYTHONHASHSEED=0` the reverse - and the caller stops at
-        the first text that is not json. Sorted, `access` is always the one named."""
+        """One bad value has only one sentence to answer with; two have a choice, and the choice is
+        the panel's field order. `_json_texts` walks `SECTIONS.keys` filtered to the required ones,
+        and the caller stops at the first text that is not json - so the refusal is about `access`,
+        the first field the form draws, and not about whichever key a container happened to yield
+        first."""
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         reply = get(
             api,
@@ -3613,11 +3619,11 @@ class TestSection:
         assert reply.body["message"].startswith("'read-write' is not one json value")
 
     def test_two_values_the_model_refuses_name_the_same_one_every_run(self, tmp_path: Path) -> None:
-        """The same hazard one layer down, and the one the written file cannot show: `_entry_text`
+        """The same choice one layer down, and the one the written file cannot show: `_entry_text`
         composes the entry in `SECTIONS.keys` order, so the bytes an `add` writes do not depend on
-        how `raws` was built - but `add_entry` and `_created` both judge `raws.items()` in
-        insertion order and stop at the first key the model refuses. `_declared` sorts, so a
-        request with a bad `access` and a bad `alignment` always meets the access refusal."""
+        how `raws` was built - but `add_entry` and `_created` both judge `raws.items()` in insertion
+        order and stop at the first key the model refuses. `_declared` builds it in the panel's
+        order, so a request with a bad `access` and a bad `alignment` meets the access refusal."""
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         reply = get(
             api,
@@ -3632,28 +3638,38 @@ class TestSection:
             '"read-sideways" is not an access a section may state'
         )
 
-    def test_the_json_texts_of_a_request_are_ordered_whatever_the_hash_seed(self) -> None:
-        """The two tests above pin the sentence a reader meets; this pins the reason they can.
+    def test_the_json_texts_of_a_request_come_in_the_order_the_panel_draws_them(self) -> None:
+        """The two tests above pin the sentence a reader meets; this pins *which table decides* it.
 
-        Both are asked of `SECTIONS`, whose `required` holds two keys, so an unsorted frozenset
-        already iterates them the right way for about half of the interpreter's hash seeds -
-        measured: with the sorts removed both pass under `PYTHONHASHSEED=0` and fail under
-        `PYTHONHASHSEED=1`. A guard that catches a regression on a coin toss is most of the way to
-        no guard, and it is why the sort read as unpinned to begin with.
+        Both are asked of `SECTIONS`, whose keys are drawn in alphabetical order by coincidence, so
+        over it alone the panel's order and `sorted(SECTIONS.required)` are the same list and
+        neither test above can tell them apart. `WIDE` draws `f, d, b, e, a, c`, where the two
+        disagree on every position: this assertion holds only if the order is read off
+        `Vocabulary.keys`, and fails against a sort.
 
-        Six required keys instead of two, over a descriptor built for this and nothing else: a
-        frozenset of them falls into sorted order by luck once in 720 seeds rather than once in
-        two, so the sort going missing fails here whatever the run happened to start with. The
-        helpers take a `Vocabulary` precisely so this is askable without an endpoint."""
+        Reading it off `keys` is what makes the answer a claim rather than an accident. A sort is
+        deterministic too, but it puts `access` before `alignment` because of the alphabet; the
+        panel's order puts it first because that is the field the reader is looking at. The helpers
+        take a `Vocabulary` precisely so this is askable without an endpoint."""
         given = {key: f'"{key}"' for key in WIDE_KEYS}
         assert _json_texts(WIDE, given, None) == [given[key] for key in WIDE_KEYS]
 
-    def test_a_declared_entry_is_built_in_the_same_fixed_order(self) -> None:
-        """The other walk, pinned the same way. `description` is appended after the required keys
-        rather than sorted among them, which is its own small promise: it is the one key `add`
-        supplies itself, and a refusal can never be about it."""
+    def test_a_declared_entry_is_built_in_the_panels_own_order(self) -> None:
+        """The other walk, pinned the same way, plus one promise of its own: `description` comes
+        after the required keys and not among them. It is the key `add` supplies itself, so no
+        refusal can be about it."""
         given = {key: f'"{key}"' for key in WIDE_KEYS}
         assert list(_declared(WIDE, given)) == [*WIDE_KEYS, "description"]
+
+    def test_a_key_the_panel_draws_but_the_model_defaults_is_not_a_request_parameter(self) -> None:
+        """The arm of `_required_keys`'s filter that skips a key: `description` is drawn by both
+        real vocabularies and required by neither, so it is never asked of a request. Asserted
+        because a comprehension filter registers no branch with coverage.py - the loop there is
+        written as statements for that reason, and this is the test that would notice if the skip
+        stopped happening."""
+        given = {key: f'"{key}"' for key in (*WIDE_KEYS, "description")}
+        assert "description" not in _json_texts(WIDE, given, None)
+        assert _json_texts(SECTIONS, {"description": '"prose"'}, None) == []
 
     @pytest.mark.parametrize(
         "query",
@@ -3691,8 +3707,13 @@ class TestSection:
         `SECTION_PLANS["add"]` and `SECTIONS.required` are two tables of the same fact, and
         `_declared` reads the request by the second. A key added to the model's required set
         without a parameter here would raise `KeyError` inside the route - a 500 where a reader
-        should meet a form."""
-        assert SECTION_PLANS["add"] == ("name", *sorted(SECTIONS.required))
+        should meet a form.
+
+        Asserted against `_required_keys` rather than against `sorted(...)`, so the two statements
+        are the relation and the literal rather than the relation twice: the parameters after
+        `?name=` are the required keys in the order the panel draws them, which is also the order a
+        refusal names them in."""
+        assert SECTION_PLANS["add"] == ("name", *_required_keys(SECTIONS))
         assert SECTION_PLANS["add"] == ("name", "access", "alignment")
 
     def test_a_project_the_analysis_could_not_read_plans_no_section_change(

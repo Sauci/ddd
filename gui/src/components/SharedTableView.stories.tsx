@@ -4,10 +4,13 @@ import type { SharedSelection } from "../lib/shared";
 import {
   NO_SHARED,
   PROJECT_SHARED,
+  SHARED_ALL_VOCABULARIES,
   SHARED_BOTH_KINDS,
   SHARED_MISSING_FILE,
   SHARED_ONE_OF_EACH,
   SHARED_ONE_SPELLING,
+  SHARED_RASTER_CYCLES,
+  SHARED_RASTER_FINDING,
   SHARED_SECTION_FINDING,
   SHARED_WITH_FINDING,
 } from "../stories/fixtures";
@@ -83,9 +86,25 @@ export const ASectionsFileDidNotLoad = () => (
  * before a reader looks at the Vocabulary column beside them. */
 export const BothVocabularies = () => <Tab reply={SHARED_BOTH_KINDS} />;
 
+/** .fast_ram and .calib beside TREND_SAMPLES and PRESSURE_CELLS, and now 1ms, 10ms and 100ms too:
+ * every vocabulary the tab holds, in the one table - the story this part exists for. A raster's
+ * States cell ("event 1, 10ms") is nothing either of the other two ("16", "read-write, align 4")
+ * could be mistaken for, so a third kind reads apart from the first two exactly as BothVocabularies'
+ * own two already do. */
+export const AllThreeVocabularies = () => <Tab reply={SHARED_ALL_VOCABULARIES} />;
+
 /** .calib carrying a finding, counted on its own row exactly as TREND_SAMPLES's is in
  * ADimensionValueFinding - the Findings column is not a constant's alone. */
 export const ASectionFinding = () => <Tab reply={SHARED_SECTION_FINDING} />;
+
+/** 10ms carrying a finding, counted on its own row exactly as TREND_SAMPLES's is in
+ * ADimensionValueFinding and .calib's is in ASectionFinding - the Findings column is not a
+ * constant's or a section's alone. */
+export const ARasterFinding = () => <Tab reply={SHARED_RASTER_FINDING} />;
+
+/** 10ms beside crank: the only place a reader sees a raster's two States cell shapes together -
+ * "event 1, 10ms" where an entry states a cycle, "event 2" alone where it does not. */
+export const TwoRastersOneWithNoCycle = () => <Tab reply={SHARED_RASTER_CYCLES} />;
 
 /** TREND_SAMPLES alone beside .fast_ram alone: the smallest table that still holds both
  * vocabularies, nothing else declared of either kind - not even TREND_SAMPLES's own other home,

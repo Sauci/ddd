@@ -29,8 +29,11 @@ export interface SharedTableViewProps {
 }
 
 /** The Shared files tab's table (spec 5.1): a picture of its props. One table for every kind the
- * tab holds - constants and sections today, rasters the part still to come (design §2) - each
- * entry's own `kind` told apart in its own column rather than by a table per kind. */
+ * tab holds - a constant's, a section's and a raster's alike - each entry's own `kind` told apart
+ * in its own column rather than by a table per kind. A raster's row needed no change here to
+ * draw: the table already takes a vocabulary generically, through `vocabularyOf` below and
+ * `row.states` composed on the server, so a third kind was a data change and not a code one
+ * (design §5, "the table gains raster rows... through code that already takes a vocabulary"). */
 export function SharedTableView({
   reply,
   selected,

@@ -1918,6 +1918,94 @@ export const SHARED_ONE_SPELLING: SharedReply = {
   ],
 };
 
+// examples/vocabulary's own three rasters (spec 5.1, extended by this part): 1ms, 10ms and 100ms
+// (examples/vocabulary/rasters.ddd.json) - modelled on it, not transcribed, the way TREND_SAMPLES,
+// PRESSURE_CELLS, FAST_RAM and CALIB above already are not. Their States cells are real too:
+// `ddd.project_shared._raster_states` composes "event {event}, {cycle}", or "event {event}" alone
+// where an entry states no cycle (src/ddd/project_shared.py:813-830) - RASTER_1MS and RASTER_10MS
+// below are the first shape, CRANK_RASTER the second.
+
+/** 1ms: event 0, cyclic (rasters.ddd.json:4). PumpSpeed's own definition is its one real use
+ * (pump.ddd.json:34, `"raster": "1ms"` inside `component.interface[0].definition`) - measuring
+ * itself apart from Pump's own component default below. */
+const RASTER_1MS: SharedEntry = {
+  kind: "raster",
+  name: "1ms",
+  states: "event 0, 1ms",
+  uses: 1,
+  findings: 0,
+};
+
+/** 10ms: event 1, cyclic (rasters.ddd.json:5). Pump's own component default is its one real use
+ * (pump.ddd.json:6, `"raster": "10ms"` inside `component` itself) - measured against the plan's
+ * own claim that 10ms is used twice, which the controller's ruling corrects: no raster in the
+ * shipped example is named both ways, and this is the one use 10ms really has
+ * (`grep -rn '"raster"' examples/vocabulary` answers exactly these two lines and no third). Its
+ * States cell ("event 1, 10ms") is nothing a constant's own ("16") or a section's own
+ * ("read-write, align 4") could be mistaken for - part of the point AllThreeVocabularies exists
+ * to make. */
+const RASTER_10MS: SharedEntry = {
+  kind: "raster",
+  name: "10ms",
+  states: "event 1, 10ms",
+  uses: 1,
+  findings: 0,
+};
+
+/** 100ms: event 2, cyclic (rasters.ddd.json:6), named nowhere in the shipped example - a raster's
+ * own counterpart to UNUSED_KPA's blank "Used by" cell. */
+const RASTER_100MS: SharedEntry = {
+  kind: "raster",
+  name: "100ms",
+  states: "event 2, 100ms",
+  uses: 0,
+  findings: 0,
+};
+
+/** A raster that states no cycle at all - crank synchronous, on change, on demand, a real kind of
+ * raster and not an omission (`RasterDeclaration.cycle`'s own doc, schemas/ddd_rasters.schema.
+ * json). Constructed, not copied: examples/vocabulary's own three rasters all state one
+ * (rasters.ddd.json). Named for the kind of raster it is rather than reusing "100ms" for its
+ * event number - giving a constructed entry a real raster's own name, stating a different cycle
+ * from what that raster actually does, is exactly what would read as stale the next time someone
+ * checked it against the file. */
+const CRANK_RASTER: SharedEntry = {
+  kind: "raster",
+  name: "crank",
+  states: "event 2",
+  uses: 1,
+  findings: 0,
+};
+
+/** Every vocabulary the tab holds, in the one table (spec 5.1, extended by this part): the same
+ * four entries SHARED_BOTH_KINDS shows, beside all three of examples/vocabulary's own rasters -
+ * sorted kind then name, as `GET /api/shared` answers them (`shared_rows`): every constant's row,
+ * then every raster's ("raster" sorts between "constant" and "section"), then every section's.
+ * Within the rasters, a plain string sort and not a numeric one - `sorted(["1ms", "10ms",
+ * "100ms"])` answers `["100ms", "10ms", "1ms"]` in python exactly as it does here, "0" sorting
+ * before "m" at the second character each time - so this is the order `GET /api/shared` would
+ * really answer, not a mistake to straighten out. This is the story this part exists for. */
+export const SHARED_ALL_VOCABULARIES: SharedReply = {
+  revision: 7,
+  entries: [PRESSURE_CELLS, TREND_SAMPLES, RASTER_100MS, RASTER_10MS, RASTER_1MS, CALIB, FAST_RAM],
+};
+
+/** 10ms carrying a finding, rasters declared alone: the raster table's own counterpart to
+ * SHARED_WITH_FINDING (a constant's) and SHARED_SECTION_FINDING (a section's) -
+ * `SharedEntry.findings` is a count read the same way whichever vocabulary the row belongs to. */
+export const SHARED_RASTER_FINDING: SharedReply = {
+  revision: 7,
+  entries: [{ ...RASTER_10MS, findings: 1 }, RASTER_1MS],
+};
+
+/** 10ms beside crank: the only place a reader sees a raster's two States cell shapes together -
+ * "event 1, 10ms" where an entry states a cycle, "event 2" alone where it does not
+ * (`_raster_states`'s own two branches, src/ddd/project_shared.py:827-830). */
+export const SHARED_RASTER_CYCLES: SharedReply = {
+  revision: 7,
+  entries: [RASTER_10MS, CRANK_RASTER],
+};
+
 // --- ConstantPanelView (Task 8, spec 5.2/5.4) -------------------------------------------------
 //
 // examples/vocabulary's own TREND_SAMPLES (constants.ddd.json, value 16), with a second use

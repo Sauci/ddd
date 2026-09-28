@@ -603,8 +603,16 @@ def _entry_text(vocabulary: Vocabulary, name: str, raws: Mapping[str, str]) -> s
     The ``if key in raws`` filter is for a key ``raws`` leaves out, never for one it should not
     have had: :func:`add_entry` has already refused any key outside ``vocabulary.keys`` through
     :func:`_settable`, so by the time this runs, a key of ``vocabulary.keys`` missing from
-    ``raws`` is one the caller simply did not give a value - ``GET /api/section-plan`` gives an
-    ``add`` no ``description``, and the entry it declares states none.
+    ``raws`` is one the caller simply did not give a value - ``GET /api/raster-plan`` gives an
+    ``add`` no ``cycle``, and the entry it declares states none.
+
+    A raster is what that filter is for, and until it existed this sentence named ``description``
+    instead, which was wrong: :func:`ddd.gui.api._declared` supplies an empty ``description``
+    itself for every vocabulary, so it is never the key that is missing, and the section an
+    ``add`` writes does carry one. ``cycle`` is the key that is missing - ``str | None`` in the
+    model, with an event that is not cyclic a real kind of raster rather than an omission - so a
+    declared raster states no ``cycle`` at all, which ``test_declaring_one_takes_a_json_text_per
+    _key_the_model_gives_no_default`` asserts in the written bytes.
 
     Built as text rather than dumped from a dict, for the reason :func:`_raw` keeps a value's own
     spelling: a dict would carry a number through python's own types, and ``1e3`` would come back

@@ -893,7 +893,7 @@ class TypeReply(_Frozen):
     findings: tuple[Finding, ...]
 
 
-# --- GET /api/shared, GET /api/constant, GET /api/section ------------------------------------
+# --- GET /api/shared, GET /api/constant, GET /api/section, GET /api/raster -------------------
 
 
 class SharedEntry(_Frozen):

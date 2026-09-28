@@ -1285,7 +1285,11 @@ class TestRasterRefusals:
         is, so the one actionable sentence a reader with a mistyped period ever sees told them to
         write what they had just written. Sections escape by accident, their clauses being pinned
         at the http layer by `test_a_change_the_project_refuses_says_why_in_the_format_s_own_words`;
-        rasters have no route until Task 5, so this is the only thing standing in for it."""
+        these rows were written while rasters had no route at all, standing in for the http test
+        that Task 5 has since added - `TestRaster`'s own copy of that name, which asserts the same
+        three tails through `GET /api/raster-plan`. Kept rather than folded into it: a plan refused
+        here needs no endpoint to be asked, and one layer pinning a sentence is what the other
+        layer's rewording has to get past."""
         built, _root = built_of(tmp_path, **TIMED)
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:

@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 from ddd.lsp.edits import WITHIN_DECLARATION
 from ddd.lsp.ranges import Document, read
@@ -101,13 +101,12 @@ matches".
 **Pointer shaped, where a unit's, a constant's and a raster's routes are check-id shaped**
 (:data:`UNIT_CHECKS`, :data:`CONSTANT_CHECKS`, :data:`RASTER_CHECKS`), and the asymmetry is not an
 accident. A check id set exists to *override* the pointer, and is needed wherever the pointer's
-shape belongs to
-something else as well: a constant is named at a declaration's ``dimensions[i]`` and at its axis
-``size``, pointers that ``limits-out-of-range`` and the rest of the declaration's checks sit
-inside, so only the id can say which findings there are about the constant rather than about the
-variable. Nothing else is written at ``definition.section``, so the pointer carries the route and
-a placement check added to the analysis tomorrow leads here without this module being told - which
-is the whole benefit, and the reason this is not simply a list of three ids.
+shape belongs to something else as well: a constant is named at a declaration's ``dimensions[i]``
+and at its axis ``size``, pointers that ``limits-out-of-range`` and the rest of the declaration's
+checks sit inside, so only the id can say which findings there are about the constant rather than
+about the variable. Nothing else is written at ``definition.section``, so the pointer carries the
+route and a placement check added to the analysis tomorrow leads here without this module being
+told - which is the whole benefit, and the reason this is not simply a list of three ids.
 
 What the pointer does not settle on its own is *what the finding is about*, and that is
 :data:`ABOUT_THE_DECLARATION`'s business. Three of the four checks filed here are about the
@@ -177,14 +176,26 @@ something the finding says.
 class Route:
     """Where a finding leads."""
 
-    kind: str
-    """``variable``, ``unit``, ``component``, ``type``, ``values``, ``constant``, ``section`` or
-    ``raster``.
+    kind: Literal[
+        "variable", "unit", "component", "type", "values", "constant", "section", "raster"
+    ]
+    """Which screen the page opens.
 
-    Every one of them has to be a member of :attr:`ddd.gui.contract.FindingRoute.kind`'s
-    ``Literal`` as well: :func:`ddd.gui.api._finding` builds that model for every finding of every
-    request, so a kind added here and left out there raises a
-    :class:`pydantic.ValidationError` rather than merely leading nowhere."""
+    A ``Literal`` and not a ``str``, which is the guard this pair went three milestones without.
+    Every kind here has to be a member of :attr:`ddd.gui.contract.FindingRoute.kind`'s ``Literal``
+    too: :func:`ddd.gui.api._finding` builds that model for every finding of every request, so a
+    kind this answers and the contract does not raises a :class:`pydantic.ValidationError` for
+    *every* finding carrying it rather than merely leading nowhere - which part 13's ``constant``,
+    part 14's ``section`` and this part's ``raster`` each came within one test of shipping.
+
+    Written out here rather than imported from the contract, because the dependency runs the other
+    way: :mod:`ddd.gui.contract` is the wire format and imports nothing of this module, and making
+    it import the router to borrow a list would be a new edge between the api's two halves for the
+    sake of one tuple. So the two tables are stated twice and pinned together instead, by
+    ``test_every_kind_a_route_answers_is_one_the_contract_publishes``, which may import both where
+    neither may import the other. mypy closes the near half: a ``Route`` built with a kind that is
+    not one of these fails the type gate at the construction site, which is where a fourth screen
+    would be added."""
 
     name: str | None
     """The variable's name, the unit's spelling or the type's name; ``None`` for a component,

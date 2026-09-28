@@ -4256,7 +4256,12 @@ class TestRaster:
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         reply = get(api, "/api/raster-plan", **query)
         assert (reply.status, reply.body["error"]) == (400, "bad-request")
-        assert f"{query[whose]!r} is not one json value" in reply.body["message"]
+        # `startswith` and not `in`, matching the section pair's own
+        # `test_two_values_that_are_not_json_are_refused_in_a_fixed_order`: what follows the
+        # clause is python's json decoder's own text (`: Expecting value: line 1 column 1`),
+        # which this suite has no business pinning - but `in` would leave the prefix free too,
+        # and the prefix is the sentence `parse_raw` writes.
+        assert reply.body["message"].startswith(f"{query[whose]!r} is not one json value")
 
     @pytest.mark.parametrize(
         "query",

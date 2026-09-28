@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args, get_type_hints
 
 import pytest
 
 from conftest import EXAMPLES, component, declare, project, scalar_type, types, write_tree
 from ddd.finding_routes import Route, route_of
+from ddd.gui.contract import FindingRoute
 from ddd.lsp.ranges import Document
 
 DEFINITION = "component.interface[0].definition"
@@ -972,3 +973,36 @@ class TestARaster:
             route_of("duplicate-raster", root / "a.ddd.json", "rasters[0]", "rasters", True, {})
             is None
         )
+
+
+def test_every_kind_a_route_answers_is_one_the_contract_publishes() -> None:
+    """The guard for the drift that has now come within one test of shipping three parts running.
+
+    `_finding` builds a `contract.FindingRoute` for every finding of every request, so a kind
+    `route_of` answers that the contract's `Literal` leaves out raises a `pydantic.ValidationError`
+    for every finding carrying it - a crash, not a finding that merely leads nowhere. Part 13's
+    `constant`, part 14's `section` and this part's `raster` were each caught by whichever api test
+    happened to build a finding with the new kind, which is luck rather than a guard.
+
+    Two tables of one fact, and this is the assertion that makes them one. They cannot be shared:
+    `ddd.gui.contract` is the wire format and imports nothing of `ddd.finding_routes`, so the list
+    is written out in both. A test may import both where neither may import the other.
+
+    Compared as sets: the order a `Literal` lists its members in is meaningful to nobody, and a
+    test failing because the two tuples were reordered would be noise. The literal on the last line
+    is what keeps the relation from passing vacuously - both sides reverted to a bare `str` would
+    give `get_args` two empty tuples and an assertion that holds and says nothing.
+    """
+    answers = get_args(get_type_hints(Route)["kind"])
+    published = get_args(FindingRoute.model_fields["kind"].annotation)
+    assert set(answers) == set(published)
+    assert set(answers) == {
+        "variable",
+        "unit",
+        "component",
+        "type",
+        "values",
+        "constant",
+        "section",
+        "raster",
+    }

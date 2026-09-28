@@ -609,6 +609,52 @@ class TestASection:
             {},
         ) == Route("section", ".nvm")
 
+    @pytest.mark.parametrize(
+        "check", ["unknown-section", "section-access", "section-alignment", "consumer-storage"]
+    )
+    def test_every_check_filed_at_a_definitions_section_key_leads_to_the_section(
+        self, tmp_path: Path, check: str
+    ) -> None:
+        """Spec 4.6's route is pointer shaped, not check-id shaped: every finding filed at
+        `component.interface[i].definition.section` is about where the data sits, so all four
+        checks the analysis files there lead to the same panel.
+
+        Each case fails if its check falls back to `WITHIN_DECLARATION`, which matches this pointer
+        too and would answer `Route("variable", "Gain")` - the arbitrary split this test exists to
+        forbid, since two checks filed at one pointer cannot honestly open two screens.
+
+        The four are measured, not guessed: `unknown-section`, `section-access` and
+        `section-alignment` come off one `where` in `Analysis._check_sections`, and
+        `consumer-storage` off `PRODUCER_KEYS`, whose `section` entry is filed at
+        `ref.location("definition.section")` - the same pointer. A fifth would lead here without
+        this module hearing about it, which is the point of matching on the pointer.
+        """
+        root = built(tmp_path, **PLACED)
+        assert route_of(
+            check,
+            root / "a.ddd.json",
+            "component.interface[0].definition.section",
+            "component",
+            True,
+            {},
+        ) == Route("section", ".calib")
+
+    def test_a_finding_elsewhere_in_the_same_declaration_still_leads_to_the_variable(
+        self, tmp_path: Path
+    ) -> None:
+        """The placement route must not swallow its neighbours, the way the init route must not:
+        `consumer-storage` is one check over five keys, and the one filed at `definition.raster` is
+        about the declaration, not about any section. Only the `section` key is this route's."""
+        root = built(tmp_path, **PLACED)
+        assert route_of(
+            "consumer-storage",
+            root / "a.ddd.json",
+            "component.interface[0].definition.raster",
+            "component",
+            True,
+            {},
+        ) == Route("variable", "Gain")
+
     def test_duplicate_section_leads_to_the_section_its_entry_declares(
         self, tmp_path: Path
     ) -> None:
@@ -658,18 +704,20 @@ class TestASection:
             is None
         )
 
-    def test_an_unknown_section_whose_pointer_holds_no_string_leads_nowhere(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_placement_holding_no_string_leads_nowhere(self, tmp_path: Path) -> None:
         """A file that changed since the analysis can have anything at that pointer, and a number
-        names no section: `sections[0].alignment` holds `4` in this tree."""
-        root = built(tmp_path, **PLACED)
+        names no section. Written by hand rather than through a valid tree, because a component
+        stating `"section": 4` is one the loader refuses - which is exactly the state a file saved
+        between the analysis and the request can be in."""
+        root = built(
+            tmp_path, **{"a.ddd.json": component("A", declare("output", "Gain", section=4))}
+        )
         assert (
             route_of(
                 "unknown-section",
-                root / "s.ddd.json",
-                "sections[0].alignment",
-                "sections",
+                root / "a.ddd.json",
+                "component.interface[0].definition.section",
+                "component",
                 True,
                 {},
             )

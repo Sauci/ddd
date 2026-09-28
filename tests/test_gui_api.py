@@ -3223,9 +3223,11 @@ class TestSection:
         definition's `section` key - a use site, never the entry - so making `.fast_ram` read-only
         files one finding per measurement it holds, on that panel, and leaves `.calib`'s empty.
 
-        Their route is the variable's and not the section's, deliberately: the sentence is about
-        the object ("'PumpSpeed' is a measurement, which the software writes"), and its own panel
-        is where a reader changes the `kind` or the `section` it names."""
+        Each leads back to the section it is shown on, which is `PLACEMENT_KEY` reaching through
+        the api: both findings name `.fast_ram`, the `access` they complain about is the one this
+        panel edits, and the two variables they are also about are in the `uses` list beside them.
+        The same request answered `{"kind": "variable", ...}` before the route became pointer
+        shaped, which is the split spec 4.6 does not draw."""
         api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
         text = (root / "sections.ddd.json").read_text(encoding="utf-8")
         (root / "sections.ddd.json").write_text(
@@ -3238,9 +3240,14 @@ class TestSection:
         api.session.poll()
         fast = get(api, "/api/section", name=".fast_ram").body
         assert [(f["check"], f["route"]) for f in fast["findings"]] == [
-            ("section-access", {"kind": "variable", "name": "PumpSpeed"}),
-            ("section-access", {"kind": "variable", "name": "ManifoldPressure"}),
+            ("section-access", {"kind": "section", "name": ".fast_ram"}),
+            ("section-access", {"kind": "section", "name": ".fast_ram"}),
         ]
+        assert [f["message"].split("'")[1] for f in fast["findings"]] == [
+            "PumpSpeed",
+            "ManifoldPressure",
+        ]
+        assert [u["name"] for u in fast["uses"]] == ["PumpSpeed", "ManifoldPressure"]
         assert get(api, "/api/section", name=".calib").body["findings"] == []
 
     def test_a_duplicate_section_finding_routes_back_to_the_section(self, tmp_path: Path) -> None:

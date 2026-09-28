@@ -37,20 +37,6 @@ opens its add form with it filled in. ``dimension-value`` names one whose value 
 and the value is the thing to change.
 """
 
-SECTION_CHECKS: Final = frozenset({"unknown-section"})
-"""The checks filed where a definition places its data, whose finding leads to that section.
-
-``unknown-section`` names one no file declares, and the route carries the name anyway, exactly as
-``unknown-constant`` does: the page opens the add form with it filled in, which is what a reader
-who placed data in a section nobody declared has come to the tab to do.
-
-The other two checks filed at that same key - ``section-access`` and ``section-alignment`` - are
-deliberately not here. Each says something about the *variable* ("'X' is a measurement, which the
-software writes, but '.calib' is read-only"), and the declaration's own panel is where its ``kind``
-and its ``section`` are changed, so both keep the variable route :data:`WITHIN_DECLARATION` already
-gives them.
-"""
-
 COMPONENT_KIND: Final = "component"
 """The one file kind the page has a screen for; rasters are what is left of milestone 6."""
 
@@ -71,6 +57,33 @@ WITHIN_SECTION: Final = re.compile(r"^sections\[\d+\]")
 No ``component.`` alternative, where :data:`WITHIN_CONSTANT` has one: a section is a project wide
 vocabulary with no home inside a component, which :attr:`ddd.project_shared.SECTIONS.containers`
 is the authority for - one container, ``sections``, where a constant has two.
+"""
+
+PLACEMENT_KEY: Final = re.compile(r"^component\.interface\[\d+\]\.definition\.section$")
+"""A definition's own ``section`` key: the one shape outside a sections file that names a section,
+and the second half of spec 4.6's section route - "a pointer a definition's ``section`` key
+matches".
+
+**Pointer shaped, where a unit's and a constant's routes are check-id shaped**
+(:data:`UNIT_CHECKS`, :data:`CONSTANT_CHECKS`), and the asymmetry is not an accident. A check id
+set exists to *override* the pointer, and is needed exactly where the pointer's shape belongs to
+something else as well: a constant is named at a declaration's ``dimensions[i]`` and at its axis
+``size``, pointers that ``limits-out-of-range`` and the rest of the declaration's checks sit
+inside, so only the id can say which findings there are about the constant rather than about the
+variable. ``definition.section`` carries nothing but a placement. Every finding filed at it is
+about which section holds the data, so the pointer alone settles it and a set of ids would only
+be a list somebody has to remember to extend.
+
+Which is what it is: the four checks filed here today are ``unknown-section``, ``section-access``,
+``section-alignment`` (:meth:`ddd.analysis.Analysis._check_sections`) and ``consumer-storage``
+(:data:`ddd.analysis.PRODUCER_KEYS`, one check over five keys). All four lead to the section, and
+a fifth added to the analysis will too without this module being told. The section's panel is the
+right screen for each: it holds the ``access`` and the ``alignment`` the middle two name, and it
+lists every definition placing data there - so the variable a finding is *also* about is one click
+away, with the rest of the section's tenants visible beside it, which is what a reader deciding
+between "change this variable" and "change this section" needs to see. ``consumer-storage`` is the
+weakest of the four, the fix being to take the key out of the consumer's declaration, and the panel
+still names that declaration in its own list of uses.
 """
 
 WITHIN_INIT: Final = re.compile(r"^(component\.interface\[\d+\])\.definition\.init\b")
@@ -128,10 +141,12 @@ def route_of(
         # member would open the type rather than the constant the finding is about.
         named = read(path, cache).value_at(pointer)
         return Route("constant", named) if isinstance(named, str) and named else None
-    if check in SECTION_CHECKS:
-        # Beside CONSTANT_CHECKS above and read the same way - the value at the pointer is the
-        # name - and, like it, ahead of the kind check below: the pointer is inside a component,
-        # so WITHIN_DECLARATION would otherwise claim it and open the variable instead.
+    if PLACEMENT_KEY.match(pointer) is not None:
+        # The value at the pointer is the name, as it is for a unit and a constant above; what
+        # differs is that no check id is consulted, for the reason PLACEMENT_KEY gives.
+        #
+        # Ahead of WITHIN_DECLARATION, which matches this pointer too, being broader: caught
+        # there first, every finding about where a variable's data sits would open the variable.
         #
         # Written as statements rather than the conditional expression the constant branch uses:
         # coverage.py counts no branch in one, so the arm that answers nothing would pass the

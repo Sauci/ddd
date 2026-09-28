@@ -60,7 +60,7 @@ class TestWhichFilesAnEntryNames:
 
 
 class TestTheProjectAPlanIsMadeIn:
-    def test_the_constants_files_come_in_the_order_includes_lists_them(
+    def test_the_vocabularys_own_files_come_in_the_order_includes_lists_them(
         self, tmp_path: Path
     ) -> None:
         write_tree(
@@ -74,7 +74,7 @@ class TestTheProjectAPlanIsMadeIn:
         )
         cache: dict[Path, Document] = {}
         found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
-        assert [file.name for file in found.constants_files] == [
+        assert [file.name for file in found.files] == [
             "second.ddd.json",
             "first.ddd.json",
         ]
@@ -85,10 +85,7 @@ class TestTheProjectAPlanIsMadeIn:
         new constant must not be appended to it."""
         write_tree(tmp_path, {"p.ddd.json": project("P", "c.ddd.json"), "c.ddd.json": "{"})
         cache: dict[Path, Document] = {}
-        assert (
-            project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache).constants_files
-            == ()
-        )
+        assert project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache).files == ()
 
     def test_a_file_that_does_not_parse_is_named_among_the_ones_that_cannot_be_told(
         self, tmp_path: Path
@@ -114,7 +111,7 @@ class TestTheProjectAPlanIsMadeIn:
         write_tree(tmp_path, {"p.ddd.json": project("P", "gone.ddd.json")})
         cache: dict[Path, Document] = {}
         found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
-        assert (found.constants_files, found.untellable) == ((), ())
+        assert (found.files, found.untellable) == ((), ())
 
     def test_a_project_naming_no_constants_file_has_none(self, tmp_path: Path) -> None:
         write_tree(
@@ -125,10 +122,7 @@ class TestTheProjectAPlanIsMadeIn:
             },
         )
         cache: dict[Path, Document] = {}
-        assert (
-            project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache).constants_files
-            == ()
-        )
+        assert project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache).files == ()
 
     def test_one_file_named_twice_is_listed_once(self, tmp_path: Path) -> None:
         """A pattern and a literal entry can name the same file; the first is where a new constant
@@ -139,12 +133,7 @@ class TestTheProjectAPlanIsMadeIn:
         )
         cache: dict[Path, Document] = {}
         assert (
-            len(
-                project_of(
-                    project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache
-                ).constants_files
-            )
-            == 1
+            len(project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache).files) == 1
         )
 
     def test_the_files_that_did_not_load_are_resolved_and_sorted(self, tmp_path: Path) -> None:
@@ -159,10 +148,7 @@ class TestTheProjectAPlanIsMadeIn:
         answer no files rather than iterate a number."""
         write_tree(tmp_path, {"p.ddd.json": {"project": {"name": "P", "includes": 3}}})
         cache: dict[Path, Document] = {}
-        assert (
-            project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache).constants_files
-            == ()
-        )
+        assert project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache).files == ()
 
 
 def test_the_file_a_project_without_one_gets_is_named_for_what_it_holds() -> None:
@@ -583,9 +569,9 @@ class TestDeclaringOne:
         self, tmp_path: Path
     ) -> None:
         """Every other tree in this class has at most one constants file, so nothing above tells
-        `constants_files[0]` apart from `constants_files[-1]`. `SharedProject.constants_files`'
-        own docstring promises "the first is where a new constant goes, so that it lands in the
-        file a run of `ddd check` reads first" - this is the test that holds `add_entry` to
+        `files[0]` apart from `files[-1]`. `SharedProject.files`' own docstring promises "the first
+        is where a new entry goes, so that it lands in the file a run of `ddd check` reads first" -
+        this is the test that holds `add_entry` to
         that promise. The file that is first in `includes` sorts *last* alphabetically, so an
         implementation that quietly sorted the files instead of trusting their `includes` order
         would also be caught here."""
@@ -596,7 +582,7 @@ class TestDeclaringOne:
         built = _index(tmp_path, files)
         cache: dict[Path, Document] = {}
         found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
-        assert [f.name for f in found.constants_files] == ["z_first.ddd.json", "a_second.ddd.json"]
+        assert [f.name for f in found.files] == ["z_first.ddd.json", "a_second.ddd.json"]
         plan = add_entry(
             project_shared.CONSTANTS,
             built,
@@ -760,7 +746,7 @@ class TestDeclaringOne:
         (tmp_path / "sizes.ddd.json").write_text('{"constants": [{"name": "', encoding="utf-8")
         cache: dict[Path, Document] = {}
         found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
-        assert found.constants_files == ()
+        assert found.files == ()
         with pytest.raises(SharedRefusalError) as raised:
             add_entry(
                 project_shared.CONSTANTS,
@@ -839,9 +825,9 @@ class TestDeclaringOne:
     def test_a_name_a_component_declares_inline_is_refused_before_a_file_is_created(
         self, tmp_path: Path
     ) -> None:
-        """The collision guard has to run before the branch on `project.constants_files`, not
+        """The collision guard has to run before the branch on `project.files`, not
         only where a constants file already exists: `_created` never calls `rename_problem`
-        itself, so if the guard moved after `if not project.constants_files: return
+        itself, so if the guard moved after `if not project.files: return
         _created(...)`, a component's own inline `CELLS` would not stop a brand new
         `constants.ddd.json` from declaring a second one of that name - "two components share
         storage neither of them meant to", in `rename_problem`'s own words."""
@@ -855,7 +841,7 @@ class TestDeclaringOne:
         built = _index(tmp_path, files)
         cache: dict[Path, Document] = {}
         found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
-        assert not found.constants_files
+        assert not found.files
         with pytest.raises(SharedRefusalError) as raised:
             add_entry(
                 project_shared.CONSTANTS,

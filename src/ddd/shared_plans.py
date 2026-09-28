@@ -85,18 +85,6 @@ class SharedProject:
     unread: tuple[Path, ...]
     """The project's files that did not load, resolved and sorted."""
 
-    @property
-    def constants_files(self) -> tuple[Path, ...]:
-        """``files``, under the name this field carried before part 14's second task renamed it.
-
-        Nine assertions in `tests/test_shared_plans.py` read this field by that name, and that
-        task's proof was that suite passing without an edit to them - the same evidence the
-        bindings beside it carried. The bindings went with part 14's fifth task, which moved the
-        api onto the generic verbs; this outlived them, its own deletion never having been
-        written down, and is the last thing still answering to the constants-only vocabulary.
-        """
-        return self.files
-
 
 @dataclass(frozen=True, slots=True)
 class SharedPlan:

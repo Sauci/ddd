@@ -33,7 +33,7 @@ export function TypesPage({ state, type, stopped, onType, onOpen }: Props) {
   // The type whose panel closed because nothing declares it any longer (spec 5.4), named above
   // the table until another type is selected or the reader leaves the tab.
   const [gone, setGone] = useState<string | null>(null);
-  const missing = unreadable(state, "types");
+  const missing = unreadable(state, ["types"]);
 
   if (types.data === undefined) {
     if (types.isError) return <Banner tone="error">{types.error.message}</Banner>;

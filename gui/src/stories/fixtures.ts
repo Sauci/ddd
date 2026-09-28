@@ -11,6 +11,8 @@ import type {
   PlanReply,
   ProjectUnit,
   Renamed,
+  SectionReply,
+  SectionUse,
   SettleReply,
   SharedEntry,
   SharedReply,
@@ -1812,7 +1814,7 @@ export const REFUSED_OUTSIDE_ROOT =
 const TREND_SAMPLES: SharedEntry = {
   kind: "constant",
   name: "TREND_SAMPLES",
-  value: "16",
+  states: "16",
   uses: 1,
   findings: 0,
 };
@@ -1821,7 +1823,7 @@ const TREND_SAMPLES: SharedEntry = {
 const PRESSURE_CELLS: SharedEntry = {
   kind: "constant",
   name: "PRESSURE_CELLS",
-  value: "8",
+  states: "8",
   uses: 2,
   findings: 0,
 };
@@ -1849,6 +1851,72 @@ export const NO_SHARED: SharedReply = { revision: 7, entries: [] };
  * 5.4), but PRESSURE_CELLS still lists, declared inline in pump.ddd.json rather than in the file
  * that failed. */
 export const SHARED_MISSING_FILE: SharedReply = { revision: 7, entries: [PRESSURE_CELLS] };
+
+// examples/vocabulary's own two sections (spec 5.1 as part 14 extends it): .fast_ram in
+// sections.ddd.json, tightly coupled memory PumpSpeed and ManifoldPressure both place themselves
+// in, and .calib, the one section TorqueLimit does (examples/vocabulary/pump.ddd.json) - modelled
+// on it, not transcribed, the way TREND_SAMPLES and PRESSURE_CELLS already are not.
+
+/** .fast_ram: read-write, four byte aligned, two definitions placing themselves in it. Its States
+ * cell ("read-write, align 4") is chosen, like .calib's, to be nothing a constant's own cell
+ * ("16") could be mistaken for - the point BothVocabularies exists to make. */
+const FAST_RAM: SharedEntry = {
+  kind: "section",
+  name: ".fast_ram",
+  states: "read-write, align 4",
+  uses: 2,
+  findings: 0,
+};
+
+/** .calib: read-only from the running software's side, four byte aligned, the one section
+ * TorqueLimit places itself in. */
+const CALIB: SharedEntry = {
+  kind: "section",
+  name: ".calib",
+  states: "read-only, align 4",
+  uses: 1,
+  findings: 0,
+};
+
+/** Both vocabularies the tab holds, in the one table (spec 5.1, extended by part 14): the same
+ * TREND_SAMPLES and PRESSURE_CELLS as PROJECT_SHARED, beside both sections - sorted kind then
+ * name, as `GET /api/shared` answers them (`project_shared.shared_rows`), so every constant's row
+ * precedes every section's. This is the story the tab exists for. */
+export const SHARED_BOTH_KINDS: SharedReply = {
+  revision: 7,
+  entries: [PRESSURE_CELLS, TREND_SAMPLES, CALIB, FAST_RAM],
+};
+
+/** .calib carrying a finding, sections declared alone: the section table's own counterpart to
+ * SHARED_WITH_FINDING, which is TREND_SAMPLES's - `SharedEntry.findings` is a count read the same
+ * way whichever vocabulary the row belongs to. */
+export const SHARED_SECTION_FINDING: SharedReply = {
+  revision: 7,
+  entries: [{ ...CALIB, findings: 1 }, FAST_RAM],
+};
+
+/** The smallest table that still holds both vocabularies: TREND_SAMPLES, declared in
+ * constants.ddd.json with nothing declared in its other home - no PRESSURE_CELLS-style inline
+ * constant here - beside .fast_ram alone. */
+export const SHARED_ONE_OF_EACH: SharedReply = {
+  revision: 7,
+  entries: [TREND_SAMPLES, FAST_RAM],
+};
+
+/** One spelling, two vocabularies: a constant FOO and a section FOO, sorted kind then name as
+ * `shared_rows` answers them, so the constant's row comes first.
+ *
+ * Legal, not contrived: `SECTION_NAME_PATTERN` is `[A-Za-z0-9_.$]+`, so the leading dot the
+ * shipped example gives its sections is a convention and nothing more, and `FOO` is a name either
+ * vocabulary may hold. Kept short and identical on purpose - a row told apart by its Vocabulary
+ * cell alone is exactly the case a table keyed by name could not tell apart at all. */
+export const SHARED_ONE_SPELLING: SharedReply = {
+  revision: 7,
+  entries: [
+    { kind: "constant", name: "FOO", states: "4", uses: 1, findings: 0 },
+    { kind: "section", name: "FOO", states: "read-write, align 4", uses: 1, findings: 0 },
+  ],
+};
 
 // --- ConstantPanelView (Task 8, spec 5.2/5.4) -------------------------------------------------
 //
@@ -1932,7 +2000,7 @@ export const CONSTANT_UNUSED: ConstantReply = {
 };
 
 /** Removing SPARE_TOLERANCE: its entry taken out of constants.ddd.json, and nothing else
- * (`remove_constant`'s own doc) - the plan the NothingNamesIt story's Remove is already offered
+ * (`remove_entry`'s own doc) - the plan the NothingNamesIt story's Remove is already offered
  * with, since nothing has to be typed first for a change with no field of its own to preview. */
 export const REMOVE_CONSTANT: PlanReply = {
   revision: 7,
@@ -1949,6 +2017,187 @@ export const REMOVE_CONSTANT: PlanReply = {
               'reads it yet" }',
           ],
           after: [],
+        },
+      ],
+    },
+  ],
+};
+
+// --- SectionPanelView and SharedAddView (Task 8, spec 5.2/5.4) --------------------------------
+//
+// examples/vocabulary's own .fast_ram (sections.ddd.json: read-write, four byte aligned), with a
+// third definition invented - SensorHub's InletPressure - so that a panel showing three of them
+// can be told at a glance from one showing none; the real project places two there, and .calib
+// one. Modelled on it, not transcribed, exactly as TREND_SAMPLES's own uses above are not.
+
+const SECTIONS_FILE = "C:/work/demo/sections.ddd.json";
+
+/** A second sections file the project includes, declaring the one section the bench writes to -
+ * which is what makes removing that section a refusal rather than an offer. */
+const BENCH_SECTIONS = "C:/work/demo/bench.ddd.json";
+
+/** A definition placing its data in a section: `component.interface[i].definition.section`, the
+ * one shape that names one (`SectionUse.pointer`'s own doc), and always a variable's. */
+const FAST_RAM_PUMP_SPEED: SectionUse = {
+  path: PUMP,
+  pointer: "component.interface[0].definition.section",
+  kind: "variable",
+  name: "PumpSpeed",
+  component: "Pump",
+};
+
+const FAST_RAM_MANIFOLD_PRESSURE: SectionUse = {
+  path: PUMP,
+  pointer: "component.interface[1].definition.section",
+  kind: "variable",
+  name: "ManifoldPressure",
+  component: "Pump",
+};
+
+/** The invented third, in a second component: two files under the panel's File column rather than
+ * one, so a reader can see that a section is a device wide place several components write into. */
+const FAST_RAM_INLET_PRESSURE: SectionUse = {
+  path: SENSOR_HUB,
+  pointer: "component.interface[3].definition.section",
+  kind: "variable",
+  name: "InletPressure",
+  component: "SensorHub",
+};
+
+/** .fast_ram as sections.ddd.json declares it: three definitions place their data there, and
+ * nothing is wrong with it. Its alignment is text, as the wire carries it - `4`, the whole number
+ * the model wants, and never `4.0`. */
+export const SECTION_REPLY: SectionReply = {
+  revision: 7,
+  name: ".fast_ram",
+  access: "read-write",
+  alignment: "4",
+  description: "tightly coupled memory, single cycle access",
+  file: SECTIONS_FILE,
+  pointer: "sections[0]",
+  uses: [FAST_RAM_PUMP_SPEED, FAST_RAM_MANIFOLD_PRESSURE, FAST_RAM_INLET_PRESSURE],
+  findings: [],
+};
+
+/** A section nothing places data in, one of three its file declares: Remove is offered rather
+ * than refused, which needs a section of its own - .fast_ram above is named three times, and
+ * .calib once. */
+export const SECTION_UNUSED: SectionReply = {
+  revision: 7,
+  name: ".eol_log",
+  access: "read-write",
+  alignment: "8",
+  description: "end of line test log, written once on the bench",
+  file: SECTIONS_FILE,
+  pointer: "sections[2]",
+  uses: [],
+  findings: [],
+};
+
+/** Removing .eol_log: its entry taken out of sections.ddd.json, and nothing else - the plan the
+ * NothingPlacesDataInIt story's Remove is already offered with. */
+export const REMOVE_SECTION: PlanReply = {
+  revision: 7,
+  changes: [
+    {
+      file: SECTIONS_FILE,
+      fingerprint: "70819a2b3c4d5e6f70819a2b3c4d5e6f70819a2b3c4d5e6f1a2b3c4d5e6f7081",
+      operations: [{ op: "remove", pointer: "sections[2]", raw: null }],
+      hunks: [
+        {
+          line: 8,
+          before: [
+            '    { "section": ".eol_log", "access": "read-write", "alignment": 8,',
+            '      "description": "end of line test log, written once on the bench" }',
+          ],
+          after: [],
+        },
+      ],
+    },
+  ],
+};
+
+/** The one section bench.ddd.json declares, and nothing places data in it either - so the only
+ * thing standing between it and Remove is the file it would empty. */
+export const SECTION_SOLE_ENTRY: SectionReply = {
+  revision: 7,
+  name: ".bench_log",
+  access: "read-write",
+  alignment: "8",
+  description: "bench instrumentation buffer, absent from the shipped build",
+  file: BENCH_SECTIONS,
+  pointer: "sections[0]",
+  uses: [],
+  findings: [],
+};
+
+/** Why .bench_log cannot go although nothing names it: `remove_entry`'s own second refusal, in
+ * the server's words. A list of sections is `min_length=1` in the model, so the emptied file
+ * would no longer load - which the panel cannot know from `SectionReply` and so meets as this,
+ * the plan it asked for coming back refused. */
+export const REMOVE_SECTION_REFUSED =
+  "'.bench_log' is all bench.ddd.json declares, and a list of sections declares at least one; " +
+  "emptied, the file would no longer load";
+
+/** Renaming .calib to a name the project's sections already hold: `_section_problem`'s own
+ * sentence. The format would load two sections of one name - `duplicate-section` is a check, not
+ * a schema error - but each carries its own access and alignment, so a rename that merged them
+ * would move data into memory with different properties. */
+export const RENAME_SECTION_REFUSED = "'.fast_ram' is already a section this project declares";
+
+/** .calib as pump.ddd.json's TorqueLimit finds it: read-only, the one definition placing data
+ * there, which is what the rename story keeps on screen behind its refusal. */
+export const SECTION_CALIB: SectionReply = {
+  revision: 7,
+  name: ".calib",
+  access: "read-only",
+  alignment: "4",
+  description: "calibration flash, tool writable through the emulation overlay",
+  file: SECTIONS_FILE,
+  pointer: "sections[1]",
+  uses: [
+    {
+      path: PUMP,
+      pointer: "component.interface[3].definition.section",
+      kind: "variable",
+      name: "TorqueLimit",
+      component: "Pump",
+    },
+  ],
+  findings: [],
+};
+
+/** Declaring .eol_log into the sections file the project already includes: one entry appended
+ * after the last, with the two keys `add` requires and the empty description the api supplies
+ * itself (`_declared`), which the panel this form opens onto is where a reader fills in.
+ *
+ * Transcribed from a real plan, not imagined: `GET /api/section-plan?action=add` over a copy of
+ * examples/vocabulary answers this insert, and an entry whose access lost its quotes or whose
+ * alignment gained them would be a story showing a file the loader refuses. */
+export const ADD_SECTION: PlanReply = {
+  revision: 7,
+  changes: [
+    {
+      file: SECTIONS_FILE,
+      fingerprint: "5e6f70819a2b3c4d5e6f70819a2b3c4d1a2b3c4d5e6f70819a2b3c4d5e6f7081",
+      operations: [
+        {
+          op: "insert",
+          pointer: "sections[2]",
+          raw: '{"section": ".eol_log", "access": "read-write", "alignment": 8, "description": ""}',
+        },
+      ],
+      hunks: [
+        {
+          line: 7,
+          before: [
+            '      "description": "calibration flash, tool writable through the emulation overlay" }',
+          ],
+          after: [
+            '      "description": "calibration flash, tool writable through the emulation overlay" },',
+            '    { "section": ".eol_log", "access": "read-write", "alignment": 8, ' +
+              '"description": "" }',
+          ],
         },
       ],
     },

@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useCallback } from "react";
 import { getSession } from "../api/client";
 import { hrefOf, type ProjectView, type Route } from "../lib/route";
+import type { SharedKind } from "../lib/shared";
 import { ComparePage } from "../screens/ComparePage";
 import { ComponentPage } from "../screens/ComponentPage";
 import { FindingsPage } from "../screens/FindingsPage";
@@ -99,22 +100,24 @@ export function App() {
       ),
     [navigate],
   );
-  // Selecting a constant replaces the address, as selecting a type does. `SharedPage` itself
-  // decides whether a name is a declared constant's panel or an undeclared one's pre-filled add
-  // form, purely from `isDeclared` (design §2, "one route kind, and the page decides"). So
-  // `route.ts`'s own shape for this tab carries a name and nothing else - this callback, the two
-  // `onOpenConstant` callbacks below and `routeOf` (`lib/findings.ts`) all write that one shape,
-  // whichever of the two outcomes it turns out to be, and none of them needs a second shape
-  // naming one to declare directly. One address is unreachable as a result: `SharedPage`'s own
-  // *blank* form, opened only by its Declare a constant button, has no route of its own and so
-  // does not survive a reload the way every other panel on this page does. A pre-filled form is
-  // not affected - it opens through the same address a declared name's own panel does.
+  // Selecting a shared entry replaces the address, as selecting a type does. The address carries
+  // the vocabulary beside the name, because the tab holds two and a name alone cannot say which
+  // one a reader picked; what it does not carry is whether that entry is declared. `SharedPage`
+  // decides that itself, from `isDeclared` (design §2, "one route kind, and the page decides"),
+  // so one address shape serves both the entry's own panel and the add form pre-filled with a
+  // name nothing declares - this callback, the two `onOpenConstant` callbacks below and `routeOf`
+  // (`lib/findings.ts`) all write that one shape. Those two name `constant` because that is what
+  // a dimension names, not because the tab has one vocabulary; this one is told which kind the
+  // row it came from carries. One address is unreachable as a result: `SharedPage`'s own blank
+  // form, opened only by its Declare an entry button, has no route of its own and so does not
+  // survive a reload the way every other panel on this page does. A pre-filled form is not
+  // affected - it opens through the same address a declared name's own panel does.
   const openShared = useCallback(
-    (name: string | undefined) =>
+    (name: string | undefined, kind: SharedKind | undefined) =>
       navigate(
-        name === undefined
+        name === undefined || kind === undefined
           ? { page: "project", view: "shared" }
-          : { page: "project", view: "shared", kind: "constant", name },
+          : { page: "project", view: "shared", kind, name },
         { replace: true },
       ),
     [navigate],
@@ -177,6 +180,7 @@ export function App() {
           <SharedPage
             state={state}
             name={"name" in route ? route.name : undefined}
+            kind={"kind" in route ? route.kind : undefined}
             onName={openShared}
             stopped={stopped}
             onOpen={navigate}

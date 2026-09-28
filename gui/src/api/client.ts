@@ -9,6 +9,7 @@ import type {
   Found,
   GraphReply,
   PlanReply,
+  SectionReply,
   SessionInfo,
   SettleReply,
   SharedReply,
@@ -219,6 +220,42 @@ function constantQuery(plan: ConstantPlanRequest): string {
     parts.push(["to", plan.to]);
   } else if (plan.action === "add") {
     parts.push(["raw", plan.raw]);
+  }
+  return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
+}
+
+export const getSection = (name: string, fetchImpl: Fetch = fetch) =>
+  request<SectionReply>(`/api/section?name=${encodeURIComponent(name)}`, {}, fetchImpl);
+
+/** One change to a section, as `GET /api/section-plan` takes it: the same four verbs as
+ * `ConstantPlanRequest`, over the same three parameters, differing only in `add` - a section is
+ * declared with one json text per required key (`access`, then `alignment`, the order
+ * `ddd.gui.api._required_keys` reads off `Vocabulary.keys`) rather than a lone `raw`, because a
+ * section the model gives no default for either key is one whose file would not load. */
+export type SectionPlanRequest =
+  | { action: "set"; name: string; key: string; raw?: string | null }
+  | { action: "rename"; name: string; to: string }
+  | { action: "add"; name: string; access: string; alignment: string }
+  | { action: "remove"; name: string };
+
+export const getSectionPlan = (plan: SectionPlanRequest, fetchImpl: Fetch = fetch) =>
+  request<PlanReply>(`/api/section-plan?${sectionQuery(plan)}`, {}, fetchImpl);
+
+/** A plan's query: the action and the name, then whichever of `key`/`raw`, `to`, or `access`/
+ * `alignment` it takes - as `constantQuery`'s, with `add`'s two required keys in place of the one
+ * `raw` a constant's declaration takes. */
+function sectionQuery(plan: SectionPlanRequest): string {
+  const parts: [string, string][] = [
+    ["action", plan.action],
+    ["name", plan.name],
+  ];
+  if (plan.action === "set") {
+    parts.push(["key", plan.key]);
+    if (plan.raw !== undefined && plan.raw !== null) parts.push(["raw", plan.raw]);
+  } else if (plan.action === "rename") {
+    parts.push(["to", plan.to]);
+  } else if (plan.action === "add") {
+    parts.push(["access", plan.access], ["alignment", plan.alignment]);
   }
   return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
 }

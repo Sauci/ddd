@@ -44,6 +44,7 @@ from ddd.models import (
     is_reserved_identifier,
     spelled_dimensions,
 )
+from ddd.models.common import SECTION_NAME_PATTERN
 from ddd.plugins import PluginError
 
 _WITHIN_DECLARATION: Final = re.compile(r"^component\.interface\[\d+\]")
@@ -84,6 +85,18 @@ _TYPENAME_KEY: Final = re.compile(
 
 _TYPE_NAME: Final = re.compile(r"^(?:component\.)?types\[\d+\]\.name$")
 _CONSTANT_NAME: Final = re.compile(r"^(?:component\.)?constants\[\d+\]\.name$")
+
+_SECTION_NAME: Final = re.compile(r"^sections\[\d+\]\.section$")
+_SECTION_KEY: Final = re.compile(r"^component\.interface\[\d+\]\.definition\.section$")
+"""The one place a definition places its data: a section is a project wide vocabulary, with
+no home inside a component the way a type or a constant may have one."""
+
+_RASTER_NAME: Final = re.compile(r"^rasters\[\d+\]\.raster$")
+_RASTER_KEY: Final = re.compile(
+    r"^(?:component\.raster|component\.interface\[\d+\]\.definition\.raster)$"
+)
+"""Where a raster is spelled: a definition's own, or the component's default for everything
+it produces - the one use written outside any definition at all."""
 
 _UNIT_KEY: Final = re.compile(
     rf"^(?:(?:component\.interface\[\d+\]\.definition|(?:component\.)?types\[\d+\]|{_MEMBER}"
@@ -147,6 +160,19 @@ class Index:
     constant_uses: dict[str, list[Site]] = field(default_factory=dict)
     """Constant name -> every dimension entry and axis size that spells it."""
 
+    sections: dict[str, Site] = field(default_factory=dict)
+    """Section name -> where the sections file declares it."""
+
+    section_uses: dict[str, list[Site]] = field(default_factory=dict)
+    """Section name -> every definition placing data in it."""
+
+    rasters: dict[str, Site] = field(default_factory=dict)
+    """Raster name -> where the rasters file declares it."""
+
+    raster_uses: dict[str, list[Site]] = field(default_factory=dict)
+    """Raster name -> every definition naming it, and every component naming it as the
+    default raster for what it produces."""
+
     kinds: dict[str, str] = field(default_factory=dict)
     """Name -> the kind its first declaration states, in the order the project lists its
     components.
@@ -197,6 +223,14 @@ def index(workspace: Workspace) -> Index:
     """Read the positions out of an already loaded project."""
     built = Index()
     for loaded in workspace.components:
+        # A plain `None` check: a component need not name a default raster, and the model has
+        # already validated this field to `str | None` - there is no drifted third shape here
+        # for an `isinstance` to be guarding against.
+        if loaded.component.raster is not None:
+            where = loaded.location("component.raster")
+            built.raster_uses.setdefault(loaded.component.raster, []).append(
+                Site(where.path, where.pointer)
+            )
         for position, declaration in enumerate(loaded.component.interface):
             location = loaded.declaration_location(position, "definition")
             site = Site(location.path, location.pointer)
@@ -220,6 +254,18 @@ def index(workspace: Workspace) -> Index:
             if named is not None:
                 where = loaded.declaration_location(position, "definition.typename")
                 built.type_uses.setdefault(named, []).append(Site(where.path, where.pointer))
+            # The same plain `None` check: a definition need not place its data in a section,
+            # nor state its own raster when the component's default already does.
+            if declaration.definition.section is not None:
+                where = loaded.declaration_location(position, "definition.section")
+                built.section_uses.setdefault(declaration.definition.section, []).append(
+                    Site(where.path, where.pointer)
+                )
+            if declaration.definition.raster is not None:
+                where = loaded.declaration_location(position, "definition.raster")
+                built.raster_uses.setdefault(declaration.definition.raster, []).append(
+                    Site(where.path, where.pointer)
+                )
             _occupy(built, declaration.definition.conversion)
             _unit_stated(
                 built,
@@ -262,6 +308,14 @@ def index(workspace: Workspace) -> Index:
     for constant in workspace.constants:
         built.constants[constant.name] = Site(constant.path, constant.location().pointer)
         built.occupied[constant.name] = f"the name of the declared constant '{constant.name}'"
+    # Neither a section nor a raster joins `occupied`. A constant's name reaches generated code
+    # as a c identifier, so a collision there is two objects sharing storage; a section's name
+    # is a linker string and a raster's an a2l short name, and neither is ever spelled into the
+    # generated header, so neither shares that namespace.
+    for section in workspace.sections:
+        built.sections[section.section] = Site(section.path, section.location().pointer)
+    for raster in workspace.rasters:
+        built.rasters[raster.raster] = Site(raster.path, raster.location().pointer)
     for listed in workspace.unit_entries:
         where = listed.location()
         built.vocabulary.setdefault(listed.unit, []).append(Site(where.path, where.pointer))
@@ -620,9 +674,12 @@ def renameable_at(document: Document, pointer: str) -> tuple[str, str] | None:
 
     A variable, from its name or from a reference naming it; a declared type, from the
     ``name`` of its entry or from any ``typename`` spelling it; a declared constant, from the
-    ``name`` of its entry or from any dimension or axis ``size`` spelling it; a unit, from any
-    place it is stated or from its entry in a units file. Narrow on purpose, like
-    :func:`variable_at`: the editor opens its box over the range this names.
+    ``name`` of its entry or from any dimension or axis ``size`` spelling it; a section or a
+    raster, from its own entry or from any definition placing data in it or naming it - a
+    raster's uses also include a component's own default, the one use written outside any
+    definition at all; a unit, from any place it is stated or from its entry in a units file.
+    Narrow on purpose, like :func:`variable_at`: the editor opens its box over the range this
+    names.
 
     A unit is renamed by :func:`ddd.lsp.units.rename_unit` rather than by :func:`rename_edits`:
     its rename rewrites the vocabulary too, and merges two spellings where a name would collide.
@@ -637,6 +694,10 @@ def renameable_at(document: Document, pointer: str) -> tuple[str, str] | None:
         return ("type", value)
     if _DIMENSION_KEY.match(pointer) or _CONSTANT_NAME.match(pointer):
         return ("constant", value)
+    if _SECTION_KEY.match(pointer) or _SECTION_NAME.match(pointer):
+        return ("section", value)
+    if _RASTER_KEY.match(pointer) or _RASTER_NAME.match(pointer):
+        return ("raster", value)
     # The empty unit is no unit - a dimensionless value states none - so there is nothing
     # spelled there to rename.
     if value and _UNIT_KEY.match(pointer):
@@ -649,10 +710,24 @@ def rename_sites(built: Index, kind: str, name: str) -> list[Site]:
 
     A variable's mentions are indexed as strings already. A type or a constant is indexed by
     its entry and by the places spelling it, so its own ``name`` is added here; a name nothing
-    declares - a ``typename`` the loader has already reported - renames its uses alone.
+    declares - a ``typename`` the loader has already reported - renames its uses alone. A
+    section or a raster is the same, its own entry added under its own key rather than
+    ``name``.
     """
     if kind == "variable":
         return list(built.mentions.get(name, ()))
+    if kind == "section":
+        section = built.sections.get(name)
+        uses = built.section_uses.get(name, ())
+        if section is None:
+            return list(uses)
+        return [Site(section.path, f"{section.pointer}.section"), *uses]
+    if kind == "raster":
+        raster = built.rasters.get(name)
+        uses = built.raster_uses.get(name, ())
+        if raster is None:
+            return list(uses)
+        return [Site(raster.path, f"{raster.pointer}.raster"), *uses]
     declared = (built.types if kind == "type" else built.constants).get(name)
     uses = (built.type_uses if kind == "type" else built.constant_uses).get(name, ())
     own = [] if declared is None else [Site(declared.path, f"{declared.pointer}.name")]
@@ -666,7 +741,26 @@ def rename_problem(built: Index, name: str, kind: str = "variable") -> str | Non
     mentions the object, so a name that turns out to be unusable would leave a project broken
     across several files at once - and the c compiler, which is where an unusable name is
     otherwise noticed, only sees it a build later.
+
+    A section is judged by its own rule and leaves before the first check below: every one of
+    them is about a c identifier, and a section's name is a linker string. Answered here rather
+    than in :mod:`ddd.project_shared`, which is where the Shared files tab would otherwise have
+    written the rule a second time: that module imports this one - :class:`Index` is this
+    module's - so the tab reaches this function through its descriptor's ``name_judge`` and the
+    editor's F2 reaches it through :meth:`ddd.lsp.server.Server._rename`, and the two cannot come
+    to different answers about a name.
+
+    A raster is not dispatched yet, and so is still answered as a variable: nothing declares a
+    raster vocabulary for its arm to be exercised from, and an arm no test reaches is an arm the
+    coverage gate refuses. What it answers meanwhile is wrong - ``10ms`` is no c identifier and is
+    a perfectly usable a2l short name. The wrong answer was latent before part 14's third task and
+    is reachable after it: :func:`renameable_at` had no raster arm, so it never answered
+    ``("raster", …)`` and :meth:`ddd.lsp.server.Server._rename` could not hand this function that
+    kind at all. Teaching the index to see rasters is what made F2 on one arrive here, so the
+    rasters part owes this its arm beside the section's.
     """
+    if kind == "section":
+        return _section_problem(built, name)
     if not re.fullmatch(C_IDENTIFIER_PATTERN, name) or len(name) > IDENTIFIER_MAX_LENGTH:
         return f"'{name}' is not a usable c identifier"
     if kind == "type" and name.lower() in _BASE_DATATYPES:
@@ -686,6 +780,37 @@ def rename_problem(built: Index, name: str, kind: str = "variable") -> str | Non
         # right finding in the wrong place: by then it is spread over every file the rename
         # touched, and the author has to undo a rewrite rather than pick another name.
         return f"'{name}' is {occupant}, which shares c's namespace with the variables"
+    return None
+
+
+def _section_problem(built: Index, name: str) -> str | None:
+    """Why the project may not have a section called ``name``, or nothing if it may.
+
+    Two checks, and none of the five :func:`rename_problem` applies to the other kinds. The c
+    identifier rule and the reserved word rule would refuse ``.calib`` outright, a leading dot
+    being an ordinary linker name; ``declarations`` and ``occupied`` guard c's file scope
+    namespace, which a section's name never joins - it is spliced into a ``section`` attribute
+    and never emitted as an identifier, which is what
+    ``test_a_section_may_share_a_spelling_with_a_variable`` pins. No length limit either:
+    :data:`~ddd.models.common.IDENTIFIER_MAX_LENGTH` bounds a c identifier, and the model sets a
+    section's name no length at all.
+
+    :data:`~ddd.models.common.SECTION_NAME_PATTERN` is the rule rather than a restatement of it:
+    :class:`ddd.models.sections.SectionDeclaration` constrains its own ``section`` to that same
+    constant, so a name refused here is exactly a name whose file would not load - and its
+    ``min_length=1`` is what the pattern's ``+`` already says.
+
+    A name the vocabulary already declares is refused although the file would still load:
+    ``duplicate-section`` is a check and not a schema error, so the format permits two sections
+    under one name - but each carries its own ``access`` and ``alignment``, and a rename that
+    merged them would silently move data into memory with different properties. The reader can
+    see the name is taken and pick another, which is the line part 14's design draws between what
+    the interface refuses and what it lets a check report.
+    """
+    if not re.fullmatch(SECTION_NAME_PATTERN, name):
+        return f"'{name}' is not a usable linker section name"
+    if name in built.sections:
+        return f"'{name}' is already a section this project declares"
     return None
 
 

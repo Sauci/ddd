@@ -14,12 +14,14 @@ import {
   routeOf,
   unreadable,
 } from "./findings";
+import { SHARED_KINDS } from "./shared";
 
 const SENSOR_HUB = "C:/work/demo/components/sensor_hub.ddd.json";
 const TYPES = "C:/work/demo/types.ddd.json";
 const UNITS = "C:/work/demo/units.ddd.json";
 const CONSTANTS = "C:/work/demo/constants.ddd.json";
 const SECTIONS = "C:/work/demo/sections.ddd.json";
+const RASTERS = "C:/work/demo/rasters.ddd.json";
 
 function finding(fields: Partial<Finding> = {}): Finding {
   return {
@@ -203,6 +205,24 @@ describe("where a finding leads", () => {
     });
   });
 
+  test("a section, by its name - the same one route kind whether or not it is declared", () => {
+    // Three of the four checks filed at a definition's own `section` key answer this route
+    // (measured on 2064f2d: unknown-section, section-access, section-alignment); the fourth,
+    // consumer-storage, is about the declaration and keeps its own variable route unchanged.
+    const one = finding({
+      check: "unknown-section",
+      route: { kind: "section", name: ".calib" },
+    });
+    expect(routeLabel(one, state([one]))).toBe("Open .calib");
+    expect(routeHref(one)).toBe("/project?view=shared&kind=section&name=.calib");
+    expect(routeOf(one)).toEqual({
+      page: "project",
+      view: "shared",
+      kind: "section",
+      name: ".calib",
+    });
+  });
+
   test("a component, by the name its file gives it", () => {
     const one = finding({ route: { kind: "component", name: null } });
     expect(routeLabel(one, state([one]))).toBe("Open SensorHub");
@@ -293,7 +313,10 @@ describe("why a finding leads nowhere", () => {
     );
   });
 
-  test("a finding on a sections file still says so, sections being the part after this", () => {
+  test("a finding on a sections file no longer says it has no page", () => {
+    // Sections have a page now, so a sections file joins `component`, `constants`, `types` and
+    // `units` in the set the check reads from - what is left of this finding is a pointer the
+    // file has moved on from, the same reason a units file's own duplicate check gets.
     const one = finding({
       file: SECTIONS,
       check: "duplicate-section",
@@ -312,8 +335,30 @@ describe("why a finding leads nowhere", () => {
         findings: { error: 1, warning: 0, info: 0 },
       },
     ];
-    expect(noRouteReason(one, withSections)).toBe(
-      "sections.ddd.json is a sections file, which has no page yet",
+    expect(noRouteReason(one, withSections)).toBe("there is nothing at that place any more");
+  });
+
+  test("a finding on a rasters file still says so, rasters being the part after this", () => {
+    const one = finding({
+      file: RASTERS,
+      check: "duplicate-raster",
+      pointer: "rasters[0]",
+      route: null,
+    });
+    const withRasters = state([one]);
+    withRasters.files = [
+      ...withRasters.files,
+      {
+        path: RASTERS,
+        kind: "rasters",
+        name: null,
+        loaded: true,
+        fingerprint: "f",
+        findings: { error: 1, warning: 0, info: 0 },
+      },
+    ];
+    expect(noRouteReason(one, withRasters)).toBe(
+      "rasters.ddd.json is a rasters file, which has no page yet",
     );
   });
 
@@ -331,7 +376,7 @@ describe("why a finding leads nowhere", () => {
       ...withFiles.files,
       fileRow("C:/work/demo/constants.ddd.json", "constants", false),
     ];
-    expect(unreadable(withFiles, "constants")).toEqual({
+    expect(unreadable(withFiles, ["constants"])).toEqual({
       own: ["constants.ddd.json"],
       untold: [],
     });
@@ -348,7 +393,7 @@ describe("why a finding leads nowhere", () => {
       ...withFiles.files,
       fileRow("C:/work/demo/sizes.ddd.json", "unknown", false),
     ];
-    expect(unreadable(withFiles, "constants")).toEqual({
+    expect(unreadable(withFiles, ["constants"])).toEqual({
       own: [],
       untold: ["sizes.ddd.json"],
     });
@@ -362,12 +407,68 @@ describe("why a finding leads nowhere", () => {
       fileRow("C:/work/demo/constants.ddd.json", "constants", true),
       fileRow("C:/work/demo/odd.ddd.json", "unknown", true),
     ];
-    expect(unreadable(withFiles, "constants")).toEqual({ own: [], untold: [] });
+    expect(unreadable(withFiles, ["constants"])).toEqual({ own: [], untold: [] });
   });
 
   test("no state at all names nothing", () => {
     // The tabs read this while the first revision is still being analysed.
-    expect(unreadable(null, "types")).toEqual({ own: [], untold: [] });
+    expect(unreadable(null, ["types"])).toEqual({ own: [], untold: [] });
+  });
+
+  describe("a tab whose table holds more than one vocabulary", () => {
+    // The Shared files tab asks for both its file kinds in one call, so a failed sections file
+    // must be named beside a failed constants file rather than dropped because it was not the
+    // one kind the tab used to ask about (ruling R1, moved here from Task 7). These call
+    // `unreadable` with `SHARED_KINDS` itself - the very list `SharedPage` passes - rather than a
+    // copy of it: asserting `SHARED_KINDS` equals a literal would repeat the source and prove
+    // nothing, but dropping either word from it fails "one of each at once" below, which is the
+    // property that actually matters (ruling 7).
+
+    test("a constants file alone", () => {
+      const one = finding({});
+      const withFiles = state([one]);
+      withFiles.files = [...withFiles.files, fileRow(CONSTANTS, "constants", false)];
+      expect(unreadable(withFiles, SHARED_KINDS)).toEqual({
+        own: ["constants.ddd.json"],
+        untold: [],
+      });
+    });
+
+    test("a sections file alone", () => {
+      const one = finding({});
+      const withFiles = state([one]);
+      withFiles.files = [...withFiles.files, fileRow(SECTIONS, "sections", false)];
+      expect(unreadable(withFiles, SHARED_KINDS)).toEqual({
+        own: ["sections.ddd.json"],
+        untold: [],
+      });
+    });
+
+    test("one of each at once", () => {
+      const one = finding({});
+      const withFiles = state([one]);
+      withFiles.files = [
+        ...withFiles.files,
+        fileRow(CONSTANTS, "constants", false),
+        fileRow(SECTIONS, "sections", false),
+      ];
+      expect(unreadable(withFiles, SHARED_KINDS)).toEqual({
+        own: ["constants.ddd.json", "sections.ddd.json"],
+        untold: [],
+      });
+    });
+
+    test("a file of neither kind is named in neither list, even though it failed to load", () => {
+      // The blind spot a mutant found: `file.kind !== "unknown" && kinds.length > 0` also answers
+      // `own` correctly for every case above, because every one of them asks about a kind the
+      // failed file actually has. A types file failing to load must not be laid at this tab's
+      // door - the reader would go fix the wrong file - which only `kinds.includes(file.kind)`
+      // itself, not "is this kind known and were any kinds asked for", tells apart.
+      const one = finding({});
+      const withFiles = state([one]);
+      withFiles.files = [...withFiles.files, fileRow(TYPES, "types", false)];
+      expect(unreadable(withFiles, SHARED_KINDS)).toEqual({ own: [], untold: [] });
+    });
   });
 
   test("the declaration it names has moved since the analysis read the file", () => {

@@ -1,16 +1,22 @@
 import { useState } from "react";
 import type { SharedReply } from "../api/types";
+import type { SharedSelection } from "../lib/shared";
 import {
   NO_SHARED,
   PROJECT_SHARED,
+  SHARED_BOTH_KINDS,
   SHARED_MISSING_FILE,
+  SHARED_ONE_OF_EACH,
+  SHARED_ONE_SPELLING,
+  SHARED_SECTION_FINDING,
   SHARED_WITH_FINDING,
 } from "../stories/fixtures";
 import { SharedTableView } from "./SharedTableView";
 
 export default { title: "Components / SharedTableView" };
 
-/** Holds its own selection, as the tab would: `on` seeds it, a click in the table moves it. */
+/** Holds its own selection, as the tab would: `on` seeds it, a click in the table moves it. A
+ * selection is a vocabulary and a name, not a name, which is what the last story below is for. */
 function Tab({
   reply = PROJECT_SHARED,
   on,
@@ -18,11 +24,11 @@ function Tab({
   untold = [],
 }: {
   reply?: SharedReply;
-  on?: string;
+  on?: SharedSelection;
   unreadable?: readonly string[];
   untold?: readonly string[];
 }) {
-  const [selected, setSelected] = useState<string | undefined>(on);
+  const [selected, setSelected] = useState<SharedSelection | undefined>(on);
   return (
     <SharedTableView
       reply={reply}
@@ -60,4 +66,36 @@ export const AFileDidNotLoad = () => (
  * neither can tell whose file it was. */
 export const AFileOfNoTellableKind = () => (
   <Tab reply={SHARED_MISSING_FILE} untold={["sizes.ddd.json"]} />
+);
+
+/** sections.ddd.json did not load: TREND_SAMPLES and PRESSURE_CELLS still list, their own file
+ * untouched, but neither section can - unlike a constant, a section has no second home to survive
+ * in. Fix round 1's own reason to exist: every other "did not load" story here fails a constants
+ * file, so a banner sentence hardcoding the word "constants" read correctly in all of them and
+ * only this one - a failed *sections* file - could show it naming the wrong vocabulary. */
+export const ASectionsFileDidNotLoad = () => (
+  <Tab reply={PROJECT_SHARED} unreadable={["sections.ddd.json"]} />
+);
+
+/** .fast_ram and .calib beside TREND_SAMPLES and PRESSURE_CELLS: both vocabularies the tab holds,
+ * in the one table - the story this tab exists for. A section's States cell ("read-write, align
+ * 4") is nothing a constant's own ("16") could be mistaken for, so the two kinds read apart even
+ * before a reader looks at the Vocabulary column beside them. */
+export const BothVocabularies = () => <Tab reply={SHARED_BOTH_KINDS} />;
+
+/** .calib carrying a finding, counted on its own row exactly as TREND_SAMPLES's is in
+ * ADimensionValueFinding - the Findings column is not a constant's alone. */
+export const ASectionFinding = () => <Tab reply={SHARED_SECTION_FINDING} />;
+
+/** TREND_SAMPLES alone beside .fast_ram alone: the smallest table that still holds both
+ * vocabularies, nothing else declared of either kind - not even TREND_SAMPLES's own other home,
+ * the inline constant PROJECT_SHARED pairs it with. */
+export const OneOfEachKind = () => <Tab reply={SHARED_ONE_OF_EACH} />;
+
+/** A constant and a section both called FOO, the section's row selected. A section's name is a
+ * linker string, so one spelling may belong to a row of either vocabulary, and a table keyed by
+ * name alone gave the two rows one id: the mark would sit on the constant's row above, whichever
+ * a reader clicked. Which row is highlighted here is the whole point of the photograph. */
+export const OneSpellingTwoVocabularies = () => (
+  <Tab reply={SHARED_ONE_SPELLING} on={{ kind: "section", name: "FOO" }} />
 );

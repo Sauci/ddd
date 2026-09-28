@@ -6,6 +6,7 @@ import {
   fixLabel,
   pasteLabel,
   removeLabel,
+  sectionLabel,
   settleLabel,
   shownUndo,
   typeLabel,
@@ -104,6 +105,19 @@ test.each([
   [{ action: "remove", name: "CELLS" }, "'CELLS' removed from the constants"],
 ] as const)("%o is undone as %s", (plan, label) => {
   expect(constantLabel(plan)).toBe(label);
+});
+
+test.each([
+  [{ action: "set", name: ".calib", key: "access", raw: '"read-only"' }, "the access of .calib"],
+  [{ action: "set", name: ".calib", key: "alignment" }, "the alignment of .calib"],
+  [{ action: "rename", name: ".calib", to: ".trend" }, "the rename of '.calib' to '.trend'"],
+  [
+    { action: "add", name: ".calib", access: '"read-only"', alignment: "4" },
+    "'.calib' declared as a section",
+  ],
+  [{ action: "remove", name: ".calib" }, "'.calib' removed from the sections"],
+] as const)("%o is undone as %s", (plan, label) => {
+  expect(sectionLabel(plan)).toBe(label);
 });
 
 test("an undone paste is named by the object whose table it replaced", () => {

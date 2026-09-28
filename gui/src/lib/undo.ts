@@ -1,4 +1,9 @@
-import type { ConstantPlanRequest, TypePlanRequest, UnitPlanRequest } from "../api/client";
+import type {
+  ConstantPlanRequest,
+  SectionPlanRequest,
+  TypePlanRequest,
+  UnitPlanRequest,
+} from "../api/client";
 import type { Finding, State, UndoneChange } from "../api/types";
 import type { Mode } from "./declarations";
 import { elementLabel } from "./objectValues";
@@ -35,6 +40,16 @@ export function constantLabel(plan: ConstantPlanRequest): string {
   if (plan.action === "rename") return fitted(`the rename of '${plan.name}' to '${plan.to}'`);
   if (plan.action === "add") return fitted(`'${plan.name}' declared as a constant`);
   if (plan.action === "remove") return fitted(`'${plan.name}' removed from the constants`);
+  return fitted(`the ${plan.key} of ${plan.name}`);
+}
+
+/** What a change of one of the project's sections is called when it comes to be undone - as
+ * `constantLabel`'s, `add` and `remove` besides: a section, like a constant, can be declared and
+ * taken away by the same tab that edits it. */
+export function sectionLabel(plan: SectionPlanRequest): string {
+  if (plan.action === "rename") return fitted(`the rename of '${plan.name}' to '${plan.to}'`);
+  if (plan.action === "add") return fitted(`'${plan.name}' declared as a section`);
+  if (plan.action === "remove") return fitted(`'${plan.name}' removed from the sections`);
   return fitted(`the ${plan.key} of ${plan.name}`);
 }
 

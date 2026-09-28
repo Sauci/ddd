@@ -3,9 +3,9 @@
 ``ddd gui`` lists what the analysis reported and, until now, left the reader to work out where
 to go: a sentence about a variable's declarations says nothing about which screen settles them.
 This answers what the page can open for one finding - the variable whose declaration it is
-about, the unit it names, the type its entry declares, or the component it is filed on - and
-answers nothing where the page has nothing to open, so that a row can say why instead of
-leading somewhere useless.
+about, the unit it names, the type its entry declares, the section it places data in, or the
+component it is filed on - and answers nothing where the page has nothing to open, so that a
+row can say why instead of leading somewhere useless.
 
 Pure: no GUI and no HTTP. :mod:`ddd.gui.api` turns a route into the shape ``GET /api/state``
 answers, and nothing else reads them.
@@ -38,8 +38,7 @@ and the value is the thing to change.
 """
 
 COMPONENT_KIND: Final = "component"
-"""The one file kind the page has a screen for; sections and rasters are what is left of
-milestone 6."""
+"""The one file kind the page has a screen for; rasters are what is left of milestone 6."""
 
 WITHIN_TYPE: Final = re.compile(r"^(?:component\.)?types\[\d+\]")
 """The entry a pointer inside a type lies in: the type itself, one of its keys, or a member of
@@ -50,6 +49,70 @@ WITHIN_CONSTANT: Final = re.compile(r"^(?:component\.)?constants\[\d+\]")
 """The entry a pointer inside a constant lies in - whether the constant was declared in a constants
 file (``constants[i]``) or inline by a component (``component.constants[i]``), which
 :mod:`ddd.loading` registers the same way."""
+
+WITHIN_SECTION: Final = re.compile(r"^sections\[\d+\]")
+"""The entry a pointer inside a section lies in: the entry itself, its name, its ``access``, its
+``alignment`` or its ``description``, all of which the one panel shows.
+
+No ``component.`` alternative, where :data:`WITHIN_CONSTANT` has one: a section is a project wide
+vocabulary with no home inside a component, which :attr:`ddd.project_shared.SECTIONS.containers`
+is the authority for - one container, ``sections``, where a constant has two.
+"""
+
+PLACEMENT_KEY: Final = re.compile(r"^component\.interface\[\d+\]\.definition\.section$")
+"""A definition's own ``section`` key: the one shape outside a sections file that names a section,
+and the second half of spec 4.6's section route - "a pointer a definition's ``section`` key
+matches".
+
+**Pointer shaped, where a unit's and a constant's routes are check-id shaped**
+(:data:`UNIT_CHECKS`, :data:`CONSTANT_CHECKS`), and the asymmetry is not an accident. A check id
+set exists to *override* the pointer, and is needed wherever the pointer's shape belongs to
+something else as well: a constant is named at a declaration's ``dimensions[i]`` and at its axis
+``size``, pointers that ``limits-out-of-range`` and the rest of the declaration's checks sit
+inside, so only the id can say which findings there are about the constant rather than about the
+variable. Nothing else is written at ``definition.section``, so the pointer carries the route and
+a placement check added to the analysis tomorrow leads here without this module being told - which
+is the whole benefit, and the reason this is not simply a list of three ids.
+
+What the pointer does not settle on its own is *what the finding is about*, and that is
+:data:`ABOUT_THE_DECLARATION`'s business. Three of the four checks filed here are about the
+placement - ``unknown-section``, ``section-access``, ``section-alignment``, all from one ``where``
+in :meth:`ddd.analysis.Analysis._check_sections` - and the section's panel is the right screen for
+each: it holds the ``access`` and the ``alignment`` two of them name, and it lists every definition
+placing data there, so the variable a finding is *also* about is one click away with the rest of
+the section's tenants visible beside it. That is what a reader deciding between "change this
+variable" and "change this section" has to see.
+"""
+
+ABOUT_THE_DECLARATION: Final = frozenset({"consumer-storage"})
+"""The checks filed where a vocabulary's entry is named that are not about that entry, and so are
+left to the declaration's own route.
+
+One, today. ``consumer-storage`` comes from :data:`ddd.analysis.PRODUCER_KEYS` rather than from
+the section checks, and it says a *consumer* stated a key only the producing component may state.
+The section it names is innocent and may well be the right one; what is wrong is the declaration
+having the key at all. The check's own filing site says as much - "reported where the claim is
+written rather than where it is overruled: the producer may be in a file this author has never
+opened, **and the fix is here**" - so routing it to the section would send the reader away from
+the place the analysis chose on purpose.
+
+Its sibling agrees. ``PRODUCER_KEYS`` gives this check exactly two keys, ``init`` and ``section``;
+the other three entries in that table belong to ``consumer-raster``, ``consumer-identity`` and
+``consumer-extension``, one key each. The ``init`` copy is claimed by :data:`WITHIN_INIT`, which
+opens the values grid - the variable's own screen - so both of this check's keys lead to the
+variable, and a third destination for one of the two would break a pattern that is currently
+whole. ``test_the_same_check_at_its_other_key_opens_that_object_s_values`` is what pins the
+``init`` half, which nothing asserted until the branch's final review asked.
+
+Read by :func:`ddd.project_shared.located_on` as well as by :func:`route_of`, and that is the
+point of its being a name rather than a condition written twice. A finding this set holds is not
+the entry's, so it is neither routed to the entry's panel nor counted on the entry's row: a
+Findings column is what a reader scans for what needs attention, and a section reading ``1`` for a
+finding its panel can do nothing about is worse than one reading nothing.
+
+An exclusion with a reason, then, not a carve-out: the pointer says *where* the finding sits, this
+says *whose* it is.
+"""
 
 WITHIN_INIT: Final = re.compile(r"^(component\.interface\[\d+\])\.definition\.init\b")
 """A pointer inside a declaration's ``init``: the values grid is what opens on it.
@@ -66,7 +129,7 @@ class Route:
     """Where a finding leads."""
 
     kind: str
-    """``variable``, ``unit``, ``component``, ``type``, ``values`` or ``constant``."""
+    """``variable``, ``unit``, ``component``, ``type``, ``values``, ``constant`` or ``section``."""
 
     name: str | None
     """The variable's name, the unit's spelling or the type's name; ``None`` for a component,
@@ -106,12 +169,42 @@ def route_of(
         # member would open the type rather than the constant the finding is about.
         named = read(path, cache).value_at(pointer)
         return Route("constant", named) if isinstance(named, str) and named else None
+    if check not in ABOUT_THE_DECLARATION and PLACEMENT_KEY.match(pointer) is not None:
+        # The value at the pointer is the name, as it is for a unit and a constant above. What
+        # differs is that the id is asked only whether the finding is the *declaration's* -
+        # `consumer-storage` alone - rather than which of the section's checks it is: the pointer
+        # carries the route, for the reason PLACEMENT_KEY gives, and a check the id set does not
+        # name falls through to the declaration's own route below.
+        #
+        # Ahead of WITHIN_DECLARATION, which matches this pointer too, being broader: caught
+        # there first, every finding about where a variable's data sits would open the variable.
+        #
+        # Written as statements rather than the conditional expression the constant branch uses:
+        # coverage.py counts no branch in one, so the arm that answers nothing would pass the
+        # gate without a test ever asking for it.
+        named = read(path, cache).value_at(pointer)
+        if isinstance(named, str) and named:
+            return Route("section", named)
+        return None
     within_constant = WITHIN_CONSTANT.match(pointer)
     if within_constant is not None:
         # Before the kind check below, as WITHIN_TYPE is: a constants file's kind is `constants`,
         # and a component may declare a constant inline at `component.constants[i]`.
         name = read(path, cache).value_at(f"{within_constant.group()}.name")
         return Route("constant", name) if isinstance(name, str) else None
+    within_section = WITHIN_SECTION.match(pointer)
+    if within_section is not None:
+        # Before the kind check below, as WITHIN_CONSTANT is, and for the sharper version of the
+        # same reason: a sections file's kind is `sections`, and a section has no second home
+        # inside a component, so every pointer this matches comes from a file the gate stops.
+        #
+        # The name is read from the entry's own `section` key, which is what SECTIONS calls its
+        # name - a constant's is `name` - so the two branches differ in that one word and in
+        # nothing else.
+        name = read(path, cache).value_at(f"{within_section.group()}.section")
+        if isinstance(name, str):
+            return Route("section", name)
+        return None
     within_type = WITHIN_TYPE.match(pointer)
     if within_type is not None:
         # A pointer anywhere inside an entry - its own keys, a member's, an enumerator's - is

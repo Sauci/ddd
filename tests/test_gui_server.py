@@ -646,6 +646,10 @@ class TestBlankParameters:
         "path",
         [
             "/api/variable?name=",
+            "/api/type?name=",
+            "/api/constant?name=",
+            "/api/section?name=",
+            "/api/values?name=",
             "/api/unit?name=",
             "/api/file?path=",
             "/api/settle?name=&key=unit",

@@ -632,6 +632,15 @@ class TestTheDescriptorsInvariants:
         with pytest.raises(ValueError, match="required"):
             dataclasses.replace(CONSTANTS, required=frozenset({"value", "comment"}))
 
+    def test_a_name_key_that_is_also_a_settable_key_is_refused_at_construction(self) -> None:
+        """A vocabulary's name is renamed, not set: `rename_entry` reaches every place spelling it
+        while `set_entry` writes one key of one entry. A descriptor listing its `name_key` among
+        `keys` would offer the name through `?action=set`, which writes the entry's own name and
+        leaves every use pointing at the old one - a half-rename the api has no way to refuse.
+        Unreachable through the two shipped descriptors; the third is written by hand."""
+        with pytest.raises(ValueError, match="name_key"):
+            dataclasses.replace(SECTIONS, name_key="access")
+
     def test_a_nested_first_container_is_refused_at_construction(self) -> None:
         with pytest.raises(ValueError, match="containers"):
             dataclasses.replace(CONSTANTS, containers=("component.constants", "constants"))

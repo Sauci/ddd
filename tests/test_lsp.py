@@ -2430,6 +2430,31 @@ class TestRename:
         )
         assert {uri_to_path(uri).name for uri in edits.changes} == {"a.ddd.json"}
 
+    def test_a_constant_nothing_declares_renames_its_uses_alone(self, tmp_path: Path) -> None:
+        """The sibling of the type case above, and until the consolidation nothing pinned it.
+        `rename_sites` answers both kinds from one arm, so an ablation of that arm killed only the
+        type test - the constant half was exercised and unnamed. `unknown-constant` is already
+        reported; the rename still has to keep every file spelling it agreeing."""
+        from ddd.lsp.navigation import rename_edits
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Gain", dimensions=["GHOST"])),
+            },
+        )
+        path = tmp_path / "a.ddd.json"
+        cache: dict[Path, Document] = {}
+        edits = rename_edits(
+            self.index_of(tmp_path / "p.ddd.json"),
+            read(path, cache),
+            "component.interface[0].definition.dimensions[0]",
+            "SEEN",
+            cache,
+        )
+        assert {uri_to_path(uri).name for uri in edits.changes} == {"a.ddd.json"}
+
     def test_a_position_holding_a_number_starts_no_rename(self, tmp_path: Path) -> None:
         """A constant's value is a number; a rename box over it would rename nothing."""
         from ddd.lsp.navigation import RenameEdits, rename_edits, renameable_at

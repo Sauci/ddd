@@ -730,8 +730,9 @@ def rename_sites(built: Index, kind: str, name: str) -> list[Site]:
         return [Site(raster.path, f"{raster.pointer}.raster"), *uses]
     declared = (built.types if kind == "type" else built.constants).get(name)
     uses = (built.type_uses if kind == "type" else built.constant_uses).get(name, ())
-    own = [] if declared is None else [Site(declared.path, f"{declared.pointer}.name")]
-    return [*own, *uses]
+    if declared is None:
+        return list(uses)
+    return [Site(declared.path, f"{declared.pointer}.name"), *uses]
 
 
 def rename_problem(built: Index, name: str, kind: str = "variable") -> str | None:

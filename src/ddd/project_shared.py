@@ -140,7 +140,8 @@ class Vocabulary:
     and a raster's an a2l short name, and neither joins the namespace ``occupied`` guards."""
 
     def __post_init__(self) -> None:
-        """Three checks tying ``keys``, ``required``, ``judge`` and ``containers`` together, so a
+        """Four checks tying ``keys``, ``required``, ``judge``, ``name_key`` and ``containers``
+        together, so a
         descriptor that drops a key from one of these tables fails at construction rather than the
         first time a reader reaches the one that fell out of step.
 
@@ -158,6 +159,12 @@ class Vocabulary:
         ungiven = sorted(self.required - set(self.keys))
         if ungiven:
             msg = f"{self.kind}: {ungiven} in required but not in keys"
+            raise ValueError(msg)
+        if self.name_key in self.keys:
+            msg = (
+                f"{self.kind}: name_key '{self.name_key}' is also in keys, so the api would offer "
+                "the name through set, which renames the entry and nothing that spells it"
+            )
             raise ValueError(msg)
         if "." in self.containers[0]:
             msg = f"{self.kind}: containers[0] '{self.containers[0]}' is not a bare top-level key"
@@ -235,6 +242,7 @@ def located_on(
     Answered for a name no file declares too, which is what ``unknown-constant`` is: the question
     is whether the finding concerns that name, and the shape naming it is where it is filed.
 
+
     Where a finding sits does not by itself say whose it is, and
     :data:`~ddd.finding_routes.ABOUT_THE_DECLARATION` is the one place that difference is written
     down. This asks it for the same reason :func:`ddd.finding_routes.route_of` does, and asking it
@@ -246,21 +254,24 @@ def located_on(
     """
     if found.check in ABOUT_THE_DECLARATION:
         return False
-    location = found.location
-    if location is None:
+    if found.location is None:
         return False
-    resolved = file.resolve()
     entry = vocabulary.entries(built).get(name)
-    places = [] if entry is None else [entry]
+    places: list[Site] = []
+    if entry is not None:
+        places.append(entry)
     places.extend(vocabulary.used(built).get(name, ()))
-    return any(
-        place.path.resolve() == resolved
-        and (
-            location.pointer == place.pointer
-            or location.pointer.startswith((f"{place.pointer}.", f"{place.pointer}["))
-        )
-        for place in places
-    )
+    wanted = file.resolve()
+    return any(_at(place, wanted, found.location.pointer) for place in places)
+
+
+def _at(place: Site, path: Path, pointer: str) -> bool:
+    """Whether ``pointer`` in ``path`` is that place, or somewhere inside it."""
+    if place.path.resolve() != path:
+        return False
+    if pointer == place.pointer:
+        return True
+    return pointer.startswith((f"{place.pointer}.", f"{place.pointer}["))
 
 
 def shared_rows(

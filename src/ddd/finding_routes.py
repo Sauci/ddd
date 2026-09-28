@@ -3,9 +3,9 @@
 ``ddd gui`` lists what the analysis reported and, until now, left the reader to work out where
 to go: a sentence about a variable's declarations says nothing about which screen settles them.
 This answers what the page can open for one finding - the variable whose declaration it is
-about, the unit it names, the type its entry declares, or the component it is filed on - and
-answers nothing where the page has nothing to open, so that a row can say why instead of
-leading somewhere useless.
+about, the unit it names, the type its entry declares, the section it places data in, or the
+component it is filed on - and answers nothing where the page has nothing to open, so that a
+row can say why instead of leading somewhere useless.
 
 Pure: no GUI and no HTTP. :mod:`ddd.gui.api` turns a route into the shape ``GET /api/state``
 answers, and nothing else reads them.
@@ -37,9 +37,22 @@ opens its add form with it filled in. ``dimension-value`` names one whose value 
 and the value is the thing to change.
 """
 
+SECTION_CHECKS: Final = frozenset({"unknown-section"})
+"""The checks filed where a definition places its data, whose finding leads to that section.
+
+``unknown-section`` names one no file declares, and the route carries the name anyway, exactly as
+``unknown-constant`` does: the page opens the add form with it filled in, which is what a reader
+who placed data in a section nobody declared has come to the tab to do.
+
+The other two checks filed at that same key - ``section-access`` and ``section-alignment`` - are
+deliberately not here. Each says something about the *variable* ("'X' is a measurement, which the
+software writes, but '.calib' is read-only"), and the declaration's own panel is where its ``kind``
+and its ``section`` are changed, so both keep the variable route :data:`WITHIN_DECLARATION` already
+gives them.
+"""
+
 COMPONENT_KIND: Final = "component"
-"""The one file kind the page has a screen for; sections and rasters are what is left of
-milestone 6."""
+"""The one file kind the page has a screen for; rasters are what is left of milestone 6."""
 
 WITHIN_TYPE: Final = re.compile(r"^(?:component\.)?types\[\d+\]")
 """The entry a pointer inside a type lies in: the type itself, one of its keys, or a member of
@@ -50,6 +63,15 @@ WITHIN_CONSTANT: Final = re.compile(r"^(?:component\.)?constants\[\d+\]")
 """The entry a pointer inside a constant lies in - whether the constant was declared in a constants
 file (``constants[i]``) or inline by a component (``component.constants[i]``), which
 :mod:`ddd.loading` registers the same way."""
+
+WITHIN_SECTION: Final = re.compile(r"^sections\[\d+\]")
+"""The entry a pointer inside a section lies in: the entry itself, its name, its ``access``, its
+``alignment`` or its ``description``, all of which the one panel shows.
+
+No ``component.`` alternative, where :data:`WITHIN_CONSTANT` has one: a section is a project wide
+vocabulary with no home inside a component, which :attr:`ddd.project_shared.SECTIONS.containers`
+is the authority for - one container, ``sections``, where a constant has two.
+"""
 
 WITHIN_INIT: Final = re.compile(r"^(component\.interface\[\d+\])\.definition\.init\b")
 """A pointer inside a declaration's ``init``: the values grid is what opens on it.
@@ -66,7 +88,7 @@ class Route:
     """Where a finding leads."""
 
     kind: str
-    """``variable``, ``unit``, ``component``, ``type``, ``values`` or ``constant``."""
+    """``variable``, ``unit``, ``component``, ``type``, ``values``, ``constant`` or ``section``."""
 
     name: str | None
     """The variable's name, the unit's spelling or the type's name; ``None`` for a component,
@@ -106,12 +128,37 @@ def route_of(
         # member would open the type rather than the constant the finding is about.
         named = read(path, cache).value_at(pointer)
         return Route("constant", named) if isinstance(named, str) and named else None
+    if check in SECTION_CHECKS:
+        # Beside CONSTANT_CHECKS above and read the same way - the value at the pointer is the
+        # name - and, like it, ahead of the kind check below: the pointer is inside a component,
+        # so WITHIN_DECLARATION would otherwise claim it and open the variable instead.
+        #
+        # Written as statements rather than the conditional expression the constant branch uses:
+        # coverage.py counts no branch in one, so the arm that answers nothing would pass the
+        # gate without a test ever asking for it.
+        named = read(path, cache).value_at(pointer)
+        if isinstance(named, str) and named:
+            return Route("section", named)
+        return None
     within_constant = WITHIN_CONSTANT.match(pointer)
     if within_constant is not None:
         # Before the kind check below, as WITHIN_TYPE is: a constants file's kind is `constants`,
         # and a component may declare a constant inline at `component.constants[i]`.
         name = read(path, cache).value_at(f"{within_constant.group()}.name")
         return Route("constant", name) if isinstance(name, str) else None
+    within_section = WITHIN_SECTION.match(pointer)
+    if within_section is not None:
+        # Before the kind check below, as WITHIN_CONSTANT is, and for the sharper version of the
+        # same reason: a sections file's kind is `sections`, and a section has no second home
+        # inside a component, so every pointer this matches comes from a file the gate stops.
+        #
+        # The name is read from the entry's own `section` key, which is what SECTIONS calls its
+        # name - a constant's is `name` - so the two branches differ in that one word and in
+        # nothing else.
+        name = read(path, cache).value_at(f"{within_section.group()}.section")
+        if isinstance(name, str):
+            return Route("section", name)
+        return None
     within_type = WITHIN_TYPE.match(pointer)
     if within_type is not None:
         # A pointer anywhere inside an entry - its own keys, a member's, an enumerator's - is

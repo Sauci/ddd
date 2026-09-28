@@ -17,14 +17,12 @@ from ddd.project_shared import (
     _PLACEMENT_SHAPE,
     CONSTANTS,
     SECTIONS,
-    constant_row,
-    constant_string,
-    constant_text,
-    constant_uses,
-    located_on_constant,
+    located_on,
     row_of,
     shared_rows,
     shown,
+    string_of,
+    text_of,
     uses_of,
 )
 
@@ -121,7 +119,7 @@ _WITH_A_STRUCTURE = {
 
 # Two components declaring the same variable name - one producing it, one reading it - each
 # restating `dimensions`. `declarations_of` returns one `Declared` per component under the one
-# name "Trend", and `constant_uses` has to tell them apart by site rather than take whichever it
+# name "Trend", and `_constant_uses` has to tell them apart by site rather than take whichever it
 # finds first, or a use in "B" would be reported as one in "A".
 _TWO_DECLARATIONS = {
     "c.ddd.json": {
@@ -199,7 +197,7 @@ class TestTheRows:
         built, _ = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
         rows = shared_rows(built, (), cache)
-        assert [(row.kind, row.name, row.value) for row in rows] == [
+        assert [(row.kind, row.name, row.states) for row in rows] == [
             ("constant", "CELLS", "2.0"),
             ("constant", "TREND_SAMPLES", "16"),
         ]
@@ -210,7 +208,7 @@ class TestTheRows:
         an edit built from that row would retype it."""
         built, _ = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
-        assert constant_row(built, "CELLS", (), cache).value == "2.0"
+        assert row_of(CONSTANTS, built, "CELLS", (), cache).states == "2.0"
 
     def test_a_row_counts_the_shapes_that_name_it(self, tmp_path: Path) -> None:
         built, _ = built_of(tmp_path, **TWO_HOMES)
@@ -275,8 +273,8 @@ class TestTheRows:
         about_the_project = Diagnostic(
             check="no-components", severity=Severity.ERROR, message="none", location=None
         )
-        assert not located_on_constant(
-            built, "TREND_SAMPLES", tmp_path / "p.ddd.json", about_the_project
+        assert not located_on(
+            CONSTANTS, built, "TREND_SAMPLES", tmp_path / "p.ddd.json", about_the_project
         )
 
     def test_a_finding_in_another_file_belongs_to_no_constant(self, tmp_path: Path) -> None:
@@ -291,7 +289,7 @@ class TestTheRows:
                 tmp_path / "c.ddd.json", "component.interface[0].definition.dimensions[0]"
             ),
         )
-        assert not located_on_constant(built, "TREND_SAMPLES", tmp_path / "c.ddd.json", elsewhere)
+        assert not located_on(CONSTANTS, built, "TREND_SAMPLES", tmp_path / "c.ddd.json", elsewhere)
 
     def test_a_finding_about_a_name_with_no_entry_and_no_use_belongs_to_no_constant(
         self, tmp_path: Path
@@ -309,7 +307,7 @@ class TestTheRows:
                 tmp_path / "a.ddd.json", "component.interface[0].definition.typename"
             ),
         )
-        assert not located_on_constant(built, "SPARE_CELLS", tmp_path / "a.ddd.json", unrelated)
+        assert not located_on(CONSTANTS, built, "SPARE_CELLS", tmp_path / "a.ddd.json", unrelated)
 
     def test_a_finding_on_a_name_nothing_declares_still_belongs_to_it(self, tmp_path: Path) -> None:
         """`unknown-constant` is filed at a shape naming a constant that does not exist. The
@@ -346,31 +344,31 @@ class TestTheRows:
                 tmp_path / "a.ddd.json", "component.interface[0].definition.dimensions[0]"
             ),
         )
-        assert located_on_constant(built, "MISSING_CELLS", tmp_path / "a.ddd.json", undeclared)
+        assert located_on(CONSTANTS, built, "MISSING_CELLS", tmp_path / "a.ddd.json", undeclared)
 
 
 class TestOneConstantsPanel:
     def test_its_value_and_description_are_read_from_its_entry(self, tmp_path: Path) -> None:
         built, _ = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
-        assert constant_text(built, "TREND_SAMPLES", "value", cache) == "16"
+        assert text_of(CONSTANTS, built, "TREND_SAMPLES", "value", cache) == "16"
         assert (
-            constant_string(built, "TREND_SAMPLES", "description", cache)
+            string_of(CONSTANTS, built, "TREND_SAMPLES", "description", cache)
             == "slots of a trend buffer"
         )
 
     def test_a_key_the_entry_has_not_reads_empty(self, tmp_path: Path) -> None:
         built, _ = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
-        assert constant_string(built, "CELLS", "description", cache) == ""
+        assert string_of(CONSTANTS, built, "CELLS", "description", cache) == ""
 
     def test_a_key_the_entry_has_not_reads_empty_as_text_too(self, tmp_path: Path) -> None:
-        """The same absent `description` `constant_string` reads above, read through
-        `constant_text` instead: the two call different `Document` methods - `value_at` against
+        """The same absent `description` `string_of` reads above, read through
+        `text_of` instead: the two call different `Document` methods - `value_at` against
         `raw_at` - so each needs its own case to reach its own `None`."""
         built, _ = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
-        assert constant_text(built, "CELLS", "description", cache) == ""
+        assert text_of(CONSTANTS, built, "CELLS", "description", cache) == ""
 
     def test_a_key_holding_something_other_than_a_string_reads_empty_as_a_string(
         self, tmp_path: Path
@@ -379,21 +377,21 @@ class TestOneConstantsPanel:
         prose there, and a number would arrive as one."""
         built, _ = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
-        assert constant_string(built, "TREND_SAMPLES", "value", cache) == ""
+        assert string_of(CONSTANTS, built, "TREND_SAMPLES", "value", cache) == ""
 
     def test_a_name_the_index_does_not_hold_reads_empty(self, tmp_path: Path) -> None:
         """The api looks a name up before it asks, so this arm is only reachable from a test -
         which is where `ddd.project_types` covers its own."""
         built, _ = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
-        assert constant_text(built, "NOTHING", "value", cache) == ""
-        assert constant_string(built, "NOTHING", "description", cache) == ""
-        assert constant_uses(built, "NOTHING", cache) == ()
+        assert text_of(CONSTANTS, built, "NOTHING", "value", cache) == ""
+        assert string_of(CONSTANTS, built, "NOTHING", "description", cache) == ""
+        assert uses_of(CONSTANTS, built, "NOTHING", cache) == ()
 
     def test_a_use_names_the_variable_and_the_component_it_is_in(self, tmp_path: Path) -> None:
         built, _ = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
-        used = constant_uses(built, "TREND_SAMPLES", cache)
+        used = uses_of(CONSTANTS, built, "TREND_SAMPLES", cache)
         assert [(use.kind, use.name, use.component) for use in used] == [("variable", "Trend", "A")]
         assert used[0].site.pointer == "component.interface[0].definition.dimensions[0]"
 
@@ -402,7 +400,7 @@ class TestOneConstantsPanel:
         shape is written."""
         built, _ = built_of(tmp_path, **_WITH_AN_AXIS)
         cache: dict[Path, Document] = {}
-        used = constant_uses(built, "TREND_SAMPLES", cache)
+        used = uses_of(CONSTANTS, built, "TREND_SAMPLES", cache)
         assert [(use.kind, use.name) for use in used] == [("variable", "TrendAxis")]
         assert used[0].site.pointer.endswith(".size")
 
@@ -413,7 +411,7 @@ class TestOneConstantsPanel:
         types file no component owns, so the structure's name is what locates it."""
         built, _ = built_of(tmp_path, **_WITH_A_STRUCTURE)
         cache: dict[Path, Document] = {}
-        used = constant_uses(built, "TREND_SAMPLES", cache)
+        used = uses_of(CONSTANTS, built, "TREND_SAMPLES", cache)
         assert [(use.kind, use.name, use.component) for use in used] == [
             ("member", "Sample_t.history", None)
         ]
@@ -445,7 +443,7 @@ class TestOneConstantsPanel:
             },
         )
         cache: dict[Path, Document] = {}
-        assert constant_uses(built, "TREND_SAMPLES", cache) == ()
+        assert uses_of(CONSTANTS, built, "TREND_SAMPLES", cache) == ()
 
     def test_two_declarations_of_one_variable_keep_their_own_components(
         self, tmp_path: Path
@@ -458,7 +456,7 @@ class TestOneConstantsPanel:
         `test_a_declaration_naming_a_type_comes_with_its_component_and_role`."""
         built, _ = built_of(tmp_path, **_TWO_DECLARATIONS)
         cache: dict[Path, Document] = {}
-        used = constant_uses(built, "TREND_SAMPLES", cache)
+        used = uses_of(CONSTANTS, built, "TREND_SAMPLES", cache)
         assert [(use.kind, use.name, use.component) for use in used] == [
             ("variable", "Trend", "A"),
             ("variable", "Trend", "B"),
@@ -473,7 +471,7 @@ class TestOneConstantsPanel:
             '{"component": {"name": "A", "interface": []}}', encoding="utf-8"
         )
         cache: dict[Path, Document] = {}
-        assert constant_uses(built, "TREND_SAMPLES", cache) == ()
+        assert uses_of(CONSTANTS, built, "TREND_SAMPLES", cache) == ()
 
     def test_a_declaration_renamed_since_is_not_a_use(self, tmp_path: Path) -> None:
         """A different drift than the declaration losing its name above: the name at the
@@ -506,7 +504,7 @@ class TestOneConstantsPanel:
             },
         )
         cache: dict[Path, Document] = {}
-        assert constant_uses(built, "TREND_SAMPLES", cache) == ()
+        assert uses_of(CONSTANTS, built, "TREND_SAMPLES", cache) == ()
 
 
 def test_the_two_shape_patterns_match_what_the_index_calls_a_shape() -> None:
@@ -544,16 +542,6 @@ def test_the_placement_pattern_matches_what_the_index_calls_a_placement() -> Non
 
 
 class TestTheDescriptor:
-    def test_a_row_is_read_through_the_vocabulary_it_belongs_to(self, tmp_path: Path) -> None:
-        # The same answer the constants-named reader gives, asked the generic way. Until sections
-        # arrive this proves only that the descriptor threads through; Task 4 is what proves it
-        # generalises, which is why the two arrive in that order.
-        built, _ = built_of(tmp_path, **TWO_HOMES)
-        cache: dict[Path, Document] = {}
-        assert row_of(CONSTANTS, built, "TREND_SAMPLES", (), cache) == constant_row(
-            built, "TREND_SAMPLES", (), cache
-        )
-
     def test_the_states_cell_of_a_constant_is_the_text_its_file_spells(
         self, tmp_path: Path
     ) -> None:

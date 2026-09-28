@@ -83,12 +83,13 @@ from ddd.lsp.units import (
 from ddd.object_values import ValueRefusalError, grid_of, set_cell, set_values
 from ddd.project_shared import (
     CONSTANTS,
-    constant_string,
-    constant_text,
-    constant_uses,
-    located_on_constant,
+    SECTIONS,
+    Vocabulary,
     shared_rows,
+    shown,
 )
+from ddd.project_shared import located_on as located_on_entry
+from ddd.project_shared import uses_of as uses_of_entry
 from ddd.project_types import (
     SCALAR_KEYS,
     fixed_by,
@@ -110,11 +111,11 @@ from ddd.shared_plans import (
     SharedPlan,
     SharedProject,
     SharedRefusalError,
-    add_constant,
+    add_entry,
     project_of,
-    remove_constant,
-    rename_constant,
-    set_constant,
+    remove_entry,
+    rename_entry,
+    set_entry,
 )
 from ddd.type_plans import REQUIRED, TypePlan, TypeRefusalError, rename_type, set_key
 from ddd.variable_keys import offer_for, offers
@@ -164,6 +165,27 @@ which may be absent: leaving it out is what taking the key away means. ``add`` t
 one of its required parameters instead: a constant declared with no value is not what ``add``
 means, unlike ``set``, which a reader may ask of a row without having typed anything yet."""
 
+SECTION_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
+    "set": ("name", "key"),
+    "rename": ("name", "to"),
+    "add": ("name", "access", "alignment"),
+    "remove": ("name",),
+}
+"""What each change of a section takes, beside the action itself.
+
+``set``, ``rename`` and ``remove`` are the constants table's own, spelled again rather than shared:
+these are the query parameters of one url, and a table two urls read from would tie a change of
+either endpoint to the other.
+
+``add`` is where the two differ, and where the descriptor decides: one parameter per key of
+:attr:`ddd.project_shared.SECTIONS.required`, because a section the model gives no default for
+``access`` or ``alignment`` is one whose file would not load the moment it was written -
+``?raw=`` alone, which is all a constant's one required key needs, could not say either. Each
+carries json text, judged as ``set``'s ``raw`` is:
+``?access="read-only"&alignment=4``. ``description`` is not among them, having a default, and is
+set from the panel afterwards.
+"""
+
 DECLARATION_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
     "read": ("file", "name", "scope"),
     "declare": ("file", "scope", "definition"),
@@ -180,6 +202,13 @@ _NOTHING_COMPARABLE: Final = (
 )
 
 type Query = Mapping[str, Sequence[str]]
+
+type SharedPlanner = Callable[
+    [str, Index, SharedProject, Mapping[str, str], str | None, dict[Path, Document]], SharedPlan
+]
+"""What :meth:`Api._shared_plan` asks for the plan itself: the action, the index, the project's own
+files, the parameters the action takes, ``?raw=`` where the request carried one, and the read cache
+the route shares. One per vocabulary, since ``add`` is spelled differently for each."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -738,7 +767,7 @@ class Api:
                     {
                         "kind": row.kind,
                         "name": row.name,
-                        "value": row.states,
+                        "states": row.states,
                         "uses": row.uses,
                         "findings": row.findings,
                     }
@@ -757,43 +786,79 @@ class Api:
             return _undeclared(revision, name)
         cache: dict[Path, Document] = {}
         site = built.constants[name]
-        sources = {file.path.resolve(): file for file in revision.files}
+        # The whole entry's display texts in one read, through the descriptor: `value` as the json
+        # text its file spells and `description` as the string it holds, which is what
+        # `CONSTANTS.strings` says of each. The panel names its keys because the reply does; a
+        # vocabulary's own keys are the descriptor's business, not this route's.
+        texts = shown(CONSTANTS, built, name, cache)
         return Reply(
             200,
             contract.ConstantReply(
                 revision=revision.number,
                 name=name,
-                value=constant_text(built, name, "value", cache),
-                description=constant_string(built, name, "description", cache),
+                value=texts["value"],
+                description=texts["description"],
                 file=site.path.resolve().as_posix(),
                 pointer=site.pointer,
-                uses=[
-                    {
-                        "path": use.site.path.resolve().as_posix(),
-                        "pointer": use.site.pointer,
-                        "kind": use.kind,
-                        "name": use.name,
-                        "component": use.component,
-                    }
-                    for use in constant_uses(built, name, cache)
-                ],
-                findings=[
-                    _finding(filed, sources.get(filed.file.resolve()), cache)
-                    for filed in revision.findings
-                    if located_on_constant(built, name, filed.file, filed.diagnostic)
-                ],
+                uses=_entry_uses(CONSTANTS, built, name, cache),
+                findings=_entry_findings(CONSTANTS, revision, built, name, cache),
+            ).model_dump(mode="json"),
+        )
+
+    def _section(self, query: Query, body: bytes | None) -> Reply:
+        revision = self._opened()
+        name = _single(query.get("name"))
+        if not name:
+            return _error(400, "bad-request", "section takes ?name=")
+        built = revision.index
+        if built is None or name not in built.sections:
+            return _undeclared(revision, name)
+        cache: dict[Path, Document] = {}
+        site = built.sections[name]
+        texts = shown(SECTIONS, built, name, cache)
+        return Reply(
+            200,
+            contract.SectionReply(
+                revision=revision.number,
+                name=name,
+                access=texts["access"],
+                alignment=texts["alignment"],
+                description=texts["description"],
+                file=site.path.resolve().as_posix(),
+                pointer=site.pointer,
+                uses=_entry_uses(SECTIONS, built, name, cache),
+                findings=_entry_findings(SECTIONS, revision, built, name, cache),
             ).model_dump(mode="json"),
         )
 
     def _constant_plan(self, query: Query, body: bytes | None) -> Reply:
+        return self._shared_plan(CONSTANTS, CONSTANT_PLANS, _constant_plan_of, query)
+
+    def _section_plan(self, query: Query, body: bytes | None) -> Reply:
+        return self._shared_plan(SECTIONS, SECTION_PLANS, _section_plan_of, query)
+
+    def _shared_plan(
+        self,
+        vocabulary: Vocabulary,
+        plans: Mapping[str, tuple[str, ...]],
+        plan_of: SharedPlanner,
+        query: Query,
+    ) -> Reply:
+        """One change of one entry of ``vocabulary``, previewed and never written.
+
+        Written once for both endpoints rather than twice: the two differ in their table of
+        actions, the verb each action reaches and the noun a refusal names, all three of which
+        arrive as arguments - everything else here is about the request and the revision, which a
+        second copy would only be able to get wrong differently.
+        """
         revision = self._opened()
         action = _single(query.get("action")) or ""
-        takes = CONSTANT_PLANS.get(action)
+        takes = plans.get(action)
         if takes is None:
             return _error(
                 400,
                 "bad-request",
-                f"constant-plan takes ?action= one of {', '.join(CONSTANT_PLANS)}",
+                f"{vocabulary.kind}-plan takes ?action= one of {', '.join(plans)}",
             )
         given = {part: value for part in takes if (value := _single(query.get(part))) is not None}
         if len(given) < len(takes) or given.get("name") == "" or given.get("raw") == "":
@@ -803,9 +868,9 @@ class Api:
         # a request that is not json is a mistake about the request, not a refusal about the
         # project, so it answers 400 rather than being folded into a `SharedRefusalError`.
         raw = _single(query.get("raw")) or None
-        if raw is not None:
+        for text in _json_texts(vocabulary, given, raw):
             try:
-                parse_raw(raw)
+                parse_raw(text)
             except EditError as refused:
                 return _error(400, "bad-request", str(refused))
         built = revision.index
@@ -815,17 +880,17 @@ class Api:
                 409,
                 UNREADABLE,
                 f"{', '.join(unread) or revision.project.name} did not load, "
-                "so no constant of the project can be changed",
+                f"so no {vocabulary.kind} of the project can be changed",
             )
         cache: dict[Path, Document] = {}
         project = project_of(
-            CONSTANTS,
+            vocabulary,
             revision.project,
             [file.path for file in revision.files if not file.loaded],
             cache,
         )
         try:
-            plan = _constant_plan_of(action, built, project, given, raw, cache)
+            plan = plan_of(action, built, project, given, raw, cache)
         except SharedRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
@@ -1206,6 +1271,8 @@ _ROUTES: Final[dict[str, dict[str, Answer]]] = {
     "/api/shared": {"GET": Api._shared},
     "/api/constant": {"GET": Api._constant},
     "/api/constant-plan": {"GET": Api._constant_plan},
+    "/api/section": {"GET": Api._section},
+    "/api/section-plan": {"GET": Api._section_plan},
     "/api/declarable": {"GET": Api._declarable},
     "/api/declaration-plan": {"GET": Api._declaration_plan},
     "/api/values": {"GET": Api._values},
@@ -1370,12 +1437,111 @@ def _constant_plan_of(
     file, which is the one verb that needs to know where the project's constants files are.
     """
     if action == "set":
-        return set_constant(built, given["name"], given["key"], raw, cache)
+        return set_entry(CONSTANTS, built, given["name"], given["key"], raw, cache)
     if action == "rename":
-        return rename_constant(built, given["name"], given["to"], cache)
+        return rename_entry(CONSTANTS, built, given["name"], given["to"], cache)
     if action == "remove":
-        return remove_constant(built, given["name"], cache)
-    return add_constant(built, project, given["name"], given["raw"], cache)
+        return remove_entry(CONSTANTS, built, given["name"], cache)
+    # `description` is given too, empty, rather than left out: `add`'s form offers no description
+    # and the entry it writes has always stated one, which is the byte a newly declared constant
+    # is compared against.
+    return add_entry(
+        CONSTANTS,
+        built,
+        project,
+        given["name"],
+        {"value": given["raw"], "description": '""'},
+        cache,
+    )
+
+
+def _section_plan_of(
+    action: str,
+    built: Index,
+    project: SharedProject,
+    given: Mapping[str, str],
+    raw: str | None,
+    cache: dict[Path, Document],
+) -> SharedPlan:
+    """The plan ``action`` names, over the parameters :data:`SECTION_PLANS` says it takes.
+
+    The same four verbs as :func:`_constant_plan_of`, over the same three parameters, differing
+    only in ``add``: a section is declared with one json text per required key rather than a lone
+    ``?raw=``, which is why the two dispatchers are written out instead of one taking the
+    descriptor. Sharing them would mean either naming a constant's value ``?value=`` on the wire -
+    a url the page already calls - or teaching one function which of its parameters each
+    vocabulary spells differently, and that is the branch the descriptor exists to remove.
+    """
+    if action == "set":
+        return set_entry(SECTIONS, built, given["name"], given["key"], raw, cache)
+    if action == "rename":
+        return rename_entry(SECTIONS, built, given["name"], given["to"], cache)
+    if action == "remove":
+        return remove_entry(SECTIONS, built, given["name"], cache)
+    return add_entry(SECTIONS, built, project, given["name"], _declared(SECTIONS, given), cache)
+
+
+def _declared(vocabulary: Vocabulary, given: Mapping[str, str]) -> dict[str, str]:
+    """The json text per key an ``add`` of ``vocabulary`` was given, and an empty ``description``
+    beside them.
+
+    Sorted, so that a refusal about two bad keys names the same one every run: ``raws`` is walked
+    in its own order by :func:`~ddd.shared_plans.add_entry`, and a message that depended on a
+    set's iteration order would be a test that passed most of the time.
+    """
+    declared = {key: given[key] for key in sorted(vocabulary.required)}
+    declared["description"] = '""'
+    return declared
+
+
+def _json_texts(vocabulary: Vocabulary, given: Mapping[str, str], raw: str | None) -> list[str]:
+    """Every part of a shared plan request that has to be json, in a fixed order.
+
+    ``?raw=`` where there is one, and the value of each required key an ``add`` carries. Both are
+    embedded into a file verbatim, so both are the request's business to get right: read as text a
+    reader who typed ``read-only`` where ``"read-only"`` was wanted would otherwise meet
+    *"read-only is not an access a section may state ... : read-write or read-only"*, a sentence
+    naming the value it refuses among the ones it allows.
+
+    ``name``, ``to`` and ``key`` are not here: each is a plain string the verb quotes itself.
+    """
+    texts = [] if raw is None else [raw]
+    texts.extend(given[key] for key in sorted(vocabulary.required) if key in given)
+    return texts
+
+
+def _entry_uses(
+    vocabulary: Vocabulary, built: Index, name: str, cache: dict[Path, Document]
+) -> list[dict[str, Any]]:
+    """Every shape naming that entry of ``vocabulary``, as the page reads one: a constant's
+    dimensions and axis sizes, a section's placements, whichever the descriptor reads."""
+    return [
+        {
+            "path": use.site.path.resolve().as_posix(),
+            "pointer": use.site.pointer,
+            "kind": use.kind,
+            "name": use.name,
+            "component": use.component,
+        }
+        for use in uses_of_entry(vocabulary, built, name, cache)
+    ]
+
+
+def _entry_findings(
+    vocabulary: Vocabulary,
+    revision: Revision,
+    built: Index,
+    name: str,
+    cache: dict[Path, Document],
+) -> list[dict[str, Any]]:
+    """Every finding of the revision that entry of ``vocabulary`` owns: filed inside its own
+    record, or at a shape naming it - a constant's dimension, a section's placement."""
+    sources = {file.path.resolve(): file for file in revision.files}
+    return [
+        _finding(filed, sources.get(filed.file.resolve()), cache)
+        for filed in revision.findings
+        if located_on_entry(vocabulary, built, name, filed.file, filed.diagnostic)
+    ]
 
 
 def _declaration_plan_of(

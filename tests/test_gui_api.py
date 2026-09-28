@@ -26,8 +26,9 @@ from ddd import __version__
 from ddd.cli import EXIT_OK, main
 from ddd.diagnostics import CHECKS
 from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
-from ddd.gui.api import Api, Reply
+from ddd.gui.api import SECTION_PLANS, Api, Reply
 from ddd.gui.session import Session
+from ddd.project_shared import SECTIONS
 from ddd.variable_keys import KEY_ORDER
 
 UNIT = "component.interface[0].definition.unit"
@@ -74,7 +75,7 @@ LISTED_TWICE = {
     "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
 }
 
-# A constant declared with no `description` at all - `set_constant`'s "nothing to remove" arm
+# A constant declared with no `description` at all - `set_entry`'s "nothing to remove" arm
 # needs an entry the key is already absent from, which no shipped example happens to have.
 NO_DESCRIPTION = {
     "p.ddd.json": project("P", "c.ddd.json"),
@@ -84,7 +85,7 @@ NO_DESCRIPTION = {
 # A constants file whose one entry fails the format - missing `value` - so the project as a
 # whole still opens (unlike a component, which loads nothing when invalid) but this one file
 # does not: measured with a scratch probe, `built` is not `None` and `c.ddd.json` is in both
-# `revision.files` (not loaded) and `shared_project(...).constants_files` (still recognised as
+# `revision.files` (not loaded) and `project_of(CONSTANTS, ...).files` (still recognised as
 # a constants file, since that only asks whether its top level holds a `constants` key).
 UNREADABLE_CONSTANTS = {
     "p.ddd.json": project("P", "c.ddd.json"),
@@ -138,6 +139,62 @@ UNUSED_CONSTANT = {
             {"name": "KEPT", "value": 1, "description": "stays after SPARE goes"},
         ]
     },
+}
+
+# The sections the shipped example cannot supply: both of its own are placed in, so neither may
+# be removed, and a project that has no sections file at all is the one `add` creates into.
+#
+# Two sections, one of them named by nothing: removing it must not empty the list below the
+# format's own `min_length=1` on `sections`, which is the case SOLE_SECTION_IN_A_FILE is for.
+UNUSED_SECTION = {
+    "p.ddd.json": project("P", "s.ddd.json", "a.ddd.json"),
+    "s.ddd.json": {
+        "sections": [
+            {"section": ".spare", "access": "read-write", "alignment": 4},
+            {"section": ".ram", "access": "read-write", "alignment": 4},
+        ]
+    },
+    "a.ddd.json": component("A", declare("output", "Gain", section=".ram")),
+}
+
+# One section and nothing else in the list, so removing it would leave `"sections": []` - a
+# document `SectionsFile` rejects, exactly as `"constants": []` is rejected, and two clicks from
+# this tab: declare a section into a project that has none, then remove it.
+SOLE_SECTION_IN_A_FILE = {
+    "p.ddd.json": project("P", "s.ddd.json"),
+    "s.ddd.json": {"sections": [{"section": ".sole", "access": "read-write", "alignment": 4}]},
+}
+
+# A sections file whose one entry fails the format - no `access` - so the project as a whole
+# still opens and this one file does not: measured, `built` is not `None` and `s.ddd.json` is in
+# both `revision.files` (not loaded) and `project_of(SECTIONS, ...).files` (still recognised as a
+# sections file, since that only asks whether its top level holds a `sections` key).
+UNREADABLE_SECTIONS = {
+    "p.ddd.json": project("P", "s.ddd.json"),
+    "s.ddd.json": {"sections": [{"section": ".bad", "alignment": 4}]},
+}
+
+# A project whose only sections file is truncated the way an editor leaves one being typed into.
+# Named `places.ddd.json` so that its kind cannot be guessed from its name either.
+HALF_WRITTEN_SECTIONS = {
+    "p.ddd.json": project("P", "places.ddd.json", "a.ddd.json"),
+    "places.ddd.json": '{"sections": [{"section": "',
+    "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+}
+
+# A stray sections.ddd.json beside the project description, naming nothing the project includes.
+STRAY_SECTIONS_FILE = {
+    "p.ddd.json": project("P", "a.ddd.json"),
+    "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+    "sections.ddd.json": "not a file `add` wrote",
+}
+
+# A definition placed in a section no file declares, which is what `unknown-section` reports and
+# the one route a reader follows to an add form rather than to a panel.
+PLACED_NOWHERE = {
+    "p.ddd.json": project("P", "s.ddd.json", "a.ddd.json"),
+    "s.ddd.json": {"sections": [{"section": ".calib", "access": "read-only", "alignment": 4}]},
+    "a.ddd.json": component("A", declare("output", "Gain", section=".nvm")),
 }
 
 
@@ -2744,7 +2801,7 @@ class TestShared:
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         body = get(api, "/api/shared").body
         assert body["revision"] == 1
-        assert [(e["kind"], e["name"], e["value"]) for e in body["entries"]] == [
+        assert [(e["kind"], e["name"], e["states"]) for e in body["entries"]] == [
             ("constant", "PRESSURE_CELLS", "8"),
             ("constant", "TREND_SAMPLES", "16"),
             ("section", ".calib", "read-only, align 4"),
@@ -2761,7 +2818,7 @@ class TestShared:
         """Review finding: every fixture elsewhere in this class checks clean, so a row's own
         `findings` count was never asked to be anything but 0 - a mutation that hard-codes it to
         0 passed the whole file. `dimension-value` is filed at the shape naming the constant, not
-        at its own entry (`located_on_constant` counts both), so breaking `TREND_SAMPLES`'s value
+        at its own entry (`located_on` counts both), so breaking `TREND_SAMPLES`'s value
         files exactly one finding, on the one row, without disturbing `PRESSURE_CELLS`'s."""
         api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
         text = (root / "constants.ddd.json").read_text(encoding="utf-8")
@@ -2986,7 +3043,12 @@ class TestConstant:
         assert applied(api, preview, "NEW_CONST declared").status == 200
         text = (root / "constants.ddd.json").read_text(encoding="utf-8")
         assert created["hunks"] == [{"line": 1, "before": [], "after": text.splitlines()}]
-        assert json.loads(text)["constants"][0]["name"] == "NEW_CONST"
+        # The whole entry, not just its name: `add` gives `description` an empty string of its
+        # own although the form asks for none, and nothing else in this suite says so - the hunk
+        # above is checked against the file it wrote, so it agrees with whatever was written.
+        assert json.loads(text)["constants"] == [
+            {"name": "NEW_CONST", "value": 5, "description": ""}
+        ]
         assert '"constants.ddd.json"' in (root / "p.ddd.json").read_text(encoding="utf-8")
 
     def test_an_add_of_a_name_already_declared_is_refused_in_the_editor_s_words(
@@ -3111,6 +3173,466 @@ class TestConstant:
 
     def test_constant_plan_needs_an_open_project(self, root: Path) -> None:
         reply = get(Api(Session(root)), "/api/constant-plan", action="remove", name="X")
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+
+class TestSection:
+    """``GET /api/section`` and ``GET /api/section-plan``, over examples/vocabulary and the small
+    trees it cannot supply: both of its sections are placed in, so neither may be removed, and it
+    has a sections file, so nothing there reaches ``add``'s creating arm.
+
+    The constants pair's sibling, request for request, which is the point: the two routes run the
+    same five verbs over a different :class:`~ddd.project_shared.Vocabulary`, so a case one of
+    them answers and the other does not would be a case the descriptor failed to describe.
+    """
+
+    def test_the_panel_names_its_entry_its_keys_and_the_variable_it_holds(
+        self, tmp_path: Path
+    ) -> None:
+        """`access` and `description` arrive as prose and `alignment` as the json text its file
+        spells, which is what `SECTIONS.strings` decides: read the other way round, `access` would
+        carry its quotes onto the chooser and `alignment` would come back empty, the value at that
+        key being no string."""
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        body = get(api, "/api/section", name=".calib").body
+        assert body["revision"] == 1
+        assert body["name"] == ".calib"
+        assert body["access"] == "read-only"
+        assert body["alignment"] == "4"
+        assert body["description"].startswith("calibration flash")
+        assert body["file"] == posix(root, "sections.ddd.json")
+        assert body["pointer"] == "sections[1]"
+        assert [(u["kind"], u["name"], u["component"], u["pointer"]) for u in body["uses"]] == [
+            ("variable", "TorqueLimit", "Pump", "component.interface[3].definition.section")
+        ]
+        assert body["findings"] == []
+
+    def test_a_section_two_definitions_place_data_in_lists_both(self, tmp_path: Path) -> None:
+        """The count is the one a reader of the tab came for - which variables sit there - so a
+        panel listing whichever the index happened to record first would be worse than none.
+        `.calib` above holds one; `.fast_ram` is the example's other section and holds two."""
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        body = get(api, "/api/section", name=".fast_ram").body
+        assert body["access"] == "read-write"
+        assert [u["name"] for u in body["uses"]] == ["PumpSpeed", "ManifoldPressure"]
+
+    def test_a_finding_at_a_definition_placing_data_there_is_the_section_s_own(
+        self, tmp_path: Path
+    ) -> None:
+        """Both arms of the panel's own filter in one revision: `section-access` is filed at the
+        definition's `section` key - a use site, never the entry - so making `.fast_ram` read-only
+        files one finding per measurement it holds, on that panel, and leaves `.calib`'s empty.
+
+        Their route is the variable's and not the section's, deliberately: the sentence is about
+        the object ("'PumpSpeed' is a measurement, which the software writes"), and its own panel
+        is where a reader changes the `kind` or the `section` it names."""
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        text = (root / "sections.ddd.json").read_text(encoding="utf-8")
+        (root / "sections.ddd.json").write_text(
+            text.replace(
+                '"section": ".fast_ram", "access": "read-write"',
+                '"section": ".fast_ram", "access": "read-only"',
+            ),
+            encoding="utf-8",
+        )
+        api.session.poll()
+        fast = get(api, "/api/section", name=".fast_ram").body
+        assert [(f["check"], f["route"]) for f in fast["findings"]] == [
+            ("section-access", {"kind": "variable", "name": "PumpSpeed"}),
+            ("section-access", {"kind": "variable", "name": "ManifoldPressure"}),
+        ]
+        assert get(api, "/api/section", name=".calib").body["findings"] == []
+
+    def test_a_duplicate_section_finding_routes_back_to_the_section(self, tmp_path: Path) -> None:
+        """The fix that belongs beside the route: `FindingRoute.kind` had no `"section"` member
+        until this part, and `_finding` builds that model for every finding of every request - so
+        this panel raised a `pydantic.ValidationError` before a test could reach the assertion,
+        exactly as part 13's `constant` nearly shipped. Every other test of this class asks about a
+        section carrying no section-routed finding, which is why only this one catches it."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "s.ddd.json"),
+                "s.ddd.json": {
+                    "sections": [
+                        {"section": ".calib", "access": "read-only", "alignment": 4},
+                        {"section": ".calib", "access": "read-write", "alignment": 8},
+                    ]
+                },
+            },
+        )
+        body = get(api, "/api/section", name=".calib").body
+        assert [(f["check"], f["route"]) for f in body["findings"]] == [
+            ("duplicate-section", {"kind": "section", "name": ".calib"})
+        ]
+
+    def test_an_unknown_section_leads_to_the_name_the_definition_names(
+        self, tmp_path: Path
+    ) -> None:
+        """The route the page turns into a pre-filled add form: the name is in no index, so the
+        panel would answer 404 and the route carries it anyway."""
+        state = get(opened(tmp_path, PLACED_NOWHERE), "/api/state").body
+        routes = {f["check"]: f["route"] for f in state["findings"]}
+        assert routes["unknown-section"] == {"kind": "section", "name": ".nvm"}
+
+    def test_a_section_is_asked_for_by_name(self, tmp_path: Path) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/section")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply.body["message"] == "section takes ?name="
+
+    def test_a_section_the_project_does_not_declare_is_not_found(self, tmp_path: Path) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/section", name=".nvm")
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_a_name_only_a_sections_file_that_did_not_load_declares_is_not_said_to_be_gone(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(opened(tmp_path, UNREADABLE_SECTIONS), "/api/section", name=".bad")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert "s.ddd.json did not load" in reply.body["message"]
+
+    def test_a_project_the_analysis_could_not_read_cannot_answer_a_section(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(unloaded(tmp_path), "/api/section", name=".calib")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_a_section_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root)), "/api/section", name=".calib")
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+    def test_setting_an_alignment_is_previewed_then_written(self, tmp_path: Path) -> None:
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        before = contents(root)
+        preview = get(
+            api, "/api/section-plan", action="set", name=".calib", key="alignment", raw="8"
+        ).body
+        assert contents(root) == before
+        assert [Path(c["file"]).name for c in preview["changes"]] == ["sections.ddd.json"]
+        assert applied(api, preview, "the alignment of .calib").status == 200
+        assert '"alignment": 8' in (root / "sections.ddd.json").read_text(encoding="utf-8")
+        assert get(api, "/api/section", name=".calib").body["alignment"] == "8"
+
+    def test_renaming_rewrites_the_entry_and_every_definition_placing_data_there(
+        self, tmp_path: Path
+    ) -> None:
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        preview = get(api, "/api/section-plan", action="rename", name=".calib", to=".eeprom").body
+        assert [Path(c["file"]).name for c in preview["changes"]] == [
+            "pump.ddd.json",
+            "sections.ddd.json",
+        ]
+        assert applied(api, preview, "the rename of '.calib' to '.eeprom'").status == 200
+        for name in ("sections.ddd.json", "pump.ddd.json"):
+            assert ".calib" not in (root / name).read_text(encoding="utf-8")
+        assert get(api, "/api/section", name=".eeprom").status == 200
+        assert get(api, "/api/section", name=".calib").status == 404
+
+    def test_declaring_one_takes_a_json_text_per_key_the_model_gives_no_default(
+        self, tmp_path: Path
+    ) -> None:
+        """Where a constant's `add` takes a lone `?raw=`: a section the file states no `access` or
+        no `alignment` for is one that does not load, so both are the request's to supply and
+        `description`, which defaults, is not."""
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        preview = get(
+            api,
+            "/api/section-plan",
+            action="add",
+            name=".nvm",
+            access='"read-write"',
+            alignment="8",
+        ).body
+        assert [Path(c["file"]).name for c in preview["changes"]] == ["sections.ddd.json"]
+        assert applied(api, preview, ".nvm declared").status == 200
+        declared = json.loads((root / "sections.ddd.json").read_text(encoding="utf-8"))
+        assert declared["sections"][-1] == {
+            "section": ".nvm",
+            "access": "read-write",
+            "alignment": 8,
+            "description": "",
+        }
+        assert get(api, "/api/section", name=".nvm").status == 200
+
+    def test_adding_when_the_project_has_no_sections_file_creates_one(
+        self, api: Api, root: Path
+    ) -> None:
+        """`SECTIONS.filename` and `SECTIONS.containers[0]` both, in the bytes of a file nothing
+        else in this suite ever sees written: the name beside the description and the key its one
+        entry is wrapped in."""
+        before = contents(root)
+        preview = get(
+            api,
+            "/api/section-plan",
+            action="add",
+            name=".nvm",
+            access='"read-write"',
+            alignment="4",
+        ).body
+        assert contents(root) == before
+        described, created = preview["changes"]
+        assert (Path(described["file"]).name, Path(created["file"]).name) == (
+            "p.ddd.json",
+            "sections.ddd.json",
+        )
+        assert (described["fingerprint"], created["fingerprint"]) == (
+            fingerprint(before["p.ddd.json"]),
+            None,
+        )
+        assert applied(api, preview, ".nvm declared").status == 200
+        assert created["hunks"] == [
+            {
+                "line": 1,
+                "before": [],
+                "after": [
+                    "{",
+                    '  "sections": [',
+                    '    { "section": ".nvm", "access": "read-write", "alignment": 4, '
+                    '"description": "" }',
+                    "  ]",
+                    "}",
+                ],
+            }
+        ]
+        assert '"sections.ddd.json"' in (root / "p.ddd.json").read_text(encoding="utf-8")
+
+    def test_removing_a_section_nothing_places_data_in_takes_its_entry_out(
+        self, tmp_path: Path
+    ) -> None:
+        api = opened(tmp_path, UNUSED_SECTION)
+        preview = get(api, "/api/section-plan", action="remove", name=".spare").body
+        assert applied(api, preview, ".spare removed").status == 200
+        assert get(api, "/api/section", name=".spare").status == 404
+        assert get(api, "/api/section", name=".ram").status == 200
+
+    @pytest.mark.parametrize(
+        ("query", "says"),
+        [
+            (
+                {"action": "rename", "name": ".calib", "to": "my section"},
+                "'my section' is not a usable linker section name",
+            ),
+            (
+                {"action": "rename", "name": ".calib", "to": ".fast_ram"},
+                "'.fast_ram' is already a section this project declares",
+            ),
+            (
+                {"action": "add", "name": ".fast_ram", "access": '"read-write"', "alignment": "4"},
+                "'.fast_ram' is already a section this project declares",
+            ),
+            (
+                {"action": "set", "name": ".calib", "key": "alignment", "raw": "3"},
+                "3 is not an alignment a section may state, so '.calib' cannot take it in "
+                "sections.ddd.json: a power of two",
+            ),
+            (
+                {"action": "add", "name": ".nvm", "access": '"read-write"', "alignment": "3"},
+                "3 is not an alignment a section may state, so '.nvm' cannot take it in "
+                "sections.ddd.json: a power of two",
+            ),
+            (
+                {"action": "set", "name": ".calib", "key": "access", "raw": '"read-sideways"'},
+                "\"read-sideways\" is not an access a section may state, so '.calib' cannot take "
+                "it in sections.ddd.json: read-write or read-only",
+            ),
+            (
+                {"action": "set", "name": ".calib", "key": "access"},
+                "a section states an access, so '.calib' cannot be left without one in "
+                "sections.ddd.json",
+            ),
+            (
+                {"action": "set", "name": ".calib", "key": "unit", "raw": '"rpm"'},
+                "a section has no 'unit' to set in sections.ddd.json: it states access, "
+                "alignment and description",
+            ),
+            (
+                {"action": "remove", "name": ".calib"},
+                "'.calib' is named by 1 shape, the first in pump.ddd.json",
+            ),
+        ],
+    )
+    def test_a_change_the_project_refuses_says_why_in_the_format_s_own_words(
+        self, tmp_path: Path, query: dict[str, str], says: str
+    ) -> None:
+        """Spec 4.6's refusals, each asserted by its sentence and not only by its code. Measured
+        against this checkout: a substring long enough that a rewording fails here, which is what
+        the rest of this branch's refusal tests do not do - every one of them checks a file name
+        or a clause and would pass a sentence rewritten around it.
+
+        Nothing is written either: a refusal that had already touched a file would be the one
+        outcome none of these codes can describe."""
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        before = contents(root)
+        reply = get(api, "/api/section-plan", **query)
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert says in reply.body["message"]
+        assert contents(root) == before
+
+    def test_removing_the_only_section_a_file_declares_is_refused(self, tmp_path: Path) -> None:
+        """`sections` carries the same `min_length=1` `constants` does, so the emptied file is one
+        the format rejects - and the whole point of the refusal is that it is still there."""
+        api = opened(tmp_path, SOLE_SECTION_IN_A_FILE)
+        before = contents(tmp_path)
+        reply = get(api, "/api/section-plan", action="remove", name=".sole")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert (
+            "'.sole' is all s.ddd.json declares, and a list of sections declares at least one"
+            in reply.body["message"]
+        )
+        assert contents(tmp_path) == before
+
+    def test_a_section_no_file_declares_cannot_be_changed(self, tmp_path: Path) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/section-plan", action="set", name=".nope", key="alignment", raw="8")
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+        assert reply.body["message"] == (
+            "no file of this project declares a section called '.nope'"
+        )
+
+    def test_an_add_while_the_sections_file_did_not_load_is_unreadable(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(
+            opened(tmp_path, UNREADABLE_SECTIONS),
+            "/api/section-plan",
+            action="add",
+            name=".new",
+            access='"read-write"',
+            alignment="4",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert (
+            "s.ddd.json did not load, so what it declares is unknown and '.new' cannot be added "
+            "to it" in reply.body["message"]
+        )
+
+    def test_an_add_while_a_file_nobody_could_read_is_included_creates_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """What `places.ddd.json` holds is unknown, so whether this project already keeps its
+        sections there is unknown too - and a second `sections.ddd.json` written beside the
+        description could collide with a name in it the moment the first one parses again."""
+        api = opened(tmp_path, HALF_WRITTEN_SECTIONS)
+        before = contents(tmp_path)
+        reply = get(
+            api,
+            "/api/section-plan",
+            action="add",
+            name=".nvm",
+            access='"read-write"',
+            alignment="4",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert "places.ddd.json did not parse" in reply.body["message"]
+        assert "keeps its sections there is unknown" in reply.body["message"]
+        assert contents(tmp_path) == before
+
+    def test_an_add_that_would_overwrite_a_stray_file_is_refused(self, tmp_path: Path) -> None:
+        reply = get(
+            opened(tmp_path, STRAY_SECTIONS_FILE),
+            "/api/section-plan",
+            action="add",
+            name=".nvm",
+            access='"read-write"',
+            alignment="4",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert (
+            "declaring '.nvm' writes sections.ddd.json beside p.ddd.json, and a file of that name "
+            "is there already" in reply.body["message"]
+        )
+
+    @pytest.mark.parametrize(
+        ("query", "whose"),
+        [
+            ({"action": "set", "name": ".calib", "key": "alignment", "raw": "not json"}, "raw"),
+            (
+                {"action": "add", "name": ".nvm", "access": "read-write", "alignment": "4"},
+                "access",
+            ),
+            (
+                {"action": "add", "name": ".nvm", "access": '"read-write"', "alignment": "4 8"},
+                "alignment",
+            ),
+        ],
+    )
+    def test_a_value_that_is_not_json_is_bad_before_any_refusal_about_the_project(
+        self, tmp_path: Path, query: dict[str, str], whose: str
+    ) -> None:
+        """`?access=read-write` is the mistake this guard is really for. Left to the model, it
+        would meet *"read-write is not an access a section may state ... : read-write or
+        read-only"* - a sentence naming the value it refuses among the ones it allows, because
+        what is wrong with it is the missing quotes and not the word."""
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/section-plan", **query)
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert f"{query[whose]!r} is not one json value" in reply.body["message"]
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            {},
+            {"action": "dance", "name": ".calib"},
+            {"action": "set", "name": ".calib"},
+            {"action": "set", "name": "", "key": "alignment", "raw": "4"},
+            {"action": "rename", "name": ".calib"},
+            {"action": "add", "name": ".nvm", "access": '"read-write"'},
+            {"action": "add", "name": ".nvm", "alignment": "4"},
+            {"action": "remove"},
+        ],
+    )
+    def test_a_missing_or_unknown_parameter_is_a_bad_request(
+        self, tmp_path: Path, query: dict[str, str]
+    ) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/section-plan", **query)
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+
+    def test_the_actions_a_section_plan_offers_are_named_in_its_refusal(
+        self, tmp_path: Path
+    ) -> None:
+        """The noun comes off the descriptor, so a route wired to the wrong vocabulary would say
+        `constant-plan` here - which no status code would show."""
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/section-plan", action="dance")
+        assert reply.body["message"] == (
+            "section-plan takes ?action= one of set, rename, add, remove"
+        )
+
+    def test_an_add_names_a_parameter_for_each_key_the_section_model_requires(self) -> None:
+        """The one thing neither the endpoint's tests nor the coverage gate can see going wrong:
+        `SECTION_PLANS["add"]` and `SECTIONS.required` are two tables of the same fact, and
+        `_declared` reads the request by the second. A key added to the model's required set
+        without a parameter here would raise `KeyError` inside the route - a 500 where a reader
+        should meet a form."""
+        assert SECTION_PLANS["add"] == ("name", *sorted(SECTIONS.required))
+        assert SECTION_PLANS["add"] == ("name", "access", "alignment")
+
+    def test_a_project_the_analysis_could_not_read_plans_no_section_change(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(unloaded(tmp_path), "/api/section-plan", action="remove", name=".calib")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"] == (
+            "p.ddd.json did not load, so no section of the project can be changed"
+        )
+
+    def test_a_section_preview_the_engine_refuses_is_a_refusal_the_page_can_act_on(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+
+        def refuse(*_: object) -> None:
+            raise EditError(UNVERIFIED, "does not read back")
+
+        monkeypatch.setattr("ddd.gui.api.previewed", refuse)
+        reply = get(api, "/api/section-plan", action="set", name=".calib", key="alignment", raw="8")
+        assert (reply.status, reply.body["error"]) == (409, "unverified")
+
+    def test_section_plan_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root)), "/api/section-plan", action="remove", name=".calib")
         assert (reply.status, reply.body["error"]) == (409, "no-project")
 
 

@@ -1812,7 +1812,7 @@ export const REFUSED_OUTSIDE_ROOT =
 const TREND_SAMPLES: SharedEntry = {
   kind: "constant",
   name: "TREND_SAMPLES",
-  value: "16",
+  states: "16",
   uses: 1,
   findings: 0,
 };
@@ -1821,7 +1821,7 @@ const TREND_SAMPLES: SharedEntry = {
 const PRESSURE_CELLS: SharedEntry = {
   kind: "constant",
   name: "PRESSURE_CELLS",
-  value: "8",
+  states: "8",
   uses: 2,
   findings: 0,
 };

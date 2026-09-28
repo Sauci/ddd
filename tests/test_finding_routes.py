@@ -563,13 +563,6 @@ class TestAConstant:
             is None
         )
 
-    def test_a_sections_file_still_leads_nowhere(self, tmp_path: Path) -> None:
-        """Sections and rasters are the parts after this one; their findings keep saying so."""
-        path = write_tree(tmp_path, SHAPES) / "a.ddd.json"
-        assert (
-            route_of("duplicate-section", path, "sections[0].section", "sections", True, {}) is None
-        )
-
     def test_a_constant_the_file_no_longer_holds_leads_nowhere(self, tmp_path: Path) -> None:
         """The analysis read the file; the pointer describes where the entry was then - the same
         "moved on since" case `WITHIN_TYPE` already has a test for
@@ -578,5 +571,145 @@ class TestAConstant:
         path = write_tree(tmp_path, SHAPES) / "c.ddd.json"
         assert (
             route_of("duplicate-constant", path, "constants[99].name", "constants", True, {})
+            is None
+        )
+
+
+# The second vocabulary: a sections file declaring one section and a definition placing its data
+# there. Held here rather than imported, as `tests/test_project_shared.py` and
+# `tests/test_shared_plans.py` each hold their own copy - a four line tree is cheaper to spell
+# than to couple three suites through - and in the same spelling those two use, `.calib`
+# read-only and aligned 4 with the variable called `Gain`.
+PLACED = {
+    "s.ddd.json": {"sections": [{"section": ".calib", "access": "read-only", "alignment": 4}]},
+    "a.ddd.json": component("A", declare("output", "Gain", section=".calib")),
+}
+
+# The same tree with the definition placed in a section no file declares, which is exactly the
+# state `unknown-section` reports: the name is in the definition and nowhere else.
+PLACED_NOWHERE = {
+    "s.ddd.json": {"sections": [{"section": ".calib", "access": "read-only", "alignment": 4}]},
+    "a.ddd.json": component("A", declare("output", "Gain", section=".nvm")),
+}
+
+
+class TestASection:
+    def test_unknown_section_leads_to_the_name_the_definition_places_data_in(
+        self, tmp_path: Path
+    ) -> None:
+        # Measured: filed at `component.interface[0].definition.section`, whose value is the name -
+        # the same shape the unit and constant branches read.
+        root = built(tmp_path, **PLACED_NOWHERE)
+        assert route_of(
+            "unknown-section",
+            root / "a.ddd.json",
+            "component.interface[0].definition.section",
+            "component",
+            True,
+            {},
+        ) == Route("section", ".nvm")
+
+    def test_duplicate_section_leads_to_the_section_its_entry_declares(
+        self, tmp_path: Path
+    ) -> None:
+        root = built(tmp_path, **PLACED)
+        assert route_of(
+            "duplicate-section", root / "s.ddd.json", "sections[0].section", "sections", True, {}
+        ) == Route("section", ".calib")
+
+    def test_a_pointer_inside_a_sections_entry_leads_to_the_section_too(
+        self, tmp_path: Path
+    ) -> None:
+        """`WITHIN_SECTION` covers the whole entry, not the name alone: a schema finding on an
+        `alignment` is about the section that entry declares, which is what the panel opens - the
+        same reach `WITHIN_CONSTANT` has over a constant's own keys."""
+        root = built(tmp_path, **PLACED)
+        assert route_of(
+            "schema", root / "s.ddd.json", "sections[0].alignment", "sections", True, {}
+        ) == Route("section", ".calib")
+
+    def test_the_section_route_is_tried_before_the_kind_gate(self, tmp_path: Path) -> None:
+        """A sections file's kind is `sections`, not `component`, so a branch placed after the
+        `kind != COMPONENT_KIND` gate would never be reached from one - which is why both arms go
+        above it. Asserted through the gate's own argument rather than by reading the source: the
+        same pointer answers the same section whatever kind the file is said to be, and a `sections`
+        kind is the only one a real sections file ever carries."""
+        root = built(tmp_path, **PLACED)
+        assert route_of(
+            "duplicate-section", root / "s.ddd.json", "sections[0].section", "sections", True, {}
+        ) == route_of(
+            "duplicate-section", root / "s.ddd.json", "sections[0].section", "component", True, {}
+        )
+
+    def test_a_section_the_file_no_longer_holds_leads_nowhere(self, tmp_path: Path) -> None:
+        """The analysis read the file; the pointer describes where the entry was then - the same
+        "moved on since" case `WITHIN_CONSTANT` has its own test for, pinning `WITHIN_SECTION`'s
+        `isinstance` guard rather than leaving it exercised only by the happy path."""
+        root = built(tmp_path, **PLACED)
+        assert (
+            route_of(
+                "duplicate-section",
+                root / "s.ddd.json",
+                "sections[99].section",
+                "sections",
+                True,
+                {},
+            )
+            is None
+        )
+
+    def test_an_unknown_section_whose_pointer_holds_no_string_leads_nowhere(
+        self, tmp_path: Path
+    ) -> None:
+        """A file that changed since the analysis can have anything at that pointer, and a number
+        names no section: `sections[0].alignment` holds `4` in this tree."""
+        root = built(tmp_path, **PLACED)
+        assert (
+            route_of(
+                "unknown-section",
+                root / "s.ddd.json",
+                "sections[0].alignment",
+                "sections",
+                True,
+                {},
+            )
+            is None
+        )
+
+    def test_an_unknown_section_naming_the_empty_string_leads_nowhere(self, tmp_path: Path) -> None:
+        """The other half of the guard `CONSTANT_CHECKS` reads by, which no type answers for it: a
+        definition drifted to `"section": ""` names a section with no name, and a panel opened on
+        one would be a heading with nothing in it."""
+        root = built(
+            tmp_path, **{"a.ddd.json": component("A", declare("output", "Gain", section=""))}
+        )
+        assert (
+            route_of(
+                "unknown-section",
+                root / "a.ddd.json",
+                "component.interface[0].definition.section",
+                "component",
+                True,
+                {},
+            )
+            is None
+        )
+
+    def test_a_pointer_inside_no_sections_entry_the_file_holds_leads_nowhere(
+        self, tmp_path: Path
+    ) -> None:
+        """`WITHIN_SECTION` matches on the pointer alone, so it is asked of a file that holds no
+        `sections` key at all - a component the analysis filed a section finding on, whose text
+        has since been replaced. It has to answer nothing rather than raise."""
+        root = built(tmp_path, **PLACED)
+        assert (
+            route_of(
+                "duplicate-section",
+                root / "a.ddd.json",
+                "sections[0].section",
+                "sections",
+                True,
+                {},
+            )
             is None
         )

@@ -7,7 +7,7 @@ const reply = (names: string[]): SharedReply => ({
   entries: names.map((name) => ({
     kind: "constant",
     name,
-    value: "16",
+    states: "16",
     uses: 0,
     findings: 0,
   })),

@@ -87,7 +87,7 @@ export function SharedTableView({
               <Row id={row.name}>
                 <Cell>{row.name}</Cell>
                 <Cell>{vocabularyOf(row.kind)}</Cell>
-                <Cell>{row.value}</Cell>
+                <Cell>{row.states}</Cell>
                 <Cell>{used(row.uses)}</Cell>
                 <Cell>{row.findings === 0 ? "" : String(row.findings)}</Cell>
               </Row>

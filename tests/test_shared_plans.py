@@ -22,16 +22,11 @@ from ddd.shared_plans import (
     SharedProject,
     SharedRefusalError,
     _raw,
-    add_constant,
     add_entry,
     project_of,
-    remove_constant,
     remove_entry,
-    rename_constant,
     rename_entry,
-    set_constant,
     set_entry,
-    shared_project,
 )
 
 CONSTANTS = {"constants": [{"name": "TREND_SAMPLES", "value": 16, "description": "slots"}]}
@@ -78,7 +73,7 @@ class TestTheProjectAPlanIsMadeIn:
             },
         )
         cache: dict[Path, Document] = {}
-        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
         assert [file.name for file in found.constants_files] == [
             "second.ddd.json",
             "first.ddd.json",
@@ -90,18 +85,21 @@ class TestTheProjectAPlanIsMadeIn:
         new constant must not be appended to it."""
         write_tree(tmp_path, {"p.ddd.json": project("P", "c.ddd.json"), "c.ddd.json": "{"})
         cache: dict[Path, Document] = {}
-        assert shared_project(tmp_path / "p.ddd.json", (), cache).constants_files == ()
+        assert (
+            project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache).constants_files
+            == ()
+        )
 
     def test_a_file_that_does_not_parse_is_named_among_the_ones_that_cannot_be_told(
         self, tmp_path: Path
     ) -> None:
         """Not counted is not the same as not there: counting it as no constants file at all left
-        `constants_files` empty, which `add_constant` read as "this project has no constants file"
+        `files` empty, which `add_entry` read as "this project has no constants file"
         and answered by writing a second one beside the description. Named here instead, so the
         one verb that would create a file can see what it does not know."""
         write_tree(tmp_path, {"p.ddd.json": project("P", "c.ddd.json"), "c.ddd.json": "{"})
         cache: dict[Path, Document] = {}
-        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
         assert [file.name for file in found.untellable] == ["c.ddd.json"]
 
     def test_a_file_the_project_includes_and_does_not_have_cannot_hide_a_constant(
@@ -115,7 +113,7 @@ class TestTheProjectAPlanIsMadeIn:
         `includes`."""
         write_tree(tmp_path, {"p.ddd.json": project("P", "gone.ddd.json")})
         cache: dict[Path, Document] = {}
-        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
         assert (found.constants_files, found.untellable) == ((), ())
 
     def test_a_project_naming_no_constants_file_has_none(self, tmp_path: Path) -> None:
@@ -127,7 +125,10 @@ class TestTheProjectAPlanIsMadeIn:
             },
         )
         cache: dict[Path, Document] = {}
-        assert shared_project(tmp_path / "p.ddd.json", (), cache).constants_files == ()
+        assert (
+            project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache).constants_files
+            == ()
+        )
 
     def test_one_file_named_twice_is_listed_once(self, tmp_path: Path) -> None:
         """A pattern and a literal entry can name the same file; the first is where a new constant
@@ -137,13 +138,20 @@ class TestTheProjectAPlanIsMadeIn:
             {"p.ddd.json": project("P", "c.ddd.json", "*.ddd.json"), "c.ddd.json": CONSTANTS},
         )
         cache: dict[Path, Document] = {}
-        assert len(shared_project(tmp_path / "p.ddd.json", (), cache).constants_files) == 1
+        assert (
+            len(
+                project_of(
+                    project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache
+                ).constants_files
+            )
+            == 1
+        )
 
     def test_the_files_that_did_not_load_are_resolved_and_sorted(self, tmp_path: Path) -> None:
         write_tree(tmp_path, {"p.ddd.json": project("P")})
         cache: dict[Path, Document] = {}
         unread = [tmp_path / "z.ddd.json", tmp_path / "a.ddd.json", tmp_path / "z.ddd.json"]
-        found = shared_project(tmp_path / "p.ddd.json", unread, cache)
+        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", unread, cache)
         assert [file.name for file in found.unread] == ["a.ddd.json", "z.ddd.json"]
 
     def test_an_includes_that_is_not_a_list_names_nothing(self, tmp_path: Path) -> None:
@@ -151,7 +159,10 @@ class TestTheProjectAPlanIsMadeIn:
         answer no files rather than iterate a number."""
         write_tree(tmp_path, {"p.ddd.json": {"project": {"name": "P", "includes": 3}}})
         cache: dict[Path, Document] = {}
-        assert shared_project(tmp_path / "p.ddd.json", (), cache).constants_files == ()
+        assert (
+            project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache).constants_files
+            == ()
+        )
 
 
 def test_the_file_a_project_without_one_gets_is_named_for_what_it_holds() -> None:
@@ -271,7 +282,7 @@ class TestSettingAKey:
         """`2.0` stays fractional: the operation carries the three characters, not a parsed 2."""
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        plan = set_constant(built, "TREND_SAMPLES", "value", "2.0", cache)
+        plan = set_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "value", "2.0", cache)
         assert [(edit.path.name, edit.operations) for edit in plan.edits] == [
             ("c.ddd.json", (Operation("set", "constants[0].value", "2.0"),))
         ]
@@ -279,7 +290,9 @@ class TestSettingAKey:
     def test_a_description_is_set_on_the_entry(self, tmp_path: Path) -> None:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        plan = set_constant(built, "TREND_SAMPLES", "description", '"a trend"', cache)
+        plan = set_entry(
+            project_shared.CONSTANTS, built, "TREND_SAMPLES", "description", '"a trend"', cache
+        )
         assert plan.edits[0].operations == (
             Operation("set", "constants[0].description", '"a trend"'),
         )
@@ -289,7 +302,9 @@ class TestSettingAKey:
         already offers to leave a key out wherever the format allows it."""
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        plan = set_constant(built, "TREND_SAMPLES", "description", None, cache)
+        plan = set_entry(
+            project_shared.CONSTANTS, built, "TREND_SAMPLES", "description", None, cache
+        )
         assert plan.edits[0].operations == (Operation("remove", "constants[0].description"),)
 
     def test_a_value_may_not_be_taken_away(self, tmp_path: Path) -> None:
@@ -298,7 +313,7 @@ class TestSettingAKey:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:
-            set_constant(built, "TREND_SAMPLES", "value", None, cache)
+            set_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "value", None, cache)
         assert raised.value.code == "invalid"
         assert "c.ddd.json" in raised.value.message
         # Not just "invalid" naming the file: falling through to `_value(None, ...)` instead of
@@ -315,13 +330,15 @@ class TestSettingAKey:
         refused before they have done anything."""
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        assert set_constant(built, "CELLS", "description", None, cache) == SharedPlan(())
+        assert set_entry(
+            project_shared.CONSTANTS, built, "CELLS", "description", None, cache
+        ) == SharedPlan(())
 
     def test_a_key_a_constant_has_not_is_refused(self, tmp_path: Path) -> None:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:
-            set_constant(built, "TREND_SAMPLES", "unit", '"rpm"', cache)
+            set_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "unit", '"rpm"', cache)
         assert raised.value.code == "invalid"
         assert "description" in raised.value.message and "value" in raised.value.message
         # Not just what a constant *does* have: the key actually asked about, so a rewording
@@ -335,14 +352,14 @@ class TestSettingAKey:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:
-            set_constant(built, "TREND_SAMPLES", "unit", '"rpm"', cache)
+            set_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "unit", '"rpm"', cache)
         assert "c.ddd.json" in raised.value.message
 
     def test_a_name_no_file_declares_is_not_found(self, tmp_path: Path) -> None:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:
-            set_constant(built, "NOTHING", "value", "1", cache)
+            set_entry(project_shared.CONSTANTS, built, "NOTHING", "value", "1", cache)
         assert raised.value.code == "not-found"
 
     @pytest.mark.parametrize("raw", ['"eight"', "true", "null", "[1]", "1e400"])
@@ -355,7 +372,7 @@ class TestSettingAKey:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:
-            set_constant(built, "TREND_SAMPLES", "value", raw, cache)
+            set_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "value", raw, cache)
         assert raised.value.code == "invalid"
 
     def test_a_value_no_shape_could_use_is_allowed(self, tmp_path: Path) -> None:
@@ -364,7 +381,9 @@ class TestSettingAKey:
         route back to this value. The interface does not invent a rule the format has not."""
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        assert set_constant(built, "TREND_SAMPLES", "value", "2.5", cache).edits
+        assert set_entry(
+            project_shared.CONSTANTS, built, "TREND_SAMPLES", "value", "2.5", cache
+        ).edits
 
     @pytest.mark.parametrize("raw", ["123", "true", "null", "[1]", '{"a": 1}', "not json"])
     def test_a_description_the_format_would_refuse_is_refused_here(
@@ -378,7 +397,7 @@ class TestSettingAKey:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:
-            set_constant(built, "TREND_SAMPLES", "description", raw, cache)
+            set_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "description", raw, cache)
         assert raised.value.code == "invalid"
         assert "c.ddd.json" in raised.value.message
 
@@ -387,7 +406,7 @@ class TestRemoving:
     def test_an_entry_nothing_names_is_taken_out(self, tmp_path: Path) -> None:
         built = _index(tmp_path, _TWO_EACH)
         cache: dict[Path, Document] = {}
-        plan = remove_constant(built, "SPARE", cache)
+        plan = remove_entry(project_shared.CONSTANTS, built, "SPARE", cache)
         assert [(edit.path.name, edit.operations) for edit in plan.edits] == [
             ("c.ddd.json", (Operation("remove", "constants[0]"),))
         ]
@@ -401,7 +420,7 @@ class TestRemoving:
         `lsp/units.py` already uses it to."""
         built = _index(tmp_path, _TWO_EACH)
         cache: dict[Path, Document] = {}
-        plan = remove_constant(built, "CELLS", cache)
+        plan = remove_entry(project_shared.CONSTANTS, built, "CELLS", cache)
         assert [(edit.path.name, edit.operations) for edit in plan.edits] == [
             ("a.ddd.json", (Operation("remove", "component.constants[0]"),))
         ]
@@ -415,7 +434,7 @@ class TestRemoving:
         built = _index(tmp_path, {"c.ddd.json": CONSTANTS})
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:
-            remove_constant(built, "TREND_SAMPLES", cache)
+            remove_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", cache)
         assert raised.value.code == "invalid"
         assert "'TREND_SAMPLES' is all c.ddd.json declares" in raised.value.message
 
@@ -428,7 +447,7 @@ class TestRemoving:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:
-            remove_constant(built, "CELLS", cache)
+            remove_entry(project_shared.CONSTANTS, built, "CELLS", cache)
         assert raised.value.code == "invalid"
         assert "'CELLS' is all a.ddd.json declares" in raised.value.message
 
@@ -441,7 +460,7 @@ class TestRemoving:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:
-            remove_constant(built, "TREND_SAMPLES", cache)
+            remove_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", cache)
         assert raised.value.code == "invalid"
         assert "a.ddd.json" in raised.value.message
         # Not `"1 shape" in message`: that substring is also true of the wrong wording
@@ -456,7 +475,7 @@ class TestRemoving:
         built = _index(tmp_path, _TWO_USES)
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:
-            remove_constant(built, "TREND_SAMPLES", cache)
+            remove_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", cache)
         assert "is named by 2 shapes," in raised.value.message
         # The message names *the first* blocking shape. `a.ddd.json` comes before `b.ddd.json`
         # in `built.constant_uses["TREND_SAMPLES"]` here, so `used[0]` and `used[-1]` disagree -
@@ -467,15 +486,15 @@ class TestRemoving:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:
-            remove_constant(built, "NOTHING", cache)
+            remove_entry(project_shared.CONSTANTS, built, "NOTHING", cache)
         assert raised.value.code == "not-found"
 
 
 def test_a_value_travels_as_the_json_text_it_would_be_written_as() -> None:
-    """`_raw` has no caller in this module: `set_constant` and `remove_constant` both carry the
+    """`_raw` has no caller in this module: `set_entry` and `remove_entry` both carry the
     text their caller already gave them, exactly because re-serialising a value is the mistake
-    this module's own docstring warns against. It is written here for `rename_constant` and
-    `add_constant` to share, which is why it is tested directly - a degree sign is what
+    this module's own docstring warns against. It is written here for `rename_entry` and
+    `add_entry` to share, which is why it is tested directly - a degree sign is what
     `json.dumps`'s default would escape, and the escaped spelling is not what this exists to
     prevent."""
     assert _raw("30\N{DEGREE SIGN}") == '"30\N{DEGREE SIGN}"'
@@ -489,7 +508,7 @@ class TestRenaming:
         project with `unknown-constant` on every one of them."""
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        plan = rename_constant(built, "TREND_SAMPLES", "TREND_SLOTS", cache)
+        plan = rename_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "TREND_SLOTS", cache)
         assert {edit.path.name: edit.operations for edit in plan.edits} == {
             "a.ddd.json": (
                 Operation(
@@ -504,7 +523,7 @@ class TestRenaming:
     def test_the_edits_come_sorted_by_path(self, tmp_path: Path) -> None:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        plan = rename_constant(built, "TREND_SAMPLES", "TREND_SLOTS", cache)
+        plan = rename_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "TREND_SLOTS", cache)
         assert [edit.path.name for edit in plan.edits] == ["a.ddd.json", "c.ddd.json"]
 
     @pytest.mark.parametrize(
@@ -527,7 +546,7 @@ class TestRenaming:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:
-            rename_constant(built, "TREND_SAMPLES", to, cache)
+            rename_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", to, cache)
         assert raised.value.code == "invalid"
         assert because in raised.value.message
 
@@ -535,7 +554,7 @@ class TestRenaming:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:
-            rename_constant(built, "NOTHING", "SOMETHING", cache)
+            rename_entry(project_shared.CONSTANTS, built, "NOTHING", "SOMETHING", cache)
         assert raised.value.code == "not-found"
 
 
@@ -545,8 +564,15 @@ class TestDeclaringOne:
     ) -> None:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        found = shared_project(tmp_path / "p.ddd.json", (), cache)
-        plan = add_constant(built, found, "PRESSURE_CELLS", "8", cache)
+        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
+        plan = add_entry(
+            project_shared.CONSTANTS,
+            built,
+            found,
+            "PRESSURE_CELLS",
+            {"value": "8", "description": '""'},
+            cache,
+        )
         assert [edit.path.name for edit in plan.edits] == ["c.ddd.json"]
         assert plan.edits[0].operations[0].op == "insert"
         assert plan.edits[0].operations[0].pointer == "constants[1]"
@@ -559,7 +585,7 @@ class TestDeclaringOne:
         """Every other tree in this class has at most one constants file, so nothing above tells
         `constants_files[0]` apart from `constants_files[-1]`. `SharedProject.constants_files`'
         own docstring promises "the first is where a new constant goes, so that it lands in the
-        file a run of `ddd check` reads first" - this is the test that holds `add_constant` to
+        file a run of `ddd check` reads first" - this is the test that holds `add_entry` to
         that promise. The file that is first in `includes` sorts *last* alphabetically, so an
         implementation that quietly sorted the files instead of trusting their `includes` order
         would also be caught here."""
@@ -569,9 +595,16 @@ class TestDeclaringOne:
         }
         built = _index(tmp_path, files)
         cache: dict[Path, Document] = {}
-        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
         assert [f.name for f in found.constants_files] == ["z_first.ddd.json", "a_second.ddd.json"]
-        plan = add_constant(built, found, "NEW_ONE", "9", cache)
+        plan = add_entry(
+            project_shared.CONSTANTS,
+            built,
+            found,
+            "NEW_ONE",
+            {"value": "9", "description": '""'},
+            cache,
+        )
         assert plan.edits[0].path.name == "z_first.ddd.json"
         assert plan.edits[0].operations[0].pointer == "constants[1]"
 
@@ -580,8 +613,15 @@ class TestDeclaringOne:
         reader asking for one would get the other."""
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        found = shared_project(tmp_path / "p.ddd.json", (), cache)
-        plan = add_constant(built, found, "GAIN", "2.0", cache)
+        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
+        plan = add_entry(
+            project_shared.CONSTANTS,
+            built,
+            found,
+            "GAIN",
+            {"value": "2.0", "description": '""'},
+            cache,
+        )
         assert '"value": 2.0' in (plan.edits[0].operations[0].raw or "")
 
     def test_a_spelling_that_round_trips_differently_is_still_kept_as_written(
@@ -593,22 +633,37 @@ class TestDeclaringOne:
         tells a verbatim `raw` apart from a parsed-and-reprinted one."""
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        found = shared_project(tmp_path / "p.ddd.json", (), cache)
-        plan = add_constant(built, found, "GAIN", "1e3", cache)
+        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
+        plan = add_entry(
+            project_shared.CONSTANTS,
+            built,
+            found,
+            "GAIN",
+            {"value": "1e3", "description": '""'},
+            cache,
+        )
         assert '"value": 1e3' in (plan.edits[0].operations[0].raw or "")
 
     def test_a_constants_file_whose_constants_is_not_a_list_still_gets_a_first_entry(
         self, tmp_path: Path
     ) -> None:
-        """`shared_project` only asks whether a file's top level holds a `constants` key, never
+        """`project_of` only asks whether a file's top level holds its vocabulary's own container
+        key, never
         whether that key is a list - so a file this broken can still be
-        `project.constants_files[0]`, and `add_constant` has to pick a pointer without crashing
+        `project.files[0]`, and `add_entry` has to pick a pointer without crashing
         on it rather than assume every constants file loaded clean."""
         built = _index(tmp_path, TWO_HOMES)
         write_tree(tmp_path, {"weird.ddd.json": {"constants": "oops"}})
         cache: dict[Path, Document] = {}
         broken = SharedProject(tmp_path / "p.ddd.json", (tmp_path / "weird.ddd.json",), (), ())
-        plan = add_constant(built, broken, "NEW_CONST", "8", cache)
+        plan = add_entry(
+            project_shared.CONSTANTS,
+            built,
+            broken,
+            "NEW_CONST",
+            {"value": "8", "description": '""'},
+            cache,
+        )
         assert plan.edits[0].path.name == "weird.ddd.json"
         assert plan.edits[0].operations[0].pointer == "constants[0]"
         assert '"name": "NEW_CONST"' in (plan.edits[0].operations[0].raw or "")
@@ -621,8 +676,15 @@ class TestDeclaringOne:
         files = {"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}
         built = _index(tmp_path, files)
         cache: dict[Path, Document] = {}
-        found = shared_project(tmp_path / "p.ddd.json", (), cache)
-        plan = add_constant(built, found, "CELLS", "8", cache)
+        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
+        plan = add_entry(
+            project_shared.CONSTANTS,
+            built,
+            found,
+            "CELLS",
+            {"value": "8", "description": '""'},
+            cache,
+        )
         assert [(edit.path.name, edit.creates) for edit in plan.edits] == [
             ("constants.ddd.json", True),
             ("p.ddd.json", False),
@@ -645,7 +707,14 @@ class TestDeclaringOne:
         write_tree(tmp_path, {"solo.ddd.json": {"project": {"name": "P", "includes": 3}}})
         cache: dict[Path, Document] = {}
         broken = SharedProject(tmp_path / "solo.ddd.json", (), (), ())
-        plan = add_constant(built, broken, "NEW_CONST", "8", cache)
+        plan = add_entry(
+            project_shared.CONSTANTS,
+            built,
+            broken,
+            "NEW_CONST",
+            {"value": "8", "description": '""'},
+            cache,
+        )
         assert [(edit.path.name, edit.creates) for edit in plan.edits] == [
             ("constants.ddd.json", True),
             ("solo.ddd.json", False),
@@ -661,9 +730,16 @@ class TestDeclaringOne:
         built = _index(tmp_path, files)
         write_tree(tmp_path, {"constants.ddd.json": "not a description"})
         cache: dict[Path, Document] = {}
-        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
         with pytest.raises(SharedRefusalError) as raised:
-            add_constant(built, found, "CELLS", "8", cache)
+            add_entry(
+                project_shared.CONSTANTS,
+                built,
+                found,
+                "CELLS",
+                {"value": "8", "description": '""'},
+                cache,
+            )
         assert raised.value.code == "invalid"
         assert "constants.ddd.json" in raised.value.message
 
@@ -683,10 +759,17 @@ class TestDeclaringOne:
         write_tree(tmp_path, {"p.ddd.json": project("P", "sizes.ddd.json", "a.ddd.json")})
         (tmp_path / "sizes.ddd.json").write_text('{"constants": [{"name": "', encoding="utf-8")
         cache: dict[Path, Document] = {}
-        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
         assert found.constants_files == ()
         with pytest.raises(SharedRefusalError) as raised:
-            add_constant(built, found, "NEW_ONE", "8", cache)
+            add_entry(
+                project_shared.CONSTANTS,
+                built,
+                found,
+                "NEW_ONE",
+                {"value": "8", "description": '""'},
+                cache,
+            )
         assert raised.value.code == "unreadable"
         assert "sizes.ddd.json did not parse" in raised.value.message
         assert not (tmp_path / CONSTANTS_FILE).exists()
@@ -706,9 +789,16 @@ class TestDeclaringOne:
         )
         (tmp_path / "sizes.ddd.json").write_text("{", encoding="utf-8")
         cache: dict[Path, Document] = {}
-        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
         assert [file.name for file in found.untellable] == ["sizes.ddd.json"]
-        plan = add_constant(built, found, "NEW_ONE", "8", cache)
+        plan = add_entry(
+            project_shared.CONSTANTS,
+            built,
+            found,
+            "NEW_ONE",
+            {"value": "8", "description": '""'},
+            cache,
+        )
         assert [edit.path.name for edit in plan.edits] == ["c.ddd.json"]
 
     def test_a_constants_file_that_did_not_load_is_not_appended_to(self, tmp_path: Path) -> None:
@@ -716,18 +806,34 @@ class TestDeclaringOne:
         unknown - and an entry appended to it could collide with one of them."""
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        found = shared_project(tmp_path / "p.ddd.json", [tmp_path / "c.ddd.json"], cache)
+        found = project_of(
+            project_shared.CONSTANTS, tmp_path / "p.ddd.json", [tmp_path / "c.ddd.json"], cache
+        )
         with pytest.raises(SharedRefusalError) as raised:
-            add_constant(built, found, "CELLS_2", "8", cache)
+            add_entry(
+                project_shared.CONSTANTS,
+                built,
+                found,
+                "CELLS_2",
+                {"value": "8", "description": '""'},
+                cache,
+            )
         assert raised.value.code == "unreadable"
         assert "c.ddd.json" in raised.value.message
 
     def test_a_name_the_project_already_declares_is_refused(self, tmp_path: Path) -> None:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
         with pytest.raises(SharedRefusalError) as raised:
-            add_constant(built, found, "TREND_SAMPLES", "8", cache)
+            add_entry(
+                project_shared.CONSTANTS,
+                built,
+                found,
+                "TREND_SAMPLES",
+                {"value": "8", "description": '""'},
+                cache,
+            )
         assert raised.value.code == "invalid"
 
     def test_a_name_a_component_declares_inline_is_refused_before_a_file_is_created(
@@ -748,18 +854,32 @@ class TestDeclaringOne:
         }
         built = _index(tmp_path, files)
         cache: dict[Path, Document] = {}
-        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
         assert not found.constants_files
         with pytest.raises(SharedRefusalError) as raised:
-            add_constant(built, found, "CELLS", "8", cache)
+            add_entry(
+                project_shared.CONSTANTS,
+                built,
+                found,
+                "CELLS",
+                {"value": "8", "description": '""'},
+                cache,
+            )
         assert raised.value.code == "invalid"
 
     def test_a_value_the_format_would_refuse_is_refused(self, tmp_path: Path) -> None:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
         with pytest.raises(SharedRefusalError) as raised:
-            add_constant(built, found, "CELLS_2", '"eight"', cache)
+            add_entry(
+                project_shared.CONSTANTS,
+                built,
+                found,
+                "CELLS_2",
+                {"value": '"eight"', "description": '""'},
+                cache,
+            )
         assert raised.value.code == "invalid"
 
     def test_a_value_the_format_would_refuse_is_refused_when_creating_too(
@@ -770,9 +890,16 @@ class TestDeclaringOne:
         files = {"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}
         built = _index(tmp_path, files)
         cache: dict[Path, Document] = {}
-        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
         with pytest.raises(SharedRefusalError) as raised:
-            add_constant(built, found, "CELLS", '"eight"', cache)
+            add_entry(
+                project_shared.CONSTANTS,
+                built,
+                found,
+                "CELLS",
+                {"value": '"eight"', "description": '""'},
+                cache,
+            )
         assert raised.value.code == "invalid"
 
 
@@ -808,7 +935,7 @@ class TestTheDescriptorsVerbs:
         built, _root = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
         plan = set_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "value", "2.0", cache)
-        # An expected plan written out, not just `set_constant`'s own answer: `set_constant` is
+        # An expected plan written out, not just `set_entry`'s own answer: `set_entry` is
         # `return set_entry(CONSTANTS, ...)`, so comparing only against it compares a call with
         # itself and would stay green were `set_entry` ablated to `return SharedPlan(())`.
         assert plan == SharedPlan(
@@ -821,7 +948,9 @@ class TestTheDescriptorsVerbs:
         )
         # Worth keeping too, once it is not the only assertion: the binding really does forward
         # to the generic verb unchanged.
-        assert plan == set_constant(built, "TREND_SAMPLES", "value", "2.0", cache)
+        assert plan == set_entry(
+            project_shared.CONSTANTS, built, "TREND_SAMPLES", "value", "2.0", cache
+        )
 
     def test_a_constant_both_named_and_alone_is_refused_for_being_named(
         self, tmp_path: Path
@@ -837,13 +966,13 @@ class TestTheDescriptorsVerbs:
         assert "is all" not in raised.value.message
 
     def test_add_refuses_a_raw_key_the_vocabulary_does_not_have(self, tmp_path: Path) -> None:
-        # `raws` is this task's own surface - `add_constant` took a single `raw` - so a bad key
-        # in it is not a case the old `add_constant` could ever have been asked about; this is
+        # `raws` is this task's own surface - the old `add_constant` took a single `raw` - so a
+        # bad key in it is not a case that binding could ever have been asked about; this is
         # new ground `add_entry` has to cover itself, in `set_entry`'s own wording for the same
         # mistake.
         built, _root = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
-        found = shared_project(tmp_path / "p.ddd.json", (), cache)
+        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
         with pytest.raises(SharedRefusalError) as raised:
             add_entry(
                 project_shared.CONSTANTS,

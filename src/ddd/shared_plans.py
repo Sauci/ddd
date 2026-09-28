@@ -1,4 +1,5 @@
-"""What changing one of a project's constants takes, planned and never written.
+"""What changing one entry of one of the Shared files tab's vocabularies takes, planned and never
+written.
 
 Transport-neutral, like :mod:`ddd.project_shared` beside it: nothing here knows about http or the
 session. A rename is the editor's rename - :func:`ddd.lsp.navigation.rename_sites` says which
@@ -17,9 +18,11 @@ take a :class:`~ddd.project_shared.Vocabulary` first, the way part 13's read sid
 one, and everywhere a constant's own reach differed from a section's or a raster's - the settable
 keys, the required ones, the judge of a value, the file created, the noun a removal names, the
 sentence a name is refused with - now comes off the descriptor instead of being written into the
-verb. ``set_constant``, ``rename_constant``, ``add_constant``, ``remove_constant`` and
-``shared_project`` survive as bindings to :data:`~ddd.project_shared.CONSTANTS`, for the one task
-the module docstring above them explains.
+verb. The constants-named bindings that carried the api across that change -
+``set_constant``, ``rename_constant``, ``add_constant``, ``remove_constant`` and
+``shared_project`` - are gone: the api asks for the verb and the vocabulary it means, so a
+project's sections are planned by the same five functions and neither client can get a different
+answer for the two.
 """
 
 from __future__ import annotations
@@ -43,7 +46,7 @@ _VOWELS: Final = frozenset("aeio")
 that function gives."""
 
 CONSTANTS_FILE: Final = CONSTANTS.filename
-"""The constants file ``add_constant`` writes for a project that has none, beside its description.
+"""The constants file ``add_entry`` writes for a project that has none, beside its description.
 
 Named as :data:`ddd.lsp.units.ADOPTED` names the units file adoption writes, and for the same
 reason: whoever opens the checkout afterwards should be able to tell what the file is from its
@@ -84,13 +87,13 @@ class SharedProject:
 
     @property
     def constants_files(self) -> tuple[Path, ...]:
-        """``files``, under the name this field carried before this task renamed it.
+        """``files``, under the name this field carried before part 14's second task renamed it.
 
-        Nine assertions in `tests/test_shared_plans.py` read this field by that name, and this
-        task's proof is that suite passing without an edit to them. Renaming the field outright
-        would need those nine lines to change, which is exactly what the task says to stop and
-        report instead of doing - so the field is ``files`` everywhere new, and this is the one
-        place the old name still answers. For one task only, like the bindings below.
+        Nine assertions in `tests/test_shared_plans.py` read this field by that name, and that
+        task's proof was that suite passing without an edit to them - the same evidence the
+        bindings beside it carried. The bindings went with part 14's fifth task, which moved the
+        api onto the generic verbs; this outlived them, its own deletion never having been
+        written down, and is the last thing still answering to the constants-only vocabulary.
         """
         return self.files
 
@@ -551,8 +554,8 @@ def _entry_text(vocabulary: Vocabulary, name: str, raws: Mapping[str, str]) -> s
     The ``if key in raws`` filter is for a key ``raws`` leaves out, never for one it should not
     have had: :func:`add_entry` has already refused any key outside ``vocabulary.keys`` through
     :func:`_settable`, so by the time this runs, a key of ``vocabulary.keys`` missing from
-    ``raws`` is one the caller simply did not give a value - ``add_constant``'s own binding never
-    gives ``description`` one, and the entry it declares states none.
+    ``raws`` is one the caller simply did not give a value - ``GET /api/section-plan`` gives an
+    ``add`` no ``description``, and the entry it declares states none.
 
     Built as text rather than dumped from a dict, for the reason :func:`_raw` keeps a value's own
     spelling: a dict would carry a number through python's own types, and ``1e3`` would come back
@@ -561,36 +564,3 @@ def _entry_text(vocabulary: Vocabulary, name: str, raws: Mapping[str, str]) -> s
     fields = [f"{_raw(vocabulary.name_key)}: {_raw(name)}"]
     fields.extend(f"{_raw(key)}: {raws[key]}" for key in vocabulary.keys if key in raws)
     return f"{{{', '.join(fields)}}}"
-
-
-# Bindings, for one task only. `tests/test_shared_plans.py` passing untouched across the
-# generalisation is the evidence that it moved no behaviour - the same evidence part 13's first task
-# took from `tests/test_unit_plans.py`. Task 5 moves the api to the generic readers and deletes
-# these; nothing else may call them.
-def shared_project(
-    project: Path, unread: Sequence[Path], cache: dict[Path, Document]
-) -> SharedProject:
-    return project_of(CONSTANTS, project, unread, cache)
-
-
-def set_constant(
-    built: Index, name: str, key: str, raw: str | None, cache: dict[Path, Document]
-) -> SharedPlan:
-    return set_entry(CONSTANTS, built, name, key, raw, cache)
-
-
-def rename_constant(built: Index, name: str, to: str, cache: dict[Path, Document]) -> SharedPlan:
-    return rename_entry(CONSTANTS, built, name, to, cache)
-
-
-def add_constant(
-    built: Index, project: SharedProject, name: str, raw: str, cache: dict[Path, Document]
-) -> SharedPlan:
-    # `description` is given too, empty, rather than left for `add_entry` to leave out: the old
-    # `_entry_text` always wrote `"description": ""` into a newly declared constant, and this
-    # binding exists to keep that byte for byte, not merely to keep the file loading the same way.
-    return add_entry(CONSTANTS, built, project, name, {"value": raw, "description": '""'}, cache)
-
-
-def remove_constant(built: Index, name: str, cache: dict[Path, Document]) -> SharedPlan:
-    return remove_entry(CONSTANTS, built, name, cache)

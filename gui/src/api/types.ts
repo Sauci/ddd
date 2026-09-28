@@ -33,6 +33,8 @@ export type {
   ProjectType,
   ProjectUnit,
   Renamed,
+  SectionReply,
+  SectionUse,
   SessionInfo,
   SettleReply,
   Severity,

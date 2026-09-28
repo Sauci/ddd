@@ -261,10 +261,15 @@ class Note(_Frozen):
 class FindingRoute(_Frozen):
     """What the page can open for a finding."""
 
-    kind: Literal["variable", "unit", "component", "type", "values", "constant"]
+    kind: Literal["variable", "unit", "component", "type", "values", "constant", "section"]
     """Which screen: a variable's panel, a unit's panel, the component's own page, the type's
-    own panel on the Types tab, an object's values grid, or a constant's own panel on the Shared
-    files tab."""
+    own panel on the Types tab, an object's values grid, or a constant's or a section's own
+    panel on the Shared files tab.
+
+    Every kind :class:`ddd.finding_routes.Route` answers has to be a member here: ``_finding``
+    in :mod:`ddd.gui.api` builds this model for every finding of every request, so a kind left
+    out raises a :class:`pydantic.ValidationError` rather than merely leading nowhere.
+    """
 
     name: str | None
     """The variable's name, the unit's spelling or the type's name; ``None`` for a component,
@@ -886,20 +891,33 @@ class TypeReply(_Frozen):
     findings: tuple[Finding, ...]
 
 
-# --- GET /api/shared, GET /api/constant ------------------------------------------------------
+# --- GET /api/shared, GET /api/constant, GET /api/section ------------------------------------
 
 
 class SharedEntry(_Frozen):
     """One row of the Shared files tab."""
 
     kind: str
-    """``constant``. Sections and rasters bring their own words here."""
+    """Which vocabulary the row belongs to: ``constant`` or ``section``; a raster brings its own
+    word here when it lands.
+
+    A plain ``str`` and not a ``Literal``, which is why no generic function had to change when
+    sections joined the tab: the table holds whatever :data:`ddd.project_shared.HELD` holds, and
+    the word is the descriptor's own :attr:`~ddd.project_shared.Vocabulary.kind`.
+    """
 
     name: str
     """Its name, as its entry spells it."""
 
-    value: str
-    """What the entry states, as the json text its file spells: ``16``, ``2.0``."""
+    states: str
+    """What the entry states, in the one cell the table gives a row for it: a constant its value
+    as the json text its file spells (``16``, ``2.0``), a section its access and its alignment
+    together (``read-only, align 4``).
+
+    Composed per vocabulary on the server, by
+    :attr:`ddd.project_shared.Vocabulary.states`, so the table learns nothing about what any one
+    kind holds. ``value`` was the name while constants were alone in the tab and described a
+    section's cell wrongly on both counts - it is neither one value nor json text."""
 
     uses: int
     """How many shapes name it."""
@@ -969,6 +987,73 @@ class ConstantReply(_Frozen):
 
     findings: tuple[Finding, ...]
     """Every finding filed inside its entry or at a shape naming it."""
+
+
+class SectionUse(_Frozen):
+    """One definition that places its data in a section."""
+
+    path: str
+    """Absolute, posix-separated path of the component declaring it."""
+
+    pointer: str
+    """Dotted path of the definition's own ``section`` key inside that file:
+    ``component.interface[i].definition.section``, the one shape that names a section."""
+
+    kind: Literal["variable"]
+    """Always a variable, unlike :class:`ConstantUse`: a section is named by a definition and
+    nowhere else, so the reader is being shown which variable sits there. A raster widens this,
+    a component naming one directly for everything it produces."""
+
+    name: str
+    """The variable's name."""
+
+    component: str | None
+    """The component declaring the variable, or ``None`` where its file no longer declares it
+    under that name at the site the analysis read - the same drift
+    :class:`ConstantUse.component` reports, rather than a home a section can be named from."""
+
+
+class SectionReply(_Frozen):
+    """What ``GET /api/section`` answers: one memory section's panel.
+
+    Beside :class:`ConstantReply` rather than folded into it: a constant's panel edits one value
+    and a section's three keys, and a model carrying whichever of them the kind happened to have
+    would make every field optional on the page for the sake of sharing a name.
+    """
+
+    revision: int
+    """The revision this answer was read from."""
+
+    name: str
+    """The section named in the request, as its entry spells it: ``.calib``."""
+
+    access: str
+    """What its entry states as ``access`` - ``read-only`` or ``read-write`` - without its json
+    quotes, so the panel's chooser is given the value and not its source."""
+
+    alignment: str
+    """The json text its entry states as ``alignment``, exactly as its file spells it: ``4``.
+
+    Text and not a number, for the reason a constant's ``value`` is text: the model wants a whole
+    number, and a value that travelled as one of python's own would come back ``4.0`` and stop the
+    file loading."""
+
+    description: str
+    """What its entry states as ``description``; ``""`` where it states none."""
+
+    file: str
+    """Absolute, posix-separated path of the sections file declaring it. Always a sections file,
+    where a constant may also be declared inline by a component: a section has the one home."""
+
+    pointer: str
+    """Dotted path of its entry: ``sections[i]``."""
+
+    uses: tuple[SectionUse, ...]
+    """Every definition placing its data in it, in the order the navigation index recorded
+    them."""
+
+    findings: tuple[Finding, ...]
+    """Every finding filed inside its entry or at a definition placing data in it."""
 
 
 # --- GET /api/declarable ---------------------------------------------------------------------
@@ -1351,6 +1436,7 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (TypeReply, "serialization"),
     (SharedReply, "serialization"),
     (ConstantReply, "serialization"),
+    (SectionReply, "serialization"),
     (DeclarableReply, "serialization"),
     (PlanReply, "serialization"),
     (ValuesReply, "serialization"),

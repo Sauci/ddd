@@ -201,18 +201,6 @@ class SharedRow:
     findings: int
     """How many findings are filed inside its entry or at a shape naming it."""
 
-    @property
-    def value(self) -> str:
-        """``states``, under the name every row carried before this task renamed it.
-
-        Two tests in `TestTheRows` (`tests/test_project_shared.py`) read this field by that name,
-        and this task's proof is that suite passing without an edit to it. Renaming the field
-        outright would need those two lines to change, which is exactly what the task says to stop
-        and report instead of doing - so the field is ``states`` everywhere new, and this is the
-        one place the old name still answers. For one task only, like the bindings below.
-        """
-        return self.states
-
 
 @dataclass(frozen=True, slots=True)
 class Use:
@@ -477,7 +465,7 @@ vocabulary whose description were constrained would bring its own."""
 
 def _constant_name_judge(built: Index, to: str) -> str | None:
     """:data:`CONSTANTS`'s :attr:`~Vocabulary.name_judge`: ``rename_problem``, called exactly as
-    ``rename_constant`` and ``add_constant`` always called it, so a constant's rename and its
+    ``rename_entry`` and ``add_entry`` call it for a constant, so a constant's rename and its
     declaration refuse a name in the same words they always have. Its c identifier rule and
     ``occupied`` check fit a constant and neither of the other two: a section's name is a linker
     string and a raster's an a2l short name."""
@@ -584,32 +572,3 @@ HELD: Final = (CONSTANTS, SECTIONS)
 """Every vocabulary the Shared files tab holds, and the order :func:`shared_rows` walks them in -
 which the sort by kind then name makes invisible to a reader. A rasters part adds a third word and
 nothing else: that is what the descriptor is for."""
-
-
-# Bindings, for one task only. `tests/test_project_shared.py` passing untouched across the
-# generalisation is the evidence that it moved no behaviour - the same evidence part 13's first task
-# took from `tests/test_unit_plans.py`. Task 5 moves the api to the generic readers and deletes
-# these; nothing else may call them.
-def constant_row(
-    built: Index,
-    name: str,
-    findings: Iterable[tuple[Path, Diagnostic]],
-    cache: dict[Path, Document],
-) -> SharedRow:
-    return row_of(CONSTANTS, built, name, findings, cache)
-
-
-def constant_text(built: Index, name: str, key: str, cache: dict[Path, Document]) -> str:
-    return text_of(CONSTANTS, built, name, key, cache)
-
-
-def constant_string(built: Index, name: str, key: str, cache: dict[Path, Document]) -> str:
-    return string_of(CONSTANTS, built, name, key, cache)
-
-
-def constant_uses(built: Index, name: str, cache: dict[Path, Document]) -> tuple[Use, ...]:
-    return uses_of(CONSTANTS, built, name, cache)
-
-
-def located_on_constant(built: Index, name: str, file: Path, found: Diagnostic) -> bool:
-    return located_on(CONSTANTS, built, name, file, found)

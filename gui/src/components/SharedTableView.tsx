@@ -9,11 +9,11 @@ export interface SharedTableViewProps {
   /** The entry whose panel is open, as the address names it. */
   selected: string | undefined;
   onSelect: (name: string | undefined) => void;
-  /** The names of the constants files that did not load, which declare entries this list cannot
-   * show (spec 5.4). A *file*'s own `kind` is `"constants"` (plural); an *entry*'s `kind` is
-   * `"constant"` (singular) - `SharedPage` filters `State.files` by the file's word, never the
-   * server's own answer, so there is only the one place the two can be swapped. Empty when every
-   * file loaded. */
+  /** The names of the files, of this tab's own kinds, that did not load - which declare entries
+   * this list cannot show (spec 5.4). A *file*'s own `kind` is the plural word (`"constants"`,
+   * `"sections"`); an *entry*'s `kind` is the singular (`"constant"`, `"section"`) - `SharedPage`
+   * filters `State.files` by the file's word, never the server's own answer, so there is only the
+   * one place the two can be swapped. Empty when every file loaded. */
   unreadable: readonly string[];
   /** Names of files that did not load without saying what kind they are, so this tab
    * cannot claim their entries were its own. */
@@ -38,12 +38,14 @@ export function SharedTableView({
   return (
     <>
       {/* One unreadable file does not blank the others: a constant declared inline still lists,
-          and the banner says which file's own constants are missing from the count and the rows
+          and the banner says which file's own entries are missing from the count and the rows
           below it - a table that silently omitted them would read as a project that declares
-          nothing (spec 5.4). */}
+          nothing (spec 5.4). Says "entries", not a vocabulary's own word: `unreadable` now names
+          a failed file of either kind this tab holds (ruling 7, task 7 fix round 1), and naming
+          the wrong one would send the reader to fix a file that was never broken. */}
       {unreadable.length > 0 && (
         <Banner tone="warning">
-          {unreadable.join(", ")} did not load, so the constants declared there are not listed.
+          {unreadable.join(", ")} did not load, so the entries declared there are not listed.
         </Banner>
       )}
       {/* A file nobody could read says nothing about what kind of file it is, so this tab cannot

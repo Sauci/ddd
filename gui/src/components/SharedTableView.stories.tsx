@@ -65,6 +65,15 @@ export const AFileOfNoTellableKind = () => (
   <Tab reply={SHARED_MISSING_FILE} untold={["sizes.ddd.json"]} />
 );
 
+/** sections.ddd.json did not load: TREND_SAMPLES and PRESSURE_CELLS still list, their own file
+ * untouched, but neither section can - unlike a constant, a section has no second home to survive
+ * in. Fix round 1's own reason to exist: every other "did not load" story here fails a constants
+ * file, so a banner sentence hardcoding the word "constants" read correctly in all of them and
+ * only this one - a failed *sections* file - could show it naming the wrong vocabulary. */
+export const ASectionsFileDidNotLoad = () => (
+  <Tab reply={PROJECT_SHARED} unreadable={["sections.ddd.json"]} />
+);
+
 /** .fast_ram and .calib beside TREND_SAMPLES and PRESSURE_CELLS: both vocabularies the tab holds,
  * in the one table - the story this tab exists for. A section's States cell ("read-write, align
  * 4") is nothing a constant's own ("16") could be mistaken for, so the two kinds read apart even

@@ -99,12 +99,17 @@ export function routeLabel(finding: Finding, state: State): string | null {
   }
   if (route.kind === "file" && route.name !== null) {
     // Unlike the component arm above, no listed file's own declared name is ever worth
-    // preferring here: `FILE_CHECKS` fires only on the project description or a vocabulary file
-    // (`ddd.finding_routes.FILE_CHECKS`), and `SourceFile.name` is `null` for both kinds - only
-    // a component ever has one. A row of the Files tab is one entry among others the same
-    // directory can hold, so the path relative to the project - the very shape an entry is
-    // itself written in (`sensors/a.ddd.json`) - says which one a `baseName` alone, repeated
-    // across two directories, could not.
+    // preferring here - not because neither check's file ever has one (a project description's
+    // own name reads through `SourceFile.name` too, `ddd.gui.session._name_in` keying off
+    // `parsed[kind]["name"]`), but because neither check's *route* ever names a file that both
+    // sits in `State.files` and carries a name: `include-empty` is filed only where a pattern
+    // matches nothing (`diagnostics.py`: "an include pattern matches no file"), so its route
+    // names that pattern, which `State.files` - files the loader actually read - never lists;
+    // `empty-vocabulary`'s names the vocabulary file it is filed on, which `State.files` does
+    // list, but never with a name, that being a component's alone. A row of the Files tab is one
+    // entry among others the same directory can hold, so the path relative to the project - the
+    // very shape an entry is itself written in (`sensors/a.ddd.json`) - says which one a
+    // `baseName` alone, repeated across two directories, could not.
     return `Open ${relativeToProject(route.name, state.project)}`;
   }
   return `Open ${route.name}`;
@@ -152,8 +157,8 @@ export function routeOf(finding: Finding): Route | null {
   }
   if (route.kind === "file" && route.name !== null) {
     // The Files tab's own row, keyed by `route.name` exactly as `rowsOf` (lib/files.ts) keys a
-    // row: the resolved path `ddd.finding_routes.FILE_CHECKS` names, an entry's own key for
-    // `include-empty` or the file's own path for `empty-vocabulary`.
+    // row: the resolved path `ddd.finding_routes.route_of`'s `FILE_CHECKS` branch answers, an
+    // entry's own key for `include-empty` or the file's own path for `empty-vocabulary`.
     return { page: "project", view: "files", path: route.name };
   }
   return { page: "component", file: finding.file };

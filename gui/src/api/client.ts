@@ -303,11 +303,12 @@ export const getFiles = (fetchImpl: Fetch = fetch) =>
 
 /** One change to the project's own files, as `GET /api/files-plan` takes it: what each action
  * needs, and nothing it does not - `create`'s `component` is a new component's own name, taken
- * only for a `kind` of `"component"` and ignored for every other, exactly as `FILE_PLANS` reads
- * it. `add`'s `path` is typed relative to the project description, the way a reader spells an
- * `includes` entry; `remove`'s is a row's own absolute key (`IncludedEntryReply.key`, or one of
- * a pattern's own `files`) - one field name, two different shapes of path, because that is what
- * the two actions each take a path *as*. */
+ * only for a `kind` of `"component"` and ignored for every other: `ddd.file_plans.create_plan`'s
+ * own rule, stated in `FILE_PLANS`'s docstring though `component` is not itself one of the
+ * parameters that dict lists. `add`'s `path` is typed relative to the project description, the
+ * way a reader spells an `includes` entry; `remove`'s is a row's own absolute key
+ * (`IncludedEntryReply.key`, or one of a pattern's own `files`) - one field name, two different
+ * shapes of path, because that is what the two actions each take a path *as*. */
 export type FilesPlanRequest =
   | { action: "create"; kind: string; name: string; component?: string }
   | { action: "add"; path: string }

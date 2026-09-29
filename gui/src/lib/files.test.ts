@@ -105,12 +105,11 @@ describe("a pattern matching files", () => {
 
   test("a file a literal entry also names keeps two rows of one key, each its own count", () => {
     // Task 4: `New file` appends a literal entry even where a pattern already matches the new
-    // name, so the loader reads the file once but the tab still offers both entries - the
-    // literal removable outright, the pattern's child only ever refused naming the pattern
-    // (`ddd.file_plans.remove_plan`). `rowsOf` never de-duplicates by `key`: a later "don't show
-    // a file twice" tidy-up would silently take one of the two rows away, along with whichever
-    // of those two actions only it offered. The entries' own findings are synthetic, as the
-    // first literal-entry test's are, chosen only to tell the two same-keyed rows' counts apart.
+    // name, so the loader reads the file once but the tab still offers both entries as separate
+    // rows - each its own request to act on, `FileRow.key`'s own doc says how. `rowsOf` never
+    // de-duplicates by `key`: a later "don't show a file twice" tidy-up would silently take one
+    // of the two rows away. The entries' own findings are synthetic, as the first literal-entry
+    // test's are, chosen only to tell the two same-keyed rows' counts apart.
     const file = sourceFile({ findings: { error: 1, warning: 0, info: 0 } });
     const literal = entry({
       index: 0,

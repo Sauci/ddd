@@ -3,8 +3,8 @@ import type { FilesReply, IncludedEntryReply, SourceFile } from "../api/types";
 /**
  * One row of the Files tab: an entry's own row, or one of a pattern's matched files, indented
  * beneath it - the join of `GET /api/files`' entries with `State.files` on the path, the one
- * decision this tab's table needs made before it can be drawn (spec §2, "the page joins the two
- * on the path").
+ * decision this tab's table needs made before it can be drawn - `ddd.gui.contract.FilesReply`'s
+ * own words for it: "the page joins on the path rather than this repeating them".
  *
  * Never keyed by `key` alone: one file can have two rows of one key - a literal entry and a
  * pattern's child naming the same file (`New file` appends a literal even where a pattern
@@ -26,10 +26,12 @@ export interface FileRow {
    * whether this is `null`, which the two can share. */
   file: SourceFile | null;
   /** What a plan to act on this very row is asked with: a literal's or a pattern's own key
-   * (`IncludedEntryReply.key`) for their own row, and a matched file's own absolute path
-   * (one of the pattern's `files`) for one of its children - so a child asked to be removed
-   * meets the server's own refusal naming the pattern, rather than a row this join invented one
-   * for. */
+   * (`IncludedEntryReply.key`) for their own row, and a matched file's own absolute path (one of
+   * the pattern's `files`) for one of its children - the same path a literal entry naming that
+   * file would itself carry as its own key. Asking to remove a child is judged by that very rule
+   * (`ddd.file_plans.remove_plan`, `_brought_by`): refused, naming the pattern, where no literal
+   * also names the file; reaching that literal instead where one does - never a refusal this
+   * join invented on a key of its own. */
   key: string;
   /** How many findings this row carries: the entry's own (`IncludedEntryReply.findings` - what a
    * row naming nothing carries, having no `SourceFile` of its own to count) plus, where this row

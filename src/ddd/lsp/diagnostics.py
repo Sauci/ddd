@@ -320,9 +320,11 @@ def group_findings(
 def finding_identity(finding: Diagnostic) -> tuple[str, Severity, Location | None, str]:
     """What makes two findings the same one, for a reader looking at an underline.
 
-    Not what makes two analyses of one project agree about an error: a message may name what
-    else the project holds, so the same error may be worded differently once a file is gone.
-    :func:`ddd.file_plans.new_errors` counts errors place by place instead.
+    Also the first question :func:`ddd.file_plans.new_errors` asks of two analyses of one
+    project, and not the last: a message may name what else the project holds, so the same
+    error may be worded differently once a file is gone, and what nothing matches word for word
+    is counted by its check and its place instead - by its check alone where ddd places the
+    check by order.
     """
     return (finding.check, finding.severity, finding.location, finding.message)
 

@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -14,9 +15,10 @@ import pytest
 
 import ddd.file_plans as file_plans
 from conftest import build_record, component, declare, project, scalar_type, types, write_tree
-from ddd.diagnostics import CHECKS, Diagnostic, Location, Severity
-from ddd.file_plans import REATTRIBUTED, Pair, new_errors
+from ddd.diagnostics import Diagnostic, Location, Severity
+from ddd.file_plans import Pair, new_errors
 from ddd.gui.session import Session, findings_with
+from ddd.lsp.diagnostics import finding_identity, run_project
 
 PROJECT = Path("/p/p.ddd.json")
 A = Path("/p/a.ddd.json")
@@ -73,7 +75,7 @@ class TestNewErrors:
     def test_an_error_twice_where_the_project_has_it_once_is_new_once(self) -> None:
         """Word for word is counted too: one error the project has uses up one match, not every
         copy of it. No revision lists one identity twice - the grouping drops a repeat - so this
-        is the one input where what is reported is an error ``before`` has word for word."""
+        is the one input where what is reported is an error ``before`` reports word for word."""
         found = filed("unknown-constant", Severity.ERROR, A, "x", "'N' is …")
         assert new_errors((found,), (found, found)) == (found,)
 
@@ -101,9 +103,8 @@ class TestNewErrors:
             ("unknown-constant", Location(A, DECLARATION)),
             ("file-extension", Location(A)),
             ("demo/tagged", None),
-            ("multiple-producers", Location(A, DECLARATION)),
         ],
-        ids=["a pointer", "a whole file", "no place", "a check of REATTRIBUTED"],
+        ids=["a pointer", "a whole file", "no place"],
     )
     def test_an_error_where_the_project_has_a_warning_is_new(
         self, check: str, at: Location | None
@@ -130,29 +131,122 @@ class TestNewErrors:
         now = (A, Diagnostic("demo/tagged", Severity.ERROR, DECLARATION, Location(A)))
         assert new_errors((was,), (now,)) == (now,)
 
-    def test_a_reattributed_clash_is_counted_wherever_it_sits(self) -> None:
-        """A check of :data:`REATTRIBUTED` is counted per check and severity: the conflict of
-        three writers, reported at `A` now and at `B` once `A` goes, is the one it was."""
-        was = filed("multiple-producers", Severity.ERROR, A, DECLARATION, "'X' … 'B' … 'A'")
-        now = filed("multiple-producers", Severity.ERROR, B, DECLARATION, "'X' … 'C' … 'B'")
-        assert new_errors((was,), (now,)) == ()
 
-    def test_one_more_reattributed_clash_than_the_project_has_is_new(self) -> None:
-        was = filed("multiple-producers", Severity.ERROR, A, DECLARATION, "'X' … 'B' … 'A'")
-        more = filed("multiple-producers", Severity.ERROR, B, DECLARATION, "'Y' … 'C' … 'B'")
-        assert new_errors((was,), (was, more)) == (more,)
+HERE = Location(A, DECLARATION)
+THERE = Location(B, DECLARATION)
+ELSEWHERE = Location(Path("/p/c.ddd.json"), DECLARATION)
+CONFLICT = "'X' is written by component 'B' and by component 'A'; exactly one writer is allowed"
 
-    def test_a_reattributed_clash_of_another_check_is_new(self) -> None:
-        was = filed("multiple-producers", Severity.ERROR, A, DECLARATION, "…")
-        now = filed("definition-mismatch", Severity.ERROR, A, f"{DECLARATION}.definition", "…")
-        assert new_errors((was,), (now,)) == (now,)
 
-    def test_every_reattributed_check_is_one_the_analysis_reports(self) -> None:
-        """A member spelt otherwise than the check would match no finding and leave the check
-        counted per place; a comparison check is never reported by the analysis a change is
-        judged by."""
-        assert sorted(REATTRIBUTED - CHECKS.keys()) == []
-        assert [check for check in sorted(REATTRIBUTED) if CHECKS[check].comparison] == []
+def finding(
+    at: Location | None,
+    *notes: Location | None,
+    check: str = "multiple-producers",
+    severity: Severity = Severity.ERROR,
+    message: str = CONFLICT,
+) -> Pair:
+    """A finding with a note at each of ``notes``, shown on the file it is placed in, or on the
+    project's where it is placed nowhere."""
+    shown = PROJECT if at is None else at.path
+    written = tuple(("also written here", note) for note in notes)
+    return (shown, Diagnostic(check, severity, message, at, written))
+
+
+class TestAMirrorIsNotCounted:
+    """What is not counted: the mirror :func:`~ddd.lsp.diagnostics.group_findings` files of a
+    finding for an editor at each place a note of it points to, as
+    :func:`~ddd.lsp.diagnostics._mirrors` makes one - without notes, of a finding with a place,
+    at a note's place other than the finding's own. A mirror is told by that shape: no notes, at
+    a place a note of a finding of its check, severity and message points to."""
+
+    def test_a_mirror_is_not_counted(self) -> None:
+        """`B`'s conflict with `A`, reported on `B` with a note at `A`, and the mirror of it an
+        editor is shown on `A`: one error."""
+        reported = finding(THERE, HERE)
+        assert new_errors((), (reported, finding(HERE))) == (reported,)
+
+    def test_the_mirror_of_an_error_the_project_has_is_not_counted_either(self) -> None:
+        """Read in another order, the conflict is reported on `A` with a note at `B`, where the
+        project reports it on `B` and shows a mirror on `A`: `A` has an error it did not have."""
+        other_way = (
+            "'X' is written by component 'A' and by component 'B'; exactly one writer is allowed"
+        )
+        moved = finding(HERE, THERE, message=other_way)
+        now = (moved, finding(THERE, message=other_way))
+        assert new_errors((finding(THERE, HERE), finding(HERE)), now) == (moved,)
+
+    def test_a_finding_where_no_note_points_is_counted(self) -> None:
+        """Alike in all but its place, a finding where no note points is one of its own."""
+        reported = finding(THERE, HERE)
+        alike = finding(ELSEWHERE)
+        assert new_errors((), (reported, alike)) == (reported, alike)
+
+    @pytest.mark.parametrize(
+        "noting",
+        [
+            finding(THERE, HERE, message="'Y' is written by component 'B' and by component 'A'"),
+            finding(THERE, HERE, check="definition-mismatch"),
+            finding(THERE, HERE, severity=Severity.WARNING),
+        ],
+        ids=["another message", "another check", "another severity"],
+    )
+    def test_a_finding_where_a_note_of_another_kind_points_is_counted(self, noting: Pair) -> None:
+        """A mirror has its finding's check, severity and message: a finding with no notes that
+        differs from the one noting its place in any of them is one of its own."""
+        noted = finding(HERE)
+        assert new_errors((noting,), (noting, noted)) == (noted,)
+
+    def test_a_note_with_no_place_makes_no_mirror(self) -> None:
+        """A finding placed nowhere is not taken for the mirror of a note placed nowhere."""
+        reported = finding(THERE, None)
+        unplaced = finding(None)
+        assert new_errors((), (reported, unplaced)) == (reported, unplaced)
+
+    def test_a_note_at_its_own_finding_makes_no_mirror(self) -> None:
+        """No mirror is made at a finding's own place, so one alike there but for its notes is
+        one of its own - two findings no revision lists together, the grouping filing one
+        identity once."""
+        reported = finding(THERE, THERE)
+        alike = finding(THERE)
+        assert new_errors((), (reported, alike)) == (reported, alike)
+
+    def test_a_finding_placed_nowhere_makes_no_mirror(self) -> None:
+        """Nothing is mirrored of a finding placed nowhere, whatever its notes point to."""
+        reported = finding(None, HERE)
+        noted = finding(HERE)
+        assert new_errors((), (reported, noted)) == (reported, noted)
+
+    def test_a_finding_with_notes_of_its_own_is_no_mirror(self) -> None:
+        """A mirror has no notes: a finding where a note points, alike but noting another place,
+        is one of its own."""
+        reported = finding(THERE, HERE)
+        noting = finding(HERE, ELSEWHERE)
+        assert new_errors((), (reported, noting)) == (reported, noting)
+
+    def test_what_is_counted_is_what_the_run_reports(self, tmp_path: Path) -> None:
+        """The coupling to :func:`~ddd.lsp.diagnostics._mirrors` and
+        :func:`~ddd.lsp.diagnostics.group_findings`, over the conflict of two writers whose reader
+        disagrees with them: of everything the revision lists, mirrors included, what is counted
+        is what a run of the checks over the project reports - its bag, before it is grouped -
+        finding for finding. Should the mirrors keep their notes, or the grouping file anything
+        else, this says so."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w1.ddd.json", "w2.ddd.json", "r.ddd.json"),
+                "w1.ddd.json": writing("W1", "X"),
+                "w2.ddd.json": writing("W2", "X"),
+                "r.ddd.json": component("R", declare("input", "X", "uint16")),
+            },
+        )
+        root = tmp_path / "p.ddd.json"
+        listed = [(filed.file, filed.diagnostic) for filed in Session(tmp_path).open(root).findings]
+        reported = run_project(root).bag
+        assert len(listed) > len(reported)
+        counted = Counter(
+            finding_identity(diagnostic) for _, diagnostic in file_plans._as_reported(listed)
+        )
+        assert counted == Counter(finding_identity(diagnostic) for diagnostic in reported)
 
 
 def judged(
@@ -236,8 +330,8 @@ from the project file on disk, since its check is not told the list a run was gi
 
 class TestJudgingAProject:
     """Over projects the reviewers built: an error whose wording depends on the rest of the
-    project is the error it was, and one of a check in :data:`REATTRIBUTED` is counted per check.
-    """
+    project is the error it was, a plugin's at an entry of the list is placed by the entry's
+    position, and an error the removal makes is new."""
 
     def test_removing_one_of_three_writers_leaves_the_conflict_it_had(self, tmp_path: Path) -> None:
         """A removal a reader makes on the way to ending the conflict: the two writers left
@@ -250,19 +344,6 @@ class TestJudgingAProject:
             "r.ddd.json": reading("R", "X"),
         }
         assert judged(tmp_path, files, "a.ddd.json") == []
-
-    def test_a_file_read_later_through_a_sub_project_changes_no_error(self, tmp_path: Path) -> None:
-        """A diamond: `b.ddd.json` is the root's and the sub-project's. Removing the root's entry
-        keeps it in the project, read after `a.ddd.json` now, and the conflict names the two
-        the other way round."""
-        files = {
-            "p.ddd.json": project("P", "b.ddd.json", "a.ddd.json", "sub.ddd.json", "r.ddd.json"),
-            "a.ddd.json": writing("A", "X"),
-            "b.ddd.json": writing("B", "X"),
-            "sub.ddd.json": project("Sub", "b.ddd.json"),
-            "r.ddd.json": reading("R", "X"),
-        }
-        assert judged(tmp_path, files, "b.ddd.json") == []
 
     def test_an_error_no_longer_suggesting_a_near_miss_is_the_one_it_had(
         self, tmp_path: Path
@@ -305,9 +386,9 @@ class TestJudgingAProject:
     def test_an_output_left_unread_is_new_though_another_unread_one_goes(
         self, tmp_path: Path
     ) -> None:
-        """Why `unused-output` is counted per place, although it sits on the owner: removing `R`
+        """`unused-output`, raised to an error by the build, sits on the owner: removing `R`
         leaves `X` unread, an error at `A` the project does not have, and takes `R`'s own unread
-        `Y` with it - counted per check, the one would hide behind the other."""
+        `Y` with it, from another place."""
         files = {
             "p.ddd.json": project("P", "a.ddd.json", "r.ddd.json"),
             "a.ddd.json": writing("A", "X"),
@@ -342,48 +423,12 @@ class TestJudgingAProject:
         assert judged(tmp_path, files, "u.ddd.json") == []
 
 
-class TestAClashCountedPerCheck:
-    """One project per member of :data:`REATTRIBUTED`, where a harmless removal moves an error
-    the project has from one place to another - each the case a member is there for - and the
-    cost of counting them per check."""
-
-    def test_a_relaxed_duplicate_let_in_hides_its_clash_behind_one_leaving(
-        self, tmp_path: Path
-    ) -> None:
-        """The cost of counting per check, accepted: the build reports `duplicate-component` as a
-        warning, so the loader keeps the first `A` and drops the second while the revision is
-        analysed. Removing the first ends the conflict over `Y` and lets the second `A` in,
-        writing `Z` beside `C` - a conflict the project did not have, hidden behind the one that
-        leaves. Counted per place it is refused; the answer asserted is the one given."""
-        files = {
-            "p.ddd.json": project(
-                "P", "a.ddd.json", "a2.ddd.json", "b.ddd.json", "c.ddd.json", "r.ddd.json"
-            ),
-            "a.ddd.json": writing("A", "Y"),
-            "a2.ddd.json": writing("A", "Z"),
-            "b.ddd.json": writing("B", "Y"),
-            "c.ddd.json": writing("C", "Z"),
-            "r.ddd.json": reading("R", "Y", "Z"),
-        }
-        assert judged(tmp_path, files, "a.ddd.json", relaxed=("duplicate-component",)) == []
-
-    def test_three_writers_read_in_another_order_are_the_conflict_they_were(
-        self, tmp_path: Path
-    ) -> None:
-        """Case a, `multiple-producers`: every writer but the first read is reported, mirrored
-        onto the first. Removing the root's entry for `b.ddd.json`, which the sub-project also
-        lists, reads `B` last, and the mirrors move from `B` onto `A`."""
-        files = {
-            "p.ddd.json": project(
-                "P", "b.ddd.json", "a.ddd.json", "c.ddd.json", "sub.ddd.json", "r.ddd.json"
-            ),
-            "a.ddd.json": writing("A", "X"),
-            "b.ddd.json": writing("B", "X"),
-            "c.ddd.json": writing("C", "X"),
-            "sub.ddd.json": project("Sub", "b.ddd.json"),
-            "r.ddd.json": reading("R", "X"),
-        }
-        assert judged(tmp_path, files, "b.ddd.json") == []
+class TestAMirrorMoving:
+    """A clash ddd reports against one of the declarations taking part - the owner, the first
+    read, the first copy of an enum met, the raster whose name sorts first - and mirrors onto that
+    one. Where a removal changes which declaration that is, and every finding ``ddd check``
+    reports stays where it was, reworded or not, or leaves, only the mirrors move, and the removal
+    is allowed."""
 
     def test_ending_a_conflict_of_writers_keeps_the_readers_disagreement(
         self, tmp_path: Path
@@ -398,33 +443,6 @@ class TestAClashCountedPerCheck:
             "r.ddd.json": component("R", declare("input", "X", "uint16")),
         }
         assert judged(tmp_path, files, "w1.ddd.json") == []
-
-    def test_one_reader_of_a_name_a_type_takes_gone_moves_the_collision(
-        self, tmp_path: Path
-    ) -> None:
-        """Case c, `name-collision`: a variable `V` beside a type `V` is reported at its first
-        declaration read, `R1`'s, and at `W`'s once `R1` goes; `R2` still reads `V`."""
-        files = {
-            "p.ddd.json": project("P", "r1.ddd.json", "w.ddd.json", "r2.ddd.json", "t.ddd.json"),
-            "r1.ddd.json": reading("R1", "V"),
-            "w.ddd.json": writing("W", "V"),
-            "r2.ddd.json": reading("R2", "V"),
-            "t.ddd.json": types(scalar_type("V")),
-        }
-        assert judged(tmp_path, files, "r1.ddd.json") == []
-
-    def test_a_colliding_declaration_read_later_moves_the_collision(self, tmp_path: Path) -> None:
-        """Case d, `name-collision` through a diamond: removing the root's entry for
-        `r1.ddd.json`, which the sub-project also lists, changes nothing but the order, and the
-        first declaration read of `V` becomes `W`'s."""
-        files = {
-            "p.ddd.json": project("P", "r1.ddd.json", "w.ddd.json", "sub.ddd.json", "t.ddd.json"),
-            "r1.ddd.json": reading("R1", "V"),
-            "w.ddd.json": writing("W", "V"),
-            "sub.ddd.json": project("Sub", "r1.ddd.json"),
-            "t.ddd.json": types(scalar_type("V")),
-        }
-        assert judged(tmp_path, files, "r1.ddd.json") == []
 
     def test_the_owner_gone_moves_a_storage_disagreement(self, tmp_path: Path) -> None:
         """`storage-mismatch`, raised to an error by the build: `W3` presents `X` otherwise than
@@ -447,23 +465,6 @@ class TestAClashCountedPerCheck:
             "w3.ddd.json": component("W3", declare("output", "X", condition="FEATURE")),
         }
         assert judged(tmp_path, files, "w1.ddd.json", "condition-mismatch") == []
-
-    def test_a_reader_of_a_name_differing_in_case_gone_moves_the_finding(
-        self, tmp_path: Path
-    ) -> None:
-        """`name-similar`, raised to an error by the build: `speed` beside `Speed` is reported at
-        the first declaration read of `speed`, `R1`'s, and at `R2`'s once `R1` goes."""
-        files = {
-            "p.ddd.json": project(
-                "P", "r1.ddd.json", "r2.ddd.json", "w.ddd.json", "q.ddd.json", "s.ddd.json"
-            ),
-            "r1.ddd.json": reading("R1", "speed"),
-            "r2.ddd.json": reading("R2", "speed"),
-            "w.ddd.json": writing("W", "speed"),
-            "q.ddd.json": writing("Q", "Speed"),
-            "s.ddd.json": reading("S", "Speed"),
-        }
-        assert judged(tmp_path, files, "r1.ddd.json", "name-similar") == []
 
     def test_a_shared_id_is_mirrored_onto_the_next_declaration_read(self, tmp_path: Path) -> None:
         """`duplicate-id`: `A` and `B` carry one id, and the finding on `B` is mirrored onto the
@@ -509,18 +510,199 @@ class TestAClashCountedPerCheck:
         assert judged(tmp_path, files, "ca.ddd.json") == []
 
 
-class TestAClashLeftPerPlace:
-    """`local-conflict` and `enum-duplicate-value`, which ddd places by order as well but which a
-    removal can make: each counted per place, so the removal that makes one is refused - and so is
-    a harmless one that only moves one, the cost of keeping them out of :data:`REATTRIBUTED`."""
+class TestAFindingMovingByOrder:
+    """The cost of counting per place. ddd reports some findings on declarations it picks by an
+    order a removal can change - the order it reads the project in, the first declaration read
+    of a name, the first local, the first copy of an enum met. Where a removal moves one of those
+    onto a place without an error of its check and severity, it is refused, harmless as it is."""
+
+    def test_a_file_read_later_through_a_sub_project_is_refused_for_the_conflict_it_moves(
+        self, tmp_path: Path
+    ) -> None:
+        """A diamond: `b.ddd.json` is the root's and the sub-project's. Removing the root's entry
+        keeps it in the project, read after `a.ddd.json` now, and the conflict of the two
+        writers, reported on every writer but the first read, moves from `A` onto `B`."""
+        files = {
+            "p.ddd.json": project("P", "b.ddd.json", "a.ddd.json", "sub.ddd.json", "r.ddd.json"),
+            "a.ddd.json": writing("A", "X"),
+            "b.ddd.json": writing("B", "X"),
+            "sub.ddd.json": project("Sub", "b.ddd.json"),
+            "r.ddd.json": reading("R", "X"),
+        }
+        assert judged(tmp_path, files, "b.ddd.json") == [
+            (
+                "b.ddd.json",
+                "multiple-producers",
+                "'X' is written by component 'B' and by component 'A'; exactly one writer is "
+                "allowed",
+            )
+        ]
+
+    def test_three_writers_read_in_another_order_are_refused_for_the_conflict_they_move(
+        self, tmp_path: Path
+    ) -> None:
+        """`multiple-producers` is reported on every writer but the first read. Removing the
+        root's entry for `b.ddd.json`, which the sub-project also lists, reads `B` last: `C`'s
+        conflict stays, reworded, and `A`'s moves onto `B`."""
+        files = {
+            "p.ddd.json": project(
+                "P", "b.ddd.json", "a.ddd.json", "c.ddd.json", "sub.ddd.json", "r.ddd.json"
+            ),
+            "a.ddd.json": writing("A", "X"),
+            "b.ddd.json": writing("B", "X"),
+            "c.ddd.json": writing("C", "X"),
+            "sub.ddd.json": project("Sub", "b.ddd.json"),
+            "r.ddd.json": reading("R", "X"),
+        }
+        assert judged(tmp_path, files, "b.ddd.json") == [
+            (
+                "b.ddd.json",
+                "multiple-producers",
+                "'X' is written by component 'B' and by component 'A'; exactly one writer is "
+                "allowed",
+            )
+        ]
+
+    def test_a_colliding_declaration_read_later_is_refused_for_the_collision_it_moves(
+        self, tmp_path: Path
+    ) -> None:
+        """`name-collision` through a diamond: a variable `V` beside a type `V` is reported at
+        its first declaration read. Removing the root's entry for `r1.ddd.json`, which the
+        sub-project also lists, changes nothing but the order, and the collision moves from
+        `R1`'s declaration onto `W`'s."""
+        files = {
+            "p.ddd.json": project("P", "r1.ddd.json", "w.ddd.json", "sub.ddd.json", "t.ddd.json"),
+            "r1.ddd.json": reading("R1", "V"),
+            "w.ddd.json": writing("W", "V"),
+            "sub.ddd.json": project("Sub", "r1.ddd.json"),
+            "t.ddd.json": types(scalar_type("V")),
+        }
+        assert judged(tmp_path, files, "r1.ddd.json") == [
+            (
+                "w.ddd.json",
+                "name-collision",
+                "'V' is declared as a variable and is also the name of a type; the types header "
+                "makes that a typedef name, which c keeps in the same namespace as the variable",
+            )
+        ]
+
+    def test_one_reader_of_a_name_a_type_takes_gone_is_refused_for_the_collision_it_moves(
+        self, tmp_path: Path
+    ) -> None:
+        """`name-collision`: a variable `V` beside a type `V` is reported at its first
+        declaration read, `R1`'s, and at `W`'s once `R1` goes; `R2` still reads `V`."""
+        files = {
+            "p.ddd.json": project("P", "r1.ddd.json", "w.ddd.json", "r2.ddd.json", "t.ddd.json"),
+            "r1.ddd.json": reading("R1", "V"),
+            "w.ddd.json": writing("W", "V"),
+            "r2.ddd.json": reading("R2", "V"),
+            "t.ddd.json": types(scalar_type("V")),
+        }
+        assert judged(tmp_path, files, "r1.ddd.json") == [
+            (
+                "w.ddd.json",
+                "name-collision",
+                "'V' is declared as a variable and is also the name of a type; the types header "
+                "makes that a typedef name, which c keeps in the same namespace as the variable",
+            )
+        ]
+
+    def test_a_reader_of_a_name_differing_in_case_gone_is_refused_for_the_finding_it_moves(
+        self, tmp_path: Path
+    ) -> None:
+        """`name-similar`, raised to an error by the build: `speed` beside `Speed` is reported at
+        the first declaration read of `speed`, `R1`'s, and at `R2`'s once `R1` goes."""
+        files = {
+            "p.ddd.json": project(
+                "P", "r1.ddd.json", "r2.ddd.json", "w.ddd.json", "q.ddd.json", "s.ddd.json"
+            ),
+            "r1.ddd.json": reading("R1", "speed"),
+            "r2.ddd.json": reading("R2", "speed"),
+            "w.ddd.json": writing("W", "speed"),
+            "q.ddd.json": writing("Q", "Speed"),
+            "s.ddd.json": reading("S", "Speed"),
+        }
+        assert judged(tmp_path, files, "r1.ddd.json", "name-similar") == [
+            ("r2.ddd.json", "name-similar", "'speed' and 'Speed' differ only in upper/lower case")
+        ]
+
+    def test_two_locals_read_in_another_order_are_refused_for_the_conflict_they_move(
+        self, tmp_path: Path
+    ) -> None:
+        """`local-conflict`: `L1` and `L2` both declare `X` local and `R` reads it, and every
+        declaration but the first local read is reported - `L2` until the root's entry for it
+        goes and it is read later, through the sub-project. `R`'s conflict stays, reworded, and
+        the two locals' moves from `L1` onto `L2`."""
+        files = {
+            "p.ddd.json": project("P", "l2.ddd.json", "l1.ddd.json", "sub.ddd.json", "r.ddd.json"),
+            "l1.ddd.json": component("L1", declare("local", "X")),
+            "l2.ddd.json": component("L2", declare("local", "X")),
+            "sub.ddd.json": project("Sub", "l2.ddd.json"),
+            "r.ddd.json": reading("R", "X"),
+        }
+        assert judged(tmp_path, files, "l2.ddd.json") == [
+            (
+                "l2.ddd.json",
+                "local-conflict",
+                "'X' is local to component 'L1' but is also declared as local by component 'L2'",
+            )
+        ]
+
+    def test_the_first_of_two_identical_enum_copies_gone_is_refused_for_the_value_it_moves(
+        self, tmp_path: Path
+    ) -> None:
+        """The cost for `enum-duplicate-value`, raised to an error by the build: it is reported on
+        the first copy of `Mode_t` met and on no other - `CA`'s, then `CB`'s identical one once
+        `CA` goes, a place that had none."""
+        twice = enum_of("Mode_t", ("OFF", 0), ("IDLE", 0))
+        files = {
+            "p.ddd.json": project("P", "ca.ddd.json", "cb.ddd.json"),
+            "ca.ddd.json": component("CA", declare("local", "MA", conversion=twice)),
+            "cb.ddd.json": component("CB", declare("local", "MB", conversion=twice)),
+        }
+        assert judged(tmp_path, files, "ca.ddd.json", "enum-duplicate-value") == [
+            ("cb.ddd.json", "enum-duplicate-value", "enum 'Mode_t': OFF, IDLE all have the value 0")
+        ]
+
+
+class TestAClashARemovalBrings:
+    """A removal can bring in an error the project does not have while an error of its check
+    leaves from another place. Counted each at its own place, the one does not hide the other:
+    each removal here is refused."""
+
+    def test_a_relaxed_duplicate_let_in_is_refused_for_the_conflict_it_brings(
+        self, tmp_path: Path
+    ) -> None:
+        """The build reports `duplicate-component` as a warning, so the loader keeps the first
+        `A` and drops the second while the revision is analysed. Removing the first ends the
+        conflict over `Y`, reported on `B`, and lets the second `A` in, writing `Z` beside `C` -
+        a conflict the project did not have, reported on `C`."""
+        files = {
+            "p.ddd.json": project(
+                "P", "a.ddd.json", "a2.ddd.json", "b.ddd.json", "c.ddd.json", "r.ddd.json"
+            ),
+            "a.ddd.json": writing("A", "Y"),
+            "a2.ddd.json": writing("A", "Z"),
+            "b.ddd.json": writing("B", "Y"),
+            "c.ddd.json": writing("C", "Z"),
+            "r.ddd.json": reading("R", "Y", "Z"),
+        }
+        assert judged(tmp_path, files, "a.ddd.json", relaxed=("duplicate-component",)) == [
+            (
+                "c.ddd.json",
+                "multiple-producers",
+                "'Z' is written by component 'C' and by component 'A'; exactly one writer is "
+                "allowed",
+            )
+        ]
 
     def test_a_new_owner_drawing_a_curve_over_a_private_axis_is_refused(
         self, tmp_path: Path
     ) -> None:
         """H1: `W1` owns `C`, drawn over its own `Ax1`, and reads `L`'s private `T2`; `W2` writes
         `C` over `T2`. Removing `W1` hands `C` to `W2`, and `C` reaches the dictionary bound to
-        `T2` - a conflict the project did not have, while `W1`'s own read of `T2` leaves with it,
-        which counted per check hid the one behind the other."""
+        `T2` - a conflict the project did not have, while `W1`'s own read of `T2` leaves with
+        it."""
         files = {
             "p.ddd.json": project("P", "w1.ddd.json", "w2.ddd.json", "l.ddd.json"),
             "w1.ddd.json": component(
@@ -543,10 +725,11 @@ class TestAClashLeftPerPlace:
     ) -> None:
         """H1b: `K1` declares `C` local, over its own axis, and `K2` writes `C` too, over `L`'s
         private `T2` - the conflict the project has. Removing `K1` is the natural fix, and it
-        leaves `C` to `K2`, bound to `T2`. An axis measuring another component's private input
-        takes the same path, not a test of its own: an axis's `input` and a curve's `axis` are
-        both entries of the definition's `references`, walked by the one loop that calls the
-        analysis's `_check_local_reference`."""
+        leaves `C` to `K2`, bound to `T2`: reported on `K2`, and shown to an editor on `L` as
+        well. An axis measuring another component's private input takes the same path, not a
+        test of its own: an axis's `input` and a curve's `axis` are both entries of the
+        definition's `references`, walked by the one loop that calls the analysis's
+        `_check_local_reference`."""
         files = {
             "p.ddd.json": project("P", "k1.ddd.json", "k2.ddd.json", "l.ddd.json"),
             "k1.ddd.json": component("K1", axis("local", "Ax1"), curve("local", "C", "Ax1")),
@@ -554,10 +737,7 @@ class TestAClashLeftPerPlace:
             "l.ddd.json": component("L", axis("local", "T2")),
         }
         use = "'T2' is local to component 'L' but is also used as the axis of 'C' by component 'K2'"
-        assert judged(tmp_path, files, "k1.ddd.json") == [
-            ("k2.ddd.json", "local-conflict", use),
-            ("l.ddd.json", "local-conflict", use),
-        ]
+        assert judged(tmp_path, files, "k1.ddd.json") == [("k2.ddd.json", "local-conflict", use)]
 
     def test_a_copy_of_an_enum_nobody_checked_put_first_is_refused(self, tmp_path: Path) -> None:
         """H2, `enum-duplicate-value` raised to an error by the build: `CA` holds the first copy
@@ -579,42 +759,73 @@ class TestAClashLeftPerPlace:
             ("cb.ddd.json", "enum-duplicate-value", "enum 'Mode_t': OFF, IDLE all have the value 0")
         ]
 
-    def test_two_locals_read_in_another_order_are_refused_for_the_conflict_they_move(
+    def test_the_read_taking_an_axis_for_a_measurement_gone_is_refused_for_the_curve_let_in(
         self, tmp_path: Path
     ) -> None:
-        """The cost for `local-conflict`: `L1` and `L2` both declare `X` local and `R` reads it,
-        each conflict mirrored onto the first local read - `L2` until the root's entry for it
-        goes and it is read later, through the sub-project. `L1` then holds one error more, and
-        the one reported is `R`'s conflict the project has, worded against `L1` now."""
+        """T5, under the default severities. Nothing writes `AX`: `RA`, read first, declares it a
+        measurement, and `RB` an axis, a `definition-mismatch` on `RB`. `W` draws the curve `X`
+        over it, a `reference-kind`, and `R`'s disagreement with `W` over `X` is never compared.
+        Removing `RA` makes `AX` an axis, and the disagreement comes in, on `R`, as `AX`'s leaves
+        `RB`."""
         files = {
-            "p.ddd.json": project("P", "l2.ddd.json", "l1.ddd.json", "sub.ddd.json", "r.ddd.json"),
-            "l1.ddd.json": component("L1", declare("local", "X")),
-            "l2.ddd.json": component("L2", declare("local", "X")),
-            "sub.ddd.json": project("Sub", "l2.ddd.json"),
-            "r.ddd.json": reading("R", "X"),
+            "p.ddd.json": project("P", "ra.ddd.json", "rb.ddd.json", "w.ddd.json", "r.ddd.json"),
+            "ra.ddd.json": component("RA", declare("input", "AX", "uint16")),
+            "rb.ddd.json": component("RB", axis("input", "AX")),
+            "w.ddd.json": component("W", curve("output", "X", "AX")),
+            "r.ddd.json": component("R", declare("input", "X", kind="curve", axis="AX")),
         }
-        assert judged(tmp_path, files, "l2.ddd.json") == [
+        assert judged(tmp_path, files, "ra.ddd.json") == [
             (
-                "l1.ddd.json",
-                "local-conflict",
-                "'X' is local to component 'L1' but is also declared as input by component 'R'",
+                "r.ddd.json",
+                "definition-mismatch",
+                "'X' is declared differently by component 'R' than by 'W' "
+                "(datatype: uint8 != uint16)",
             )
         ]
 
-    def test_the_first_of_two_identical_enum_copies_gone_is_refused_for_the_value_it_moves(
+    def test_the_owner_gone_is_refused_for_the_disagreement_it_lets_in_though_fewer_are_left(
         self, tmp_path: Path
     ) -> None:
-        """The cost for `enum-duplicate-value`, raised to an error by the build: it is reported on
-        the first copy of `Mode_t` met and on no other - `CA`'s, then `CB`'s identical one once
-        `CA` goes, a place that had none."""
-        twice = enum_of("Mode_t", ("OFF", 0), ("IDLE", 0))
+        """E1, under the default severities. `A` owns `X` and `Y`, its name sorting first, and
+        holds no `definition-mismatch`. It states no limits for `X`, so the first declaration read
+        that does, `R1`'s, is the one `B`, `R2` and `R3` differ from; and it draws `Y` over
+        `NOPE`, which nobody declares, and `S`'s disagreement with `C` over `Y` is never compared.
+        Removing `A` makes `B` the owner: only `R1` differs from its limits, reported on `R1` now,
+        and `S`'s disagreement comes in - two errors, where three leave."""
         files = {
-            "p.ddd.json": project("P", "ca.ddd.json", "cb.ddd.json"),
-            "ca.ddd.json": component("CA", declare("local", "MA", conversion=twice)),
-            "cb.ddd.json": component("CB", declare("local", "MB", conversion=twice)),
+            "p.ddd.json": project(
+                "P",
+                "r1.ddd.json",
+                "r2.ddd.json",
+                "r3.ddd.json",
+                "b.ddd.json",
+                "c.ddd.json",
+                "a.ddd.json",
+                "s.ddd.json",
+                "ax.ddd.json",
+            ),
+            "a.ddd.json": component("A", declare("output", "X"), curve("output", "Y", "NOPE")),
+            "b.ddd.json": component("B", declare("output", "X", limits={"min": 0, "max": 20})),
+            "r1.ddd.json": component("R1", declare("input", "X", limits={"min": 0, "max": 10})),
+            "r2.ddd.json": component("R2", declare("input", "X", limits={"min": 0, "max": 20})),
+            "r3.ddd.json": component("R3", declare("input", "X", limits={"min": 0, "max": 20})),
+            "c.ddd.json": component("C", curve("output", "Y", "AX")),
+            "s.ddd.json": component("S", declare("input", "Y", kind="curve", axis="AX")),
+            "ax.ddd.json": component("AXO", axis("output", "AX")),
         }
-        assert judged(tmp_path, files, "ca.ddd.json", "enum-duplicate-value") == [
-            ("cb.ddd.json", "enum-duplicate-value", "enum 'Mode_t': OFF, IDLE all have the value 0")
+        assert judged(tmp_path, files, "a.ddd.json") == [
+            (
+                "r1.ddd.json",
+                "definition-mismatch",
+                "'X' is declared differently by component 'R1' than by 'B' "
+                "(limits: [0, 10] != [0, 20])",
+            ),
+            (
+                "s.ddd.json",
+                "definition-mismatch",
+                "'Y' is declared differently by component 'S' than by 'C' "
+                "(datatype: uint8 != uint16)",
+            ),
         ]
 
 

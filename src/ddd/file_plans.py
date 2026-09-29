@@ -7,8 +7,10 @@ findings arrive as ``(path, diagnostic)`` pairs - the shape
 own ``Filed``.
 
 No rule here says which kinds of file a project may do without. :func:`new_errors` counts the
-errors of two analyses of one project, the second with the root's list changed, and what the
-second has more of is what the change would break.
+errors of two analyses of one project, the second with the root's list changed, place by place,
+and what the second has more of is what the change would break. It counts a finding where
+``ddd check`` reports it, not again at each place an editor is shown a mirror of it, as far as
+:func:`_as_reported` can tell the two apart.
 """
 
 from __future__ import annotations
@@ -16,108 +18,12 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Final
 
-from ddd.diagnostics import Diagnostic, Severity
+from ddd.diagnostics import Diagnostic, Location, Severity
 from ddd.lsp.diagnostics import finding_identity
 
 type Pair = tuple[Path, Diagnostic]
 """A finding and the file it is shown on, as :func:`ddd.project_shared.shared_rows` takes them."""
-
-REATTRIBUTED: Final = frozenset(
-    {
-        "condition-mismatch",
-        "definition-mismatch",
-        "duplicate-event",
-        "duplicate-id",
-        "enum-conflict",
-        "multiple-producers",
-        "name-collision",
-        "name-similar",
-        "storage-mismatch",
-    }
-)
-"""The checks :func:`new_errors` counts per check and severity rather than per place: those whose
-findings ddd places among the declarations that clash by an order a change of the list can
-change - the order it read the project in, which declaration owns an object, or which of the
-clashing names sorts first - so that a removal moves an error the project has to another place,
-where counted per place it read as new. Each is placed so:
-
-* ``multiple-producers``: on every writer but the first read, mirrored onto the first.
-* ``definition-mismatch``, ``storage-mismatch`` and ``condition-mismatch``: on every declaration
-  but the reference - the owner, a ``local`` writer or else the writer whose component name sorts
-  first, and with no writer the first read - mirrored onto the reference; stated limits against
-  the owner's where it states any, else against the first read that does.
-* ``name-collision``: on the first read declaration of a variable whose name a type, an enum, an
-  enumerator or a constant takes as well; on every component but the first read whose name
-  differs from it only in case; on every enum defining an enumerator an earlier one read does;
-  and on a constant's own entry where an enum, an enumerator, a type or the member of a structure
-  takes its name, mirrored onto that - an enum's first copy met, or the first enum met to define
-  the enumerator, both by order.
-* ``name-similar``: on the first read declaration of every name but the first in name order of
-  those differing only in case, mirrored onto the first read declaration of the first.
-* ``duplicate-id``: on the declarations of every object but the first in name order carrying one
-  id, mirrored onto the first declaration read of the first that carries it.
-* ``duplicate-event``: on every raster claiming one event but the one whose name sorts first,
-  mirrored onto it.
-* ``enum-conflict``: on every copy of an enum differing from the first met - a types file's
-  before any component's, components' in the order read - mirrored onto it.
-
-Each reports a clash between declarations. A removal can resolve one or move one, and it can
-relabel one - a local declaration gone, its other writers' ``local-conflict`` reported as
-``multiple-producers`` - or re-count one against a new reference: a new owner, a new first read
-where nothing writes the object, a new first declaration stating limits where the owner states
-none, a new first copy of an enum or a new first definer of an enumerator, which more
-declarations differ from than differed from the one before. A relabel or a re-count is counted
-like any error of the check it is reported under, and measured, it is refused where it raises
-that check's count alone - a local gone from beside its two writers, two readers disagreeing
-with a new owner, two with a new first read, two with a new first declaration of limits, one
-more copy of an enum differing from a new first one, one more copy colliding with a new first
-definer of its enumerator - and allowed where the count stays, or where as many errors of the
-check leave with the file.
-
-A removal can also bring in a clash the analysis never compared. Counted per check, it is refused
-where nothing of its check leaves with the file, and hidden where as many errors of its check
-leave. It comes in two ways. One is a second declaration of a name, which the loader drops while
-the first is there and reads once it is gone. That needs a build lowering the ``duplicate-*``
-check the loader answers so, each an error by default: under the default the read reports an
-error, which leaves the revision unanalysed and so never judged. Measured with the check reported
-as a warning for a second component, type and raster, and for a component as an information and
-not at all as well. The other is an object the analysis refused, a map too wide over its axes,
-which a new owner of one of them lets it compare. Every such case measured is refused counted per
-place, and the cost is accepted all the same, because counting per place refuses the removal a
-reader makes to end a conflict of two writers, when their readers' disagreement moves onto the
-writer left - the case ``test_ending_a_conflict_of_writers_keeps_the_readers_disagreement`` pins,
-which fails with ``definition-mismatch`` out of this set.
-``test_a_relaxed_duplicate_let_in_hides_its_clash_behind_one_leaving`` pins the cost.
-
-Counted per check, they cannot tell apart two clashes of one check that swap: one resolved as
-another is reported leaves the count as it was, and the change is allowed - a reader that agreed
-with the owner removed takes the place of the other writer's disagreement with it.
-
-Not ``local-conflict``, although its declarations are placed by the first local read: on a
-reference it sits at whatever owns the referrer, and a removal that hands an object to another
-owner binds that owner's references afresh - a curve left to a writer that draws it over another
-component's private axis is a conflict the project did not have. Nor ``enum-duplicate-value``,
-checked on the first copy of an enum met and on no other: a removal can put a copy nobody checked
-first. Counted per place instead, a harmless move of either is refused - two locals read in
-another order, the first of two identical copies gone - which needs a project that fails that
-check already. Nor, for the same first copy, ``init-invalid``, which an enumerator outside a
-c ``int`` earns there and on no other copy, so that a removal can make one; nor
-``reserved-identifier``, which an enum's name earns on its first copy met and an enumerator on
-the first copy of each enum defining it, so that a removal can move one but not make one - and
-counted per place, that move is refused.
-
-Nor ddd's other checks that follow an object's owner - ``unknown-reference``, ``reference-kind``,
-``a2l-unrepresentable``, the ``schema`` of a map too wide over its axes and ``incomplete-project``,
-which read the owner's own definition, and ``point-counts-unrepresentable`` and
-``point-counts-mismatch``, which read where the owning component keeps its point counts: a new
-owner can make one the project did not have. Nor ``unused-output``, although it sits on the
-owner: a removal does make new ones - the last reader gone - and, counted per check, one made
-would hide behind one taken away. Nor any plugin's check, nor any check added later: where each
-files is not known here, and per place is the default that refuses a harmless change where an
-error moves, but hides a new one only where another of its check went from the same place.
-"""
 
 
 def new_errors(before: Sequence[Pair], after: Sequence[Pair]) -> tuple[Pair, ...]:
@@ -129,33 +35,51 @@ def new_errors(before: Sequence[Pair], after: Sequence[Pair]) -> tuple[Pair, ...
     project that passes and one that fails. A warning a change brings is for the reader to see
     once it is made, not a reason to call the change breaking.
 
-    Counted, not matched, in two passes over ``after``. First each error ``before`` has word for
-    word - :func:`~ddd.lsp.diagnostics.finding_identity` - uses that one up; then each error left
-    uses up one of ``before``'s still unused under the same :func:`_key`, and one with none left
-    to use up is new. Word for word first, so that where a place that had one error has two, the
-    error reported is the one the project does not have: taken by key alone in ``after``'s order,
-    a new error listed first used up the old one's key, and the old one was quoted as new.
+    Of what each side lists, what it reports is counted - what :func:`_as_reported` leaves, which
+    for ddd's own checks is each finding where ``ddd check`` reports it, and not again at each
+    place a note of it points to, where an editor is shown a mirror of it. Where a note points
+    at a declaration ddd picks by an order a removal can change - the owner, the first
+    declaration read, the name sorting first - the mirrors move with it, and counted, they read
+    as new errors where the findings stayed where they were.
 
-    The errors ``before`` has word for word are set aside first, wherever ``after`` lists them.
-    Of the rest, where the count of a place, or of a check counted per check, rose, the ones
-    listed past what is left of that count are reported, in the order a revision lists them. So
-    what is reported is not an error ``before`` has word for word - of what a revision lists,
-    which never holds one identity twice, :func:`~ddd.lsp.diagnostics.group_findings` dropping a
-    repeat; given one error twice where ``before`` has it once, the second is reported. Nor is it
-    always one the project lacks: where the count rose because an error the project has moved
-    there, re-worded, that is what can be reported. Measured: two locals of one variable read in
-    another order report its reader's conflict, now worded against the other local, and removing
-    the writer two readers agreed with reports both readers' disagreement with the writer left, as
-    filed on that writer's own file.
+    Counted, not matched, in two passes over the errors ``after`` reports. First each one
+    ``before`` reports word for word - :func:`~ddd.lsp.diagnostics.finding_identity` - uses that
+    one up; then each one left uses up one ``before`` reports, still unused, under the same
+    :func:`_key` - its check, severity and place - and one with none left to use up is new. Word
+    for word first, so that where a place that had one error has two, the error reported is the
+    one the project does not have: taken by key alone in ``after``'s order, a new error listed
+    first used up the old one's key, and the old one was quoted as new.
 
-    ``before`` is counted whole, whatever the severity: every key carries its finding's, so only
+    Per place costs something both ways. ddd reports some findings on declarations it picks by
+    an order a removal can change - the order it reads the project in, the first declaration
+    read of a name, the first local, the first copy of an enum met - and a harmless removal that
+    moves one onto a place without an error of its check and severity is refused, quoting the
+    error the project has, reworded where its words name that order. Measured, so is a removal
+    that relabels an error - a local gone, its other writers' ``local-conflict`` reported as
+    ``multiple-producers`` - or re-counts one against a new reference, each quoting an error the
+    project would really have. The other way, a new error is hidden only where an error of its
+    check and severity leaves the same place - with the same message, where the place is a
+    whole file or none - or where it has the shape of a mirror (see :func:`_as_reported`). A
+    check filing every finding at one place, as a plugin's may, hides there up to as many new
+    errors as leave.
+
+    What is reported is never a mirror :func:`_as_reported` tells, and never, word for word, an
+    error ``before`` reports: a revision never lists one identity twice,
+    :func:`~ddd.lsp.diagnostics.group_findings` filing each once, and the first pass sets each
+    of those aside - given one twice where ``before`` reports it once, the second is reported.
+    It can have the words of a mirror ``before`` lists, which is not counted: measured, an
+    enum's first copy met, read later and differing from the copy met first now, is reported in
+    the words of the mirror it was shown.
+
+    Of ``before``, warnings are counted too: every key carries its finding's severity, so only
     an error the project has now can be used up by an error of ``after``. The filters are
     statements in loops rather than comprehensions', which coverage.py counts no branch in.
     """
-    identities = Counter(finding_identity(diagnostic) for _, diagnostic in before)
-    keys = Counter(_key(diagnostic) for _, diagnostic in before)
+    had = _as_reported(before)
+    identities = Counter(finding_identity(diagnostic) for _, diagnostic in had)
+    keys = Counter(_key(diagnostic) for _, diagnostic in had)
     unmatched: list[Pair] = []
-    for found in after:
+    for found in _as_reported(after):
         _, diagnostic = found
         if diagnostic.severity is not Severity.ERROR:
             continue
@@ -175,10 +99,49 @@ def new_errors(before: Sequence[Pair], after: Sequence[Pair]) -> tuple[Pair, ...
     return tuple(fresh)
 
 
+def _as_reported(pairs: Sequence[Pair]) -> list[Pair]:
+    """``pairs`` less what is shaped like a mirror :func:`~ddd.lsp.diagnostics.group_findings`
+    adds of a finding, so that an editor marks both sides of a clash: the finding again, without
+    notes, at each other place a note of it points to.
+
+    A mirror is told by its shape, as :func:`~ddd.lsp.diagnostics._mirrors` makes one: no notes,
+    at the place a note of a finding of its check, severity and message points to - a note with
+    a place other than that finding's own, of a finding with a place.
+
+    The shape is a mirror's alone where no finding a run reports has the check, severity,
+    message and place of another's mirror, which holds of ddd's own checks: each note they make
+    points at another place its finding is about - the owner, the first read, the first copy
+    met - and none of them reports a finding of that check and message there. A plugin's
+    check can, and then ``group_findings``, filing one identity once, files the finding and a
+    mirror as one: the finding can go uncounted, and mirrors of it be counted in its stead.
+    """
+    copied: set[tuple[str, Severity, str, Location]] = set()
+    for _, diagnostic in pairs:
+        placed = diagnostic.location
+        if placed is None:
+            continue
+        for _, noted in diagnostic.notes:
+            if noted is None:
+                continue
+            if noted == placed:
+                continue
+            copied.add((diagnostic.check, diagnostic.severity, diagnostic.message, noted))
+    reported: list[Pair] = []
+    for found in pairs:
+        diagnostic = found[1]
+        if diagnostic.notes:
+            reported.append(found)
+            continue
+        shape = (diagnostic.check, diagnostic.severity, diagnostic.message, diagnostic.location)
+        if shape in copied:
+            continue
+        reported.append(found)
+    return reported
+
+
 def _key(diagnostic: Diagnostic) -> tuple[object, ...]:
-    """What an error no error of ``before`` matches word for word is counted as: its check and
-    its severity, and its place unless the check is one of :data:`REATTRIBUTED`, but never its
-    wording where it has a place of its own.
+    """What an error no error of ``before`` matches word for word is counted as: its check, its
+    severity and its place, but never its wording where it has a place of its own.
 
     A message may name what else the project holds: the writers of a variable, in an order the
     reading sets, or a constant spelled nearly like the one a shape names. Once a file is gone
@@ -188,8 +151,6 @@ def _key(diagnostic: Diagnostic) -> tuple[object, ...]:
     Counted per place, a check cannot see an error whose meaning changes while its place stays:
     one gone and another come at one pointer read as the one the project had.
     """
-    if diagnostic.check in REATTRIBUTED:
-        return (diagnostic.check, diagnostic.severity)
     return (diagnostic.check, diagnostic.severity, _place(diagnostic))
 
 

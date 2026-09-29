@@ -102,14 +102,16 @@ export function routeLabel(finding: Finding, state: State): string | null {
     // preferring here - not because neither check's file ever has one (a project description's
     // own name reads through `SourceFile.name` too, `ddd.gui.session._name_in` keying off
     // `parsed[kind]["name"]`), but because neither check's *route* ever names a file that both
-    // sits in `State.files` and carries a name: `include-empty` is filed only where a pattern
-    // matches nothing (`diagnostics.py`: "an include pattern matches no file"), so its route
-    // names that pattern, which `State.files` - files the loader actually read - never lists;
-    // `empty-vocabulary`'s names the vocabulary file it is filed on, which `State.files` does
-    // list, but never with a name, that being a component's alone. A row of the Files tab is one
-    // entry among others the same directory can hold, so the path relative to the project - the
-    // very shape an entry is itself written in (`sensors/a.ddd.json`) - says which one a
-    // `baseName` alone, repeated across two directories, could not.
+    // sits in `State.files` and carries a name: `include-empty` is filed wherever a pattern
+    // cannot be expanded at all (`ddd.loading._expand`'s own words, "cannot expand pattern") or
+    // expands to no file, so its route names that pattern either way, which `State.files` -
+    // files the loader actually read - never lists; `empty-vocabulary`'s names the vocabulary
+    // file it is filed on, which `State.files` does list, but a vocabulary's own top-level key
+    // holds a list there, not the dict `_name_in` reads a name from - a component's and a
+    // project's own both do, a vocabulary's alone does not. A row of the Files tab is one entry
+    // among others the same directory can hold, so the path relative to the project - the very
+    // shape an entry is itself written in (`sensors/a.ddd.json`) - says which one a `baseName`
+    // alone, repeated across two directories, could not.
     return `Open ${relativeToProject(route.name, state.project)}`;
   }
   return `Open ${route.name}`;

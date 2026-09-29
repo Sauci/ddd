@@ -1231,19 +1231,21 @@ class FilesPlanReply(PlanReply):
     errors the added file would bring; for a create, and for a remove the reader is allowed to
     make, none."""
 
-    judged: bool
-    """Whether the analysis compared the project with the change made to the project as it is.
-    For an add or a remove, ``True`` where every run the revision was made from analysed the
-    project, and ``False`` where not every one did - a run's read reported an error, or a
-    plugin raised - so there was no complete "now" to compare against: nothing is brought then,
-    and a removal is allowed unjudged. Always ``False`` for a create, which needs no analysis:
-    an empty file breaks nothing, and the one kind that could, a units file, lists every unit in
-    use where it is the first of the project's tree."""
+    unjudged: str | None
+    """Why what an add would bring, or a remove would leave, could not be judged: the sentence
+    the preview says it in, the server's like every sentence of the preview. Where not every run
+    the revision was made from analysed the project - a run's read reported an error, or a
+    plugin raised - there was no complete "now" to compare the change against: nothing is
+    brought then, and a removal is allowed unjudged. ``None`` where the change was judged, and
+    always for a create, which has nothing to judge: an empty file breaks nothing, and the one
+    kind that could, a units file, lists every unit in use where it is the first of the
+    project's tree."""
 
     brings: tuple[BroughtError, ...]
-    """For a judged add, what :func:`ddd.file_plans.new_errors` answers of the project with the
-    file added: the errors it would have more of than it has now, in the order a revision lists
-    its findings. Empty otherwise."""
+    """For an add that was judged - ``unjudged`` being ``None`` - what
+    :func:`ddd.file_plans.new_errors` answers of the project with the file added: the errors it
+    would have more of than it has now, in the order a revision lists its findings. Empty
+    otherwise."""
 
     kept_by: str | None
     """For a remove, the entry left that still brings the file into the project -

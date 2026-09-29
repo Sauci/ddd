@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import ntpath
 import re
 import shutil
 import threading
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Final
 
 import pytest
@@ -36,6 +37,7 @@ from ddd.gui.api import (
     _declared,
     _json_texts,
     _required_keys,
+    _spelled,
 )
 from ddd.gui.session import Session
 from ddd.project_shared import RASTERS, SECTIONS
@@ -5327,18 +5329,47 @@ ADDABLE = {
     "tool.py": "print('a plugin')\n",
 }
 
-# A component reading what the one file writing it would write, that file saved half-edited: the
-# project is not analysed, and removing the broken file would leave `missing-producer` if judged.
+# A component reading what the one file writing it would write, that file - in a directory of
+# its own - saved half-edited: the project is not analysed, and removing the broken file would
+# leave `missing-producer` if judged.
 READER_OF_A_BROKEN_WRITER = {
-    "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+    "p.ddd.json": project("P", "a.ddd.json", "lib/b.ddd.json"),
     "a.ddd.json": component("A", declare("input", "Speed", unit="rpm")),
-    "b.ddd.json": json.dumps(component("B", declare("output", "Speed", unit="rpm")), indent=2)[:60],
+    "lib/b.ddd.json": json.dumps(component("B", declare("output", "Speed")), indent=2)[:60],
+}
+
+# A reader of three variables, each written by a component that a pattern in a directory of its
+# own brings in: one in `lib`, two in `sensors`.
+WRITERS_IN_DIRECTORIES = {
+    "p.ddd.json": project("P", "a.ddd.json", "lib/*.ddd.json", "sensors/*.ddd.json"),
+    "a.ddd.json": component(
+        "A",
+        declare("input", "Speed", unit="rpm"),
+        declare("input", "Torque", unit="Nm"),
+        declare("input", "Flow", unit="l/min"),
+    ),
+    "lib/speed.ddd.json": component("S", declare("output", "Speed", unit="rpm")),
+    "sensors/torque.ddd.json": component("T", declare("output", "Torque", unit="Nm")),
+    "sensors/flow.ddd.json": component("F", declare("output", "Flow", unit="l/min")),
 }
 
 NO_KIND = (
     "is no kind of file a project includes: it cannot be read as json, or its top level holds "
     "none of project, component, types, units, sections, constants and rasters"
 )
+
+UNJUDGED_ADDING = (
+    "not every analysis of this project ran to its end, so what adding c.ddd.json brings cannot "
+    "be judged"
+)
+"""What an add to READER_OF_A_BROKEN_WRITER is answered with: nothing brought, and why."""
+
+UNJUDGED_REMOVING = (
+    "not every analysis of this project ran to its end, so what removing lib/b.ddd.json leaves "
+    "cannot be judged"
+)
+"""What removing READER_OF_A_BROKEN_WRITER's broken writer is answered with: allowed, and why
+unjudged - the file named as the includes spell it, from the description's directory."""
 
 
 class TestAFilesPlanRequest:
@@ -5438,7 +5469,7 @@ class TestCreatingAFile:
                         ],
                     },
                 ],
-                "judged": False,
+                "unjudged": None,
                 "brings": [],
                 "kept_by": None,
             },
@@ -5634,7 +5665,7 @@ class TestAddingAFile:
                         ],
                     }
                 ],
-                "judged": True,
+                "unjudged": None,
                 "brings": [
                     {
                         "file": posix(tmp_path, "b.ddd.json"),
@@ -5649,7 +5680,7 @@ class TestAddingAFile:
 
     def test_a_file_bringing_nothing_brings_nothing(self, tmp_path: Path) -> None:
         body = files_plan(opened(tmp_path, ADDABLE), "add", path="c.ddd.json").body
-        assert (body["judged"], body["brings"], body["kept_by"]) == (True, [], None)
+        assert (body["unjudged"], body["brings"], body["kept_by"]) == (None, [], None)
 
     @pytest.mark.parametrize(
         ("path", "status", "code", "says"),
@@ -5753,7 +5784,7 @@ class TestAddingAFile:
     ) -> None:
         api = opened(tmp_path, {**READER_OF_A_BROKEN_WRITER, "c.ddd.json": component("C")})
         body = files_plan(api, "add", path="c.ddd.json").body
-        assert (body["judged"], body["brings"], body["kept_by"]) == (False, [], None)
+        assert (body["unjudged"], body["brings"], body["kept_by"]) == (UNJUDGED_ADDING, [], None)
 
     def test_an_addition_is_refused_where_a_file_changed_since_the_analysis(
         self, tmp_path: Path
@@ -5792,7 +5823,7 @@ class TestAddingAFile:
         api = opened(tmp_path, {**READER_OF_A_BROKEN_WRITER, "c.ddd.json": component("C")})
         (tmp_path / "a.ddd.json").write_bytes((tmp_path / "a.ddd.json").read_bytes() + b"\n")
         body = files_plan(api, "add", path="c.ddd.json").body
-        assert (body["judged"], body["brings"]) == (False, [])
+        assert (body["unjudged"], body["brings"]) == (UNJUDGED_ADDING, [])
 
 
 class TestRemovingAFile:
@@ -5819,7 +5850,7 @@ class TestRemovingAFile:
                         "hunks": [{"line": 7, "before": ['      "units.ddd.json",'], "after": []}],
                     }
                 ],
-                "judged": True,
+                "unjudged": None,
                 "brings": [],
                 "kept_by": None,
             },
@@ -5857,6 +5888,53 @@ class TestRemovingAFile:
             "project declares",
         )
 
+    @pytest.mark.parametrize(
+        ("pattern", "says"),
+        [
+            pytest.param(
+                "lib/*.ddd.json",
+                "removing lib/*.ddd.json would leave an error, in a.ddd.json: 'Speed' is read by "
+                "component 'A' but no component declares it as output",
+                id="one error",
+            ),
+            pytest.param(
+                "sensors/*.ddd.json",
+                "removing sensors/*.ddd.json would leave 2 errors, the first in a.ddd.json: "
+                "'Torque' is read by component 'A' but no component declares it as output",
+                id="several",
+            ),
+        ],
+    )
+    def test_a_pattern_in_a_directory_is_named_as_the_includes_spell_it(
+        self, tmp_path: Path, pattern: str, says: str
+    ) -> None:
+        """Named relative to the description's directory, as its entry is written, and not by
+        its last part: `lib/*.ddd.json`, never `*.ddd.json`, which another pattern may end in."""
+        api = opened(tmp_path, WRITERS_IN_DIRECTORIES)
+        assert refused(files_plan(api, "remove", path=posix(tmp_path, pattern))) == (
+            409,
+            "invalid",
+            says,
+        )
+
+    def test_a_file_on_another_drive_than_the_description_is_named_whole(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An entry may name a file on another drive than the description's, and on Windows
+        `os.path.relpath` refuses to measure from one drive to another. Refused so here, the file
+        is named by its whole path rather than the request failing."""
+        api = opened(tmp_path, READER_OF_A_BROKEN_WRITER)
+
+        def across_drives(path: object, start: object) -> str:
+            raise ValueError("path is on mount 'D:', start on mount 'C:'")
+
+        monkeypatch.setattr("ddd.gui.api.relpath", across_drives)
+        body = files_plan(api, "remove", path=posix(tmp_path, "lib/b.ddd.json")).body
+        assert body["unjudged"] == (
+            "not every analysis of this project ran to its end, so what removing "
+            f"{posix(tmp_path, 'lib/b.ddd.json')} leaves cannot be judged"
+        )
+
     def test_a_file_a_pattern_pulled_in_is_refused_naming_the_pattern(self, tmp_path: Path) -> None:
         api = opened(
             tmp_path,
@@ -5888,7 +5966,7 @@ class TestRemovingAFile:
             {"p.ddd.json": project("P", "*.ddd.json", "a.ddd.json"), "a.ddd.json": component("A")},
         )
         body = files_plan(api, "remove", path=posix(tmp_path, "a.ddd.json")).body
-        assert (body["judged"], body["brings"], body["kept_by"]) == (True, [], "*.ddd.json")
+        assert (body["unjudged"], body["brings"], body["kept_by"]) == (None, [], "*.ddd.json")
         assert body["changes"][0]["operations"] == [
             {"op": "remove", "pointer": "project.includes[1]", "raw": None}
         ]
@@ -5907,7 +5985,12 @@ class TestRemovingAFile:
             },
         )
         body = files_plan(api, "remove", path=posix(tmp_path, "a.ddd.json")).body
-        assert (body["judged"], body["brings"], body["kept_by"]) == (False, [], "*.ddd.json")
+        assert (body["unjudged"], body["brings"], body["kept_by"]) == (
+            "not every analysis of this project ran to its end, so what removing a.ddd.json "
+            "leaves cannot be judged",
+            [],
+            "*.ddd.json",
+        )
 
     def test_a_row_s_key_spelled_another_way_still_names_its_row(self, tmp_path: Path) -> None:
         """Resolved as it arrives, as every path the page sends is, and as the row's own key
@@ -5926,10 +6009,10 @@ class TestRemovingAFile:
         its reader is left with - an error of an analysis that never ran on the project as it is,
         so one the reader cannot see. Not every run analysed: allowed, and said to be unjudged."""
         api = opened(tmp_path, READER_OF_A_BROKEN_WRITER)
-        reply = files_plan(api, "remove", path=posix(tmp_path, "b.ddd.json"))
+        reply = files_plan(api, "remove", path=posix(tmp_path, "lib/b.ddd.json"))
         assert reply.status == 200
-        assert (reply.body["judged"], reply.body["brings"], reply.body["kept_by"]) == (
-            False,
+        assert (reply.body["unjudged"], reply.body["brings"], reply.body["kept_by"]) == (
+            UNJUDGED_REMOVING,
             [],
             None,
         )
@@ -5939,7 +6022,12 @@ class TestRemovingAFile:
         analysed, and taking the entry out is allowed without a judgement."""
         api = opened(tmp_path, ENTRIES_OF_EVERY_SHAPE)
         body = files_plan(api, "remove", path=posix(tmp_path, "missing.ddd.json")).body
-        assert (body["judged"], body["brings"], body["kept_by"]) == (False, [], None)
+        assert (body["unjudged"], body["brings"], body["kept_by"]) == (
+            "not every analysis of this project ran to its end, so what removing missing.ddd.json "
+            "leaves cannot be judged",
+            [],
+            None,
+        )
         assert body["changes"][0]["operations"] == [
             {"op": "remove", "pointer": "project.includes[2]", "raw": None}
         ]
@@ -5988,5 +6076,29 @@ class TestRemovingAFile:
         unjudged, with no refusal, whatever was saved since."""
         api = opened(tmp_path, READER_OF_A_BROKEN_WRITER)
         (tmp_path / "a.ddd.json").write_bytes((tmp_path / "a.ddd.json").read_bytes() + b"\n")
-        body = files_plan(api, "remove", path=posix(tmp_path, "b.ddd.json")).body
-        assert (body["judged"], body["brings"]) == (False, [])
+        body = files_plan(api, "remove", path=posix(tmp_path, "lib/b.ddd.json")).body
+        assert (body["unjudged"], body["brings"]) == (UNJUDGED_REMOVING, [])
+
+
+class TestNamingAFileAsTheIncludesDo:
+    """``_spelled`` as it runs on Windows, where ``os.path.relpath`` answers with backslashes and
+    refuses to measure from one drive to another: run here with what ``relpath`` and ``Path`` are
+    there, ``ntpath.relpath`` and ``PureWindowsPath`` - on this platform ``relpath`` never
+    answers a backslash, so nothing else can show the answer made posix."""
+
+    @pytest.fixture
+    def on_windows(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("ddd.gui.api.relpath", ntpath.relpath)
+        monkeypatch.setattr("ddd.gui.api.Path", PureWindowsPath)
+
+    @pytest.mark.usefixtures("on_windows")
+    def test_a_pattern_below_the_description_is_spelled_with_forward_slashes(self) -> None:
+        pattern = PureWindowsPath("C:/work/lib/*.ddd.json")
+        assert _spelled(pattern, PureWindowsPath("C:/work/p.ddd.json")) == "lib/*.ddd.json"
+
+    @pytest.mark.usefixtures("on_windows")
+    def test_a_file_on_another_drive_is_named_by_its_whole_path(self) -> None:
+        shared = PureWindowsPath("D:/shared/units.ddd.json")
+        assert _spelled(shared, PureWindowsPath("C:/work/p.ddd.json")) == (
+            "D:/shared/units.ddd.json"
+        )

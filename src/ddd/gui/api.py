@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
+from os.path import relpath
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
@@ -982,7 +983,7 @@ class Api:
             contract.FilesPlanReply(
                 revision=revision.number,
                 changes=_planned_changes(revision, made),
-                judged=plan.judged,
+                unjudged=plan.unjudged,
                 brings=[
                     {"file": path.as_posix(), "check": found.check, "message": found.message}
                     for path, found in plan.brings
@@ -1799,7 +1800,7 @@ class _FilesPlanned:
     what :class:`~ddd.gui.contract.FilesPlanReply` says beside them."""
 
     edits: tuple[PlannedEdit, ...]
-    judged: bool = False
+    unjudged: str | None = None
     brings: tuple[Pair, ...] = ()
     kept_by: str | None = None
 
@@ -1869,7 +1870,11 @@ def _addition(revision: Revision, entry: str, cache: dict[Path, Document]) -> _F
     then :func:`ddd.file_plans.add_plan`'s own, which the disk and the description answer;
     then a file :func:`ddd.gui.session.kind_of` - the rule ``State.files`` shows a kind by -
     finds no kind of description in: a python file, which a project names among its plugins,
-    or one the loader could not read as a description of any kind."""
+    or one the loader could not read as a description of any kind.
+
+    Judged where every run of the revision analysed the project, and otherwise answered with
+    the sentence saying why it could not be, true of both ways a run stops short: its read
+    reporting an error, or a plugin raising."""
     added = resolve_path(revision.project.parent / entry)
     try:
         _served(revision, added)
@@ -1896,8 +1901,12 @@ def _addition(revision: Revision, entry: str, cache: dict[Path, Document]) -> _F
             f"{DESCRIPTION_KINDS[-1]}",
         )
     if not revision.analysed:
-        return _FilesPlanned(plan.edits)
-    return _FilesPlanned(plan.edits, judged=True, brings=_judged(revision, plan.includes))
+        return _FilesPlanned(
+            plan.edits,
+            unjudged=f"not every analysis of this project ran to its end, so what adding {entry} "
+            "brings cannot be judged",
+        )
+    return _FilesPlanned(plan.edits, brings=_judged(revision, plan.includes))
 
 
 def _removal(revision: Revision, path: Path, cache: dict[Path, Document]) -> _FilesPlanned:
@@ -1908,28 +1917,52 @@ def _removal(revision: Revision, path: Path, cache: dict[Path, Document]) -> _Fi
     the revision analysed the project: a project any run of which stopped at its read, or at a
     plugin raising, has no complete "now" to compare with, and judged, removing the very file
     that stopped it would be refused for errors of an analysis the reader never saw. It is
-    allowed then, and the reply says it was not judged.
+    allowed then, with the sentence saying why it was not judged, true of both ways a run stops
+    short.
 
     The refusal counts what :func:`ddd.file_plans.new_errors` counts - errors beyond those the
     project has now - and quotes the first of them without calling it new: where a place that
-    had one error of a check would have two, the one quoted can be the old one, re-worded."""
+    had one error of a check would have two, the one quoted can be the old one, re-worded. The
+    file or the pattern removed is named as the includes spell it (:func:`_spelled`)."""
     plan = remove_plan(revision.project, path, cache)
+    removing = _spelled(path, revision.project)
     if not revision.analysed:
-        return _FilesPlanned(plan.edits, kept_by=plan.kept_by)
+        return _FilesPlanned(
+            plan.edits,
+            unjudged=f"not every analysis of this project ran to its end, so what removing "
+            f"{removing} leaves cannot be judged",
+            kept_by=plan.kept_by,
+        )
     errors = _judged(revision, plan.includes)
     if errors:
         where, first = errors[0]
         if len(errors) == 1:
             raise FileRefusalError(
                 "invalid",
-                f"removing {path.name} would leave an error, in {where.name}: {first.message}",
+                f"removing {removing} would leave an error, in {where.name}: {first.message}",
             )
         raise FileRefusalError(
             "invalid",
-            f"removing {path.name} would leave {len(errors)} errors, the first in {where.name}: "
+            f"removing {removing} would leave {len(errors)} errors, the first in {where.name}: "
             f"{first.message}",
         )
-    return _FilesPlanned(plan.edits, judged=True, kept_by=plan.kept_by)
+    return _FilesPlanned(plan.edits, kept_by=plan.kept_by)
+
+
+def _spelled(path: Path, described: Path) -> str:
+    """``path`` as the description's ``includes`` would spell it: relative to the description's
+    own directory, posix-separated, walking up with ``..`` where it lies elsewhere - so that a
+    pattern in a directory of its own is named ``lib/*.ddd.json``, and not by its last part
+    alone, which another pattern may end in too.
+
+    Named whole where it has no such spelling: on Windows :func:`os.path.relpath` refuses to
+    measure from one drive to another, and an entry may name a file on another drive than the
+    description's."""
+    try:
+        spelled = relpath(path, described.parent)
+    except ValueError:
+        return path.as_posix()
+    return Path(spelled).as_posix()
 
 
 def _judged(revision: Revision, includes: Sequence[str]) -> tuple[Pair, ...]:

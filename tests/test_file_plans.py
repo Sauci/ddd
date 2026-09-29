@@ -6,7 +6,7 @@ import json
 import os
 import subprocess
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -72,9 +72,20 @@ class TestNewErrors:
 
     def test_an_error_twice_where_the_project_has_it_once_is_new_once(self) -> None:
         """Word for word is counted too: one error the project has uses up one match, not every
-        copy of it."""
+        copy of it. No revision lists one identity twice - the grouping drops a repeat - so this
+        is the one input where what is reported is an error ``before`` has word for word."""
         found = filed("unknown-constant", Severity.ERROR, A, "x", "'N' is …")
         assert new_errors((found,), (found, found)) == (found,)
+
+    def test_word_for_word_matches_are_set_aside_wherever_they_are_listed(self) -> None:
+        """A place had `e1` and `e2`, and lists `y`, `x`, `e1` after: `e1` is set aside first,
+        though listed last, and of `y` and `x` the one past what is left of the count is
+        reported - `x`, not the third one listed."""
+        e1, e2, x, y = (
+            filed("local-conflict", Severity.ERROR, A, DECLARATION, message)
+            for message in ("e1", "e2", "x", "y")
+        )
+        assert new_errors((e1, e2), (y, x, e1)) == (x,)
 
     def test_the_error_quoted_as_new_is_one_the_project_does_not_have(self) -> None:
         """Case j: a place's one error becomes two, the new one listed first. The old one is
@@ -92,7 +103,7 @@ class TestNewErrors:
             ("demo/tagged", None),
             ("multiple-producers", Location(A, DECLARATION)),
         ],
-        ids=["a pointer", "a whole file", "no place", "a clash placed by order"],
+        ids=["a pointer", "a whole file", "no place", "a check of REATTRIBUTED"],
     )
     def test_an_error_where_the_project_has_a_warning_is_new(
         self, check: str, at: Location | None
@@ -119,24 +130,24 @@ class TestNewErrors:
         now = (A, Diagnostic("demo/tagged", Severity.ERROR, DECLARATION, Location(A)))
         assert new_errors((was,), (now,)) == (now,)
 
-    def test_a_clash_placed_by_order_is_counted_wherever_it_sits(self) -> None:
+    def test_a_reattributed_clash_is_counted_wherever_it_sits(self) -> None:
         """A check of :data:`REATTRIBUTED` is counted per check and severity: the conflict of
         three writers, reported at `A` now and at `B` once `A` goes, is the one it was."""
         was = filed("multiple-producers", Severity.ERROR, A, DECLARATION, "'X' … 'B' … 'A'")
         now = filed("multiple-producers", Severity.ERROR, B, DECLARATION, "'X' … 'C' … 'B'")
         assert new_errors((was,), (now,)) == ()
 
-    def test_one_more_clash_placed_by_order_than_the_project_has_is_new(self) -> None:
+    def test_one_more_reattributed_clash_than_the_project_has_is_new(self) -> None:
         was = filed("multiple-producers", Severity.ERROR, A, DECLARATION, "'X' … 'B' … 'A'")
         more = filed("multiple-producers", Severity.ERROR, B, DECLARATION, "'Y' … 'C' … 'B'")
         assert new_errors((was,), (was, more)) == (more,)
 
-    def test_a_clash_of_another_check_placed_by_order_is_new(self) -> None:
+    def test_a_reattributed_clash_of_another_check_is_new(self) -> None:
         was = filed("multiple-producers", Severity.ERROR, A, DECLARATION, "…")
         now = filed("definition-mismatch", Severity.ERROR, A, f"{DECLARATION}.definition", "…")
         assert new_errors((was,), (now,)) == (now,)
 
-    def test_every_check_counted_by_order_is_one_the_analysis_reports(self) -> None:
+    def test_every_reattributed_check_is_one_the_analysis_reports(self) -> None:
         """A member spelt otherwise than the check would match no finding and leave the check
         counted per place; a comparison check is never reported by the analysis a change is
         judged by."""
@@ -145,15 +156,21 @@ class TestNewErrors:
 
 
 def judged(
-    base: Path, files: Mapping[str, Any], remove: str, *raised: str
+    base: Path,
+    files: Mapping[str, Any],
+    remove: str,
+    *raised: str,
+    relaxed: Sequence[str] = (),
 ) -> list[tuple[str, str, str]]:
     """What leaving ``remove`` out of the root's includes would break: a revision's findings
     against its own runs with the list replaced, each as the pairs :func:`new_errors` takes, and
     each error answered by its file, its check and its message - the whole of what a refusal
-    would say. ``raised`` are the checks a build record of the project raises to errors."""
+    would say. ``raised`` are the checks a build record of the project raises to errors, and
+    ``relaxed`` the ones it lowers to warnings."""
     write_tree(base, files)
-    if raised:
-        build_record(base, base / "p.ddd.json", severity=[f"{check}=error" for check in raised])
+    severity = [f"{check}=error" for check in raised] + [f"{check}=warning" for check in relaxed]
+    if severity:
+        build_record(base, base / "p.ddd.json", severity=severity)
     revision = Session(base).open(base / "p.ddd.json")
     assert revision.analysed is True
     listed = json.loads((base / "p.ddd.json").read_text(encoding="utf-8"))["project"]["includes"]
@@ -219,7 +236,7 @@ from the project file on disk, since its check is not told the list a run was gi
 
 class TestJudgingAProject:
     """Over projects the reviewers built: an error whose wording depends on the rest of the
-    project is the error it was, and one whose place ddd chooses by order is counted per check.
+    project is the error it was, and one of a check in :data:`REATTRIBUTED` is counted per check.
     """
 
     def test_removing_one_of_three_writers_leaves_the_conflict_it_had(self, tmp_path: Path) -> None:
@@ -325,9 +342,30 @@ class TestJudgingAProject:
         assert judged(tmp_path, files, "u.ddd.json") == []
 
 
-class TestAClashPlacedByOrder:
+class TestAClashCountedPerCheck:
     """One project per member of :data:`REATTRIBUTED`, where a harmless removal moves an error
-    the project has from one place to another - each the case a member is there for."""
+    the project has from one place to another - each the case a member is there for - and the
+    cost of counting them per check."""
+
+    def test_a_relaxed_duplicate_let_in_hides_its_clash_behind_one_leaving(
+        self, tmp_path: Path
+    ) -> None:
+        """The cost of counting per check, accepted: the build reports `duplicate-component` as a
+        warning, so the loader keeps the first `A` and drops the second while the revision is
+        analysed. Removing the first ends the conflict over `Y` and lets the second `A` in,
+        writing `Z` beside `C` - a conflict the project did not have, hidden behind the one that
+        leaves. Counted per place it is refused; the answer asserted is the one given."""
+        files = {
+            "p.ddd.json": project(
+                "P", "a.ddd.json", "a2.ddd.json", "b.ddd.json", "c.ddd.json", "r.ddd.json"
+            ),
+            "a.ddd.json": writing("A", "Y"),
+            "a2.ddd.json": writing("A", "Z"),
+            "b.ddd.json": writing("B", "Y"),
+            "c.ddd.json": writing("C", "Z"),
+            "r.ddd.json": reading("R", "Y", "Z"),
+        }
+        assert judged(tmp_path, files, "a.ddd.json", relaxed=("duplicate-component",)) == []
 
     def test_three_writers_read_in_another_order_are_the_conflict_they_were(
         self, tmp_path: Path

@@ -323,8 +323,8 @@ def finding_identity(finding: Diagnostic) -> tuple[str, Severity, Location | Non
     Also the first question :func:`ddd.file_plans.new_errors` asks of two analyses of one
     project, and not the last: a message may name what else the project holds, so the same
     error may be worded differently once a file is gone, and what nothing matches word for word
-    is counted by its check and its place instead - by its check alone where ddd places the
-    check by order.
+    is counted by its check and its place instead - by its check alone where the check is one of
+    :data:`ddd.file_plans.REATTRIBUTED`.
     """
     return (finding.check, finding.severity, finding.location, finding.message)
 

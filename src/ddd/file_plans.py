@@ -51,8 +51,9 @@ where counted per place it read as new. Each is placed so:
 * ``name-collision``: on the first read declaration of a variable whose name a type, an enum, an
   enumerator or a constant takes as well; on every component but the first read whose name
   differs from it only in case; on every enum defining an enumerator an earlier one read does;
-  and, by no order, on a constant's own entry where an enum, an enumerator, a type or the member
-  of a structure takes its name, mirrored onto that.
+  and on a constant's own entry where an enum, an enumerator, a type or the member of a structure
+  takes its name, mirrored onto that - an enum's first copy met, or the first enum met to define
+  the enumerator, both by order.
 * ``name-similar``: on the first read declaration of every name but the first in name order of
   those differing only in case, mirrored onto the first read declaration of the first.
 * ``duplicate-id``: on the declarations of every object but the first in name order carrying one
@@ -62,16 +63,33 @@ where counted per place it read as new. Each is placed so:
 * ``enum-conflict``: on every copy of an enum differing from the first met - a types file's
   before any component's, components' in the order read - mirrored onto it.
 
-Each reports a clash between declarations, and no removal makes one the project did not have. It
-can resolve one or move one, and it can relabel one - a local declaration gone, its other
-writers' ``local-conflict`` reported as ``multiple-producers`` - or re-count one: a new owner, a
-new first copy of an enum or a new first definer of an enumerator, which more declarations differ
-from than differed from the one before. A relabel or a re-count is counted like any error of the
-check it is reported under, and measured, it is refused where it raises that check's count
-alone - a local gone from beside its two writers, one more copy of an enum differing from a new
-first one, one more copy colliding with a new first definer of its enumerator, two readers
-disagreeing with a new owner - and allowed where the count stays, or where as many errors of the
+Each reports a clash between declarations. A removal can resolve one or move one, and it can
+relabel one - a local declaration gone, its other writers' ``local-conflict`` reported as
+``multiple-producers`` - or re-count one against a new reference: a new owner, a new first read
+where nothing writes the object, a new first declaration stating limits where the owner states
+none, a new first copy of an enum or a new first definer of an enumerator, which more
+declarations differ from than differed from the one before. A relabel or a re-count is counted
+like any error of the check it is reported under, and measured, it is refused where it raises
+that check's count alone - a local gone from beside its two writers, two readers disagreeing
+with a new owner, two with a new first read, two with a new first declaration of limits, one
+more copy of an enum differing from a new first one, one more copy colliding with a new first
+definer of its enumerator - and allowed where the count stays, or where as many errors of the
 check leave with the file.
+
+A removal can also bring in a clash the analysis never compared. Counted per check, it is refused
+where nothing of its check leaves with the file, and hidden where as many errors of its check
+leave. It comes in two ways. One is a second declaration of a name, which the loader drops while
+the first is there and reads once it is gone. That needs a build lowering the ``duplicate-*``
+check the loader answers so, each an error by default: under the default the read reports an
+error, which leaves the revision unanalysed and so never judged. Measured with the check reported
+as a warning for a second component, type and raster, and for a component as an information and
+not at all as well. The other is an object the analysis refused, a map too wide over its axes,
+which a new owner of one of them lets it compare. Every such case measured is refused counted per
+place, and the cost is accepted all the same, because counting per place refuses the removal a
+reader makes to end a conflict of two writers, when their readers' disagreement moves onto the
+writer left - the case ``test_ending_a_conflict_of_writers_keeps_the_readers_disagreement`` pins,
+which fails with ``definition-mismatch`` out of this set.
+``test_a_relaxed_duplicate_let_in_hides_its_clash_behind_one_leaving`` pins the cost.
 
 Counted per check, they cannot tell apart two clashes of one check that swap: one resolved as
 another is reported leaves the count as it was, and the change is allowed - a reader that agreed
@@ -84,17 +102,21 @@ component's private axis is a conflict the project did not have. Nor ``enum-dupl
 checked on the first copy of an enum met and on no other: a removal can put a copy nobody checked
 first. Counted per place instead, a harmless move of either is refused - two locals read in
 another order, the first of two identical copies gone - which needs a project that fails that
-check already.
+check already. Nor, for the same first copy, ``init-invalid``, which an enumerator outside a
+c ``int`` earns there and on no other copy, so that a removal can make one; nor
+``reserved-identifier``, which an enum's name earns on its first copy met and an enumerator on
+the first copy of each enum defining it, so that a removal can move one but not make one - and
+counted per place, that move is refused.
 
 Nor ddd's other checks that follow an object's owner - ``unknown-reference``, ``reference-kind``,
-``a2l-unrepresentable``, ``point-counts-unrepresentable``, ``point-counts-mismatch``, the
-``schema`` of a map too wide over its axes and ``incomplete-project``: each reads the owner's own
-definition, so a new owner can make one the project did not have. Nor ``unused-output``, although
-it sits on the owner: a removal does make new ones - the last reader gone - and, counted per
-check, one made would hide behind one taken away. Nor any plugin's check, nor any check added
-later: where each files is not known here, and per place is the default that refuses a harmless
-change where an error moves, but hides a new one only where another of its check went from the
-same place.
+``a2l-unrepresentable``, the ``schema`` of a map too wide over its axes and ``incomplete-project``,
+which read the owner's own definition, and ``point-counts-unrepresentable`` and
+``point-counts-mismatch``, which read where the owning component keeps its point counts: a new
+owner can make one the project did not have. Nor ``unused-output``, although it sits on the
+owner: a removal does make new ones - the last reader gone - and, counted per check, one made
+would hide behind one taken away. Nor any plugin's check, nor any check added later: where each
+files is not known here, and per place is the default that refuses a harmless change where an
+error moves, but hides a new one only where another of its check went from the same place.
 """
 
 
@@ -114,13 +136,16 @@ def new_errors(before: Sequence[Pair], after: Sequence[Pair]) -> tuple[Pair, ...
     error reported is the one the project does not have: taken by key alone in ``after``'s order,
     a new error listed first used up the old one's key, and the old one was quoted as new.
 
-    What is reported is never an error ``before`` has word for word, and not always one the
-    project lacks. Where the count of a place, or of a check counted per check, rises, the errors
-    reported are the ones ``after`` lists past the count that place or check had, in the order a
-    revision lists them; and where the count rose because an error the project has moved there,
-    re-worded, that is what can be reported. Measured: two locals of one variable read in another
-    order report its reader's conflict, now worded against the other local, and removing the
-    writer two readers agreed with reports both readers' disagreement with the writer left, as
+    The errors ``before`` has word for word are set aside first, wherever ``after`` lists them.
+    Of the rest, where the count of a place, or of a check counted per check, rose, the ones
+    listed past what is left of that count are reported, in the order a revision lists them. So
+    what is reported is not an error ``before`` has word for word - of what a revision lists,
+    which never holds one identity twice, :func:`~ddd.lsp.diagnostics.group_findings` dropping a
+    repeat; given one error twice where ``before`` has it once, the second is reported. Nor is it
+    always one the project lacks: where the count rose because an error the project has moved
+    there, re-worded, that is what can be reported. Measured: two locals of one variable read in
+    another order report its reader's conflict, now worded against the other local, and removing
+    the writer two readers agreed with reports both readers' disagreement with the writer left, as
     filed on that writer's own file.
 
     ``before`` is counted whole, whatever the severity: every key carries its finding's, so only

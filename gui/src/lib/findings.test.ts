@@ -22,6 +22,7 @@ const UNITS = "C:/work/demo/units.ddd.json";
 const CONSTANTS = "C:/work/demo/constants.ddd.json";
 const SECTIONS = "C:/work/demo/sections.ddd.json";
 const RASTERS = "C:/work/demo/rasters.ddd.json";
+const PROJECT = "C:/work/demo/demo.ddd.json";
 
 function finding(fields: Partial<Finding> = {}): Finding {
   return {
@@ -223,6 +224,25 @@ describe("where a finding leads", () => {
     });
   });
 
+  test("a raster, by its name - the same one route kind whether or not it is declared", () => {
+    // unknown-raster is filed at both shapes a raster is named at (finding_routes.py:51) and is
+    // the only one of the definition-side raster checks that is about the raster itself -
+    // consumer-raster and raster-kind are about the declaration instead, two of
+    // ABOUT_THE_DECLARATION's three members (the third, consumer-storage, is a section's).
+    const one = finding({
+      check: "unknown-raster",
+      route: { kind: "raster", name: "10ms" },
+    });
+    expect(routeLabel(one, state([one]))).toBe("Open 10ms");
+    expect(routeHref(one)).toBe("/project?view=shared&kind=raster&name=10ms");
+    expect(routeOf(one)).toEqual({
+      page: "project",
+      view: "shared",
+      kind: "raster",
+      name: "10ms",
+    });
+  });
+
   test("a component, by the name its file gives it", () => {
     const one = finding({ route: { kind: "component", name: null } });
     expect(routeLabel(one, state([one]))).toBe("Open SensorHub");
@@ -338,7 +358,10 @@ describe("why a finding leads nowhere", () => {
     expect(noRouteReason(one, withSections)).toBe("there is nothing at that place any more");
   });
 
-  test("a finding on a rasters file still says so, rasters being the part after this", () => {
+  test("a finding on a rasters file no longer says it has no page", () => {
+    // Rasters have a tab now, so a rasters file joins `component`, `constants`, `types`, `units`
+    // and `sections` in the set the check reads from - what is left of this finding is a pointer
+    // the file has moved on from, the same reason a sections file's own duplicate check gets.
     const one = finding({
       file: RASTERS,
       check: "duplicate-raster",
@@ -357,8 +380,29 @@ describe("why a finding leads nowhere", () => {
         findings: { error: 1, warning: 0, info: 0 },
       },
     ];
-    expect(noRouteReason(one, withRasters)).toBe(
-      "rasters.ddd.json is a rasters file, which has no page yet",
+    expect(noRouteReason(one, withRasters)).toBe("there is nothing at that place any more");
+  });
+
+  test("a file of a kind that still has no page says so", () => {
+    // Every word `session.KINDS` (session.py:46) reads a file's kind from has joined `SHOWN` by
+    // now except `project` itself - the rasters fixture used to be this test, until rasters got
+    // their own tab above; the project's own description file is what is left to exercise the
+    // branch with.
+    const one = finding({ file: PROJECT, route: null });
+    const withProject = state([one]);
+    withProject.files = [
+      ...withProject.files,
+      {
+        path: PROJECT,
+        kind: "project",
+        name: null,
+        loaded: true,
+        fingerprint: "g",
+        findings: { error: 1, warning: 0, info: 0 },
+      },
+    ];
+    expect(noRouteReason(one, withProject)).toBe(
+      "demo.ddd.json is a project file, which has no page yet",
     );
   });
 
@@ -440,6 +484,18 @@ describe("why a finding leads nowhere", () => {
       withFiles.files = [...withFiles.files, fileRow(SECTIONS, "sections", false)];
       expect(unreadable(withFiles, SHARED_KINDS)).toEqual({
         own: ["sections.ddd.json"],
+        untold: [],
+      });
+    });
+
+    test("a rasters file alone", () => {
+      // Pins SHARED_KINDS's own third word: drop "rasters" from it and this is the test that
+      // dies, since `unreadable` would then filter this very file out of `own`.
+      const one = finding({});
+      const withFiles = state([one]);
+      withFiles.files = [...withFiles.files, fileRow(RASTERS, "rasters", false)];
+      expect(unreadable(withFiles, SHARED_KINDS)).toEqual({
+        own: ["rasters.ddd.json"],
         untold: [],
       });
     });

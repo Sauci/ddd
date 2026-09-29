@@ -83,6 +83,7 @@ from ddd.lsp.units import (
 from ddd.object_values import ValueRefusalError, grid_of, set_cell, set_values
 from ddd.project_shared import (
     CONSTANTS,
+    RASTERS,
     SECTIONS,
     Vocabulary,
     shared_rows,
@@ -185,6 +186,27 @@ either endpoint to the other.
 carries json text, judged as ``set``'s ``raw`` is:
 ``?access="read-only"&alignment=4``. ``description`` is not among them, having a default, and is
 set from the panel afterwards.
+"""
+
+RASTER_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
+    "set": ("name", "key"),
+    "rename": ("name", "to"),
+    "add": ("name", "event"),
+    "remove": ("name",),
+}
+"""What each change of a raster takes, beside the action itself.
+
+The third table of the same four verbs, spelled again rather than shared for the reason
+:data:`SECTION_PLANS` gives: these are one url's query parameters, and a table two urls read from
+would tie a change of either to the other.
+
+``add`` is one parameter per key of :attr:`ddd.project_shared.RASTERS.required`, which is ``event``
+alone - a raster's ``cycle`` is ``str | None`` and its ``description`` defaults, so neither is the
+request's to supply and both are set from the panel afterwards. One required key, as a constant
+has, and still named for the key rather than carried as ``?raw=``: a section is not the only
+vocabulary whose ``add`` says which key it is declaring, and a url reading ``?event=1`` is what
+lets :func:`_declared` build the entry off the descriptor instead of off this route's memory of
+which key a vocabulary happens to require.
 """
 
 DECLARATION_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
@@ -832,11 +854,40 @@ class Api:
             ).model_dump(mode="json"),
         )
 
+    def _raster(self, query: Query, body: bytes | None) -> Reply:
+        revision = self._opened()
+        name = _single(query.get("name"))
+        if not name:
+            return _error(400, "bad-request", "raster takes ?name=")
+        built = revision.index
+        if built is None or name not in built.rasters:
+            return _undeclared(revision, name)
+        cache: dict[Path, Document] = {}
+        site = built.rasters[name]
+        texts = shown(RASTERS, built, name, cache)
+        return Reply(
+            200,
+            contract.RasterReply(
+                revision=revision.number,
+                name=name,
+                event=texts["event"],
+                cycle=texts["cycle"],
+                description=texts["description"],
+                file=site.path.resolve().as_posix(),
+                pointer=site.pointer,
+                uses=_entry_uses(RASTERS, built, name, cache),
+                findings=_entry_findings(RASTERS, revision, built, name, cache),
+            ).model_dump(mode="json"),
+        )
+
     def _constant_plan(self, query: Query, body: bytes | None) -> Reply:
         return self._shared_plan(CONSTANTS, CONSTANT_PLANS, _constant_plan_of, query)
 
     def _section_plan(self, query: Query, body: bytes | None) -> Reply:
         return self._shared_plan(SECTIONS, SECTION_PLANS, _section_plan_of, query)
+
+    def _raster_plan(self, query: Query, body: bytes | None) -> Reply:
+        return self._shared_plan(RASTERS, RASTER_PLANS, _raster_plan_of, query)
 
     def _shared_plan(
         self,
@@ -1274,6 +1325,8 @@ _ROUTES: Final[dict[str, dict[str, Answer]]] = {
     "/api/constant-plan": {"GET": Api._constant_plan},
     "/api/section": {"GET": Api._section},
     "/api/section-plan": {"GET": Api._section_plan},
+    "/api/raster": {"GET": Api._raster},
+    "/api/raster-plan": {"GET": Api._raster_plan},
     "/api/declarable": {"GET": Api._declarable},
     "/api/declaration-plan": {"GET": Api._declaration_plan},
     "/api/values": {"GET": Api._values},
@@ -1482,6 +1535,30 @@ def _section_plan_of(
     return add_entry(SECTIONS, built, project, given["name"], _declared(SECTIONS, given), cache)
 
 
+def _raster_plan_of(
+    action: str,
+    built: Index,
+    project: SharedProject,
+    given: Mapping[str, str],
+    raw: str | None,
+    cache: dict[Path, Document],
+) -> SharedPlan:
+    """The plan ``action`` names, over the parameters :data:`RASTER_PLANS` says it takes.
+
+    The same four verbs over the same three parameters as :func:`_section_plan_of`, and the same
+    ``add``: one json text per key the model gives no default for, read off the descriptor by
+    :func:`_declared` rather than named here, so the only word this function spells that its
+    sibling does not is the vocabulary.
+    """
+    if action == "set":
+        return set_entry(RASTERS, built, given["name"], given["key"], raw, cache)
+    if action == "rename":
+        return rename_entry(RASTERS, built, given["name"], given["to"], cache)
+    if action == "remove":
+        return remove_entry(RASTERS, built, given["name"], cache)
+    return add_entry(RASTERS, built, project, given["name"], _declared(RASTERS, given), cache)
+
+
 def _required_keys(vocabulary: Vocabulary) -> list[str]:
     """``vocabulary``'s required keys, in the order the panel draws them.
 
@@ -1500,8 +1577,10 @@ def _required_keys(vocabulary: Vocabulary) -> list[str]:
     of the alphabet, where this answers it because that is the field a reader sees first.
 
     A loop and not a comprehension, for the reason :func:`ddd.project_shared.shown` gives: coverage
-    counts no branch in a comprehension's filter, so the key that is *not* required - a
-    ``description``, in both vocabularies - could stop being skipped and the gate would not say so.
+    counts no branch in a comprehension's filter, so a key that is *not* required - a
+    ``description``, and a raster's ``cycle`` beside it - could stop being skipped and the gate
+    would not say so. Nothing bounds how many a vocabulary leaves out: ``keys`` minus ``required``
+    is however many the model gives a default for.
 
     Why the order is visible at all: both :func:`~ddd.shared_plans.add_entry` and
     :func:`~ddd.shared_plans._created` walk ``raws.items()`` and stop at the first key

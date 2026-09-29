@@ -15,7 +15,7 @@ from ddd.loading import included_files
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document
 from ddd.lsp.units import PlannedEdit
-from ddd.project_shared import SECTIONS
+from ddd.project_shared import RASTERS, SECTIONS
 from ddd.shared_plans import (
     CONSTANTS_FILE,
     SharedPlan,
@@ -1182,6 +1182,358 @@ class TestSectionRefusals:
                 PlannedEdit(
                     (tmp_path / "s.ddd.json").resolve(),
                     (Operation("set", "sections[0].section", _raw(".nvm")),),
+                ),
+            )
+        )
+
+
+# The third vocabulary, in the spelling `tests/test_lsp.py` and `tests/test_project_shared.py`
+# both hold: copied by hand for the reason `TWO_HOMES` above is. A rasters file declaring `10ms`,
+# a component naming it as its own default, and a definition naming it too.
+TIMED = {
+    "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
+    "a.ddd.json": component("A", declare("output", "X", raster="10ms"), raster="10ms"),
+}
+
+# Two rasters, for the refusals a project with a single raster cannot reach: an event another
+# raster already claims, and a name another one already declares. Copied by hand from
+# `tests/test_lsp.py`'s own `TWO_RASTERS`, which is the only other place it is written.
+TWO_RASTERS = {
+    "r.ddd.json": {
+        "rasters": [
+            {"raster": "10ms", "event": 1, "cycle": "10ms"},
+            {"raster": "20ms", "event": 2, "cycle": "20ms"},
+        ]
+    },
+    "a.ddd.json": component("A", declare("output", "X", raster="10ms"), raster="10ms"),
+}
+
+
+class TestRasterRefusals:
+    # The whole sentence per case, written out rather than built from `RASTERS.judge`, because a
+    # tail read back off the descriptor would agree with itself however it were reworded. Each is
+    # the string this checkout actually produces, pasted from a run of `_judged`.
+    _EVENT_TAIL = "a channel number xcp addresses - 0 to 65535 - written without a decimal point"
+    _CYCLE_TAIL = (
+        "a count of 1 to 255 times a decade from 1ns to 1s, written as one string - "
+        "'1500us', '10ms'. A raster that is not cyclic states no cycle at all: the key is left "
+        "out of its entry, which no value set here can do"
+    )
+
+    @pytest.mark.parametrize(
+        ("key", "raw", "says"),
+        [
+            pytest.param(
+                "event",
+                "-1",
+                "-1 is not an event a raster may state, so '10ms' cannot take it in "
+                f"r.ddd.json: {_EVENT_TAIL}",
+                id="event-below-zero",
+            ),
+            pytest.param(
+                "event",
+                "1e3",
+                "1e3 is not an event a raster may state, so '10ms' cannot take it in "
+                f"r.ddd.json: {_EVENT_TAIL}",
+                id="event-with-an-exponent",
+            ),
+            pytest.param(
+                "cycle",
+                "4",
+                "4 is not a cycle a raster may state, so '10ms' cannot take it in "
+                f"r.ddd.json: {_CYCLE_TAIL}",
+                id="cycle-that-is-no-string",
+            ),
+            pytest.param(
+                "cycle",
+                '"1234ms"',
+                "\"1234ms\" is not a cycle a raster may state, so '10ms' cannot take it in "
+                f"r.ddd.json: {_CYCLE_TAIL}",
+                id="cycle-xcp-cannot-carry",
+            ),
+            pytest.param(
+                "cycle",
+                '"potato"',
+                "\"potato\" is not a cycle a raster may state, so '10ms' cannot take it in "
+                f"r.ddd.json: {_CYCLE_TAIL}",
+                id="cycle-that-is-no-period",
+            ),
+            pytest.param(
+                "cycle",
+                '""',
+                "\"\" is not a cycle a raster may state, so '10ms' cannot take it in "
+                f"r.ddd.json: {_CYCLE_TAIL}",
+                id="cycle-cleared",
+            ),
+            pytest.param(
+                "description",
+                "123",
+                "123 is not a description a raster may state, so '10ms' cannot take it in "
+                "r.ddd.json: a json string",
+                id="description-that-is-no-string",
+            ),
+        ],
+    )
+    def test_a_value_the_model_would_refuse_is_refused_here(
+        self, tmp_path: Path, key: str, raw: str, says: str
+    ) -> None:
+        """Every one of them measured against `RasterDeclaration` on this checkout, and three of
+        them are why both judges wrap the whole model rather than a field's annotation. `1e3` is
+        the float `1000.0`, which the published schema accepts and `strict=True` on the field
+        refuses - `TypeAdapter(int)` would have coerced it to `1000` and waved it through.
+        `"1234ms"` and `"potato"` are strings, so `TypeAdapter(str | None)` would take both, and
+        the rule that refuses them is `_cycle_is_a_period_xcp_carries`, a model validator no
+        adapter over the annotation can reach. Written, the file stops loading and every tab
+        empties over one keystroke in this one.
+
+        The *whole* sentence is asserted, not the code and the file name. A `Judgement` is two
+        values and only the adapter was pinned: with all three tails replaced by `XXROTXX` the
+        suite passed, because the tail is everything after the colon and nothing read it. That is
+        how `cycle`'s shipped as `a json string, or nothing` - which is what `"potato"` already
+        is, so the one actionable sentence a reader with a mistyped period ever sees told them to
+        write what they had just written. The `cycle-cleared` row is the same defect's second
+        half, and is why `""` is here beside `"potato"`: the corrected tail kept its `or nothing`,
+        and clearing the field - which sends `""`, not the `raw=None` that would take the key
+        out - is the commoner keystroke of the two, so the refusal still ended by offering the
+        reader what they had just asked for and been refused. Sections escape by accident, their
+        clauses being pinned at the http layer by
+        `test_a_change_the_project_refuses_says_why_in_the_format_s_own_words`;
+        these rows were written while rasters had no route at all, standing in for the http test
+        that Task 5 has since added - `TestRaster`'s own copy of that name, which asserts the same
+        three tails through `GET /api/raster-plan`. Kept rather than folded into it: a plan refused
+        here needs no endpoint to be asked, and one layer pinning a sentence is what the other
+        layer's rewording has to get past."""
+        built, _root = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        with pytest.raises(SharedRefusalError) as raised:
+            set_entry(RASTERS, built, "10ms", key, raw, cache)
+        assert raised.value.code == "invalid"
+        assert raised.value.message == says
+
+    def test_an_event_the_model_takes_is_planned(self, tmp_path: Path) -> None:
+        """The other arm of `_EVENT`, and the one that pins the placeholder `_evented` builds its
+        entry with: were its `raster` a name the model refuses, every event would be refused too
+        and the two `event` cases above would still pass. It also pins that the placeholder leaves
+        `cycle` out - stated as anything the period rule dislikes, this legal event would be
+        refused by a rule about a key nobody set."""
+        built, _root = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        assert set_entry(RASTERS, built, "10ms", "event", "2", cache) == SharedPlan(
+            (
+                PlannedEdit(
+                    (tmp_path / "r.ddd.json").resolve(),
+                    (Operation("set", "rasters[0].event", "2"),),
+                ),
+            )
+        )
+
+    @pytest.mark.parametrize("raw", ['"1500us"', "null"])
+    def test_a_cycle_the_model_takes_is_planned(self, tmp_path: Path, raw: str) -> None:
+        """The other arm of `_CYCLE`, pinning `_cycled`'s placeholders the same way: an `event` the
+        model refused would refuse every cycle. `1500us` is a period XCP carries where `1234ms` is
+        not, so this is the rule itself and not merely "a string". `null` is a real value rather
+        than an omission - `cycle` is `str | None`, and an event that is not cyclic says so."""
+        built, _root = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        assert set_entry(RASTERS, built, "10ms", "cycle", raw, cache) == SharedPlan(
+            (
+                PlannedEdit(
+                    (tmp_path / "r.ddd.json").resolve(),
+                    (Operation("set", "rasters[0].cycle", raw),),
+                ),
+            )
+        )
+
+    def test_an_event_another_raster_claims_is_refused(self, tmp_path: Path) -> None:
+        """Spec §4: `duplicate-event` is a check, not a schema error, so the file would load and
+        the project would be wrong in a way only the analysis names. The reader can pick another
+        channel, so the interface refuses."""
+        built, _root = built_of(tmp_path, **TWO_RASTERS)
+        cache: dict[Path, Document] = {}
+        with pytest.raises(SharedRefusalError) as raised:
+            set_entry(RASTERS, built, "10ms", "event", "2", cache)
+        assert raised.value.code == "invalid"
+        assert raised.value.message == "event 2 is already claimed by raster '20ms'"
+
+    def test_a_raster_keeping_the_event_it_already_claims_is_not_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """A panel asks for a plan on every keystroke. Without the entry, a reader re-typing the
+        `1` their own raster claims would be told it is taken - by themselves."""
+        built, _root = built_of(tmp_path, **TWO_RASTERS)
+        cache: dict[Path, Document] = {}
+        assert set_entry(RASTERS, built, "10ms", "event", "1", cache).edits
+
+    def test_declaring_a_raster_on_an_event_another_claims_is_refused(self, tmp_path: Path) -> None:
+        """The same collision through the other verb. `add_entry` judges every raw it is given;
+        asking `taken` in the set path alone would leave it saying nothing about what the project
+        already claims, so the interface would refuse an event on edit and write it on create -
+        the reader reaching the same wrong project by the longer route. The entry is `None` here,
+        there being no entry yet for one to be exempt from."""
+        built, _root = built_of(tmp_path, **TWO_RASTERS)
+        cache: dict[Path, Document] = {}
+        found = project_of(RASTERS, tmp_path / "p.ddd.json", (), cache)
+        with pytest.raises(SharedRefusalError) as raised:
+            add_entry(RASTERS, built, found, "5ms", {"event": "2"}, cache)
+        assert raised.value.code == "invalid"
+        assert raised.value.message == "event 2 is already claimed by raster '20ms'"
+
+    def test_a_raster_whose_file_has_dropped_its_event_since_claims_none(
+        self, tmp_path: Path
+    ) -> None:
+        """The index recorded where the analysis read the declaration, and the file has changed
+        since - the drift `_raster_uses` and `rename_edits` both already handle. `Index.rasters`
+        holds a name and a site, never the event, so what each raster claims is read from the
+        entry's own text, which here no longer states one. Unguarded, `json.loads("")` raises out
+        of a plan the panel asked for on a keystroke; a declaration that states no event claims
+        none, and the next revision says what it claims instead."""
+        built, _root = built_of(tmp_path, **TWO_RASTERS)
+        write_tree(
+            tmp_path,
+            {
+                "r.ddd.json": {
+                    "rasters": [
+                        {"raster": "10ms", "event": 1, "cycle": "10ms"},
+                        {"raster": "20ms", "cycle": "20ms"},
+                    ]
+                }
+            },
+        )
+        cache: dict[Path, Document] = {}
+        assert set_entry(RASTERS, built, "10ms", "event", "2", cache).edits
+
+    def test_the_event_may_not_be_taken_away(self, tmp_path: Path) -> None:
+        """`RASTERS.required`, deliberately and not as a side effect: a descriptor's field values
+        are data, and the coverage gate cannot see data. Emptied, `set_entry` plans
+        `Operation("remove", "rasters[0].event")`, the file stops validating - `event` has no
+        default - and every tab in the page empties over one keystroke in this one."""
+        built, _root = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        with pytest.raises(SharedRefusalError) as raised:
+            set_entry(RASTERS, built, "10ms", "event", None, cache)
+        assert raised.value.code == "invalid"
+        assert raised.value.message == (
+            "a raster states an event, so '10ms' cannot be left without one in r.ddd.json"
+        )
+
+    def test_a_key_a_raster_has_not_names_the_three_keys_it_states(self, tmp_path: Path) -> None:
+        """What `RASTERS.keys` is for, asserted as the whole sentence so that dropping any one of
+        the three fails here. The second vocabulary with three keys, so `_listed`'s three word arm
+        is exercised by a second set of words. `event` is a third key across the vocabularies to
+        begin with a vowel, and its article is pinned by the test above rather than by this one -
+        `raster` begins with a consonant, so the article here is `a` either way."""
+        built, _root = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        with pytest.raises(SharedRefusalError) as raised:
+            set_entry(RASTERS, built, "10ms", "value", "1", cache)
+        assert raised.value.code == "invalid"
+        assert raised.value.message == (
+            "a raster has no 'value' to set in r.ddd.json: it states cycle, description and event"
+        )
+
+    def test_a_name_another_raster_already_declares_is_refused(self, tmp_path: Path) -> None:
+        """What `RASTERS.taken["raster"]` is for. Refused rather than reported, though the file
+        would still load: `duplicate-raster` is a check and not a schema error, but each raster
+        carries its own event and cycle, so merging two would silently sample one signal on
+        another's channel."""
+        built, _root = built_of(tmp_path, **TWO_RASTERS)
+        cache: dict[Path, Document] = {}
+        with pytest.raises(SharedRefusalError) as raised:
+            rename_entry(RASTERS, built, "10ms", "20ms", cache)
+        assert raised.value.code == "invalid"
+        assert raised.value.message == "'20ms' is already a raster this project declares"
+
+    def test_a_raster_may_be_renamed_to_a_name_no_c_identifier_allows(self, tmp_path: Path) -> None:
+        # Which arm of `rename_problem` the judge asks, and the only test that can tell it by the
+        # outcome: `1ms` opens with a digit, so the c identifier rule the constants judge answers
+        # to would refuse it outright, and a raster's name is the short name of its XCP event
+        # rather than an identifier. The refusal test above would notice the swap too, but only
+        # because it asserts the whole sentence - a judge sent to the wrong arm still refuses
+        # `20ms`, just for the wrong reason and in the wrong words.
+        built, _root = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        assert rename_entry(RASTERS, built, "10ms", "1ms", cache).edits
+
+    def test_a_new_raster_is_appended_to_the_file_the_project_keeps_them_in(
+        self, tmp_path: Path
+    ) -> None:
+        """What `containers`, `name_key` and the *order* of `keys` are for - all three strings in
+        the descriptor, which no coverage gate can see. `("bogus",)` would leave `files` empty and
+        answer a plan creating a second rasters file beside the project description; `"name"` would
+        declare `{"name": "5ms", ...}`, which `extra="forbid"` rejects, so the file this wrote
+        would no longer load. The three values land in `keys`'s own order, which is the order the
+        panel draws them in."""
+        built, _root = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        found = project_of(RASTERS, tmp_path / "p.ddd.json", (), cache)
+        assert [file.name for file in found.files] == ["r.ddd.json"]
+        plan = add_entry(
+            RASTERS,
+            built,
+            found,
+            "5ms",
+            {"description": '"fast task"', "event": "3", "cycle": '"5ms"'},
+            cache,
+        )
+        assert plan == SharedPlan(
+            (
+                PlannedEdit(
+                    (tmp_path / "r.ddd.json").resolve(),
+                    (
+                        Operation(
+                            "insert",
+                            "rasters[1]",
+                            '{"raster": "5ms", "event": 3, "cycle": "5ms", '
+                            '"description": "fast task"}',
+                        ),
+                    ),
+                ),
+            )
+        )
+
+    def test_a_project_with_no_rasters_file_gets_one_named_for_what_it_holds(
+        self, tmp_path: Path
+    ) -> None:
+        """What `filename` is for, and the only arm that reads it: the appending test above would
+        pass with any spelling of it. Both edits in one plan, so a project can never list a file
+        that was not written."""
+        built = _index(tmp_path, {"a.ddd.json": component("A", declare("output", "Gain"))})
+        cache: dict[Path, Document] = {}
+        found = project_of(RASTERS, tmp_path / "p.ddd.json", (), cache)
+        assert found.files == ()
+        plan = add_entry(RASTERS, built, found, "5ms", {"event": "3"}, cache)
+        assert [(edit.path.name, edit.creates) for edit in plan.edits] == [
+            ("p.ddd.json", False),
+            ("rasters.ddd.json", True),
+        ]
+        assert plan.edits[0].operations == (
+            Operation("insert", "project.includes[1]", '"rasters.ddd.json"'),
+        )
+        assert plan.edits[1].operations[0].raw == (
+            '{\n  "rasters": [\n    { "raster": "5ms", "event": 3 }\n  ]\n}\n'
+        )
+
+    def test_a_rename_reaches_the_entry_the_component_and_the_definition(
+        self, tmp_path: Path
+    ) -> None:
+        """What `kind` is for: `rename_sites` is asked for it by name. A rename that reached the
+        entry and not the two shapes naming it would leave both naming a raster nothing declares -
+        an `unknown-raster` apiece, in a file the reader was not looking at. A component's own
+        default is a shape neither of the other two vocabularies has."""
+        built, _root = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        assert rename_entry(RASTERS, built, "10ms", "5ms", cache) == SharedPlan(
+            (
+                PlannedEdit(
+                    (tmp_path / "a.ddd.json").resolve(),
+                    (
+                        Operation("set", "component.raster", _raw("5ms")),
+                        Operation("set", "component.interface[0].definition.raster", _raw("5ms")),
+                    ),
+                ),
+                PlannedEdit(
+                    (tmp_path / "r.ddd.json").resolve(),
+                    (Operation("set", "rasters[0].raster", _raw("5ms")),),
                 ),
             )
         )

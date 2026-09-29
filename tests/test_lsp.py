@@ -2611,6 +2611,19 @@ TIMED = {
 definition naming it too."""
 
 
+TWO_RASTERS = {
+    "r.ddd.json": {
+        "rasters": [
+            {"raster": "10ms", "event": 1, "cycle": "10ms"},
+            {"raster": "20ms", "event": 2, "cycle": "20ms"},
+        ]
+    },
+    "a.ddd.json": component("A", declare("output", "X", raster="10ms"), raster="10ms"),
+}
+"""A rasters file declaring ``10ms`` and ``20ms``, and a component naming ``10ms`` as its own
+default."""
+
+
 CALIB_TWICE = {
     "s.ddd.json": {"sections": [{"section": "calib", "access": "read-write", "alignment": 4}]},
     "a.ddd.json": component("A", declare("output", "calib")),
@@ -2741,6 +2754,79 @@ class TestSectionsAndRasters:
         assert [site.pointer for site in rename_sites(built, "raster", "20ms")] == [
             "component.interface[0].definition.raster"
         ]
+
+    def test_a_raster_is_judged_as_the_a2l_short_name_it_is(self, tmp_path: Path) -> None:
+        """`10ms` starts with a digit, which no c identifier may. The rule that refuses it is a
+        constant's, and a raster does not share that namespace.
+
+        Judged against an empty project rather than against ``TIMED``: ``TIMED`` already declares
+        a raster called ``10ms``, which would be refused as a name the project declares already -
+        the very next check ``_raster_problem`` makes - and prove nothing about the c identifier
+        rule this test is about.
+        """
+        from ddd.lsp.navigation import rename_problem
+
+        built, _ = built_of(tmp_path)
+        assert rename_problem(built, "10ms", "raster") is None
+
+    def test_a_raster_may_not_take_a_name_the_project_declares(self, tmp_path: Path) -> None:
+        from ddd.lsp.navigation import rename_problem
+
+        built, _ = built_of(tmp_path, **TWO_RASTERS)
+        problem = rename_problem(built, "20ms", "raster")
+        assert problem is not None
+        # Not just `"20ms" in problem`: that also holds of the c-identifier refusal `"20ms"`
+        # drew before this arm existed, so it would pass without the arm this test is for.
+        assert "is already a raster this project declares" in problem
+
+    def test_a_raster_name_longer_than_the_model_allows_is_refused(self, tmp_path: Path) -> None:
+        """Unlike a section's, a raster's name has a length the model states -
+        ``RASTER_NAME_LENGTH`` - and that is what refuses a name past it here, not
+        ``IDENTIFIER_MAX_LENGTH``, which bounds a c identifier and is a different number for a
+        different reason."""
+        from ddd.lsp.navigation import rename_problem
+        from ddd.models.common import RASTER_NAME_LENGTH
+
+        built, _ = built_of(tmp_path)
+        too_long = "1" * (RASTER_NAME_LENGTH + 1)
+        problem = rename_problem(built, too_long, "raster")
+        assert problem is not None
+        # Not just `too_long in problem`: a digit-led name this long is also refused by the
+        # c-identifier rule, for starting with a digit rather than for its length. The reason
+        # has to be the raster one, or this passes without the arm it exists to pin.
+        assert "is not a usable raster name" in problem
+
+    def test_a_raster_name_with_an_excluded_character_is_refused(self, tmp_path: Path) -> None:
+        """The length is not why: ``10 ms`` is five characters, well inside the limit. A
+        short-circuiting ``or`` records one branch for the whole ``if``, not one per operand, so
+        a case only the pattern half refuses is the one thing that proves it runs at all -
+        nothing here was refused for its length alone before this test existed."""
+        from ddd.lsp.navigation import rename_problem
+
+        built, _ = built_of(tmp_path)
+        problem = rename_problem(built, "10 ms", "raster")
+        assert problem is not None
+        assert "is not a usable raster name" in problem
+
+    def test_a_raster_name_may_not_trail_a_newline(self, tmp_path: Path) -> None:
+        """``re.fullmatch`` is the check, not ``re.match``: a plain ``match`` stops needing to
+        satisfy ``$`` right before a trailing newline and would accept everything before it, so
+        a rasters file whose entry ended its line early would still fail to load."""
+        from ddd.lsp.navigation import rename_problem
+
+        built, _ = built_of(tmp_path)
+        problem = rename_problem(built, "10ms\n", "raster")
+        assert problem is not None
+        assert "is not a usable raster name" in problem
+
+    def test_a_raster_name_may_hold_a_character_no_section_name_would(self, tmp_path: Path) -> None:
+        """``RASTER_NAME_PATTERN`` admits any printable ASCII but a space; ``SECTION_NAME_PATTERN``
+        is narrower - letters, digits, underscore, dot and dollar sign - and would refuse the
+        hyphen here, which no rule of a raster's own excludes."""
+        from ddd.lsp.navigation import rename_problem
+
+        built, _ = built_of(tmp_path)
+        assert rename_problem(built, "10-ms", "raster") is None
 
 
 class TestAUnitPlanAsTextEdits:

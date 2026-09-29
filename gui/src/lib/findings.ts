@@ -119,13 +119,16 @@ export function routeOf(finding: Finding): Route | null {
   if (route.kind === "type" && route.name !== null) {
     return { page: "project", view: "types", type: route.name };
   }
-  if ((route.kind === "constant" || route.kind === "section") && route.name !== null) {
+  if (
+    (route.kind === "constant" || route.kind === "section" || route.kind === "raster") &&
+    route.name !== null
+  ) {
     // The one route kind, whether or not the name is declared (design §2 "the page decides"):
     // `SharedPage` asks `isDeclared` of its own table and opens the panel or the pre-filled add
     // form accordingly, which is also what `unknown-constant` and `unknown-section` need - the
     // name either carries names nothing yet. One tab for all three vocabularies is the design
-    // decision this rests on, so a raster joining it should widen this arm's condition, not add
-    // a third one beside it.
+    // decision this rests on, so a raster joining it widened this arm's condition, rather than
+    // adding a third one beside it.
     return { page: "project", view: "shared", kind: route.kind, name: route.name };
   }
   return { page: "component", file: finding.file };
@@ -164,9 +167,11 @@ export function namesThisVariable(finding: Finding, name: string): boolean {
  * fails: an editor saving it half-written. The reader saw a table missing entries and nothing
  * saying why.
  *
- * `kinds` rather than one: the Shared files tab holds two vocabularies in one table, each with its
- * own file kind, and a failed sections file must be named beside a failed constants file rather
- * than silently dropped because it was not the one kind the tab used to ask about (ruling R1).
+ * `kinds` rather than one: the Shared files tab holds three vocabularies in one table, each with
+ * its own file kind, and a failed sections or rasters file must be named beside a failed constants
+ * file rather than silently dropped because it was not the one kind the tab used to ask about
+ * (ruling R1). Which three is not spelled here - `SharedPage` passes `SHARED_KINDS`, and that list
+ * is the one fact saying which vocabularies the tab holds.
  *
  * Here rather than in each screen because a screen is a `.tsx` file, which no gate in this repo
  * executes - the filter that decides what a reader is told about a missing file belongs where its
@@ -183,15 +188,14 @@ export function unreadable(
 }
 
 /** The file kinds the page opens a screen on: a component's own page, and the tab each vocabulary
- * with one is listed in. Rasters is the part after this, and its findings say so rather than
- * leading somewhere blank.
+ * with one is listed in.
  *
- * Units, types and sections belong here and were missing in turn: each had a tab before its own
- * kind joined this set, and a reader whose finding led nowhere was told their file had no page.
- * What reaches this line for one of them now is a pointer the file has moved on from -
- * `duplicate-unit` and `duplicate-section`, the checks that used to arrive here with somewhere to
- * go, route to the unit or the section they name instead. */
-const SHOWN = new Set(["component", "constants", "types", "units", "sections"]);
+ * Units, types, sections and rasters belong here and were missing in turn: each had a tab before
+ * its own kind joined this set, and a reader whose finding led nowhere was told their file had no
+ * page. What reaches this line for one of them now is a pointer the file has moved on from -
+ * `duplicate-unit`, `duplicate-section` and `duplicate-raster`, the checks that used to arrive
+ * here with somewhere to go, route to the unit, the section or the raster they name instead. */
+const SHOWN = new Set(["component", "constants", "types", "units", "sections", "rasters"]);
 
 /** Why a finding leads nowhere, in the words the panel says it.
  *

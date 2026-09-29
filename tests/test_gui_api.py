@@ -27,9 +27,17 @@ from ddd import __version__
 from ddd.cli import EXIT_OK, main
 from ddd.diagnostics import CHECKS
 from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
-from ddd.gui.api import SECTION_PLANS, Api, Reply, _declared, _json_texts, _required_keys
+from ddd.gui.api import (
+    RASTER_PLANS,
+    SECTION_PLANS,
+    Api,
+    Reply,
+    _declared,
+    _json_texts,
+    _required_keys,
+)
 from ddd.gui.session import Session
-from ddd.project_shared import SECTIONS
+from ddd.project_shared import RASTERS, SECTIONS
 from ddd.variable_keys import KEY_ORDER
 
 UNIT = "component.interface[0].definition.unit"
@@ -227,6 +235,75 @@ PLACED_NOWHERE = {
     "p.ddd.json": project("P", "s.ddd.json", "a.ddd.json"),
     "s.ddd.json": {"sections": [{"section": ".calib", "access": "read-only", "alignment": 4}]},
     "a.ddd.json": component("A", declare("output", "Gain", section=".nvm")),
+}
+
+# The two shapes that name a raster, on one raster: a component's own default and a definition's
+# own key. The shipped example has both shapes but not on one entry - its pump defaults to `10ms`
+# and measures `PumpSpeed` in `1ms` - so a panel listing both in one answer needs this tree.
+MEASURED_TWICE = {
+    "p.ddd.json": project("P", "r.ddd.json", "a.ddd.json"),
+    "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
+    "a.ddd.json": component("A", declare("output", "X", raster="10ms"), raster="10ms"),
+}
+
+# A raster stating no `cycle` at all, which the model permits and gives no default for: every
+# raster examples/vocabulary declares states one, so the key the panel reads as prose is never
+# empty there.
+NO_CYCLE = {
+    "p.ddd.json": project("P", "r.ddd.json", "a.ddd.json"),
+    "r.ddd.json": {"rasters": [{"raster": "20ms", "event": 2}]},
+    "a.ddd.json": component("A", declare("output", "X", raster="20ms")),
+}
+
+# One name declared twice, which the loader reports as `duplicate-raster` - filed at the second
+# entry and again at the first, which is the copy the first entry's panel lists.
+DECLARED_TWICE = {
+    "p.ddd.json": project("P", "r.ddd.json"),
+    "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1}, {"raster": "10ms", "event": 2}]},
+}
+
+# A definition measured in a raster no file declares, which is what `unknown-raster` reports and
+# the one route a reader follows to an add form rather than to a panel.
+MEASURED_NOWHERE = {
+    "p.ddd.json": project("P", "r.ddd.json", "a.ddd.json"),
+    "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
+    "a.ddd.json": component("A", declare("output", "X", raster="50ms")),
+}
+
+# A consumer restating the producer's `raster`, which is `consumer-raster`: a key only the
+# component producing a variable may state, filed at the same `definition.raster` pointer
+# `unknown-raster` is filed at. The raster's copy of CONSUMER_PLACES above.
+CONSUMER_MEASURES = {
+    "p.ddd.json": project("P", "r.ddd.json", "a.ddd.json", "b.ddd.json"),
+    "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
+    "a.ddd.json": component("A", declare("output", "X", raster="10ms")),
+    "b.ddd.json": component("B", declare("input", "X", raster="10ms")),
+}
+
+# A calibration object stating a raster, which is `raster-kind`: the third check filed at
+# `definition.raster` and the second of the two that are about the declaration, not the raster.
+CALIBRATION_MEASURED = {
+    "p.ddd.json": project("P", "r.ddd.json", "a.ddd.json"),
+    "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
+    "a.ddd.json": component(
+        "A", declare("output", "Gain", kind="parameter", init=1, raster="10ms")
+    ),
+}
+
+# A rasters file whose one entry fails the format - no `event` - so the project as a whole still
+# opens and this one file does not: measured, `built` is not `None` and `r.ddd.json` is in both
+# `revision.files` (not loaded) and `project_of(RASTERS, ...).files`, the sections fixture's own
+# case at the third vocabulary.
+UNREADABLE_RASTERS = {
+    "p.ddd.json": project("P", "r.ddd.json"),
+    "r.ddd.json": {"rasters": [{"raster": "50ms"}]},
+}
+
+# One raster and nothing else in the list, so removing it would leave `"rasters": []` - a document
+# `RastersFile` rejects, exactly as `"sections": []` is rejected.
+SOLE_RASTER_IN_A_FILE = {
+    "p.ddd.json": project("P", "r.ddd.json"),
+    "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1}]},
 }
 
 
@@ -2820,22 +2897,27 @@ class TestTheTypesTab:
 class TestShared:
     """``GET /api/shared``: the Shared files tab's one table, over examples/vocabulary - the one
     example declaring a constant in a constants file (`TREND_SAMPLES`) and one inline in a
-    component (`PRESSURE_CELLS`), both named by a dimension, and two memory sections its pump
-    places data in, checking clean."""
+    component (`PRESSURE_CELLS`), both named by a dimension, two memory sections its pump places
+    data in, and three measurement rasters it samples on, checking clean."""
 
     def test_the_table_lists_every_entry_of_every_kind_with_what_it_states(
         self, tmp_path: Path
     ) -> None:
-        """Both vocabularies in one table, sorted by kind then name: the endpoint answers whatever
-        `ddd.project_shared.HELD` holds, so a section row arrives here without this route learning
-        that sections exist. A constant states the json text of its value; a section its access and
-        its alignment, which is why the column is headed `States` and not `Value`."""
+        """All three vocabularies in one table, sorted by kind then name: the endpoint answers
+        whatever `ddd.project_shared.HELD` holds, so a section row and then a raster row each
+        arrived here without this route learning that either exists. A constant states the json
+        text of its value; a section its access and its alignment; a raster its event and its
+        cycle - which is why the column is headed `States` and not `Value`. The three rasters sort
+        by name as strings, which puts `100ms` in front of `1ms`."""
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         body = get(api, "/api/shared").body
         assert body["revision"] == 1
         assert [(e["kind"], e["name"], e["states"]) for e in body["entries"]] == [
             ("constant", "PRESSURE_CELLS", "8"),
             ("constant", "TREND_SAMPLES", "16"),
+            ("raster", "100ms", "event 2, 100ms"),
+            ("raster", "10ms", "event 1, 10ms"),
+            ("raster", "1ms", "event 0, 1ms"),
             ("section", ".calib", "read-only, align 4"),
             ("section", ".fast_ram", "read-write, align 4"),
         ]
@@ -3774,6 +3856,488 @@ class TestSection:
 
     def test_section_plan_needs_an_open_project(self, root: Path) -> None:
         reply = get(Api(Session(root)), "/api/section-plan", action="remove", name=".calib")
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+
+class TestRaster:
+    """``GET /api/raster`` and ``GET /api/raster-plan``, over examples/vocabulary and the small
+    trees it cannot supply.
+
+    The third of the pair, request for request, which is the point: the same five verbs over a
+    third :class:`~ddd.project_shared.Vocabulary`, so a case two of them answer and the third does
+    not would be a case the descriptor failed to describe.
+
+    The example is richer here than it is for a section: its ``100ms`` is named by nothing, so
+    ``remove``'s happy path needs no tree of its own, and its ``10ms`` and ``1ms`` are named by a
+    component's own default and by a definition respectively - the two kinds of use, one apiece.
+
+    Every refusal below was rendered from the current source with a throwaway script and is
+    asserted whole, with ``==``: a tail reworded in :data:`~ddd.project_shared.RASTERS` fails here
+    rather than passing a substring check. Task 4's own fix round rewrote two of these tails, so a
+    sentence copied out of the plan would have pinned wording that no longer exists.
+    """
+
+    def test_the_panel_names_its_entry_its_keys_and_the_component_measuring_in_it(
+        self, tmp_path: Path
+    ) -> None:
+        """`event` arrives as the json text its file spells and `cycle` and `description` as the
+        strings they hold, which is what `RASTERS.strings` decides: read the other way round,
+        `cycle` would carry its quotes onto the panel and `event` would come back empty, the value
+        at that key being no string.
+
+        The use is the component's own, `Pump` naming `10ms` as the default for everything it
+        produces - a use inside no definition at all, and the one `SectionUse.kind` could not
+        describe."""
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        body = get(api, "/api/raster", name="10ms").body
+        assert body["revision"] == 1
+        assert body["name"] == "10ms"
+        assert body["event"] == "1"
+        assert body["cycle"] == "10ms"
+        assert body["description"] == "control task"
+        assert body["file"] == posix(root, "rasters.ddd.json")
+        assert body["pointer"] == "rasters[1]"
+        assert [(u["kind"], u["name"], u["component"], u["pointer"]) for u in body["uses"]] == [
+            ("component", "Pump", "Pump", "component.raster")
+        ]
+        assert body["findings"] == []
+
+    def test_a_definition_measured_in_a_raster_is_a_use_of_the_variable(
+        self, tmp_path: Path
+    ) -> None:
+        """The other kind, and the one a section's panel also lists: `PumpSpeed` states `1ms`
+        itself rather than taking its component's default, so the reader is shown which variable is
+        sampled there and in which component."""
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        body = get(api, "/api/raster", name="1ms").body
+        assert body["event"] == "0"
+        assert [(u["kind"], u["name"], u["component"], u["pointer"]) for u in body["uses"]] == [
+            ("variable", "PumpSpeed", "Pump", "component.interface[0].definition.raster")
+        ]
+
+    def test_a_raster_named_both_ways_lists_both_uses_in_the_index_s_own_order(
+        self, tmp_path: Path
+    ) -> None:
+        """No raster of the example is named both ways, so the order the two kinds come in is
+        askable only here: per component, its own default ahead of its own definitions', which is
+        the order `ddd.lsp.navigation.index` records them in."""
+        body = get(opened(tmp_path, MEASURED_TWICE), "/api/raster", name="10ms").body
+        assert [(u["kind"], u["name"], u["pointer"]) for u in body["uses"]] == [
+            ("component", "A", "component.raster"),
+            ("variable", "X", "component.interface[0].definition.raster"),
+        ]
+
+    def test_a_raster_stating_no_cycle_answers_an_empty_one(self, tmp_path: Path) -> None:
+        """`cycle` is `str | None` in the model and every shipped raster states one, so the empty
+        answer needs a tree of its own. An event that is not cyclic is a real kind of raster rather
+        than an omission, which is why the panel draws the field empty instead of the endpoint
+        refusing to answer."""
+        body = get(opened(tmp_path, NO_CYCLE), "/api/raster", name="20ms").body
+        assert (body["event"], body["cycle"], body["description"]) == ("2", "", "")
+
+    def test_a_duplicate_raster_finding_routes_back_to_the_raster(self, tmp_path: Path) -> None:
+        """The fix that belongs beside the route: `FindingRoute.kind` had no `"raster"` member
+        until this part, and `_finding` builds that model for every finding of every request - so
+        this panel raised a `pydantic.ValidationError` before a test could reach the assertion,
+        exactly as part 13's `constant` and part 14's `section` each nearly shipped. Every other
+        test of this class asks about a raster carrying no raster-routed finding, which is why only
+        this one catches it.
+
+        The copy the panel lists is the one filed at the *first* entry - `duplicate-raster` is
+        filed at the repeat and again at the entry it repeats - since the index registers the first
+        and `located_on` asks about that one's pointer."""
+        body = get(opened(tmp_path, DECLARED_TWICE), "/api/raster", name="10ms").body
+        assert body["pointer"] == "rasters[0]"
+        assert [(f["check"], f["route"]) for f in body["findings"]] == [
+            ("duplicate-raster", {"kind": "raster", "name": "10ms"})
+        ]
+
+    def test_an_unknown_raster_leads_to_the_name_the_definition_names(self, tmp_path: Path) -> None:
+        """The route the page turns into a pre-filled add form: the name is in no index, so the
+        panel would answer 404 and the route carries it anyway."""
+        state = get(opened(tmp_path, MEASURED_NOWHERE), "/api/state").body
+        routes = {f["check"]: f["route"] for f in state["findings"]}
+        assert routes["unknown-raster"] == {"kind": "raster", "name": "50ms"}
+
+    def test_a_consumers_stray_raster_key_is_neither_counted_nor_listed_on_the_raster(
+        self, tmp_path: Path
+    ) -> None:
+        """The raster's copy of the same rule end to end, and a defect measured on the revision
+        before this one rather than a case inherited from the sections pair: `consumer-raster` is
+        filed at `component.interface[i].definition.raster`, which is a shape naming the raster, so
+        `10ms`'s row already read `findings: 1` for a finding whose route leaves the panel - and
+        the panel this part adds would have listed it.
+
+        The finding is not lost, only attributed: the project still reports it, at the declaration
+        that states the key, where the fix is. The `uses` count stays at two - the consumer's key
+        really does name the raster, which is exactly what `consumer-raster` complains about."""
+        api = opened(tmp_path, CONSUMER_MEASURES)
+        row = {e["name"]: e for e in get(api, "/api/shared").body["entries"]}["10ms"]
+        assert (row["uses"], row["findings"]) == (2, 0)
+        assert get(api, "/api/raster", name="10ms").body["findings"] == []
+        assert {f["check"]: f["route"] for f in get(api, "/api/state").body["findings"]}[
+            "consumer-raster"
+        ] == {"kind": "variable", "name": "X"}
+
+    def test_a_raster_on_a_calibration_object_is_not_counted_on_the_raster_either(
+        self, tmp_path: Path
+    ) -> None:
+        """The second of the two checks at that pointer that are not the raster's. `raster-kind`
+        says a calibration object states a raster and no daq list carries one: the entry is
+        innocent, and both ways to settle it are edits to the declaration."""
+        api = opened(tmp_path, CALIBRATION_MEASURED)
+        row = {e["name"]: e for e in get(api, "/api/shared").body["entries"]}["10ms"]
+        assert (row["uses"], row["findings"]) == (1, 0)
+        assert get(api, "/api/raster", name="10ms").body["findings"] == []
+        assert {f["check"]: f["route"] for f in get(api, "/api/state").body["findings"]}[
+            "raster-kind"
+        ] == {"kind": "variable", "name": "Gain"}
+
+    @pytest.mark.parametrize("query", [{}, {"name": ""}])
+    def test_a_raster_is_asked_for_by_name(self, tmp_path: Path, query: dict[str, str]) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/raster", **query)
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply.body["message"] == "raster takes ?name="
+
+    def test_a_raster_the_project_does_not_declare_is_not_found(self, tmp_path: Path) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/raster", name="50ms")
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+        assert reply.body["message"] == "'50ms' is not declared in the open project"
+
+    def test_a_name_only_a_rasters_file_that_did_not_load_declares_is_not_said_to_be_gone(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(opened(tmp_path, UNREADABLE_RASTERS), "/api/raster", name="50ms")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"] == (
+            "'50ms' is not declared in any file that loaded, and r.ddd.json did not load"
+        )
+
+    def test_a_project_the_analysis_could_not_read_cannot_answer_a_raster(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(unloaded(tmp_path), "/api/raster", name="10ms")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_a_raster_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root)), "/api/raster", name="10ms")
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+    def test_setting_a_cycle_is_previewed_then_written(self, tmp_path: Path) -> None:
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        before = contents(root)
+        preview = get(
+            api, "/api/raster-plan", action="set", name="10ms", key="cycle", raw='"20ms"'
+        ).body
+        assert contents(root) == before
+        assert [Path(c["file"]).name for c in preview["changes"]] == ["rasters.ddd.json"]
+        assert applied(api, preview, "the cycle of 10ms").status == 200
+        assert '"cycle": "20ms"' in (root / "rasters.ddd.json").read_text(encoding="utf-8")
+        assert get(api, "/api/raster", name="10ms").body["cycle"] == "20ms"
+
+    def test_renaming_rewrites_the_entry_and_every_shape_naming_it(self, tmp_path: Path) -> None:
+        """Both shapes in one rename, which is what `rename_sites` reaches for a raster: the
+        entry's own name in the rasters file, and the pump's default in the component.
+
+        Asserted key by key rather than by `'10ms' not in the file`, which is how the sections pair
+        asserts its own rename and which cannot be asked here: a raster is the one vocabulary whose
+        name and one of its values are spelled alike - `10ms` names the entry *and* states its
+        cycle - so the entry that has been correctly renamed still holds the string. That the cycle
+        is left alone is worth its own line: a rename reaching it would silently change how often
+        the signal is sampled."""
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        preview = get(api, "/api/raster-plan", action="rename", name="10ms", to="20ms").body
+        assert [Path(c["file"]).name for c in preview["changes"]] == [
+            "pump.ddd.json",
+            "rasters.ddd.json",
+        ]
+        assert applied(api, preview, "the rename of '10ms' to '20ms'").status == 200
+        declared = json.loads((root / "rasters.ddd.json").read_text(encoding="utf-8"))
+        assert declared["rasters"][1] == {
+            "raster": "20ms",
+            "event": 1,
+            "cycle": "10ms",
+            "description": "control task",
+        }
+        pump = json.loads((root / "pump.ddd.json").read_text(encoding="utf-8"))
+        assert pump["component"]["raster"] == "20ms"
+        assert get(api, "/api/raster", name="20ms").status == 200
+        assert get(api, "/api/raster", name="10ms").status == 404
+
+    def test_declaring_one_takes_a_json_text_per_key_the_model_gives_no_default(
+        self, tmp_path: Path
+    ) -> None:
+        """`event` alone, where a section's `add` takes two: a raster the file states no `event`
+        for is one that does not load, and `cycle` - which a raster may honestly state none of -
+        is not the request's to supply. The entry written states no `cycle` at all rather than an
+        explicit `null`, which is `_entry_text` skipping a key `raws` leaves out."""
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        preview = get(api, "/api/raster-plan", action="add", name="50ms", event="3").body
+        assert [Path(c["file"]).name for c in preview["changes"]] == ["rasters.ddd.json"]
+        assert applied(api, preview, "50ms declared").status == 200
+        declared = json.loads((root / "rasters.ddd.json").read_text(encoding="utf-8"))
+        assert declared["rasters"][-1] == {"raster": "50ms", "event": 3, "description": ""}
+        assert get(api, "/api/raster", name="50ms").status == 200
+
+    def test_adding_when_the_project_has_no_rasters_file_creates_one(
+        self, api: Api, root: Path
+    ) -> None:
+        """`RASTERS.filename` and `RASTERS.containers[0]` both, in the bytes of a file nothing else
+        in this suite ever sees written: the name beside the description and the key its one entry
+        is wrapped in."""
+        before = contents(root)
+        preview = get(api, "/api/raster-plan", action="add", name="10ms", event="1").body
+        assert contents(root) == before
+        described, created = preview["changes"]
+        assert (Path(described["file"]).name, Path(created["file"]).name) == (
+            "p.ddd.json",
+            "rasters.ddd.json",
+        )
+        assert (described["fingerprint"], created["fingerprint"]) == (
+            fingerprint(before["p.ddd.json"]),
+            None,
+        )
+        assert applied(api, preview, "10ms declared").status == 200
+        assert created["hunks"] == [
+            {
+                "line": 1,
+                "before": [],
+                "after": [
+                    "{",
+                    '  "rasters": [',
+                    '    { "raster": "10ms", "event": 1, "description": "" }',
+                    "  ]",
+                    "}",
+                ],
+            }
+        ]
+        assert '"rasters.ddd.json"' in (root / "p.ddd.json").read_text(encoding="utf-8")
+
+    def test_removing_a_raster_nothing_names_takes_its_entry_out(self, tmp_path: Path) -> None:
+        """`100ms` is the example's own unused entry, so this needs no tree of its own where the
+        sections pair needed UNUSED_SECTION: both of that example's sections are placed in."""
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        preview = get(api, "/api/raster-plan", action="remove", name="100ms").body
+        assert applied(api, preview, "100ms removed").status == 200
+        assert get(api, "/api/raster", name="100ms").status == 404
+        assert get(api, "/api/raster", name="10ms").status == 200
+
+    @pytest.mark.parametrize(
+        ("query", "says"),
+        [
+            (
+                {"action": "rename", "name": "10ms", "to": "not a raster name!"},
+                "'not a raster name!' is not a usable raster name",
+            ),
+            (
+                {"action": "rename", "name": "10ms", "to": "100ms"},
+                "'100ms' is already a raster this project declares",
+            ),
+            (
+                {"action": "add", "name": "100ms", "event": "9"},
+                "'100ms' is already a raster this project declares",
+            ),
+            (
+                {"action": "set", "name": "10ms", "key": "event", "raw": "4.0"},
+                "4.0 is not an event a raster may state, so '10ms' cannot take it in "
+                "rasters.ddd.json: a channel number xcp addresses - 0 to 65535 - written "
+                "without a decimal point",
+            ),
+            (
+                {"action": "add", "name": "50ms", "event": "1e3"},
+                "1e3 is not an event a raster may state, so '50ms' cannot take it in "
+                "rasters.ddd.json: a channel number xcp addresses - 0 to 65535 - written "
+                "without a decimal point",
+            ),
+            (
+                {"action": "set", "name": "10ms", "key": "cycle", "raw": '"potato"'},
+                "\"potato\" is not a cycle a raster may state, so '10ms' cannot take it in "
+                "rasters.ddd.json: a count of 1 to 255 times a decade from 1ns to 1s, written "
+                "as one string - '1500us', '10ms'. A raster that is not cyclic states no cycle "
+                "at all: the key is left out of its entry, which no value set here can do",
+            ),
+            (
+                {"action": "set", "name": "10ms", "key": "cycle", "raw": '""'},
+                "\"\" is not a cycle a raster may state, so '10ms' cannot take it in "
+                "rasters.ddd.json: a count of 1 to 255 times a decade from 1ns to 1s, written "
+                "as one string - '1500us', '10ms'. A raster that is not cyclic states no cycle "
+                "at all: the key is left out of its entry, which no value set here can do",
+            ),
+            (
+                {"action": "set", "name": "10ms", "key": "event", "raw": "0"},
+                "event 0 is already claimed by raster '1ms'",
+            ),
+            (
+                {"action": "add", "name": "50ms", "event": "1"},
+                "event 1 is already claimed by raster '10ms'",
+            ),
+            (
+                {"action": "set", "name": "10ms", "key": "event"},
+                "a raster states an event, so '10ms' cannot be left without one in "
+                "rasters.ddd.json",
+            ),
+            (
+                {"action": "set", "name": "10ms", "key": "unit", "raw": '"rpm"'},
+                "a raster has no 'unit' to set in rasters.ddd.json: it states cycle, "
+                "description and event",
+            ),
+            (
+                {"action": "remove", "name": "10ms"},
+                "'10ms' is named by 1 shape, the first in pump.ddd.json; nothing may name it "
+                "before it goes",
+            ),
+        ],
+    )
+    def test_a_change_the_project_refuses_says_why_in_the_format_s_own_words(
+        self, tmp_path: Path, query: dict[str, str], says: str
+    ) -> None:
+        """Every refusal a raster has, each asserted whole rather than by a substring: a tail
+        reworded in `RASTERS.judge` or a clause dropped from `shared_plans` fails here.
+
+        The two rows a substring would have let through are the interesting ones. `cycle`'s tail
+        was `"a json string, or nothing"` in the plan this branch was written from, which is the
+        annotation and not the rule - and `"potato"` *is* a json string, so the one sentence a
+        reader with a mistyped period ever sees would have refuted itself. `event`'s named neither
+        half of what its field refuses. Both were corrected after Task 4's review, and every
+        sentence here was rendered from the current source rather than copied from the plan or
+        from the sections pair beside it.
+
+        The `cycle` pair is why there are two rows for one tail. That correction left the tail's
+        own `or nothing` standing, and the field a reader clears sends `""` - so the sentence met
+        on the likelier keystroke still ended by naming the state that had just been refused.
+        `""` is what the panel sends for an emptied Cycle field (`rasterRaw`), and `"potato"` what
+        it sends for a mistyped period; both are here because the defect was found at one of them
+        and fixed only there. The key is taken out for a `raw` of `None` alone, which this field
+        has no way to send - the open item the tail now points at instead of promising.
+
+        The two `already claimed` rows are the raster's own refusal, which neither of the other
+        vocabularies has: a value, not a name, that is the project's alone. Both verbs that write
+        one are asked, since asking in only one would refuse a collision on edit and write it on
+        create.
+
+        Nothing is written either: a refusal that had already touched a file would be the one
+        outcome none of these codes can describe."""
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        before = contents(root)
+        reply = get(api, "/api/raster-plan", **query)
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == says
+        assert contents(root) == before
+
+    def test_removing_the_only_raster_a_file_declares_is_refused(self, tmp_path: Path) -> None:
+        """`rasters` carries the same `min_length=1` `sections` does, so the emptied file is one
+        the format rejects - and the whole point of the refusal is that it is still there."""
+        api = opened(tmp_path, SOLE_RASTER_IN_A_FILE)
+        before = contents(tmp_path)
+        reply = get(api, "/api/raster-plan", action="remove", name="10ms")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == (
+            "'10ms' is all r.ddd.json declares, and a list of rasters declares at least one; "
+            "emptied, the file would no longer load"
+        )
+        assert contents(tmp_path) == before
+
+    def test_a_raster_no_file_declares_cannot_be_changed(self, tmp_path: Path) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/raster-plan", action="set", name="50ms", key="cycle", raw='"50ms"')
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+        assert reply.body["message"] == ("no file of this project declares a raster called '50ms'")
+
+    def test_an_add_while_the_rasters_file_did_not_load_is_unreadable(self, tmp_path: Path) -> None:
+        reply = get(
+            opened(tmp_path, UNREADABLE_RASTERS),
+            "/api/raster-plan",
+            action="add",
+            name="60ms",
+            event="4",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"] == (
+            "r.ddd.json did not load, so what it declares is unknown and '60ms' cannot be "
+            "added to it"
+        )
+
+    @pytest.mark.parametrize(
+        ("query", "whose"),
+        [
+            ({"action": "set", "name": "10ms", "key": "cycle", "raw": "not json"}, "raw"),
+            ({"action": "add", "name": "50ms", "event": "3 4"}, "event"),
+        ],
+    )
+    def test_a_value_that_is_not_json_is_bad_before_any_refusal_about_the_project(
+        self, tmp_path: Path, query: dict[str, str], whose: str
+    ) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/raster-plan", **query)
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        # `startswith` and not `in`, matching the section pair's own
+        # `test_two_values_that_are_not_json_are_refused_in_a_fixed_order`: what follows the
+        # clause is python's json decoder's own text (`: Expecting value: line 1 column 1`),
+        # which this suite has no business pinning - but `in` would leave the prefix free too,
+        # and the prefix is the sentence `parse_raw` writes.
+        assert reply.body["message"].startswith(f"{query[whose]!r} is not one json value")
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            {},
+            {"action": "dance", "name": "10ms"},
+            {"action": "set", "name": "10ms"},
+            {"action": "set", "name": "", "key": "cycle", "raw": '"20ms"'},
+            {"action": "rename", "name": "10ms"},
+            {"action": "add", "name": "50ms"},
+            {"action": "remove"},
+        ],
+    )
+    def test_a_missing_or_unknown_parameter_is_a_bad_request(
+        self, tmp_path: Path, query: dict[str, str]
+    ) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/raster-plan", **query)
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+
+    def test_the_actions_a_raster_plan_offers_are_named_in_its_refusal(
+        self, tmp_path: Path
+    ) -> None:
+        """The noun comes off the descriptor, so a route wired to the wrong vocabulary would say
+        `section-plan` here - which no status code would show."""
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/raster-plan", action="dance")
+        assert reply.body["message"] == "raster-plan takes ?action= one of set, rename, add, remove"
+
+    def test_an_add_names_a_parameter_for_each_key_the_raster_model_requires(self) -> None:
+        """The same relation `SECTION_PLANS` is asserted by, at the vocabulary whose required set
+        has one member rather than two: a key added to the model's required set without a
+        parameter here would raise `KeyError` inside the route - a 500 where a reader should meet
+        a form."""
+        assert RASTER_PLANS["add"] == ("name", *_required_keys(RASTERS))
+        assert RASTER_PLANS["add"] == ("name", "event")
+
+    def test_a_project_the_analysis_could_not_read_plans_no_raster_change(
+        self, tmp_path: Path
+    ) -> None:
+        reply = get(unloaded(tmp_path), "/api/raster-plan", action="remove", name="10ms")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"] == (
+            "p.ddd.json did not load, so no raster of the project can be changed"
+        )
+
+    def test_a_raster_preview_the_engine_refuses_is_a_refusal_the_page_can_act_on(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+
+        def refuse(*_: object) -> None:
+            raise EditError(UNVERIFIED, "does not read back")
+
+        monkeypatch.setattr("ddd.gui.api.previewed", refuse)
+        reply = get(api, "/api/raster-plan", action="set", name="10ms", key="cycle", raw='"20ms"')
+        assert (reply.status, reply.body["error"]) == (409, "unverified")
+
+    def test_raster_plan_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root)), "/api/raster-plan", action="remove", name="10ms")
         assert (reply.status, reply.body["error"]) == (409, "no-project")
 
 

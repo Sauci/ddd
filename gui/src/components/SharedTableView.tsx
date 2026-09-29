@@ -29,8 +29,11 @@ export interface SharedTableViewProps {
 }
 
 /** The Shared files tab's table (spec 5.1): a picture of its props. One table for every kind the
- * tab holds - constants and sections today, rasters the part still to come (design §2) - each
- * entry's own `kind` told apart in its own column rather than by a table per kind. */
+ * tab holds - a constant's, a section's and a raster's alike - each entry's own `kind` told apart
+ * in its own column rather than by a table per kind. A raster's row needed no change here to
+ * draw: the table already takes a vocabulary generically, through `vocabularyOf` below and
+ * `row.states` composed on the server, so a third kind was a data change and not a code one
+ * (design §5, "the table gains raster rows... through code that already takes a vocabulary"). */
 export function SharedTableView({
   reply,
   selected,
@@ -45,9 +48,9 @@ export function SharedTableView({
       {/* One unreadable file does not blank the others: a constant declared inline still lists,
           and the banner says which file's own entries are missing from the count and the rows
           below it - a table that silently omitted them would read as a project that declares
-          nothing (spec 5.4). Says "entries", not a vocabulary's own word: `unreadable` now names
-          a failed file of either kind this tab holds (ruling 7, task 7 fix round 1), and naming
-          the wrong one would send the reader to fix a file that was never broken. */}
+          nothing (spec 5.4). Says "entries", not a vocabulary's own word: `unreadable` names a
+          failed file of any kind this tab holds - three of them now (ruling 7, task 7 fix round 1),
+          and naming the wrong one would send the reader to fix a file that was never broken. */}
       {unreadable.length > 0 && (
         <Banner tone="warning">
           {unreadable.join(", ")} did not load, so the entries declared there are not listed.

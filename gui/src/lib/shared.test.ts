@@ -1,11 +1,18 @@
 import { describe, expect, test } from "vitest";
-import type { PlanReply, SharedEntry, SharedReply } from "../api/types";
+import type { PlanReply, RasterUse, SharedEntry, SharedReply } from "../api/types";
 import {
   addTitle,
   constantAdd,
   isDeclared,
   kindNamed,
   planEdit,
+  rasterAdd,
+  rasterRaw,
+  rasterRemovable,
+  rasterRemoveBlocked,
+  rasterSet,
+  rasterUseRoute,
+  rasterUseWhat,
   rowKey,
   SECTION_ACCESSES,
   SHARED_KINDS,
@@ -28,6 +35,18 @@ const reply = (names: string[]): SharedReply => ({
     uses: 0,
     findings: 0,
   })),
+});
+
+const PUMP_FILE = "C:/w/pump.ddd.json";
+
+/** One shape naming a raster, of whichever of the two kinds `RasterUse.kind` spells: the pointer
+ * is the one the kind implies, so a use built here is one the server could really answer. */
+const use = (kind: RasterUse["kind"], name: string, component: string | null): RasterUse => ({
+  path: PUMP_FILE,
+  pointer: kind === "component" ? "component.raster" : "component.interface[0].definition.raster",
+  kind,
+  name,
+  component,
 });
 
 /** A constant and a section both called FOO - a table of the one shape a row keyed by name alone
@@ -59,10 +78,12 @@ describe("the tab's summary line", () => {
   });
 
   test("counts a third vocabulary exactly as the first two - it does not know their words", () => {
-    // A `for (const kind of ["constant", "section"])` fixed to the two vocabularies known today
-    // would pass every other test in this file without ever consulting a third word. `raster` is
-    // not one the tab holds yet; `tabTitle` does not need to know that; it counts whichever kinds
-    // `entries` actually carries, which is what makes the next vocabulary a data change.
+    // A `for (const kind of ["constant", "section"])` fixed to the two vocabularies of the day
+    // would pass every other test in this file without ever consulting a third word. This case was
+    // written while `raster` was not yet one the tab held, and it passed then for the reason it
+    // passes now: `tabTitle` does not know any vocabulary's word, and counts whichever kinds
+    // `entries` actually carries - which is what made the third vocabulary a data change, and what
+    // would make a fourth one.
     expect(tabTitle(entries(["constant", "raster", "raster", "section"]))).toBe(
       "1 constant · 2 rasters · 1 section",
     );
@@ -99,8 +120,8 @@ describe("whether a name is declared", () => {
 });
 
 describe("which vocabularies the tab holds", () => {
-  test("offers both, constants first - the order the server walks and sorts them in", () => {
-    expect(SHARED_VOCABULARIES).toEqual(["constant", "section"]);
+  test("offers all three, constants first - the order the server walks and sorts them in", () => {
+    expect(SHARED_VOCABULARIES).toEqual(["constant", "section", "raster"]);
   });
 
   test("names each by its plural, which is also its file's own word", () => {
@@ -108,22 +129,23 @@ describe("which vocabularies the tab holds", () => {
   });
 
   test("pluralises a kind the page has no route for just the same", () => {
-    // A row of a vocabulary the tab lists before it has a panel for it - a raster's, next part -
-    // still has to read as something in its column.
-    expect(vocabularyOf("raster")).toBe("rasters");
+    // A hypothetical fourth vocabulary's row, were the table ever to list one before route.ts
+    // knew about it, still has to read as something in its column.
+    expect(vocabularyOf("widget")).toBe("widgets");
   });
 
   test("a word settles on the vocabulary it names", () => {
     expect(kindNamed("sections")).toBe("section");
     expect(kindNamed("constants")).toBe("constant");
+    expect(kindNamed("rasters")).toBe("raster");
   });
 
   test("a word naming none of them settles on nothing, rather than on the first", () => {
     // The chooser takes any text typed. "section" is the singular, which no vocabulary is known
-    // by here, and "rasters" is a vocabulary the tab cannot declare into yet: both leave the
-    // chooser unset rather than guessing.
+    // by here, and "widgets" is a vocabulary the tab does not hold at all: both leave the chooser
+    // unset rather than guessing.
     expect(kindNamed("section")).toBeUndefined();
-    expect(kindNamed("rasters")).toBeUndefined();
+    expect(kindNamed("widgets")).toBeUndefined();
     expect(kindNamed("")).toBeUndefined();
   });
 });
@@ -152,6 +174,7 @@ describe("the key a row is selected by", () => {
       kind: "constant",
       name: "TREND_SAMPLES",
     });
+    expect(selectionAt(rowKey("raster", "10ms"))).toEqual({ kind: "raster", name: "10ms" });
   });
 
   test("tells two rows of one spelling apart", () => {
@@ -166,9 +189,9 @@ describe("the key a row is selected by", () => {
   });
 
   test("a row of a kind no address can name comes back as no selection", () => {
-    // A raster's row, when they land: the tab lists it before it has a panel to open, so its key
-    // leaves the address bare rather than opening another vocabulary's.
-    expect(selectionAt(rowKey("raster", "10ms"))).toBeUndefined();
+    // A vocabulary the tab does not hold at all - a fourth one, were it to exist - leaves the
+    // address bare rather than opening another vocabulary's.
+    expect(selectionAt(rowKey("widget", "10ms"))).toBeUndefined();
   });
 
   test("a key with no vocabulary in it is no selection either", () => {
@@ -212,6 +235,125 @@ describe("the json text a section's key travels as", () => {
       name: ".calib",
       key: "description",
       raw: '"calibration flash"',
+    });
+  });
+});
+
+describe("the json text a raster's key travels as", () => {
+  test("a string key goes in its quotes", () => {
+    expect(rasterRaw("cycle", "10ms")).toBe('"10ms"');
+    expect(rasterRaw("description", "the 10 ms control task")).toBe('"the 10 ms control task"');
+  });
+
+  test("event goes without them - quoted, it is a string the file's loader refuses", () => {
+    expect(rasterRaw("event", "1")).toBe("1");
+  });
+
+  test("a set request quotes by the very key it carries", () => {
+    // As `sectionSet`'s own case pins: the key reaching the request is the key that decided the
+    // quoting, for each of a raster's three keys.
+    expect(rasterSet("10ms", "event", "1")).toEqual({
+      action: "set",
+      name: "10ms",
+      key: "event",
+      raw: "1",
+    });
+    expect(rasterSet("10ms", "cycle", "20ms")).toEqual({
+      action: "set",
+      name: "10ms",
+      key: "cycle",
+      raw: '"20ms"',
+    });
+    expect(rasterSet("10ms", "description", "the 10 ms control task")).toEqual({
+      action: "set",
+      name: "10ms",
+      key: "description",
+      raw: '"the 10 ms control task"',
+    });
+  });
+});
+
+describe("declaring a raster", () => {
+  test("asks for nothing until both a name and an event are typed", () => {
+    expect(rasterAdd("", "3")).toBeNull();
+    expect(rasterAdd("20ms", "")).toBeNull();
+  });
+
+  test("a field holding only spaces is a field not filled in, each on its own", () => {
+    expect(rasterAdd(" ", "3")).toBeNull();
+    expect(rasterAdd("20ms", " ")).toBeNull();
+  });
+
+  test("carries its one required key as json text, the event bare", () => {
+    // The trap this pins, a section's own `add` case the other way round: `event` is judged as
+    // json and is the one key `add` requires, so an event sent in quotes declares a string where
+    // the model wants a whole number, and the file it writes would no longer load.
+    expect(rasterAdd("20ms", "3")).toEqual({ action: "add", name: "20ms", event: "3" });
+  });
+});
+
+describe("whether a raster may be removed at all", () => {
+  test("only while nothing names it", () => {
+    expect(rasterRemovable([])).toBe(true);
+    expect(rasterRemovable([use("variable", "PumpSpeed", "Pump")])).toBe(false);
+  });
+
+  test("a component's own default blocks it exactly as a definition does", () => {
+    // Honest about what this pins and what it does not. It exercises the same arm as the case
+    // above - `rasterRemovable` reads the length and never the kind - so it adds no branch, and
+    // it is documentation rather than a second assertion about behaviour.
+    //
+    // What it does fix is the contract: a component default counts as a use, so a caller handing
+    // this only the definitions would offer a Remove the api refuses. That mistake lives in the
+    // caller, which passes `reply.uses`, and no test here can reach it. If `rasterRemovable` ever
+    // learns to read `kind`, this case stops being a duplicate and starts being the arm.
+    expect(rasterRemovable([use("component", "Pump", "Pump")])).toBe(false);
+  });
+});
+
+describe("why a raster cannot be removed", () => {
+  test("counts the shapes naming it", () => {
+    expect(rasterRemoveBlocked("10ms", 2)).toBe("2 shapes name 10ms, so it cannot be removed.");
+  });
+
+  test("says one of them in the singular, verb and all", () => {
+    // Two plurals in one sentence, as a section's own case pins: `toBe` on the whole line is
+    // what catches a mutation that only pluralises the noun.
+    expect(rasterRemoveBlocked("1ms", 1)).toBe("1 shape names 1ms, so it cannot be removed.");
+  });
+});
+
+describe("what a raster's use is, and where its row leads", () => {
+  test("a definition names the component declaring it", () => {
+    expect(rasterUseWhat(use("variable", "PumpSpeed", "Pump"))).toBe("a definition of Pump");
+  });
+
+  test("a component's own default says what it covers, not whose - its row already names it", () => {
+    expect(rasterUseWhat(use("component", "Pump", "Pump"))).toBe("everything it produces");
+  });
+
+  test("a definition whose component the reply left out is still told apart from a default", () => {
+    // `RasterUse.component` is optional on the wire and never absent in an answer about a
+    // raster, so this is the shape the type admits rather than one the server sends. What it
+    // must not do is read as a component's default: the two are the reason `kind` has two words.
+    expect(rasterUseWhat(use("variable", "PumpSpeed", null))).toBe("a definition");
+  });
+
+  test("a definition leads to its variable, on its component's page", () => {
+    expect(rasterUseRoute(use("variable", "PumpSpeed", "Pump"))).toEqual({
+      page: "component",
+      file: PUMP_FILE,
+      variable: "PumpSpeed",
+    });
+  });
+
+  test("a component's default leads to the component's page and names no variable", () => {
+    // There is no variable between a component and its default to open: `RasterUse.name` is the
+    // component's own name there, and a route carrying it as `variable` would open a panel for a
+    // variable no file declares.
+    expect(rasterUseRoute(use("component", "Pump", "Pump"))).toEqual({
+      page: "component",
+      file: PUMP_FILE,
     });
   });
 });

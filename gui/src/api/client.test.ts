@@ -10,6 +10,8 @@ import {
   getFix,
   getGraph,
   getProjects,
+  getRaster,
+  getRasterPlan,
   getSection,
   getSectionPlan,
   getSession,
@@ -161,6 +163,13 @@ describe("requests to the server", () => {
       fetchImpl,
     );
     await getSectionPlan({ action: "remove", name: ".calib" }, fetchImpl);
+    await getRaster("10ms", fetchImpl);
+    await getRasterPlan({ action: "set", name: "10ms", key: "cycle", raw: '"20ms"' }, fetchImpl);
+    await getRasterPlan({ action: "set", name: "10ms", key: "description" }, fetchImpl);
+    await getRasterPlan({ action: "set", name: "10ms", key: "description", raw: null }, fetchImpl);
+    await getRasterPlan({ action: "rename", name: "10ms", to: "20ms" }, fetchImpl);
+    await getRasterPlan({ action: "add", name: "10ms", event: "1" }, fetchImpl);
+    await getRasterPlan({ action: "remove", name: "10ms" }, fetchImpl);
     await getDeclarable("/tmp/c.ddd.json", fetchImpl);
     await getDeclarationPlan(
       { action: "read", file: "/tmp/c.ddd.json", name: "ValueC", scope: "input" },
@@ -260,6 +269,16 @@ describe("requests to the server", () => {
         { credentials: "same-origin" },
       ],
       ["/api/section-plan?action=remove&name=.calib", { credentials: "same-origin" }],
+      ["/api/raster?name=10ms", { credentials: "same-origin" }],
+      [
+        "/api/raster-plan?action=set&name=10ms&key=cycle&raw=%2220ms%22",
+        { credentials: "same-origin" },
+      ],
+      ["/api/raster-plan?action=set&name=10ms&key=description", { credentials: "same-origin" }],
+      ["/api/raster-plan?action=set&name=10ms&key=description", { credentials: "same-origin" }],
+      ["/api/raster-plan?action=rename&name=10ms&to=20ms", { credentials: "same-origin" }],
+      ["/api/raster-plan?action=add&name=10ms&event=1", { credentials: "same-origin" }],
+      ["/api/raster-plan?action=remove&name=10ms", { credentials: "same-origin" }],
       ["/api/declarable?file=%2Ftmp%2Fc.ddd.json", { credentials: "same-origin" }],
       [
         "/api/declaration-plan?action=read&file=%2Ftmp%2Fc.ddd.json&name=ValueC&scope=input",

@@ -10,6 +10,8 @@ import type {
   KindForm,
   PlanReply,
   ProjectUnit,
+  RasterReply,
+  RasterUse,
   Renamed,
   SectionReply,
   SectionUse,
@@ -789,9 +791,20 @@ export const UNKNOWN_RPM_FINDING: Finding = {
 };
 
 /** UserInterface measuring in a raster no file of the project declares: filed on the component
- * itself rather than inside a declaration, so it leads to the component's own page rather than
- * to a variable's panel. `unknown-raster`'s own default is error. */
-const UNKNOWN_RASTER: Finding = {
+ * itself rather than inside a declaration, at `component.raster` - the second of the two shapes a
+ * raster is named at. It leads to the raster, not to the component it was filed on:
+ * `RASTER_CHECKS` holds `unknown-raster`, and its arm in `src/ddd/finding_routes.py` reads the
+ * name at whichever of the two pointers it was given and routes there, exactly as
+ * `unknown-constant` does. `unknown-raster`'s own default is error.
+ *
+ * The name travels whether or not a file declares it, which is the point of the route rather than
+ * a flaw in it: `SharedPage` asks `isDeclared` of the table it already has, finds nothing, and
+ * opens the add form pre-filled with `20ms` - the very declaration ADD_RASTER below previews.
+ *
+ * This route read `{ kind: "component", name: null }` until this part's last task, which was true
+ * when it was written and stopped being true when `RASTER_CHECKS` landed: the Findings tab's
+ * stories were depicting a route the server could no longer answer. */
+export const UNKNOWN_RASTER: Finding = {
   file: USER_INTERFACE,
   check: "unknown-raster",
   severity: "error",
@@ -800,7 +813,7 @@ const UNKNOWN_RASTER: Finding = {
     "project declares - did you mean '10ms'?",
   pointer: "component.raster",
   notes: [],
-  route: { kind: "component", name: null },
+  route: { kind: "raster", name: "20ms" },
 };
 
 /** Controller and SensorHub presenting ValueB differently in the a2l: the producer's value wins,
@@ -1878,10 +1891,11 @@ const CALIB: SharedEntry = {
   findings: 0,
 };
 
-/** Both vocabularies the tab holds, in the one table (spec 5.1, extended by part 14): the same
- * TREND_SAMPLES and PRESSURE_CELLS as PROJECT_SHARED, beside both sections - sorted kind then
+/** The two vocabularies part 14 shipped, in the one table (spec 5.1, extended by that part): the
+ * same TREND_SAMPLES and PRESSURE_CELLS as PROJECT_SHARED, beside both sections - sorted kind then
  * name, as `GET /api/shared` answers them (`project_shared.shared_rows`), so every constant's row
- * precedes every section's. This is the story the tab exists for. */
+ * precedes every section's. Two of the three the tab holds now; SHARED_ALL_VOCABULARIES below is
+ * the one that shows all of them, and this is the table it grew from. */
 export const SHARED_BOTH_KINDS: SharedReply = {
   revision: 7,
   entries: [PRESSURE_CELLS, TREND_SAMPLES, CALIB, FAST_RAM],
@@ -1895,9 +1909,11 @@ export const SHARED_SECTION_FINDING: SharedReply = {
   entries: [{ ...CALIB, findings: 1 }, FAST_RAM],
 };
 
-/** The smallest table that still holds both vocabularies: TREND_SAMPLES, declared in
+/** The smallest table that still holds a constant and a section both: TREND_SAMPLES, declared in
  * constants.ddd.json with nothing declared in its other home - no PRESSURE_CELLS-style inline
- * constant here - beside .fast_ram alone. */
+ * constant here - beside .fast_ram alone. No raster, which is what keeps it the smallest: the
+ * point is one row per vocabulary, and the two that were here when it was written are the two
+ * whose States cells it sets against each other. */
 export const SHARED_ONE_OF_EACH: SharedReply = {
   revision: 7,
   entries: [TREND_SAMPLES, FAST_RAM],
@@ -1916,6 +1932,101 @@ export const SHARED_ONE_SPELLING: SharedReply = {
     { kind: "constant", name: "FOO", states: "4", uses: 1, findings: 0 },
     { kind: "section", name: "FOO", states: "read-write, align 4", uses: 1, findings: 0 },
   ],
+};
+
+// examples/vocabulary's own three rasters (spec 5.1, extended by this part): 1ms, 10ms and 100ms
+// (examples/vocabulary/rasters.ddd.json) - modelled on it, not transcribed, the way TREND_SAMPLES,
+// PRESSURE_CELLS, FAST_RAM and CALIB above already are not. Their States cells are real too:
+// `ddd.project_shared._raster_states` composes "event {event}, {cycle}", or "event {event}" alone
+// where an entry states no cycle (src/ddd/project_shared.py:813-830) - RASTER_1MS and RASTER_10MS
+// below are the first shape, CRANK_RASTER the second.
+
+/** 1ms: event 0, cyclic (rasters.ddd.json:4). PumpSpeed's own definition is its one real use
+ * (pump.ddd.json:34, `"raster": "1ms"` inside `component.interface[0].definition`) - measuring
+ * itself apart from Pump's own component default below. */
+const RASTER_1MS: SharedEntry = {
+  kind: "raster",
+  name: "1ms",
+  states: "event 0, 1ms",
+  uses: 1,
+  findings: 0,
+};
+
+/** 10ms: event 1, cyclic (rasters.ddd.json:5). Pump's own component default is its one real use
+ * (pump.ddd.json:6, `"raster": "10ms"` inside `component` itself) - measured against the plan's
+ * own claim that 10ms is used twice, which the controller's ruling corrects: no raster in the
+ * shipped example is named both ways, and this is the one use 10ms really has.
+ *
+ * The citation that stood here said `grep -rn '"raster"' examples/vocabulary` answers exactly two
+ * lines. Run, it answers five, and the difference is the thing worth knowing: the same key spells
+ * two different facts. Three of the five are in rasters.ddd.json, where `"raster"` is a name being
+ * declared (`RASTERS.name_key`); the other two are in pump.ddd.json, where it is a reference to
+ * one. Only the second kind is a use, so the uses are two - and they name different rasters, 1ms
+ * on PumpSpeed's definition and 10ms as Pump's default, which is what leaves each with one.
+ *
+ * Its States cell ("event 1, 10ms") is nothing a constant's own ("16") or a section's own
+ * ("read-write, align 4") could be mistaken for - part of the point AllThreeVocabularies exists
+ * to make. */
+const RASTER_10MS: SharedEntry = {
+  kind: "raster",
+  name: "10ms",
+  states: "event 1, 10ms",
+  uses: 1,
+  findings: 0,
+};
+
+/** 100ms: event 2, cyclic (rasters.ddd.json:6), named nowhere in the shipped example - a raster's
+ * own counterpart to UNUSED_KPA's blank "Used by" cell. */
+const RASTER_100MS: SharedEntry = {
+  kind: "raster",
+  name: "100ms",
+  states: "event 2, 100ms",
+  uses: 0,
+  findings: 0,
+};
+
+/** A raster that states no cycle at all - crank synchronous, on change, on demand, a real kind of
+ * raster and not an omission (`RasterDeclaration.cycle`'s own doc, schemas/ddd_rasters.schema.
+ * json). Constructed, not copied: examples/vocabulary's own three rasters all state one
+ * (rasters.ddd.json). Named for the kind of raster it is rather than reusing "100ms" for its
+ * event number - giving a constructed entry a real raster's own name, stating a different cycle
+ * from what that raster actually does, is exactly what would read as stale the next time someone
+ * checked it against the file. */
+const CRANK_RASTER: SharedEntry = {
+  kind: "raster",
+  name: "crank",
+  states: "event 2",
+  uses: 1,
+  findings: 0,
+};
+
+/** Every vocabulary the tab holds, in the one table (spec 5.1, extended by this part): the same
+ * four entries SHARED_BOTH_KINDS shows, beside all three of examples/vocabulary's own rasters -
+ * sorted kind then name, as `GET /api/shared` answers them (`shared_rows`): every constant's row,
+ * then every raster's ("raster" sorts between "constant" and "section"), then every section's.
+ * Within the rasters, a plain string sort and not a numeric one - `sorted(["1ms", "10ms",
+ * "100ms"])` answers `["100ms", "10ms", "1ms"]` in python exactly as it does here, "0" sorting
+ * before "m" at the second character each time - so this is the order `GET /api/shared` would
+ * really answer, not a mistake to straighten out. This is the story this part exists for. */
+export const SHARED_ALL_VOCABULARIES: SharedReply = {
+  revision: 7,
+  entries: [PRESSURE_CELLS, TREND_SAMPLES, RASTER_100MS, RASTER_10MS, RASTER_1MS, CALIB, FAST_RAM],
+};
+
+/** 10ms carrying a finding, rasters declared alone: the raster table's own counterpart to
+ * SHARED_WITH_FINDING (a constant's) and SHARED_SECTION_FINDING (a section's) -
+ * `SharedEntry.findings` is a count read the same way whichever vocabulary the row belongs to. */
+export const SHARED_RASTER_FINDING: SharedReply = {
+  revision: 7,
+  entries: [{ ...RASTER_10MS, findings: 1 }, RASTER_1MS],
+};
+
+/** 10ms beside crank: the only place a reader sees a raster's two States cell shapes together -
+ * "event 1, 10ms" where an entry states a cycle, "event 2" alone where it does not
+ * (`_raster_states`'s own two branches, src/ddd/project_shared.py:827-830). */
+export const SHARED_RASTER_CYCLES: SharedReply = {
+  revision: 7,
+  entries: [RASTER_10MS, CRANK_RASTER],
 };
 
 // --- ConstantPanelView (Task 8, spec 5.2/5.4) -------------------------------------------------
@@ -2197,6 +2308,201 @@ export const ADD_SECTION: PlanReply = {
             '      "description": "calibration flash, tool writable through the emulation overlay" },',
             '    { "section": ".eol_log", "access": "read-write", "alignment": 8, ' +
               '"description": "" }',
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const RASTERS_FILE = "C:/work/demo/rasters.ddd.json";
+
+/** Pump measuring everything it produces in 10ms: the shipped example's own component default
+ * (examples/vocabulary/pump.ddd.json:6, `"raster": "10ms"` inside `component` itself). `name` is
+ * the component's own, there being no variable between a component and its default to name
+ * instead, and it is the same word `component` carries - which is why the panel's What column
+ * says what the use covers rather than repeating whose it is. */
+const RASTER_10MS_PUMP_DEFAULT: RasterUse = {
+  path: PUMP,
+  pointer: "component.raster",
+  kind: "component",
+  name: "Pump",
+  component: "Pump",
+};
+
+/** The invented second use, in a second component: SensorHub's InletPressure measured in 10ms.
+ *
+ * Constructed, and this is the fixture the controller's ruling calls constructed: the shipped
+ * example has no raster with two uses at all. `grep -rn '"raster"' examples/vocabulary` answers
+ * five lines - three declarations in rasters.ddd.json, where the key spells a name, and two uses
+ * in pump.ddd.json, where it spells a reference - and those two uses name different rasters, 10ms
+ * as Pump's default and 1ms on PumpSpeed's definition.
+ *
+ * Invented all the same, and for the reason `RasterUse.kind` carries two words: a panel listing
+ * only definitions would draw an empty table for the real 10ms, whose one use is a component
+ * default, and a reader would have no way to tell that from a raster nothing names. This use and
+ * the one above are the only place in the interface where the two kinds are seen side by side. */
+const RASTER_10MS_INLET_PRESSURE: RasterUse = {
+  path: SENSOR_HUB,
+  pointer: "component.interface[2].definition.raster",
+  kind: "variable",
+  name: "InletPressure",
+  component: "SensorHub",
+};
+
+/** 10ms as rasters.ddd.json declares it (event 1, cyclic at 10ms), with the two uses above: a
+ * component naming it as its own default and a definition measured in it. Its event is text, as
+ * the wire carries it - `1`, the whole number the model wants, and never `1.0`. */
+export const RASTER_REPLY: RasterReply = {
+  revision: 7,
+  name: "10ms",
+  event: "1",
+  cycle: "10ms",
+  description: "control task",
+  file: RASTERS_FILE,
+  pointer: "rasters[1]",
+  uses: [RASTER_10MS_PUMP_DEFAULT, RASTER_10MS_INLET_PRESSURE],
+  findings: [],
+};
+
+/** 100ms: the one raster of the shipped example nothing names at all (the controller's ruling
+ * confirms it against the files), so Remove is offered rather than refused - and it is one of
+ * three rasters.ddd.json declares, so the sole-entry refusal does not stand in its way either. */
+export const RASTER_UNUSED: RasterReply = {
+  revision: 7,
+  name: "100ms",
+  event: "2",
+  cycle: "100ms",
+  description: "diagnostic task",
+  file: RASTERS_FILE,
+  pointer: "rasters[2]",
+  uses: [],
+  findings: [],
+};
+
+/** Removing 100ms: its entry taken out of rasters.ddd.json, and nothing else - the plan the
+ * NothingMeasuresInIt story's Remove is already offered with. */
+export const REMOVE_RASTER: PlanReply = {
+  revision: 7,
+  changes: [
+    {
+      file: RASTERS_FILE,
+      fingerprint: "3c4d5e6f70819a2b3c4d5e6f70819a2b1a2b3c4d5e6f70819a2b3c4d5e6f7081",
+      operations: [{ op: "remove", pointer: "rasters[2]", raw: null }],
+      hunks: [
+        {
+          line: 6,
+          before: [
+            '    { "raster": "100ms", "event": 2, "cycle": "100ms", ' +
+              '"description": "diagnostic task" }',
+          ],
+          after: [],
+        },
+      ],
+    },
+  ],
+};
+
+/** A second rasters file the project includes, declaring the one raster the bench samples on -
+ * which is what makes removing that raster a refusal rather than an offer. The raster half of
+ * BENCH_SECTIONS, and a file of its own because a file is one vocabulary's: a rasters file is the
+ * one with a `rasters` key, and bench.ddd.json has a `sections` key already. */
+const BENCH_RASTERS = "C:/work/demo/bench_rasters.ddd.json";
+
+/** The one raster bench_rasters.ddd.json declares, and nothing samples on it either - so the only
+ * thing standing between it and Remove is the file it would empty. Its event is 9 rather than one
+ * of 0, 1 and 2: the shipped three hold those, and an event is the project's alone. */
+export const RASTER_SOLE_ENTRY: RasterReply = {
+  revision: 7,
+  name: "bench",
+  event: "9",
+  cycle: "500ms",
+  description: "bench instrumentation sampling, absent from the shipped build",
+  file: BENCH_RASTERS,
+  pointer: "rasters[0]",
+  uses: [],
+  findings: [],
+};
+
+/** Why bench cannot go although nothing names it: `remove_entry`'s own second refusal, in the
+ * server's words - one sentence written once for all three vocabularies, with this one's word in
+ * it, which is why it reads beside REMOVE_SECTION_REFUSED as the same sentence twice. A list of
+ * rasters is `min_length=1` in the model, so the emptied file would no longer load - which the
+ * panel cannot know from `RasterReply`, carrying no count of what a file holds, and so meets as
+ * this, the plan it asked for coming back refused. Composed from `remove_entry`'s own f-string
+ * with this fixture's name and file in it, not copied from a run;
+ * `test_removing_the_only_raster_a_file_declares_is_refused` pins that same f-string against the
+ * server, for `10ms` in `r.ddd.json`. */
+export const REMOVE_RASTER_REFUSED =
+  "'bench' is all bench_rasters.ddd.json declares, and a list of rasters declares at least one; " +
+  "emptied, the file would no longer load";
+
+/** 1ms as PumpSpeed's own definition finds it: event 0, cyclic at 1ms, the one definition measured
+ * in it - which is what the rename and event stories keep on screen behind their refusals. */
+export const RASTER_1MS_REPLY: RasterReply = {
+  revision: 7,
+  name: "1ms",
+  event: "0",
+  cycle: "1ms",
+  description: "fast control task",
+  file: RASTERS_FILE,
+  pointer: "rasters[0]",
+  uses: [
+    {
+      path: PUMP,
+      pointer: "component.interface[0].definition.raster",
+      kind: "variable",
+      name: "PumpSpeed",
+      component: "Pump",
+    },
+  ],
+  findings: [],
+};
+
+/** Renaming 1ms to a name the project's rasters already hold: `_raster_problem`'s own sentence,
+ * the same shape a section's is and refused for a kindred reason - `duplicate-raster` is a check
+ * and not a schema error, so the format would load two rasters of one name, but each carries its
+ * own event and cycle, and a rename that merged them would sample one signal on another's
+ * channel. */
+export const RENAME_RASTER_REFUSED = "'10ms' is already a raster this project declares";
+
+/** Setting 1ms's event to 1, which 10ms already claims: `_event_taken`'s own sentence, and the
+ * refusal no other vocabulary on this tab has. A section's `alignment` and a constant's `value`
+ * are nobody's to hold; an event is a channel xcp addresses, so two rasters claiming one is two
+ * signals on one channel - which is why `RASTERS.taken` carries a second judge beside the name's
+ * (`project_shared._event_taken`). Nothing in `RasterReply` says which events are free, so the
+ * panel meets this the only way it can: the plan is asked for and comes back refused. */
+export const RASTER_EVENT_REFUSED = "event 1 is already claimed by raster '10ms'";
+
+/** Declaring 20ms into the rasters file the project already includes: one entry appended after the
+ * last, with the one key `add` requires and the empty description the api supplies itself
+ * (`_declared`) - and no `cycle` at all, which is the key `_entry_text`'s own filter exists for:
+ * the model defaults it, and an event that is not cyclic is a real kind of raster rather than an
+ * omission. The panel this form opens onto is where a reader states either afterwards. */
+export const ADD_RASTER: PlanReply = {
+  revision: 7,
+  changes: [
+    {
+      file: RASTERS_FILE,
+      fingerprint: "819a2b3c4d5e6f70819a2b3c4d5e6f701a2b3c4d5e6f70819a2b3c4d5e6f7081",
+      operations: [
+        {
+          op: "insert",
+          pointer: "rasters[3]",
+          raw: '{"raster": "20ms", "event": 3, "description": ""}',
+        },
+      ],
+      hunks: [
+        {
+          line: 6,
+          before: [
+            '    { "raster": "100ms", "event": 2, "cycle": "100ms", ' +
+              '"description": "diagnostic task" }',
+          ],
+          after: [
+            '    { "raster": "100ms", "event": 2, "cycle": "100ms", ' +
+              '"description": "diagnostic task" },',
+            '    { "raster": "20ms", "event": 3, "description": "" }',
           ],
         },
       ],

@@ -91,16 +91,29 @@ storage nobody intended to share; a type may not take the spelling of a base dat
 which the loader would refuse. A memory section is renamed from its entry in a
 :doc:`sections file <file_formats/sections>`, or from the ``section`` key of any definition
 placing its data there, and both ends are rewritten together: a rename reaching the entry
-alone would leave every one of those definitions naming a section nothing declares. One no
+alone would leave every one of those definitions naming a section nothing declares. A
+measurement raster is renamed the same way, from its entry in a
+:doc:`rasters file <file_formats/rasters>`, from the ``raster`` key of any definition
+measured in it, or from a component's own ``raster`` default naming it for everything it
+produces, and every one of those is rewritten together too: a rename reaching the entry
+alone would leave the definitions, or the default, naming a raster nothing declares. One no
 file declares - what ``unknown-section`` reports - is renamed at its uses alone, so that the
-definitions naming it go on agreeing with each other. None of the refusals above is about it:
-a section's name is a linker string spliced into an attribute rather than a c identifier
+definitions naming it go on agreeing with each other; what ``unknown-raster`` reports is
+renamed the same way, at every definition and every component default naming it, so that
+those go on agreeing with each other too. None of the refusals above is about either: a
+section's name is a linker string spliced into an attribute rather than a c identifier
 emitted as one - letters, digits, ``.``, ``_`` and ``$``, and no length limit - so a leading
 dot is an ordinary spelling, and a section may be spelled exactly as a variable is, sharing
-no namespace with it. What is refused is a name those characters do not spell, and one the
-project already declares as a section: the format permits two, reporting them as
-``duplicate-section``, but each carries its own ``access`` and ``alignment``, and a rename
-that merged them would move data into memory with different properties. A unit is renamed
+no namespace with it; a raster's name is the short name of its XCP event rather than a c
+identifier either - printable ASCII with no space, eight characters at most - and it may be
+spelled exactly as a variable is too, sharing no namespace with it. What is refused is a
+name those characters do not spell, and one the project already declares as a section: the
+format permits two, reporting them as ``duplicate-section``, but each carries its own
+``access`` and ``alignment``, and a rename that merged them would move data into memory with
+different properties. A raster answers the same way: a name outside its own alphabet, or one
+the project already declares as a raster, is refused - the format permits two there as well,
+reporting them as ``duplicate-raster``, but each carries its own ``event`` and ``cycle``,
+and a rename that merged them would sample one signal on another's channel. A unit is renamed
 from any place it is stated, or from its entry in a units file; renaming onto a unit that
 already exists merges the two instead of refusing the collision, as a variable's rename
 would. It is refused, naming the file, only while a file of

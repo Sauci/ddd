@@ -1,5 +1,6 @@
 import type {
   ConstantPlanRequest,
+  RasterPlanRequest,
   SectionPlanRequest,
   TypePlanRequest,
   UnitPlanRequest,
@@ -50,6 +51,16 @@ export function sectionLabel(plan: SectionPlanRequest): string {
   if (plan.action === "rename") return fitted(`the rename of '${plan.name}' to '${plan.to}'`);
   if (plan.action === "add") return fitted(`'${plan.name}' declared as a section`);
   if (plan.action === "remove") return fitted(`'${plan.name}' removed from the sections`);
+  return fitted(`the ${plan.key} of ${plan.name}`);
+}
+
+/** What a change of one of the project's rasters is called when it comes to be undone - as
+ * `sectionLabel`'s, `add` and `remove` besides: a raster, like a section, can be declared and
+ * taken away by the same tab that edits it. */
+export function rasterLabel(plan: RasterPlanRequest): string {
+  if (plan.action === "rename") return fitted(`the rename of '${plan.name}' to '${plan.to}'`);
+  if (plan.action === "add") return fitted(`'${plan.name}' declared as a raster`);
+  if (plan.action === "remove") return fitted(`'${plan.name}' removed from the rasters`);
   return fitted(`the ${plan.key} of ${plan.name}`);
 }
 

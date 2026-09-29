@@ -1,4 +1,5 @@
-"""A project's constants and its memory sections as the Shared files tab shows them."""
+"""A project's constants, its memory sections and its rasters as the Shared files tab shows
+them."""
 
 from __future__ import annotations
 
@@ -9,14 +10,18 @@ import pytest
 
 from conftest import built_of, component, declare, write_tree
 from ddd.diagnostics import Diagnostic, Location, Severity
-from ddd.lsp.navigation import _DIMENSION_KEY, _SECTION_KEY
+from ddd.lsp.navigation import _DIMENSION_KEY, _RASTER_KEY, _SECTION_KEY
 from ddd.lsp.ranges import Document
 from ddd.project_shared import (
     _DECLARATION_SHAPE,
     _MEMBER_SHAPE,
     _PLACEMENT_SHAPE,
+    _RASTER_DEFAULT_SHAPE,
+    _RASTER_DEFINITION_SHAPE,
     CONSTANTS,
+    RASTERS,
     SECTIONS,
+    _raster_uses,
     located_on,
     row_of,
     shared_rows,
@@ -186,6 +191,58 @@ PLACED_AND_SIZED = {
     "c.ddd.json": {"constants": [{"name": "TREND_SAMPLES", "value": 16}]},
     "a.ddd.json": component(
         "A", declare("output", "Gain", section=".calib", dimensions=["TREND_SAMPLES"])
+    ),
+}
+
+# The third vocabulary, copied by hand from `tests/test_lsp.py`'s own `TIMED` for the reason
+# `PLACED` above gives: a rasters file declaring `10ms`, a component naming it as its own default,
+# and a definition naming it too - the one tree that shows `_raster_uses`'s two shapes at once, in
+# the order part 14 pinned the index to record them, the component's own first.
+TIMED = {
+    "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
+    "a.ddd.json": component("A", declare("output", "X", raster="10ms"), raster="10ms"),
+}
+
+# Two components each declaring a variable called `X`, each naming `10ms` on its own definition
+# rather than as a component-wide default - the raster's own version of `_TWO_DECLARATIONS` above,
+# needed for the identical reason: `declarations_of(built, "X", cache)` returns one `Declared` per
+# component under the one name, and the first found would swallow the second unless `_raster_uses`
+# matches each use back to its own site rather than taking whichever declaration comes first.
+TWO_RASTER_DECLARATIONS = {
+    "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
+    "a.ddd.json": component("A", declare("output", "X", raster="10ms")),
+    "b.ddd.json": component("B", declare("input", "X", raster="10ms")),
+}
+
+# A raster with no `cycle` key at all, which the model permits and gives no derived default: the
+# event is not cyclic - crank synchronous, on change, on demand - and `RasterDeclaration.cycle`
+# says that is a real kind of raster rather than an omission. `cycle` is the first key of any
+# vocabulary that may simply not be there, and this is the tree where it is absent outright;
+# `NULL_CYCLE` below reaches the same arm of `_raster_states` by the other route, an explicit
+# `null`, which is why both are here.
+UNTIMED = {
+    "r.ddd.json": {"rasters": [{"raster": "20ms", "event": 2}]},
+    "a.ddd.json": component("A", declare("output", "X", raster="20ms")),
+}
+
+# The same raster writing its absent cycle out as `null`, which the model permits too: `cycle` is
+# `str | None`. `cycle` is one of `RASTERS.strings`, so `string_of` answers `""` for a value that
+# is not a string - the reason `_raster_states` can index rather than default.
+NULL_CYCLE = {
+    "r.ddd.json": {"rasters": [{"raster": "20ms", "event": 2, "cycle": None}]},
+    "a.ddd.json": component("A", declare("output", "X", raster="20ms")),
+}
+
+# One entry of each of the three vocabularies, which is the only tree that can say the table holds
+# all of them in one order - `PLACED_AND_SIZED` above says it for two. One definition names all
+# three, so the project is a whole one rather than three files that never meet.
+ONE_OF_EACH = {
+    "c.ddd.json": {"constants": [{"name": "TREND_SAMPLES", "value": 16}]},
+    "s.ddd.json": {"sections": [{"section": ".calib", "access": "read-only", "alignment": 4}]},
+    "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
+    "a.ddd.json": component(
+        "A",
+        declare("output", "Gain", section=".calib", raster="10ms", dimensions=["TREND_SAMPLES"]),
     ),
 }
 
@@ -560,6 +617,25 @@ def test_the_placement_pattern_matches_what_the_index_calls_a_placement() -> Non
         assert bool(_PLACEMENT_SHAPE.match(pointer)) == bool(_SECTION_KEY.match(pointer)), pointer
 
 
+def test_the_two_raster_patterns_match_what_the_index_calls_a_raster_key() -> None:
+    """The same authority again, for the two shapes that name a raster: `_RASTER_KEY` decides
+    where a raster may be named - a component's own default, or a definition's - and a pointer
+    this module fails to recognise is a use the panel silently drops, which is why `_raster_uses`
+    asserts on its own pattern rather than skipping what it does not know."""
+    pointers = [
+        "component.raster",
+        "component.interface[0].definition.raster",
+        "component.interface[12].definition.raster",
+        "rasters[0].raster",
+        "component.rasters",
+        "component.interface[0].definition.raster.extra",
+        "component.interface[0].definition.section",
+    ]
+    for pointer in pointers:
+        mine = _RASTER_DEFAULT_SHAPE.match(pointer) or _RASTER_DEFINITION_SHAPE.match(pointer)
+        assert bool(mine) == bool(_RASTER_KEY.match(pointer)), pointer
+
+
 class TestTheDescriptor:
     def test_a_string_key_is_shown_without_its_quotes_and_a_literal_as_written(
         self, tmp_path: Path
@@ -572,6 +648,44 @@ class TestTheDescriptor:
             "value": "16",
             "description": "slots of a trend buffer",
         }
+
+    def test_every_key_is_filled_even_where_the_entry_states_none(self, tmp_path: Path) -> None:
+        """The premise `_raster_states` indexes `texts["cycle"]` against rather than defaulting it:
+        `shown` fills every key of `keys` for every entry, `""` where the entry states none.
+
+        No *production* input distinguishes `texts["cycle"]` from `texts.get("cycle", "")` while
+        this holds - `vocabulary.states(...)` has one call site and is always handed `shown(...)` -
+        so the whole suite passes with either, measured under four hash seeds. This pins the
+        premise, and the test below pins what happens when a descriptor breaks it."""
+        built, _ = built_of(tmp_path, **UNTIMED)
+        cache: dict[Path, Document] = {}
+        assert shown(RASTERS, built, "20ms", cache) == {
+            "event": "2",
+            "cycle": "",
+            "description": "",
+        }
+
+    def test_a_states_rule_is_owed_every_key_its_descriptor_names(self, tmp_path: Path) -> None:
+        """A descriptor whose `keys` drops one its `states` rule reads is one `_raster_states`
+        cannot serve, and it says so loudly rather than quietly showing an event alone.
+
+        The other half of the test above, and what a `.get("cycle", "")` default would swallow:
+        `shown` would then fill `event` and `description` only, and the cell would read `event 1`
+        for a raster that states `10ms` - a row silently missing what its author wrote, which is
+        worse than a raised `KeyError` naming the key that fell out. Reached through
+        `dataclasses.replace` the way `TestTheDescriptorsInvariants` below reaches what the shipped
+        descriptors cannot: `RASTERS` names all three keys, so nothing else exercises this.
+
+        `strings` is narrowed with `keys`, so the descriptor stays coherent and this is about the
+        one omission it is named for; all six of `__post_init__`'s checks pass, and `row_of` is the
+        real path a row is built by."""
+        built, _ = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        short = dataclasses.replace(
+            RASTERS, keys=("event", "description"), strings=frozenset({"description"})
+        )
+        with pytest.raises(KeyError, match="cycle"):
+            row_of(short, built, "10ms", (), cache)
 
 
 class TestTheDescriptorsInvariants:
@@ -693,6 +807,44 @@ class TestSections:
         cache: dict[Path, Document] = {}
         assert uses_of(SECTIONS, built, ".calib", cache) == ()
 
+    def test_a_definition_whose_name_has_drifted_to_something_unhashable_is_no_use(
+        self, tmp_path: Path
+    ) -> None:
+        """The drop test above tests nothing about the `isinstance` guard it sits beside: with the
+        key merely missing, `variable` is `None`, and `declarations_of`'s own
+        `built.declarations.get(None, ())` (`variables.py`) already answers `()` with no help from
+        the guard - so it passes whether or not the guard is there. A json array is what the guard
+        actually stops: unlike `None`, a `list` is unhashable, and
+        `built.declarations.get([], ())` raises `TypeError` where only the guard's `continue`
+        catches it first - part 14's own hole, pinned here alongside the drop test it sits beside
+        rather than left for a later reviewer to re-find."""
+        built, _ = built_of(tmp_path, **PLACED)
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": {
+                    "component": {
+                        "name": "A",
+                        "interface": [
+                            {
+                                "scope": "output",
+                                "definition": {
+                                    "name": [],
+                                    "kind": "measurement",
+                                    "datatype": "uint8",
+                                    "conversion": {"kind": "identity"},
+                                    "volatile": False,
+                                    "section": ".calib",
+                                },
+                            }
+                        ],
+                    }
+                }
+            },
+        )
+        cache: dict[Path, Document] = {}
+        assert uses_of(SECTIONS, built, ".calib", cache) == ()
+
     def test_a_definition_renamed_since_is_no_use(self, tmp_path: Path) -> None:
         """A different drift than the definition losing its name above: a name is still written
         there, and it belongs to nobody the index ever declared - so `declarations_of` is asked
@@ -711,3 +863,217 @@ class TestSections:
         built, _ = built_of(tmp_path, **PLACED)
         cache: dict[Path, Document] = {}
         assert uses_of(SECTIONS, built, ".nvm", cache) == ()
+
+
+class TestRasters:
+    def test_a_raster_states_its_event_and_its_cycle(self, tmp_path: Path) -> None:
+        built, _ = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        row = row_of(RASTERS, built, "10ms", (), cache)
+        assert (row.kind, row.name, row.states) == ("raster", "10ms", "event 1, 10ms")
+
+    def test_a_raster_with_no_cycle_states_its_event_alone(self, tmp_path: Path) -> None:
+        """`cycle` is `str | None`, where a section's two keys are both required. This is the
+        first row cell composed from a key that may not be there."""
+        built, _ = built_of(tmp_path, **UNTIMED)
+        cache: dict[Path, Document] = {}
+        assert row_of(RASTERS, built, "20ms", (), cache).states == "event 2"
+
+    def test_a_raster_writing_its_absent_cycle_out_as_null_states_its_event_alone(
+        self, tmp_path: Path
+    ) -> None:
+        """The same cell by the other route, and what lets `_raster_states` index `texts["cycle"]`
+        instead of defaulting it: `shown` fills every key of `keys` for every entry, and `cycle`
+        being one of `RASTERS.strings` means `string_of` answers `""` for the `null` rather than
+        the four characters `text_of` would have read. Dropped from `strings`, this row would read
+        `event 2, null` and the row above `event 1, "10ms"`."""
+        built, _ = built_of(tmp_path, **NULL_CYCLE)
+        cache: dict[Path, Document] = {}
+        assert row_of(RASTERS, built, "20ms", (), cache).states == "event 2"
+
+    def test_all_three_vocabularies_share_the_table(self, tmp_path: Path) -> None:
+        # The whole point of one tab, now said for the third vocabulary: a reader looking for a
+        # name does not first choose which of the three it is in.
+        built, _ = built_of(tmp_path, **ONE_OF_EACH)
+        cache: dict[Path, Document] = {}
+        assert [(row.kind, row.name) for row in shared_rows(built, (), cache)] == [
+            ("constant", "TREND_SAMPLES"),
+            ("raster", "10ms"),
+            ("section", ".calib"),
+        ]
+
+    def test_a_rasters_row_counts_both_shapes_that_name_it(self, tmp_path: Path) -> None:
+        """What `RASTERS.used` is for: a component naming the raster as its own default and a
+        definition naming it directly are two shapes, and the tab's Uses column counts both."""
+        built, _ = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        assert row_of(RASTERS, built, "10ms", (), cache).uses == 2
+
+    def test_the_uses_a_panel_lists_come_through_the_descriptors_own_reader(
+        self, tmp_path: Path
+    ) -> None:
+        """What `RASTERS.uses` is for, and the only test that asks `uses_of` for a raster rather
+        than `_raster_uses` directly: bound to `_section_uses`, the descriptor would answer `()`
+        here, since a raster's uses are recorded in `raster_uses` and a section's reader looks in
+        `section_uses`."""
+        built, _ = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        used = uses_of(RASTERS, built, "10ms", cache)
+        assert [(use.kind, use.name, use.component) for use in used] == [
+            ("component", "A", "A"),
+            ("variable", "X", "A"),
+        ]
+
+    def test_a_component_naming_a_raster_is_a_use_of_its_own_kind(self, tmp_path: Path) -> None:
+        """`Component.raster` is the default for everything the component produces - a use inside
+        no definition at all, which neither of the other two vocabularies has."""
+        built, _root = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        used = _raster_uses(built, "10ms", cache)
+        assert [(use.kind, use.name, use.component) for use in used] == [
+            ("component", "A", "A"),
+            ("variable", "X", "A"),
+        ]
+
+    def test_a_definition_whose_name_has_drifted_to_something_unhashable_is_no_use(
+        self, tmp_path: Path
+    ) -> None:
+        """Not the drift a dropped `name` would show: with the key merely missing, `variable` is
+        `None`, and `declarations_of`'s own `built.declarations.get(None, ())` (`variables.py`)
+        already answers `()` with no help from the `isinstance` guard - so a fixture that only
+        drops the key passes whether or not the guard is there, and defends nothing. A json array
+        is what the guard actually stops: unlike `None`, a `list` is unhashable, and
+        `built.declarations.get([], ())` raises `TypeError` where only the guard's `continue`
+        catches it first. The component's own default is read fresh from the same document rather
+        than carried from the index, so it is untouched and stays a use."""
+        built, _ = built_of(tmp_path, **TIMED)
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": {
+                    "component": {
+                        "name": "A",
+                        "raster": "10ms",
+                        "interface": [
+                            {
+                                "scope": "output",
+                                "definition": {
+                                    "name": [],
+                                    "kind": "measurement",
+                                    "datatype": "uint8",
+                                    "conversion": {"kind": "identity"},
+                                    "volatile": False,
+                                    "raster": "10ms",
+                                },
+                            }
+                        ],
+                    }
+                }
+            },
+        )
+        cache: dict[Path, Document] = {}
+        used = _raster_uses(built, "10ms", cache)
+        assert [(use.kind, use.name, use.component) for use in used] == [("component", "A", "A")]
+
+    def test_a_component_that_has_dropped_its_own_name_is_named_by_its_file(
+        self, tmp_path: Path
+    ) -> None:
+        """`component_of`'s own fallback, unpinned until now: every other test in this class
+        states a `component.name`, so a bare `value_at("component.name")` in its place would
+        answer exactly the same `"A"` they all expect and none of them would notice the swap. Drop
+        the component's own `name` here instead - correct code still names the use, by the file,
+        `component_of`'s documented fallback; the bare read would answer `None` for both
+        `Use.name` and `Use.component`."""
+        built, _ = built_of(tmp_path, **TIMED)
+        write_tree(tmp_path, {"a.ddd.json": {"component": {"raster": "10ms", "interface": []}}})
+        cache: dict[Path, Document] = {}
+        used = _raster_uses(built, "10ms", cache)
+        assert [(use.kind, use.name, use.component) for use in used] == [("component", "a", "a")]
+
+    def test_two_declarations_of_one_variable_keep_their_own_components(
+        self, tmp_path: Path
+    ) -> None:
+        """The raster's own version of `TestOneConstantsPanel`'s identical test: two components
+        may each declare a variable of the same name, each naming `10ms` on its own definition.
+        Keyed by name alone, `declarations_of` returns both, and the first found would swallow the
+        second - this pins the site filter that tells them apart."""
+        built, _ = built_of(tmp_path, **TWO_RASTER_DECLARATIONS)
+        cache: dict[Path, Document] = {}
+        used = _raster_uses(built, "10ms", cache)
+        assert [(use.kind, use.name, use.component) for use in used] == [
+            ("variable", "X", "A"),
+            ("variable", "X", "B"),
+        ]
+
+    def test_a_definition_renamed_since_is_no_use(self, tmp_path: Path) -> None:
+        """A different drift than the definition losing its name above, mirrored from
+        `TestSections`: a name is still written there, and it belongs to nobody the index ever
+        declared, so `declarations_of` is asked about a name it never indexed and there is no
+        declaration to take the component from. The component's own default is unaffected, for
+        the same reason as above."""
+        built, _ = built_of(tmp_path, **TIMED)
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": component(
+                    "A", declare("output", "Renamed", raster="10ms"), raster="10ms"
+                )
+            },
+        )
+        cache: dict[Path, Document] = {}
+        used = _raster_uses(built, "10ms", cache)
+        assert [(use.kind, use.name, use.component) for use in used] == [("component", "A", "A")]
+
+    def test_a_name_the_index_does_not_hold_names_no_use(self, tmp_path: Path) -> None:
+        """The api looks a name up before it asks, so this arm is only reachable from a test -
+        which is where the other two vocabularies cover their own."""
+        built, _ = built_of(tmp_path, **TIMED)
+        cache: dict[Path, Document] = {}
+        assert _raster_uses(built, "20ms", cache) == ()
+
+
+class TestTakenReplacesTheNameJudge:
+    def test_a_name_is_judged_through_the_map_it_now_lives_in(self, tmp_path: Path) -> None:
+        """One judge, reached where it now lives and keyed by the vocabulary's own `name_key`: a
+        name the project already holds is refused and a fresh one is not, in the words
+        `rename_problem` has always answered in. The entry and the cache are handed over because
+        the signature takes them and a name judge reads neither - a name is in the index."""
+        built, _ = built_of(tmp_path, **TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        judge = CONSTANTS.taken[CONSTANTS.name_key]
+        assert judge(built, None, "TREND_SAMPLES", cache) is not None
+        assert judge(built, None, "FRESH", cache) is None
+
+    def test_a_taken_key_that_is_neither_the_name_nor_settable_is_refused(self) -> None:
+        """The fifth invariant. A third descriptor is written by hand, and a `taken` naming a key
+        the vocabulary does not have would judge nothing while reading as though it did. The judge
+        is taken from the map it is already in rather than imported: which function sits under the
+        key is beside the point, and the key is the whole of it.
+
+        Matched on the clause rather than on the word `taken`, because the check below raises about
+        `taken` too and a descriptor with a stray key usually lacks the name's as well - `match=
+        "taken"` would pass here on the other check's message."""
+        with pytest.raises(ValueError, match="neither the name key nor settable"):
+            dataclasses.replace(SECTIONS, taken={"nowhere": SECTIONS.taken["section"]})
+
+    def test_a_taken_without_a_judge_for_the_name_key_is_refused(self) -> None:
+        """The invariant's other direction, and the omission the check above cannot see: every key
+        in `{"access": ...}` is one the vocabulary settles, so nothing there is stray, and the one
+        key both call sites index is simply absent. `rename_entry` and `add_entry` reach
+        `taken[name_key]` with no guard, so such a descriptor imports clean and raises `KeyError`
+        at the first rename or add - which is precisely what `__post_init__`'s own docstring says
+        it exists to turn into a refusal. A settable key rather than the empty map, so that the
+        check above is demonstrably not the thing catching it."""
+        with pytest.raises(ValueError, match="no judge for the name key"):
+            dataclasses.replace(SECTIONS, taken={"access": SECTIONS.taken["section"]})
+
+    def test_a_taken_key_a_reader_may_also_set_is_accepted(self) -> None:
+        """The invariant's other arm, and the shape the rasters descriptor is written to have: an
+        `event` is both a key a reader sets and a value the project alone owns, so a settable key
+        in `taken` is legal where a key in neither table is not. Both shipped descriptors take
+        exactly their name key, so nothing else reaches this arm - and a check written without it
+        would refuse the descriptor it exists to allow while the test above passed unchanged."""
+        widened = dataclasses.replace(
+            SECTIONS, taken={**SECTIONS.taken, "access": SECTIONS.taken["section"]}
+        )
+        assert sorted(widened.taken) == ["access", "section"]

@@ -44,7 +44,7 @@ from ddd.models import (
     is_reserved_identifier,
     spelled_dimensions,
 )
-from ddd.models.common import SECTION_NAME_PATTERN
+from ddd.models.common import RASTER_NAME_LENGTH, RASTER_NAME_PATTERN, SECTION_NAME_PATTERN
 from ddd.plugins import PluginError
 
 _WITHIN_DECLARATION: Final = re.compile(r"^component\.interface\[\d+\]")
@@ -747,21 +747,23 @@ def rename_problem(built: Index, name: str, kind: str = "variable") -> str | Non
     them is about a c identifier, and a section's name is a linker string. Answered here rather
     than in :mod:`ddd.project_shared`, which is where the Shared files tab would otherwise have
     written the rule a second time: that module imports this one - :class:`Index` is this
-    module's - so the tab reaches this function through its descriptor's ``name_judge`` and the
+    module's - so the tab reaches this function through its descriptor's ``taken`` and the
     editor's F2 reaches it through :meth:`ddd.lsp.server.Server._rename`, and the two cannot come
     to different answers about a name.
 
-    A raster is not dispatched yet, and so is still answered as a variable: nothing declares a
-    raster vocabulary for its arm to be exercised from, and an arm no test reaches is an arm the
-    coverage gate refuses. What it answers meanwhile is wrong - ``10ms`` is no c identifier and is
-    a perfectly usable a2l short name. The wrong answer was latent before part 14's third task and
-    is reachable after it: :func:`renameable_at` had no raster arm, so it never answered
-    ``("raster", …)`` and :meth:`ddd.lsp.server.Server._rename` could not hand this function that
-    kind at all. Teaching the index to see rasters is what made F2 on one arrive here, so the
-    rasters part owes this its arm beside the section's.
+    A raster is judged by its own rule too, and leaves beside the section's: its name is the
+    short name of an a2l ``EVENT``, not a c identifier, and none of the checks below apply to
+    it. Before this arm existed it fell through to them and answered wrong - ``10ms`` is no c
+    identifier and is a perfectly usable a2l short name. That wrong answer was latent before
+    part 14's third task and reachable after it: :func:`renameable_at` had no raster arm before
+    then, so it never answered ``("raster", …)`` and :meth:`ddd.lsp.server.Server._rename` could
+    not hand this function that kind at all. Teaching the index to see rasters is what made F2 on
+    one arrive here, so the rasters part owed this its arm beside the section's.
     """
     if kind == "section":
         return _section_problem(built, name)
+    if kind == "raster":
+        return _raster_problem(built, name)
     if not re.fullmatch(C_IDENTIFIER_PATTERN, name) or len(name) > IDENTIFIER_MAX_LENGTH:
         return f"'{name}' is not a usable c identifier"
     if kind == "type" and name.lower() in _BASE_DATATYPES:
@@ -812,6 +814,29 @@ def _section_problem(built: Index, name: str) -> str | None:
         return f"'{name}' is not a usable linker section name"
     if name in built.sections:
         return f"'{name}' is already a section this project declares"
+    return None
+
+
+def _raster_problem(built: Index, name: str) -> str | None:
+    """Why the project may not have a raster called ``name``, or nothing if it may.
+
+    Judged by :data:`~ddd.models.common.RASTER_NAME_PATTERN` and, unlike a section,
+    :data:`~ddd.models.common.RASTER_NAME_LENGTH` too - rather than by the c identifier rule the
+    other kinds answer to: a raster's name is the short name of its XCP event, which ``10ms``
+    spells and no c identifier may. The length is the model's own, not
+    :data:`~ddd.models.common.IDENTIFIER_MAX_LENGTH`, which bounds a c identifier and is a
+    different number for a different reason. It joins no namespace ``occupied`` guards, for the
+    reason :func:`_section_problem` gives about a section's.
+
+    A name the vocabulary already declares is refused although the file would still load, exactly
+    as a section's is: ``duplicate-raster`` is a check, not a schema error, so two rasters may share
+    a name - and each carries its own event and cycle, so merging two would silently sample one
+    signal on another's channel.
+    """
+    if not re.fullmatch(RASTER_NAME_PATTERN, name) or len(name) > RASTER_NAME_LENGTH:
+        return f"'{name}' is not a usable raster name"
+    if name in built.rasters:
+        return f"'{name}' is already a raster this project declares"
     return None
 
 

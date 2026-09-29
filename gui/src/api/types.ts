@@ -32,6 +32,8 @@ export type {
   PlanReply,
   ProjectType,
   ProjectUnit,
+  RasterReply,
+  RasterUse,
   Renamed,
   SectionReply,
   SectionUse,

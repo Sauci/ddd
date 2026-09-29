@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args, get_type_hints
 
 import pytest
 
 from conftest import EXAMPLES, component, declare, project, scalar_type, types, write_tree
 from ddd.finding_routes import Route, route_of
+from ddd.gui.contract import FindingRoute
 from ddd.lsp.ranges import Document
 
 DEFINITION = "component.interface[0].definition"
@@ -787,3 +788,221 @@ class TestASection:
             )
             is None
         )
+
+
+# The third vocabulary, copied by hand from `TIMED` in tests/test_lsp.py (the fixture
+# `TestSectionsAndRasters` indexes) rather than imported across suites, as `PLACED` above is
+# copied rather than shared: a rasters file declaring `10ms`, a component naming it as its own
+# default, and a definition naming it too - the two shapes a raster is spelled at, in one tree.
+TIMED = {
+    "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
+    "a.ddd.json": component("A", declare("output", "X", raster="10ms"), raster="10ms"),
+}
+
+# The same tree with the definition measured in a raster no file declares, which is exactly the
+# state `unknown-raster` reports at that pointer. The component's own default is left declared, so
+# one tree answers both shapes: `50ms` from the definition, `10ms` from the component.
+TIMED_NOWHERE = {
+    "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
+    "a.ddd.json": component("A", declare("output", "X", raster="50ms"), raster="10ms"),
+}
+
+
+class TestARaster:
+    def test_unknown_raster_leads_to_the_name_the_definition_asks_for(self, tmp_path: Path) -> None:
+        """The name is in no file - that is what the finding says - and the route carries it
+        anyway, as `unknown-constant`'s does: the panel's 404 is what tells the reader the name is
+        the problem.
+
+        This is also the test that pins the arm's *place*. `WITHIN_DECLARATION` matches this
+        pointer, being broader, so a raster arm written below it answers `Route("variable", "X")`
+        and the finding opens the wrong screen - which is why the arm goes beside `CONSTANT_CHECKS`
+        and not beside `WITHIN_INIT`.
+        """
+        root = built(tmp_path, **TIMED_NOWHERE)
+        assert route_of(
+            "unknown-raster",
+            root / "a.ddd.json",
+            "component.interface[0].definition.raster",
+            "component",
+            True,
+            {},
+        ) == Route("raster", "50ms")
+
+    def test_a_component_s_own_raster_leads_there_too(self, tmp_path: Path) -> None:
+        """The use inside no definition still names a raster, and a finding filed at it must reach
+        the raster rather than falling through to the component's page.
+
+        Measured: `Analysis._check_rasters` files `unknown-raster` at
+        `loaded.location("component.raster")` for a component whose default names nothing, which
+        is the second of the two shapes `navigation._RASTER_KEY` spells."""
+        root = built(tmp_path, **TIMED_NOWHERE)
+        assert route_of(
+            "unknown-raster", root / "a.ddd.json", "component.raster", "component", True, {}
+        ) == Route("raster", "10ms")
+
+    def test_a_consumer_stating_a_raster_leads_to_the_declaration_that_states_it(
+        self, tmp_path: Path
+    ) -> None:
+        """The raster's copy of `test_a_consumer_stating_a_section_leads_to_the_declaration_that
+        _states_it`, and the reason the route is check-id shaped where a section's is pointer
+        shaped. `consumer-raster` comes off `PRODUCER_KEYS`, not off `_check_rasters`, and says a
+        consumer stated a key only the producing component may state: the raster it names may well
+        be the right one, and what has to go is the key."""
+        root = built(
+            tmp_path,
+            **{
+                "r.ddd.json": TIMED["r.ddd.json"],
+                "a.ddd.json": component("A", declare("output", "X", raster="10ms")),
+                "b.ddd.json": component("B", declare("input", "X", raster="10ms")),
+            },
+        )
+        assert route_of(
+            "consumer-raster",
+            root / "b.ddd.json",
+            "component.interface[0].definition.raster",
+            "component",
+            True,
+            {},
+        ) == Route("variable", "X")
+
+    def test_a_raster_on_a_calibration_object_leads_to_the_declaration_as_well(
+        self, tmp_path: Path
+    ) -> None:
+        """The third check filed at `definition.raster`, and the second of the two that are not
+        about the raster. `raster-kind` says a calibration object states a raster and no daq list
+        carries one: the raster entry is innocent, and both fixes - drop the key, or make the
+        object a measurement - are edits to the declaration."""
+        root = built(
+            tmp_path,
+            **{
+                "r.ddd.json": TIMED["r.ddd.json"],
+                "a.ddd.json": component(
+                    "A", declare("output", "Gain", kind="parameter", init=1, raster="10ms")
+                ),
+            },
+        )
+        assert route_of(
+            "raster-kind",
+            root / "a.ddd.json",
+            "component.interface[0].definition.raster",
+            "component",
+            True,
+            {},
+        ) == Route("variable", "Gain")
+
+    def test_duplicate_raster_leads_to_the_raster_its_entry_declares(self, tmp_path: Path) -> None:
+        root = built(tmp_path, **TIMED)
+        assert route_of(
+            "duplicate-raster", root / "r.ddd.json", "rasters[0]", "rasters", True, {}
+        ) == Route("raster", "10ms")
+
+    def test_a_pointer_inside_a_rasters_entry_leads_to_the_raster_too(self, tmp_path: Path) -> None:
+        """`WITHIN_RASTER` covers the whole entry, not the name alone - the same reach
+        `WITHIN_SECTION` has over a section's own keys. `duplicate-event` is filed at the entry
+        itself (`LoadedRaster.location()`), and a schema finding can sit at any key of it."""
+        root = built(tmp_path, **TIMED)
+        assert route_of(
+            "schema", root / "r.ddd.json", "rasters[0].cycle", "rasters", True, {}
+        ) == Route("raster", "10ms")
+
+    def test_the_raster_route_is_tried_before_the_kind_gate(self, tmp_path: Path) -> None:
+        """A rasters file's kind is `rasters`, not `component`, so a branch placed after the
+        `kind != COMPONENT_KIND` gate would never be reached from one - which is why `WITHIN_RASTER`
+        goes above it, beside `WITHIN_SECTION`. Asserted through the gate's own argument, as the
+        section's twin is: the same pointer answers the same raster whatever kind the file is said
+        to be, and a `rasters` kind is the only one a real rasters file ever carries."""
+        root = built(tmp_path, **TIMED)
+        assert route_of(
+            "duplicate-raster", root / "r.ddd.json", "rasters[0]", "rasters", True, {}
+        ) == route_of("duplicate-raster", root / "r.ddd.json", "rasters[0]", "component", True, {})
+
+    def test_a_raster_the_file_no_longer_holds_leads_nowhere(self, tmp_path: Path) -> None:
+        """The analysis read the file; the pointer describes where the entry was then - the same
+        "moved on since" case `WITHIN_SECTION` has its own test for, pinning `WITHIN_RASTER`'s
+        `isinstance` guard rather than leaving it exercised only by the happy path."""
+        root = built(tmp_path, **TIMED)
+        assert (
+            route_of("duplicate-raster", root / "r.ddd.json", "rasters[99]", "rasters", True, {})
+            is None
+        )
+
+    def test_a_raster_key_holding_no_string_leads_nowhere(self, tmp_path: Path) -> None:
+        """A file that changed since the analysis can have anything at that pointer, and a number
+        names no raster. Written by hand rather than through a valid tree, because a component
+        stating `"raster": 4` is one the loader refuses - which is exactly the state a file saved
+        between the analysis and the request can be in."""
+        root = built(tmp_path, **{"a.ddd.json": component("A", declare("output", "X", raster=4))})
+        assert (
+            route_of(
+                "unknown-raster",
+                root / "a.ddd.json",
+                "component.interface[0].definition.raster",
+                "component",
+                True,
+                {},
+            )
+            is None
+        )
+
+    def test_an_unknown_raster_naming_the_empty_string_leads_nowhere(self, tmp_path: Path) -> None:
+        """The other half of the same guard, which no type answers for it: a definition drifted to
+        `"raster": ""` names a raster with no name, and a panel opened on one would be a heading
+        with nothing in it."""
+        root = built(tmp_path, **{"a.ddd.json": component("A", declare("output", "X", raster=""))})
+        assert (
+            route_of(
+                "unknown-raster",
+                root / "a.ddd.json",
+                "component.interface[0].definition.raster",
+                "component",
+                True,
+                {},
+            )
+            is None
+        )
+
+    def test_a_pointer_inside_no_rasters_entry_the_file_holds_leads_nowhere(
+        self, tmp_path: Path
+    ) -> None:
+        """`WITHIN_RASTER` matches on the pointer alone, so it is asked of a file that holds no
+        `rasters` key at all - a component the analysis filed a raster finding on, whose text has
+        since been replaced. It has to answer nothing rather than raise."""
+        root = built(tmp_path, **TIMED)
+        assert (
+            route_of("duplicate-raster", root / "a.ddd.json", "rasters[0]", "rasters", True, {})
+            is None
+        )
+
+
+def test_every_kind_a_route_answers_is_one_the_contract_publishes() -> None:
+    """The guard for the drift that has now come within one test of shipping three parts running.
+
+    `_finding` builds a `contract.FindingRoute` for every finding of every request, so a kind
+    `route_of` answers that the contract's `Literal` leaves out raises a `pydantic.ValidationError`
+    for every finding carrying it - a crash, not a finding that merely leads nowhere. Part 13's
+    `constant`, part 14's `section` and this part's `raster` were each caught by whichever api test
+    happened to build a finding with the new kind, which is luck rather than a guard.
+
+    Two tables of one fact, and this is the assertion that makes them one. They cannot be shared:
+    `ddd.gui.contract` is the wire format and imports nothing of `ddd.finding_routes`, so the list
+    is written out in both. A test may import both where neither may import the other.
+
+    Compared as sets: the order a `Literal` lists its members in is meaningful to nobody, and a
+    test failing because the two tuples were reordered would be noise. The literal on the last line
+    is what keeps the relation from passing vacuously - both sides reverted to a bare `str` would
+    give `get_args` two empty tuples and an assertion that holds and says nothing.
+    """
+    answers = get_args(get_type_hints(Route)["kind"])
+    published = get_args(FindingRoute.model_fields["kind"].annotation)
+    assert set(answers) == set(published)
+    assert set(answers) == {
+        "variable",
+        "unit",
+        "component",
+        "type",
+        "values",
+        "constant",
+        "section",
+        "raster",
+    }

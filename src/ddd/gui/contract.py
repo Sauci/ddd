@@ -261,10 +261,12 @@ class Note(_Frozen):
 class FindingRoute(_Frozen):
     """What the page can open for a finding."""
 
-    kind: Literal["variable", "unit", "component", "type", "values", "constant", "section"]
+    kind: Literal[
+        "variable", "unit", "component", "type", "values", "constant", "section", "raster"
+    ]
     """Which screen: a variable's panel, a unit's panel, the component's own page, the type's
-    own panel on the Types tab, an object's values grid, or a constant's or a section's own
-    panel on the Shared files tab.
+    own panel on the Types tab, an object's values grid, or a constant's, a section's or a
+    raster's own panel on the Shared files tab.
 
     Every kind :class:`ddd.finding_routes.Route` answers has to be a member here: ``_finding``
     in :mod:`ddd.gui.api` builds this model for every finding of every request, so a kind left
@@ -891,19 +893,19 @@ class TypeReply(_Frozen):
     findings: tuple[Finding, ...]
 
 
-# --- GET /api/shared, GET /api/constant, GET /api/section ------------------------------------
+# --- GET /api/shared, GET /api/constant, GET /api/section, GET /api/raster -------------------
 
 
 class SharedEntry(_Frozen):
     """One row of the Shared files tab."""
 
     kind: str
-    """Which vocabulary the row belongs to: ``constant`` or ``section``; a raster brings its own
-    word here when it lands.
+    """Which vocabulary the row belongs to: ``constant``, ``section`` or ``raster``.
 
     A plain ``str`` and not a ``Literal``, which is why no generic function had to change when
-    sections joined the tab: the table holds whatever :data:`ddd.project_shared.HELD` holds, and
-    the word is the descriptor's own :attr:`~ddd.project_shared.Vocabulary.kind`.
+    sections joined the tab, nor when rasters did: the table holds whatever
+    :data:`ddd.project_shared.HELD` holds, and the word is the descriptor's own
+    :attr:`~ddd.project_shared.Vocabulary.kind`.
     """
 
     name: str
@@ -912,7 +914,7 @@ class SharedEntry(_Frozen):
     states: str
     """What the entry states, in the one cell the table gives a row for it: a constant its value
     as the json text its file spells (``16``, ``2.0``), a section its access and its alignment
-    together (``read-only, align 4``).
+    together (``read-only, align 4``), a raster its event and its cycle (``event 1, 10ms``).
 
     Composed per vocabulary on the server, by
     :attr:`ddd.project_shared.Vocabulary.states`, so the table learns nothing about what any one
@@ -1001,8 +1003,9 @@ class SectionUse(_Frozen):
 
     kind: Literal["variable"]
     """Always a variable, unlike :class:`ConstantUse`: a section is named by a definition and
-    nowhere else, so the reader is being shown which variable sits there. A raster widens this,
-    a component naming one directly for everything it produces."""
+    nowhere else, so the reader is being shown which variable sits there. :class:`RasterUse.kind`
+    is where that stopped being true of every vocabulary, a component naming a raster directly for
+    everything it produces."""
 
     name: str
     """The variable's name."""
@@ -1054,6 +1057,90 @@ class SectionReply(_Frozen):
 
     findings: tuple[Finding, ...]
     """Every finding filed inside its entry or at a definition placing data in it."""
+
+
+class RasterUse(_Frozen):
+    """One shape that names a raster: a definition measured in it, or a component measuring
+    everything it produces in it."""
+
+    path: str
+    """Absolute, posix-separated path of the component naming it."""
+
+    pointer: str
+    """Dotted path of the ``raster`` key inside that file: ``component.raster`` for a component's
+    own default, ``component.interface[i].definition.raster`` for a definition's own - the two
+    shapes :data:`ddd.lsp.navigation._RASTER_KEY` spells."""
+
+    kind: Literal["variable", "component"]
+    """Which of the two the use is. Wider than :class:`SectionUse.kind`, and the widening is the
+    one :class:`SectionUse.kind`'s own docstring predicted: a component's default sits inside no
+    definition at all, so unlike a placement it names no variable. Not nested with
+    :class:`ConstantUse.kind` either way, though, and no ``kind`` literal here is nested with
+    another: each names the shapes its own vocabulary is named at, and those are different
+    questions. A constant's second word is ``member``, which this one never carries - a structure
+    member states a unit and a dimension, and nothing samples it."""
+
+    name: str
+    """The variable's name, or the component's own where it names the raster directly: there is
+    no variable between a component and its default to name instead."""
+
+    component: str | None
+    """The component the use was read in: the one declaring the variable, or the one naming the
+    raster as its own default.
+
+    Optional because :attr:`ddd.project_shared.Use.component` is - a constant's structure member
+    has no component - and never absent in an answer about a raster. A definition whose file no
+    longer declares that variable where the analysis read it is left out of ``uses`` altogether
+    rather than listed without one, and a component's own default is named by its file when the
+    file itself has dropped its ``name``, which :func:`ddd.variables.component_of` falls back
+    to."""
+
+
+class RasterReply(_Frozen):
+    """What ``GET /api/raster`` answers: one measurement raster's panel.
+
+    Beside :class:`SectionReply` rather than folded into it, for the reason that model gives
+    about :class:`ConstantReply`: the three vocabularies state different keys, and a model
+    carrying whichever the kind happened to have would make every field optional on the page.
+    """
+
+    revision: int
+    """The revision this answer was read from."""
+
+    name: str
+    """The raster named in the request, as its entry spells it: ``10ms``."""
+
+    event: str
+    """The json text its entry states as ``event``, exactly as its file spells it: ``1``.
+
+    Text and not a number, for the reason :attr:`SectionReply.alignment` is text: the model wants
+    a whole number written without a decimal point, and a value that travelled as one of python's
+    own would come back ``1.0`` and stop the file loading."""
+
+    cycle: str
+    """What its entry states as ``cycle`` - ``10ms`` - without its json quotes; ``""`` where it
+    states none, and ``""`` too where it states an explicit ``null``, which
+    :attr:`ddd.project_shared.RASTERS.strings` is what decides. An event that is not cyclic is a
+    real kind of raster rather than an omission."""
+
+    description: str
+    """What its entry states as ``description``; ``""`` where it states none."""
+
+    file: str
+    """Absolute, posix-separated path of the rasters file declaring it. Always a rasters file,
+    where a constant may also be declared inline by a component: a raster has the one home, as a
+    section does."""
+
+    pointer: str
+    """Dotted path of its entry: ``rasters[i]``."""
+
+    uses: tuple[RasterUse, ...]
+    """Every shape naming it, in the order the navigation index recorded them: per component, its
+    own default ahead of its own definitions'."""
+
+    findings: tuple[Finding, ...]
+    """Every finding filed inside its entry or at a shape naming it, less the ones
+    :data:`ddd.finding_routes.ABOUT_THE_DECLARATION` says are the declaration's."""
 
 
 # --- GET /api/declarable ---------------------------------------------------------------------
@@ -1437,6 +1524,7 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (SharedReply, "serialization"),
     (ConstantReply, "serialization"),
     (SectionReply, "serialization"),
+    (RasterReply, "serialization"),
     (DeclarableReply, "serialization"),
     (PlanReply, "serialization"),
     (ValuesReply, "serialization"),

@@ -30,6 +30,9 @@ export interface SharedAddViewProps {
   /** What the Alignment field holds: the whole number of bytes a section guarantees. */
   alignment: string;
   onAlignment: (text: string) => void;
+  /** What the Event field holds: the channel number xcp addresses a raster by. */
+  event: string;
+  onEvent: (text: string) => void;
   plan: PlanReply | null;
   refusal: string | null;
   changesShown: boolean;
@@ -40,19 +43,19 @@ export interface SharedAddViewProps {
 }
 
 /**
- * The form that declares a new entry of either vocabulary (design §4.3's `add`): the chooser, the
- * fields that vocabulary needs, and a preview applied the way every other change in the interface
- * is (spec 5.2's own closing line).
+ * The form that declares a new entry of any of the tab's three vocabularies (design §4.3's `add`):
+ * the chooser, the fields that vocabulary needs, and a preview applied the way every other change
+ * in the interface is (spec 5.2's own closing line).
  *
  * One form and not one per vocabulary, because the tab has one button and one address shape: the
  * Declare button opens it with the chooser unset, and a route naming an entry nothing declares
  * opens it on that route's own kind, pre-filled.
  *
- * No description field for either kind: `add` takes none, and the entry it writes always states an
- * empty one, which the api supplies itself. It reaches the two by different roads - a section's
- * through `_declared`, which appends it after the keys `add` requires, and a constant's written
- * into the call in `_constant_plan_of` - so a reader states theirs afterwards either way, from the
- * panel this form opens onto once it is declared.
+ * No description field for any of the three: `add` takes none, and the entry it writes always
+ * states an empty one, which the api supplies itself. It reaches them by two roads - a section's
+ * and a raster's through `_declared`, which appends it after the keys `add` requires, and a
+ * constant's written into the call in `_constant_plan_of` - so a reader states theirs afterwards
+ * whichever was declared, from the panel this form opens onto once it is.
  */
 export function SharedAddView(props: SharedAddViewProps) {
   const kind = kindNamed(props.vocabulary);
@@ -82,8 +85,8 @@ export function SharedAddView(props: SharedAddViewProps) {
           isDisabled={props.busy}
         />
         {/* Nothing but the chooser until a vocabulary is chosen: what a reader is asked for
-            follows from it, the Name included - shared by both vocabularies, and belonging to
-            neither until one is picked. Nothing can be previewed before then either, so a field
+            follows from it, the Name included - shared by all three vocabularies, and belonging
+            to none until one is picked. Nothing can be previewed before then either, so a field
             offered under a title naming no vocabulary would be a form with no answer to what it
             would write. What has been typed survives a change of vocabulary - `SharedPage` keeps
             each field's own state - so a reader who chooses again keeps the name they typed. */}
@@ -98,6 +101,11 @@ export function SharedAddView(props: SharedAddViewProps) {
             />
           </label>
         )}
+        {/* One arm per vocabulary below, and no arm for a kind none of them names: a fourth
+            vocabulary would draw the title, the Name field above, and not one field of its own -
+            a form that cannot be filled in. `tsc` does not catch it; `screens/SharedPage.tsx`'s
+            panel chain carries the inventory of all four places that fall through this way, and
+            the measurement of the one place a fourth word does stop the build. */}
         {kind === "constant" && (
           <label className="panel-field">
             Value
@@ -149,6 +157,26 @@ export function SharedAddView(props: SharedAddViewProps) {
               />
             </label>
           </>
+        )}
+        {kind === "raster" && (
+          <label className="panel-field">
+            Event
+            {/* The one key a raster's `add` requires (`RASTERS.required`), where a section needs
+                two and a constant one: the model defaults `cycle` and `description` both, so a
+                raster declared with an event alone is one whose file loads. `cycle` is left to
+                the panel this form opens onto for a second reason besides - an event that is not
+                cyclic is a real kind of raster rather than an omission, so a field asking for one
+                here would be asking for something a reader may rightly have nothing to put in.
+
+                Text, not a number, for the reason Alignment above is: the model wants the whole
+                number `3`, and a number input would hand back `3.0`. */}
+            <input
+              type="text"
+              value={props.event}
+              disabled={props.busy}
+              onChange={(event) => props.onEvent(event.target.value)}
+            />
+          </label>
         )}
       </div>
       {kind === undefined && (

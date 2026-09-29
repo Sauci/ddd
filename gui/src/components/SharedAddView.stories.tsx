@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { PlanReply } from "../api/types";
-import { ADD_SECTION } from "../stories/fixtures";
+import { ADD_RASTER, ADD_SECTION } from "../stories/fixtures";
 import { SharedAddView } from "./SharedAddView";
 
 export default { title: "Components / SharedAddView" };
@@ -13,6 +13,7 @@ interface Props {
   raw?: string;
   access?: string;
   alignment?: string;
+  event?: string;
   plan?: PlanReply;
 }
 
@@ -24,6 +25,7 @@ function FormStory({
   raw: value = "",
   access: initialAccess = "",
   alignment: initialAlignment = "",
+  event: initialEvent = "",
   plan,
 }: Props) {
   const [vocabulary, setVocabulary] = useState(chosen);
@@ -31,6 +33,7 @@ function FormStory({
   const [raw, setRaw] = useState(value);
   const [access, setAccess] = useState(initialAccess);
   const [alignment, setAlignment] = useState(initialAlignment);
+  const [event, setEvent] = useState(initialEvent);
   const [changesShown, setChangesShown] = useState(false);
   return (
     <SharedAddView
@@ -44,6 +47,8 @@ function FormStory({
       onAccess={setAccess}
       alignment={alignment}
       onAlignment={setAlignment}
+      event={event}
+      onEvent={setEvent}
       plan={plan ?? null}
       refusal={null}
       changesShown={changesShown}
@@ -76,4 +81,15 @@ export const DeclaringASection = () => (
     alignment="8"
     plan={ADD_SECTION}
   />
+);
+
+/** The chooser on rasters, where the same form asks for one field beyond the name: the model
+ * defaults `cycle` and `description` both, so `event` is all `add` requires (`RASTERS.required`).
+ * 20ms's declaration is previewed under it - and it is an entry with no `cycle` key at all, which
+ * is the shape `_entry_text`'s own filter exists to write: a raster that is not cyclic is a real
+ * kind of raster, and the panel this form opens onto is where a reader states one if there is one
+ * to state. It is also where `unknown-raster`'s route arrives - UNKNOWN_RASTER names 20ms, which
+ * no file declares, so its finding leads here with the name already filled in. */
+export const DeclaringARaster = () => (
+  <FormStory vocabulary="rasters" typed="20ms" event="3" plan={ADD_RASTER} />
 );

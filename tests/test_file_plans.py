@@ -1218,6 +1218,43 @@ class TestCreate:
             ),
         )
 
+    @pytest.mark.parametrize(
+        ("listed", "position"),
+        [
+            pytest.param(("*.ddd.json",), 1, id="a pattern matching its name"),
+            pytest.param(("a.ddd.json", "pump.ddd.json"), 2, id="an entry naming it missing"),
+        ],
+    )
+    def test_a_file_an_entry_reaches_already_is_listed_by_its_name_again(
+        self, tmp_path: Path, listed: tuple[str, ...], position: int
+    ) -> None:
+        """A file is created only where an entry of the edited ``includes`` names it as a file -
+        a pattern is never expanded to find it - so the creation appends its own entry, and the
+        file is listed twice: once by what reached it already, once by its name."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", *listed), "a.ddd.json": component("A")})
+        root = tmp_path / "p.ddd.json"
+        units = unit_project(root, [], {})
+        planned = create_plan(
+            root, "component", "pump", "Pump", ("A",), units, indexed(root), {}, checks_units=True
+        )
+        assert planned == (
+            PlannedEdit(
+                described(tmp_path),
+                (Operation("insert", f"project.includes[{position}]", '"pump.ddd.json"'),),
+            ),
+            PlannedEdit(
+                described(tmp_path).parent / "pump.ddd.json",
+                (
+                    Operation(
+                        "set",
+                        "",
+                        '{\n  "component": {\n    "name": "Pump",\n    "interface": []\n  }\n}\n',
+                    ),
+                ),
+                creates=True,
+            ),
+        )
+
     def test_a_first_units_file_is_refused_while_a_file_did_not_load(self, tmp_path: Path) -> None:
         """What did not load may state a unit, and a first units file leaving it out would have
         it reported ``unknown-unit`` - the project failing in one click, which listing every
@@ -1514,6 +1551,7 @@ class TestRemove:
     """An entry taken out of the root's includes by its row's key. The file stays on disk."""
 
     def test_a_literal_entry_is_taken_out(self, tmp_path: Path) -> None:
+        """No entry left brings the file in, so it leaves the project: nothing keeps it."""
         write_tree(
             tmp_path,
             {
@@ -1527,6 +1565,7 @@ class TestRemove:
         assert remove_plan(tmp_path / "p.ddd.json", key, {}) == FilePlan(
             (PlannedEdit(described(tmp_path), (Operation("remove", "project.includes[1]"),)),),
             ("a.ddd.json", "c.ddd.json"),
+            kept_by=None,
         )
 
     def test_a_pattern_entry_is_taken_out_whole(self, tmp_path: Path) -> None:
@@ -1561,9 +1600,10 @@ class TestRemove:
         )
 
     def test_an_entry_listed_twice_is_taken_out_everywhere(self, tmp_path: Path) -> None:
-        """Two spellings of one file are one key, and removing its row means the file leaves
-        the project, so every entry naming it goes: the last first, since the edit engine makes
-        a file's operations in turn, and with ``[0]`` gone first the other would be ``[1]``."""
+        """Two spellings of one file are one key, and removing its row is to take the file out
+        of the project, so every entry naming it goes: the last first, since the edit engine
+        makes a file's operations in turn, and with ``[0]`` gone first the other would be
+        ``[1]``."""
         write_tree(
             tmp_path,
             {
@@ -1639,11 +1679,11 @@ class TestRemove:
             remove_plan(tmp_path / "p.ddd.json", (tmp_path / path).resolve(), {})
         assert (refused.value.code, refused.value.message) == ("not-found", says)
 
-    def test_a_literal_entry_is_taken_out_though_a_pattern_matches_its_file_too(
+    def test_a_literal_entry_a_pattern_also_matches_is_taken_out_naming_the_pattern(
         self, tmp_path: Path
     ) -> None:
-        """Its key is its row's, so it is the entry removed. The pattern matches the file
-        still, and keeps it in the project."""
+        """Its key is its row's, so it is the entry removed. The pattern left matches the file
+        still and keeps it in the project, and the plan names it for the reader to be told."""
         write_tree(
             tmp_path,
             {
@@ -1655,6 +1695,55 @@ class TestRemove:
         assert remove_plan(tmp_path / "p.ddd.json", key, {}) == FilePlan(
             (PlannedEdit(described(tmp_path), (Operation("remove", "project.includes[0]"),)),),
             ("sensors/*.ddd.json",),
+            kept_by="sensors/*.ddd.json",
+        )
+
+    def test_a_pattern_left_matching_other_files_keeps_nothing(self, tmp_path: Path) -> None:
+        """What keeps a file is a pattern left that brings it in, not any pattern left."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "sensors/*.ddd.json"),
+                "a.ddd.json": component("A"),
+                "sensors/b.ddd.json": component("B"),
+            },
+        )
+        key = (tmp_path / "a.ddd.json").resolve()
+        assert remove_plan(tmp_path / "p.ddd.json", key, {}) == FilePlan(
+            (PlannedEdit(described(tmp_path), (Operation("remove", "project.includes[0]"),)),),
+            ("sensors/*.ddd.json",),
+            kept_by=None,
+        )
+
+    def test_the_first_pattern_left_bringing_in_a_file_listed_twice_is_named(
+        self, tmp_path: Path
+    ) -> None:
+        """Both spellings go, and neither is taken for what keeps the file: of the entries
+        left, ``b.ddd.json`` names another file, and of the two patterns matching it the first
+        is named."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project(
+                    "P", "a.ddd.json", "b.ddd.json", "./a.ddd.json", "*.ddd.json", "a*.ddd.json"
+                ),
+                "a.ddd.json": component("A"),
+                "b.ddd.json": component("B"),
+            },
+        )
+        key = (tmp_path / "a.ddd.json").resolve()
+        assert remove_plan(tmp_path / "p.ddd.json", key, {}) == FilePlan(
+            (
+                PlannedEdit(
+                    described(tmp_path),
+                    (
+                        Operation("remove", "project.includes[2]"),
+                        Operation("remove", "project.includes[0]"),
+                    ),
+                ),
+            ),
+            ("b.ddd.json", "*.ddd.json", "a*.ddd.json"),
+            kept_by="*.ddd.json",
         )
 
 

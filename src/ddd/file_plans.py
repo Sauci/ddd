@@ -269,8 +269,9 @@ class IncludedEntry:
 
 @dataclass(frozen=True, slots=True)
 class FilePlan:
-    """What adding or removing an entry takes: the edit of the description, and the root's
-    ``includes`` as the edit leaves them - the entries that are strings, in order.
+    """What adding or removing an entry takes: the edit of the description, the root's
+    ``includes`` as the edit leaves them - the entries that are strings, in order - and, for a
+    removal, the pattern that keeps the file in the project all the same, where one does.
 
     One decision, read twice. ``includes`` is the list to hand
     :func:`ddd.gui.session.findings_with`, which analyses the project with the root's list
@@ -280,6 +281,12 @@ class FilePlan:
 
     edits: tuple[PlannedEdit, ...]
     includes: tuple[str, ...]
+    kept_by: str | None = None
+    """For a removal, the first entry of ``includes`` that still brings the file in, each read
+    as the loader reads it (:func:`ddd.loading.included_files`): a pattern, every entry naming
+    the file being taken out. The file stays in the project then, and a reader is to be told so
+    by this answer rather than by the page working it out. ``None`` where no entry left brings
+    it in, and always for an addition."""
 
 
 def included_entries(project: Path, cache: dict[Path, Document]) -> tuple[IncludedEntry, ...]:
@@ -330,6 +337,13 @@ def create_plan(
     appended to its ``includes`` in one plan: created by :func:`ddd.lsp.units.created_beside`,
     in the one shape :func:`ddd.gui.session._confined` lets a file be created in. One edit per
     file, sorted by path, as the recipe's other two callers sort them.
+
+    The entry appended is the file's own name, whatever else reaches it already: ``_confined``
+    lets a file be created only where an entry of the edited ``includes`` names it as a file -
+    a pattern is never expanded - and the description is changed in the same edit. The cost: a
+    pattern matching the new name, or an entry naming the file while it is missing, leaves it
+    listed twice. Measured with a component created both ways, the loader reads it once and
+    ``ddd check`` passes.
 
     Refused ``invalid``, in this order, before anything is built: a kind not in
     :data:`CREATABLE`; a name :data:`FILE_NAME` does not take; a file of that name beside the
@@ -493,37 +507,58 @@ def remove_plan(project: Path, path: Path, cache: dict[Path, Document]) -> FileP
     row's key as :func:`included_entries` answers it. A pattern's key takes the pattern out
     whole. The files stay on disk.
 
-    Every one, where two spellings of one file are one key: removing a row means its file
-    leaves the project, and an entry left naming it would keep it in. The last goes first, since
+    Every one, where two spellings of one file are one key: removing a row is to take its file
+    out of the project, and an entry left naming it would keep it in. The last goes first, since
     the edit engine makes a file's operations in turn and taking an entry out moves every later
-    one up.
+    one up. A pattern left that matches the file keeps it in all the same - taking the pattern
+    out would take out every other file it matches - and :attr:`FilePlan.kept_by` names it.
 
     Refused ``invalid`` where no entry has that key and a pattern matches it, naming the
-    pattern, which goes only whole; ``not-found`` where neither holds.
+    pattern, which goes only whole; ``not-found`` where neither holds. Both are read off one
+    answer, :func:`_brought_by`'s over the entries a removal leaves: where no entry has the key,
+    that is every entry, and the pattern bringing the file in is the one refused.
     """
     described = resolve_path(project)
-    entries = included_entries(described, cache)
     removed: list[IncludedEntry] = []
-    kept: list[str] = []
-    for included in entries:
+    kept: list[IncludedEntry] = []
+    for included in included_entries(described, cache):
         if included.key == path:
             removed.append(included)
         else:
-            kept.append(included.entry)
+            kept.append(included)
+    brought_by = _brought_by(kept, path)
     if removed:
         operations = tuple(
             Operation("remove", f"project.includes[{gone.index}]") for gone in reversed(removed)
         )
-        return FilePlan((PlannedEdit(described, operations),), tuple(kept))
-    for included in entries:
-        if path in included.files:
-            raise FileRefusalError(
-                "invalid",
-                f"{path.name} has no entry of its own: the pattern '{included.entry}' brings it "
-                "in, and only the whole pattern can be removed",
-            )
+        return FilePlan(
+            (PlannedEdit(described, operations),),
+            tuple(left.entry for left in kept),
+            kept_by=brought_by,
+        )
+    if brought_by is not None:
+        raise FileRefusalError(
+            "invalid",
+            f"{path.name} has no entry of its own: the pattern '{brought_by}' brings it in, and "
+            "only the whole pattern can be removed",
+        )
     raise FileRefusalError(
         "not-found",
         f"no entry of {described.name}'s includes names {path.name}, and none of its patterns "
         "matches it",
     )
+
+
+def _brought_by(entries: Sequence[IncludedEntry], path: Path) -> str | None:
+    """The first of ``entries`` bringing the file ``path`` in, as the loader reads each, or
+    ``None`` where none does.
+
+    Asked of entries whose key is not ``path``, which makes what it answers a pattern: an entry
+    naming a file brings in that file alone, and its key is that file. The loader reads each
+    entry by itself, so what one brings in does not change with the entries around it, and the
+    answer is the loader's after the change as well as before it.
+    """
+    for included in entries:
+        if path in included.files:
+            return included.entry
+    return None

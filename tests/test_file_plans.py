@@ -514,7 +514,9 @@ class TestAFindingMovingByOrder:
     """The cost of counting per place. ddd reports some findings on declarations it picks by an
     order a removal can change - the order it reads the project in, the first declaration read
     of a name, the first local, the first copy of an enum met. Where a removal moves one of those
-    onto a place without an error of its check and severity, it is refused, harmless as it is."""
+    onto a place without an error of its check and severity, it is refused, harmless as it is. So
+    is one that relabels an error: a local gone from beside two writers, their ``local-conflict``
+    reported as ``multiple-producers``."""
 
     def test_a_file_read_later_through_a_sub_project_is_refused_for_the_conflict_it_moves(
         self, tmp_path: Path
@@ -662,6 +664,41 @@ class TestAFindingMovingByOrder:
         }
         assert judged(tmp_path, files, "ca.ddd.json", "enum-duplicate-value") == [
             ("cb.ddd.json", "enum-duplicate-value", "enum 'Mode_t': OFF, IDLE all have the value 0")
+        ]
+
+    def test_a_local_gone_from_beside_its_two_writers_is_refused_for_the_conflict_it_relabels(
+        self, tmp_path: Path
+    ) -> None:
+        """H3, a relabel: `F` declares `X` local while `W1` and `W2` write it, a `local-conflict`
+        on each, and writes `Y` and `V` beside `Y2` and `V2`. Removing `F` ends the conflicts over
+        `Y` and `V`, and `W1` and `W2` writing `X` is reported as `multiple-producers` on `W2`,
+        where the project reported a `local-conflict`."""
+        files = {
+            "p.ddd.json": project(
+                "P",
+                "f.ddd.json",
+                "w1.ddd.json",
+                "w2.ddd.json",
+                "y2.ddd.json",
+                "v2.ddd.json",
+                "r.ddd.json",
+            ),
+            "f.ddd.json": component(
+                "F", declare("local", "X"), declare("output", "Y"), declare("output", "V")
+            ),
+            "w1.ddd.json": writing("W1", "X"),
+            "w2.ddd.json": writing("W2", "X"),
+            "y2.ddd.json": writing("Y2", "Y"),
+            "v2.ddd.json": writing("V2", "V"),
+            "r.ddd.json": reading("R", "X", "Y", "V"),
+        }
+        assert judged(tmp_path, files, "f.ddd.json") == [
+            (
+                "w2.ddd.json",
+                "multiple-producers",
+                "'X' is written by component 'W2' and by component 'W1'; exactly one writer is "
+                "allowed",
+            )
         ]
 
 

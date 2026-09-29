@@ -51,17 +51,21 @@ def new_errors(before: Sequence[Pair], after: Sequence[Pair]) -> tuple[Pair, ...
     first used up the old one's key, and the old one was quoted as new.
 
     Per place costs something both ways. ddd reports some findings on declarations it picks by
-    an order a removal can change - the order it reads the project in, the first declaration
-    read of a name, the first local, the first copy of an enum met - and a harmless removal that
-    moves one onto a place without an error of its check and severity is refused, quoting the
-    error the project has, reworded where its words name that order. Measured, so is a removal
-    that relabels an error - a local gone, its other writers' ``local-conflict`` reported as
-    ``multiple-producers`` - or re-counts one against a new reference, each quoting an error the
-    project would really have. The other way, a new error is hidden only where an error of its
-    check and severity leaves the same place - with the same message, where the place is a
-    whole file or none - or where it has the shape of a mirror (see :func:`_as_reported`). A
-    check filing every finding at one place, as a plugin's may, hides there up to as many new
-    errors as leave.
+    an order a removal can change - the owner, the order it reads the project in, the first
+    declaration read of a name, the first local, the first copy of an enum met - and a harmless
+    removal that moves one is refused wherever the move raises the count of its check and
+    severity at a place, quoting the error the project has, reworded where its words name that
+    order. Measured, so is a removal that relabels an error - a local gone, its other writers'
+    ``local-conflict`` reported as ``multiple-producers`` - or re-counts one against a new
+    reference, each quoting an error the project would really have. The other way, a new error
+    is hidden only where an error of its check and severity leaves the same place - with the
+    same message, where the place is a whole file or none - or where it has the shape of a
+    mirror (see :func:`_as_reported`). A check filing every finding at one place, as a plugin's
+    may, hides there up to as many new errors as leave. ddd's own checks reach the first way
+    too, measured: where a build lowers ``duplicate-component`` or ``duplicate-type``, removing
+    the first declaration lets in the one the loader dropped, and a reader's disagreement at its
+    declaration changes what it is about while its place stays. Of ddd's own checks under the
+    default severities, no case of it was found.
 
     What is reported is never a mirror :func:`_as_reported` tells, and never, word for word, an
     error ``before`` reports: a revision never lists one identity twice,
@@ -110,10 +114,10 @@ def _as_reported(pairs: Sequence[Pair]) -> list[Pair]:
 
     The shape is a mirror's alone where no finding a run reports has the check, severity,
     message and place of another's mirror, which holds of ddd's own checks: each note they make
-    points at another place its finding is about - the owner, the first read, the first copy
-    met - and none of them reports a finding of that check and message there. A plugin's
-    check can, and then ``group_findings``, filing one identity once, files the finding and a
-    mirror as one: the finding can go uncounted, and mirrors of it be counted in its stead.
+    that has a place points at another place its finding is about - the owner, the first read,
+    the first copy met - and none of them reports a finding of that check and message there. A
+    plugin's check can, and then ``group_findings``, filing one identity once, files the finding
+    and a mirror as one: the finding can go uncounted, and mirrors of it be counted in its stead.
     """
     copied: set[tuple[str, Severity, str, Location]] = set()
     for _, diagnostic in pairs:

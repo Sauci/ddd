@@ -98,15 +98,14 @@ export function routeLabel(finding: Finding, state: State): string | null {
     return `Open ${listed?.name ?? baseName(finding.file)}`;
   }
   if (route.kind === "file" && route.name !== null) {
-    // As the component arm above: the file's own declared name where `State.files` has one -
-    // which, of the two checks `route.name` is ever a file route for today, neither is a
-    // component's, so this is always `undefined` in practice and stays for the day one is. Its
-    // fallback differs from that arm's `baseName`, though: a row of the Files tab is one entry
-    // among others the same directory can hold, so the path relative to the project - the very
-    // shape an entry is itself written in (`sensors/a.ddd.json`) - says which one a `baseName`
-    // alone, repeated across two directories, could not.
-    const listed = state.files.find((file) => file.path === route.name);
-    return `Open ${listed?.name ?? relativeToProject(route.name, state.project)}`;
+    // Unlike the component arm above, no listed file's own declared name is ever worth
+    // preferring here: `FILE_CHECKS` fires only on the project description or a vocabulary file
+    // (`ddd.finding_routes.FILE_CHECKS`), and `SourceFile.name` is `null` for both kinds - only
+    // a component ever has one. A row of the Files tab is one entry among others the same
+    // directory can hold, so the path relative to the project - the very shape an entry is
+    // itself written in (`sensors/a.ddd.json`) - says which one a `baseName` alone, repeated
+    // across two directories, could not.
+    return `Open ${relativeToProject(route.name, state.project)}`;
   }
   return `Open ${route.name}`;
 }

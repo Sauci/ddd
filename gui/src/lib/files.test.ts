@@ -102,6 +102,39 @@ describe("a pattern matching files", () => {
       { entry: pattern, file: null, key: SENSORS_X, findings: 0, child: true },
     ]);
   });
+
+  test("a file a literal entry also names keeps two rows of one key, each its own count", () => {
+    // Task 4: `New file` appends a literal entry even where a pattern already matches the new
+    // name, so the loader reads the file once but the tab still offers both entries - the
+    // literal removable outright, the pattern's child only ever refused naming the pattern
+    // (`ddd.file_plans.remove_plan`). `rowsOf` never de-duplicates by `key`: a later "don't show
+    // a file twice" tidy-up would silently take one of the two rows away, along with whichever
+    // of those two actions only it offered. The entries' own findings are synthetic, as the
+    // first literal-entry test's are, chosen only to tell the two same-keyed rows' counts apart.
+    const file = sourceFile({ findings: { error: 1, warning: 0, info: 0 } });
+    const literal = entry({
+      index: 0,
+      entry: "a.ddd.json",
+      names: true,
+      key: A,
+      files: [A],
+      findings: 2,
+    });
+    const pattern = entry({
+      index: 1,
+      entry: "*.ddd.json",
+      names: false,
+      key: "C:/work/demo/*.ddd.json",
+      files: [A],
+      findings: 3,
+    });
+    const rows = rowsOf(reply([literal, pattern]), [file]);
+    expect(rows).toEqual([
+      { entry: literal, file, key: A, findings: 3, child: false },
+      { entry: pattern, file: null, key: pattern.key, findings: 4, child: false },
+      { entry: pattern, file, key: A, findings: 1, child: true },
+    ]);
+  });
 });
 
 describe("an entry naming nothing", () => {

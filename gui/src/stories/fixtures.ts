@@ -554,6 +554,19 @@ export const UNADOPTED_UNITS: UnitsReply = {
   adoptable: 8,
 };
 
+/** The same project with a units file that declares nothing - what taking the last unit nothing
+ * states out of its vocabulary leaves. The file opts the project in all the same, so each of its
+ * eight units in use is outside the vocabulary with an `unknown-unit` at every place stating it,
+ * and adopting is offered: it would fill that file (FILLING) rather than write a second. */
+export const EMPTIED_UNITS: UnitsReply = {
+  ...UNADOPTED_UNITS,
+  vocabulary: [],
+  units: UNADOPTED_UNITS.units.map((unit) => ({
+    ...unit,
+    findings: unit.variables + unit.types + unit.members,
+  })),
+};
+
 const UNKNOWN: Finding = {
   file: CONTROLLER,
   check: "unknown-unit",
@@ -757,6 +770,44 @@ export const ADOPTION: PlanReply = {
   ],
 };
 
+/** The eight units in use, in the order adopting lists them: sorted by code point, as the server
+ * sorts them. */
+const FILLED_UNITS = ["%", "Hz", "RPM", "V", "degC", "ms", "rpm", "°C"];
+
+/** Adopting into EMPTIED_UNITS' file: the units in use inserted into its empty list - one file
+ * changed, the project description and its `includes` untouched. The hunk is the one the server
+ * answers for that file, `"$schema"` on its second line and `"units": []` on its third, laid out
+ * by the edit engine's own insertions. */
+export const FILLING: PlanReply = {
+  revision: 7,
+  changes: [
+    {
+      file: UNITS_FILE,
+      fingerprint: "08c7a71c4c8c84aaa5baccebfa4b8352686c358503d583fd33a3712796b844a1",
+      operations: FILLED_UNITS.map((unit, index) => ({
+        op: "insert",
+        pointer: `units[${index}]`,
+        raw: `{"unit": ${JSON.stringify(unit)}, "description": ""}`,
+      })),
+      hunks: [
+        {
+          line: 3,
+          before: ['  "units": []'],
+          after: [
+            '  "units": [',
+            ...FILLED_UNITS.map(
+              (unit, index) =>
+                `    { "unit": ${JSON.stringify(unit)}, "description": "" }` +
+                (index < FILLED_UNITS.length - 1 ? "," : ""),
+            ),
+            "  ]",
+          ],
+        },
+      ],
+    },
+  ],
+};
+
 // The Findings tab (spec 5.1, 5.2): one finding of each severity, one leading to a variable, one
 // to a unit, one to a component, and one leading nowhere because its file did not load.
 
@@ -898,6 +949,42 @@ export const PROJECT_FINDINGS: State = {
   ],
   findings: [UNKNOWN_RPM_FINDING, STORAGE_MISMATCH, DID_NOT_LOAD, MISSING_ID, UNKNOWN_RASTER],
   undoable: null,
+};
+
+/** A second rasters file the project includes, whose only raster - nothing sampled on it - was
+ * taken out from the Shared files tab: what is left declares nothing, loads, and is reported. */
+const BENCH = "C:/work/demo/bench.ddd.json";
+
+/** `empty-vocabulary` on that file, filed at `rasters` - its own list, which is still there,
+ * empty. It leads nowhere for a reason of its own: the finding is about the whole file, which no
+ * panel shows, rather than about a place the file has moved on from. The check's own default is
+ * info (`src/ddd/diagnostics.py`). */
+export const EMPTY_RASTERS: Finding = {
+  file: BENCH,
+  check: "empty-vocabulary",
+  severity: "info",
+  message: "rasters file 'bench.ddd.json' declares no raster",
+  pointer: "rasters",
+  notes: [],
+  route: null,
+};
+
+/** PROJECT_FINDINGS with bench.ddd.json among its files - a rasters file that loaded, with one
+ * info - and its finding among the rest, both first, since `GET /api/state` answers by file. */
+export const EMPTIED_FINDINGS: State = {
+  ...PROJECT_FINDINGS,
+  files: [
+    {
+      path: BENCH,
+      kind: "rasters",
+      name: null,
+      loaded: true,
+      fingerprint: "e",
+      findings: { error: 0, warning: 0, info: 1 },
+    },
+    ...PROJECT_FINDINGS.files,
+  ],
+  findings: [EMPTY_RASTERS, ...PROJECT_FINDINGS.findings],
 };
 
 /** The one fix the tab offers: `missing-id`, previewed onto SensorHub's ValueA. */

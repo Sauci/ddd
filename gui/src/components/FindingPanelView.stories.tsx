@@ -5,6 +5,8 @@ import {
   DEFINITION_MISMATCH,
   DEFINITION_MISMATCH_FIX,
   DID_NOT_LOAD,
+  EMPTIED_FINDINGS,
+  EMPTY_RASTERS,
   ID_FIX,
   KIND_MISMATCH,
   MISSING_ID,
@@ -79,6 +81,12 @@ export const LeadsToAUnit = () => <View finding={UNKNOWN_RPM_FINDING} state={PRO
 export const LeadsToARaster = () => <View finding={UNKNOWN_RASTER} state={PROJECT_FINDINGS} />;
 
 export const LeadsNowhere = () => <View finding={DID_NOT_LOAD} state={PROJECT_FINDINGS} />;
+
+/** The other way a finding leads nowhere, and the one its place does not explain: an
+ * `empty-vocabulary` is filed at the file's own list - still there, empty - so it is about the
+ * whole of bench.ddd.json, which no panel shows. Reached by elimination, the reason read "there
+ * is nothing at that place any more" about a place the file plainly has. */
+export const AboutAWholeFile = () => <View finding={EMPTY_RASTERS} state={EMPTIED_FINDINGS} />;
 
 export const WithAFix = () => <View finding={MISSING_ID} state={PROJECT_FINDINGS} fixes={ID_FIX} />;
 

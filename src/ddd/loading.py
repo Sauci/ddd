@@ -402,10 +402,18 @@ class Workspace:
     What opts a project into the unit check: with any of them, every stated unit is checked
     against :attr:`units`. The files decide it rather than the units they declare, so that taking
     a unit nothing states out of the vocabulary - the last one included - never changes what is
-    checked. A units file that did not load is not one of them: it is reported, and its entries
-    reach nothing, so that one mistake stays one finding rather than an ``unknown-unit`` for every
-    unit the project states. The same notion as :attr:`ddd.lsp.units.UnitProject.units_files`,
-    which a plan reads out of the description's own ``includes`` instead.
+    checked.
+
+    A units file that did not load is not one of them, and leaving it out is safe where an
+    emptied file counting for nothing was not: the difference is whether anything passes that
+    should fail. An emptied file that switched the check off let a run with an ``unknown-unit``
+    pass. A file that did not load already fails the run with its own ``schema`` error, so
+    leaving it out passes nothing; counting it in would only add an ``unknown-unit`` for every
+    stated unit on top of that one mistake - findings that come back of themselves the moment
+    the file is fixed and loads.
+
+    The same notion as :attr:`ddd.lsp.units.UnitProject.units_files`, which a plan reads out of
+    the description's own ``includes`` instead.
     """
 
     unit_entries: tuple[LoadedUnit, ...] = ()

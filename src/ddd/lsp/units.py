@@ -250,6 +250,13 @@ def adopt_units(built: Index, project: UnitProject, cache: dict[Path, Document])
     * one listing a unit - refused: the vocabulary is there already, which is what
       :func:`listing_files` answers for this plan and for the page offering it alike.
 
+    A known limitation, and the reach :func:`add_unit` has too: a units file only a sub-project
+    includes is not one of the description's own, so a project whose one units file is such a
+    file, declaring nothing, gets a new :data:`ADOPTED` beside its description rather than that
+    file filled. Nothing is checked wrongly - both files are the project's, and the analysis
+    reads every units file of the tree - but the empty one stays, reported as
+    ``empty-vocabulary``.
+
     Every unit in use, drifted spellings included, so that adopting reports nothing that was not
     reported before; two spellings of one unit are merged by renaming one of them afterwards.
     A created file is laid out by the edit engine the way a units file is written by hand, one

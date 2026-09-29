@@ -360,6 +360,11 @@ tr.changing td {
 .react-aria-Row.has-error .react-aria-Cell:first-child {
   box-shadow: inset 3px 0 var(--error);
 }
+/* The Files tab (design §2): a pattern's matched files, indented beneath its own row - the first
+   cell's own left padding widened, so the column still lines up above the pattern's own entry. */
+.react-aria-Row.child .react-aria-Cell:first-child {
+  padding-left: calc(10px + var(--space-4));
+}
 
 /* The Units tab (docs/superpowers/specs/2026-09-19-gui-units-project-design.md, 5): the table's
    spelling in bold and its count to the right; a unit's panel - its sub-heading, each change it

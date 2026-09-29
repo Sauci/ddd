@@ -5,6 +5,7 @@ import { hrefOf, type ProjectView, type Route } from "../lib/route";
 import type { SharedKind } from "../lib/shared";
 import { ComparePage } from "../screens/ComparePage";
 import { ComponentPage } from "../screens/ComponentPage";
+import { FilesPage } from "../screens/FilesPage";
 import { FindingsPage } from "../screens/FindingsPage";
 import { GraphPage } from "../screens/GraphPage";
 import { ProjectPage } from "../screens/ProjectPage";
@@ -27,12 +28,13 @@ const PROJECT_VIEWS = [
   ["units", "Units"],
   ["types", "Types"],
   ["shared", "Shared files"],
+  ["files", "Files"],
   ["findings", "Findings"],
   ["compare", "Compare"],
 ] as const;
 
 /** Each tab's own address, written out one view at a time rather than built from it: `PROJECT_
- * VIEWS.map()` below reads `view` widened to the union of all seven tab literals, and passing
+ * VIEWS.map()` below reads `view` widened to the union of all eight tab literals, and passing
  * that union straight to `hrefOf`/`navigate` stopped type-checking the moment one literal -
  * `shared` - came to name more than one of `Route`'s own shapes (a discriminant with more than
  * one shape behind a value stops the checker from trying each shape in turn). Spelling every key
@@ -123,6 +125,17 @@ export function App() {
       ),
     [navigate],
   );
+  // Selecting a row replaces the address, as selecting a shared entry does.
+  const openFiles = useCallback(
+    (path: string | undefined) =>
+      navigate(
+        path === undefined
+          ? { page: "project", view: "files" }
+          : { page: "project", view: "files", path },
+        { replace: true },
+      ),
+    [navigate],
+  );
 
   let page: ReactNode;
   if (session.isPending) {
@@ -186,6 +199,8 @@ export function App() {
             stopped={stopped}
             onOpen={navigate}
           />
+        ) : route.view === "files" ? (
+          <FilesPage state={state} path={route.path} onPath={openFiles} />
         ) : route.view === "findings" ? (
           <FindingsPage state={state} stopped={stopped} onOpen={navigate} />
         ) : route.view === "compare" ? (

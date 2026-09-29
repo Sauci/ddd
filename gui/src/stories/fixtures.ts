@@ -4,9 +4,11 @@ import type {
   ConstantUse,
   DeclarableName,
   DeclarableReply,
+  FilesReply,
   Finding,
   FixReply,
   GridAxis,
+  IncludedEntryReply,
   KindForm,
   PlanReply,
   ProjectUnit,
@@ -18,6 +20,7 @@ import type {
   SettleReply,
   SharedEntry,
   SharedReply,
+  SourceFile,
   State,
   TypeReply,
   TypesReply,
@@ -2536,3 +2539,177 @@ export const ADD_RASTER: PlanReply = {
     },
   ],
 };
+
+// --- FilesTableView (part 16, design §2) -------------------------------------------------------
+//
+// examples/vocabulary's own project.ddd.json: PumpDevice's five includes, in the order it lists
+// them - units.ddd.json, sections.ddd.json, constants.ddd.json and rasters.ddd.json beside
+// pump.ddd.json itself, every one a literal entry naming an existing file, no pattern and no
+// sub-project among them. `ddd check examples/vocabulary/project.ddd.json` answers "ok: 4
+// variables in 1 component are consistent", so every finding count below is 0 - the other five
+// stories each construct the one thing the shipped example has none of: a pattern, an entry
+// naming nothing, a sub-project, two rows of one key, and a route naming no row at all.
+
+/** examples/vocabulary's own project.ddd.json - a fresh path rather than DEMO above, which is a
+ * different project (examples/demo's own demo.ddd.json) sharing this file's one fake directory. */
+const VOCABULARY_PROJECT = "C:/work/demo/project.ddd.json";
+
+/** examples/vocabulary's own pump.ddd.json, flat beside project.ddd.json as the real example lays
+ * it out - unlike `PUMP` above, nested under a `components/` directory `examples/vocabulary` has
+ * no equivalent of, which this fixture's own literal entry ("pump.ddd.json", not
+ * "components/pump.ddd.json") has to resolve against. Exported: `FilesTableView.stories.tsx`'s
+ * own ASelectedRow needs this exact key to select. */
+export const VOCABULARY_PUMP = "C:/work/demo/pump.ddd.json";
+
+/** One literal entry: an existing file, named by the entry itself, its resolved path its own key
+ * and the one file it brings (`IncludedEntryReply.files`' own doc says a literal's is always
+ * itself alone). */
+function literalEntry(index: number, entry: string, path: string): IncludedEntryReply {
+  return { index, entry, names: true, key: path, files: [path], findings: 0 };
+}
+
+/** A file the analysis read and found nothing wrong with - every file below is, since PumpDevice
+ * itself is. */
+function cleanFile(
+  path: string,
+  kind: string,
+  name: string | null,
+  fingerprint: string,
+): SourceFile {
+  return {
+    path,
+    kind,
+    name,
+    loaded: true,
+    fingerprint,
+    findings: { error: 0, warning: 0, info: 0 },
+  };
+}
+
+/** `ddd.file_plans.CREATABLE`: the kinds New file offers (Task 8), sent so this tab's stories
+ * never restate a list Task 6 already ruled the page must read off the reply instead. */
+const FILES_CREATABLE = ["component", "types", "units", "constants", "sections", "rasters"];
+
+/** The project's own list (true to examples/vocabulary, as the block comment above says): five
+ * literal entries, none of them a pattern, a miss or a sub-project - the table this tab draws for
+ * the shipped example as it stands today. */
+export const PROJECT_FILES: FilesReply = {
+  revision: 7,
+  project: VOCABULARY_PROJECT,
+  entries: [
+    literalEntry(0, "units.ddd.json", UNITS_FILE),
+    literalEntry(1, "sections.ddd.json", SECTIONS_FILE),
+    literalEntry(2, "constants.ddd.json", CONSTANTS_FILE),
+    literalEntry(3, "rasters.ddd.json", RASTERS_FILE),
+    literalEntry(4, "pump.ddd.json", VOCABULARY_PUMP),
+  ],
+  creatable: FILES_CREATABLE,
+};
+
+/** The five files `PROJECT_FILES`' entries resolve to: a vocabulary file carries no name of its
+ * own (only a component's or a project's own top level key does), and pump.ddd.json's is "Pump" -
+ * `examples/vocabulary/pump.ddd.json`'s own `component.name`. */
+export const PROJECT_SOURCE_FILES: readonly SourceFile[] = [
+  cleanFile(UNITS_FILE, "units", null, "a"),
+  cleanFile(SECTIONS_FILE, "sections", null, "b"),
+  cleanFile(CONSTANTS_FILE, "constants", null, "c"),
+  cleanFile(RASTERS_FILE, "rasters", null, "d"),
+  cleanFile(VOCABULARY_PUMP, "component", "Pump", "e"),
+];
+
+// A pattern with its matched files (constructed: every one of examples/vocabulary's own five
+// entries is literal, so a glob is invented here) - "sensors/*.ddd.json" brings in two more
+// components, the shape `files.test.ts`'s own rowsOf fixtures already use, now drawn: the
+// pattern's own row carries no file, and each match is a child row indented beneath it.
+
+const SENSORS_INLET = "C:/work/demo/sensors/inlet.ddd.json";
+const SENSORS_OUTLET = "C:/work/demo/sensors/outlet.ddd.json";
+
+const SENSORS_PATTERN: IncludedEntryReply = {
+  index: 5,
+  entry: "sensors/*.ddd.json",
+  names: false,
+  key: "C:/work/demo/sensors/*.ddd.json",
+  files: [SENSORS_INLET, SENSORS_OUTLET],
+  findings: 0,
+};
+
+/** `PROJECT_FILES`' own five rows, with the pattern above appended as a sixth entry. */
+export const FILES_WITH_PATTERN: FilesReply = {
+  ...PROJECT_FILES,
+  entries: [...PROJECT_FILES.entries, SENSORS_PATTERN],
+};
+
+export const FILES_WITH_PATTERN_SOURCES: readonly SourceFile[] = [
+  ...PROJECT_SOURCE_FILES,
+  cleanFile(SENSORS_INLET, "component", "Inlet", "f"),
+  cleanFile(SENSORS_OUTLET, "component", "Outlet", "g"),
+];
+
+/** An entry naming nothing, carrying its finding (constructed: nothing in examples/vocabulary is
+ * missing) - a path the loader cannot find, `include-empty` filed at its own index and nothing
+ * else to draw: no kind, no state, `rowsOf` having given the row no `SourceFile` of its own
+ * (Controller ruling). */
+const MISSING_ENTRY: IncludedEntryReply = {
+  index: 5,
+  entry: "missing.ddd.json",
+  names: false,
+  key: "C:/work/demo/missing.ddd.json",
+  files: [],
+  findings: 1,
+};
+
+export const FILES_WITH_MISSING: FilesReply = {
+  ...PROJECT_FILES,
+  entries: [...PROJECT_FILES.entries, MISSING_ENTRY],
+};
+
+/** A sub-project row (constructed: examples/vocabulary includes no other project) - a nested
+ * description, a literal entry exactly as pump.ddd.json's own is, its `SourceFile.kind` "project"
+ * and drawn no differently from any other kind (Controller ruling: "not expanded"). Managing its
+ * own includes belongs to opening it as a project (design §6). */
+const SUBSYSTEM_PROJECT = "C:/work/demo/subsystem/subsystem.ddd.json";
+
+const SUBSYSTEM_ENTRY: IncludedEntryReply = {
+  index: 5,
+  entry: "subsystem/subsystem.ddd.json",
+  names: true,
+  key: SUBSYSTEM_PROJECT,
+  files: [SUBSYSTEM_PROJECT],
+  findings: 0,
+};
+
+export const FILES_WITH_SUBPROJECT: FilesReply = {
+  ...PROJECT_FILES,
+  entries: [...PROJECT_FILES.entries, SUBSYSTEM_ENTRY],
+};
+
+export const FILES_WITH_SUBPROJECT_SOURCES: readonly SourceFile[] = [
+  ...PROJECT_SOURCE_FILES,
+  cleanFile(SUBSYSTEM_PROJECT, "project", "Subsystem", "h"),
+];
+
+/** A selected row (Controller ruling: a route's own `path` selects every row of that key, which
+ * can be more than one) - constructed, and deliberately narrow: "*.ddd.json" stands for a pattern
+ * that would in fact match every file beside it, thinned here to pump.ddd.json alone so the
+ * photograph shows the one thing this story exists for. pump.ddd.json's own key now belongs to
+ * two rows - its literal entry's own, and this pattern's one child - and selecting it marks both,
+ * leaving the pattern's own summary row (a different key, `"C:/work/demo/*.ddd.json"`) bare. */
+const CATCH_ALL_PATTERN: IncludedEntryReply = {
+  index: 5,
+  entry: "*.ddd.json",
+  names: false,
+  key: "C:/work/demo/*.ddd.json",
+  files: [VOCABULARY_PUMP],
+  findings: 0,
+};
+
+export const FILES_SHARED_KEY: FilesReply = {
+  ...PROJECT_FILES,
+  entries: [...PROJECT_FILES.entries, CATCH_ALL_PATTERN],
+};
+
+/** A path no row of `PROJECT_FILES` carries (Controller ruling: a sub-project's own
+ * `include-empty` or `empty-vocabulary` can route here naming a place only that sub-project's own
+ * table would list) - selecting it marks nothing, which is not an error. */
+export const NOTHING_AT_THAT_PATH = "C:/work/demo/subsystem/nested.ddd.json";

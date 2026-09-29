@@ -2659,9 +2659,13 @@ export const FILES_WITH_PATTERN_SOURCES: readonly SourceFile[] = [
 ];
 
 /** An entry naming nothing, carrying its finding (constructed: nothing in examples/vocabulary is
- * missing) - a path the loader cannot find, `include-empty` filed at its own index, no kind to
- * draw (`rowsOf` gave the row no `SourceFile` of its own, Controller ruling) and `cellsOf`'s own
- * "names no file" for its State - spec §2's "shows as such". */
+ * missing) - a plain path the loader cannot find, `file-not-found` filed at its own index (not
+ * `include-empty`, which is a pattern's own word - matching no file, or unable to expand at all -
+ * never a plain path's; `IncludedEntryReply.findings`'s own docstring and `finding_routes.py`
+ * both say so, and `ddd check` on a project listing a missing plain path answers exactly
+ * `error[file-not-found]`, measured), no kind to draw (`rowsOf` gave the row no `SourceFile` of
+ * its own, Controller ruling) and `cellsOf`'s own "names no file" for its State - spec §2's
+ * "shows as such". */
 const MISSING_ENTRY: IncludedEntryReply = {
   index: 5,
   entry: "missing.ddd.json",

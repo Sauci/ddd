@@ -153,3 +153,12 @@ function stateOf(row: FileRow): string {
   if (!row.child && !row.entry.names) return "";
   return "not read by the last analysis";
 }
+
+/** Every position in `rows` whose own `key` is `selected` - a route's own `path` selects every
+ * row of that key, which can be more than one (a literal entry and a pattern's child naming the
+ * same file, `FileRow.key`'s own doc) - so `FilesTableView` marks every position this answers,
+ * never only the first. Empty where no row carries `selected` at all, which is not an error: a
+ * sub-project's own entry, named by a route this table has no row for. */
+export function selectedIndices(rows: readonly FileRow[], selected: string): number[] {
+  return rows.flatMap((row, index) => (row.key === selected ? [index] : []));
+}

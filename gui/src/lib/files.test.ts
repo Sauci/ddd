@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { FilesReply, IncludedEntryReply, SourceFile } from "../api/types";
-import { cellsOf, rowsOf } from "./files";
+import { cellsOf, rowsOf, selectedIndices } from "./files";
 
 const PROJECT = "C:/work/demo/demo.ddd.json";
 const A = "C:/work/demo/a.ddd.json";
@@ -291,5 +291,30 @@ describe("cellsOf", () => {
     expect(cells([missing], [])).toEqual([
       { entry: "missing.ddd.json", kind: "", state: "names no file", findings: "1" },
     ]);
+  });
+});
+
+describe("selectedIndices", () => {
+  test("two rows of one key are both selected", () => {
+    // The literal-and-pattern-share-a-key shape "a file a literal entry also names keeps two
+    // rows of one key" above already builds, now asked which positions A's own key selects.
+    const file = sourceFile();
+    const literal = entry({ index: 0, entry: "a.ddd.json", names: true, key: A, files: [A] });
+    const pattern = entry({
+      index: 1,
+      entry: "*.ddd.json",
+      names: false,
+      key: "C:/work/demo/*.ddd.json",
+      files: [A],
+    });
+    const rows = rowsOf(reply([literal, pattern]), [file]);
+    // rows: [0] the literal's own (key A), [1] the pattern's own (key "*.ddd.json"), [2] the
+    // pattern's one child (key A too) - position 1 must be left out, never only the first found.
+    expect(selectedIndices(rows, A)).toEqual([0, 2]);
+  });
+
+  test("a key that no row holds selects none", () => {
+    const rows = rowsOf(reply([entry()]), [sourceFile()]);
+    expect(selectedIndices(rows, "C:/work/demo/nothing-any-row-carries.ddd.json")).toEqual([]);
   });
 });

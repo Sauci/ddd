@@ -47,8 +47,10 @@ export const APatternWithItsMatchedFiles = () => (
 );
 
 /** missing.ddd.json, naming nothing (constructed): blank Kind, "names no file" under State (spec
- * §2: "shows as such"), and the entry's own single `include-empty` finding under Findings -
- * `rowsOf` gave the row no `SourceFile` to draw a kind from, `cellsOf` the sentence that says so. */
+ * §2: "shows as such"), and the entry's own single `file-not-found` finding under Findings - a
+ * plain path's own word, never `include-empty`'s, which is a pattern's (fixtures.ts says how this
+ * was measured) - `rowsOf` gave the row no `SourceFile` to draw a kind from, `cellsOf` the
+ * sentence that says so. */
 export const AnEntryNamingNothing = () => <Files reply={FILES_WITH_MISSING} />;
 
 /** pump.ddd.json, a literal entry `includes` still names, but its own file missing from those the

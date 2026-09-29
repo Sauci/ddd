@@ -1,18 +1,18 @@
 import type { FilesReply, SourceFile } from "../api/types";
-import { cellsOf, rowsOf } from "../lib/files";
+import { cellsOf, rowsOf, selectedIndices } from "../lib/files";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
 
 export interface FilesTableViewProps {
   reply: FilesReply;
   /** Every file the last analysis read (`State.files`), joined to `reply`'s entries by path -
-   * `rowsOf` (lib/files.ts, Task 6) is the one join this tab needs, and the one decision it
-   * makes; this view only draws what it answers. */
+   * `rowsOf` and `cellsOf` (lib/files.ts, Task 6) are the two decisions this tab needs made; this
+   * view only draws what they answer. */
   files: readonly SourceFile[];
   /** The row's key the address names (`Route`'s own `path`), or `undefined` for the bare tab.
    * One key can belong to more than one row - a literal entry and a pattern's child naming the
    * same file (`FileRow.key`'s own doc, lib/files.ts) - so every row whose `key` matches this is
-   * marked, never only the first. A `path` no row carries (a sub-project's own entry, out of this
-   * tab's reach) marks nothing, which is not an error. */
+   * marked, never only the first (`selectedIndices`, lib/files.ts). A `path` no row carries (a
+   * sub-project's own entry, out of this tab's reach) marks nothing, which is not an error. */
   selected: string | undefined;
   onSelect: (key: string | undefined) => void;
 }
@@ -22,8 +22,9 @@ export interface FilesTableViewProps {
  * indented beneath its own row. Rows are keyed by their position in `rowsOf`'s list rather than by
  * their own `key`, since two rows may share one: a literal entry and a pattern's child can both
  * name the same file (Task 4's own ruling, "New file appends a literal even where a pattern
- * matches the name"). Nothing here decides anything `rowsOf` or `cellsOf` did not already: a
- * sub-project is a row of kind `project`, drawn exactly as any other kind and never expanded. */
+ * matches the name"). Nothing here decides anything `rowsOf`, `cellsOf` or `selectedIndices` did
+ * not already: a sub-project is a row of kind `project`, drawn exactly as any other kind and never
+ * expanded. */
 export function FilesTableView({ reply, files, selected, onSelect }: FilesTableViewProps) {
   const rows = rowsOf(reply, files);
   return (
@@ -31,11 +32,7 @@ export function FilesTableView({ reply, files, selected, onSelect }: FilesTableV
       <Table
         aria-label="Files"
         selectionMode="single"
-        selectedKeys={
-          selected === undefined
-            ? []
-            : rows.flatMap((row, index) => (row.key === selected ? [index] : []))
-        }
+        selectedKeys={selected === undefined ? [] : selectedIndices(rows, selected)}
         onSelectionChange={(keys) => {
           const key = keys === "all" ? undefined : [...keys][0];
           const index = typeof key === "number" ? key : undefined;

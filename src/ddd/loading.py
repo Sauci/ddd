@@ -389,8 +389,9 @@ class Workspace:
     units: tuple[LoadedUnit, ...] = ()
     """The unit vocabulary the project declares, sorted by spelling; empty means unchecked.
 
-    An empty vocabulary is the opt-out: no units file, no constraint. Once any file declares
-    one, every stated unit is checked against the union of what every units file declares.
+    An empty vocabulary is the opt-out: no units file, or only units files declaring nothing,
+    and no constraint either way. Once any file declares one, every stated unit is checked
+    against the union of what every units file declares.
     """
 
     unit_entries: tuple[LoadedUnit, ...] = ()
@@ -786,6 +787,7 @@ class _Loader:
         path: Path,
         data: dict[str, Any],
         *,
+        kind: str,
         file_model: type[ModelT],
         entries: Callable[[ModelT], tuple[EntryT, ...]],
         wrap: Callable[[Path, int, EntryT], LoadedT],
@@ -799,6 +801,11 @@ class _Loader:
         together with where it was declared, and refuse the second declaration of a key as
         ``duplicate-<noun>`` - with a note at the first - rather than letting one of them
         quietly win.
+
+        A file whose list is empty loads, and is filed here as ``empty-vocabulary``: once, for
+        all five kinds, rather than by each loader. ``kind`` is the top level key that made the
+        file one of its kind, and so the pointer of that list - the finding is drawn at what
+        declares nothing, where an editor underlines the empty list and not the whole file.
         """
         try:
             model = file_model.model_validate(data)
@@ -806,7 +813,14 @@ class _Loader:
             self._report_validation_error(path, error, data)
             return
 
-        for index, declared in enumerate(entries(model)):
+        listed = entries(model)
+        if not listed:
+            self._bag.add(
+                "empty-vocabulary",
+                f"{kind} file '{path.name}' declares no {noun}",
+                Location(path, kind),
+            )
+        for index, declared in enumerate(listed):
             self._register(wrap(path, index, declared), key=key, registry=registry, noun=noun)
 
     def _register[LoadedT: _Located](
@@ -844,6 +858,7 @@ class _Loader:
         self._load_vocabulary(
             path,
             data,
+            kind="types",
             file_model=TypesFile,
             entries=lambda model: model.types,
             wrap=LoadedType,
@@ -862,6 +877,7 @@ class _Loader:
         self._load_vocabulary(
             path,
             data,
+            kind="units",
             file_model=UnitsFile,
             entries=lambda model: model.units,
             wrap=self._unit_entry,
@@ -888,6 +904,7 @@ class _Loader:
         self._load_vocabulary(
             path,
             data,
+            kind="sections",
             file_model=SectionsFile,
             entries=lambda model: model.sections,
             wrap=LoadedSection,
@@ -906,6 +923,7 @@ class _Loader:
         self._load_vocabulary(
             path,
             data,
+            kind="rasters",
             file_model=RastersFile,
             entries=lambda model: model.rasters,
             wrap=LoadedRaster,
@@ -925,6 +943,7 @@ class _Loader:
         self._load_vocabulary(
             path,
             data,
+            kind="constants",
             file_model=ConstantsFile,
             entries=lambda model: model.constants,
             wrap=LoadedConstant,

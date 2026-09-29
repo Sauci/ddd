@@ -108,6 +108,12 @@ class ConstantsFile(FileRoot):
 
     model_config = ConfigDict(title="DDD constant vocabulary")
 
-    constants: Annotated[tuple[ConstantDeclaration, ...], Field(min_length=1)]
-    """The constants this project names, in any order; an empty vocabulary is no file at
-    all."""
+    constants: Annotated[tuple[ConstantDeclaration, ...], Field(min_length=0)]
+    """The constants this project names, in any order, and possibly none.
+
+    A file declaring none loads, and is reported as ``empty-vocabulary``. An empty list used to
+    be refused - an empty vocabulary was no file at all - and is accepted now so that
+    ``ddd gui``, which cannot delete a file, can take a project from one constant to none. The
+    ``constants`` a component declares keeps the old rule: there, leaving the key out is how
+    none is written.
+    """

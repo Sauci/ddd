@@ -6,10 +6,11 @@ and ``newton_meter`` mean the same thing - and without a vocabulary the drift is
 each object agrees with itself, and the calibration tool ends up showing two units for one
 quantity.
 
-Declaring the vocabulary is opt-in.  A project without a units file keeps its units free;
-one with a units file has every stated unit checked against it (``unknown-unit``), with the
-nearest declared spelling suggested.  The empty unit - a dimensionless value - is always
-allowed, because it is the absence of an answer rather than a spelling of one.
+Declaring the vocabulary is opt-in.  A project whose units files declare no unit - because it
+has none, or because each one it has declares nothing - keeps its units free; once one
+declares a unit, every stated unit is checked against what they declare (``unknown-unit``),
+with the nearest declared spelling suggested.  The empty unit - a dimensionless value - is
+always allowed, because it is the absence of an answer rather than a spelling of one.
 """
 
 from __future__ import annotations
@@ -84,6 +85,12 @@ class UnitsFile(FileRoot):
     model_config = ConfigDict(title="DDD unit vocabulary")
 
     units: Annotated[
-        tuple[Unit, ...], Field(min_length=1, json_schema_extra=_publish_bare_spellings)
+        tuple[Unit, ...], Field(min_length=0, json_schema_extra=_publish_bare_spellings)
     ]
-    """The units this project spells, in any order; an empty vocabulary is no file at all."""
+    """The units this project spells, in any order, and possibly none.
+
+    A file listing none loads, adds nothing to the vocabulary, and is reported as
+    ``empty-vocabulary``. An empty list used to be refused - an empty vocabulary was no file at
+    all - and is accepted now so that ``ddd gui``, which cannot delete a file, can take a
+    project from one unit to none.
+    """

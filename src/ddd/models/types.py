@@ -530,8 +530,14 @@ class TypesFile(FileRoot):
 
     model_config = ConfigDict(title="DDD type description")
 
-    types: tuple[AnyType, ...] = Field(min_length=1)
-    """The types this file declares."""
+    types: tuple[AnyType, ...] = Field(min_length=0)
+    """The types this file declares, and possibly none.
+
+    A file declaring none loads, and is reported as ``empty-vocabulary``, so that ``ddd gui``,
+    which cannot delete a file, can take a project from one type to none. A structure still
+    needs a member - an empty structure is not c - and a component that publishes no type
+    leaves its ``types`` key out rather than writing an empty list.
+    """
 
     @model_validator(mode="after")
     def _type_names_are_distinct(self) -> TypesFile:

@@ -579,6 +579,7 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | warning | `point-counts-mismatch` | a curve or map and one of its axes store their point counts differently |
 | warning | `address-missing` | an object in the a2l has no entry in the address map the run was given |
 | info | `empty-component` | a component declares no variable |
+| info | `empty-vocabulary` | a types, units, constants, sections or rasters file declares nothing |
 | info | `incomplete-project` | a variable is missing from the dictionary and the finding that says why is silenced |
 | info | `missing-id` | a producing declaration or instance states no `id` |
 

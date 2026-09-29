@@ -1458,6 +1458,11 @@ Warnings:
 Information:
 
 - `empty-component`: a component declares no data object at all.
+- `empty-vocabulary`: a types, units, constants, sections or rasters file declares nothing,
+  its own list being empty. The file loads: emptying one is how a project goes from one entry
+  of a vocabulary to none. The finding is drawn at that list. A units file declaring nothing
+  adds nothing to the vocabulary, so a project whose units files all declare nothing keeps its
+  units free, as a project without one does.
 - `incomplete-project`: a declaration was dropped and the finding that explains why is
   set to `ignore`. Dropping is not a severity decision: a variable of an unknown type,
   or one dimensioned by a constant nothing declares, has no storage anything downstream

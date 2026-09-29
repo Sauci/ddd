@@ -109,18 +109,17 @@ STRAY_CONSTANTS_FILE = {
     "constants.ddd.json": "not a file `add` wrote",
 }
 
-# The case the fixture below was written around: one constant and nothing else in the list, so
-# removing it would leave `"constants": []` - which `ddd check` answers `error[schema]: Tuple
-# should have at least 1 item after validation, not 0` and exit 1 for. Two clicks from this tab's
-# own add flow, since nothing names it and Remove is offered.
+# One constant and nothing else in the file's own list, so removing it leaves `"constants": []` -
+# refused while that was a schema error, and now a file that loads and declares nothing. Two
+# clicks from this tab's own add flow, since nothing names it and Remove is offered.
 SOLE_CONSTANT_IN_A_FILE = {
     "p.ddd.json": project("P", "c.ddd.json"),
     "c.ddd.json": {"constants": [{"name": "SOLE", "value": 4, "description": "the only one"}]},
 }
 
-# The same case in the other home, where emptying the list costs more: `Component.constants`
-# carries the same `min_length=1`, and a component that stops loading takes every variable it
-# declares out of the project with it.
+# The same case in the other home, where the list may still not be empty: `Component.constants`
+# keeps its `min_length=1`, and a component that stops loading takes every variable it declares
+# out of the project with it - so its last constant goes with the `constants` key instead.
 SOLE_CONSTANT_IN_A_COMPONENT = {
     "p.ddd.json": project("P", "a.ddd.json"),
     "a.ddd.json": component(
@@ -137,9 +136,8 @@ HALF_WRITTEN_CONSTANTS = {
     "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
 }
 
-# Two constants, neither used: removing one must not empty the file below the format's own
-# `min_length=1` on `constants` (measured - a file it would leave holding `"constants": []`
-# fails to load, same as one that never had any, which is not what this fixture is for).
+# Two constants, neither used, so that removing one leaves the other: the last one going is the
+# case SOLE_CONSTANT_IN_A_FILE is for.
 UNUSED_CONSTANT = {
     "p.ddd.json": project("P", "c.ddd.json"),
     "c.ddd.json": {
@@ -153,8 +151,8 @@ UNUSED_CONSTANT = {
 # The sections the shipped example cannot supply: both of its own are placed in, so neither may
 # be removed, and a project that has no sections file at all is the one `add` creates into.
 #
-# Two sections, one of them named by nothing: removing it must not empty the list below the
-# format's own `min_length=1` on `sections`, which is the case SOLE_SECTION_IN_A_FILE is for.
+# Two sections, one of them named by nothing, so that removing it leaves the other: the last one
+# going is the case SOLE_SECTION_IN_A_FILE is for.
 UNUSED_SECTION = {
     "p.ddd.json": project("P", "s.ddd.json", "a.ddd.json"),
     "s.ddd.json": {
@@ -166,9 +164,9 @@ UNUSED_SECTION = {
     "a.ddd.json": component("A", declare("output", "Gain", section=".ram")),
 }
 
-# One section and nothing else in the list, so removing it would leave `"sections": []` - a
-# document `SectionsFile` rejects, exactly as `"constants": []` is rejected, and two clicks from
-# this tab: declare a section into a project that has none, then remove it.
+# One section and nothing else in the list, so removing it leaves `"sections": []` - refused while
+# that was a schema error, exactly as `"constants": []` was, and a file that loads now. Two clicks
+# from this tab: declare a section into a project that has none, then remove it.
 SOLE_SECTION_IN_A_FILE = {
     "p.ddd.json": project("P", "s.ddd.json"),
     "s.ddd.json": {"sections": [{"section": ".sole", "access": "read-write", "alignment": 4}]},
@@ -299,8 +297,8 @@ UNREADABLE_RASTERS = {
     "r.ddd.json": {"rasters": [{"raster": "50ms"}]},
 }
 
-# One raster and nothing else in the list, so removing it would leave `"rasters": []` - a document
-# `RastersFile` rejects, exactly as `"sections": []` is rejected.
+# One raster and nothing else in the list, so removing it leaves `"rasters": []` - refused while
+# that was a schema error, exactly as `"sections": []` was, and a file that loads now.
 SOLE_RASTER_IN_A_FILE = {
     "p.ddd.json": project("P", "r.ddd.json"),
     "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1}]},
@@ -3093,30 +3091,42 @@ class TestConstant:
         assert applied(api, preview, "SPARE removed").status == 200
         assert get(api, "/api/constant", name="SPARE").status == 404
 
-    def test_removing_the_only_constant_a_file_declares_is_refused(self, tmp_path: Path) -> None:
-        """Measured before it was guarded: this same request answered 200 with a one-operation
-        plan, `POST /api/edit` wrote `{"constants": []}`, and `ddd check` on what was left
-        answered `error[schema]: Tuple should have at least 1 item after validation, not 0` and
-        exited 1. The whole point of the refusal is that the file is still there afterwards."""
-        api = opened(tmp_path, SOLE_CONSTANT_IN_A_FILE)
-        before = contents(tmp_path)
-        reply = get(api, "/api/constant-plan", action="remove", name="SOLE")
-        assert (reply.status, reply.body["error"]) == (409, "invalid")
-        assert "'SOLE' is all c.ddd.json declares" in reply.body["message"]
-        assert contents(tmp_path) == before
-
-    def test_removing_the_only_constant_a_component_declares_inline_is_refused(
+    def test_removing_the_only_constant_a_file_declares_leaves_it_declaring_nothing(
         self, tmp_path: Path
     ) -> None:
-        """The other home. Worse than a constants file that stops loading: the component stops
-        loading, so `Speed` - every variable it declares - leaves the project along with the
-        constant the reader meant to remove."""
+        """This request used to be refused, `{"constants": []}` being a schema error. The file's
+        own list may be empty now: the removal is applied, and what is left loads, reported as
+        `empty-vocabulary` at the list - so the project stays open rather than emptying the page.
+        """
+        api = opened(tmp_path, SOLE_CONSTANT_IN_A_FILE)
+        preview = get(api, "/api/constant-plan", action="remove", name="SOLE").body
+        assert applied(api, preview, "SOLE removed").status == 200
+        written = json.loads((tmp_path / "c.ddd.json").read_text(encoding="utf-8"))
+        assert written == {"constants": []}
+        state = get(api, "/api/state").body
+        assert [(f["check"], f["severity"], f["pointer"]) for f in state["findings"]] == [
+            ("empty-vocabulary", "info", "constants")
+        ]
+        assert get(api, "/api/constant", name="SOLE").status == 404
+
+    def test_removing_the_only_constant_a_component_declares_inline_takes_the_key_with_it(
+        self, tmp_path: Path
+    ) -> None:
+        """The other home, whose list may still not be empty: a component publishing no constant
+        leaves the key out, so the key goes with its last entry. `"constants": []` written there
+        would stop the component loading, and `Speed` - every variable it declares - would leave
+        the project along with the constant the reader meant to remove."""
         api = opened(tmp_path, SOLE_CONSTANT_IN_A_COMPONENT)
-        before = contents(tmp_path)
-        reply = get(api, "/api/constant-plan", action="remove", name="SOLE")
-        assert (reply.status, reply.body["error"]) == (409, "invalid")
-        assert "'SOLE' is all a.ddd.json declares" in reply.body["message"]
-        assert contents(tmp_path) == before
+        preview = get(api, "/api/constant-plan", action="remove", name="SOLE").body
+        assert [change["operations"] for change in preview["changes"]] == [
+            [{"op": "remove", "pointer": "component.constants", "raw": None}]
+        ]
+        assert applied(api, preview, "SOLE removed").status == 200
+        written = json.loads((tmp_path / "a.ddd.json").read_text(encoding="utf-8"))
+        assert "constants" not in written["component"]
+        assert "schema" not in {f["check"] for f in get(api, "/api/state").body["findings"]}
+        assert get(api, "/api/variable", name="Speed").status == 200
+        assert get(api, "/api/constant", name="SOLE").status == 404
 
     def test_removing_a_constant_a_shape_names_is_refused(self, tmp_path: Path) -> None:
         api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
@@ -3615,18 +3625,21 @@ class TestSection:
         assert says in reply.body["message"]
         assert contents(root) == before
 
-    def test_removing_the_only_section_a_file_declares_is_refused(self, tmp_path: Path) -> None:
-        """`sections` carries the same `min_length=1` `constants` does, so the emptied file is one
-        the format rejects - and the whole point of the refusal is that it is still there."""
+    def test_removing_the_only_section_a_file_declares_leaves_it_declaring_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """The constants case at the second vocabulary: refused while `sections` was
+        `min_length=1`, applied now, and the file left behind loads."""
         api = opened(tmp_path, SOLE_SECTION_IN_A_FILE)
-        before = contents(tmp_path)
-        reply = get(api, "/api/section-plan", action="remove", name=".sole")
-        assert (reply.status, reply.body["error"]) == (409, "invalid")
-        assert (
-            "'.sole' is all s.ddd.json declares, and a list of sections declares at least one"
-            in reply.body["message"]
-        )
-        assert contents(tmp_path) == before
+        preview = get(api, "/api/section-plan", action="remove", name=".sole").body
+        assert applied(api, preview, ".sole removed").status == 200
+        written = json.loads((tmp_path / "s.ddd.json").read_text(encoding="utf-8"))
+        assert written == {"sections": []}
+        state = get(api, "/api/state").body
+        assert [(f["check"], f["severity"], f["pointer"]) for f in state["findings"]] == [
+            ("empty-vocabulary", "info", "sections")
+        ]
+        assert get(api, "/api/section", name=".sole").status == 404
 
     def test_a_section_no_file_declares_cannot_be_changed(self, tmp_path: Path) -> None:
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
@@ -4226,18 +4239,21 @@ class TestRaster:
         assert reply.body["message"] == says
         assert contents(root) == before
 
-    def test_removing_the_only_raster_a_file_declares_is_refused(self, tmp_path: Path) -> None:
-        """`rasters` carries the same `min_length=1` `sections` does, so the emptied file is one
-        the format rejects - and the whole point of the refusal is that it is still there."""
+    def test_removing_the_only_raster_a_file_declares_leaves_it_declaring_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """The constants case at the third vocabulary: refused while `rasters` was
+        `min_length=1`, applied now, and the file left behind loads."""
         api = opened(tmp_path, SOLE_RASTER_IN_A_FILE)
-        before = contents(tmp_path)
-        reply = get(api, "/api/raster-plan", action="remove", name="10ms")
-        assert (reply.status, reply.body["error"]) == (409, "invalid")
-        assert reply.body["message"] == (
-            "'10ms' is all r.ddd.json declares, and a list of rasters declares at least one; "
-            "emptied, the file would no longer load"
-        )
-        assert contents(tmp_path) == before
+        preview = get(api, "/api/raster-plan", action="remove", name="10ms").body
+        assert applied(api, preview, "10ms removed").status == 200
+        written = json.loads((tmp_path / "r.ddd.json").read_text(encoding="utf-8"))
+        assert written == {"rasters": []}
+        state = get(api, "/api/state").body
+        assert [(f["check"], f["severity"], f["pointer"]) for f in state["findings"]] == [
+            ("empty-vocabulary", "info", "rasters")
+        ]
+        assert get(api, "/api/raster", name="10ms").status == 404
 
     def test_a_raster_no_file_declares_cannot_be_changed(self, tmp_path: Path) -> None:
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")

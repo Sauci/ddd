@@ -42,7 +42,7 @@
       "title": "$Schema"
     },
     "units": {
-      "description": "The units this project spells, in any order; an empty vocabulary is no file at all.",
+      "description": "The units this project spells, in any order, and possibly none.\n\nA file listing none loads, adds nothing to the vocabulary, and is reported as\n``empty-vocabulary``. An empty list used to be refused - an empty vocabulary was no file at\nall - and is accepted now so that ``ddd gui``, which cannot delete a file, can take a\nproject from one unit to none.",
       "items": {
         "anyOf": [
           {
@@ -55,7 +55,7 @@
           }
         ]
       },
-      "minItems": 1,
+      "minItems": 0,
       "title": "Units",
       "type": "array"
     }

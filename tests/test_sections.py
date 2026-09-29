@@ -24,7 +24,7 @@ from conftest import (
     run_analysis,
     write_tree,
 )
-from ddd.diagnostics import DiagnosticBag
+from ddd.diagnostics import DiagnosticBag, Severity
 from ddd.loading import load_workspace
 from ddd.models import SectionsFile
 
@@ -84,6 +84,29 @@ class TestTheFile:
         """No linker accepts one either, and a finding would quote it confusingly."""
         with pytest.raises(ValidationError):
             SectionsFile.model_validate(sections(section("two words")))
+
+    def test_a_file_declaring_no_section_loads_and_is_reported_at_info(self, tree: Path) -> None:
+        """A sections file may declare nothing: it loads, and the analysis says so.
+
+        Before, ``sections`` was ``min_length=1`` and the empty list a schema error, so the page
+        refused to remove the last section a file declared, having no way to delete the file.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "sections.ddd.json", "a.ddd.json"),
+                "sections.ddd.json": sections(),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is not None
+        assert [(found.check, found.severity, found.message) for found in bag] == [
+            (
+                "empty-vocabulary",
+                Severity.INFO,
+                "sections file 'sections.ddd.json' declares no section",
+            )
+        ]
 
     def test_a_sections_file_is_not_analysed_on_its_own(self, tree: Path) -> None:
         write_tree(tree, {"sections.ddd.json": sections(section(".data"))})

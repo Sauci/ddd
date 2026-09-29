@@ -99,8 +99,7 @@ class SharedRefusalError(Exception):
     code: Literal["unreadable", "invalid", "not-found"]
     """``unreadable``: a file the change has to see did not load. ``invalid``: the change cannot
     be made - a key a constant has not, a name that may not be used, a constant a shape still
-    names, the only constant its list declares. ``not-found``: no file of the project declares a
-    constant of that name."""
+    names. ``not-found``: no file of the project declares a constant of that name."""
 
     message: str
     """The sentence the refusal is shown with, naming the file it concerns."""
@@ -327,50 +326,56 @@ def add_entry(
 def remove_entry(
     vocabulary: Vocabulary, built: Index, name: str, cache: dict[Path, Document]
 ) -> SharedPlan:
-    """That entry of ``vocabulary`` taken out of the list holding it.
+    """That entry of ``vocabulary`` taken out of the list holding it - or, where that list is
+    nested and the entry is its last, the key holding the list.
 
     Refused while any shape names it. Removed, each of those shapes would name nothing, which is
     an ``unknown-*`` finding apiece in files the reader was not looking at - a worse answer than
     saying no. What is in use is asked of the index, never of a file's text: reading text to answer
     a question about meaning is the mistake part 11 filed against ``variable_keys._storage_of``.
 
-    Refused, too, where the entry is all its list holds, as :func:`ddd.lsp.units._taken_out`
-    refuses the last unit of a units file and for the same reason: the list is ``min_length=1`` in
-    every home a vocabulary's entries can live - :class:`ddd.models.constants.ConstantsFile` and
-    :class:`ddd.models.component.Component` among them - so the emptied list is a document the
-    format rejects. Measured: a constants file left ``{"constants": []}`` makes ``ddd check``
-    answer ``error[schema]: Tuple should have at least 1 item after validation, not 0`` and exit
-    1, and a component emptied that way stops loading altogether, so every variable it declares
-    goes out of the project with the constant. Two clicks reach it from this tab - declare a
-    constant into a project that has none, then remove it, since nothing names it and Remove is
-    offered. Taking the whole container key out instead would load for a component, whose
-    container key is optional, and not for the vocabulary's own file, whose container key is what
-    makes it one - and a Remove meaning a different edit depending on which home the entry happens
-    to live in is not the design's "the entry, and nothing else".
+    Otherwise the entry goes, and what that leaves depends on which list held it - told from the
+    descriptor alone, the list's pointer against the first of
+    :attr:`~ddd.project_shared.Vocabulary.containers`, so that nothing here learns which
+    vocabulary it is serving:
 
-    The list is read from the file rather than counted off the index because the index holds the
-    project's entries by name across every file, not the entries of one list; ``cache`` is the one
-    this plan's other reads already share.
+    * In the vocabulary file's own list, the last entry goes like any other and leaves the file
+      declaring nothing, which loads and is reported as ``empty-vocabulary``. This used to be
+      refused, on the rule that declaring nothing is done by not writing the file; the rule is
+      reversed on purpose, because ``ddd gui`` cannot delete a file, so under it no reader could
+      take a project from one entry to none.
+    * In a nested list - a component's own ``constants``, the only one today - the list is still
+      ``min_length=1``, since leaving the key out is how a component publishes none. ``[]``
+      written there would stop the component loading, and every variable it declares would go
+      out of the project with the constant, so the last entry takes the key with it instead.
+
+    A Remove of the last constant a component declares is therefore a different edit from every
+    other Remove - the key holding the entry rather than the entry - which the version before this
+    one refused to make, reading the design's "the entry, and nothing else" as forbidding it. Each
+    edit leaves the list's home in the format's own spelling of none, which is what taking the
+    entry out means.
+
+    A nested list is read from the file rather than counted off the index, because the index holds
+    the project's entries by name across every file, not the entries of one list; ``cache`` is the
+    one this plan's other reads already share.
     """
     entry = _entry(vocabulary, built, name)
     used = vocabulary.used(built).get(name, ())
-    # Checked before the sole-entry guard below, and not the other way round: this one names a
-    # place the reader can go to and undo - the shape naming the entry - where the sole-entry
-    # guard names only the file. Which sentence a reader meets must not depend on the order a
-    # dict happened to yield, so the more actionable one goes first.
+    # Asked before what taking the entry out leaves, and not the other way round: on the last
+    # entry of a nested list that answer is a plan taking the whole key away, which would leave
+    # every shape naming the entry naming nothing - and this refusal names a place the reader can
+    # go to and undo.
     if used:
         raise SharedRefusalError(
             "invalid",
             f"'{name}' is named by {_plural(len(used), 'shape')}, the first in "
             f"{used[0].path.name}; nothing may name it before it goes",
         )
-    listed = read(entry.path, cache).value_at(parent_pointer(entry.pointer))
-    if isinstance(listed, list) and len(listed) <= 1:
-        raise SharedRefusalError(
-            "invalid",
-            f"'{name}' is all {entry.path.name} declares, and a list of {vocabulary.kind}s "
-            "declares at least one; emptied, the file would no longer load",
-        )
+    holding = parent_pointer(entry.pointer)
+    if holding != vocabulary.containers[0]:
+        listed = read(entry.path, cache).value_at(holding)
+        if isinstance(listed, list) and len(listed) <= 1:
+            return _plan({entry.path: [Operation("remove", holding)]})
     return _plan({entry.path: [Operation("remove", entry.pointer)]})
 
 

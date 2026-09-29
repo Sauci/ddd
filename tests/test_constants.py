@@ -28,7 +28,7 @@ from conftest import (
     value_member,
     write_tree,
 )
-from ddd.diagnostics import DiagnosticBag
+from ddd.diagnostics import DiagnosticBag, Severity
 from ddd.ir import (
     DICTIONARY_FORMAT,
     DataDictionary,
@@ -99,10 +99,31 @@ class TestTheFile:
         with pytest.raises(ValidationError):
             ConstantsFile.model_validate({"constants": [{"name": "N", "value": "8"}]})
 
-    def test_an_empty_vocabulary_is_refused(self) -> None:
-        """Declaring nothing is done by not writing the file, not by an empty list."""
-        with pytest.raises(ValidationError):
-            ConstantsFile.model_validate(constants())
+    def test_an_empty_vocabulary_loads_and_is_reported_at_info(self, tree: Path) -> None:
+        """A constants file may declare nothing: it loads, and the analysis says so.
+
+        This test used to pin the opposite - "declaring nothing is done by not writing the
+        file, not by an empty list" - and that rule is reversed on purpose: the page cannot
+        delete a file, so under it a reader could never take a project from one constant to
+        none. A component's own ``constants`` keeps it: there, leaving the key out is how "none"
+        is written (``test_embedded.py``).
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "constants.ddd.json", "a.ddd.json"),
+                "constants.ddd.json": constants(),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is not None
+        assert [(found.check, found.severity, found.message) for found in bag] == [
+            (
+                "empty-vocabulary",
+                Severity.INFO,
+                "constants file 'constants.ddd.json' declares no constant",
+            )
+        ]
 
     def test_a_constants_file_is_not_analysed_on_its_own(self, tree: Path) -> None:
         write_tree(tree, {"constants.ddd.json": constants(constant("N", 4))})

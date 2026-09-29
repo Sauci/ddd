@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from conftest import checks, component, declare, messages, project, run_analysis, write_tree
 from ddd.analysis import close_units
-from ddd.diagnostics import DiagnosticBag
+from ddd.diagnostics import DiagnosticBag, Severity
 from ddd.loading import load_workspace
 from ddd.models import UnitsFile
 
@@ -35,10 +35,25 @@ class TestTheFile:
         model = UnitsFile.model_validate(units({"unit": "Nm", "description": "torque"}))
         assert model.units[0].description == "torque"
 
-    def test_an_empty_vocabulary_is_refused(self) -> None:
-        """Declaring nothing is done by not writing the file, not by an empty list."""
-        with pytest.raises(ValidationError):
-            UnitsFile.model_validate(units())
+    def test_an_empty_vocabulary_loads_and_is_reported_at_info(self, tree: Path) -> None:
+        """A units file may declare nothing: it loads, and the analysis says so.
+
+        This test used to pin the opposite - "declaring nothing is done by not writing the
+        file, not by an empty list" - and that rule is reversed on purpose: the page cannot
+        delete a file, so under it a reader could never take a project from one unit to none.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "units.ddd.json", "a.ddd.json"),
+                "units.ddd.json": units(),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is not None
+        assert [(found.check, found.severity, found.message) for found in bag] == [
+            ("empty-vocabulary", Severity.INFO, "units file 'units.ddd.json' declares no unit")
+        ]
 
     def test_an_empty_spelling_is_refused(self) -> None:
         """The empty unit is the absence of an answer, not a spelling of one."""

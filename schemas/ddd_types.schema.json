@@ -620,7 +620,7 @@
       "title": "$Schema"
     },
     "types": {
-      "description": "The types this file declares.",
+      "description": "The types this file declares, and possibly none.\n\nA file declaring none loads, and is reported as ``empty-vocabulary``, so that ``ddd gui``,\nwhich cannot delete a file, can take a project from one type to none. A structure still\nneeds a member - an empty structure is not c - and a component that publishes no type\nleaves its ``types`` key out rather than writing an empty list.",
       "items": {
         "discriminator": {
           "mapping": {
@@ -642,7 +642,7 @@
           }
         ]
       },
-      "minItems": 1,
+      "minItems": 0,
       "title": "Types",
       "type": "array"
     }

@@ -88,5 +88,10 @@ class SectionsFile(FileRoot):
 
     model_config = ConfigDict(title="DDD memory sections")
 
-    sections: Annotated[tuple[SectionDeclaration, ...], Field(min_length=1)]
-    """The sections this project places data in; an empty list is no file at all."""
+    sections: Annotated[tuple[SectionDeclaration, ...], Field(min_length=0)]
+    """The sections this project places data in, and possibly none.
+
+    A file declaring none loads, and is reported as ``empty-vocabulary``. An empty list used to
+    be refused - it was no file at all - and is accepted now so that ``ddd gui``, which cannot
+    delete a file, can take a project from one section to none.
+    """

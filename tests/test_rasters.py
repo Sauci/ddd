@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from conftest import checks, component, declare, messages, project, run_analysis, write_tree
 from ddd.cli import schema_text
-from ddd.diagnostics import DiagnosticBag
+from ddd.diagnostics import DiagnosticBag, Severity
 from ddd.ir import DataDictionary
 from ddd.loading import load_workspace
 from ddd.models import RastersFile
@@ -110,6 +110,29 @@ class TestTheFile:
     def test_a_period_xcp_carries_is_accepted(self, cycle: str, nanoseconds: int) -> None:
         declared = RastersFile.model_validate(rasters(raster(cycle=cycle))).rasters[0]
         assert declared.cycle_ns == nanoseconds
+
+    def test_a_file_declaring_no_raster_loads_and_is_reported_at_info(self, tree: Path) -> None:
+        """A rasters file may declare nothing: it loads, and the analysis says so.
+
+        Before, ``rasters`` was ``min_length=1`` and the empty list a schema error, so the page
+        refused to remove the last raster a file declared, having no way to delete the file.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "rasters.ddd.json", "a.ddd.json"),
+                "rasters.ddd.json": rasters(),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is not None
+        assert [(found.check, found.severity, found.message) for found in bag] == [
+            (
+                "empty-vocabulary",
+                Severity.INFO,
+                "rasters file 'rasters.ddd.json' declares no raster",
+            )
+        ]
 
     def test_a_rasters_file_is_not_analysed_on_its_own(self, tree: Path) -> None:
         write_tree(tree, {"rasters.ddd.json": rasters(raster())})

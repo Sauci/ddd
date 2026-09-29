@@ -18,7 +18,6 @@ said it had rewritten.
 from __future__ import annotations
 
 import json
-from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -148,7 +147,7 @@ def rename_unit(
         )
     entries = built.vocabulary.get(old, [])
     if new in built.vocabulary:
-        for file, removals in _taken_out(entries, old, cache).items():
+        for file, removals in _taken_out(entries).items():
             operations.setdefault(file, []).extend(removals)
     else:
         for entry in entries:
@@ -216,7 +215,9 @@ def remove_unit(
     """Every entry listing ``unit`` taken out of the vocabulary, each with exactly one comma.
 
     Only a unit nothing states: taking out one that is stated would turn every place stating it
-    into an ``unknown-unit`` finding.
+    into an ``unknown-unit`` finding. The last unit of a file goes like any other, leaving a file
+    that lists none. ``cache`` is taken for the shape every plan here shares, and nothing in this
+    one reads it now that no file's entries have to be counted first.
     """
     _vocabulary_loaded(built, project, unit, "it cannot be taken out of it")
     stated = built.units.get(unit)
@@ -230,7 +231,7 @@ def remove_unit(
     entries = built.vocabulary.get(unit)
     if entries is None:
         raise UnitRefusalError("not-found", f"no file of this project states or lists '{unit}'")
-    return _plan(_taken_out(entries, unit, cache))
+    return _plan(_taken_out(entries))
 
 
 def adopt_units(built: Index, project: UnitProject, cache: dict[Path, Document]) -> UnitPlan:
@@ -254,7 +255,7 @@ def adopt_units(built: Index, project: UnitProject, cache: dict[Path, Document])
         )
     if not built.units:
         raise UnitRefusalError(
-            "invalid", "this project states no unit, and a units file lists at least one"
+            "invalid", "this project states no unit, so there is nothing to adopt"
         )
     created = project.project.parent / ADOPTED
     if created.exists():
@@ -303,23 +304,13 @@ def _vocabulary_loaded(built: Index, project: UnitProject, unit: str, consequenc
         raise UnitRefusalError("unreadable", f"{_names(unread)} did not load, so {consequence}")
 
 
-def _taken_out(
-    entries: Sequence[Site], unit: str, cache: dict[Path, Document]
-) -> dict[Path, list[Operation]]:
+def _taken_out(entries: Sequence[Site]) -> dict[Path, list[Operation]]:
     """The removals taking every entry of ``unit`` out of the vocabulary, file by file.
 
     The entry furthest down a file goes first: the edit engine makes a file's operations one
-    after another, and taking out ``units[1]`` makes ``units[3]`` the new ``units[2]``. Refused
-    where the file would be left listing no unit at all, which a units file may not do - emptied,
-    it would no longer load.
+    after another, and taking out ``units[1]`` makes ``units[3]`` the new ``units[2]``. A file
+    left listing no unit loads, and is reported as ``empty-vocabulary``.
     """
-    for file, taken in Counter(entry.path for entry in entries).items():
-        listed = read(file, cache).value_at("units")
-        if isinstance(listed, list) and taken >= len(listed):
-            raise UnitRefusalError(
-                "invalid",
-                f"'{unit}' is all {file.name} lists, and a units file lists at least one unit",
-            )
     operations: dict[Path, list[Operation]] = {}
     for entry in sorted(entries, key=lambda entry: (entry.path.as_posix(), -_position(entry))):
         operations.setdefault(entry.path, []).append(Operation("remove", entry.pointer))

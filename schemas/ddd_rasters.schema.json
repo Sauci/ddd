@@ -65,11 +65,11 @@
       "title": "$Schema"
     },
     "rasters": {
-      "description": "The DAQ events the target offers; an empty list is no file at all.",
+      "description": "The DAQ events the target offers, and possibly none.\n\nA file declaring none loads, and is reported as ``empty-vocabulary``. An empty list used to\nbe refused - it was no file at all - and is accepted now so that ``ddd gui``, which cannot\ndelete a file, can take a project from one raster to none.",
       "items": {
         "$ref": "#/$defs/RasterDeclaration"
       },
-      "minItems": 1,
+      "minItems": 0,
       "title": "Rasters",
       "type": "array"
     }

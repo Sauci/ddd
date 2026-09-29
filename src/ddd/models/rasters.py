@@ -145,5 +145,10 @@ class RastersFile(FileRoot):
 
     model_config = ConfigDict(title="DDD measurement rasters")
 
-    rasters: Annotated[tuple[RasterDeclaration, ...], Field(min_length=1)]
-    """The DAQ events the target offers; an empty list is no file at all."""
+    rasters: Annotated[tuple[RasterDeclaration, ...], Field(min_length=0)]
+    """The DAQ events the target offers, and possibly none.
+
+    A file declaring none loads, and is reported as ``empty-vocabulary``. An empty list used to
+    be refused - it was no file at all - and is accepted now so that ``ddd gui``, which cannot
+    delete a file, can take a project from one raster to none.
+    """

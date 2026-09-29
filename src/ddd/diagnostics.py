@@ -210,6 +210,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("address-missing", Severity.WARNING,
                "an object reaching the a2l has no entry in the address map the run was given"),
         _check("empty-component", Severity.INFO, "a component declares no variable at all"),
+        _check("empty-vocabulary", Severity.INFO,
+               "a types, units, constants, sections or rasters file declares nothing"),
         # Not one of the checks a missing component makes wrong, although every one of those
         # can be its cause: the analysis weighs the cause instead, and says nothing when the
         # run is itself the reason nobody reported it - see ``_silenced_by_construction``.

@@ -59,11 +59,11 @@
       "title": "$Schema"
     },
     "constants": {
-      "description": "The constants this project names, in any order; an empty vocabulary is no file at\nall.",
+      "description": "The constants this project names, in any order, and possibly none.\n\nA file declaring none loads, and is reported as ``empty-vocabulary``. An empty list used to\nbe refused - an empty vocabulary was no file at all - and is accepted now so that\n``ddd gui``, which cannot delete a file, can take a project from one constant to none. The\n``constants`` a component declares keeps the old rule: there, leaving the key out is how\nnone is written.",
       "items": {
         "$ref": "#/$defs/ConstantDeclaration"
       },
-      "minItems": 1,
+      "minItems": 0,
       "title": "Constants",
       "type": "array"
     }

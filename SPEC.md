@@ -970,11 +970,13 @@ Case counts: `mV` and `MV` are different units. A unit is declared exactly once:
 declaration after the first, whether it appears in the same file or in another, is
 `duplicate-unit`, with a note at the first.
 
-Declaring the vocabulary is opt-in: a project without a units file keeps its units free, and
-so does one whose units files all declare no unit. Once one declares a unit, every stated
-unit, whether on a definition, on a structure member or on a scalar type, is checked where it
-is written (`unknown-unit`), with the nearest declared spelling suggested. The empty unit is
-always allowed: a dimensionless value states no unit rather than a spelling of one.
+Declaring the vocabulary is opt-in: a project without a units file keeps its units free. A
+units file opts the project in whatever it declares, one declaring nothing included, and then
+every stated unit, whether on a definition, on a structure member or on a scalar type, is
+checked where it is written (`unknown-unit`), with the nearest declared spelling suggested.
+The file decides rather than what it lists, so that taking out a unit nothing states never
+changes what is checked. The empty unit is always allowed: a dimensionless value states no
+unit rather than a spelling of one.
 
 ### 3.9 Constant vocabulary
 
@@ -1343,8 +1345,8 @@ Errors:
   ([section 3.7](#37-type-description)), or structures nest each other so that neither has
   a size.
 - `unknown-unit`: a unit is not in the vocabulary the project declares
-  ([section 3.8](#38-unit-vocabulary)); declared nowhere, units stay free text and the
-  check never fires.
+  ([section 3.8](#38-unit-vocabulary)); without a units file, units stay free text and the
+  check never fires, while a units file opts the project in even when it declares nothing.
 - `unknown-section`: a definition names a memory section no file declares
   ([section 3.5](#35-memory-placement)). Unlike a unit there is no free text fallback,
   because a section without declared properties is a name the placement checks can say
@@ -1463,8 +1465,8 @@ Information:
 - `empty-vocabulary`: a types, units, constants, sections or rasters file declares nothing,
   its own list being empty. The file loads: emptying one is how a project goes from one entry
   of a vocabulary to none. The finding is drawn at that list. A units file declaring nothing
-  adds nothing to the vocabulary, so a project whose units files all declare nothing keeps its
-  units free, as a project without one does.
+  still opts the project into the unit check ([section 3.8](#38-unit-vocabulary)), so every
+  stated unit no other units file declares is `unknown-unit`.
 - `incomplete-project`: a declaration was dropped and the finding that explains why is
   set to `ignore`. Dropping is not a severity decision: a variable of an unknown type,
   or one dimensioned by a constant nothing declares, has no storage anything downstream

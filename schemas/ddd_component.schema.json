@@ -125,7 +125,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\ndeclares a unit vocabulary the spelling is checked against that too (``unknown-unit``).\nRefused beside a ``string`` conversion: text has no unit, and one stated there would\nreach the a2l as the unit of a computation method that cannot exist.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\nhas a units file the spelling is checked against the unit vocabulary too (``unknown-unit``).\nRefused beside a ``string`` conversion: text has no unit, and one stated there would\nreach the a2l as the unit of a computation method that cannot exist.",
           "title": "Unit",
           "type": "string"
         },
@@ -508,7 +508,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\ndeclares a unit vocabulary the spelling is checked against that too (``unknown-unit``).\nRefused beside a ``string`` conversion: text has no unit, and one stated there would\nreach the a2l as the unit of a computation method that cannot exist.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\nhas a units file the spelling is checked against the unit vocabulary too (``unknown-unit``).\nRefused beside a ``string`` conversion: text has no unit, and one stated there would\nreach the a2l as the unit of a computation method that cannot exist.",
           "title": "Unit",
           "type": "string"
         },
@@ -1060,7 +1060,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\ndeclares a unit vocabulary the spelling is checked against that too (``unknown-unit``).\nRefused beside a ``string`` conversion: text has no unit, and one stated there would\nreach the a2l as the unit of a computation method that cannot exist.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\nhas a units file the spelling is checked against the unit vocabulary too (``unknown-unit``).\nRefused beside a ``string`` conversion: text has no unit, and one stated there would\nreach the a2l as the unit of a computation method that cannot exist.",
           "title": "Unit",
           "type": "string"
         },
@@ -1273,7 +1273,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\ndeclares a unit vocabulary the spelling is checked against that too (``unknown-unit``).\nRefused beside a ``string`` conversion: text has no unit, and one stated there would\nreach the a2l as the unit of a computation method that cannot exist.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\nhas a units file the spelling is checked against the unit vocabulary too (``unknown-unit``).\nRefused beside a ``string`` conversion: text has no unit, and one stated there would\nreach the a2l as the unit of a computation method that cannot exist.",
           "title": "Unit",
           "type": "string"
         },
@@ -1657,7 +1657,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\ndeclares a unit vocabulary the spelling is checked against that too (``unknown-unit``).\nRefused beside a ``string`` conversion: text has no unit, and one stated there would\nreach the a2l as the unit of a computation method that cannot exist.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\nhas a units file the spelling is checked against the unit vocabulary too (``unknown-unit``).\nRefused beside a ``string`` conversion: text has no unit, and one stated there would\nreach the a2l as the unit of a computation method that cannot exist.",
           "title": "Unit",
           "type": "string"
         },
@@ -2022,7 +2022,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\ndeclares a unit vocabulary the spelling is checked against that too (``unknown-unit``).\nRefused beside a ``string`` conversion: text has no unit, and one stated there would\nreach the a2l as the unit of a computation method that cannot exist.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\nhas a units file the spelling is checked against the unit vocabulary too (``unknown-unit``).\nRefused beside a ``string`` conversion: text has no unit, and one stated there would\nreach the a2l as the unit of a computation method that cannot exist.",
           "title": "Unit",
           "type": "string"
         },

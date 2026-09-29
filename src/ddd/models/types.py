@@ -533,10 +533,8 @@ class TypesFile(FileRoot):
     types: tuple[AnyType, ...] = Field(min_length=0)
     """The types this file declares, and possibly none.
 
-    A file declaring none loads, and is reported as ``empty-vocabulary``, so that ``ddd gui``,
-    which cannot delete a file, can take a project from one type to none. A structure still
-    needs a member - an empty structure is not c - and a component that publishes no type
-    leaves its ``types`` key out rather than writing an empty list.
+    A file declaring none loads, and is reported as ``empty-vocabulary``. A structure needs a
+    member all the same: an empty structure is not c.
     """
 
     @model_validator(mode="after")

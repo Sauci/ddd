@@ -32,8 +32,8 @@ your own from:
    $ ddd check examples/vocabulary/project.ddd.json
    ok: 4 variables in 1 component are consistent
 
-With a vocabulary declared, every stated unit - on a declaration, on a structure member, on
-a scalar type - is checked where it is written:
+With a units file, every stated unit - on a declaration, on a structure member, on a scalar
+type - is checked where it is written:
 
 .. code-block:: text
 
@@ -44,10 +44,10 @@ a scalar type - is checked where it is written:
 A near miss is answered with the declared spelling - ``'nm' ... did you mean 'Nm'?`` - and a
 spelling that differs only in case is suggested too, ``'RPM' ... did you mean 'rpm'?``; the
 empty unit is always allowed: a dimensionless value states no unit rather than a spelling of
-one. A project without a units file keeps its units free, and so does one whose units files
-declare no unit - such a file loads, and is reported as ``empty-vocabulary``; introducing a
-vocabulary into a grown project can start with ``-W unknown-unit=warning`` until the
-spellings are settled.
+one. A project without a units file keeps its units free; one whose units file declares
+nothing - which loads, reported as ``empty-vocabulary`` - is checked all the same, so a unit it
+states is an ``unknown-unit`` until a units file lists it. Introducing a vocabulary into a
+grown project can start with ``-W unknown-unit=warning`` until the spellings are settled.
 
 A unit declared a second time, in the same file or another, is refused rather than merged:
 

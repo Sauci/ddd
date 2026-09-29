@@ -352,7 +352,7 @@ unchanged, and any component may name them
 | `datatype` | one of the two | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64`.  Exactly one of `datatype` and `typename` is stated |
 | `typename` | one of the two | the name of a declared type, stated instead of `datatype`: a scalar type fixes what the value means, a structure makes this a structured variable |
 | `description` | `""` | offered to the c templates as the text of a comment, and used as the a2l long identifier |
-| `unit` | `""` | physical unit, as free text; components sharing a variable must agree on it, and where the project declares a [unit vocabulary](https://sauci.github.io/ddd/latest/file_formats/units.html) the spelling is checked against that too (`unknown-unit`) |
+| `unit` | `""` | physical unit, as free text; components sharing a variable must agree on it, and where the project has a [units file](https://sauci.github.io/ddd/latest/file_formats/units.html) the spelling is checked against the unit vocabulary too (`unknown-unit`) |
 | `conversion` | required beside `datatype` | raw to physical conversion, see below.  Stated by the declared type instead when `typename` names one |
 | `limits` | derived | physical `min`/`max`.  Omitted, they follow from the datatype and the conversion - except for an `enum`, where they are the smallest and largest enumerator |
 | `section` | none | the linker section the object is placed in, named in the project's sections file.  A storage key like `init`: the producer states it, and an object without one goes wherever the toolchain's defaults put it |

@@ -460,10 +460,11 @@ or an a2l file that does not do what the description says - or that does not com
    * - ``unknown-unit``
      - error
      - a unit is not in the vocabulary the project declares (see the
-       :doc:`units file <file_formats/units>`). Declared nowhere, units stay free text and
-       the check never fires; declared anywhere, every stated unit is checked where it is
-       written, with the nearest declared spelling suggested. The empty unit is always
-       allowed - a dimensionless value states no unit rather than a spelling of one.
+       :doc:`units file <file_formats/units>`). Without a units file, units stay free text and
+       the check never fires; with one - even one declaring nothing - every stated unit is
+       checked where it is written, with the nearest declared spelling suggested. The empty
+       unit is always allowed - a dimensionless value states no unit rather than a spelling of
+       one.
    * - ``type-kind``
      - error
      - a declared type is used where its shape does not fit: a declaration naming a structure
@@ -688,9 +689,8 @@ Information
        empty, and the finding is drawn there. Legal as well, and an information rather than a
        warning because emptying a file is how a project goes from one entry of a vocabulary to
        none - removing the last one in ``ddd gui`` leaves exactly that - so it is said rather
-       than held against the project. A units file declaring nothing adds nothing to the
-       vocabulary, so a project whose units files all declare nothing keeps its units free, as
-       a project without one does.
+       than held against the project. A units file declaring nothing still opts the project
+       into ``unknown-unit``, so every stated unit no other units file declares is reported.
    * - ``incomplete-project``
      - info
      - a declaration is missing from the dictionary and the finding that says why has been

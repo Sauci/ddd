@@ -69,7 +69,7 @@
       "title": "$Schema"
     },
     "sections": {
-      "description": "The sections this project places data in, and possibly none.\n\nA file declaring none loads, and is reported as ``empty-vocabulary``. An empty list used to\nbe refused - it was no file at all - and is accepted now so that ``ddd gui``, which cannot\ndelete a file, can take a project from one section to none.",
+      "description": "The sections this project places data in, and possibly none.\n\nA file declaring none loads, and is reported as ``empty-vocabulary``.",
       "items": {
         "$ref": "#/$defs/SectionDeclaration"
       },

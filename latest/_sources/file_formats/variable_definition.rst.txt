@@ -100,8 +100,9 @@ rather than ignored.
        in brackets, and it is part of the a2l ``COMPU_METHOD``. Components sharing a variable
        have to agree on it, because two components using the same variable in different units
        is the failure that compiles and links and is wrong by a constant factor. Free text
-       does not mean unchecked: where the project declares a :doc:`unit vocabulary <units>`,
-       every spelling is checked against it as well (``unknown-unit``). A string has none.
+       does not mean unchecked: where the project has a :doc:`units file <units>`, even one
+       declaring nothing, every spelling is checked against its vocabulary as well
+       (``unknown-unit``). A string has none.
    * - ``conversion``
      - required beside ``datatype``
      - How the stored number maps to the physical one; see :doc:`conversions`. Required

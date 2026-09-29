@@ -208,9 +208,11 @@
 
     <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"DDD constant vocabulary"</span><span class="p">)</span>
 
-    <span class="n">constants</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">ConstantDeclaration</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span>
-<span class="w">    </span><span class="sd">"""The constants this project names, in any order; an empty vocabulary is no file at</span>
-<span class="sd">    all."""</span></div>
+    <span class="n">constants</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ConstantDeclaration</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+<span class="w">    </span><span class="sd">"""The constants this project names, in any order, and possibly none.</span>
+
+<span class="sd">    A file declaring none loads, and is reported as ``empty-vocabulary``.</span>
+<span class="sd">    """</span></div>
 
 </pre></div>
 

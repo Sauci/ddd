@@ -572,10 +572,11 @@ plugin currently reads.</p></td>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a unit is not in the vocabulary the project declares (see the
-<a class="reference internal" href="file_formats/units.html"><span class="doc">units file</span></a>). Declared nowhere, units stay free text and
-the check never fires; declared anywhere, every stated unit is checked where it is
-written, with the nearest declared spelling suggested. The empty unit is always
-allowed - a dimensionless value states no unit rather than a spelling of one.</p></td>
+<a class="reference internal" href="file_formats/units.html"><span class="doc">units file</span></a>). Without a units file, units stay free text and
+the check never fires; with one - even one declaring nothing - every stated unit is
+checked where it is written, with the nearest declared spelling suggested. The empty
+unit is always allowed - a dimensionless value states no unit rather than a spelling of
+one.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">type-kind</span></code></p></td>
 <td><p>error</p></td>
@@ -837,7 +838,16 @@ error and writes nothing.</p></td>
 interface - but worth saying out loud, because the usual cause is a description file that
 was registered before it was written.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">empty-vocabulary</span></code></p></td>
+<td><p>info</p></td>
+<td><p>a types, units, constants, sections or rasters file declares nothing: its own list is
+empty, and the finding is drawn there. Legal as well, and an information rather than a
+warning because emptying a file is how a project goes from one entry of a vocabulary to
+none - removing the last one in <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> leaves exactly that - so it is said rather
+than held against the project. A units file declaring nothing still opts the project
+into <code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code>, so every stated unit no other units file declares is reported.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code></p></td>
 <td><p>info</p></td>
 <td><p>a declaration is missing from the dictionary and the finding that says why has been
 silenced - a <code class="docutils literal notranslate"><span class="pre">type-kind</span></code> relaxed to <code class="docutils literal notranslate"><span class="pre">ignore</span></code>, for instance. The declaration is left
@@ -848,7 +858,7 @@ type, the consumers of a dropped producer, a curve or an axis whose own referenc
 nothing or names the wrong kind, and a curve or an axis referring to one that went are
 each reported in turn.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">missing-id</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">missing-id</span></code></p></td>
 <td><p>info</p></td>
 <td><p>a declaration that produces a variable states no <code class="docutils literal notranslate"><span class="pre">id</span></code>, so a delivery that renames the
 variable is compared as a removal and an unrelated addition. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span></code> writes

@@ -101,10 +101,13 @@
 <span class="sd">each object agrees with itself, and the calibration tool ends up showing two units for one</span>
 <span class="sd">quantity.</span>
 
-<span class="sd">Declaring the vocabulary is opt-in.  A project without a units file keeps its units free;</span>
-<span class="sd">one with a units file has every stated unit checked against it (``unknown-unit``), with the</span>
-<span class="sd">nearest declared spelling suggested.  The empty unit - a dimensionless value - is always</span>
-<span class="sd">allowed, because it is the absence of an answer rather than a spelling of one.</span>
+<span class="sd">Declaring the vocabulary is opt-in, and a units file is what opts in.  A project without one</span>
+<span class="sd">keeps its units free; one with a units file - even one declaring nothing - has every stated</span>
+<span class="sd">unit checked against what its units files declare (``unknown-unit``), with the nearest declared</span>
+<span class="sd">spelling suggested.  The file decides rather than what it lists, so that taking out a unit</span>
+<span class="sd">nothing states - the last one included - never changes what is checked.  The empty unit - a</span>
+<span class="sd">dimensionless value - is always allowed, because it is the absence of an answer rather than a</span>
+<span class="sd">spelling of one.</span>
 <span class="sd">"""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
@@ -183,10 +186,13 @@
 
     <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"DDD unit vocabulary"</span><span class="p">)</span>
 
-    <span class="n">units</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span>
-        <span class="nb">tuple</span><span class="p">[</span><span class="n">Unit</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">json_schema_extra</span><span class="o">=</span><span class="n">_publish_bare_spellings</span><span class="p">)</span>
-    <span class="p">]</span>
-<span class="w">    </span><span class="sd">"""The units this project spells, in any order; an empty vocabulary is no file at all."""</span></div>
+    <span class="n">units</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">Unit</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">Field</span><span class="p">(</span><span class="n">json_schema_extra</span><span class="o">=</span><span class="n">_publish_bare_spellings</span><span class="p">)]</span>
+<span class="w">    </span><span class="sd">"""The units this project spells, in any order, and possibly none.</span>
+
+<span class="sd">    A file listing none loads, and is reported as ``empty-vocabulary``. Like any units file it</span>
+<span class="sd">    opts the project into the unit check: every stated unit is checked, against a vocabulary this</span>
+<span class="sd">    file adds nothing to.</span>
+<span class="sd">    """</span></div>
 
 </pre></div>
 

@@ -403,9 +403,10 @@ once, listed in the <code class="docutils literal notranslate"><span class="pre"
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"units"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"rpm"</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Nm"</span><span class="p">,</span><span class="w"> </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"torque, newton metre"</span><span class="w"> </span><span class="p">}]</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
-<p>Declaring the vocabulary is opt-in - without a units file nothing changes - and with one,
-every stated unit is checked where it is written, on declarations, structure members and
-scalar types alike, with a near miss answered by the declared spelling:</p>
+<p>Declaring the vocabulary is opt-in - without a units file nothing changes - and with one, even
+one that declares no unit yet, every stated unit is checked where it is written, on
+declarations, structure members and scalar types alike, with a near miss answered by the
+declared spelling:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
 b.ddd.json#component.interface[0].definition.unit: error[unknown-unit]: 'nm' is not a unit this project declares - did you mean 'Nm'?
 1 error

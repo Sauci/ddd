@@ -34,7 +34,7 @@ from ddd.gui.session import (
     find_projects,
     findings_with,
 )
-from ddd.lsp.diagnostics import Run
+from ddd.lsp.diagnostics import Run, run_build
 
 REGISTERING_PLUGIN = """
 from ddd.diagnostics import CheckInfo, Severity
@@ -770,6 +770,69 @@ class TestFindingsWith:
         assert list(dict.fromkeys(filed.file.name for filed in answer)) == [
             "a.ddd.json",
             "b.ddd.json",
+        ]
+
+
+class TestEveryRunAnalysed:
+    """Whether a revision's findings hold what every run it was made from would say: a run whose
+    read reported an error never reaches the analysis, and another build's run that did does not
+    speak for it, each grading the checks by its own severities."""
+
+    def test_a_run_its_read_stopped_leaves_the_revision_unanalysed(self, tmp_path: Path) -> None:
+        """Important 2: `release` reads a dead pattern as an error and stops there; `dev` relaxes
+        it and analyses, so the revision resolved. Removing the pattern would surface as new what
+        `release`'s run never checked - its strictness raises `Unread` to an error."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "gone/*.ddd.json", "r.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "X"), declare("output", "Unread")),
+                "r.ddd.json": component("R", declare("input", "X")),
+            },
+        )
+        project_file = tmp_path / "p.ddd.json"
+        build_record(tmp_path, project_file, image="release.elf", strict=True)
+        build_record(tmp_path, project_file, image="dev.elf", severity=["include-empty=warning"])
+        revision = opened_and_settled(project_file).revision
+        assert revision is not None
+        found = [
+            (filed.file.name, filed.diagnostic.check) for filed in errors_of(revision.findings)
+        ]
+        assert found == [("p.ddd.json", "include-empty")]
+        assert revision.resolved is not None
+        assert revision.analysed is False
+
+    def test_a_run_its_read_stopped_hides_what_a_removal_would_break(self, tmp_path: Path) -> None:
+        """Important 2, the other way: `release` stops at a dead pattern, and `dev` relaxes that
+        and `missing-producer`, so leaving out `u.ddd.json` - whose `Y` `R` reads - breaks
+        nothing either run reports, while `release` without the pattern says it does."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project(
+                    "P", "a.ddd.json", "u.ddd.json", "r.ddd.json", "z/*.ddd.json"
+                ),
+                "a.ddd.json": component("A", declare("output", "X")),
+                "u.ddd.json": component("U", declare("output", "Y")),
+                "r.ddd.json": component("R", declare("input", "X"), declare("input", "Y")),
+            },
+        )
+        project_file = tmp_path / "p.ddd.json"
+        build_record(tmp_path, project_file, image="release.elf")
+        relaxed = ["include-empty=warning", "missing-producer=warning"]
+        build_record(tmp_path, project_file, image="dev.elf", severity=relaxed)
+        revision = opened_and_settled(project_file).revision
+        assert revision is not None
+        assert revision.resolved is not None
+        assert revision.analysed is False
+        without_u = ["a.ddd.json", "r.ddd.json", "z/*.ddd.json"]
+        for findings in (revision.findings, findings_with(revision, without_u)):
+            found = [(filed.file.name, filed.diagnostic.check) for filed in errors_of(findings)]
+            assert found == [("p.ddd.json", "include-empty")]
+        (release,) = [info for info in revision.builds if info.image == "release.elf"]
+        run = run_build(release, includes=["a.ddd.json", "r.ddd.json"])
+        assert [found.check for found in run.bag if found.severity is Severity.ERROR] == [
+            "missing-producer"
         ]
 
 

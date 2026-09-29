@@ -117,6 +117,18 @@ class Revision:
     :mod:`ddd.gui.compare` has a plugin's comparison rules to run only because they are here.
     """
 
+    analysed: bool
+    """Whether every run the revision was made from resolved the project, where
+    :attr:`resolved` is the first run that did.
+
+    The first is enough for a reader of the dictionary, and not for comparing ``findings`` with
+    another analysis's. A run whose read reported an error is never analysed, so none of its
+    analysis's errors are in ``findings``, and another build's run that was analysed does not
+    speak for it, each run grading the checks by its own severities. Compared all the same, a
+    change can surface as new an error the stopped run simply never checked, or break what it
+    would check while it stays stopped at the read.
+    """
+
     checks: tuple[CheckInfo, ...]
     """The plugin checks the analysis registered, beside the built-in ones every run has."""
 
@@ -373,6 +385,7 @@ class Session:
             # runs the rules of and the dictionary it compares have to be the same read's, and
             # two `next()` calls over the same list would only agree by coincidence.
             resolved=next((run.resolved for run in runs if run.resolved is not None), None),
+            analysed=all(run.resolved is not None for run in runs),
             checks=tuple(registered.values()),
             index=next((run.index for run in runs if run.index is not None), None),
             served=served,

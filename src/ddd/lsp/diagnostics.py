@@ -92,7 +92,7 @@ def analyse(info: BuildInfo) -> tuple[DiagnosticBag, frozenset[Path]]:
     return run.bag, run.covered
 
 
-def run_build(info: BuildInfo) -> Run:
+def run_build(info: BuildInfo, *, includes: Sequence[str] | None = None) -> Run:
     """Run the checks over one configured project, exactly as its build would, keeping what it
     resolved to.
 
@@ -103,10 +103,13 @@ def run_build(info: BuildInfo) -> Run:
     usage error - it has a session to keep - so it says so where the mistake is, on the
     project file the record names. Silently accepted, a build silencing a check by a name
     nothing registers looks exactly like a build silencing one that exists.
+
+    ``includes`` is :func:`~ddd.loading.load_workspace`'s own override, passed on unchanged: the
+    server's, for the one analysis that judges a removal, and never the editor's own runs.
     """
     policy = SeverityPolicy.from_strings(list(info.severity), strict=info.strict)
     project = Path(info.project)
-    run = _run(project, DiagnosticBag(policy))
+    run = _run(project, DiagnosticBag(policy), includes=includes)
     try:
         policy.verify(run.bag.registered)
     except UnknownCheckError as fault:
@@ -114,10 +117,13 @@ def run_build(info: BuildInfo) -> Run:
     return run
 
 
-def run_project(root: Path) -> Run:
+def run_project(root: Path, *, includes: Sequence[str] | None = None) -> Run:
     """Run the checks over a project description under the default severities, the way a
-    project file no build configured is checked."""
-    return _run(root, DiagnosticBag())
+    project file no build configured is checked.
+
+    ``includes`` is passed on to :func:`_run` unchanged - see :func:`run_build`.
+    """
+    return _run(root, DiagnosticBag(), includes=includes)
 
 
 def analyse_standalone(path: Path) -> tuple[DiagnosticBag, frozenset[Path]]:
@@ -171,7 +177,7 @@ def _analysed(loaded: Loaded) -> tuple[DiagnosticBag, frozenset[Path]]:
     return bag, frozenset(loaded.workspace.sources())
 
 
-def _run(root: Path, bag: DiagnosticBag) -> Run:
+def _run(root: Path, bag: DiagnosticBag, *, includes: Sequence[str] | None = None) -> Run:
     """The two phases of a run, and which files it turned out to cover.
 
     The early return when reading reported an error is the same one ``ddd check`` makes: there
@@ -184,12 +190,15 @@ def _run(root: Path, bag: DiagnosticBag) -> Run:
     that model raises before the analysis is ever reached. ``covered`` is settled as each
     phase learns it, so a plugin defect during the analysis still withdraws the findings of
     every file the project covers, rather than of the project file alone.
+
+    ``includes`` is passed on to :func:`~ddd.loading.load_workspace` unchanged, replacing the
+    root project's own list for this one read alone - see :func:`run_build`.
     """
     covered = frozenset({root})
     resolved: Resolved | None = None
     built: Index | None = None
     try:
-        workspace = load_workspace(root, bag)
+        workspace = load_workspace(root, bag, includes=includes)
         if workspace is None:
             return Run(bag, covered, None)
         covered = frozenset(workspace.sources())

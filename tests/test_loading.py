@@ -791,3 +791,50 @@ class TestWhatADumpedDictionaryIsToldAboutItself:
         assert len(bag) == 2, messages(bag)
         assert "d.json#extensions.a-b: error[schema]" in messages(bag), messages(bag)
         assert "d.json#extensions.c-d: error[schema]" in messages(bag), messages(bag)
+
+
+class TestTheRootsIncludesReplaced:
+    def test_the_override_is_what_the_root_includes(self, tmp_path: Path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A"),
+                "b.ddd.json": component("B"),
+            },
+        )
+        workspace = load_workspace(
+            tmp_path / "p.ddd.json", DiagnosticBag(), includes=["a.ddd.json"]
+        )
+        assert workspace is not None
+        assert [loaded.name for loaded in workspace.components] == ["A"]
+
+    def test_a_sub_project_keeps_its_own(self, tmp_path: Path) -> None:
+        """Applied to every project rather than the root, the override would hand `sub` the
+        root's list - `sub.ddd.json` itself - and neither `X` nor `Y` would load."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "sub.ddd.json"),
+                "sub.ddd.json": project("Sub", "x.ddd.json", "y.ddd.json"),
+                "x.ddd.json": component("X"),
+                "y.ddd.json": component("Y"),
+            },
+        )
+        workspace = load_workspace(
+            tmp_path / "p.ddd.json", DiagnosticBag(), includes=["sub.ddd.json"]
+        )
+        assert workspace is not None
+        assert sorted(loaded.name for loaded in workspace.components) == ["X", "Y"]
+
+    def test_no_override_reads_the_file(self, tmp_path: Path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A"),
+            },
+        )
+        workspace = load_workspace(tmp_path / "p.ddd.json", DiagnosticBag())
+        assert workspace is not None
+        assert [loaded.name for loaded in workspace.components] == ["A"]

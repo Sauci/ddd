@@ -39,8 +39,9 @@ from ddd.loading import included_files, resolve_path
 from ddd.lsp.diagnostics import finding_identity
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document, read
-from ddd.lsp.units import PlannedEdit, UnitProject, appended_at, created_beside
+from ddd.lsp.units import PlannedEdit, UnitProject, created_beside, entry_appended
 from ddd.models.common import Identifier
+from ddd.models.reserved import is_reserved_identifier
 
 type Pair = tuple[Path, Diagnostic]
 """A finding and the file it is shown on, as :func:`ddd.project_shared.shared_rows` takes them."""
@@ -205,18 +206,21 @@ Not ``project``: a sub-project's own includes belong to opening it, and are out 
 tab's reach (spec §6)."""
 
 FILE_NAME: Final = re.compile(r"[A-Za-z0-9_-]+")
-"""A name a new file may take, before ``.ddd.json`` is added: letters, digits, ``_`` and
-``-``. No separator, so a file can only ever be created beside the description, and no dot,
-so the suffix is always the one every project committed to this repository uses."""
+"""A name a new file may take, before ``.ddd.json`` is added: one or more of the letters ``a``
+to ``z`` and ``A`` to ``Z``, the digits ``0`` to ``9``, ``_`` and ``-`` - ascii's, so ``é`` or
+``٣`` is refused though it is a letter or a digit. No separator, so a file can only ever be
+created beside the description, and no dot, so the suffix is always the one every project
+committed to this repository uses."""
 
 _SUFFIX: Final = ".ddd.json"
 """What :func:`create_plan` adds to a name :data:`FILE_NAME` takes."""
 
 _COMPONENT_NAME: Final[TypeAdapter[str]] = TypeAdapter(Identifier)
 """The model's own judge of a component's name - :class:`~ddd.models.component.Component` takes
-an :data:`~ddd.models.common.Identifier` - so that a name refused here is exactly one whose
-file would not load, and no second spelling of the rule can drift from the first. Built once:
-a :class:`~pydantic.TypeAdapter` compiles a core schema from the annotation."""
+an :data:`~ddd.models.common.Identifier` - so that a name it refuses is exactly one whose file
+would not load, and no second spelling of the rule can drift from the first. The first check
+:func:`_component_name` asks of a name. Built once: a :class:`~pydantic.TypeAdapter` compiles a
+core schema from the annotation."""
 
 
 class FileRefusalError(Exception):
@@ -347,9 +351,10 @@ def create_plan(
 
     Refused ``invalid``, in this order, before anything is built: a kind not in
     :data:`CREATABLE`; a name :data:`FILE_NAME` does not take; a file of that name beside the
-    description already; and for a component, no name for it, a name the model's own
-    :data:`~ddd.models.common.Identifier` does not take, or one of ``taken``, the names the
-    project's components have.
+    description already; and for a component, no name for it, or a name a check of the project
+    would reject - one the model's own :data:`~ddd.models.common.Identifier` does not take, one
+    reserved, or one of ``taken``, the names the project's components have, or of them but for
+    its case (:func:`_component_name`).
 
     A vocabulary file declares nothing, and a component has its name and an empty
     ``interface``. A units file is the exception: where ``checks_units`` is false, it lists
@@ -380,8 +385,8 @@ def create_plan(
     if FILE_NAME.fullmatch(name) is None:
         raise FileRefusalError(
             "invalid",
-            f"'{name}' cannot name a new file: a name is letters, digits, '_' and '-' only, "
-            f"and {_SUFFIX} is added to it",
+            f"'{name}' cannot name a new file: a name is one or more of the letters a to z and "
+            f"A to Z, the digits 0 to 9, '_' and '-', and {_SUFFIX} is added to it",
         )
     filename = f"{name}{_SUFFIX}"
     if (described.parent / filename).exists():
@@ -420,7 +425,29 @@ def _content(
 
 
 def _component_name(component: str | None, taken: Collection[str]) -> str:
-    """A new component's name, or the refusal it meets."""
+    """A new component's name, or the refusal it meets.
+
+    Past the name's absence, each refusal is a check a project holding the component would
+    fail, asked the way that check asks it, in this order:
+
+    * the model's :data:`~ddd.models.common.Identifier`, through :data:`_COMPONENT_NAME`: the
+      component's file would not load, its ``schema`` error;
+    * :func:`~ddd.models.reserved.is_reserved_identifier`, the judge of the ``reserved-identifier``
+      the analysis files on a component's name, and the one
+      :func:`ddd.lsp.navigation.rename_problem` asks of a name too;
+    * a name of ``taken``: the loader's ``duplicate-component``;
+    * a name differing from one of ``taken`` only in upper and lower case: the analysis's
+      ``name-collision``, which :meth:`ddd.analysis._Analysis._check_component_names` finds by
+      grouping components under :meth:`str.lower`, as this compares them. The sentence names
+      the component already there, whose name the reader did not type.
+
+    So a name refused is exactly one those checks reject - read with ``taken`` the name of every
+    component the project loads, and under the default severities, where each of those checks is
+    an error; a build lowering ``reserved-identifier`` or ``name-collision`` still has such a name
+    refused here, which is the safe way. ``taken`` is read in sorted order, so that of two names
+    differing only in case - a project failing ``name-collision`` already - the one named is the
+    same on every run.
+    """
     if component is None:
         raise FileRefusalError("invalid", "a new component needs a name, besides its file's")
     try:
@@ -429,10 +456,24 @@ def _component_name(component: str | None, taken: Collection[str]) -> str:
         raise FileRefusalError(
             "invalid", f"'{component}' cannot name a component, not being a usable c identifier"
         ) from refused
+    if is_reserved_identifier(component):
+        raise FileRefusalError(
+            "invalid",
+            f"'{component}' cannot name a component, being reserved by c or by a header DDD "
+            "generates",
+        )
     if component in taken:
         raise FileRefusalError(
             "invalid", f"this project has a component called '{component}' already"
         )
+    for other in sorted(taken):
+        if other.lower() == component.lower():
+            raise FileRefusalError(
+                "invalid",
+                f"this project has a component called '{other}' already, and '{component}' "
+                "differs from it only in upper and lower case, so the two would ask for the same "
+                "generated header",
+            )
     return component
 
 
@@ -459,15 +500,19 @@ def add_plan(project: Path, entry: str, cache: dict[Path, Document]) -> FilePlan
     it - appended to the root's ``includes`` as written. Always a literal: the loader reads an
     entry naming a file as that file, whatever it spells.
 
-    Refused, in this order, by what the description alone can answer: ``entry`` naming no file,
-    ``not-found``, a file that is not there being created rather than added; naming the
-    description itself, ``invalid``; naming a file the project has already - named by an entry,
-    or matched by a pattern, which the refusal names - ``invalid``. Whether the file lies where
-    the caller may read it, and whether it is a kind of file the loader recognises, are the
-    caller's to ask: the first needs what it serves, the second the file's contents.
+    Refused, in this order, by what the description and the files on disk can answer: ``entry``
+    naming no file, ``not-found``, a file that is not there being created rather than added;
+    naming the description itself, ``invalid``; naming a file the project has already - named by
+    an entry, or matched by a pattern, which the refusal names - ``invalid``. Whether the file
+    lies where the caller may read it, and whether it is a kind of file the loader recognises,
+    are the caller's to ask: the first needs the directories the session serves, and the second
+    the kind rule :func:`ddd.gui.session._kind` holds, which this module, importing nothing of
+    :mod:`ddd.gui`, cannot ask.
 
-    Appended at the end of the list, or at the front of an ``includes`` that is not one, for the
-    edit engine to refuse (:func:`ddd.lsp.units.appended_at`).
+    Added by :func:`ddd.lsp.units.entry_appended`, the rule a created file's entry is added by
+    too: at the end of the list; or, where the description has no ``includes``, as a list of its
+    own; or at the front of an ``includes`` that is there and is no list, for the edit engine to
+    refuse.
     """
     described = resolve_path(project)
     added = resolve_path(described.parent / entry)
@@ -492,12 +537,8 @@ def add_plan(project: Path, entry: str, cache: dict[Path, Document]) -> FilePlan
             "invalid",
             f"{entry} is part of this project already: the pattern '{included.entry}' brings it in",
         )
-    listed = read(described, cache).value_at("project.includes")
-    operation = Operation(
-        "insert", f"project.includes[{appended_at(listed)}]", json.dumps(entry, ensure_ascii=False)
-    )
     return FilePlan(
-        (PlannedEdit(described, (operation,)),),
+        (PlannedEdit(described, (entry_appended(described, entry, cache),)),),
         (*(included.entry for included in entries), entry),
     )
 

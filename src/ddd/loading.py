@@ -1444,10 +1444,11 @@ def included_files(source: Path, entry: Any) -> list[Path]:
     """The files one ``includes`` entry names, or none for an entry the loader cannot expand -
     one that is not a string, or a pattern pathlib refuses - which the run has reported already.
 
-    Beside :func:`expand_include` and public for the same reason it is: two clients that ask
-    which files a project includes - the unit plans, and the constants a shared files tab adds
-    to - must not come to a different answer than the run that checks the project, and each
-    swallowing the three exceptions its own way is how they would drift apart.
+    Beside :func:`expand_include` and public for the same reason it is: whatever asks which files
+    a project includes - the unit plans, the vocabulary a shared files tab adds to and the rows
+    of the Files tab among them - must not come to a different answer than the run that checks
+    the project, and each client swallowing the three exceptions its own way is how they would
+    drift apart.
     """
     if not isinstance(entry, str):
         return []

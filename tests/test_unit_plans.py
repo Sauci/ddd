@@ -696,3 +696,28 @@ class TestCreatedBeside:
         project.write_text(json.dumps({"project": {"name": "P", "includes": {"x": 1}}}))
         _, included = created_beside(project, "u.ddd.json", '{"units": []}', {})
         assert included.operations[0].pointer == "project.includes[0]"
+
+    def test_a_description_with_no_includes_is_given_a_list_holding_the_file(
+        self, tmp_path: Path
+    ) -> None:
+        """``includes`` may be left out of a description, and such a project is valid. There is
+        no list to insert into, and the edit engine refuses an insertion into none, so the key is
+        set to a list holding the file alone."""
+        project = tmp_path / "p.ddd.json"
+        project.write_text(json.dumps({"project": {"name": "Bare"}}))
+        _, included = created_beside(project, "u.ddd.json", '{"units": []}', {})
+        assert included.operations == (Operation("set", "project.includes", '["u.ddd.json"]'),)
+
+    @pytest.mark.parametrize(
+        "text",
+        ['{"project": {"name": "P", "includes": null}}', '{"project": {"name": "P", '],
+        ids=["an includes of null", "a description that does not parse"],
+    )
+    def test_only_an_includes_left_out_is_given_a_list(self, tmp_path: Path, text: str) -> None:
+        """``null`` is an ``includes`` there, which the loader refuses with a ``schema`` error
+        as it refuses ``3``; a description that does not parse has no key to tell missing. Both
+        take the entry at the front, for the edit engine to refuse."""
+        project = tmp_path / "p.ddd.json"
+        project.write_text(text)
+        _, included = created_beside(project, "u.ddd.json", '{"units": []}', {})
+        assert included.operations == (Operation("insert", "project.includes[0]", '"u.ddd.json"'),)

@@ -10,7 +10,7 @@ import sys
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 
@@ -26,7 +26,7 @@ from conftest import (
     write_tree,
 )
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
-from ddd.editing import Operation
+from ddd.editing import FileChange, Operation, fingerprint
 from ddd.file_plans import (
     FilePlan,
     FileRefusalError,
@@ -38,7 +38,7 @@ from ddd.file_plans import (
     new_errors,
     remove_plan,
 )
-from ddd.gui.session import Session, findings_with
+from ddd.gui.session import Revision, Session, findings_with
 from ddd.loading import load_workspace
 from ddd.lsp.diagnostics import finding_identity, run_project
 from ddd.lsp.navigation import Index, index
@@ -899,8 +899,8 @@ SAYS_KIND = (
     "units, constants, sections and rasters"
 )
 SAYS_NAME = (
-    "'a.b' cannot name a new file: a name is letters, digits, '_' and '-' only, and .ddd.json is "
-    "added to it"
+    "'a.b' cannot name a new file: a name is one or more of the letters a to z and A to Z, the "
+    "digits 0 to 9, '_' and '-', and .ddd.json is added to it"
 )
 SAYS_THERE = "a.ddd.json is there already, beside p.ddd.json"
 SAYS_ITSELF = "p.ddd.json is this project's own description, which it cannot include"
@@ -916,6 +916,38 @@ def indexed(root: Path) -> Index:
     workspace = load_workspace(root, DiagnosticBag())
     assert workspace is not None
     return index(workspace)
+
+
+def applied(root: Path, edits: Sequence[PlannedEdit]) -> Revision:
+    """``edits`` made through the session, as ``POST /api/edit`` makes a plan - each file
+    fingerprinted as it is on disk, a created one with none - and the project read and analysed
+    again."""
+    session = Session(root.parent)
+    session.open(root)
+    changes = [
+        FileChange(
+            edit.path,
+            None if edit.creates else fingerprint(edit.path.read_bytes()),
+            edit.operations,
+        )
+        for edit in edits
+    ]
+    revision, _ = session.edit(changes, "the files of the project")
+    return revision
+
+
+def errors_of(revision: Revision) -> list[tuple[str, str, str]]:
+    """Every error the revision's project reports, by file, check and message."""
+    return [
+        (filed.file.name, filed.diagnostic.check, filed.diagnostic.message)
+        for filed in revision.findings
+        if filed.diagnostic.severity is Severity.ERROR
+    ]
+
+
+BARE: Final = {"project": {"name": "Bare"}}
+"""A description with no ``includes``, which the format allows: ``docs/file_formats/project.rst``
+calls it valid, and ``ddd check`` passes it."""
 
 
 def creating(
@@ -1255,18 +1287,88 @@ class TestCreate:
             ),
         )
 
-    def test_a_first_units_file_is_refused_while_a_file_did_not_load(self, tmp_path: Path) -> None:
+    def test_a_project_listing_no_includes_is_given_the_list_holding_the_file(
+        self, tmp_path: Path
+    ) -> None:
+        """There is no list to insert into, and the edit engine refuses an insertion into none,
+        so the key is set to a list holding the new file alone."""
+        write_tree(tmp_path, {"p.ddd.json": BARE})
+        root = tmp_path / "p.ddd.json"
+        units = unit_project(root, [], {})
+        planned = create_plan(
+            root, "component", "pump", "Pump", (), units, indexed(root), {}, checks_units=False
+        )
+        assert planned == (
+            PlannedEdit(
+                described(tmp_path),
+                (Operation("set", "project.includes", '["pump.ddd.json"]'),),
+            ),
+            PlannedEdit(
+                described(tmp_path).parent / "pump.ddd.json",
+                (
+                    Operation(
+                        "set",
+                        "",
+                        '{\n  "component": {\n    "name": "Pump",\n    "interface": []\n  }\n}\n',
+                    ),
+                ),
+                creates=True,
+            ),
+        )
+
+    def test_a_file_created_in_a_project_listing_no_includes_is_read_and_passes(
+        self, tmp_path: Path
+    ) -> None:
+        """Made through the session, which creates a file only where the description's edited
+        ``includes`` name it: the list set is such an edit, and the project read again passes."""
+        write_tree(tmp_path, {"p.ddd.json": BARE})
+        root = tmp_path / "p.ddd.json"
+        units = unit_project(root, [], {})
+        planned = create_plan(
+            root, "component", "pump", "Pump", (), units, indexed(root), {}, checks_units=False
+        )
+        after = applied(root, planned)
+        assert errors_of(after) == []
+        assert [(file.path.name, file.kind, file.loaded) for file in after.files] == [
+            ("p.ddd.json", "project", True),
+            ("pump.ddd.json", "component", True),
+        ]
+        assert json.loads(root.read_text(encoding="utf-8")) == {
+            "project": {"name": "Bare", "includes": ["pump.ddd.json"]}
+        }
+
+    @pytest.mark.parametrize(
+        ("unread", "says"),
+        [
+            pytest.param(
+                ("b.ddd.json",),
+                "b.ddd.json did not load, so a first units file could not list every unit in use",
+                id="one file",
+            ),
+            pytest.param(
+                ("c.ddd.json", "b.ddd.json"),
+                "b.ddd.json, c.ddd.json did not load, so a first units file could not list every "
+                "unit in use",
+                id="two files",
+            ),
+        ],
+    )
+    def test_a_first_units_file_is_refused_while_a_file_did_not_load(
+        self, tmp_path: Path, unread: tuple[str, ...], says: str
+    ) -> None:
         """What did not load may state a unit, and a first units file leaving it out would have
         it reported ``unknown-unit`` - the project failing in one click, which listing every
-        unit is there to prevent. Refused as :func:`ddd.lsp.units.adoption` refuses."""
+        unit is there to prevent. Refused as :func:`ddd.lsp.units.adoption` refuses, naming
+        every file that did not load, in the order of their paths."""
         built, root = built_of(
             tmp_path,
             **{
                 "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
                 "b.ddd.json": '{"component": ',
+                "c.ddd.json": '{"component": ',
             },
         )
-        units = unit_project(root / "p.ddd.json", [root / "b.ddd.json"], {})
+        units = unit_project(root / "p.ddd.json", [root / name for name in unread], {})
         with pytest.raises(FileRefusalError) as refused:
             create_plan(
                 root / "p.ddd.json",
@@ -1279,10 +1381,7 @@ class TestCreate:
                 {},
                 checks_units=False,
             )
-        assert (refused.value.code, refused.value.message) == (
-            "unreadable",
-            "b.ddd.json did not load, so a first units file could not list every unit in use",
-        )
+        assert (refused.value.code, refused.value.message) == ("unreadable", says)
 
     def test_a_first_units_file_is_refused_where_the_project_was_not_read(
         self, tmp_path: Path
@@ -1345,8 +1444,8 @@ class TestCreate:
                 "types",
                 "sensors/a",
                 None,
-                "'sensors/a' cannot name a new file: a name is letters, digits, '_' and '-' "
-                "only, and .ddd.json is added to it",
+                "'sensors/a' cannot name a new file: a name is one or more of the letters a to z "
+                "and A to Z, the digits 0 to 9, '_' and '-', and .ddd.json is added to it",
                 id="a separator",
             ),
             pytest.param("types", "a.b", None, SAYS_NAME, id="a dot"),
@@ -1354,9 +1453,17 @@ class TestCreate:
                 "types",
                 "",
                 None,
-                "'' cannot name a new file: a name is letters, digits, '_' and '-' only, and "
-                ".ddd.json is added to it",
+                "'' cannot name a new file: a name is one or more of the letters a to z and A to "
+                "Z, the digits 0 to 9, '_' and '-', and .ddd.json is added to it",
                 id="no name",
+            ),
+            pytest.param(
+                "types",
+                "été",
+                None,
+                "'été' cannot name a new file: a name is one or more of the letters a to z and A "
+                "to Z, the digits 0 to 9, '_' and '-', and .ddd.json is added to it",
+                id="letters beyond ascii",
             ),
             pytest.param("types", "a", None, SAYS_THERE, id="a file there already"),
             pytest.param(
@@ -1369,9 +1476,47 @@ class TestCreate:
             pytest.param(
                 "component",
                 "pump",
+                "int",
+                "'int' cannot name a component, being reserved by c or by a header DDD generates",
+                id="a c keyword",
+            ),
+            pytest.param(
+                "component",
+                "pump",
+                "uint8_t",
+                "'uint8_t' cannot name a component, being reserved by c or by a header DDD "
+                "generates",
+                id="a name stdint.h declares",
+            ),
+            pytest.param(
+                "component",
+                "pump",
+                "_Pump",
+                "'_Pump' cannot name a component, being reserved by c or by a header DDD generates",
+                id="an underscore and a capital",
+            ),
+            pytest.param(
+                "component",
+                "pump",
+                "Pump__x",
+                "'Pump__x' cannot name a component, being reserved by c or by a header DDD "
+                "generates",
+                id="a double underscore",
+            ),
+            pytest.param(
+                "component",
+                "pump",
                 "A",
                 "this project has a component called 'A' already",
                 id="a component's name taken",
+            ),
+            pytest.param(
+                "component",
+                "pump",
+                "a",
+                "this project has a component called 'A' already, and 'a' differs from it only "
+                "in upper and lower case, so the two would ask for the same generated header",
+                id="a name taken but for its case",
             ),
             pytest.param(
                 "component",
@@ -1405,6 +1550,79 @@ class TestCreate:
         with pytest.raises(FileRefusalError) as refused:
             creating(tmp_path, kind, name, called)
         assert (refused.value.code, refused.value.message) == ("invalid", says)
+
+    def test_a_name_taken_but_for_its_case_is_refused_whichever_case_each_is_in(
+        self, tmp_path: Path
+    ) -> None:
+        """Both names lower-cased before they are compared, as the analysis groups components:
+        neither ``PUMP`` nor ``Pump`` is lower case already."""
+        built, root = built_of(tmp_path, **{"pump.ddd.json": component("Pump")})
+        units = unit_project(root / "p.ddd.json", [], {})
+        with pytest.raises(FileRefusalError) as refused:
+            create_plan(
+                root / "p.ddd.json",
+                "component",
+                "other",
+                "PUMP",
+                ("Pump",),
+                units,
+                built,
+                {},
+                checks_units=False,
+            )
+        assert (refused.value.code, refused.value.message) == (
+            "invalid",
+            "this project has a component called 'Pump' already, and 'PUMP' differs from it only "
+            "in upper and lower case, so the two would ask for the same generated header",
+        )
+
+    @pytest.mark.parametrize(
+        "called",
+        [
+            pytest.param("Int", id="a keyword with a capital"),
+            pytest.param("uint8", id="a stdint.h name short of its _t"),
+            pytest.param("_pump", id="an underscore and a small letter"),
+            pytest.param("Pump_x", id="one underscore where two are reserved"),
+            pytest.param("Speed", id="the name of a variable"),
+            pytest.param("B_", id="a name taken but for an underscore"),
+        ],
+    )
+    def test_a_component_the_refusals_let_through_leaves_a_passing_project_passing(
+        self, tmp_path: Path, called: str
+    ) -> None:
+        """Beside each name refused, one that is not, made through the session into a project
+        that passes: every check the refusals stand for passes it too, so the project passes
+        still, with the component read under its name."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", "uint16")),
+                "b.ddd.json": component("B", declare("input", "Speed", "uint16")),
+            },
+        )
+        root = tmp_path / "p.ddd.json"
+        before = Session(tmp_path).open(root)
+        assert errors_of(before) == []
+        units = unit_project(root, [], {})
+        planned = create_plan(
+            root,
+            "component",
+            "pump",
+            called,
+            ("A", "B"),
+            units,
+            before.index,
+            {},
+            checks_units=False,
+        )
+        after = applied(root, planned)
+        assert errors_of(after) == []
+        assert [(file.name, file.loaded) for file in after.files if file.kind == "component"] == [
+            ("A", True),
+            ("B", True),
+            (called, True),
+        ]
 
 
 class TestAdd:
@@ -1536,6 +1754,40 @@ class TestAdd:
             ),
             ("a.ddd.json",),
         )
+
+    @pytest.mark.parametrize(
+        "path",
+        ["sensors/a.ddd.json", "sensors/été.ddd.json"],
+        ids=["a path", "a path of other letters"],
+    )
+    def test_a_project_listing_no_includes_is_given_the_list_holding_the_entry(
+        self, tmp_path: Path, path: str
+    ) -> None:
+        """Added as a created file's entry is, by the one rule both follow: the key set to a
+        list holding the entry alone, as written, which is the list the change is judged by as
+        well."""
+        write_tree(tmp_path, {"p.ddd.json": BARE, path: component("A")})
+        assert add_plan(tmp_path / "p.ddd.json", path, {}) == FilePlan(
+            (
+                PlannedEdit(
+                    described(tmp_path),
+                    (Operation("set", "project.includes", f'["{path}"]'),),
+                ),
+            ),
+            (path,),
+        )
+
+    def test_a_file_added_to_a_project_listing_no_includes_is_read_and_passes(
+        self, tmp_path: Path
+    ) -> None:
+        write_tree(tmp_path, {"p.ddd.json": BARE, "sensors/a.ddd.json": component("A")})
+        root = tmp_path / "p.ddd.json"
+        after = applied(root, add_plan(root, "sensors/a.ddd.json", {}).edits)
+        assert errors_of(after) == []
+        assert [(file.path.name, file.kind, file.loaded) for file in after.files] == [
+            ("p.ddd.json", "project", True),
+            ("a.ddd.json", "component", True),
+        ]
 
     def test_the_description_is_refused_however_the_project_is_spelled(
         self, tmp_path: Path

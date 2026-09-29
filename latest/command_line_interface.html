@@ -476,37 +476,61 @@ are drawn here as a
 table, exactly what <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span> <span class="pre">--renames</span></code> would write to a file, and are not
 written from this tab.
 A Shared files tab lists what the project declares in its shared files: every constant,
-from a constants file or a component’s own list, and every memory section, which is
-declared in a sections file and nowhere else. A row says which vocabulary an entry
-belongs to, what it states - a constant its value, a section the access the running
-software has to it and the alignment it guarantees - and what names it. What an entry
-states is changed there: a constant’s value and its description, a section’s access, its
-alignment and its description. Renaming one rewrites every place naming it in one edit -
-for a constant every shape spelling it, for a section its own entry and every definition
-placing data in it, since a rename reaching the entry alone would leave those
-definitions placing data in a section nothing declares. A section’s name is judged as the
-linker string it is rather than as a c identifier, which is why a leading dot is an
-ordinary spelling; a name outside the letters, digits, <code class="docutils literal notranslate"><span class="pre">.</span></code>, <code class="docutils literal notranslate"><span class="pre">_</span></code> and <code class="docutils literal notranslate"><span class="pre">$</span></code> that
-spelling allows is refused, being one whose file would then not load, and so is a name
-the project already declares as a section, for a rename and for a new entry alike,
-because each entry carries its own access and alignment and merging two would move data
-into memory with different properties.
-One of either is declared there too, writing <code class="docutils literal notranslate"><span class="pre">constants.ddd.json</span></code> or
-<code class="docutils literal notranslate"><span class="pre">sections.ddd.json</span></code> beside the project description and adding it to <code class="docutils literal notranslate"><span class="pre">includes</span></code> where
+from a constants file or a component’s own list, every memory section, declared in a
+sections file and nowhere else, and every measurement raster, declared in a rasters file
+and nowhere else. A row says which vocabulary an entry belongs to, what it states - a
+constant its value, a section the access the running software has to it and the alignment
+it guarantees, a raster its event and its cycle, stated together as <code class="docutils literal notranslate"><span class="pre">event</span> <span class="pre">1,</span> <span class="pre">10ms</span></code> or
+as <code class="docutils literal notranslate"><span class="pre">event</span> <span class="pre">2</span></code> alone where it states none - and what names it. What an entry states is
+changed there: a constant’s value and its description, a section’s access, its alignment
+and its description, a raster’s event, its cycle and its description. Renaming one
+rewrites every place naming it in one edit - for a constant every shape spelling it; for
+a section its own entry and every definition placing data in it; for a raster its own
+entry, every definition measured in it and a component’s own default naming it for
+everything it produces - since a rename reaching the entry alone would leave those
+definitions, or that default, naming a section or a raster nothing declares. A section’s
+name is judged as the linker string it is rather than as a c identifier, which is why a
+leading dot is an ordinary spelling; a name outside the letters, digits, <code class="docutils literal notranslate"><span class="pre">.</span></code>, <code class="docutils literal notranslate"><span class="pre">_</span></code> and
+<code class="docutils literal notranslate"><span class="pre">$</span></code> that spelling allows is refused, being one whose file would then not load, and so
+is a name the project already declares as a section, for a rename and for a new entry
+alike, because each entry carries its own access and alignment and merging two would move
+data into memory with different properties. A raster’s name is judged as the short name
+of an XCP event it is, rather than as a c identifier either: a name outside the printable
+ASCII, with no space, that a short name allows, or one longer than the eight characters
+the a2l field holds, is refused, being one whose file would then not load, and so is a
+name the project already declares as a raster - <code class="docutils literal notranslate"><span class="pre">'10ms'</span> <span class="pre">is</span> <span class="pre">already</span> <span class="pre">a</span> <span class="pre">raster</span> <span class="pre">this</span> <span class="pre">project</span>
+<span class="pre">declares</span></code> - for a rename and for a new entry alike, because each entry carries its own
+event and cycle and merging two would sample one signal on another’s channel. One of the
+three is declared there too, writing <code class="docutils literal notranslate"><span class="pre">constants.ddd.json</span></code>, <code class="docutils literal notranslate"><span class="pre">sections.ddd.json</span></code> or
+<code class="docutils literal notranslate"><span class="pre">rasters.ddd.json</span></code> beside the project description and adding it to <code class="docutils literal notranslate"><span class="pre">includes</span></code> where
 the project has no file of that kind - refused instead of written while a file the
-project includes could not be read at all, since one of those may be the file the new
-one would be a second of. A section is declared with both an access and an alignment,
-the format defaulting neither: an entry missing one is an entry whose file would not
-load. What each may say is the model’s rule rather than the interface’s, and a refusal
-names it - the access is one of two words, the alignment a power of two written as a
-whole number. Removing one is refused while anything still names it - a shape, for a
-constant; a definition placing data there, for a section - and while it is all its own
-list declares: a list of constants or of sections declares at least one, in a constants
-file, in a component and in a sections file alike, so an emptied list is a file that no
-longer loads. A constant value no shape can use is reported there by
-<code class="docutils literal notranslate"><span class="pre">dimension-value</span></code> rather than refused: the interface does not invent a rule the
-format itself does not have. A finding naming a constant or a section leads to the tab,
-a name no file declares landing on the form that declares it.
+project includes could not be read at all, since one of those may be the file the new one
+would be a second of. A section is declared with both an access and an alignment, the
+format defaulting neither: an entry missing one is an entry whose file would not load.
+What each may say is the model’s rule rather than the interface’s, and a refusal names it
+- the access is one of two words, the alignment a power of two written as a whole number.
+A raster is declared with an event alone, the format defaulting its cycle and its
+description both: a raster whose cycle is left unstated is not cyclic - crank
+synchronous, on change, on demand - a real kind of raster and not an omission. A refusal
+names what either may say - the event a channel number from 0 to 65535 written without a
+decimal point, the cycle a count of 1 to 255 times a decade from 1ns to 1s written as one
+string. Making a raster that is already declared acyclic is not something the tab does:
+a raster states no cycle by leaving the key out of its entry, and an emptied Cycle field
+asks for the empty string instead, which is no period and is refused as one. An event
+another raster already states is refused too, naming which
+one - <code class="docutils literal notranslate"><span class="pre">event</span> <span class="pre">1</span> <span class="pre">is</span> <span class="pre">already</span> <span class="pre">claimed</span> <span class="pre">by</span> <span class="pre">raster</span> <span class="pre">'10ms'</span></code> - whether it is being declared or
+changed: an event is a property of the target’s XCP configuration, distinct across the
+project, so not free for a second raster to claim. Removing one is refused while anything
+still names it - a shape, for a constant; a definition placing data there, for a section;
+a definition measured in it or a component’s own default naming it, for a raster, its own
+refusal counting every shape rather than naming one: <code class="docutils literal notranslate"><span class="pre">2</span> <span class="pre">shapes</span> <span class="pre">name</span> <span class="pre">10ms,</span> <span class="pre">so</span> <span class="pre">it</span> <span class="pre">cannot</span>
+<span class="pre">be</span> <span class="pre">removed.</span></code> - and while it is all its own list declares: a list of constants, of
+sections or of rasters declares at least one, in a constants file, in a component, and in
+a sections or a rasters file alike, so an emptied list is a file that no longer loads. A
+constant value no shape can use is reported there by <code class="docutils literal notranslate"><span class="pre">dimension-value</span></code> rather than
+refused: the interface does not invent a rule the format itself does not have. A finding
+naming a constant, a section or a raster leads to the tab, a name no file declares
+landing on the form that declares it.
 What the page reads and writes is bounded by the directory <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> was started in,
 and by the project’s own where a project elsewhere was named on the command line. A file
 the project includes from outside those is read by <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> like any other and named

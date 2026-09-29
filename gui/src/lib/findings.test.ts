@@ -257,22 +257,18 @@ describe("where a finding leads", () => {
     expect(routeLabel(elsewhere, state([elsewhere]))).toBe("Open elsewhere.ddd.json");
   });
 
-  test(
-    "a file, by its own row on the Files tab - the entry or file `empty-vocabulary` and " +
-      "include-empty name",
-    () => {
-      const one = finding({
-        check: "empty-vocabulary",
-        severity: "info",
-        file: CONSTANTS,
-        pointer: "constants",
-        route: { kind: "file", name: CONSTANTS },
-      });
-      expect(routeLabel(one, state([one]))).toBe("Open constants.ddd.json");
-      expect(routeHref(one)).toBe(`/project?view=files&path=${encodeURIComponent(CONSTANTS)}`);
-      expect(routeOf(one)).toEqual({ page: "project", view: "files", path: CONSTANTS });
-    },
-  );
+  test("a file, by its own row on the Files tab - the route empty-vocabulary and include-empty share", () => {
+    const one = finding({
+      check: "empty-vocabulary",
+      severity: "info",
+      file: CONSTANTS,
+      pointer: "constants",
+      route: { kind: "file", name: CONSTANTS },
+    });
+    expect(routeLabel(one, state([one]))).toBe("Open constants.ddd.json");
+    expect(routeHref(one)).toBe(`/project?view=files&path=${encodeURIComponent(CONSTANTS)}`);
+    expect(routeOf(one)).toEqual({ page: "project", view: "files", path: CONSTANTS });
+  });
 
   test("a file inside a subdirectory, named relative to the project rather than by its base name", () => {
     // `sensors/a.ddd.json` says which of two identically-named files a `baseName` alone,

@@ -1176,10 +1176,15 @@ class IncludedEntryReply(_Frozen):
     names."""
 
     files: tuple[str, ...]
-    """Absolute, posix-separated paths of the files the entry brings that exist: its own, for an
-    entry naming one; a pattern's matches, in the loader's order, the description never among
-    them; none, for a path naming no file and for a pattern matching none. Each is the path of a
-    ``SourceFile`` of ``State.files``, which the page joins on."""
+    """Absolute, posix-separated paths of the files the entry brings that exist, read off the
+    disk when asked: its own, for an entry naming one; a pattern's matches, in the loader's order,
+    the description never among them; none, for a path naming no file and for a pattern matching
+    none.
+
+    The page joins them to ``State.files`` on the path, and not every one is there. A schema
+    error in the root's own description stops its read before its includes, so that no file they
+    bring is among ``State.files``; and a pattern can match a file created since the revision,
+    which the revision never read."""
 
     findings: int
     """How many of the revision's findings, of every severity, are filed on the project
@@ -1192,7 +1197,8 @@ class IncludedEntryReply(_Frozen):
 class FilesReply(_Frozen):
     """What ``GET /api/files`` answers: the root's includes, in order, as the loader reads
     them. Each file's kind, load state and findings are ``State.files``' - the page joins on
-    the path rather than this repeating them.
+    the path rather than this repeating them, where the revision read the file at all
+    (:attr:`IncludedEntryReply.files` says when it did not).
 
     The entries are read off the description when asked, and their counts off the revision: a
     save landing between the analysis and the request can put one poll's count on the wrong row,
@@ -1214,7 +1220,10 @@ class FilesReply(_Frozen):
 
 
 class BroughtError(_Frozen):
-    """One error adding a file would bring into the project, as the analysis reports it."""
+    """One of the errors the project would have more of with a file added than it has now, as
+    :func:`ddd.file_plans.new_errors` lists them, counted at their places. The count is what is
+    new: the error listed can be one the project has now, re-worded, or carry the words of a
+    mirror the page already shows."""
 
     file: str
     """Absolute, posix-separated path of the file it is filed on."""
@@ -1227,25 +1236,31 @@ class BroughtError(_Frozen):
 
 
 class FilesPlanReply(PlanReply):
-    """What ``GET /api/files-plan`` answers: the plan, and what it would bring - for an add, the
-    errors the added file would bring; for a create, and for a remove the reader is allowed to
-    make, none."""
+    """What ``GET /api/files-plan`` answers: the plan, and what it would bring - for an add that
+    was judged, the errors the project would have more of with the file added than it has now,
+    where the count is what is new; for a create, an add that was not judged, and a remove the
+    reader is allowed to make, none."""
 
     unjudged: str | None
     """Why what an add would bring, or a remove would leave, could not be judged: the sentence
     the preview says it in, the server's like every sentence of the preview. Where not every run
     the revision was made from analysed the project - a run's read reported an error, or a
     plugin raised - there was no complete "now" to compare the change against: nothing is
-    brought then, and a removal is allowed unjudged. ``None`` where the change was judged, and
-    always for a create, which has nothing to judge: an empty file breaks nothing, and the one
-    kind that could, a units file, lists every unit in use where it is the first of the
-    project's tree."""
+    brought then, and a removal is allowed unjudged.
+
+    ``None`` where the change was judged, and always for a create, which cannot be: the new file
+    does not exist until the edit is made, so :func:`ddd.gui.session.findings_with`, reading every
+    file from the disk, cannot read it. Measured under the default severities, an empty file
+    brings one finding alone - ``empty-vocabulary`` or ``empty-component``, both INFO by default -
+    and a first units file, listing every unit in use, none. A build raising either to an error,
+    or a plugin's check, can make a create fail all the same, and the preview does not say so."""
 
     brings: tuple[BroughtError, ...]
     """For an add that was judged - ``unjudged`` being ``None`` - what
     :func:`ddd.file_plans.new_errors` answers of the project with the file added: the errors it
-    would have more of than it has now, in the order a revision lists its findings. Empty
-    otherwise."""
+    would have more of than it has now, at their places, in the order a revision lists its
+    findings - the count being what is new, each error listed possibly one the project has now,
+    re-worded, or in a mirror's words. Empty otherwise, an unjudged add's among them."""
 
     kept_by: str | None
     """For a remove, the entry left that still brings the file into the project -

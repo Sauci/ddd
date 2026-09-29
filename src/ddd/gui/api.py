@@ -17,7 +17,6 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
-from os.path import relpath
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
@@ -945,10 +944,12 @@ class Api:
         """One change of the project's files - creating, adding or removing one - previewed and
         never written, with what it would bring.
 
-        A parameter :data:`FILE_PLANS` names that is missing or empty is a bad request. Past
-        that, each refusal is the plan's own or :func:`_addition`'s and :func:`_removal`'s, in
-        the order they ask them, ``not-found`` answered 404 and every other 409; a judgement a
-        file saved since the revision would falsify is refused ``stale``.
+        A parameter :data:`FILE_PLANS` names that is missing or empty is a bad request, and so
+        is a key to remove that is not absolute, as a row's never is: read against the server's
+        own working directory, a relative one named another file. Past that, each refusal is the
+        plan's own or :func:`_addition`'s and :func:`_removal`'s, in the order they ask them,
+        ``not-found`` answered 404 and every other 409; a judgement a file saved or come since the
+        revision would falsify is refused ``stale``.
         """
         revision = self._opened()
         action = _single(query.get("action")) or ""
@@ -964,6 +965,13 @@ class Api:
                 wanted = " and ".join(f"?{taken}=" for taken in takes)
                 return _error(400, "bad-request", f"{action} takes {wanted}")
             given[part] = value
+        if action == "remove" and not Path(given["path"]).is_absolute():
+            return _error(
+                400,
+                "bad-request",
+                f"remove takes ?path= as a row's key, which is absolute, and '{given['path']}' "
+                "is not",
+            )
         component = _single(query.get("component")) or None
         cache: dict[Path, Document] = {}
         try:
@@ -1557,6 +1565,41 @@ def _at_entry(revision: Revision, index: int) -> int:
     return sum(1 for filed in revision.findings if filed.diagnostic.location == at)
 
 
+def _appeared_since(revision: Revision) -> list[str]:
+    """The name of every file an entry of the tree reaches now that the revision never read, in
+    the order the descriptions and their entries list them, each once.
+
+    Every description the revision read whose kind is ``project`` - the root, and each
+    sub-project - has its entries expanded by the loader's own rule
+    (:func:`ddd.file_plans.included_entries`). A file one of them reaches that the revision
+    lacks appeared since: saved where a pattern matches it, or moved there. The session's poll
+    compares only the files a revision read, so a new file does not start an analysis, and
+    judged against a revision that never read it, an error of that file read as the change's.
+
+    Asked beside :func:`_changed_since`, and only where a plan is judged, as that is. Sound
+    there: every run of such a revision analysed the project, so every plain entry named a file
+    that exists - one naming none is ``file-not-found`` - and no ``include-cycle`` or
+    ``include-depth`` stood, all three errors no build lowers; so every file an entry reached
+    was read. Where a run was not analysed, a file an entry reaches may never have been read,
+    and nothing is judged there anyway.
+
+    Statements in loops rather than a comprehension's filters, which coverage.py counts no branch
+    in."""
+    read = {file.path for file in revision.files}
+    cache: dict[Path, Document] = {}
+    appeared: list[str] = []
+    for file in revision.files:
+        if file.kind != "project":
+            continue
+        for entry in included_entries(file.path, cache):
+            for reached in entry.files:
+                if reached in read:
+                    continue
+                read.add(reached)
+                appeared.append(reached.name)
+    return appeared
+
+
 def _changed_since(file: SourceFile) -> bool:
     """Whether ``file`` no longer reads as the analysis found it.
 
@@ -1920,12 +1963,19 @@ def _removal(revision: Revision, path: Path, cache: dict[Path, Document]) -> _Fi
     allowed then, with the sentence saying why it was not judged, true of both ways a run stops
     short.
 
-    The refusal counts what :func:`ddd.file_plans.new_errors` counts - errors beyond those the
-    project has now - and quotes the first of them without calling it new: where a place that
-    had one error of a check would have two, the one quoted can be the old one, re-worded. The
-    file or the pattern removed is named as the includes spell it (:func:`_spelled`)."""
+    The refusal counts what :func:`ddd.file_plans.new_errors` counts, and says so: errors the
+    project would have more of than it has now, at the places they are - a whole file's, and
+    one's placed nowhere, told apart by their words as well. Not a total: measured, a project with
+    four errors, whose removed writer reads a variable nothing writes, has five once it is gone -
+    the writer's own error leaving with it - where the count is two. The first of them is quoted
+    without being called new: where a place that had one error of a check would have two, the one
+    quoted can be the old one, re-worded.
+
+    Named by the entry taken out as the description writes it - the first, where several spell
+    one file - and not by the key it was asked by, which names where the entry leads: through a
+    link to a directory, a path no entry spells."""
     plan = remove_plan(revision.project, path, cache)
-    removing = _spelled(path, revision.project)
+    removing = plan.removed[0]
     if not revision.analysed:
         return _FilesPlanned(
             plan.edits,
@@ -1939,30 +1989,15 @@ def _removal(revision: Revision, path: Path, cache: dict[Path, Document]) -> _Fi
         if len(errors) == 1:
             raise FileRefusalError(
                 "invalid",
-                f"removing {removing} would leave an error, in {where.name}: {first.message}",
+                f"removing {removing} would leave one error more than the project has now at "
+                f"its place, in {where.name}: {first.message}",
             )
         raise FileRefusalError(
             "invalid",
-            f"removing {removing} would leave {len(errors)} errors, the first in {where.name}: "
-            f"{first.message}",
+            f"removing {removing} would leave {len(errors)} errors more than the project has "
+            f"now at their places, the first in {where.name}: {first.message}",
         )
     return _FilesPlanned(plan.edits, kept_by=plan.kept_by)
-
-
-def _spelled(path: Path, described: Path) -> str:
-    """``path`` as the description's ``includes`` would spell it: relative to the description's
-    own directory, posix-separated, walking up with ``..`` where it lies elsewhere - so that a
-    pattern in a directory of its own is named ``lib/*.ddd.json``, and not by its last part
-    alone, which another pattern may end in too.
-
-    Named whole where it has no such spelling: on Windows :func:`os.path.relpath` refuses to
-    measure from one drive to another, and an entry may name a file on another drive than the
-    description's."""
-    try:
-        spelled = relpath(path, described.parent)
-    except ValueError:
-        return path.as_posix()
-    return Path(spelled).as_posix()
 
 
 def _judged(revision: Revision, includes: Sequence[str]) -> tuple[Pair, ...]:
@@ -1978,6 +2013,9 @@ def _judged(revision: Revision, includes: Sequence[str]) -> tuple[Pair, ...]:
     saved just before the next poll would make an error that save brought read as the
     change's.
 
+    Refused ``stale`` too where an entry of the tree reaches a file the revision never read
+    (:func:`_appeared_since`): judged, an error of that file read as the change's.
+
     Asked only where there is a judgement to spoil, never of a plan answered unjudged: a file
     the revision could not read - the one a plain entry naming no file puts among its files -
     reads as changed every time it is asked, and would refuse removing that very entry for
@@ -1987,6 +2025,13 @@ def _judged(revision: Revision, includes: Sequence[str]) -> tuple[Pair, ...]:
         raise EditError(
             STALE,
             f"{', '.join(saved)} changed since the project was analysed, so the change cannot "
+            "be judged until the project is analysed again",
+        )
+    appeared = _appeared_since(revision)
+    if appeared:
+        raise EditError(
+            STALE,
+            f"{', '.join(appeared)} appeared since the project was analysed, so the change cannot "
             "be judged until the project is analysed again",
         )
     now = [(filed.file, filed.diagnostic) for filed in revision.findings]

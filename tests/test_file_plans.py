@@ -1818,6 +1818,7 @@ class TestRemove:
             (PlannedEdit(described(tmp_path), (Operation("remove", "project.includes[1]"),)),),
             ("a.ddd.json", "c.ddd.json"),
             kept_by=None,
+            removed=("b.ddd.json",),
         )
 
     def test_a_pattern_entry_is_taken_out_whole(self, tmp_path: Path) -> None:
@@ -1834,6 +1835,7 @@ class TestRemove:
         assert remove_plan(tmp_path / "p.ddd.json", key, {}) == FilePlan(
             (PlannedEdit(described(tmp_path), (Operation("remove", "project.includes[1]"),)),),
             ("a.ddd.json",),
+            removed=("sensors/*.ddd.json",),
         )
 
     @pytest.mark.parametrize(
@@ -1849,6 +1851,7 @@ class TestRemove:
         assert remove_plan(tmp_path / "p.ddd.json", key, {}) == FilePlan(
             (PlannedEdit(described(tmp_path), (Operation("remove", "project.includes[0]"),)),),
             ("a.ddd.json",),
+            removed=(entry,),
         )
 
     def test_an_entry_listed_twice_is_taken_out_everywhere(self, tmp_path: Path) -> None:
@@ -1876,6 +1879,7 @@ class TestRemove:
                 ),
             ),
             ("b.ddd.json",),
+            removed=("a.ddd.json", "./a.ddd.json"),
         )
 
     def test_a_file_a_pattern_pulled_in_is_refused_naming_the_pattern(self, tmp_path: Path) -> None:
@@ -1948,6 +1952,7 @@ class TestRemove:
             (PlannedEdit(described(tmp_path), (Operation("remove", "project.includes[0]"),)),),
             ("sensors/*.ddd.json",),
             kept_by="sensors/*.ddd.json",
+            removed=("sensors/a.ddd.json",),
         )
 
     def test_a_pattern_left_matching_other_files_keeps_nothing(self, tmp_path: Path) -> None:
@@ -1965,6 +1970,7 @@ class TestRemove:
             (PlannedEdit(described(tmp_path), (Operation("remove", "project.includes[0]"),)),),
             ("sensors/*.ddd.json",),
             kept_by=None,
+            removed=("a.ddd.json",),
         )
 
     def test_the_first_pattern_left_bringing_in_a_file_listed_twice_is_named(
@@ -1996,6 +2002,7 @@ class TestRemove:
             ),
             ("b.ddd.json", "*.ddd.json", "a*.ddd.json"),
             kept_by="*.ddd.json",
+            removed=("a.ddd.json", "./a.ddd.json"),
         )
 
 

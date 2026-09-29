@@ -275,7 +275,8 @@ class IncludedEntry:
 class FilePlan:
     """What adding or removing an entry takes: the edit of the description, the root's
     ``includes`` as the edit leaves them - the entries that are strings, in order - and, for a
-    removal, the pattern that keeps the file in the project all the same, where one does.
+    removal, the pattern that keeps the file in the project all the same, where one does, and the
+    entries taken out.
 
     One decision, read twice. ``includes`` is the list to hand
     :func:`ddd.gui.session.findings_with`, which analyses the project with the root's list
@@ -291,6 +292,12 @@ class FilePlan:
     the file being taken out. The file stays in the project then, and a reader is to be told so
     by this answer rather than by the page working it out. ``None`` where no entry left brings
     it in, and always for an addition."""
+
+    removed: tuple[str, ...] = ()
+    """For a removal, every entry taken out, each as the description writes it, in the order
+    the list has them: what a sentence about the removal names it by - the key it was asked by
+    names where the entry leads, which a link on the way can make a path no entry spells. Empty
+    for an addition."""
 
 
 def included_entries(project: Path, cache: dict[Path, Document]) -> tuple[IncludedEntry, ...]:
@@ -576,6 +583,7 @@ def remove_plan(project: Path, path: Path, cache: dict[Path, Document]) -> FileP
             (PlannedEdit(described, operations),),
             tuple(left.entry for left in kept),
             kept_by=brought_by,
+            removed=tuple(gone.entry for gone in removed),
         )
     if brought_by is not None:
         raise FileRefusalError(

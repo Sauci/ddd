@@ -106,8 +106,8 @@ def created_beside(
 
     The only creation :func:`ddd.gui.session._confined` allows - beside the description, by an
     edit that adds it to the includes there - so a plan built any other way is refused when it
-    is applied. :func:`adopt_units` and :func:`ddd.shared_plans._created` both create through
-    this, and cannot drift apart.
+    is applied. :func:`adopt_units`, :func:`ddd.shared_plans._created` and
+    :func:`ddd.file_plans.create_plan` all create through this, and cannot drift apart.
     """
     laid_out = lay_out(text, one_line=False, indent="", unit=DEFAULT_INDENT_UNIT, newline="\n")
     includes = read(project, cache).value_at("project.includes")

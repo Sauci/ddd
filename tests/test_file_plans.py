@@ -1,4 +1,5 @@
-"""The Files tab's own rules: what a change of the root project's ``includes`` would break."""
+"""The Files tab's own rules: the root project's ``includes`` as the loader reads them, the plans
+creating, adding and removing a file of it, and what a change of the list would break."""
 
 from __future__ import annotations
 
@@ -14,11 +15,34 @@ from typing import Any
 import pytest
 
 import ddd.file_plans as file_plans
-from conftest import build_record, component, declare, project, scalar_type, types, write_tree
-from ddd.diagnostics import Diagnostic, Location, Severity
-from ddd.file_plans import Pair, new_errors
+from conftest import (
+    build_record,
+    built_of,
+    component,
+    declare,
+    project,
+    scalar_type,
+    types,
+    write_tree,
+)
+from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
+from ddd.editing import Operation
+from ddd.file_plans import (
+    FilePlan,
+    FileRefusalError,
+    IncludedEntry,
+    Pair,
+    add_plan,
+    create_plan,
+    included_entries,
+    new_errors,
+    remove_plan,
+)
 from ddd.gui.session import Session, findings_with
+from ddd.loading import load_workspace
 from ddd.lsp.diagnostics import finding_identity, run_project
+from ddd.lsp.navigation import Index, index
+from ddd.lsp.units import PlannedEdit, unit_project
 
 PROJECT = Path("/p/p.ddd.json")
 A = Path("/p/a.ddd.json")
@@ -864,6 +888,774 @@ class TestAClashARemovalBrings:
                 "(datatype: uint8 != uint16)",
             ),
         ]
+
+
+SAYS_PULLED_IN = (
+    "sensors/a.ddd.json is part of this project already: the pattern 'sensors/*.ddd.json' "
+    "brings it in"
+)
+SAYS_KIND = (
+    "no file of kind 'project' can be created here; the kinds that can are component, types, "
+    "units, constants, sections and rasters"
+)
+SAYS_NAME = (
+    "'a.b' cannot name a new file: a name is letters, digits, '_' and '-' only, and .ddd.json is "
+    "added to it"
+)
+SAYS_THERE = "a.ddd.json is there already, beside p.ddd.json"
+SAYS_ITSELF = "p.ddd.json is this project's own description, which it cannot include"
+
+
+def described(base: Path) -> Path:
+    """The project description the tests below write, resolved as every plan resolves it."""
+    return (base / "p.ddd.json").resolve()
+
+
+def indexed(root: Path) -> Index:
+    """The index of the project described at ``root``, as the analysis builds it."""
+    workspace = load_workspace(root, DiagnosticBag())
+    assert workspace is not None
+    return index(workspace)
+
+
+def creating(
+    base: Path, kind: str, name: str, called: str | None = None, *, checks_units: bool = False
+) -> tuple[PlannedEdit, ...]:
+    """A file planned beside a project that loaded, of one component stating no unit: ``A``,
+    in ``a.ddd.json``, whose name is taken."""
+    built, root = built_of(base, **{"a.ddd.json": component("A")})
+    units = unit_project(root / "p.ddd.json", [], {})
+    return create_plan(
+        root / "p.ddd.json", kind, name, called, ("A",), units, built, {}, checks_units=checks_units
+    )
+
+
+class TestIncludedEntries:
+    """The root's ``includes`` as the loader's own rule reads them: each entry in order, the
+    files it brings that exist, and the key its row is selected by."""
+
+    def test_each_entry_in_order_with_what_it_reaches(self, tmp_path: Path) -> None:
+        """A sub-project is one entry reaching one file: its own includes are not the root's."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "b.ddd.json", "sub/project.ddd.json", "a.ddd.json"),
+                "a.ddd.json": component("A"),
+                "b.ddd.json": component("B"),
+                "sub/project.ddd.json": project("Sub", "c.ddd.json"),
+                "sub/c.ddd.json": component("C"),
+            },
+        )
+        a, b, sub = (
+            (tmp_path / name).resolve()
+            for name in ("a.ddd.json", "b.ddd.json", "sub/project.ddd.json")
+        )
+        assert included_entries(tmp_path / "p.ddd.json", {}) == (
+            IncludedEntry(0, "b.ddd.json", True, b, (b,)),
+            IncludedEntry(1, "sub/project.ddd.json", True, sub, (sub,)),
+            IncludedEntry(2, "a.ddd.json", True, a, (a,)),
+        )
+
+    def test_a_pattern_lists_the_files_it_matched(self, tmp_path: Path) -> None:
+        """In the loader's order, by path, and only what the pattern matches."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "sensors/*.ddd.json"),
+                "sensors/b.ddd.json": component("B"),
+                "sensors/a.ddd.json": component("A"),
+                "sensors/notes.json": {},
+            },
+        )
+        sensors = (tmp_path / "sensors").resolve()
+        assert included_entries(tmp_path / "p.ddd.json", {}) == (
+            IncludedEntry(
+                0,
+                "sensors/*.ddd.json",
+                False,
+                (tmp_path / "sensors/*.ddd.json").resolve(),
+                (sensors / "a.ddd.json", sensors / "b.ddd.json"),
+            ),
+        )
+
+    @pytest.mark.parametrize(
+        "entry", ["gone.ddd.json", "gone/*.ddd.json"], ids=["a path", "a pattern"]
+    )
+    def test_an_entry_whose_file_is_gone_names_nothing(self, tmp_path: Path, entry: str) -> None:
+        """Focus 4: a plain entry naming no file is that missing file, which ``ddd check``
+        reports ``file-not-found``, and one holding a wildcard is a pattern matching nothing,
+        reported ``include-empty``. Either way it names nothing - ``names`` is False and
+        ``files`` is empty - and nothing raises."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", entry)})
+        (found,) = included_entries(tmp_path / "p.ddd.json", {})
+        assert (found.index, found.entry, found.names, found.files) == (0, entry, False, ())
+        assert found.key == (tmp_path / entry).resolve()
+
+    def test_an_entry_naming_a_directory_names_nothing(self, tmp_path: Path) -> None:
+        """A directory is no more a description file than a missing one - ``ddd check`` reports
+        it ``file-not-found`` too - and none of the files in it is brought in."""
+        write_tree(
+            tmp_path, {"p.ddd.json": project("P", "sensors"), "sensors/a.ddd.json": component("A")}
+        )
+        assert included_entries(tmp_path / "p.ddd.json", {}) == (
+            IncludedEntry(0, "sensors", False, (tmp_path / "sensors").resolve(), ()),
+        )
+
+    def test_an_entry_naming_a_file_is_that_file_whatever_it_spells(self, tmp_path: Path) -> None:
+        """The loader tries an entry as a file before it reads it as a pattern: ``a[12]`` names
+        the file of that name, and does not reach ``a1``."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a[12].ddd.json"),
+                "a[12].ddd.json": component("A"),
+                "a1.ddd.json": component("A1"),
+            },
+        )
+        named = (tmp_path / "a[12].ddd.json").resolve()
+        assert included_entries(tmp_path / "p.ddd.json", {}) == (
+            IncludedEntry(0, "a[12].ddd.json", True, named, (named,)),
+        )
+
+    @pytest.mark.parametrize(
+        "spelled", ["p.ddd.json", "sub/../p.ddd.json"], ids=["as it is", "through a directory"]
+    )
+    def test_the_project_description_is_never_among_a_patterns_files(
+        self, tmp_path: Path, spelled: str
+    ) -> None:
+        """``*.ddd.json`` beside the description matches the description too, and the loader
+        leaves it out, so that a project never includes itself. It is left out by its resolved
+        path, which is why the description is resolved first, however it is spelled."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "*.ddd.json"),
+                "a.ddd.json": component("A"),
+                "sub/b.ddd.json": component("B"),
+            },
+        )
+        a = (tmp_path / "a.ddd.json").resolve()
+        assert included_entries(tmp_path / spelled, {}) == (
+            IncludedEntry(0, "*.ddd.json", False, (tmp_path / "*.ddd.json").resolve(), (a,)),
+        )
+
+    def test_an_entry_that_is_no_string_is_no_row_and_the_others_keep_their_places(
+        self, tmp_path: Path
+    ) -> None:
+        """The loader refuses such a list with a ``schema`` error. The entries that are strings
+        are rows still, each at the index a finding filed at it names."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": {
+                    "project": {"name": "P", "includes": ["a.ddd.json", 3, "b.ddd.json"]}
+                },
+                "a.ddd.json": component("A"),
+                "b.ddd.json": component("B"),
+            },
+        )
+        a, b = ((tmp_path / name).resolve() for name in ("a.ddd.json", "b.ddd.json"))
+        assert included_entries(tmp_path / "p.ddd.json", {}) == (
+            IncludedEntry(0, "a.ddd.json", True, a, (a,)),
+            IncludedEntry(2, "b.ddd.json", True, b, (b,)),
+        )
+
+    @pytest.mark.parametrize(
+        "text",
+        ['{"project": {"name": "P", "includes": "a.ddd.json"}}', '{"project": {"name": "P", '],
+        ids=["a string", "a description that does not parse"],
+    )
+    def test_includes_that_are_no_list_are_no_entries(self, tmp_path: Path, text: str) -> None:
+        write_tree(tmp_path, {"p.ddd.json": text, "a.ddd.json": component("A")})
+        assert included_entries(tmp_path / "p.ddd.json", {}) == ()
+
+
+class TestCreate:
+    """A file created beside the description and added to its includes in one plan, by the one
+    recipe every plan creates a file by, :func:`ddd.lsp.units.created_beside`."""
+
+    @pytest.mark.parametrize("kind", ["types", "constants", "sections", "rasters"])
+    def test_a_vocabulary_file_is_created_declaring_nothing(
+        self, tmp_path: Path, kind: str
+    ) -> None:
+        assert creating(tmp_path, kind, "shared") == (
+            PlannedEdit(
+                described(tmp_path),
+                (Operation("insert", "project.includes[1]", '"shared.ddd.json"'),),
+            ),
+            PlannedEdit(
+                described(tmp_path).parent / "shared.ddd.json",
+                (Operation("set", "", f'{{\n  "{kind}": []\n}}\n'),),
+                creates=True,
+            ),
+        )
+
+    def test_a_component_is_created_with_its_name_and_an_empty_interface(
+        self, tmp_path: Path
+    ) -> None:
+        assert creating(tmp_path, "component", "pump", "Pump") == (
+            PlannedEdit(
+                described(tmp_path),
+                (Operation("insert", "project.includes[1]", '"pump.ddd.json"'),),
+            ),
+            PlannedEdit(
+                described(tmp_path).parent / "pump.ddd.json",
+                (
+                    Operation(
+                        "set",
+                        "",
+                        '{\n  "component": {\n    "name": "Pump",\n    "interface": []\n  }\n}\n',
+                    ),
+                ),
+                creates=True,
+            ),
+        )
+
+    def test_a_projects_first_units_file_lists_every_unit_it_states(self, tmp_path: Path) -> None:
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm"), declare("output", "Load", unit="%")
+                ),
+            },
+        )
+        units = unit_project(root / "p.ddd.json", [], {})
+        planned = create_plan(
+            root / "p.ddd.json", "units", "units", None, (), units, built, {}, checks_units=False
+        )
+        (made,) = [edit for edit in planned if edit.creates]
+        assert made.path == described(tmp_path).parent / "units.ddd.json"
+        # Parsed rather than compared as text: the layout is `created_beside`'s, pinned by
+        # `test_unit_plans.TestCreatedBeside`.
+        assert json.loads(made.operations[0].raw or "") == {
+            "units": [{"unit": "%", "description": ""}, {"unit": "rpm", "description": ""}]
+        }
+
+    def test_a_unit_is_written_as_it_is_spelled(self, tmp_path: Path) -> None:
+        """``°C`` arrives in the file as ``°C``, where json's default would write ``\\u00b0C``,
+        as :func:`ddd.lsp.units.adopt_units` writes one."""
+        built, root = built_of(
+            tmp_path, **{"a.ddd.json": component("A", declare("output", "Heat", unit="°C"))}
+        )
+        units = unit_project(root / "p.ddd.json", [], {})
+        planned = create_plan(
+            root / "p.ddd.json", "units", "units", None, (), units, built, {}, checks_units=False
+        )
+        (made,) = [edit for edit in planned if edit.creates]
+        assert '"unit": "°C"' in (made.operations[0].raw or "")
+
+    def test_a_units_file_of_a_project_a_sub_project_opted_in_is_created_empty(
+        self, tmp_path: Path
+    ) -> None:
+        """A units file anywhere in the tree opts the whole project in, a sub-project's too, so
+        the unit it lists, listed again in a new file of the root's, would be a
+        ``duplicate-unit``. The root's own includes name no units file: what says the project
+        is opted in is ``checks_units``, the tree's."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "sub/project.ddd.json", "a.ddd.json"),
+                "sub/project.ddd.json": project("Sub", "units.ddd.json"),
+                "sub/units.ddd.json": {"units": [{"unit": "rpm", "description": ""}]},
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        root = tmp_path / "p.ddd.json"
+        built = indexed(root)
+        units = unit_project(root, [], {})
+        assert (units.units_files, sorted(built.units)) == ((), ["rpm"])
+        planned = create_plan(root, "units", "units", None, (), units, built, {}, checks_units=True)
+        assert planned == (
+            PlannedEdit(
+                described(tmp_path),
+                (Operation("insert", "project.includes[2]", '"units.ddd.json"'),),
+            ),
+            PlannedEdit(
+                described(tmp_path).parent / "units.ddd.json",
+                (Operation("set", "", '{\n  "units": []\n}\n'),),
+                creates=True,
+            ),
+        )
+
+    def test_a_second_units_file_is_created_empty(self, tmp_path: Path) -> None:
+        """The project is opted in already, so an empty file changes nothing it checks."""
+        built, root = built_of(
+            tmp_path,
+            **{
+                "units.ddd.json": {"units": [{"unit": "rpm", "description": ""}]},
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm"), declare("output", "Load", unit="%")
+                ),
+            },
+        )
+        units = unit_project(root / "p.ddd.json", [], {})
+        planned = create_plan(
+            root / "p.ddd.json", "units", "more", None, (), units, built, {}, checks_units=True
+        )
+        assert planned == (
+            PlannedEdit(
+                described(tmp_path).parent / "more.ddd.json",
+                (Operation("set", "", '{\n  "units": []\n}\n'),),
+                creates=True,
+            ),
+            PlannedEdit(
+                described(tmp_path),
+                (Operation("insert", "project.includes[2]", '"more.ddd.json"'),),
+            ),
+        )
+
+    def test_a_first_units_file_of_a_project_stating_no_unit_is_empty(self, tmp_path: Path) -> None:
+        assert creating(tmp_path, "units", "units") == (
+            PlannedEdit(
+                described(tmp_path),
+                (Operation("insert", "project.includes[1]", '"units.ddd.json"'),),
+            ),
+            PlannedEdit(
+                described(tmp_path).parent / "units.ddd.json",
+                (Operation("set", "", '{\n  "units": []\n}\n'),),
+                creates=True,
+            ),
+        )
+
+    def test_a_first_units_file_is_refused_while_a_file_did_not_load(self, tmp_path: Path) -> None:
+        """What did not load may state a unit, and a first units file leaving it out would have
+        it reported ``unknown-unit`` - the project failing in one click, which listing every
+        unit is there to prevent. Refused as :func:`ddd.lsp.units.adoption` refuses."""
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": '{"component": ',
+            },
+        )
+        units = unit_project(root / "p.ddd.json", [root / "b.ddd.json"], {})
+        with pytest.raises(FileRefusalError) as refused:
+            create_plan(
+                root / "p.ddd.json",
+                "units",
+                "units",
+                None,
+                (),
+                units,
+                built,
+                {},
+                checks_units=False,
+            )
+        assert (refused.value.code, refused.value.message) == (
+            "unreadable",
+            "b.ddd.json did not load, so a first units file could not list every unit in use",
+        )
+
+    def test_a_first_units_file_is_refused_where_the_project_was_not_read(
+        self, tmp_path: Path
+    ) -> None:
+        """With no index there is no list of the units it states to write."""
+        write_tree(
+            tmp_path, {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A")}
+        )
+        units = unit_project(tmp_path / "p.ddd.json", [], {})
+        with pytest.raises(FileRefusalError) as refused:
+            create_plan(
+                tmp_path / "p.ddd.json",
+                "units",
+                "units",
+                None,
+                (),
+                units,
+                None,
+                {},
+                checks_units=False,
+            )
+        assert (refused.value.code, refused.value.message) == (
+            "unreadable",
+            "p.ddd.json did not load, so a first units file could not list every unit in use",
+        )
+
+    def test_a_units_file_of_a_project_opted_in_is_created_though_a_file_did_not_load(
+        self, tmp_path: Path
+    ) -> None:
+        """Created empty, it lists nothing, so nothing that did not load can be missing from it."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "units.ddd.json", "b.ddd.json"),
+                "units.ddd.json": {"units": []},
+                "b.ddd.json": '{"component": ',
+            },
+        )
+        units = unit_project(tmp_path / "p.ddd.json", [tmp_path / "b.ddd.json"], {})
+        planned = create_plan(
+            tmp_path / "p.ddd.json", "units", "more", None, (), units, None, {}, checks_units=True
+        )
+        assert planned == (
+            PlannedEdit(
+                described(tmp_path).parent / "more.ddd.json",
+                (Operation("set", "", '{\n  "units": []\n}\n'),),
+                creates=True,
+            ),
+            PlannedEdit(
+                described(tmp_path),
+                (Operation("insert", "project.includes[2]", '"more.ddd.json"'),),
+            ),
+        )
+
+    @pytest.mark.parametrize(
+        ("kind", "name", "called", "says"),
+        [
+            pytest.param("project", "sub", None, SAYS_KIND, id="a project"),
+            pytest.param(
+                "types",
+                "sensors/a",
+                None,
+                "'sensors/a' cannot name a new file: a name is letters, digits, '_' and '-' "
+                "only, and .ddd.json is added to it",
+                id="a separator",
+            ),
+            pytest.param("types", "a.b", None, SAYS_NAME, id="a dot"),
+            pytest.param(
+                "types",
+                "",
+                None,
+                "'' cannot name a new file: a name is letters, digits, '_' and '-' only, and "
+                ".ddd.json is added to it",
+                id="no name",
+            ),
+            pytest.param("types", "a", None, SAYS_THERE, id="a file there already"),
+            pytest.param(
+                "component",
+                "pump",
+                "2Pump",
+                "'2Pump' cannot name a component, not being a usable c identifier",
+                id="no c identifier",
+            ),
+            pytest.param(
+                "component",
+                "pump",
+                "A",
+                "this project has a component called 'A' already",
+                id="a component's name taken",
+            ),
+            pytest.param(
+                "component",
+                "pump",
+                None,
+                "a new component needs a name, besides its file's",
+                id="no component's name",
+            ),
+        ],
+    )
+    def test_a_refused_creation_says_why(
+        self, tmp_path: Path, kind: str, name: str, called: str | None, says: str
+    ) -> None:
+        with pytest.raises(FileRefusalError) as refused:
+            creating(tmp_path, kind, name, called)
+        assert (refused.value.code, refused.value.message) == ("invalid", says)
+
+    @pytest.mark.parametrize(
+        ("kind", "name", "called", "says"),
+        [
+            pytest.param("project", "a.b", None, SAYS_KIND, id="the kind before the name"),
+            pytest.param("types", "a.b", None, SAYS_NAME, id="the name before a file there"),
+            pytest.param("component", "a", "2A", SAYS_THERE, id="a file there before a component"),
+        ],
+    )
+    def test_the_refusal_asked_first_is_the_one_said(
+        self, tmp_path: Path, kind: str, name: str, called: str | None, says: str
+    ) -> None:
+        """Where two refusals apply, the reader hears the one asked first."""
+        write_tree(tmp_path, {"a.b.ddd.json": component("B")})
+        with pytest.raises(FileRefusalError) as refused:
+            creating(tmp_path, kind, name, called)
+        assert (refused.value.code, refused.value.message) == ("invalid", says)
+
+
+class TestAdd:
+    """An existing file appended to the root's includes, its path as the reader wrote it: always
+    a literal, never a pattern."""
+
+    @pytest.mark.parametrize(
+        "path",
+        ["sensors/b.ddd.json", "./sensors/b.ddd.json", "sensors/été.ddd.json"],
+        ids=["a path", "a path spelled from here", "a path of other letters"],
+    )
+    def test_an_existing_file_is_appended_as_written(self, tmp_path: Path, path: str) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A"),
+                path: component("B"),
+            },
+        )
+        assert add_plan(tmp_path / "p.ddd.json", path, {}) == FilePlan(
+            (
+                PlannedEdit(
+                    described(tmp_path), (Operation("insert", "project.includes[1]", f'"{path}"'),)
+                ),
+            ),
+            ("a.ddd.json", path),
+        )
+
+    @pytest.mark.parametrize(
+        ("path", "code", "says"),
+        [
+            pytest.param(
+                "missing.ddd.json",
+                "not-found",
+                "missing.ddd.json names no file; a file not there yet is created, not added",
+                id="no file",
+            ),
+            pytest.param(
+                "sensors",
+                "not-found",
+                "sensors names no file; a file not there yet is created, not added",
+                id="a directory",
+            ),
+            pytest.param(
+                "sensors/*.ddd.json",
+                "not-found",
+                "sensors/*.ddd.json names no file; a file not there yet is created, not added",
+                id="a pattern",
+            ),
+            pytest.param("p.ddd.json", "invalid", SAYS_ITSELF, id="the description"),
+            pytest.param(
+                "sensors/../p.ddd.json",
+                "invalid",
+                "sensors/../p.ddd.json is this project's own description, which it cannot include",
+                id="the description again",
+            ),
+            pytest.param(
+                "a.ddd.json",
+                "invalid",
+                "a.ddd.json is part of this project already, as the entry 'a.ddd.json'",
+                id="an entry",
+            ),
+            pytest.param(
+                "./a.ddd.json",
+                "invalid",
+                "./a.ddd.json is part of this project already, as the entry 'a.ddd.json'",
+                id="an entry spelled otherwise",
+            ),
+        ],
+    )
+    def test_a_refused_addition_says_why(
+        self, tmp_path: Path, path: str, code: str, says: str
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A"),
+                "sensors/b.ddd.json": component("B"),
+            },
+        )
+        with pytest.raises(FileRefusalError) as refused:
+            add_plan(tmp_path / "p.ddd.json", path, {})
+        assert (refused.value.code, refused.value.message) == (code, says)
+
+    def test_a_file_a_pattern_already_pulls_in_is_refused_naming_it(self, tmp_path: Path) -> None:
+        """Focus 5: added again as a literal, the file would be listed twice and the pattern
+        would still pull it in - so the reader is told the pattern already does."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "sensors/*.ddd.json"),
+                "sensors/a.ddd.json": component("A"),
+            },
+        )
+        with pytest.raises(FileRefusalError) as refused:
+            add_plan(tmp_path / "p.ddd.json", "sensors/a.ddd.json", {})
+        assert refused.value.code == "invalid"
+        assert refused.value.message == SAYS_PULLED_IN
+
+    def test_the_description_is_refused_as_itself_though_an_entry_names_it(
+        self, tmp_path: Path
+    ) -> None:
+        """Asked before whether an entry names it: a project listing its own description has it
+        among an entry's files, and the reason no entry may name it is the one to hear."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", "p.ddd.json")})
+        with pytest.raises(FileRefusalError) as refused:
+            add_plan(tmp_path / "p.ddd.json", "p.ddd.json", {})
+        assert (refused.value.code, refused.value.message) == ("invalid", SAYS_ITSELF)
+
+    def test_an_includes_that_is_no_list_takes_the_entry_at_its_front(self, tmp_path: Path) -> None:
+        """Planned from the raw description, which nothing has validated: the edit engine
+        refuses the insertion with a sentence of its own, where a length taken of ``3`` would
+        have raised while the plan was made."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": {"project": {"name": "P", "includes": 3}},
+                "a.ddd.json": component("A"),
+            },
+        )
+        assert add_plan(tmp_path / "p.ddd.json", "a.ddd.json", {}) == FilePlan(
+            (
+                PlannedEdit(
+                    described(tmp_path),
+                    (Operation("insert", "project.includes[0]", '"a.ddd.json"'),),
+                ),
+            ),
+            ("a.ddd.json",),
+        )
+
+    def test_the_description_is_refused_however_the_project_is_spelled(
+        self, tmp_path: Path
+    ) -> None:
+        """Compared by its resolved path, the project's as well as the file's."""
+        write_tree(tmp_path, {"p.ddd.json": project("P"), "sub/b.ddd.json": component("B")})
+        with pytest.raises(FileRefusalError) as refused:
+            add_plan(tmp_path / "sub" / ".." / "p.ddd.json", "p.ddd.json", {})
+        assert (refused.value.code, refused.value.message) == ("invalid", SAYS_ITSELF)
+
+
+class TestRemove:
+    """An entry taken out of the root's includes by its row's key. The file stays on disk."""
+
+    def test_a_literal_entry_is_taken_out(self, tmp_path: Path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                "a.ddd.json": component("A"),
+                "b.ddd.json": component("B"),
+                "c.ddd.json": component("C"),
+            },
+        )
+        key = (tmp_path / "b.ddd.json").resolve()
+        assert remove_plan(tmp_path / "p.ddd.json", key, {}) == FilePlan(
+            (PlannedEdit(described(tmp_path), (Operation("remove", "project.includes[1]"),)),),
+            ("a.ddd.json", "c.ddd.json"),
+        )
+
+    def test_a_pattern_entry_is_taken_out_whole(self, tmp_path: Path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "sensors/*.ddd.json"),
+                "a.ddd.json": component("A"),
+                "sensors/b.ddd.json": component("B"),
+                "sensors/c.ddd.json": component("C"),
+            },
+        )
+        key = (tmp_path / "sensors/*.ddd.json").resolve()
+        assert remove_plan(tmp_path / "p.ddd.json", key, {}) == FilePlan(
+            (PlannedEdit(described(tmp_path), (Operation("remove", "project.includes[1]"),)),),
+            ("a.ddd.json",),
+        )
+
+    @pytest.mark.parametrize(
+        "entry", ["gone.ddd.json", "gone/*.ddd.json"], ids=["a path", "a pattern"]
+    )
+    def test_an_entry_whose_file_is_gone_is_taken_out(self, tmp_path: Path, entry: str) -> None:
+        """Focus 4: an entry naming nothing is a row of its own, removed by its own key."""
+        write_tree(
+            tmp_path,
+            {"p.ddd.json": project("P", entry, "a.ddd.json"), "a.ddd.json": component("A")},
+        )
+        key = (tmp_path / entry).resolve()
+        assert remove_plan(tmp_path / "p.ddd.json", key, {}) == FilePlan(
+            (PlannedEdit(described(tmp_path), (Operation("remove", "project.includes[0]"),)),),
+            ("a.ddd.json",),
+        )
+
+    def test_an_entry_listed_twice_is_taken_out_everywhere(self, tmp_path: Path) -> None:
+        """Two spellings of one file are one key, and removing its row means the file leaves
+        the project, so every entry naming it goes: the last first, since the edit engine makes
+        a file's operations in turn, and with ``[0]`` gone first the other would be ``[1]``."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "./a.ddd.json"),
+                "a.ddd.json": component("A"),
+                "b.ddd.json": component("B"),
+            },
+        )
+        key = (tmp_path / "a.ddd.json").resolve()
+        assert remove_plan(tmp_path / "p.ddd.json", key, {}) == FilePlan(
+            (
+                PlannedEdit(
+                    described(tmp_path),
+                    (
+                        Operation("remove", "project.includes[2]"),
+                        Operation("remove", "project.includes[0]"),
+                    ),
+                ),
+            ),
+            ("b.ddd.json",),
+        )
+
+    def test_a_file_a_pattern_pulled_in_is_refused_naming_the_pattern(self, tmp_path: Path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "sensors/*.ddd.json"),
+                "a.ddd.json": component("A"),
+                "sensors/b.ddd.json": component("B"),
+                "sensors/c.ddd.json": component("C"),
+            },
+        )
+        with pytest.raises(FileRefusalError) as refused:
+            remove_plan(tmp_path / "p.ddd.json", (tmp_path / "sensors/b.ddd.json").resolve(), {})
+        assert (refused.value.code, refused.value.message) == (
+            "invalid",
+            "b.ddd.json has no entry of its own: the pattern 'sensors/*.ddd.json' brings it in, "
+            "and only the whole pattern can be removed",
+        )
+
+    @pytest.mark.parametrize(
+        ("path", "says"),
+        [
+            pytest.param(
+                "loose.ddd.json",
+                "no entry of p.ddd.json's includes names loose.ddd.json, and none of its patterns "
+                "matches it",
+                id="a file beside it",
+            ),
+            pytest.param(
+                "sub/c.ddd.json",
+                "no entry of p.ddd.json's includes names c.ddd.json, and none of its patterns "
+                "matches it",
+                id="a file a sub-project includes",
+            ),
+        ],
+    )
+    def test_a_path_not_part_of_the_project_is_not_found(
+        self, tmp_path: Path, path: str, says: str
+    ) -> None:
+        """Nor is a file a sub-project includes: its entry is the sub-project's, which opening
+        the sub-project changes."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "sub/project.ddd.json"),
+                "sub/project.ddd.json": project("Sub", "c.ddd.json"),
+                "sub/c.ddd.json": component("C"),
+                "loose.ddd.json": component("L"),
+            },
+        )
+        with pytest.raises(FileRefusalError) as refused:
+            remove_plan(tmp_path / "p.ddd.json", (tmp_path / path).resolve(), {})
+        assert (refused.value.code, refused.value.message) == ("not-found", says)
+
+    def test_a_literal_entry_is_taken_out_though_a_pattern_matches_its_file_too(
+        self, tmp_path: Path
+    ) -> None:
+        """Its key is its row's, so it is the entry removed. The pattern matches the file
+        still, and keeps it in the project."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "sensors/a.ddd.json", "sensors/*.ddd.json"),
+                "sensors/a.ddd.json": component("A"),
+            },
+        )
+        key = (tmp_path / "sensors/a.ddd.json").resolve()
+        assert remove_plan(tmp_path / "p.ddd.json", key, {}) == FilePlan(
+            (PlannedEdit(described(tmp_path), (Operation("remove", "project.includes[0]"),)),),
+            ("sensors/*.ddd.json",),
+        )
 
 
 def test_the_module_imports_nothing_of_the_gui() -> None:

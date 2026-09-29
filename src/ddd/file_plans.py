@@ -1,10 +1,18 @@
-"""What a change of the root project's ``includes`` would break, as the analysis itself says.
+"""The root project's ``includes``: its entries as the loader reads them, the plans creating,
+adding and removing a file of it, and what a change of the list would break, as the analysis
+itself says.
 
 Transport-neutral, like :mod:`ddd.shared_plans`: nothing here knows about http or the session,
 and nothing here imports :mod:`ddd.gui`. It is for the gui to call and never calls the gui, so
 findings arrive as ``(path, diagnostic)`` pairs - the shape
 :func:`ddd.project_shared.shared_rows` takes for the same reason - rather than as the session's
 own ``Filed``.
+
+The entries are read by the loader's own rule, :func:`ddd.loading.included_files`, so that the
+list a reader is shown and the files a run checks cannot come to two answers. A plan is the
+operations of :mod:`ddd.editing` each file takes, made and never written: a file is created by
+:func:`ddd.lsp.units.created_beside`, the one recipe every plan creates a file by, and an entry
+is added or removed by one edit of the description.
 
 No rule here says which kinds of file a project may do without. :func:`new_errors` counts the
 errors of two analyses of one project, the second with the root's list changed, place by place,
@@ -15,12 +23,24 @@ and what the second has more of is what the change would break. It counts a find
 
 from __future__ import annotations
 
+import json
+import re
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Final, Literal
+
+from pydantic import TypeAdapter, ValidationError
 
 from ddd.diagnostics import Diagnostic, Location, Severity
+from ddd.editing import Operation
+from ddd.loading import included_files, resolve_path
 from ddd.lsp.diagnostics import finding_identity
+from ddd.lsp.navigation import Index
+from ddd.lsp.ranges import Document, read
+from ddd.lsp.units import PlannedEdit, UnitProject, appended_at, created_beside
+from ddd.models.common import Identifier
 
 type Pair = tuple[Path, Diagnostic]
 """A finding and the file it is shown on, as :func:`ddd.project_shared.shared_rows` takes them."""
@@ -177,3 +197,333 @@ def _place(diagnostic: Diagnostic) -> tuple[object, ...]:
     if not location.pointer:
         return (location.path, location.pointer, diagnostic.message)
     return (location.path, location.pointer)
+
+
+CREATABLE: Final = ("component", "types", "units", "constants", "sections", "rasters")
+"""The kinds :func:`create_plan` makes a file of, in the order a reader is to be offered them.
+Not ``project``: a sub-project's own includes belong to opening it, and are out of the Files
+tab's reach (spec §6)."""
+
+FILE_NAME: Final = re.compile(r"[A-Za-z0-9_-]+")
+"""A name a new file may take, before ``.ddd.json`` is added: letters, digits, ``_`` and
+``-``. No separator, so a file can only ever be created beside the description, and no dot,
+so the suffix is always the one every project committed to this repository uses."""
+
+_SUFFIX: Final = ".ddd.json"
+"""What :func:`create_plan` adds to a name :data:`FILE_NAME` takes."""
+
+_COMPONENT_NAME: Final[TypeAdapter[str]] = TypeAdapter(Identifier)
+"""The model's own judge of a component's name - :class:`~ddd.models.component.Component` takes
+an :data:`~ddd.models.common.Identifier` - so that a name refused here is exactly one whose
+file would not load, and no second spelling of the rule can drift from the first. Built once:
+a :class:`~pydantic.TypeAdapter` compiles a core schema from the annotation."""
+
+
+class FileRefusalError(Exception):
+    """A change of the project's files that is not made, and why - as the other plan modules'
+    refusals."""
+
+    code: Literal["unreadable", "invalid", "not-found"]
+    """``not-found``: the file to add is not there, or no entry has the path to remove.
+    ``invalid``: the change cannot be made - a kind or a name a new file may not take, a file
+    of that name there already, a file the project has already, a file only a pattern brings
+    in. ``unreadable``: a first units file cannot list every unit, a file of the project not
+    having loaded."""
+
+    message: str
+    """The sentence the refusal is shown with."""
+
+    def __init__(self, code: Literal["unreadable", "invalid", "not-found"], message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+@dataclass(frozen=True, slots=True)
+class IncludedEntry:
+    """One entry of the root's ``includes``, as the loader's own rule reads it."""
+
+    index: int
+    """Where it is in the list: a finding filed at the entry is at ``project.includes[index]``."""
+
+    entry: str
+    """The entry as it is written."""
+
+    names: bool
+    """Whether the entry names an existing file, and so is that file whatever it spells: the
+    loader tries an entry as a file before it reads it as a pattern. One naming none is a plain
+    path naming no file - one that is not there, or a directory, each reported
+    ``file-not-found`` by ``ddd check`` - or one holding a wildcard, a pattern that may match
+    nothing, reported ``include-empty`` where it does."""
+
+    key: Path
+    """The description's directory joined with the entry and resolved, as the loader joins an
+    entry to read it as a file: the file, for an entry naming one, and otherwise the path or the
+    pattern the entry spells. What a row of it is selected by."""
+
+    files: tuple[Path, ...]
+    """The files the entry brings that exist, resolved: its own, for an entry naming one; a
+    pattern's matches, in the loader's order, the project description never among them; none,
+    for a path naming no file and for a pattern matching none."""
+
+
+@dataclass(frozen=True, slots=True)
+class FilePlan:
+    """What adding or removing an entry takes: the edit of the description, and the root's
+    ``includes`` as the edit leaves them - the entries that are strings, in order.
+
+    One decision, read twice. ``includes`` is the list to hand
+    :func:`ddd.gui.session.findings_with`, which analyses the project with the root's list
+    replaced; made here beside the edit rather than again from the disk, it cannot come to
+    another answer than the edit it goes with - an entry listed twice is taken out everywhere,
+    for one."""
+
+    edits: tuple[PlannedEdit, ...]
+    includes: tuple[str, ...]
+
+
+def included_entries(project: Path, cache: dict[Path, Document]) -> tuple[IncludedEntry, ...]:
+    """The root's ``includes``, each entry in order: read off the description when asked, not
+    recorded by a run, and by the loader's own rule, :func:`ddd.loading.included_files` - which
+    exists so that nothing asking which files a project includes comes to another answer than
+    the run that checks it.
+
+    The description is resolved first: ``included_files`` leaves its ``source`` out of a
+    pattern's matches, which are resolved paths, so a ``*.ddd.json`` beside a description
+    spelled any other way would match the description too.
+
+    An ``includes`` that is not a list has no entries here, and an entry that is not a string is
+    no row, the loader refusing both with a ``schema`` error; the entries that are strings keep
+    the index they have in the list. The filter on ``files`` is a statement in a loop rather
+    than a comprehension's, which coverage.py counts no branch in.
+    """
+    described = resolve_path(project)
+    listed = read(described, cache).value_at("project.includes")
+    if not isinstance(listed, list):
+        return ()
+    found: list[IncludedEntry] = []
+    for index, entry in enumerate(listed):
+        if not isinstance(entry, str):
+            continue
+        key = resolve_path(described.parent / entry)
+        files: list[Path] = []
+        for file in included_files(described, entry):
+            if file.is_file():
+                files.append(file)
+        found.append(IncludedEntry(index, entry, key.is_file(), key, tuple(files)))
+    return tuple(found)
+
+
+def create_plan(
+    project: Path,
+    kind: str,
+    name: str,
+    component: str | None,
+    taken: Collection[str],
+    units: UnitProject,
+    built: Index | None,
+    cache: dict[Path, Document],
+    *,
+    checks_units: bool,
+) -> tuple[PlannedEdit, ...]:
+    """A new file of ``kind``, called ``name`` and ``.ddd.json``, beside the description and
+    appended to its ``includes`` in one plan: created by :func:`ddd.lsp.units.created_beside`,
+    in the one shape :func:`ddd.gui.session._confined` lets a file be created in. One edit per
+    file, sorted by path, as the recipe's other two callers sort them.
+
+    Refused ``invalid``, in this order, before anything is built: a kind not in
+    :data:`CREATABLE`; a name :data:`FILE_NAME` does not take; a file of that name beside the
+    description already; and for a component, no name for it, a name the model's own
+    :data:`~ddd.models.common.Identifier` does not take, or one of ``taken``, the names the
+    project's components have.
+
+    A vocabulary file declares nothing, and a component has its name and an empty
+    ``interface``. A units file is the exception: where ``checks_units`` is false, it lists
+    every unit the project states, each with an empty description. A units file opts the whole
+    project into the unit check whatever it declares, and one created empty would have every
+    stated unit reported ``unknown-unit`` at once - the one click making a passing project fail.
+    The list is refused ``unreadable`` where a file of the project did not load, or no index of
+    the project was built to list it from, since it could not then be complete - refused as
+    :func:`ddd.lsp.units.adoption` refuses adopting.
+
+    ``checks_units`` says whether a file of the project's tree is a units file already, and
+    :attr:`~ddd.lsp.units.UnitProject.units_files` cannot: it is read out of the description's
+    own ``includes``, where what opts a project in is a units file anywhere in its tree, a
+    sub-project's included (:attr:`ddd.loading.Workspace.units_files`). A project whose one
+    units file is a sub-project's is opted in already, and a root units file listing its units
+    again fails it with a ``duplicate-unit`` for each: measured on ``examples/vocabulary``
+    included as a sub-project by a root with no units file of its own, three units stated made
+    three errors, where the file created empty adds one ``empty-vocabulary`` at INFO. Only a
+    caller holding every file of the tree can say which it is.
+    """
+    described = resolve_path(project)
+    if kind not in CREATABLE:
+        raise FileRefusalError(
+            "invalid",
+            f"no file of kind '{kind}' can be created here; the kinds that can are "
+            f"{', '.join(CREATABLE[:-1])} and {CREATABLE[-1]}",
+        )
+    if FILE_NAME.fullmatch(name) is None:
+        raise FileRefusalError(
+            "invalid",
+            f"'{name}' cannot name a new file: a name is letters, digits, '_' and '-' only, "
+            f"and {_SUFFIX} is added to it",
+        )
+    filename = f"{name}{_SUFFIX}"
+    if (described.parent / filename).exists():
+        raise FileRefusalError("invalid", f"{filename} is there already, beside {described.name}")
+    content = _content(described, kind, component, taken, units, built, checks_units=checks_units)
+    edits = created_beside(described, filename, json.dumps(content, ensure_ascii=False), cache)
+    return tuple(sorted(edits, key=lambda edit: edit.path.as_posix()))
+
+
+def _content(
+    described: Path,
+    kind: str,
+    component: str | None,
+    taken: Collection[str],
+    units: UnitProject,
+    built: Index | None,
+    *,
+    checks_units: bool,
+) -> dict[str, Any]:
+    """What a new file of ``kind`` holds, or the refusal its component's name or its units meet.
+
+    Each arm its own statement rather than an ``and`` or an ``or`` in one ``if``, which
+    coverage.py counts as one branch whichever operand decided it.
+    """
+    if kind == "component":
+        return {"component": {"name": _component_name(component, taken), "interface": []}}
+    if kind != "units":
+        return {kind: []}
+    if checks_units:
+        return {"units": []}
+    return {
+        "units": [
+            {"unit": unit, "description": ""} for unit in _stated_units(described, units, built)
+        ]
+    }
+
+
+def _component_name(component: str | None, taken: Collection[str]) -> str:
+    """A new component's name, or the refusal it meets."""
+    if component is None:
+        raise FileRefusalError("invalid", "a new component needs a name, besides its file's")
+    try:
+        _COMPONENT_NAME.validate_python(component)
+    except ValidationError as refused:
+        raise FileRefusalError(
+            "invalid", f"'{component}' cannot name a component, not being a usable c identifier"
+        ) from refused
+    if component in taken:
+        raise FileRefusalError(
+            "invalid", f"this project has a component called '{component}' already"
+        )
+    return component
+
+
+def _stated_units(described: Path, units: UnitProject, built: Index | None) -> list[str]:
+    """Every unit the project states, by code point, as :func:`ddd.lsp.units.adoption` lists
+    them - or the refusal where the list could not be complete."""
+    if units.unread:
+        raise FileRefusalError(
+            "unreadable",
+            f"{', '.join(file.name for file in units.unread)} did not load, so a first units "
+            "file could not list every unit in use",
+        )
+    if built is None:
+        raise FileRefusalError(
+            "unreadable",
+            f"{described.name} did not load, so a first units file could not list every unit "
+            "in use",
+        )
+    return sorted(built.units)
+
+
+def add_plan(project: Path, entry: str, cache: dict[Path, Document]) -> FilePlan:
+    """``entry`` - a path to an existing file, relative to the description, as the reader wrote
+    it - appended to the root's ``includes`` as written. Always a literal: the loader reads an
+    entry naming a file as that file, whatever it spells.
+
+    Refused, in this order, by what the description alone can answer: ``entry`` naming no file,
+    ``not-found``, a file that is not there being created rather than added; naming the
+    description itself, ``invalid``; naming a file the project has already - named by an entry,
+    or matched by a pattern, which the refusal names - ``invalid``. Whether the file lies where
+    the caller may read it, and whether it is a kind of file the loader recognises, are the
+    caller's to ask: the first needs what it serves, the second the file's contents.
+
+    Appended at the end of the list, or at the front of an ``includes`` that is not one, for the
+    edit engine to refuse (:func:`ddd.lsp.units.appended_at`).
+    """
+    described = resolve_path(project)
+    added = resolve_path(described.parent / entry)
+    if not added.is_file():
+        raise FileRefusalError(
+            "not-found", f"{entry} names no file; a file not there yet is created, not added"
+        )
+    if added == described:
+        raise FileRefusalError(
+            "invalid", f"{entry} is this project's own description, which it cannot include"
+        )
+    entries = included_entries(described, cache)
+    for included in entries:
+        if added not in included.files:
+            continue
+        if included.names:
+            raise FileRefusalError(
+                "invalid",
+                f"{entry} is part of this project already, as the entry '{included.entry}'",
+            )
+        raise FileRefusalError(
+            "invalid",
+            f"{entry} is part of this project already: the pattern '{included.entry}' brings it in",
+        )
+    listed = read(described, cache).value_at("project.includes")
+    operation = Operation(
+        "insert", f"project.includes[{appended_at(listed)}]", json.dumps(entry, ensure_ascii=False)
+    )
+    return FilePlan(
+        (PlannedEdit(described, (operation,)),),
+        (*(included.entry for included in entries), entry),
+    )
+
+
+def remove_plan(project: Path, path: Path, cache: dict[Path, Document]) -> FilePlan:
+    """Every entry of the root's ``includes`` whose key is ``path`` taken out - ``path`` being a
+    row's key as :func:`included_entries` answers it. A pattern's key takes the pattern out
+    whole. The files stay on disk.
+
+    Every one, where two spellings of one file are one key: removing a row means its file
+    leaves the project, and an entry left naming it would keep it in. The last goes first, since
+    the edit engine makes a file's operations in turn and taking an entry out moves every later
+    one up.
+
+    Refused ``invalid`` where no entry has that key and a pattern matches it, naming the
+    pattern, which goes only whole; ``not-found`` where neither holds.
+    """
+    described = resolve_path(project)
+    entries = included_entries(described, cache)
+    removed: list[IncludedEntry] = []
+    kept: list[str] = []
+    for included in entries:
+        if included.key == path:
+            removed.append(included)
+        else:
+            kept.append(included.entry)
+    if removed:
+        operations = tuple(
+            Operation("remove", f"project.includes[{gone.index}]") for gone in reversed(removed)
+        )
+        return FilePlan((PlannedEdit(described, operations),), tuple(kept))
+    for included in entries:
+        if path in included.files:
+            raise FileRefusalError(
+                "invalid",
+                f"{path.name} has no entry of its own: the pattern '{included.entry}' brings it "
+                "in, and only the whole pattern can be removed",
+            )
+    raise FileRefusalError(
+        "not-found",
+        f"no entry of {described.name}'s includes names {path.name}, and none of its patterns "
+        "matches it",
+    )

@@ -242,7 +242,7 @@ class TestOpening:
         assert (described.kind, described.fingerprint) == ("unknown", fingerprint(b""))
 
     def test_a_description_of_no_known_kind_is_unknown(self) -> None:
-        assert module._kind(Path("x.ddd.json"), {"other": 1}) == "unknown"
+        assert module.kind_of(Path("x.ddd.json"), {"other": 1}) == "unknown"
 
 
 def test_a_revision_keeps_the_index_its_analysis_built(tmp_path: Path) -> None:

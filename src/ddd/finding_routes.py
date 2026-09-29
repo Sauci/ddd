@@ -3,9 +3,10 @@
 ``ddd gui`` lists what the analysis reported and, until now, left the reader to work out where
 to go: a sentence about a variable's declarations says nothing about which screen settles them.
 This answers what the page can open for one finding - the variable whose declaration it is
-about, the unit it names, the type its entry declares, the section it places data in, or the
-component it is filed on - and answers nothing where the page has nothing to open, so that a
-row can say why instead of leading somewhere useless.
+about, the unit it names, the type its entry declares, the section it places data in, the entry
+of the project's includes or the whole file it is about, or the component it is filed on - and
+answers nothing where the page has nothing to open, so that a row can say why instead of leading
+somewhere useless.
 
 Pure: no GUI and no HTTP. :mod:`ddd.gui.api` turns a route into the shape ``GET /api/state``
 answers, and nothing else reads them.
@@ -18,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal
 
+from ddd.loading import resolve_path
 from ddd.lsp.edits import WITHIN_DECLARATION
 from ddd.lsp.ranges import Document, read
 
@@ -57,6 +59,30 @@ tells the reader the name is the problem.
 What this shape costs, stated where the next author will read it: a further check about a raster
 named at that pointer leads here only once it is added to this set, where a fourth placement check
 would reach a section's panel without :mod:`ddd.finding_routes` being told.
+"""
+
+FILE_CHECKS: Final = frozenset({"include-empty", "empty-vocabulary"})
+"""The checks about an entry of the root's ``includes`` or about a whole file, whose finding leads
+to that entry's or that file's row on the Files tab.
+
+``include-empty`` is filed at the entry that brought nothing, ``project.includes[i]``, and names
+the entry as :func:`ddd.file_plans.included_entries` keys its row: read at the pointer, joined to
+the description's directory as the loader joins an entry, and resolved. ``empty-vocabulary`` is
+filed at a vocabulary's own list - measured, the pointer is the kind itself, ``units`` - and is
+about the file, which it names. Neither is filed in a component, which is why both are tried
+beside :data:`CONSTANT_CHECKS` and above the gate :data:`COMPONENT_KIND` guards.
+
+``file-not-found``, filed at an entry too where a plain path names no file, is not here: it is a
+load check, so the description carrying it counts as not loaded, and :func:`route_of` answers
+nothing before any arm is tried.
+
+What this costs: a sub-project's findings route to paths no row of the tab holds. An
+``include-empty`` in a sub-project's own ``includes`` names that sub-project's entry, whichever
+description it sits on - telling the root from a sub-project would take the root threaded
+through every call of :func:`ddd.gui.api._finding` - and such a project fails its read anyway,
+the check being an error by default. An ``empty-vocabulary`` on a file only a sub-project
+includes names a file the tab does not list, a sub-project being one row whose own includes are
+not expanded. Either link opens the Files tab with nothing selected.
 """
 
 COMPONENT_KIND: Final = "component"
@@ -177,7 +203,7 @@ class Route:
     """Where a finding leads."""
 
     kind: Literal[
-        "variable", "unit", "component", "type", "values", "constant", "section", "raster"
+        "variable", "unit", "component", "type", "values", "constant", "section", "raster", "file"
     ]
     """Which screen the page opens.
 
@@ -198,8 +224,9 @@ class Route:
     would be added."""
 
     name: str | None
-    """The variable's name, the unit's spelling or the type's name; ``None`` for a component,
-    which the finding's own file already names."""
+    """The variable's name, the unit's spelling or the type's name; for a file, the absolute,
+    posix-separated path of the entry or the file the finding is about (:data:`FILE_CHECKS`);
+    ``None`` for a component, which the finding's own file already names."""
 
 
 def route_of(
@@ -235,6 +262,19 @@ def route_of(
         # member would open the type rather than the constant the finding is about.
         named = read(path, cache).value_at(pointer)
         return Route("constant", named) if isinstance(named, str) and named else None
+    if check in FILE_CHECKS:
+        # Beside CONSTANT_CHECKS, and above the kind gate for the reason FILE_CHECKS gives: a
+        # project description and a vocabulary are what these are filed on, never a component.
+        #
+        # Statements rather than a conditional expression, for the reason the raster branch below
+        # gives: coverage.py counts no branch in one, and the arm answering nothing - an entry
+        # the description no longer holds at that pointer - would pass the gate untested.
+        if check == "include-empty":
+            entry = read(path, cache).value_at(pointer)
+            if isinstance(entry, str):
+                return Route("file", resolve_path(path.parent / entry).as_posix())
+            return None
+        return Route("file", path.as_posix())
     if check in RASTER_CHECKS:
         # Beside CONSTANT_CHECKS rather than below WITHIN_INIT, and the ordering that binds is
         # WITHIN_DECLARATION's rather than the kind gate's: a raster's definition-side pointer is

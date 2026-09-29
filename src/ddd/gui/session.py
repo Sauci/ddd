@@ -548,7 +548,7 @@ def _described(path: Path, findings: Iterable[Diagnostic]) -> SourceFile:
     except OSError:
         data = b""
     parsed = None if path.suffix == ".py" else _parsed(data)
-    kind = _kind(path, parsed)
+    kind = kind_of(path, parsed)
     return SourceFile(
         path=path,
         kind=kind,
@@ -561,7 +561,14 @@ def _described(path: Path, findings: Iterable[Diagnostic]) -> SourceFile:
     )
 
 
-def _kind(path: Path, parsed: Any) -> str:
+def kind_of(path: Path, parsed: Any) -> str:
+    """What a file is, as ``State.files`` tells the page: ``plugin`` for a file whose name ends
+    ``.py``, whatever it holds; otherwise the first of :data:`KINDS` at the top level of
+    ``parsed`` - the file read by the loader's own rule, ``None`` where it does not parse - and
+    ``unknown`` where none is.
+
+    Public for ``GET /api/files-plan``, which asks it of a file a reader would add to the
+    project, so that the Files tab refuses a file by the very rule its rows are shown by."""
     if path.suffix == ".py":
         return "plugin"
     if isinstance(parsed, dict):

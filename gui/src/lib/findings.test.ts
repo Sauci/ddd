@@ -446,7 +446,7 @@ describe("why a finding leads nowhere", () => {
   });
 
   test("a file that did not load without saying what kind it is counts as untold", () => {
-    // `session._kind` reads the kind off the document's own top-level key, so a file nobody could
+    // `session.kind_of` reads the kind off the document's own top-level key, so a file nobody could
     // parse has none to read - it answers "unknown", correctly, because a constants file and a
     // types file are indistinguishable when neither could be read. Filtering by kind alone, every
     // tab's banner missed the commonest way a file fails: an editor saving it half-written.

@@ -506,7 +506,7 @@ def add_plan(project: Path, entry: str, cache: dict[Path, Document]) -> FilePlan
     an entry, or matched by a pattern, which the refusal names - ``invalid``. Whether the file
     lies where the caller may read it, and whether it is a kind of file the loader recognises,
     are the caller's to ask: the first needs the directories the session serves, and the second
-    the kind rule :func:`ddd.gui.session._kind` holds, which this module, importing nothing of
+    the kind rule :func:`ddd.gui.session.kind_of` holds, which this module, importing nothing of
     :mod:`ddd.gui`, cannot ask.
 
     Added by :func:`ddd.lsp.units.entry_appended`, the rule a created file's entry is added by

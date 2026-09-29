@@ -312,7 +312,7 @@ Unit vocabulary
 ~~~~~~~~~~~~~~~
 
 The :doc:`units file <file_formats/units>`. Declaring the vocabulary is opt-in, and a project
-that declares it has every stated unit checked against it.
+whose units files declare a unit has every stated unit checked against what they declare.
 
 .. autopydantic_model:: ddd.models.UnitsFile
 

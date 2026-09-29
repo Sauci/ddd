@@ -44,8 +44,10 @@ a scalar type - is checked where it is written:
 A near miss is answered with the declared spelling - ``'nm' ... did you mean 'Nm'?`` - and a
 spelling that differs only in case is suggested too, ``'RPM' ... did you mean 'rpm'?``; the
 empty unit is always allowed: a dimensionless value states no unit rather than a spelling of
-one. A project without a units file keeps its units free; introducing a vocabulary into a
-grown project can start with ``-W unknown-unit=warning`` until the spellings are settled.
+one. A project without a units file keeps its units free, and so does one whose units files
+declare no unit - such a file loads, and is reported as ``empty-vocabulary``; introducing a
+vocabulary into a grown project can start with ``-W unknown-unit=warning`` until the
+spellings are settled.
 
 A unit declared a second time, in the same file or another, is refused rather than merged:
 

@@ -2,11 +2,9 @@ import { useState } from "react";
 import type { PlanReply, SectionReply } from "../api/types";
 import {
   REMOVE_SECTION,
-  REMOVE_SECTION_REFUSED,
   RENAME_SECTION_REFUSED,
   SECTION_CALIB,
   SECTION_REPLY,
-  SECTION_SOLE_ENTRY,
   SECTION_UNUSED,
 } from "../stories/fixtures";
 import { SectionPanelView } from "./SectionPanelView";
@@ -23,20 +21,11 @@ interface Props {
    * wherever a definition still does, `SectionPanelView`'s own concern to say why from
    * `reply.uses` alone. */
   removePlan?: PlanReply;
-  /** Why Remove was refused although nothing places data there: the sole-entry refusal, which is
-   * the api's to give and not a fact `SectionReply` carries. */
-  removeRefusal?: string;
 }
 
 /** The panel over one scenario's fixtures, with its own access, alignment, description and rename
  * state - as SectionPanel.tsx keeps them. */
-function PanelStory({
-  reply,
-  renameTo: renameSeed = null,
-  renameRefusal,
-  removePlan,
-  removeRefusal,
-}: Props) {
+function PanelStory({ reply, renameTo: renameSeed = null, renameRefusal, removePlan }: Props) {
   const [access, setAccess] = useState(reply.access);
   const [alignment, setAlignment] = useState(reply.alignment);
   const [description, setDescription] = useState(reply.description);
@@ -59,9 +48,7 @@ function PanelStory({
         renameTo === null ? null : { plan: null, refusal: renameRefusal ?? null, pending: false }
       }
       removeOffer={
-        reply.uses.length === 0
-          ? { plan: removePlan ?? null, refusal: removeRefusal ?? null, pending: false }
-          : null
+        reply.uses.length === 0 ? { plan: removePlan ?? null, refusal: null, pending: false } : null
       }
       shown={null}
       onShown={() => undefined}
@@ -82,15 +69,6 @@ export const ThreeDefinitionsPlaceDataInIt = () => <PanelStory reply={SECTION_RE
  * plan already in, ready for Show changes or Apply - rather than refused. */
 export const NothingPlacesDataInIt = () => (
   <PanelStory reply={SECTION_UNUSED} removePlan={REMOVE_SECTION} />
-);
-
-/** The other way Remove is refused, and the one the sibling panel has no answer for: nothing
- * places data in .bench_log either, but it is all its file declares, and a sections list is never
- * empty. The api's own sentence stands where the consequence line would, with no button under
- * it - the panel cannot say this from `SectionReply`, which carries no count of what a file
- * holds, so it asks for the plan and shows what comes back. */
-export const TheOnlyOneItsFileDeclares = () => (
-  <PanelStory reply={SECTION_SOLE_ENTRY} removeRefusal={REMOVE_SECTION_REFUSED} />
 );
 
 /** Renaming .calib to a section the project already declares: the editor's own sentence, where

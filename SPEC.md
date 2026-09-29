@@ -719,7 +719,7 @@ sections a project uses, as an includable vocabulary like the units file
 }
 ```
 
-A sections file declares at least one section (`schema`).
+A sections file may declare no section; it loads, and is `empty-vocabulary`.
 
 - `"section"` (required): the name as the linker script spells it. It is a linker name
   rather than a C identifier, so `.calib` is a normal spelling, and it contains no
@@ -817,9 +817,9 @@ types it publishes inside its own description, with entries of exactly this form
 of types shared between components. It is listed in the `includes` of a
 project ([section 3.1](#31-project-description)) like a component file, and only there:
 handed to the tool as the root of a run, it is refused, with a hint that it belongs in a
-project's `includes`. It is recognised by its top level key: `types`, a non-empty list of
-entries (`schema`),
-each stating its `type`: `scalar`, `struct` or `external`.
+project's `includes`. It is recognised by its top level key: `types`, a list of entries,
+each stating its `type`: `scalar`, `struct` or `external`. The list may be empty; such a file
+loads, and is `empty-vocabulary`.
 
 ```json
 {
@@ -962,19 +962,19 @@ invisible: each object agrees with itself, the A2L grows one `COMPU_METHOD` per 
 
 The file is listed in the `includes` of a project ([section 3.1](#31-project-description))
 like a types file, and only there: handed to the tool as the root of a run, it is refused,
-with a hint that it belongs in a project's `includes`. The file declares at least one unit
-(`schema`). An entry is a bare spelling, or an object
+with a hint that it belongs in a project's `includes`. The file may declare no unit; it
+loads, and is `empty-vocabulary`. An entry is a bare spelling, or an object
 adding a `description`, which is where the meaning of a unit is written down once, instead
 of being implied by every object that happens to use it. An empty spelling is `schema`.
 Case counts: `mV` and `MV` are different units. A unit is declared exactly once: every
 declaration after the first, whether it appears in the same file or in another, is
 `duplicate-unit`, with a note at the first.
 
-Declaring the vocabulary is opt-in: a project without a units file keeps its units free.
-With a vocabulary, every stated unit, whether on a definition, on a structure member or on
-a scalar type, is checked where it is written (`unknown-unit`), with the nearest declared
-spelling suggested. The empty unit is always allowed: a dimensionless value states no unit
-rather than a spelling of one.
+Declaring the vocabulary is opt-in: a project without a units file keeps its units free, and
+so does one whose units files all declare no unit. Once one declares a unit, every stated
+unit, whether on a definition, on a structure member or on a scalar type, is checked where it
+is written (`unknown-unit`), with the nearest declared spelling suggested. The empty unit is
+always allowed: a dimensionless value states no unit rather than a spelling of one.
 
 ### 3.9 Constant vocabulary
 
@@ -988,7 +988,7 @@ restates that constant and drifts from it silently. The file is an includable vo
 like the units file ([section 3.8](#38-unit-vocabulary)): it is listed in the `includes`
 of a project ([section 3.1](#31-project-description)) and only there, and handed to the
 tool as the root of a run it is refused, with a hint that it belongs in a project's
-`includes`. The file declares at least one constant (`schema`).
+`includes`. The file may declare no constant; it loads, and is `empty-vocabulary`.
 
 ```json
 {
@@ -1066,6 +1066,8 @@ preselects it.
   ]
 }
 ```
+
+A rasters file may declare no raster; it loads, and is `empty-vocabulary`.
 
 `raster` is the name a definition refers to and the short name of the XCP event, so it is at
 most eight characters, all of them printable ASCII and none of them a space - the width of

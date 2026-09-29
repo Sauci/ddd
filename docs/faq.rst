@@ -328,9 +328,10 @@ once, listed in the ``includes`` of the project like any other description:
 
    { "units": ["rpm", { "unit": "Nm", "description": "torque, newton metre" }] }
 
-Declaring the vocabulary is opt-in - without a units file nothing changes - and with one,
-every stated unit is checked where it is written, on declarations, structure members and
-scalar types alike, with a near miss answered by the declared spelling:
+Declaring the vocabulary is opt-in - nothing changes without a units file, or with one that
+declares no unit - and once one declares a unit, every stated unit is checked where it is
+written, on declarations, structure members and scalar types alike, with a near miss answered
+by the declared spelling:
 
 .. code-block:: text
 

@@ -686,11 +686,11 @@ Information
      - info
      - a types, units, constants, sections or rasters file declares nothing: its own list is
        empty, and the finding is drawn there. Legal as well, and an information rather than a
-       warning for the same reason: emptying a file is how a project goes from one entry of a
-       vocabulary to none - removing the last one in ``ddd gui`` leaves exactly that - so it is
-       said rather than held against the project. A units file declaring nothing adds nothing
-       to the vocabulary, so a project whose units files all declare nothing keeps its units
-       free, as a project without one does.
+       warning because emptying a file is how a project goes from one entry of a vocabulary to
+       none - removing the last one in ``ddd gui`` leaves exactly that - so it is said rather
+       than held against the project. A units file declaring nothing adds nothing to the
+       vocabulary, so a project whose units files all declare nothing keeps its units free, as
+       a project without one does.
    * - ``incomplete-project``
      - info
      - a declaration is missing from the dictionary and the finding that says why has been

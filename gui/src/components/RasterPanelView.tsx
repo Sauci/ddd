@@ -72,10 +72,9 @@ export interface RasterPanelViewProps {
   /** `null` where a shape still names the raster: nothing is asked for then, and the panel draws
    * `rasterRemoveBlocked`'s sentence instead of a control that would refuse the moment it was
    * pressed. Never itself the reason that part of the panel goes empty: `rasterRemovable` is
-   * asked of `reply` below, so a reader is told why whether or not this is `null`. The api's
-   * other refusal - a raster that is all its own file declares - is not a fact the reply carries,
-   * so it arrives as this offer's `refusal` instead, in the server's own words and with no button
-   * under it. */
+   * asked of `reply` below, so a reader is told why whether or not this is `null`. The last
+   * raster a file declares is offered like any other: the file it leaves declaring nothing still
+   * loads. */
   removeOffer: Offer | null;
   /** The offer whose lines Show changes has opened, or `null`. */
   shown: RasterAction | null;

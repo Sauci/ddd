@@ -192,16 +192,19 @@ export function unreadable(
  *
  * Units, types, sections and rasters belong here and were missing in turn: each had a tab before
  * its own kind joined this set, and a reader whose finding led nowhere was told their file had no
- * page. What reaches this line for one of them now is a pointer the file has moved on from -
- * `duplicate-unit`, `duplicate-section` and `duplicate-raster`, the checks that used to arrive
- * here with somewhere to go, route to the unit, the section or the raster they name instead. */
+ * page. What reaches this line for one of them now is `empty-vocabulary`, about the whole file, or
+ * a pointer the file has moved on from - `duplicate-unit`, `duplicate-section` and
+ * `duplicate-raster`, the checks that used to arrive here with somewhere to go, route to the
+ * unit, the section or the raster they name instead. */
 const SHOWN = new Set(["component", "constants", "types", "units", "sections", "rasters"]);
 
 /** Why a finding leads nowhere, in the words the panel says it.
  *
  * The three the server answers `null` for are said in its own terms (`ddd.finding_routes`): a
  * file that did not load, a kind of file the page has no screen for, and a finding that names
- * no place at all - a check about the project, whose pointer is empty. What is left is a
+ * no place at all - a check about the project, whose pointer is empty. A pointer that is one
+ * top level key names the file's own list - where `empty-vocabulary` is drawn, the list being
+ * empty - and so the whole of what the file declares, which no panel shows. What is left is a
  * finding that does name a place the file no longer has: a declaration moved since the
  * analysis read it, or a unit no longer stated where it was. Neither is about the project, and
  * neither is a sentence to guess at, so the reason says only what is certain of both. */
@@ -212,6 +215,9 @@ export function noRouteReason(finding: Finding, state: State): string {
   if (!listed.loaded) return `${name} did not load`;
   if (!SHOWN.has(listed.kind)) return `${name} is a ${listed.kind} file, which has no page yet`;
   if (finding.pointer === "") return "it is about the project rather than a place in a file";
+  if (!/[.[]/.test(finding.pointer)) {
+    return `it is about the whole of ${name} rather than one entry of it`;
+  }
   return "there is nothing at that place any more";
 }
 

@@ -413,6 +413,25 @@ describe("why a finding leads nowhere", () => {
     );
   });
 
+  test("a finding about a whole vocabulary file says so, not that its place is gone", () => {
+    // `empty-vocabulary` is drawn at the file's own list - `constants` here - which is still
+    // there, empty: the finding leads nowhere because no panel shows a file whole, not because
+    // the file moved on. Reached through the last line, this read "there is nothing at that
+    // place any more" about a place the file plainly has.
+    const one = finding({
+      file: CONSTANTS,
+      check: "empty-vocabulary",
+      severity: "info",
+      pointer: "constants",
+      route: null,
+    });
+    const withConstants = state([one]);
+    withConstants.files = [...withConstants.files, fileRow(CONSTANTS, "constants", true)];
+    expect(noRouteReason(one, withConstants)).toBe(
+      "it is about the whole of constants.ddd.json rather than one entry of it",
+    );
+  });
+
   test("a file of the tab's own kind that did not load is named", () => {
     const one = finding({});
     const withFiles = state([one]);

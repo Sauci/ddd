@@ -88,7 +88,7 @@ class SectionsFile(FileRoot):
 
     model_config = ConfigDict(title="DDD memory sections")
 
-    sections: Annotated[tuple[SectionDeclaration, ...], Field(min_length=0)]
+    sections: tuple[SectionDeclaration, ...]
     """The sections this project places data in, and possibly none.
 
     A file declaring none loads, and is reported as ``empty-vocabulary``.

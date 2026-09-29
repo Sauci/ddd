@@ -396,24 +396,22 @@ class Workspace:
     """
 
     units_files: tuple[Path, ...] = ()
-    """The units files that loaded, in the order they were read, whether or not they declare a
-    unit.
+    """The units files the loader read, in the order it read them, whatever they declare.
 
     What opts a project into the unit check: with any of them, every stated unit is checked
     against :attr:`units`. The files decide it rather than the units they declare, so that taking
     a unit nothing states out of the vocabulary - the last one included - never changes what is
     checked.
 
-    A units file that did not load is not one of them, and leaving it out is safe where an
-    emptied file counting for nothing was not: the difference is whether anything passes that
-    should fail. An emptied file that switched the check off let a run with an ``unknown-unit``
-    pass. A file that did not load already fails the run with its own ``schema`` error, so
-    leaving it out passes nothing; counting it in would only add an ``unknown-unit`` for every
-    stated unit on top of that one mistake - findings that come back of themselves the moment
-    the file is fixed and loads.
+    A units file that does not match its schema is one of them as well, and it cannot change a
+    finding: the file fails the run with its own ``schema`` error, which cannot be relaxed, and
+    nothing that reports findings analyses a project whose loading filed an error - the hover
+    resolving one anyway throws its findings away.
 
-    The same notion as :attr:`ddd.lsp.units.UnitProject.units_files`, which a plan reads out of
-    the description's own ``includes`` instead.
+    Not the list :attr:`ddd.lsp.units.UnitProject.units_files` holds: a plan reads that one out
+    of the description's own ``includes`` alone, telling a units file by the ``units`` key at its
+    top whether it loads or not, where this one holds every units file of the tree, a
+    sub-project's included.
     """
 
     unit_entries: tuple[LoadedUnit, ...] = ()
@@ -818,9 +816,8 @@ class _Loader:
         key: Callable[[LoadedT], str],
         registry: dict[str, LoadedT],
         noun: str,
-    ) -> bool:
-        """Read one vocabulary file and register each entry it declares under its key, answering
-        whether it loaded.
+    ) -> None:
+        """Read one vocabulary file and register each entry it declares under its key.
 
         The one shape behind the vocabulary loaders below: validate the file, wrap every entry
         together with where it was declared, and refuse the second declaration of a key as
@@ -836,7 +833,7 @@ class _Loader:
             model = file_model.model_validate(data)
         except ValidationError as error:
             self._report_validation_error(path, error, data)
-            return False
+            return
 
         listed = entries(model)
         if not listed:
@@ -847,7 +844,6 @@ class _Loader:
             )
         for index, declared in enumerate(listed):
             self._register(wrap(path, index, declared), key=key, registry=registry, noun=noun)
-        return True
 
     def _register[LoadedT: _Located](
         self,
@@ -899,9 +895,10 @@ class _Loader:
         A unit is registered under its spelling, so the second file to declare ``Nm`` is
         refused rather than merged: two files declaring one unit is either a copy that will
         drift or a disagreement about its description, and neither is worth keeping quiet. The
-        file is kept among :attr:`Workspace.units_files` once it loads, whatever it declares.
+        file is kept among :attr:`Workspace.units_files`, whatever it declares.
         """
-        if self._load_vocabulary(
+        self._units_files.append(path)
+        self._load_vocabulary(
             path,
             data,
             kind="units",
@@ -911,8 +908,7 @@ class _Loader:
             key=lambda loaded: loaded.unit,
             registry=self._units_by_name,
             noun="unit",
-        ):
-            self._units_files.append(path)
+        )
 
     def _unit_entry(self, path: Path, index: int, declared: UnitDeclaration) -> LoadedUnit:
         """One entry of a units file, kept whether or not the registry takes it: the second

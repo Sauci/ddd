@@ -642,7 +642,6 @@
           }
         ]
       },
-      "minItems": 0,
       "title": "Types",
       "type": "array"
     }

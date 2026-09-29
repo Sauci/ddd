@@ -349,7 +349,7 @@ Attributes common to every kind:
 | `datatype` | one of the two | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64`; exactly one of `datatype` and `typename` is stated ([section 3.3.2](#332-naming-a-declared-type)) |
 | `typename` | one of the two | the name of a declared type ([section 3.7](#37-type-description)), stated instead of `datatype` |
 | `description` | `""` | offered to the C templates as the text of a comment, long identifier in the A2L |
-| `unit` | `""` | physical unit; checked against the vocabulary where the project declares one ([section 3.8](#38-unit-vocabulary)); a `string` has none (`schema`) |
+| `unit` | `""` | physical unit; checked against the vocabulary where the project has a units file, even one declaring nothing ([section 3.8](#38-unit-vocabulary)); a `string` has none (`schema`) |
 | `conversion` | required beside `datatype` | raw to physical conversion ([section 3.4](#34-conversions)); a `typename` fixes it instead |
 | `limits` | derived | physical `min`/`max` with `min` not above `max`, stated together or not at all; when omitted they follow from the datatype and the conversion, and for an `enum` from the smallest and largest enumerator; a `string` states none, its range being the byte range of its datatype (`schema`) |
 | `init` | `null` | raw initial value, or the text of a `string` ([section 3.4](#34-conversions)); `null` means implicit zero initialisation |

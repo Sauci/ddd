@@ -73,7 +73,6 @@
       "items": {
         "$ref": "#/$defs/SectionDeclaration"
       },
-      "minItems": 0,
       "title": "Sections",
       "type": "array"
     }

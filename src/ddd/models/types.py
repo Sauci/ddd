@@ -530,7 +530,7 @@ class TypesFile(FileRoot):
 
     model_config = ConfigDict(title="DDD type description")
 
-    types: tuple[AnyType, ...] = Field(min_length=0)
+    types: tuple[AnyType, ...]
     """The types this file declares, and possibly none.
 
     A file declaring none loads, and is reported as ``empty-vocabulary``. A structure needs a

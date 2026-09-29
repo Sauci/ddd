@@ -55,7 +55,6 @@
           }
         ]
       },
-      "minItems": 0,
       "title": "Units",
       "type": "array"
     }

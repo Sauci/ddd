@@ -13,7 +13,6 @@ of whatever configures the XCP stack.
 from __future__ import annotations
 
 import re
-from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -145,7 +144,7 @@ class RastersFile(FileRoot):
 
     model_config = ConfigDict(title="DDD measurement rasters")
 
-    rasters: Annotated[tuple[RasterDeclaration, ...], Field(min_length=0)]
+    rasters: tuple[RasterDeclaration, ...]
     """The DAQ events the target offers, and possibly none.
 
     A file declaring none loads, and is reported as ``empty-vocabulary``.

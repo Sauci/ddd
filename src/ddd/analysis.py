@@ -1137,8 +1137,9 @@ class _Analysis:
         The files decide, not the units they declare. Were a declared unit to switch it on,
         taking the last unit nothing states out of the vocabulary would switch the check off for
         the whole project, and every ``unknown-unit`` it reported would go with it - a run that
-        should fail, passing. Only the files that loaded count, which passes nothing: one that did
-        not load fails the run with its own ``schema`` error
+        should fail, passing. A units file that does not match its schema counts as one too, and
+        cannot change a finding: it fails the run with its own error, and nothing that reports
+        findings analyses a project whose loading filed one
         (:attr:`ddd.loading.Workspace.units_files`).
         """
         if not self._workspace.units_files:

@@ -108,7 +108,7 @@ class ConstantsFile(FileRoot):
 
     model_config = ConfigDict(title="DDD constant vocabulary")
 
-    constants: Annotated[tuple[ConstantDeclaration, ...], Field(min_length=0)]
+    constants: tuple[ConstantDeclaration, ...]
     """The constants this project names, in any order, and possibly none.
 
     A file declaring none loads, and is reported as ``empty-vocabulary``.

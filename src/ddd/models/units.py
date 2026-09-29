@@ -86,9 +86,7 @@ class UnitsFile(FileRoot):
 
     model_config = ConfigDict(title="DDD unit vocabulary")
 
-    units: Annotated[
-        tuple[Unit, ...], Field(min_length=0, json_schema_extra=_publish_bare_spellings)
-    ]
+    units: Annotated[tuple[Unit, ...], Field(json_schema_extra=_publish_bare_spellings)]
     """The units this project spells, in any order, and possibly none.
 
     A file listing none loads, and is reported as ``empty-vocabulary``. Like any units file it

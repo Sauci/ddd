@@ -69,7 +69,6 @@
       "items": {
         "$ref": "#/$defs/RasterDeclaration"
       },
-      "minItems": 0,
       "title": "Rasters",
       "type": "array"
     }

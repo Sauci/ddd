@@ -349,7 +349,7 @@ Attributes common to every kind:
 | `datatype` | one of the two | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64`; exactly one of `datatype` and `typename` is stated ([section 3.3.2](#332-naming-a-declared-type)) |
 | `typename` | one of the two | the name of a declared type ([section 3.7](#37-type-description)), stated instead of `datatype` |
 | `description` | `""` | offered to the C templates as the text of a comment, long identifier in the A2L |
-| `unit` | `""` | physical unit; checked against the vocabulary where the project declares one ([section 3.8](#38-unit-vocabulary)); a `string` has none (`schema`) |
+| `unit` | `""` | physical unit; checked against the vocabulary where the project has a units file, even one declaring nothing ([section 3.8](#38-unit-vocabulary)); a `string` has none (`schema`) |
 | `conversion` | required beside `datatype` | raw to physical conversion ([section 3.4](#34-conversions)); a `typename` fixes it instead |
 | `limits` | derived | physical `min`/`max` with `min` not above `max`, stated together or not at all; when omitted they follow from the datatype and the conversion, and for an `enum` from the smallest and largest enumerator; a `string` states none, its range being the byte range of its datatype (`schema`) |
 | `init` | `null` | raw initial value, or the text of a `string` ([section 3.4](#34-conversions)); `null` means implicit zero initialisation |
@@ -719,7 +719,7 @@ sections a project uses, as an includable vocabulary like the units file
 }
 ```
 
-A sections file declares at least one section (`schema`).
+A sections file may declare no section; it loads, and is `empty-vocabulary`.
 
 - `"section"` (required): the name as the linker script spells it. It is a linker name
   rather than a C identifier, so `.calib` is a normal spelling, and it contains no
@@ -817,9 +817,9 @@ types it publishes inside its own description, with entries of exactly this form
 of types shared between components. It is listed in the `includes` of a
 project ([section 3.1](#31-project-description)) like a component file, and only there:
 handed to the tool as the root of a run, it is refused, with a hint that it belongs in a
-project's `includes`. It is recognised by its top level key: `types`, a non-empty list of
-entries (`schema`),
-each stating its `type`: `scalar`, `struct` or `external`.
+project's `includes`. It is recognised by its top level key: `types`, a list of entries,
+each stating its `type`: `scalar`, `struct` or `external`. The list may be empty; such a file
+loads, and is `empty-vocabulary`.
 
 ```json
 {
@@ -962,19 +962,21 @@ invisible: each object agrees with itself, the A2L grows one `COMPU_METHOD` per 
 
 The file is listed in the `includes` of a project ([section 3.1](#31-project-description))
 like a types file, and only there: handed to the tool as the root of a run, it is refused,
-with a hint that it belongs in a project's `includes`. The file declares at least one unit
-(`schema`). An entry is a bare spelling, or an object
+with a hint that it belongs in a project's `includes`. The file may declare no unit; it
+loads, and is `empty-vocabulary`. An entry is a bare spelling, or an object
 adding a `description`, which is where the meaning of a unit is written down once, instead
 of being implied by every object that happens to use it. An empty spelling is `schema`.
 Case counts: `mV` and `MV` are different units. A unit is declared exactly once: every
 declaration after the first, whether it appears in the same file or in another, is
 `duplicate-unit`, with a note at the first.
 
-Declaring the vocabulary is opt-in: a project without a units file keeps its units free.
-With a vocabulary, every stated unit, whether on a definition, on a structure member or on
-a scalar type, is checked where it is written (`unknown-unit`), with the nearest declared
-spelling suggested. The empty unit is always allowed: a dimensionless value states no unit
-rather than a spelling of one.
+Declaring the vocabulary is opt-in: a project without a units file keeps its units free. A
+units file opts the project in whatever it declares, one declaring nothing included, and then
+every stated unit, whether on a definition, on a structure member or on a scalar type, is
+checked where it is written (`unknown-unit`), with the nearest declared spelling suggested.
+The file decides rather than what it lists, so that taking out a unit nothing states never
+changes what is checked. The empty unit is always allowed: a dimensionless value states no
+unit rather than a spelling of one.
 
 ### 3.9 Constant vocabulary
 
@@ -988,7 +990,7 @@ restates that constant and drifts from it silently. The file is an includable vo
 like the units file ([section 3.8](#38-unit-vocabulary)): it is listed in the `includes`
 of a project ([section 3.1](#31-project-description)) and only there, and handed to the
 tool as the root of a run it is refused, with a hint that it belongs in a project's
-`includes`. The file declares at least one constant (`schema`).
+`includes`. The file may declare no constant; it loads, and is `empty-vocabulary`.
 
 ```json
 {
@@ -1066,6 +1068,8 @@ preselects it.
   ]
 }
 ```
+
+A rasters file may declare no raster; it loads, and is `empty-vocabulary`.
 
 `raster` is the name a definition refers to and the short name of the XCP event, so it is at
 most eight characters, all of them printable ASCII and none of them a space - the width of
@@ -1341,8 +1345,8 @@ Errors:
   ([section 3.7](#37-type-description)), or structures nest each other so that neither has
   a size.
 - `unknown-unit`: a unit is not in the vocabulary the project declares
-  ([section 3.8](#38-unit-vocabulary)); declared nowhere, units stay free text and the
-  check never fires.
+  ([section 3.8](#38-unit-vocabulary)); without a units file, units stay free text and the
+  check never fires, while a units file opts the project in even when it declares nothing.
 - `unknown-section`: a definition names a memory section no file declares
   ([section 3.5](#35-memory-placement)). Unlike a unit there is no free text fallback,
   because a section without declared properties is a name the placement checks can say
@@ -1458,6 +1462,11 @@ Warnings:
 Information:
 
 - `empty-component`: a component declares no data object at all.
+- `empty-vocabulary`: a types, units, constants, sections or rasters file declares nothing,
+  its own list being empty. The file loads: emptying one is how a project goes from one entry
+  of a vocabulary to none. The finding is drawn at that list. A units file declaring nothing
+  still opts the project into the unit check ([section 3.8](#38-unit-vocabulary)), so every
+  stated unit no other units file declares is `unknown-unit`.
 - `incomplete-project`: a declaration was dropped and the finding that explains why is
   set to `ignore`. Dropping is not a severity decision: a variable of an unknown type,
   or one dimensioned by a constant nothing declares, has no storage anything downstream

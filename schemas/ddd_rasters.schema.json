@@ -65,11 +65,10 @@
       "title": "$Schema"
     },
     "rasters": {
-      "description": "The DAQ events the target offers; an empty list is no file at all.",
+      "description": "The DAQ events the target offers, and possibly none.\n\nA file declaring none loads, and is reported as ``empty-vocabulary``.",
       "items": {
         "$ref": "#/$defs/RasterDeclaration"
       },
-      "minItems": 1,
       "title": "Rasters",
       "type": "array"
     }

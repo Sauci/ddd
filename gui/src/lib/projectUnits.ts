@@ -162,8 +162,48 @@ export function renameConsequence(
   return `${changes}. ${vocabulary}.`;
 }
 
-/** The adoption banner's sentence (spec 5.3), for a project with no units file. */
-export function adoptionSentence(adoptable: number): string {
+/** Whether the Units tab shows the adoption banner: exactly where the server answers how many
+ * units adopting would list - a count, or none where the project states none, which the banner
+ * says with no Adopt under it.
+ *
+ * The decision is the server's, and it is the plan's own: `UnitsReply.adoptable` is answered by
+ * `ddd.lsp.units.adoption`, the guards `ddd.lsp.units.adopt_units` refuses by, so the banner
+ * never offers adopting where the plan would refuse it. It is read here rather than worked out
+ * again from `vocabulary`, which cannot see two of those guards: a file of the project that did
+ * not load, and a file already where adopting would write - with either, `vocabulary` can look
+ * like a project adopting could serve. A type guard, so that the count reaches the banner
+ * without a fallback nothing could take. */
+export function adoptionOffered(units: UnitsReply): units is UnitsReply & { adoptable: number } {
+  return units.adoptable !== null;
+}
+
+/** Whether the adoption's plan is asked for: where it is offered and would list a unit. A project
+ * stating none has nothing to adopt, which the banner says without asking. */
+export function adoptionAsked(units: UnitsReply): boolean {
+  return units.adoptable !== null && units.adoptable > 0;
+}
+
+/** Whether the project has a units file, whatever it lists: what opts it into the unit check, and
+ * what `vocabulary` says by being empty rather than `null`. */
+export function hasUnitsFile(units: UnitsReply): boolean {
+  return units.vocabulary !== null;
+}
+
+/** The adoption banner's sentence (spec 5.3), for a project whose units files list no unit: one
+ * with none at all, whose units are free, or - `hasUnitsFile` - one whose units files declare
+ * nothing, which opts it in all the same, so that every unit it states is outside the
+ * vocabulary. Where the units go then is the server's to decide - the first units file the
+ * description includes, or a new one where only a sub-project includes one - so the sentence
+ * names no file. */
+export function adoptionSentence(adoptable: number, hasUnitsFile: boolean): string {
+  if (hasUnitsFile) {
+    if (adoptable === 0) return "This project states no unit, so there is nothing to adopt.";
+    return (
+      "No unit this project states is in its vocabulary. Adopting lists the " +
+      `${plural(adoptable, "unit")} in use in a units file: nothing is reported that is not ` +
+      "reported today."
+    );
+  }
   const opening = "This project has no units file, so no unit is checked against a vocabulary.";
   if (adoptable === 0) return `${opening} It states no unit, so there is nothing to adopt.`;
   return (

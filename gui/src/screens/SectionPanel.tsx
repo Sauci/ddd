@@ -120,10 +120,8 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
     rename: to === null ? null : { action: "rename", name, to },
     // Asked for only while nothing places its data in the section: a definition still naming it
     // always refuses (design §4.5), and a control that would refuse the instant it was pressed is
-    // a lying button. The api's other refusal - a section that is all its own file declares, whose
-    // list may not be emptied - is not in `SectionReply` for the panel to read, so it is met here:
-    // the plan is asked for and comes back refused, and `SectionPanelView` shows that sentence
-    // with no button under it.
+    // a lying button. The last section a file declares is asked for like any other, since the
+    // file it leaves declaring nothing still loads.
     remove: entry !== undefined && entry.uses.length === 0 ? { action: "remove", name } : null,
   } satisfies {
     access: (Extract<SectionPlanRequest, { action: "set" }> & { key: "access" }) | null;

@@ -69,11 +69,10 @@
       "title": "$Schema"
     },
     "sections": {
-      "description": "The sections this project places data in; an empty list is no file at all.",
+      "description": "The sections this project places data in, and possibly none.\n\nA file declaring none loads, and is reported as ``empty-vocabulary``.",
       "items": {
         "$ref": "#/$defs/SectionDeclaration"
       },
-      "minItems": 1,
       "title": "Sections",
       "type": "array"
     }

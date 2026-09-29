@@ -535,6 +535,11 @@ class Api:
             [read(file.path, cache) for file in revision.files if file.kind == "units"]
         )
         built = revision.index
+        # The project `_unit_plan` makes its plans in, built the same way: the offer asks the
+        # plan's own guards of it, so an Adopt this answers is one the plan will not refuse.
+        project = unit_project(
+            revision.project, [file.path for file in revision.files if not file.loaded], cache
+        )
         used = () if built is None else units_in_use(built)
         rows = (
             ()
@@ -561,7 +566,7 @@ class Api:
                     }
                     for row in rows
                 ],
-                adoptable=adoptable(built, vocabulary is not None),
+                adoptable=adoptable(built, project),
             ).model_dump(mode="json"),
         )
 

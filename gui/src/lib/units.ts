@@ -142,7 +142,8 @@ export function enteredUnit(
   return text === NO_UNIT ? null : text;
 }
 
-/** Whether a project that declares a vocabulary leaves this unit out of it. */
+/** Whether a project with a units file - whatever it lists - leaves this unit out of its
+ * vocabulary. */
 export function outsideVocabulary(units: UnitsReply, unit: string | null): boolean {
   return (
     unit !== null &&

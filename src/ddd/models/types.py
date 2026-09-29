@@ -530,8 +530,12 @@ class TypesFile(FileRoot):
 
     model_config = ConfigDict(title="DDD type description")
 
-    types: tuple[AnyType, ...] = Field(min_length=1)
-    """The types this file declares."""
+    types: tuple[AnyType, ...]
+    """The types this file declares, and possibly none.
+
+    A file declaring none loads, and is reported as ``empty-vocabulary``. A structure needs a
+    member all the same: an empty structure is not c.
+    """
 
     @model_validator(mode="after")
     def _type_names_are_distinct(self) -> TypesFile:

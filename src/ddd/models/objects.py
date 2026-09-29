@@ -508,7 +508,7 @@ class DataObject(_Frozen):
 
     Free text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:
     every component declaring this object has to spell it the same way, and where the project
-    declares a unit vocabulary the spelling is checked against that too (``unknown-unit``).
+    has a units file the spelling is checked against the unit vocabulary too (``unknown-unit``).
     Refused beside a ``string`` conversion: text has no unit, and one stated there would
     reach the a2l as the unit of a computation method that cannot exist.
     """

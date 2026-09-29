@@ -151,7 +151,7 @@ stamps a whole file, the fix stamps the declaration you are looking at. It is of
 where the finding is: a project that has silenced ``missing-id`` has said it is not adopting
 ids yet, and the editor does not argue with that.
 
-An ``unknown-unit`` finding, which only a project with a vocabulary reports, offers two fixes
+An ``unknown-unit`` finding, which only a project with a units file reports, offers two fixes
 of its own: "Add 'RPM' to the vocabulary", and, for each spelling close enough to suggest,
 "Rename 'RPM' to 'rpm' everywhere" - the same rename ``F2`` makes, merging into a unit that
 exists. Both are the plans ``ddd gui`` previews and applies, so the editor and the page never

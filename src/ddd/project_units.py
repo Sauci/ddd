@@ -20,7 +20,7 @@ from ddd.diagnostics import Diagnostic
 from ddd.finding_routes import UNIT_CHECKS
 from ddd.lsp.navigation import Index, Site, UnitSite
 from ddd.lsp.ranges import Document, read
-from ddd.lsp.units import PlannedEdit
+from ddd.lsp.units import PlannedEdit, UnitProject, UnitRefusalError, adoption
 from ddd.variables import Planned, declarations_of, hunks, planned
 
 
@@ -128,12 +128,25 @@ def located_on_unit(built: Index, unit: str, file: Path, finding: Diagnostic) ->
     )
 
 
-def adoptable(built: Index | None, has_vocabulary: bool) -> int | None:
-    """How many units adopting a vocabulary would list - every unit in use - or ``None`` when
-    the project has a units file already, and so nothing to adopt."""
-    if has_vocabulary:
+def adoptable(built: Index | None, project: UnitProject) -> int | None:
+    """How many units adopting a vocabulary would list - every unit in use, none where the
+    project states none - or ``None`` where adopting is refused.
+
+    Answered by :func:`ddd.lsp.units.adoption`, the guards :func:`ddd.lsp.units.adopt_units`
+    plans by, so the page offers adopting exactly where the plan comes to one: every refusal but
+    "nothing to adopt" answers ``None``, and that one answers ``0``, for which the banner says
+    there is nothing to adopt and draws no Adopt. A project the analysis could not read has no
+    index, and so no plan either.
+    """
+    if built is None:
         return None
-    return 0 if built is None else len(built.units)
+    try:
+        planned = adoption(built, project)
+    except UnitRefusalError:
+        return None
+    if planned is None:
+        return 0
+    return len(planned.units)
 
 
 def previewed(

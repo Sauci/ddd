@@ -514,6 +514,56 @@ def test_a_missing_file_is_not_also_reported_as_badly_named(tree: Path) -> None:
     assert checks(bag) == ["file-not-found"]
 
 
+ONE_ENTRY_EACH: dict[str, Any] = {
+    "types": {
+        "type": "scalar",
+        "name": "T_t",
+        "datatype": "uint8",
+        "conversion": {"kind": "identity"},
+    },
+    "units": "rpm",
+    "constants": {"name": "N", "value": 1},
+    "sections": {"section": ".data", "access": "read-write", "alignment": 4},
+    "rasters": {"raster": "10ms", "event": 1},
+}
+"""One entry of each vocabulary, the smallest a file of that kind declares and still loads."""
+
+
+class TestAVocabularyFileDeclaringNothing:
+    """``empty-vocabulary``, which the loader files for a file of any of the five kinds whose own
+    list is empty. The five cases that file it are pinned beside each kind's model, in
+    ``test_types.py``, ``test_units.py``, ``test_constants.py``, ``test_sections.py`` and
+    ``test_rasters.py``; these are the two halves that belong to the check itself."""
+
+    @pytest.mark.parametrize("kind", sorted(ONE_ENTRY_EACH))
+    def test_a_file_declaring_something_is_not_reported(self, tree: Path, kind: str) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "v.ddd.json", "a.ddd.json"),
+                "v.ddd.json": {kind: [ONE_ENTRY_EACH[kind]]},
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is not None
+        assert "empty-vocabulary" not in checks(bag)
+
+    def test_the_finding_can_be_silenced(self, tree: Path) -> None:
+        """Overridable, as its sibling ``empty-component`` is: a project keeping a file that
+        declares nothing on purpose can say so once rather than read the finding on every run."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "v.ddd.json", "a.ddd.json"),
+                "v.ddd.json": {"units": []},
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+            severities=["empty-vocabulary=ignore"],
+        )
+        assert dictionary is not None
+        assert checks(bag) == []
+
+
 class TestSchemaBinding:
     """The one unknown-looking key that has to be allowed: the editor's schema binding."""
 

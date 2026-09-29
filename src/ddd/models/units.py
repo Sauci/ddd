@@ -6,10 +6,13 @@ and ``newton_meter`` mean the same thing - and without a vocabulary the drift is
 each object agrees with itself, and the calibration tool ends up showing two units for one
 quantity.
 
-Declaring the vocabulary is opt-in.  A project without a units file keeps its units free;
-one with a units file has every stated unit checked against it (``unknown-unit``), with the
-nearest declared spelling suggested.  The empty unit - a dimensionless value - is always
-allowed, because it is the absence of an answer rather than a spelling of one.
+Declaring the vocabulary is opt-in, and a units file is what opts in.  A project without one
+keeps its units free; one with a units file - even one declaring nothing - has every stated
+unit checked against what its units files declare (``unknown-unit``), with the nearest declared
+spelling suggested.  The file decides rather than what it lists, so that taking out a unit
+nothing states - the last one included - never changes what is checked.  The empty unit - a
+dimensionless value - is always allowed, because it is the absence of an answer rather than a
+spelling of one.
 """
 
 from __future__ import annotations
@@ -83,7 +86,10 @@ class UnitsFile(FileRoot):
 
     model_config = ConfigDict(title="DDD unit vocabulary")
 
-    units: Annotated[
-        tuple[Unit, ...], Field(min_length=1, json_schema_extra=_publish_bare_spellings)
-    ]
-    """The units this project spells, in any order; an empty vocabulary is no file at all."""
+    units: Annotated[tuple[Unit, ...], Field(json_schema_extra=_publish_bare_spellings)]
+    """The units this project spells, in any order, and possibly none.
+
+    A file listing none loads, and is reported as ``empty-vocabulary``. Like any units file it
+    opts the project into the unit check: every stated unit is checked, against a vocabulary this
+    file adds nothing to.
+    """

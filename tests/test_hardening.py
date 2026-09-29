@@ -973,25 +973,29 @@ class TestWhatABuildSystemIsTold:
 
 class TestOneMistakeIsOneFinding:
     def test_a_list_emptied_by_a_rejected_entry_is_not_reported_as_well(self, tree: Path) -> None:
-        """pydantic drops the bad entry and then calls the list too short; one mistake."""
+        """pydantic drops the bad entry and then calls the list too short; one mistake.
+
+        Written against a component's own ``constants``, a list that is still ``min_length=1``.
+        It used to be a sections file's list, which may be empty now: pydantic says nothing
+        more about that one, and this test went on passing there without exercising anything.
+        """
         _, bag = run_analysis(
             tree,
             {
-                "project.ddd.json": project("P", "s.ddd.json"),
-                "s.ddd.json": {
-                    "sections": [{"section": "", "access": "read-only", "alignment": 4}]
-                },
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", constants=[{"name": "", "value": 1}]),
             },
         )
         assert len(bag) == 1
-        assert "sections[0].section" in messages(bag)
+        assert "component.constants[0].name" in messages(bag)
 
     def test_a_list_that_was_written_empty_still_reports_itself(self, tree: Path) -> None:
+        """Against the same list as the case above, for the same reason."""
         _, bag = run_analysis(
             tree,
             {
-                "project.ddd.json": project("P", "s.ddd.json"),
-                "s.ddd.json": {"sections": []},
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", constants=[]),
             },
         )
         assert "at least 1 item" in messages(bag)

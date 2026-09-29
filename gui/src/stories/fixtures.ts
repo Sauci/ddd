@@ -554,6 +554,19 @@ export const UNADOPTED_UNITS: UnitsReply = {
   adoptable: 8,
 };
 
+/** The same project with a units file that declares nothing - what taking the last unit nothing
+ * states out of its vocabulary leaves. The file opts the project in all the same, so each of its
+ * eight units in use is outside the vocabulary with an `unknown-unit` at every place stating it,
+ * and adopting is offered: it would fill that file (FILLING) rather than write a second. */
+export const EMPTIED_UNITS: UnitsReply = {
+  ...UNADOPTED_UNITS,
+  vocabulary: [],
+  units: UNADOPTED_UNITS.units.map((unit) => ({
+    ...unit,
+    findings: unit.variables + unit.types + unit.members,
+  })),
+};
+
 const UNKNOWN: Finding = {
   file: CONTROLLER,
   check: "unknown-unit",
@@ -757,6 +770,44 @@ export const ADOPTION: PlanReply = {
   ],
 };
 
+/** The eight units in use, in the order adopting lists them: sorted by code point, as the server
+ * sorts them. */
+const FILLED_UNITS = ["%", "Hz", "RPM", "V", "degC", "ms", "rpm", "°C"];
+
+/** Adopting into EMPTIED_UNITS' file: the units in use inserted into its empty list - one file
+ * changed, the project description and its `includes` untouched. The hunk is the one the server
+ * answers for that file, `"$schema"` on its second line and `"units": []` on its third, laid out
+ * by the edit engine's own insertions. */
+export const FILLING: PlanReply = {
+  revision: 7,
+  changes: [
+    {
+      file: UNITS_FILE,
+      fingerprint: "08c7a71c4c8c84aaa5baccebfa4b8352686c358503d583fd33a3712796b844a1",
+      operations: FILLED_UNITS.map((unit, index) => ({
+        op: "insert",
+        pointer: `units[${index}]`,
+        raw: `{"unit": ${JSON.stringify(unit)}, "description": ""}`,
+      })),
+      hunks: [
+        {
+          line: 3,
+          before: ['  "units": []'],
+          after: [
+            '  "units": [',
+            ...FILLED_UNITS.map(
+              (unit, index) =>
+                `    { "unit": ${JSON.stringify(unit)}, "description": "" }` +
+                (index < FILLED_UNITS.length - 1 ? "," : ""),
+            ),
+            "  ]",
+          ],
+        },
+      ],
+    },
+  ],
+};
+
 // The Findings tab (spec 5.1, 5.2): one finding of each severity, one leading to a variable, one
 // to a unit, one to a component, and one leading nowhere because its file did not load.
 
@@ -898,6 +949,42 @@ export const PROJECT_FINDINGS: State = {
   ],
   findings: [UNKNOWN_RPM_FINDING, STORAGE_MISMATCH, DID_NOT_LOAD, MISSING_ID, UNKNOWN_RASTER],
   undoable: null,
+};
+
+/** A second rasters file the project includes, whose only raster - nothing sampled on it - was
+ * taken out from the Shared files tab: what is left declares nothing, loads, and is reported. */
+const BENCH = "C:/work/demo/bench.ddd.json";
+
+/** `empty-vocabulary` on that file, filed at `rasters` - its own list, which is still there,
+ * empty. It leads nowhere for a reason of its own: the finding is about the whole file, which no
+ * panel shows, rather than about a place the file has moved on from. The check's own default is
+ * info (`src/ddd/diagnostics.py`). */
+export const EMPTY_RASTERS: Finding = {
+  file: BENCH,
+  check: "empty-vocabulary",
+  severity: "info",
+  message: "rasters file 'bench.ddd.json' declares no raster",
+  pointer: "rasters",
+  notes: [],
+  route: null,
+};
+
+/** PROJECT_FINDINGS with bench.ddd.json among its files - a rasters file that loaded, with one
+ * info - and its finding among the rest, both first, since `GET /api/state` answers by file. */
+export const EMPTIED_FINDINGS: State = {
+  ...PROJECT_FINDINGS,
+  files: [
+    {
+      path: BENCH,
+      kind: "rasters",
+      name: null,
+      loaded: true,
+      fingerprint: "e",
+      findings: { error: 0, warning: 0, info: 1 },
+    },
+    ...PROJECT_FINDINGS.files,
+  ],
+  findings: [EMPTY_RASTERS, ...PROJECT_FINDINGS.findings],
 };
 
 /** The one fix the tab offers: `missing-id`, previewed onto SensorHub's ValueA. */
@@ -2143,10 +2230,6 @@ export const REMOVE_CONSTANT: PlanReply = {
 
 const SECTIONS_FILE = "C:/work/demo/sections.ddd.json";
 
-/** A second sections file the project includes, declaring the one section the bench writes to -
- * which is what makes removing that section a refusal rather than an offer. */
-const BENCH_SECTIONS = "C:/work/demo/bench.ddd.json";
-
 /** A definition placing its data in a section: `component.interface[i].definition.section`, the
  * one shape that names one (`SectionUse.pointer`'s own doc), and always a variable's. */
 const FAST_RAM_PUMP_SPEED: SectionUse = {
@@ -2227,28 +2310,6 @@ export const REMOVE_SECTION: PlanReply = {
     },
   ],
 };
-
-/** The one section bench.ddd.json declares, and nothing places data in it either - so the only
- * thing standing between it and Remove is the file it would empty. */
-export const SECTION_SOLE_ENTRY: SectionReply = {
-  revision: 7,
-  name: ".bench_log",
-  access: "read-write",
-  alignment: "8",
-  description: "bench instrumentation buffer, absent from the shipped build",
-  file: BENCH_SECTIONS,
-  pointer: "sections[0]",
-  uses: [],
-  findings: [],
-};
-
-/** Why .bench_log cannot go although nothing names it: `remove_entry`'s own second refusal, in
- * the server's words. A list of sections is `min_length=1` in the model, so the emptied file
- * would no longer load - which the panel cannot know from `SectionReply` and so meets as this,
- * the plan it asked for coming back refused. */
-export const REMOVE_SECTION_REFUSED =
-  "'.bench_log' is all bench.ddd.json declares, and a list of sections declares at least one; " +
-  "emptied, the file would no longer load";
 
 /** Renaming .calib to a name the project's sections already hold: `_section_problem`'s own
  * sentence. The format would load two sections of one name - `duplicate-section` is a check, not
@@ -2366,8 +2427,7 @@ export const RASTER_REPLY: RasterReply = {
 };
 
 /** 100ms: the one raster of the shipped example nothing names at all (the controller's ruling
- * confirms it against the files), so Remove is offered rather than refused - and it is one of
- * three rasters.ddd.json declares, so the sole-entry refusal does not stand in its way either. */
+ * confirms it against the files), so Remove is offered rather than refused. */
 export const RASTER_UNUSED: RasterReply = {
   revision: 7,
   name: "100ms",
@@ -2402,40 +2462,6 @@ export const REMOVE_RASTER: PlanReply = {
     },
   ],
 };
-
-/** A second rasters file the project includes, declaring the one raster the bench samples on -
- * which is what makes removing that raster a refusal rather than an offer. The raster half of
- * BENCH_SECTIONS, and a file of its own because a file is one vocabulary's: a rasters file is the
- * one with a `rasters` key, and bench.ddd.json has a `sections` key already. */
-const BENCH_RASTERS = "C:/work/demo/bench_rasters.ddd.json";
-
-/** The one raster bench_rasters.ddd.json declares, and nothing samples on it either - so the only
- * thing standing between it and Remove is the file it would empty. Its event is 9 rather than one
- * of 0, 1 and 2: the shipped three hold those, and an event is the project's alone. */
-export const RASTER_SOLE_ENTRY: RasterReply = {
-  revision: 7,
-  name: "bench",
-  event: "9",
-  cycle: "500ms",
-  description: "bench instrumentation sampling, absent from the shipped build",
-  file: BENCH_RASTERS,
-  pointer: "rasters[0]",
-  uses: [],
-  findings: [],
-};
-
-/** Why bench cannot go although nothing names it: `remove_entry`'s own second refusal, in the
- * server's words - one sentence written once for all three vocabularies, with this one's word in
- * it, which is why it reads beside REMOVE_SECTION_REFUSED as the same sentence twice. A list of
- * rasters is `min_length=1` in the model, so the emptied file would no longer load - which the
- * panel cannot know from `RasterReply`, carrying no count of what a file holds, and so meets as
- * this, the plan it asked for coming back refused. Composed from `remove_entry`'s own f-string
- * with this fixture's name and file in it, not copied from a run;
- * `test_removing_the_only_raster_a_file_declares_is_refused` pins that same f-string against the
- * server, for `10ms` in `r.ddd.json`. */
-export const REMOVE_RASTER_REFUSED =
-  "'bench' is all bench_rasters.ddd.json declares, and a list of rasters declares at least one; " +
-  "emptied, the file would no longer load";
 
 /** 1ms as PumpSpeed's own definition finds it: event 0, cyclic at 1ms, the one definition measured
  * in it - which is what the rename and event stories keep on screen behind their refusals. */

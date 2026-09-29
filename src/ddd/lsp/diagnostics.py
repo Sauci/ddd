@@ -320,8 +320,9 @@ def group_findings(
 def finding_identity(finding: Diagnostic) -> tuple[str, Severity, Location | None, str]:
     """What makes two findings the same one, for a reader looking at an underline.
 
-    Public because :func:`ddd.file_plans.new_errors` asks the same question of two analyses of
-    one project, the second with the root's ``includes`` changed, and one rule answers both.
+    Not what makes two analyses of one project agree about an error: a message may name what
+    else the project holds, so the same error may be worded differently once a file is gone.
+    :func:`ddd.file_plans.new_errors` counts errors place by place instead.
     """
     return (finding.check, finding.severity, finding.location, finding.message)
 

@@ -1,4 +1,5 @@
 import type { FilesReply, IncludedEntryReply, SourceFile } from "../api/types";
+import { relativeToProject } from "./findings";
 
 /**
  * One row of the Files tab: an entry's own row, or one of a pattern's matched files, indented
@@ -93,4 +94,62 @@ export function rowsOf(reply: FilesReply, files: readonly SourceFile[]): FileRow
  * row unable to read a count reads as none rather than as an error the reader must puzzle out. */
 function totalOf(file: SourceFile | null): number {
   return file === null ? 0 : file.findings.error + file.findings.warning + file.findings.info;
+}
+
+/** The four cells a row of the Files tab draws (design §2) - the table's own picture of a row,
+ * decided here so `FilesTableView` only draws it, never chooses it. */
+export interface FileCells {
+  /** A row's own line shows the entry as `includes` spells it (`IncludedEntryReply.entry`) - the
+   * same text whether it names a file, a pattern, or nothing. A child shows the file it is about
+   * instead, named the way an entry would spell it: relative to the project's own directory
+   * (`relativeToProject`, `lib/findings.ts`) - spec §2's "beneath it every file it matched" is a
+   * file, not the component or vocabulary it happens to declare, which is why this is never
+   * `file?.name`: two rows of one file (a literal and a pattern's child) must read as the one
+   * file they are, and a matched file's own declared name is not always there to read besides
+   * (`file` is `null` where the revision has not read it yet). */
+  entry: string;
+  /** The file's own kind, or blank where the row has none: a pattern's own row, an entry naming
+   * nothing, and a file the last analysis did not read alike - none has a `SourceFile` to read a
+   * kind off. */
+  kind: string;
+  /** What `stateOf` answers (this file, below) - "names no file", "not read by the last
+   * analysis", "did not load", or blank. */
+  state: string;
+  /** The row's own finding count, or blank where it carries none - `SharedTableView`'s own rule
+   * for its own Findings column, a zero count being noise in a column scanned for the ones that
+   * are not. */
+  findings: string;
+}
+
+/** A row's four cells, the one decision `FilesTableView` needs made for it before it can draw a
+ * row - `rowsOf`'s join already answered everything this reads. */
+export function cellsOf(row: FileRow, project: string): FileCells {
+  return {
+    entry: row.child ? relativeToProject(row.key, project) : row.entry.entry,
+    kind: row.file?.kind ?? "",
+    state: stateOf(row),
+    findings: row.findings === 0 ? "" : String(row.findings),
+  };
+}
+
+/** The State cell alone (`FileCells.state`'s own doc says what each answer means).
+ *
+ * A loaded file's own row and a pattern's own row both draw blank, for two different reasons -
+ * the first has nothing wrong to report, the second has no file of its own to report anything
+ * about - so the two are answered by different branches below, even though both return "".
+ *
+ * The two remaining branches fall through to "not read by the last analysis": a literal entry's
+ * own row whose file `State.files` lacks (`!row.child && row.entry.names`), and a pattern's child
+ * row whose matched file it lacks (`row.child`) - the two causes Task 6's own ruling names (a root
+ * whose read stopped at its own schema before its includes were read; a pattern matching a file
+ * created since the revision). Both are a row naming a file all the same, never a row naming
+ * nothing - which is why the check above this, `!row.entry.names && row.entry.files.length ===
+ * 0`, is exactly `rowsOf`'s own test for that (Task 6: "names is False for every pattern, matching
+ * files or not" - `names` alone never tells a pattern apart from a row naming nothing, `files` is
+ * what does), read first so a row naming nothing is never mistaken for one merely unread. */
+function stateOf(row: FileRow): string {
+  if (row.file !== null) return row.file.loaded ? "" : "did not load";
+  if (!row.entry.names && row.entry.files.length === 0) return "names no file";
+  if (!row.child && !row.entry.names) return "";
+  return "not read by the last analysis";
 }

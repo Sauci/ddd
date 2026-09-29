@@ -2617,6 +2617,18 @@ export const PROJECT_SOURCE_FILES: readonly SourceFile[] = [
   cleanFile(VOCABULARY_PUMP, "component", "Pump", "e"),
 ];
 
+/** A file the last analysis did not read (constructed: every file `examples/vocabulary` includes
+ * loads cleanly) - `PROJECT_FILES`' own five entries, pump.ddd.json's own file missing from
+ * those the revision read. Task 6's `FileRow.file` doc names the two real causes: the root's own
+ * schema failing before its includes are read, or a pattern matching a file created since the
+ * revision - this fixture leaves either's own shape behind (a literal entry with no `SourceFile`
+ * to join) without constructing either scenario whole, kept apart from an entry naming nothing:
+ * pump.ddd.json is still named by `includes`, `PROJECT_FILES` untouched - only the file itself is
+ * missing here. */
+export const FILES_SOURCE_MISSING: readonly SourceFile[] = PROJECT_SOURCE_FILES.filter(
+  (file) => file.path !== VOCABULARY_PUMP,
+);
+
 // A pattern with its matched files (constructed: every one of examples/vocabulary's own five
 // entries is literal, so a glob is invented here) - "sensors/*.ddd.json" brings in two more
 // components, the shape `files.test.ts`'s own rowsOf fixtures already use, now drawn: the
@@ -2647,9 +2659,9 @@ export const FILES_WITH_PATTERN_SOURCES: readonly SourceFile[] = [
 ];
 
 /** An entry naming nothing, carrying its finding (constructed: nothing in examples/vocabulary is
- * missing) - a path the loader cannot find, `include-empty` filed at its own index and nothing
- * else to draw: no kind, no state, `rowsOf` having given the row no `SourceFile` of its own
- * (Controller ruling). */
+ * missing) - a path the loader cannot find, `include-empty` filed at its own index, no kind to
+ * draw (`rowsOf` gave the row no `SourceFile` of its own, Controller ruling) and `cellsOf`'s own
+ * "names no file" for its State - spec §2's "shows as such". */
 const MISSING_ENTRY: IncludedEntryReply = {
   index: 5,
   entry: "missing.ddd.json",

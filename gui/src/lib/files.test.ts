@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { FilesReply, IncludedEntryReply, SourceFile } from "../api/types";
-import { rowsOf } from "./files";
+import { cellsOf, rowsOf } from "./files";
 
 const PROJECT = "C:/work/demo/demo.ddd.json";
 const A = "C:/work/demo/a.ddd.json";
@@ -193,4 +193,103 @@ test("every entry's rows are kept in the description's own order", () => {
 
 test("no entries at all is no rows", () => {
   expect(rowsOf(reply([]), [])).toEqual([]);
+});
+
+describe("cellsOf", () => {
+  // `rowsOf(...)[i]` would be `FileRow | undefined` under `noUncheckedIndexedAccess`, destructuring
+  // included (measured: `tsc` refuses `cellsOf(row, PROJECT)` for a `const [row] = rowsOf(...)`
+  // the same way `findings.test.ts`'s own comment warns index access would). `.map()` sidesteps it
+  // and doubles as the whole-array assertion every arm below is pinned with.
+  const cells = (entries: IncludedEntryReply[], files: SourceFile[]) =>
+    rowsOf(reply(entries), files).map((row) => cellsOf(row, PROJECT));
+
+  test("a literal entry's own row, loaded, draws its entry, kind and count", () => {
+    const file = sourceFile({ findings: { error: 1, warning: 2, info: 0 } });
+    expect(cells([entry({ findings: 1 })], [file])).toEqual([
+      { entry: "a.ddd.json", kind: "component", state: "", findings: "4" },
+    ]);
+  });
+
+  test('a literal entry\'s own row that did not load draws "did not load"', () => {
+    const file = sourceFile({ loaded: false });
+    expect(cells([entry()], [file])).toEqual([
+      { entry: "a.ddd.json", kind: "component", state: "did not load", findings: "" },
+    ]);
+  });
+
+  test('a literal entry\'s own row the revision did not read draws "not read by the last analysis"', () => {
+    // A schema error in the root's own description stops its read before its includes, so no
+    // file it brings is among `State.files` - a row naming a file all the same (`FileRow.file`'s
+    // own doc), never the same as "an entry naming nothing" below, which draws differently.
+    expect(cells([entry({ findings: 2 })], [])).toEqual([
+      { entry: "a.ddd.json", kind: "", state: "not read by the last analysis", findings: "2" },
+    ]);
+  });
+
+  test("a pattern's own row draws its own line; a loaded child draws its file's own path, never its name", () => {
+    // Spec §2: "beneath it every file it matched" - a file, not the component SENSORS_X happens
+    // to declare ("X"), which is why the child reads "sensors/x.ddd.json" and not "X". The
+    // pattern's own row above it has no kind, state or count of its own to draw either.
+    const x = sourceFile({ path: SENSORS_X, name: "X" });
+    const pattern = entry({
+      entry: "sensors/*.ddd.json",
+      names: false,
+      key: "C:/work/demo/sensors/*.ddd.json",
+      files: [SENSORS_X],
+      findings: 0,
+    });
+    expect(cells([pattern], [x])).toEqual([
+      { entry: "sensors/*.ddd.json", kind: "", state: "", findings: "" },
+      { entry: "sensors/x.ddd.json", kind: "component", state: "", findings: "" },
+    ]);
+  });
+
+  test('a pattern\'s matched file the revision did not read draws "not read by the last analysis" too', () => {
+    // A pattern can match a file created since the revision, which the revision never read - the
+    // same sentence a literal's own unread row draws above, and for the same reason: this row
+    // names a file all the same, `FileRow.file`'s own doc says so of a pattern's child exactly as
+    // it does of a literal's own row.
+    const pattern = entry({
+      entry: "sensors/*.ddd.json",
+      names: false,
+      key: "C:/work/demo/sensors/*.ddd.json",
+      files: [SENSORS_X],
+      findings: 0,
+    });
+    expect(cells([pattern], [])).toEqual([
+      { entry: "sensors/*.ddd.json", kind: "", state: "", findings: "" },
+      {
+        entry: "sensors/x.ddd.json",
+        kind: "",
+        state: "not read by the last analysis",
+        findings: "",
+      },
+    ]);
+  });
+
+  test('a pattern matching no file draws "names no file"', () => {
+    const pattern = entry({
+      entry: "nothing/*.ddd.json",
+      names: false,
+      key: "C:/work/demo/nothing/*.ddd.json",
+      files: [],
+      findings: 1,
+    });
+    expect(cells([pattern], [])).toEqual([
+      { entry: "nothing/*.ddd.json", kind: "", state: "names no file", findings: "1" },
+    ]);
+  });
+
+  test('a plain path naming no file draws "names no file" too', () => {
+    const missing = entry({
+      entry: "missing.ddd.json",
+      names: false,
+      key: "C:/work/demo/missing.ddd.json",
+      files: [],
+      findings: 1,
+    });
+    expect(cells([missing], [])).toEqual([
+      { entry: "missing.ddd.json", kind: "", state: "names no file", findings: "1" },
+    ]);
+  });
 });

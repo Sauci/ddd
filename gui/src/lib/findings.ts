@@ -120,8 +120,10 @@ export function routeLabel(finding: Finding, state: State): string | null {
 /** A path named the way an `includes` entry would spell it - relative to the project
  * description's own directory - or, where it does not sit inside that directory at all, by its
  * base name: the fallback `routeLabel`'s `component` arm always takes, kept here for a path an
- * entry reached by a parent directory (`../`) rather than one beneath the project. */
-function relativeToProject(path: string, project: string): string {
+ * entry reached by a parent directory (`../`) rather than one beneath the project. Exported: the
+ * Files tab's own `cellsOf` (`lib/files.ts`) names a pattern's matched file the very same way
+ * (design §2, part 16), and imports this rather than a second copy of it. */
+export function relativeToProject(path: string, project: string): string {
   const directory = project.slice(0, project.lastIndexOf("/") + 1);
   return path.startsWith(directory) ? path.slice(directory.length) : baseName(path);
 }

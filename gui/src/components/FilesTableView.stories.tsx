@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FilesReply, SourceFile } from "../api/types";
 import {
   FILES_SHARED_KEY,
+  FILES_SOURCE_MISSING,
   FILES_WITH_MISSING,
   FILES_WITH_PATTERN,
   FILES_WITH_PATTERN_SOURCES,
@@ -38,15 +39,24 @@ export const TheProjectsOwnList = () => <Files />;
 
 /** "sensors/*.ddd.json" beside the project's own five (constructed: the shipped example has no
  * pattern of its own). The pattern's own row carries no file of its own - blank Kind and State -
- * and Inlet and Outlet are indented beneath it, each with a kind and a state of its own. */
+ * and its two matches are indented beneath it, each by its own path relative to the project
+ * (spec §2: "beneath it every file it matched" is a file, not Inlet or Outlet, the components
+ * those two files happen to declare - `cellsOf`'s own reason, lib/files.ts). */
 export const APatternWithItsMatchedFiles = () => (
   <Files reply={FILES_WITH_PATTERN} files={FILES_WITH_PATTERN_SOURCES} />
 );
 
-/** missing.ddd.json, naming nothing (constructed): blank Kind and State, the entry's own single
- * `include-empty` finding the only thing the row has to show - `rowsOf` gave it no file to draw
- * the other two columns from. */
+/** missing.ddd.json, naming nothing (constructed): blank Kind, "names no file" under State (spec
+ * §2: "shows as such"), and the entry's own single `include-empty` finding under Findings -
+ * `rowsOf` gave the row no `SourceFile` to draw a kind from, `cellsOf` the sentence that says so. */
 export const AnEntryNamingNothing = () => <Files reply={FILES_WITH_MISSING} />;
+
+/** pump.ddd.json, a literal entry `includes` still names, but its own file missing from those the
+ * last analysis read (constructed: examples/vocabulary loads cleanly) - blank Kind, "not read by
+ * the last analysis" under State: kept apart from AnEntryNamingNothing's own "names no file"
+ * above, since this entry does name a file - the revision has simply not read it yet (Task 6's own
+ * ruling, fixtures.ts says the two real causes). */
+export const AFileTheLastAnalysisDidNotRead = () => <Files files={FILES_SOURCE_MISSING} />;
 
 /** subsystem.ddd.json, a sub-project (constructed: the shipped example includes no other
  * project): Kind reads "project", drawn exactly as any other kind is - not expanded, its own

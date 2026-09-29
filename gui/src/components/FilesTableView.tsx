@@ -1,6 +1,5 @@
 import type { FilesReply, SourceFile } from "../api/types";
-import { rowsOf } from "../lib/files";
-import { baseName } from "../lib/units";
+import { cellsOf, rowsOf } from "../lib/files";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
 
 export interface FilesTableViewProps {
@@ -18,14 +17,13 @@ export interface FilesTableViewProps {
   onSelect: (key: string | undefined) => void;
 }
 
-/** The Files tab's table (design §2): a picture of `rowsOf`'s rows - entry, kind, state and
- * findings, in that order - a pattern's matched files indented beneath its own row. Rows are keyed
- * by their position in `rowsOf`'s list rather than by their own `key`, since two rows may share
- * one: a literal entry and a pattern's child can both name the same file (Task 4's own ruling,
- * "New file appends a literal even where a pattern matches the name"). Nothing here decides
- * anything `rowsOf` did not already: a sub-project is a row of kind `project`, drawn exactly as
- * any other kind and never expanded; an entry naming nothing shows its own findings and nothing
- * else, `rowsOf` having given it no file to draw a kind or a state from. */
+/** The Files tab's table (design §2): a picture of `rowsOf`'s rows, each drawn through `cellsOf`
+ * (lib/files.ts) - entry, kind, state and findings, in that order - a pattern's matched files
+ * indented beneath its own row. Rows are keyed by their position in `rowsOf`'s list rather than by
+ * their own `key`, since two rows may share one: a literal entry and a pattern's child can both
+ * name the same file (Task 4's own ruling, "New file appends a literal even where a pattern
+ * matches the name"). Nothing here decides anything `rowsOf` or `cellsOf` did not already: a
+ * sub-project is a row of kind `project`, drawn exactly as any other kind and never expanded. */
 export function FilesTableView({ reply, files, selected, onSelect }: FilesTableViewProps) {
   const rows = rowsOf(reply, files);
   return (
@@ -51,15 +49,18 @@ export function FilesTableView({ reply, files, selected, onSelect }: FilesTableV
           <Column>Findings</Column>
         </TableHeader>
         <TableBody>
-          {rows.map((row, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: a row is its own position in rowsOf's list - two rows may share one `key`
-            <Row key={index} id={index} className={also(row.child ? "child" : "")}>
-              <Cell>{row.child ? (row.file?.name ?? baseName(row.key)) : row.entry.entry}</Cell>
-              <Cell>{row.file?.kind ?? ""}</Cell>
-              <Cell>{row.file === null ? "" : row.file.loaded ? "" : "did not load"}</Cell>
-              <Cell>{row.findings === 0 ? "" : String(row.findings)}</Cell>
-            </Row>
-          ))}
+          {rows.map((row, index) => {
+            const cells = cellsOf(row, reply.project);
+            return (
+              // biome-ignore lint/suspicious/noArrayIndexKey: a row is its own position in rowsOf's list - two rows may share one `key`
+              <Row key={index} id={index} className={also(row.child ? "child" : "")}>
+                <Cell>{cells.entry}</Cell>
+                <Cell>{cells.kind}</Cell>
+                <Cell>{cells.state}</Cell>
+                <Cell>{cells.findings}</Cell>
+              </Row>
+            );
+          })}
         </TableBody>
       </Table>
     )

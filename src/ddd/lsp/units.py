@@ -80,7 +80,19 @@ class UnitPlan:
 def appended_at(listed: object) -> int:
     """Where a new entry lands: at the end of a list read off disk, or at the front of a value
     that is not a list at all - which the edit engine then refuses with a sentence of its own,
-    rather than this guessing at a position inside something that holds none."""
+    rather than this guessing at a position inside something that holds none.
+
+    A project whose ``includes`` is not a list, or a vocabulary file whose own list is not one,
+    is a shape the loader itself refuses - but a plan is built from the raw document, read
+    before anything validates it, so a length taken unconditionally would raise while building
+    the plan rather than let the caller reach the refusal the next ``ddd check`` already gives.
+
+    A function rather than ``len(listed) if isinstance(listed, list) else 0`` at each call site:
+    a conditional expression registers no branch at all with coverage.py, so the arm nobody
+    tests could hide behind a green 100 % run, and the assignment ``if``/``else`` ruff would
+    accept in its place trips ``SIM108``, which asks for that same ternary right back. An early
+    return answers to both.
+    """
     if isinstance(listed, list):
         return len(listed)
     return 0
@@ -94,8 +106,8 @@ def created_beside(
 
     The only creation :func:`ddd.gui.session._confined` allows - beside the description, by an
     edit that adds it to the includes there - so a plan built any other way is refused when it
-    is applied. :func:`adopt_units`, :func:`ddd.shared_plans._created` and
-    :func:`ddd.file_plans.create_plan` all create through this, and cannot drift apart.
+    is applied. :func:`adopt_units` and :func:`ddd.shared_plans._created` both create through
+    this, and cannot drift apart.
     """
     laid_out = lay_out(text, one_line=False, indent="", unit=DEFAULT_INDENT_UNIT, newline="\n")
     includes = read(project, cache).value_at("project.includes")

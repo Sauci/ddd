@@ -564,11 +564,11 @@ def _created(
     """The file of ``vocabulary`` a project without one gets, and the ``includes`` entry naming
     it.
 
-    Follows :func:`ddd.lsp.units.adopt_units`, the only other plan in the repo that creates a
-    file: laid out with :func:`ddd.editing.lay_out` so the new file reads like one a person
-    wrote, and carried in the same plan as the ``includes`` entry so that a project can never
-    list a file that was not written - which is also the only shape of creation
-    :func:`ddd.gui.session._confined` allows.
+    Builds the one entry ``name`` declares, in ``vocabulary``'s own container key, and creates
+    the file through :func:`ddd.lsp.units.created_beside` - the one recipe a file is created
+    by, where the layout and the ``includes`` entry both live. :func:`ddd.lsp.units.adopt_units`
+    creates through the same recipe now, rather than the two mirroring each other by hand - and
+    it is also the only shape of creation :func:`ddd.gui.session._confined` allows.
     """
     created = project.project.parent / vocabulary.filename
     if created.exists():

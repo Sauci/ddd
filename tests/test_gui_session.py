@@ -52,6 +52,24 @@ PLUGIN = Plugin(
 )
 """
 
+UNPLACED_PLUGIN = """
+from ddd.diagnostics import CheckInfo, Severity
+from ddd.plugins import CheckContext, Plugin
+
+
+def check(context: CheckContext) -> None:
+    context.bag.add("loose/unplaced", "said of no place in the project")
+
+
+PLUGIN = Plugin(
+    name="loose",
+    checks=(CheckInfo("loose/unplaced", Severity.ERROR, "a finding with no place"),),
+    check=check,
+)
+"""
+"""A plugin whose check reports a finding without a location, which is filed on whichever file
+the grouping falls back to."""
+
 UNPARSED = (
     "{",
     '{"component": {"name": "B", "interface": [], "limit": NaN}}',
@@ -745,6 +763,48 @@ class TestFindingsWith:
         assert [(filed.file.name, filed.diagnostic.check) for filed in found] == [
             ("a.ddd.json", "unused-output")
         ]
+
+    def test_every_build_is_run_again_not_the_first_alone(self, tmp_path: Path) -> None:
+        """Two records raising different checks to errors, an unread output in `one.elf` and a
+        missing id in `two.elf`: run through either record alone, the list unchanged would
+        already answer other errors than the revision's."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Unread")),
+            },
+        )
+        project_file = tmp_path / "p.ddd.json"
+        build_record(tmp_path, project_file, image="one.elf", severity=["unused-output=error"])
+        build_record(tmp_path, project_file, image="two.elf", severity=["missing-id=error"])
+        revision = opened_and_settled(project_file).revision
+        assert revision is not None
+        assert revision.analysed is True
+        errors = errors_of(revision.findings)
+        assert sorted(filed.diagnostic.check for filed in errors) == ["missing-id", "unused-output"]
+        assert errors_of(findings_with(revision, ["a.ddd.json"])) == errors
+
+    def test_a_finding_with_no_place_is_shown_on_the_project_file(self, tmp_path: Path) -> None:
+        """Where the revision shows it: on the project file, the one file the reader is sure to
+        have open."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/loose_plugin.py": UNPLACED_PLUGIN,
+                "p.ddd.json": project("P", "a.ddd.json", plugins=["tools/loose_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        revision = opened_and_settled(tmp_path / "p.ddd.json").revision
+        assert revision is not None
+        for findings in (revision.findings, findings_with(revision, ["a.ddd.json"])):
+            unplaced = [
+                (filed.file, filed.diagnostic.check)
+                for filed in findings
+                if filed.diagnostic.location is None
+            ]
+            assert unplaced == [(revision.project, "loose/unplaced")]
 
     def test_the_findings_come_file_by_file_in_path_order(self, tmp_path: Path) -> None:
         """A revision's order, whatever the severities: leaving `c.ddd.json` out leaves a warning

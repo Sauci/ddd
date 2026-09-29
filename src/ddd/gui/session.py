@@ -363,10 +363,7 @@ class Session:
             if Path(info.project).resolve() == project
         )
         runs = _runs(project, builds)
-        grouped: dict[Path, list[Diagnostic]] = {}
-        covered: set[Path] = set()
-        for run in runs:
-            covered |= run.covered | group_findings(run.bag, project, grouped)
+        grouped, covered = _grouped(runs, project)
         registered = {info.identifier: info for run in runs for info in run.bag.registered.values()}
         # The project's own directory as well, where it is not already inside the root: a
         # project named on the command line from elsewhere. Two statements rather than one
@@ -426,9 +423,8 @@ def findings_with(revision: Revision, includes: Sequence[str]) -> tuple[Filed, .
     by an entry of its own and reading the variable the one before it writes, the first the
     last's. Each call measured returned what ``ddd check`` reports on that project.
     """
-    grouped: dict[Path, list[Diagnostic]] = {}
-    for run in _runs(revision.project, revision.builds, includes=includes):
-        group_findings(run.bag, revision.project, grouped)
+    runs = _runs(revision.project, revision.builds, includes=includes)
+    grouped, _ = _grouped(runs, revision.project)
     return _filed(grouped)
 
 
@@ -447,6 +443,22 @@ def _runs(
     if not runs:
         runs = [run_project(project, includes=includes)]
     return runs
+
+
+def _grouped(runs: Sequence[Run], project: Path) -> tuple[dict[Path, list[Diagnostic]], set[Path]]:
+    """The findings of ``runs`` sorted onto the files they are shown on, as
+    :func:`~ddd.lsp.diagnostics.group_findings` sorts them, and every file the runs covered or
+    filed one on. A finding with no place goes on ``project``, the one file the reader is sure
+    to have open.
+
+    One function for a revision and for :func:`findings_with`, so that the two show every
+    finding on the same file.
+    """
+    grouped: dict[Path, list[Diagnostic]] = {}
+    covered: set[Path] = set()
+    for run in runs:
+        covered |= run.covered | group_findings(run.bag, project, grouped)
+    return grouped, covered
 
 
 def _filed(grouped: Mapping[Path, Sequence[Diagnostic]]) -> tuple[Filed, ...]:

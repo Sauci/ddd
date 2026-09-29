@@ -50,6 +50,7 @@ const BARE_ROUTES: Record<ProjectView, Route> = {
   units: { page: "project", view: "units" },
   types: { page: "project", view: "types" },
   shared: { page: "project", view: "shared" },
+  files: { page: "project", view: "files" },
   findings: { page: "project", view: "findings" },
   compare: { page: "project", view: "compare" },
 } satisfies { [K in ProjectView]: { page: "project"; view: K } };

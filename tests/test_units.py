@@ -150,6 +150,17 @@ class TestTheCheck:
         _, bag = run_analysis(tree, self.files("", "Nm"))
         assert checks(bag) == []
 
+    def test_a_units_file_declaring_nothing_still_checks_every_stated_unit(
+        self, tree: Path
+    ) -> None:
+        """Having a units file is what opts a project in, whatever the file declares: with nothing
+        listed, every stated unit is one the project does not declare. Emptying the file is not
+        opting out."""
+        _, bag = run_analysis(tree, self.files("Nm"))
+        assert sorted(checks(bag)) == ["empty-vocabulary", "unknown-unit"]
+        where = "a.ddd.json#component.interface[0].definition.unit"
+        assert f"{where}: error[unknown-unit]: 'Nm' is not a unit" in messages(bag)
+
     def test_without_a_vocabulary_units_stay_free(self, tree: Path) -> None:
         _, bag = run_analysis(
             tree,

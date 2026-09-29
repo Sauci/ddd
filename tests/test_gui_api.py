@@ -84,6 +84,17 @@ LISTED_TWICE = {
     "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
 }
 
+# A units file declaring nothing - what taking out the last unit nothing states leaves - in a
+# project stating two units. A units file opts its project in whatever it declares, so both are
+# `unknown-unit`, and adopting fills this file rather than writing a second one.
+EMPTY_UNITS_FILE = {
+    "p.ddd.json": project("P", "units.ddd.json", "a.ddd.json"),
+    "units.ddd.json": {"units": []},
+    "a.ddd.json": component(
+        "A", declare("local", "Speed", unit="rpm"), declare("local", "Torque", unit="Nm")
+    ),
+}
+
 # A constant declared with no `description` at all - `set_entry`'s "nothing to remove" arm
 # needs an entry the key is already absent from, which no shipped example happens to have.
 NO_DESCRIPTION = {
@@ -2523,6 +2534,35 @@ class TestUnitsTab:
     ) -> None:
         body = get(unloaded(tmp_path), "/api/units").body
         assert (body["units"], body["adoptable"]) == ([], 0)
+
+    def test_a_units_file_declaring_nothing_reports_every_unit_and_offers_adopting_them(
+        self, tmp_path: Path
+    ) -> None:
+        """The file opts the project in, so each stated unit is a row carrying its finding, and
+        adoption is offered - the count the server gives is the page's whole answer to whether."""
+        body = get(opened(tmp_path, EMPTY_UNITS_FILE), "/api/units").body
+        assert body["vocabulary"] == []
+        assert [(u["unit"], u["files"], u["findings"]) for u in body["units"]] == [
+            ("Nm", [], 1),
+            ("rpm", [], 1),
+        ]
+        assert body["adoptable"] == 2
+
+    def test_adopting_fills_a_units_file_declaring_nothing(self, tmp_path: Path) -> None:
+        """One file changed and none created: the project description keeps its ``includes``."""
+        api = opened(tmp_path, EMPTY_UNITS_FILE)
+        before = contents(tmp_path)
+        preview = get(api, "/api/unit-plan", action="adopt").body
+        assert [(Path(c["file"]).name, c["fingerprint"] is None) for c in preview["changes"]] == [
+            ("units.ddd.json", False)
+        ]
+        assert applied(api, preview, "the vocabulary adopted").status == 200
+        assert contents(tmp_path)["p.ddd.json"] == before["p.ddd.json"]
+        listed = json.loads((tmp_path / "units.ddd.json").read_text(encoding="utf-8"))["units"]
+        assert [entry["unit"] for entry in listed] == ["Nm", "rpm"]
+        body = get(api, "/api/units").body
+        assert body["adoptable"] is None
+        assert [(u["unit"], u["findings"]) for u in body["units"]] == [("Nm", 0), ("rpm", 0)]
 
 
 class TestUnit:

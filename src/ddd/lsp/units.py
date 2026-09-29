@@ -235,17 +235,28 @@ def remove_unit(
 
 
 def adopt_units(built: Index, project: UnitProject, cache: dict[Path, Document]) -> UnitPlan:
-    """A vocabulary for a project without one: :data:`ADOPTED`, written beside the description
-    and listing every unit in use alphabetically with an empty description, and its name
-    appended to the description's ``includes``, in one edit.
+    """A vocabulary for a project whose units files list no unit: every unit in use,
+    alphabetically, each with an empty description.
+
+    Where it goes is decided by the project's units files, as :attr:`UnitProject.units_files`
+    reads them out of the description's own ``includes``:
+
+    * none at all - :data:`ADOPTED` is written beside the description and its name appended to
+      the description's ``includes``, in one edit;
+    * only ones declaring nothing - the units go into the first of them in ``includes`` order,
+      and no file is written or included besides. Having a units file opts a project in whatever
+      it declares, so an emptied or a new one reports every stated unit, and this is the one step
+      listing them all;
+    * one listing a unit - refused: the vocabulary is there already, which is what
+      :func:`listing_files` answers for this plan and for the page offering it alike.
 
     Every unit in use, drifted spellings included, so that adopting reports nothing that was not
     reported before; two spellings of one unit are merged by renaming one of them afterwards.
-    The file is laid out by the edit engine the way a units file is written by hand, one entry
-    to a line, so that the first edit anybody makes to it reads as a one-line change.
+    A created file is laid out by the edit engine the way a units file is written by hand, one
+    entry to a line, so that the first edit anybody makes to it reads as a one-line change, and a
+    filled one is laid out the same way by the engine's own insertions.
     """
-    entries = [entry for listed in built.vocabulary.values() for entry in listed]
-    held = sorted({*project.units_files, *_paths(entries)}, key=Path.as_posix)
+    held = listing_files(built)
     if held:
         raise UnitRefusalError("invalid", f"this project has a vocabulary already: {_names(held)}")
     if project.unread:
@@ -257,6 +268,18 @@ def adopt_units(built: Index, project: UnitProject, cache: dict[Path, Document])
         raise UnitRefusalError(
             "invalid", "this project states no unit, so there is nothing to adopt"
         )
+    listing = [_raw({"unit": unit, "description": ""}) for unit in sorted(built.units)]
+    if project.units_files:
+        file = project.units_files[0]
+        listed = read(file, cache).value_at("units") or []
+        return _plan(
+            {
+                file: [
+                    Operation("insert", f"units[{len(listed) + position}]", entry)
+                    for position, entry in enumerate(listing)
+                ]
+            }
+        )
     created = project.project.parent / ADOPTED
     if created.exists():
         raise UnitRefusalError(
@@ -264,9 +287,12 @@ def adopt_units(built: Index, project: UnitProject, cache: dict[Path, Document])
             f"adopting writes {ADOPTED} beside {project.project.name}, and a file of that name "
             "is there already",
         )
-    document = {"units": [{"unit": unit, "description": ""} for unit in sorted(built.units)]}
     laid_out = lay_out(
-        _raw(document), one_line=False, indent="", unit=DEFAULT_INDENT_UNIT, newline="\n"
+        f'{{"units": [{", ".join(listing)}]}}',
+        one_line=False,
+        indent="",
+        unit=DEFAULT_INDENT_UNIT,
+        newline="\n",
     )
     whole = f"{laid_out}\n"
     includes = read(project.project, cache).value_at("project.includes") or []
@@ -276,6 +302,17 @@ def adopt_units(built: Index, project: UnitProject, cache: dict[Path, Document])
         PlannedEdit(project.project, (included,)),
     )
     return UnitPlan(tuple(sorted(edits, key=lambda edit: edit.path.as_posix())))
+
+
+def listing_files(built: Index) -> list[Path]:
+    """The files of the project listing at least one unit, sorted: a vocabulary already, which
+    :func:`adopt_units` refuses to replace.
+
+    One answer for the plan and for the page offering it - :func:`ddd.project_units.adoptable`
+    asks it too - so that the two cannot disagree about where adopting is offered. A units file
+    declaring nothing is not one of them: adopting fills it.
+    """
+    return _paths(entry for listed in built.vocabulary.values() for entry in listed)
 
 
 def _spelling(unit: str) -> None:

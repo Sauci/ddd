@@ -4,7 +4,13 @@ import { ApiError, getUnits, postEdit } from "../api/client";
 import type { State } from "../api/types";
 import { AdoptBannerView, AdoptPanelView } from "../components/AdoptBannerView";
 import { UnitsTableView } from "../components/UnitsTableView";
-import { planEdit, tabTitle } from "../lib/projectUnits";
+import {
+  adoptionAsked,
+  adoptionOffered,
+  hasUnitsFile,
+  planEdit,
+  tabTitle,
+} from "../lib/projectUnits";
 import { type Refused, shownRefusal } from "../lib/refusals";
 import { unitLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
@@ -19,7 +25,7 @@ interface Props {
 }
 
 /** The open project's Units tab (spec 5.1): every unit it states or lists, the panel of the one
- * selected, and adoption for a project with no units file (spec 5.3). */
+ * selected, and adoption for a project whose units files list no unit (spec 5.3). */
 export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
   const queries = useQueryClient();
   const revision = state?.revision;
@@ -45,9 +51,10 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
   const [stale, setStale] = useState<Refused | null>(null);
   const adoptable = units.data?.adoptable ?? null;
   // Asked for as soon as the banner offers it, so that Adopt applies exactly what Show changes
-  // shows; a project stating no unit has nothing to adopt, and nothing is asked.
+  // shows; a project stating no unit has nothing to adopt, and nothing is asked. Both conditions
+  // are `adoptionOffered` and `adoptionAsked`, which read the server's own answer.
   const adoption = usePlan(
-    adoptable !== null && adoptable > 0 ? { action: "adopt" } : null,
+    units.data !== undefined && adoptionAsked(units.data) ? { action: "adopt" } : null,
     revision,
   );
   const adopt = useMutation({
@@ -99,15 +106,16 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
   const preview = unit === undefined && previewing ? (adoption.data ?? null) : null;
   return (
     <>
-      <p className="summary">{tabTitle(units.data.units, units.data.vocabulary !== null)}</p>
+      <p className="summary">{tabTitle(units.data.units, hasUnitsFile(units.data))}</p>
       {/* A server that stopped answering leaves the table as it was, and says so above it. */}
       {units.isError && <Banner tone="error">{units.error.message}</Banner>}
       {gone !== null && (
         <Banner tone="warning">{gone} is no longer stated or listed in the open project.</Banner>
       )}
-      {adoptable !== null && (
+      {adoptionOffered(units.data) && (
         <AdoptBannerView
-          adoptable={adoptable}
+          adoptable={adoptable ?? 0}
+          hasUnitsFile={hasUnitsFile(units.data)}
           plan={adoption.data ?? null}
           refusal={shownRefusal(stale, revision) ?? refused ?? adoption.error?.message ?? null}
           onShowChanges={() => {

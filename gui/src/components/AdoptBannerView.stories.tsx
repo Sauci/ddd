@@ -13,6 +13,7 @@ function Tab({ previewing = false }: { previewing?: boolean }) {
     <>
       <AdoptBannerView
         adoptable={UNADOPTED_UNITS.adoptable ?? 0}
+        hasUnitsFile={UNADOPTED_UNITS.vocabulary !== null}
         plan={ADOPTION}
         refusal={null}
         onShowChanges={() => setShown(true)}

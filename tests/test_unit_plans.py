@@ -454,6 +454,29 @@ class TestRemove:
         assert "schema" not in checks(bag)
         assert "more.ddd.json#units: info[empty-vocabulary]" in messages(bag)
 
+    def test_taking_out_the_last_unused_unit_leaves_every_stated_unit_checked(
+        self, tmp_path: Path
+    ) -> None:
+        """Removing an entry nothing states never changes what is checked.
+
+        The project opted in by having a units file, and still has one once ``rpm`` is out, so
+        ``Nm`` - stated, never listed - is still an ``unknown-unit``. Measured the other way, with
+        the check switched on by a declared unit rather than by the file: taking out one unused
+        spelling turned unit checking off for the whole project, and a failing build passed.
+        """
+        files = {
+            "units.ddd.json": {"units": ["rpm"]},
+            "a.ddd.json": component("A", declare("local", "X", unit="Nm")),
+        }
+        idx, where = opened(tmp_path, files)
+        _, before = run_analysis(tmp_path, {}, root="p.ddd.json")
+        assert checks(before) == ["unknown-unit"]
+        for path, text in written(remove_unit(idx, where, "rpm", {})).items():
+            path.write_text(text, encoding="utf-8", newline="")
+        _, after = run_analysis(tmp_path, {}, root="p.ddd.json")
+        assert sorted(checks(after)) == ["empty-vocabulary", "unknown-unit"]
+        assert "error[unknown-unit]: 'Nm' is not a unit this project declares" in messages(after)
+
     def test_while_the_units_file_listing_it_does_not_load_a_removal_is_unreadable(
         self, tmp_path: Path
     ) -> None:
@@ -522,6 +545,48 @@ class TestAdopt:
         write_tree(tmp_path, {"rates.ddd.json": {"units": ["Hz"]}})
         idx, where = opened(tmp_path, files)
         assert refusal(lambda: adopt_units(idx, where, {}))[1].endswith("rates.ddd.json")
+
+    def test_a_units_file_declaring_nothing_is_filled_rather_than_a_second_one_created(
+        self, tmp_path: Path
+    ) -> None:
+        """Having the file already opts the project in, so every stated unit is reported until it
+        is listed; refusing here left no one step that lists them all. The units go into the file
+        there is - no new file, no ``includes`` entry - in the form adopting always writes."""
+        idx, where = opened(tmp_path, drifted([]))
+        plan = adopt_units(idx, where, {})
+        assert [(edit.path, edit.creates) for edit in plan.edits] == [
+            ((tmp_path / "units.ddd.json").resolve(), False)
+        ]
+        assert after(plan) == {
+            "units.ddd.json": {
+                "units": [
+                    {"unit": "%", "description": ""},
+                    {"unit": "Nm", "description": ""},
+                    {"unit": "RPM", "description": ""},
+                    {"unit": "rpm", "description": ""},
+                ]
+            }
+        }
+
+    def test_of_several_units_files_declaring_nothing_the_first_included_is_filled(
+        self, tmp_path: Path
+    ) -> None:
+        idx, where = opened(
+            tmp_path, {"late.ddd.json": {"units": []}, "early.ddd.json": {"units": []}, **drifted()}
+        )
+        assert list(after(adopt_units(idx, where, {}))) == ["late.ddd.json"]
+
+    def test_after_filling_a_units_file_no_stated_unit_is_unknown(self, tmp_path: Path) -> None:
+        """What filling is for: every ``unknown-unit`` the empty file caused is gone, and nothing
+        is reported that was not reported before."""
+        idx, where = opened(tmp_path, drifted([]))
+        _, before = run_analysis(tmp_path, {}, root="p.ddd.json")
+        assert "unknown-unit" in checks(before)
+        for path, text in written(adopt_units(idx, where, {})).items():
+            path.write_text(text, encoding="utf-8", newline="")
+        _, adopted = run_analysis(tmp_path, {}, root="p.ddd.json")
+        assert "unknown-unit" not in checks(adopted)
+        assert set(checks(adopted)) <= set(checks(before))
 
     def test_a_project_stating_no_unit_has_nothing_to_adopt(self, tmp_path: Path) -> None:
         """Adopting lists the units in use, so with none there is nothing to adopt - the reason

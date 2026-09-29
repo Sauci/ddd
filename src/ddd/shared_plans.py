@@ -248,10 +248,10 @@ def add_entry(
     project description where it includes none.
 
     One verb, where the units vocabulary has two. :func:`ddd.lsp.units.adopt_units` harvests the
-    units already in use into a new file; the entries in use are exactly the ones an
-    ``unknown-*`` finding already complains about, and a value cannot be harvested - nothing in
-    the project says what the length of an array is. So this creates the file when there is none,
-    and there is nothing to adopt.
+    units already in use into a units file - a new one, or one declaring nothing; the entries in
+    use are exactly the ones an ``unknown-*`` finding already complains about, and a value cannot
+    be harvested - nothing in the project says what the length of an array is. So this creates
+    the file when there is none, and there is nothing to adopt.
 
     Each raw text is embedded as it was given rather than parsed and reprinted: ``2.0`` declares a
     fractional constant and ``2`` a whole one, and a reader asking for one would otherwise get the

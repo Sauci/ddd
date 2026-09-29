@@ -387,11 +387,25 @@ class Workspace:
     """
 
     units: tuple[LoadedUnit, ...] = ()
-    """The unit vocabulary the project declares, sorted by spelling; empty means unchecked.
+    """The unit vocabulary the project declares, sorted by spelling: the union of what every
+    units file declares.
 
-    An empty vocabulary is the opt-out: no units file, or only units files declaring nothing,
-    and no constraint either way. Once any file declares one, every stated unit is checked
-    against the union of what every units file declares.
+    Whether units are checked at all is for :attr:`units_files` to say, not for this tuple: a
+    units file declaring nothing leaves this empty and still opts the project in, so that every
+    stated unit is checked against nothing.
+    """
+
+    units_files: tuple[Path, ...] = ()
+    """The units files that loaded, in the order they were read, whether or not they declare a
+    unit.
+
+    What opts a project into the unit check: with any of them, every stated unit is checked
+    against :attr:`units`. The files decide it rather than the units they declare, so that taking
+    a unit nothing states out of the vocabulary - the last one included - never changes what is
+    checked. A units file that did not load is not one of them: it is reported, and its entries
+    reach nothing, so that one mistake stays one finding rather than an ``unknown-unit`` for every
+    unit the project states. The same notion as :attr:`ddd.lsp.units.UnitProject.units_files`,
+    which a plan reads out of the description's own ``includes`` instead.
     """
 
     unit_entries: tuple[LoadedUnit, ...] = ()
@@ -599,6 +613,7 @@ class _Loader:
         self._types_by_name: dict[str, LoadedType] = {}
         self._units_by_name: dict[str, LoadedUnit] = {}
         self._unit_entries: list[LoadedUnit] = []
+        self._units_files: list[Path] = []
         self._sections_by_name: dict[str, LoadedSection] = {}
         self._rasters_by_name: dict[str, LoadedRaster] = {}
         self._constants_by_name: dict[str, LoadedConstant] = {}
@@ -666,6 +681,7 @@ class _Loader:
             types=tuple(sorted(self._types_by_name.values(), key=lambda entry: entry.name)),
             units=tuple(sorted(self._units_by_name.values(), key=lambda entry: entry.unit)),
             unit_entries=tuple(self._unit_entries),
+            units_files=tuple(self._units_files),
             sections=tuple(
                 sorted(self._sections_by_name.values(), key=lambda entry: entry.section)
             ),
@@ -794,8 +810,9 @@ class _Loader:
         key: Callable[[LoadedT], str],
         registry: dict[str, LoadedT],
         noun: str,
-    ) -> None:
-        """Read one vocabulary file and register each entry it declares under its key.
+    ) -> bool:
+        """Read one vocabulary file and register each entry it declares under its key, answering
+        whether it loaded.
 
         The one shape behind the vocabulary loaders below: validate the file, wrap every entry
         together with where it was declared, and refuse the second declaration of a key as
@@ -811,7 +828,7 @@ class _Loader:
             model = file_model.model_validate(data)
         except ValidationError as error:
             self._report_validation_error(path, error, data)
-            return
+            return False
 
         listed = entries(model)
         if not listed:
@@ -822,6 +839,7 @@ class _Loader:
             )
         for index, declared in enumerate(listed):
             self._register(wrap(path, index, declared), key=key, registry=registry, noun=noun)
+        return True
 
     def _register[LoadedT: _Located](
         self,
@@ -872,9 +890,10 @@ class _Loader:
 
         A unit is registered under its spelling, so the second file to declare ``Nm`` is
         refused rather than merged: two files declaring one unit is either a copy that will
-        drift or a disagreement about its description, and neither is worth keeping quiet.
+        drift or a disagreement about its description, and neither is worth keeping quiet. The
+        file is kept among :attr:`Workspace.units_files` once it loads, whatever it declares.
         """
-        self._load_vocabulary(
+        if self._load_vocabulary(
             path,
             data,
             kind="units",
@@ -884,7 +903,8 @@ class _Loader:
             key=lambda loaded: loaded.unit,
             registry=self._units_by_name,
             noun="unit",
-        )
+        ):
+            self._units_files.append(path)
 
     def _unit_entry(self, path: Path, index: int, declared: UnitDeclaration) -> LoadedUnit:
         """One entry of a units file, kept whether or not the registry takes it: the second

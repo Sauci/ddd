@@ -561,7 +561,7 @@ class Api:
                     }
                     for row in rows
                 ],
-                adoptable=adoptable(built, vocabulary is not None),
+                adoptable=adoptable(built),
             ).model_dump(mode="json"),
         )
 

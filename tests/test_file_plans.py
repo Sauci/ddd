@@ -146,10 +146,11 @@ class TestNewErrors:
 
 def judged(
     base: Path, files: Mapping[str, Any], remove: str, *raised: str
-) -> list[tuple[str, str]]:
+) -> list[tuple[str, str, str]]:
     """What leaving ``remove`` out of the root's includes would break: a revision's findings
-    against its own runs with the list replaced, each as the pairs :func:`new_errors` takes.
-    ``raised`` are the checks a build record of the project raises to errors."""
+    against its own runs with the list replaced, each as the pairs :func:`new_errors` takes, and
+    each error answered by its file, its check and its message - the whole of what a refusal
+    would say. ``raised`` are the checks a build record of the project raises to errors."""
     write_tree(base, files)
     if raised:
         build_record(base, base / "p.ddd.json", severity=[f"{check}=error" for check in raised])
@@ -160,7 +161,8 @@ def judged(
     assert len(without) == len(listed) - 1
     before = [(filed.file, filed.diagnostic) for filed in revision.findings]
     after = [(filed.file, filed.diagnostic) for filed in findings_with(revision, without)]
-    return [(path.name, diagnostic.check) for path, diagnostic in new_errors(before, after)]
+    fresh = new_errors(before, after)
+    return [(path.name, diagnostic.check, diagnostic.message) for path, diagnostic in fresh]
 
 
 def writing(name: str, *variables: str, **definition: Any) -> dict[str, Any]:
@@ -171,9 +173,17 @@ def reading(name: str, *variables: str) -> dict[str, Any]:
     return component(name, *(declare("input", variable) for variable in variables))
 
 
-def mode(*enumerators: tuple[str, int]) -> dict[str, Any]:
-    """An enum conversion every copy of which is named ``Mode_t``."""
-    return {"kind": "enum", "name": "Mode_t", "enumerators": dict(enumerators)}
+def enum_of(name: str, *enumerators: tuple[str, int]) -> dict[str, Any]:
+    """An enum conversion: a copy of the enum ``name``, as a declaration spells it out."""
+    return {"kind": "enum", "name": name, "enumerators": dict(enumerators)}
+
+
+def axis(scope: str, name: str, **definition: Any) -> dict[str, Any]:
+    return declare(scope, name, "uint16", kind="axis", size=3, **definition)
+
+
+def curve(scope: str, name: str, over: str) -> dict[str, Any]:
+    return declare(scope, name, "uint16", kind="curve", axis=over)
 
 
 PATTERNS_PLUGIN = """
@@ -267,7 +277,13 @@ class TestJudgingAProject:
             "r.ddd.json": reading("R", "X", "Y"),
             "u.ddd.json": writing("U", "Y"),
         }
-        assert judged(tmp_path, files, "u.ddd.json") == [("r.ddd.json", "missing-producer")]
+        assert judged(tmp_path, files, "u.ddd.json") == [
+            (
+                "r.ddd.json",
+                "missing-producer",
+                "'Y' is read by component 'R' but no component declares it as output",
+            )
+        ]
 
     def test_an_output_left_unread_is_new_though_another_unread_one_goes(
         self, tmp_path: Path
@@ -281,7 +297,7 @@ class TestJudgingAProject:
             "r.ddd.json": component("R", declare("input", "X"), declare("output", "Y")),
         }
         assert judged(tmp_path, files, "r.ddd.json", "unused-output") == [
-            ("a.ddd.json", "unused-output")
+            ("a.ddd.json", "unused-output", "'X' is written by component 'A' but read by nobody")
         ]
 
     def test_a_plugins_finding_at_an_entry_keeps_its_position(self, tmp_path: Path) -> None:
@@ -372,21 +388,6 @@ class TestAClashPlacedByOrder:
         }
         assert judged(tmp_path, files, "r1.ddd.json") == []
 
-    def test_two_locals_read_in_another_order_are_the_conflict_they_were(
-        self, tmp_path: Path
-    ) -> None:
-        """`local-conflict`: `L1` and `L2` both declare `X` local and `R` reads it, each conflict
-        mirrored onto the first local read - `L2` until the root's entry for it goes, and it is
-        read later through the sub-project."""
-        files = {
-            "p.ddd.json": project("P", "l2.ddd.json", "l1.ddd.json", "sub.ddd.json", "r.ddd.json"),
-            "l1.ddd.json": component("L1", declare("local", "X")),
-            "l2.ddd.json": component("L2", declare("local", "X")),
-            "sub.ddd.json": project("Sub", "l2.ddd.json"),
-            "r.ddd.json": reading("R", "X"),
-        }
-        assert judged(tmp_path, files, "l2.ddd.json") == []
-
     def test_the_owner_gone_moves_a_storage_disagreement(self, tmp_path: Path) -> None:
         """`storage-mismatch`, raised to an error by the build: `W3` presents `X` otherwise than
         `W1` and `W2` do, and the disagreement, mirrored onto the owner, moves onto `W2`."""
@@ -457,22 +458,126 @@ class TestAClashPlacedByOrder:
         conflict is mirrored onto it; once `CA` goes, onto `CB`'s, which agreed and had none."""
         files = {
             "p.ddd.json": project("P", "ca.ddd.json", "cb.ddd.json", "cc.ddd.json"),
-            "ca.ddd.json": component("CA", declare("local", "MA", conversion=mode(("OFF", 0)))),
-            "cb.ddd.json": component("CB", declare("local", "MB", conversion=mode(("OFF", 0)))),
-            "cc.ddd.json": component("CC", declare("local", "MC", conversion=mode(("OFF", 1)))),
+            "ca.ddd.json": component(
+                "CA", declare("local", "MA", conversion=enum_of("Mode_t", ("OFF", 0)))
+            ),
+            "cb.ddd.json": component(
+                "CB", declare("local", "MB", conversion=enum_of("Mode_t", ("OFF", 0)))
+            ),
+            "cc.ddd.json": component(
+                "CC", declare("local", "MC", conversion=enum_of("Mode_t", ("OFF", 1)))
+            ),
         }
         assert judged(tmp_path, files, "ca.ddd.json") == []
 
-    def test_the_first_copy_of_an_enum_gone_moves_its_shared_value(self, tmp_path: Path) -> None:
-        """`enum-duplicate-value`, raised to an error by the build: it is reported on the first
-        copy of `Mode_t` read, and on no other - `CA`'s, then `CB`'s once `CA` goes."""
-        twice = mode(("OFF", 0), ("IDLE", 0))
+
+class TestAClashLeftPerPlace:
+    """`local-conflict` and `enum-duplicate-value`, which ddd places by order as well but which a
+    removal can make: each counted per place, so the removal that makes one is refused - and so is
+    a harmless one that only moves one, the cost of keeping them out of :data:`REATTRIBUTED`."""
+
+    def test_a_new_owner_drawing_a_curve_over_a_private_axis_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """H1: `W1` owns `C`, drawn over its own `Ax1`, and reads `L`'s private `T2`; `W2` writes
+        `C` over `T2`. Removing `W1` hands `C` to `W2`, and `C` reaches the dictionary bound to
+        `T2` - a conflict the project did not have, while `W1`'s own read of `T2` leaves with it,
+        which counted per check hid the one behind the other."""
+        files = {
+            "p.ddd.json": project("P", "w1.ddd.json", "w2.ddd.json", "l.ddd.json"),
+            "w1.ddd.json": component(
+                "W1", axis("output", "Ax1"), curve("output", "C", "Ax1"), axis("input", "T2")
+            ),
+            "w2.ddd.json": component("W2", curve("output", "C", "T2")),
+            "l.ddd.json": component("L", axis("local", "T2")),
+        }
+        assert judged(tmp_path, files, "w1.ddd.json") == [
+            (
+                "w2.ddd.json",
+                "local-conflict",
+                "'T2' is local to component 'L' but is also used as the axis of 'C' by component "
+                "'W2'",
+            )
+        ]
+
+    def test_the_local_gone_to_end_a_conflict_is_refused_for_the_private_axis_it_binds(
+        self, tmp_path: Path
+    ) -> None:
+        """H1b: `K1` declares `C` local, over its own axis, and `K2` writes `C` too, over `L`'s
+        private `T2` - the conflict the project has. Removing `K1` is the natural fix, and it
+        leaves `C` to `K2`, bound to `T2`. An axis measuring another component's private input
+        takes the same path, not a test of its own: an axis's `input` and a curve's `axis` are
+        both entries of the definition's `references`, walked by the one loop that calls the
+        analysis's `_check_local_reference`."""
+        files = {
+            "p.ddd.json": project("P", "k1.ddd.json", "k2.ddd.json", "l.ddd.json"),
+            "k1.ddd.json": component("K1", axis("local", "Ax1"), curve("local", "C", "Ax1")),
+            "k2.ddd.json": component("K2", curve("output", "C", "T2")),
+            "l.ddd.json": component("L", axis("local", "T2")),
+        }
+        use = "'T2' is local to component 'L' but is also used as the axis of 'C' by component 'K2'"
+        assert judged(tmp_path, files, "k1.ddd.json") == [
+            ("k2.ddd.json", "local-conflict", use),
+            ("l.ddd.json", "local-conflict", use),
+        ]
+
+    def test_a_copy_of_an_enum_nobody_checked_put_first_is_refused(self, tmp_path: Path) -> None:
+        """H2, `enum-duplicate-value` raised to an error by the build: `CA` holds the first copy
+        of `Mode_t`, which is checked, and `Flag_t`, whose two enumerators share a value. Removing
+        `CA` makes `CB`'s copy of `Mode_t` the one met first - two of its enumerators share a
+        value too - while `Flag_t`'s leaves with `CA`."""
+        files = {
+            "p.ddd.json": project("P", "ca.ddd.json", "cb.ddd.json"),
+            "ca.ddd.json": component(
+                "CA",
+                declare("local", "MA", conversion=enum_of("Mode_t", ("OFF", 0), ("ON", 1))),
+                declare("local", "FA", conversion=enum_of("Flag_t", ("NO", 0), ("NONE", 0))),
+            ),
+            "cb.ddd.json": component(
+                "CB", declare("local", "MB", conversion=enum_of("Mode_t", ("OFF", 0), ("IDLE", 0)))
+            ),
+        }
+        assert judged(tmp_path, files, "ca.ddd.json", "enum-duplicate-value") == [
+            ("cb.ddd.json", "enum-duplicate-value", "enum 'Mode_t': OFF, IDLE all have the value 0")
+        ]
+
+    def test_two_locals_read_in_another_order_are_refused_for_the_conflict_they_move(
+        self, tmp_path: Path
+    ) -> None:
+        """The cost for `local-conflict`: `L1` and `L2` both declare `X` local and `R` reads it,
+        each conflict mirrored onto the first local read - `L2` until the root's entry for it
+        goes and it is read later, through the sub-project. `L1` then holds one error more, and
+        the one reported is `R`'s conflict the project has, worded against `L1` now."""
+        files = {
+            "p.ddd.json": project("P", "l2.ddd.json", "l1.ddd.json", "sub.ddd.json", "r.ddd.json"),
+            "l1.ddd.json": component("L1", declare("local", "X")),
+            "l2.ddd.json": component("L2", declare("local", "X")),
+            "sub.ddd.json": project("Sub", "l2.ddd.json"),
+            "r.ddd.json": reading("R", "X"),
+        }
+        assert judged(tmp_path, files, "l2.ddd.json") == [
+            (
+                "l1.ddd.json",
+                "local-conflict",
+                "'X' is local to component 'L1' but is also declared as input by component 'R'",
+            )
+        ]
+
+    def test_the_first_of_two_identical_enum_copies_gone_is_refused_for_the_value_it_moves(
+        self, tmp_path: Path
+    ) -> None:
+        """The cost for `enum-duplicate-value`, raised to an error by the build: it is reported on
+        the first copy of `Mode_t` met and on no other - `CA`'s, then `CB`'s identical one once
+        `CA` goes, a place that had none."""
+        twice = enum_of("Mode_t", ("OFF", 0), ("IDLE", 0))
         files = {
             "p.ddd.json": project("P", "ca.ddd.json", "cb.ddd.json"),
             "ca.ddd.json": component("CA", declare("local", "MA", conversion=twice)),
             "cb.ddd.json": component("CB", declare("local", "MB", conversion=twice)),
         }
-        assert judged(tmp_path, files, "ca.ddd.json", "enum-duplicate-value") == []
+        assert judged(tmp_path, files, "ca.ddd.json", "enum-duplicate-value") == [
+            ("cb.ddd.json", "enum-duplicate-value", "enum 'Mode_t': OFF, IDLE all have the value 0")
+        ]
 
 
 def test_the_module_imports_nothing_of_the_gui() -> None:

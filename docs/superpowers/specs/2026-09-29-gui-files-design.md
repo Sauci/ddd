@@ -47,6 +47,14 @@ project lists them.
 - **A sub-project** is a row of kind `project`. Its own `includes` are neither expanded nor editable
   here; managing them is opening it as a project.
 
+**Two findings lead here, and lead nowhere today.** `include-empty`, filed at `project.includes[i]`
+for a pattern or path matching no file, and `empty-vocabulary`, filed at a vocabulary file's own list:
+`finding_routes.route_of` answers `None` for both, measured. Each is about an entry or a whole file
+rather than anything a panel shows, and this tab is the one screen that shows both. `route_of` gains
+a `file` route naming the entry or the file, and `contract.FindingRoute.kind`'s `Literal` gains the
+word with it — which part 15's `test_every_kind_a_route_answers_is_one_the_contract_publishes`
+exists to catch if it does not.
+
 One endpoint, `GET /api/files`, answers the entries in order with what each resolved to. It joins
 the loader's per-entry record (§1) to `State.files` on the resolved path rather than repeating what
 `SourceFile` already carries.
@@ -153,6 +161,7 @@ the docs under `-W`.
 - **The judge** is tested at each case: a removal that orphans uses (refused, naming them), one that
   does not (allowed), a file pulled in by a pattern (refused, naming the pattern), a pattern removed
   whole, and the shifted index of §4.
+- **Both findings** of §2 route to their row: `include-empty` to its entry, `empty-vocabulary` to its file.
 - **The override** is tested for reaching the root only: a sub-project's `includes` unchanged by it.
 - **No decision lives in a `.tsx` file.** The journeys do drive the compiled page, so that scrutiny is
   not zero, but it is narrow; every judgement the tab makes lives in `gui/src/lib`.

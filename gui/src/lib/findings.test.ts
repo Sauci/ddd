@@ -257,6 +257,61 @@ describe("where a finding leads", () => {
     expect(routeLabel(elsewhere, state([elsewhere]))).toBe("Open elsewhere.ddd.json");
   });
 
+  test(
+    "a file, by its own row on the Files tab - the entry or file `empty-vocabulary` and " +
+      "include-empty name",
+    () => {
+      const one = finding({
+        check: "empty-vocabulary",
+        severity: "info",
+        file: CONSTANTS,
+        pointer: "constants",
+        route: { kind: "file", name: CONSTANTS },
+      });
+      expect(routeLabel(one, state([one]))).toBe("Open constants.ddd.json");
+      expect(routeHref(one)).toBe(`/project?view=files&path=${encodeURIComponent(CONSTANTS)}`);
+      expect(routeOf(one)).toEqual({ page: "project", view: "files", path: CONSTANTS });
+    },
+  );
+
+  test("a file inside a subdirectory, named relative to the project rather than by its base name", () => {
+    // `sensors/a.ddd.json` says which of two identically-named files a `baseName` alone,
+    // repeated across directories, could not.
+    const nested = "C:/work/demo/sensors/a.ddd.json";
+    const one = finding({
+      check: "include-empty",
+      file: PROJECT,
+      pointer: "project.includes[1]",
+      route: { kind: "file", name: nested },
+    });
+    expect(routeLabel(one, state([one]))).toBe("Open sensors/a.ddd.json");
+  });
+
+  test("a file outside the project's own directory, named by its base name", () => {
+    // The fallback `routeLabel`'s `component` arm always takes: a path a `../` entry reached
+    // does not sit under the project's own directory, so there is no relative spelling to prefer.
+    const outside = "D:/elsewhere/x.ddd.json";
+    const one = finding({
+      check: "include-empty",
+      file: PROJECT,
+      pointer: "project.includes[2]",
+      route: { kind: "file", name: outside },
+    });
+    expect(routeLabel(one, state([one]))).toBe("Open x.ddd.json");
+  });
+
+  test("a file already carrying its own declared name, named by that instead", () => {
+    // SENSOR_HUB is listed in `state()`'s own files as the component "SensorHub" - the same
+    // preference the `component` arm above gives a listed file's own name.
+    const one = finding({
+      check: "empty-vocabulary",
+      file: SENSOR_HUB,
+      pointer: "component",
+      route: { kind: "file", name: SENSOR_HUB },
+    });
+    expect(routeLabel(one, state([one]))).toBe("Open SensorHub");
+  });
+
   test("nowhere, when the answer says so", () => {
     const one = finding({ route: null });
     expect(routeLabel(one, state([one]))).toBeNull();

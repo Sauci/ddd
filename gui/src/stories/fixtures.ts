@@ -956,9 +956,10 @@ export const PROJECT_FINDINGS: State = {
 const BENCH = "C:/work/demo/bench.ddd.json";
 
 /** `empty-vocabulary` on that file, filed at `rasters` - its own list, which is still there,
- * empty. It leads nowhere for a reason of its own: the finding is about the whole file, which no
- * panel shows, rather than about a place the file has moved on from. The check's own default is
- * info (`src/ddd/diagnostics.py`). */
+ * empty. Until part 16 it led nowhere, the finding being about the whole file rather than about a
+ * place the file had moved on from; `routeOf`'s own `file` arm now sends it to that file's own row
+ * on the Files tab instead (`ddd.finding_routes.FILE_CHECKS`). The check's own default is info
+ * (`src/ddd/diagnostics.py`). */
 export const EMPTY_RASTERS: Finding = {
   file: BENCH,
   check: "empty-vocabulary",
@@ -966,7 +967,7 @@ export const EMPTY_RASTERS: Finding = {
   message: "rasters file 'bench.ddd.json' declares no raster",
   pointer: "rasters",
   notes: [],
-  route: null,
+  route: { kind: "file", name: BENCH },
 };
 
 /** PROJECT_FINDINGS with bench.ddd.json among its files - a rasters file that loaded, with one

@@ -3,6 +3,7 @@ import type { Finding, UndoneChange } from "../api/types";
 import {
   constantLabel,
   declareLabel,
+  filesLabel,
   fixLabel,
   pasteLabel,
   rasterLabel,
@@ -129,6 +130,24 @@ test.each([
   [{ action: "remove", name: "10ms" }, "'10ms' removed from the rasters"],
 ] as const)("%o is undone as %s", (plan, label) => {
   expect(rasterLabel(plan)).toBe(label);
+});
+
+test.each([
+  [{ action: "create", kind: "types", name: "sizes" }, "'sizes.ddd.json' created"],
+  [
+    { action: "create", kind: "component", name: "pump", component: "Pump" },
+    "'pump.ddd.json' created",
+  ],
+  [{ action: "add", path: "sensors/a.ddd.json" }, "'a.ddd.json' added to the project"],
+  [{ action: "add", path: "a.ddd.json" }, "'a.ddd.json' added to the project"],
+  [
+    // `remove`'s `path` is a row's own absolute key, unlike `add`'s, which is typed relative to
+    // the description - both read by their base name all the same.
+    { action: "remove", path: "C:/work/demo/sensors/a.ddd.json" },
+    "'a.ddd.json' removed from the project",
+  ],
+] as const)("%o is undone as %s", (plan, label) => {
+  expect(filesLabel(plan)).toBe(label);
 });
 
 test("an undone paste is named by the object whose table it replaced", () => {

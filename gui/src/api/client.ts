@@ -5,6 +5,8 @@ import type {
   DeclarableReply,
   EditReply,
   FileContent,
+  FilesPlanReply,
+  FilesReply,
   FixReply,
   Found,
   GraphReply,
@@ -292,6 +294,37 @@ function rasterQuery(plan: RasterPlanRequest): string {
     parts.push(["to", plan.to]);
   } else if (plan.action === "add") {
     parts.push(["event", plan.event]);
+  }
+  return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
+}
+
+export const getFiles = (fetchImpl: Fetch = fetch) =>
+  request<FilesReply>("/api/files", {}, fetchImpl);
+
+/** One change to the project's own files, as `GET /api/files-plan` takes it: what each action
+ * needs, and nothing it does not - `create`'s `component` is a new component's own name, taken
+ * only for a `kind` of `"component"` and ignored for every other, exactly as `FILE_PLANS` reads
+ * it. `add`'s `path` is typed relative to the project description, the way a reader spells an
+ * `includes` entry; `remove`'s is a row's own absolute key (`IncludedEntryReply.key`, or one of
+ * a pattern's own `files`) - one field name, two different shapes of path, because that is what
+ * the two actions each take a path *as*. */
+export type FilesPlanRequest =
+  | { action: "create"; kind: string; name: string; component?: string }
+  | { action: "add"; path: string }
+  | { action: "remove"; path: string };
+
+export const getFilesPlan = (plan: FilesPlanRequest, fetchImpl: Fetch = fetch) =>
+  request<FilesPlanReply>(`/api/files-plan?${filesQuery(plan)}`, {}, fetchImpl);
+
+/** A plan's query: the action, then `create`'s `kind` and `name` (and `component`, where given),
+ * or `add`'s and `remove`'s shared `path`. */
+function filesQuery(plan: FilesPlanRequest): string {
+  const parts: [string, string][] = [["action", plan.action]];
+  if (plan.action === "create") {
+    parts.push(["kind", plan.kind], ["name", plan.name]);
+    if (plan.component !== undefined) parts.push(["component", plan.component]);
+  } else {
+    parts.push(["path", plan.path]);
   }
   return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
 }

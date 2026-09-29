@@ -1,5 +1,6 @@
 import type {
   ConstantPlanRequest,
+  FilesPlanRequest,
   RasterPlanRequest,
   SectionPlanRequest,
   TypePlanRequest,
@@ -62,6 +63,24 @@ export function rasterLabel(plan: RasterPlanRequest): string {
   if (plan.action === "add") return fitted(`'${plan.name}' declared as a raster`);
   if (plan.action === "remove") return fitted(`'${plan.name}' removed from the rasters`);
   return fitted(`the ${plan.key} of ${plan.name}`);
+}
+
+/** The suffix every file `ddd.file_plans.create_plan` creates ends with
+ * (`ddd.file_plans._SUFFIX`), spelled out here the way `projectUnits.ts`'s own `ADOPTED` already
+ * spells `units.ddd.json`: every file of a ddd project takes it, so naming one without it would
+ * read as a different, shorter name rather than the file the reader actually made. */
+const FILE_SUFFIX = ".ddd.json";
+
+/** What a change of the project's files is called when it comes to be undone - a `create`'s new
+ * file by the name it was given, and an `add`'s or a `remove`'s existing one by its base name:
+ * `add`'s `path` is typed relative to the description and `remove`'s is a row's absolute key, and
+ * an undo naming either by the whole of it would read worse the deeper a pattern's directory
+ * sat, for no reader benefit the short name does not give already - the same call `noRouteReason`
+ * and `routeLabel` (`./findings.ts`) make for a file outside the project's own directory. */
+export function filesLabel(plan: FilesPlanRequest): string {
+  if (plan.action === "create") return fitted(`'${plan.name}${FILE_SUFFIX}' created`);
+  if (plan.action === "add") return fitted(`'${baseName(plan.path)}' added to the project`);
+  return fitted(`'${baseName(plan.path)}' removed from the project`);
 }
 
 /** What a declaration added to a component's interface is called when it comes to be undone -

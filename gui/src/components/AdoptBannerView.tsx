@@ -9,6 +9,10 @@ import { Changes } from "./Changes";
 export interface AdoptBannerViewProps {
   /** How many units adoption would list: 0 for a project that states none. */
   adoptable: number;
+  /** Whether the project has a units file already - one listing no unit, adoption being offered
+   * - which opts it in all the same: the sentence then says no stated unit is in the vocabulary,
+   * rather than that none is checked. */
+  hasUnitsFile: boolean;
   /** The adoption's plan once it has come; `null` while it is asked for, or when it was refused. */
   plan: PlanReply | null;
   /** Why the plan was refused, or why applying it was; `null` when neither was. */
@@ -20,10 +24,11 @@ export interface AdoptBannerViewProps {
   busy: boolean;
 }
 
-/** The banner above the table of a project with no units file (spec 5.3): a picture of its
- * props. */
+/** The banner above the table of a project whose units files list no unit (spec 5.3): a picture
+ * of its props. */
 export function AdoptBannerView({
   adoptable,
+  hasUnitsFile,
   plan,
   refusal,
   onShowChanges,
@@ -33,7 +38,7 @@ export function AdoptBannerView({
   return (
     <Banner tone="warning">
       <div className="adopt-banner">
-        <p>{adoptionSentence(adoptable)}</p>
+        <p>{adoptionSentence(adoptable, hasUnitsFile)}</p>
         {plan !== null && plan.changes.length > 0 && (
           <div className="adopt-actions">
             <Button variant="link" onPress={onShowChanges}>
@@ -59,8 +64,9 @@ export interface AdoptPanelViewProps {
   onClose: () => void;
 }
 
-/** The adoption's preview in the panel beside the table (spec 5.3): the project description's
- * new line and the new file, then Adopt. A picture of its props. */
+/** The adoption's preview in the panel beside the table (spec 5.3): the new file and the project
+ * description's new line, or the entries a units file declaring nothing is filled with, then
+ * Adopt. A picture of its props. */
 export function AdoptPanelView({ adoptable, plan, onAdopt, busy, onClose }: AdoptPanelViewProps) {
   return (
     <Panel title="Adopt a vocabulary" meta={consequence(plan.changes)} onClose={onClose}>

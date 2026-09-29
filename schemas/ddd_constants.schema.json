@@ -59,11 +59,10 @@
       "title": "$Schema"
     },
     "constants": {
-      "description": "The constants this project names, in any order; an empty vocabulary is no file at\nall.",
+      "description": "The constants this project names, in any order, and possibly none.\n\nA file declaring none loads, and is reported as ``empty-vocabulary``.",
       "items": {
         "$ref": "#/$defs/ConstantDeclaration"
       },
-      "minItems": 1,
       "title": "Constants",
       "type": "array"
     }

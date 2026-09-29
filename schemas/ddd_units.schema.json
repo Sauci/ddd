@@ -42,7 +42,7 @@
       "title": "$Schema"
     },
     "units": {
-      "description": "The units this project spells, in any order; an empty vocabulary is no file at all.",
+      "description": "The units this project spells, in any order, and possibly none.\n\nA file listing none loads, and is reported as ``empty-vocabulary``. Like any units file it\nopts the project into the unit check: every stated unit is checked, against a vocabulary this\nfile adds nothing to.",
       "items": {
         "anyOf": [
           {
@@ -55,7 +55,6 @@
           }
         ]
       },
-      "minItems": 1,
       "title": "Units",
       "type": "array"
     }

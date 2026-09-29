@@ -637,8 +637,10 @@ class UnitsReply(_Frozen):
     """Every unit the project states or its vocabulary lists, by spelling."""
 
     adoptable: int | None
-    """How many units adopting a vocabulary would list - every unit in use - or ``None`` when
-    the project has a units file."""
+    """How many units adopting a vocabulary would list - every unit in use, ``0`` where the
+    project states none - or ``None`` where adopting is refused. Answered by the guards the
+    adoption's own plan is made by, so the page offers adopting exactly where the plan comes to
+    one."""
 
 
 # --- GET /api/unit --------------------------------------------------------------------------

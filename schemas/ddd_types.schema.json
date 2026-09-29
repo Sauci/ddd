@@ -620,7 +620,7 @@
       "title": "$Schema"
     },
     "types": {
-      "description": "The types this file declares.",
+      "description": "The types this file declares, and possibly none.\n\nA file declaring none loads, and is reported as ``empty-vocabulary``. A structure needs a\nmember all the same: an empty structure is not c.",
       "items": {
         "discriminator": {
           "mapping": {
@@ -642,7 +642,6 @@
           }
         ]
       },
-      "minItems": 1,
       "title": "Types",
       "type": "array"
     }

@@ -2182,6 +2182,18 @@ DRAWN_AT: dict[str, tuple[str, dict[str, Any], str]] = {
         },
         "a.ddd.json#component",
     ),
+    # At the list that is empty, which is the key making the file one of its kind - where the
+    # schema error the same file used to be refused with was drawn - rather than at the whole
+    # file, which an editor would underline from its first line to its last.
+    "empty-vocabulary": (
+        "empty-vocabulary",
+        {
+            "project.ddd.json": project("P", "u.ddd.json", "a.ddd.json"),
+            "u.ddd.json": {"units": []},
+            "a.ddd.json": component("A", declare("local", "X")),
+        },
+        "u.ddd.json#units",
+    ),
     "duplicate-declaration": (
         "duplicate-declaration",
         {

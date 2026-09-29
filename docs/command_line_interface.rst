@@ -410,11 +410,12 @@ The commands
        still names it - a shape, for a constant; a definition placing data there, for a section;
        a definition measured in it or a component's own default naming it, for a raster, its own
        refusal counting every shape rather than naming one: ``2 shapes name 10ms, so it cannot
-       be removed.`` - and while it is all its own list declares: a list of constants, of
-       sections or of rasters declares at least one, in a constants file, in a component, and in
-       a sections or a rasters file alike, so an emptied list is a file that no longer loads. A
-       constant value no shape can use is reported there by ``dimension-value`` rather than
-       refused: the interface does not invent a rule the format itself does not have. A finding
+       be removed.`` The last one a file declares is removed like any other, leaving a file that
+       declares nothing, which loads and is reported as ``empty-vocabulary``; the last constant
+       a component declares takes the component's ``constants`` key with it, since a component
+       that publishes none leaves the key out. A constant value no shape can use is reported
+       there by ``dimension-value`` rather than refused: the interface does not invent a rule
+       the format itself does not have. A finding
        naming a constant, a section or a raster leads to the tab, a name no file declares
        landing on the form that declares it.
        What the page reads and writes is bounded by the directory ``ddd gui`` was started in,

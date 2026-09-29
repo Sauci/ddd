@@ -8,12 +8,23 @@ shape it accepts and the shape it refuses.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
-from conftest import bits_member, scalar_type, struct_type, value_member
+from conftest import (
+    bits_member,
+    component,
+    declare,
+    project,
+    run_analysis,
+    scalar_type,
+    struct_type,
+    value_member,
+)
+from ddd.diagnostics import Severity
 from ddd.models import (
     MEMBER_OBJECT_KINDS,
     Datatype,
@@ -350,9 +361,26 @@ class TestTypesFile:
         with pytest.raises(ValidationError, match="does not match any of the expected tags"):
             TypesFile.model_validate({"types": [{"type": "enum", "name": "State_t"}]})
 
-    def test_a_file_needs_a_type(self) -> None:
-        with pytest.raises(ValidationError, match="at least 1 item"):
-            TypesFile.model_validate({"types": []})
+    def test_a_file_declaring_no_type_loads_and_is_reported_at_info(self, tree: Path) -> None:
+        """A types file may declare nothing: it loads, and the analysis says so.
+
+        This test used to refuse ``{"types": []}``, and that rule is reversed on purpose: the
+        page cannot delete a file, so under it a reader could never take a project from one
+        type to none. A structure's ``members`` keep theirs - an empty struct is not c - which
+        is ``test_a_structure_needs_a_member`` above.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": {"types": []},
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is not None
+        assert [(found.check, found.severity, found.message) for found in bag] == [
+            ("empty-vocabulary", Severity.INFO, "types file 'types.ddd.json' declares no type")
+        ]
 
     def test_two_types_cannot_share_a_name(self) -> None:
         """Across both kinds: a name is what the whole project agrees on."""

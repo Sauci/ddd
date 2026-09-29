@@ -387,10 +387,31 @@ class Workspace:
     """
 
     units: tuple[LoadedUnit, ...] = ()
-    """The unit vocabulary the project declares, sorted by spelling; empty means unchecked.
+    """The unit vocabulary the project declares, sorted by spelling: the union of what every
+    units file declares.
 
-    An empty vocabulary is the opt-out: no units file, no constraint. Once any file declares
-    one, every stated unit is checked against the union of what every units file declares.
+    Whether units are checked at all is for :attr:`units_files` to say, not for this tuple: a
+    units file declaring nothing leaves this empty and still opts the project in, so that every
+    stated unit is checked against nothing.
+    """
+
+    units_files: tuple[Path, ...] = ()
+    """The units files the loader read, in the order it read them, whatever they declare.
+
+    What opts a project into the unit check: with any of them, every stated unit is checked
+    against :attr:`units`. The files decide it rather than the units they declare, so that taking
+    a unit nothing states out of the vocabulary - the last one included - never changes what is
+    checked.
+
+    A units file that does not match its schema is one of them as well, and it cannot change a
+    finding: the file fails the run with its own ``schema`` error, which cannot be relaxed, and
+    nothing that reports findings analyses a project whose loading filed an error - the hover
+    resolving one anyway throws its findings away.
+
+    Not the list :attr:`ddd.lsp.units.UnitProject.units_files` holds: a plan reads that one out
+    of the description's own ``includes`` alone, telling a units file by the ``units`` key at its
+    top whether it loads or not, where this one holds every units file of the tree, a
+    sub-project's included.
     """
 
     unit_entries: tuple[LoadedUnit, ...] = ()
@@ -598,6 +619,7 @@ class _Loader:
         self._types_by_name: dict[str, LoadedType] = {}
         self._units_by_name: dict[str, LoadedUnit] = {}
         self._unit_entries: list[LoadedUnit] = []
+        self._units_files: list[Path] = []
         self._sections_by_name: dict[str, LoadedSection] = {}
         self._rasters_by_name: dict[str, LoadedRaster] = {}
         self._constants_by_name: dict[str, LoadedConstant] = {}
@@ -665,6 +687,7 @@ class _Loader:
             types=tuple(sorted(self._types_by_name.values(), key=lambda entry: entry.name)),
             units=tuple(sorted(self._units_by_name.values(), key=lambda entry: entry.unit)),
             unit_entries=tuple(self._unit_entries),
+            units_files=tuple(self._units_files),
             sections=tuple(
                 sorted(self._sections_by_name.values(), key=lambda entry: entry.section)
             ),
@@ -786,6 +809,7 @@ class _Loader:
         path: Path,
         data: dict[str, Any],
         *,
+        kind: str,
         file_model: type[ModelT],
         entries: Callable[[ModelT], tuple[EntryT, ...]],
         wrap: Callable[[Path, int, EntryT], LoadedT],
@@ -799,6 +823,11 @@ class _Loader:
         together with where it was declared, and refuse the second declaration of a key as
         ``duplicate-<noun>`` - with a note at the first - rather than letting one of them
         quietly win.
+
+        A file whose list is empty loads, and is filed here as ``empty-vocabulary``: once, for
+        all five kinds, rather than by each loader. ``kind`` is the top level key that made the
+        file one of its kind, and so the pointer of that list - the finding is drawn at what
+        declares nothing, where an editor underlines the empty list and not the whole file.
         """
         try:
             model = file_model.model_validate(data)
@@ -806,7 +835,14 @@ class _Loader:
             self._report_validation_error(path, error, data)
             return
 
-        for index, declared in enumerate(entries(model)):
+        listed = entries(model)
+        if not listed:
+            self._bag.add(
+                "empty-vocabulary",
+                f"{kind} file '{path.name}' declares no {noun}",
+                Location(path, kind),
+            )
+        for index, declared in enumerate(listed):
             self._register(wrap(path, index, declared), key=key, registry=registry, noun=noun)
 
     def _register[LoadedT: _Located](
@@ -844,6 +880,7 @@ class _Loader:
         self._load_vocabulary(
             path,
             data,
+            kind="types",
             file_model=TypesFile,
             entries=lambda model: model.types,
             wrap=LoadedType,
@@ -857,11 +894,14 @@ class _Loader:
 
         A unit is registered under its spelling, so the second file to declare ``Nm`` is
         refused rather than merged: two files declaring one unit is either a copy that will
-        drift or a disagreement about its description, and neither is worth keeping quiet.
+        drift or a disagreement about its description, and neither is worth keeping quiet. The
+        file is kept among :attr:`Workspace.units_files`, whatever it declares.
         """
+        self._units_files.append(path)
         self._load_vocabulary(
             path,
             data,
+            kind="units",
             file_model=UnitsFile,
             entries=lambda model: model.units,
             wrap=self._unit_entry,
@@ -888,6 +928,7 @@ class _Loader:
         self._load_vocabulary(
             path,
             data,
+            kind="sections",
             file_model=SectionsFile,
             entries=lambda model: model.sections,
             wrap=LoadedSection,
@@ -906,6 +947,7 @@ class _Loader:
         self._load_vocabulary(
             path,
             data,
+            kind="rasters",
             file_model=RastersFile,
             entries=lambda model: model.rasters,
             wrap=LoadedRaster,
@@ -925,6 +967,7 @@ class _Loader:
         self._load_vocabulary(
             path,
             data,
+            kind="constants",
             file_model=ConstantsFile,
             entries=lambda model: model.constants,
             wrap=LoadedConstant,

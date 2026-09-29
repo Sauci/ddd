@@ -1123,19 +1123,28 @@ class _Analysis:
         return member.typename if self._declared_of(member) is None else None
 
     def _check_units(self) -> None:
-        """Every stated unit is in the vocabulary, where the project declares one.
+        """Every stated unit is in the vocabulary, where the project has a units file.
 
-        Declared nowhere, units stay free text and nothing here runs: the vocabulary is an
-        opt-in. Declared anywhere, every spelling is checked where it is written - on a
+        Without one, units stay free text and nothing here runs: the vocabulary is an opt-in, and
+        a units file is what opts in - one declaring nothing included, against which every stated
+        unit is unknown. With one, every spelling is checked where it is written - on a
         declaration, on a structure member, on a scalar type - because one quantity spelled
         two ways is invisible per object: each object agrees with itself, the a2l grows one
         ``COMPU_METHOD`` per spelling, and the calibration tool shows two units for one
         quantity. The empty unit is always allowed; a dimensionless value states no unit
         rather than a spelling of one.
+
+        The files decide, not the units they declare. Were a declared unit to switch it on,
+        taking the last unit nothing states out of the vocabulary would switch the check off for
+        the whole project, and every ``unknown-unit`` it reported would go with it - a run that
+        should fail, passing. A units file that does not match its schema counts as one too, and
+        cannot change a finding: it fails the run with its own error, and nothing that reports
+        findings analyses a project whose loading filed one
+        (:attr:`ddd.loading.Workspace.units_files`).
         """
-        vocabulary = {entry.unit for entry in self._workspace.units}
-        if not vocabulary:
+        if not self._workspace.units_files:
             return
+        vocabulary = {entry.unit for entry in self._workspace.units}
 
         def check(unit: str, where: Location) -> None:
             if unit and unit not in vocabulary:

@@ -20,6 +20,7 @@ from conftest import (
     checks,
     component,
     declare,
+    messages,
     project,
     run_analysis,
     scalar_type,
@@ -45,6 +46,7 @@ from ddd.lsp.units import (
     rename_unit,
     unit_project,
 )
+from ddd.project_units import adoptable
 
 
 def opened(
@@ -259,13 +261,14 @@ class TestRename:
         assert found["units.ddd.json"] == {"units": ["rpm", "Nm"]}
         assert found["more.ddd.json"] == {"units": ["kPa"]}
 
-    def test_a_merge_that_would_leave_a_units_file_listing_nothing_is_invalid(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_merge_may_leave_a_units_file_listing_nothing(self, tmp_path: Path) -> None:
+        """Refused while a units file had to list a unit; the file it empties loads now, and adds
+        nothing to the vocabulary, so ``rpm`` - listed in the other file, which the merge leaves
+        alone - is what remains."""
         idx, where = opened(tmp_path, {"shouted.ddd.json": {"units": ["RPM"]}, **drifted(["rpm"])})
-        code, message = refusal(lambda: rename_unit(idx, where, "RPM", "rpm", {}))
-        assert code == "invalid"
-        assert "shouted.ddd.json" in message
+        found = after(rename_unit(idx, where, "RPM", "rpm", {}))
+        assert found["shouted.ddd.json"] == {"units": []}
+        assert "units.ddd.json" not in found
 
     @pytest.mark.parametrize("new", ["", " rpm", "rpm\t", "RPM"])
     def test_a_new_name_that_is_empty_has_spaces_around_it_or_is_the_old_one_is_invalid(
@@ -437,12 +440,43 @@ class TestRemove:
         idx, where = opened(tmp_path, drifted(["rpm"]))
         assert refusal(lambda: remove_unit(idx, where, "Hz", {}))[0] == "not-found"
 
-    def test_the_last_unit_a_units_file_lists_is_not_taken_out(self, tmp_path: Path) -> None:
+    def test_the_last_unit_a_units_file_lists_is_taken_out_and_the_file_still_loads(
+        self, tmp_path: Path
+    ) -> None:
+        """Refused until a units file could list nothing: ``ddd gui`` cannot delete the file, so
+        the refusal left a reader no way from one unit to none. What it leaves now loads, and says
+        at info that it declares nothing."""
         idx, where = opened(tmp_path, {"more.ddd.json": {"units": ["kPa"]}, **drifted(["rpm"])})
-        assert refusal(lambda: remove_unit(idx, where, "kPa", {})) == (
-            "invalid",
-            "'kPa' is all more.ddd.json lists, and a units file lists at least one unit",
-        )
+        plan = remove_unit(idx, where, "kPa", {})
+        assert after(plan) == {"more.ddd.json": {"units": []}}
+        for path, text in written(plan).items():
+            path.write_text(text, encoding="utf-8", newline="")
+        _, bag = run_analysis(tmp_path, {}, root="p.ddd.json")
+        assert "schema" not in checks(bag)
+        assert "more.ddd.json#units: info[empty-vocabulary]" in messages(bag)
+
+    def test_taking_out_the_last_unused_unit_leaves_every_stated_unit_checked(
+        self, tmp_path: Path
+    ) -> None:
+        """Removing an entry nothing states never changes what is checked.
+
+        The project opted in by having a units file, and still has one once ``rpm`` is out, so
+        ``Nm`` - stated, never listed - is still an ``unknown-unit``. Measured the other way, with
+        the check switched on by a declared unit rather than by the file: taking out one unused
+        spelling turned unit checking off for the whole project, and a failing build passed.
+        """
+        files = {
+            "units.ddd.json": {"units": ["rpm"]},
+            "a.ddd.json": component("A", declare("local", "X", unit="Nm")),
+        }
+        idx, where = opened(tmp_path, files)
+        _, before = run_analysis(tmp_path, {}, root="p.ddd.json")
+        assert checks(before) == ["unknown-unit"]
+        for path, text in written(remove_unit(idx, where, "rpm", {})).items():
+            path.write_text(text, encoding="utf-8", newline="")
+        _, after = run_analysis(tmp_path, {}, root="p.ddd.json")
+        assert sorted(checks(after)) == ["empty-vocabulary", "unknown-unit"]
+        assert "error[unknown-unit]: 'Nm' is not a unit this project declares" in messages(after)
 
     def test_while_the_units_file_listing_it_does_not_load_a_removal_is_unreadable(
         self, tmp_path: Path
@@ -513,9 +547,59 @@ class TestAdopt:
         idx, where = opened(tmp_path, files)
         assert refusal(lambda: adopt_units(idx, where, {}))[1].endswith("rates.ddd.json")
 
+    def test_a_units_file_declaring_nothing_is_filled_rather_than_a_second_one_created(
+        self, tmp_path: Path
+    ) -> None:
+        """Having the file already opts the project in, so every stated unit is reported until it
+        is listed; refusing here left no one step that lists them all. The units go into the file
+        there is - no new file, no ``includes`` entry - in the form adopting always writes."""
+        idx, where = opened(tmp_path, drifted([]))
+        plan = adopt_units(idx, where, {})
+        assert [(edit.path, edit.creates) for edit in plan.edits] == [
+            ((tmp_path / "units.ddd.json").resolve(), False)
+        ]
+        assert after(plan) == {
+            "units.ddd.json": {
+                "units": [
+                    {"unit": "%", "description": ""},
+                    {"unit": "Nm", "description": ""},
+                    {"unit": "RPM", "description": ""},
+                    {"unit": "rpm", "description": ""},
+                ]
+            }
+        }
+
+    def test_of_several_units_files_declaring_nothing_the_first_included_is_filled(
+        self, tmp_path: Path
+    ) -> None:
+        idx, where = opened(
+            tmp_path, {"late.ddd.json": {"units": []}, "early.ddd.json": {"units": []}, **drifted()}
+        )
+        assert list(after(adopt_units(idx, where, {}))) == ["late.ddd.json"]
+
+    def test_after_filling_a_units_file_no_stated_unit_is_unknown(self, tmp_path: Path) -> None:
+        """What filling is for: every ``unknown-unit`` the empty file caused is gone, and nothing
+        is reported that was not reported before."""
+        idx, where = opened(tmp_path, drifted([]))
+        _, before = run_analysis(tmp_path, {}, root="p.ddd.json")
+        assert "unknown-unit" in checks(before)
+        for path, text in written(adopt_units(idx, where, {})).items():
+            path.write_text(text, encoding="utf-8", newline="")
+        _, adopted = run_analysis(tmp_path, {}, root="p.ddd.json")
+        assert "unknown-unit" not in checks(adopted)
+        assert set(checks(adopted)) <= set(checks(before))
+
     def test_a_project_stating_no_unit_has_nothing_to_adopt(self, tmp_path: Path) -> None:
+        """Adopting lists the units in use, so with none there is nothing to adopt - the reason
+        itself, and not the rule a units file once had to list a unit by, which it no longer
+        has. The offer answers the same refusal with a count of none, which the Units tab's
+        banner words the same way, with no Adopt under it."""
         idx, where = opened(tmp_path, {"a.ddd.json": component("A", declare("output", "Flag"))})
-        assert refusal(lambda: adopt_units(idx, where, {}))[0] == "invalid"
+        assert refusal(lambda: adopt_units(idx, where, {})) == (
+            "invalid",
+            "this project states no unit, so there is nothing to adopt",
+        )
+        assert adoptable(idx, where) == 0
 
     @pytest.mark.parametrize("existing", [{"notes": "not a units file"}, {"units": ["rpm"]}])
     def test_a_file_where_the_vocabulary_would_go_is_never_written_over(

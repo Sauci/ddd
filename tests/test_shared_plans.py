@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from conftest import built_of, component, declare, project, write_tree
+from conftest import built_of, checks, component, declare, project, run_analysis, write_tree
 from ddd import project_shared
-from ddd.editing import Operation
+from ddd.diagnostics import Location, Severity
+from ddd.editing import Operation, edit_text
 from ddd.loading import included_files
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document
@@ -162,9 +164,17 @@ def test_a_refusal_carries_its_code_and_its_sentence() -> None:
 
 
 def _index(tmp_path: Path, files: Mapping[str, Any]) -> Index:
-    """The index `conftest.built_of` makes of this tree, discarding the root: unlike
-    `tests/test_project_shared.py`, nothing below reads a file back off disk, only the index."""
+    """The index `conftest.built_of` makes of this tree, discarding the root."""
     return built_of(tmp_path, **files)[0]
+
+
+def _made(plan: SharedPlan) -> None:
+    """Every edit of the plan made on disk by the edit engine, as `POST /api/edit` makes it, so
+    that what a removal leaves can be loaded rather than only read off its operations."""
+    for edit in plan.edits:
+        assert not edit.creates
+        text = edit_text(edit.path.read_text(encoding="utf-8"), edit.operations)
+        edit.path.write_text(text, encoding="utf-8", newline="")
 
 
 # `p.ddd.json` is deliberately absent from every tree below: `conftest.built_of` writes it
@@ -244,10 +254,10 @@ _TWO_USES = {
 }
 
 
-# A third tree, for the removals that are allowed: a constants file and a component's own list,
-# each holding two constants, and no shape naming any of them. `TWO_HOMES` cannot serve - each of
-# its two lists holds exactly one entry, which is the case a removal is now refused in, since the
-# list left behind would be empty and `constants` is `min_length=1` in both homes.
+# A third tree, for removals that leave something behind: a constants file and a component's own
+# list, each holding two constants, and no shape naming any of them. `TWO_HOMES` holds exactly one
+# entry in each list, which is the other case: the last entry of a file's own list leaves it
+# declaring nothing, and the last of a component's takes the component's `constants` key with it.
 _TWO_EACH = {
     "c.ddd.json": {
         "constants": [
@@ -411,31 +421,49 @@ class TestRemoving:
             ("a.ddd.json", (Operation("remove", "component.constants[0]"),))
         ]
 
-    def test_the_only_constant_a_constants_file_declares_stays(self, tmp_path: Path) -> None:
-        """`ConstantsFile.constants` is `min_length=1`, so the file this would leave holding
-        `{"constants": []}` no longer loads: measured through the endpoint, `ddd check` answers
-        `error[schema]: Tuple should have at least 1 item after validation, not 0` and exits 1.
-        `lsp/units.py`'s `_taken_out` refuses the last unit of a units file in the same words and
-        for the same reason."""
-        built = _index(tmp_path, {"c.ddd.json": CONSTANTS})
-        cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
-            remove_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", cache)
-        assert raised.value.code == "invalid"
-        assert "'TREND_SAMPLES' is all c.ddd.json declares" in raised.value.message
+    def test_the_only_constant_a_constants_file_declares_is_taken_out(self, tmp_path: Path) -> None:
+        """A constants file's own list may be empty, so its last constant goes like any other:
+        the file is left declaring nothing, loads, and is reported as `empty-vocabulary`.
 
-    def test_the_only_constant_a_component_declares_inline_stays(self, tmp_path: Path) -> None:
-        """`Component.constants` carries the same `min_length=1`, and the consequence there is
-        worse than a file that does not load: the component stops loading, so every variable it
-        declares leaves the project along with the constant. Two clicks from this branch's own
-        add flow - declare a constant into a project that has none, then remove it, since nothing
-        names it and Remove is offered."""
+        This was refused until `ConstantsFile.constants` went to `min_length=0`, because
+        `{"constants": []}` answered `error[schema]` - and `ddd gui`, which cannot delete a
+        file, then had no way to take a project from one constant to none."""
+        built = _index(tmp_path, {"c.ddd.json": CONSTANTS})
+        plan = remove_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", {})
+        assert [(edit.path.name, edit.operations) for edit in plan.edits] == [
+            ("c.ddd.json", (Operation("remove", "constants[0]"),))
+        ]
+        _made(plan)
+        dictionary, bag = run_analysis(tmp_path, {}, root="p.ddd.json")
+        assert dictionary is not None
+        assert [(found.check, found.severity, found.location) for found in bag] == [
+            (
+                "empty-vocabulary",
+                Severity.INFO,
+                Location((tmp_path / "c.ddd.json").resolve(), "constants"),
+            )
+        ]
+
+    def test_the_only_constant_a_component_declares_inline_takes_the_key_with_it(
+        self, tmp_path: Path
+    ) -> None:
+        """`Component.constants` is still `min_length=1` - leaving the key out is how a component
+        publishes none - so its last constant goes with the key holding it.
+
+        Asserted by loading what the plan leaves, not by comparing its operations: the failure
+        this is here to catch is `"constants": []` written into the component, which stops the
+        component loading, so every variable it declares - `Trend` here - would leave the project
+        along with the constant the reader meant to remove."""
         built = _index(tmp_path, TWO_HOMES)
-        cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
-            remove_entry(project_shared.CONSTANTS, built, "CELLS", cache)
-        assert raised.value.code == "invalid"
-        assert "'CELLS' is all a.ddd.json declares" in raised.value.message
+        _made(remove_entry(project_shared.CONSTANTS, built, "CELLS", {}))
+        dictionary, bag = run_analysis(tmp_path, {}, root="p.ddd.json")
+        assert "schema" not in checks(bag)
+        assert dictionary is not None
+        assert [component.name for component in dictionary.components] == ["A"]
+        assert [declared.name for declared in dictionary.objects] == ["Trend"]
+        assert [declared.name for declared in dictionary.constants] == ["TREND_SAMPLES"]
+        left = json.loads((tmp_path / "a.ddd.json").read_text(encoding="utf-8"))
+        assert "constants" not in left["component"]
 
     def test_a_constant_a_shape_names_is_refused_with_where_it_is_named(
         self, tmp_path: Path
@@ -889,25 +917,26 @@ class TestDeclaringOne:
         assert raised.value.code == "invalid"
 
 
-# A fourth tree, for the one test whose constant is both the sole entry of its file and named by
-# a shape at once: `remove_entry`'s two guards both apply, and which sentence a reader meets must
-# not depend on the order a dict happened to yield. Copied in the corrected shape the trees above
-# use - a `scope` of `output`, a `kind` of `measurement`, `conversion` and `volatile` both present.
+# A fourth tree, for the one test whose constant is both the last its component declares inline
+# and named by a shape of that component: `remove_entry` asks whether anything names an entry
+# before it asks what taking it out leaves, and here the second answer would be the whole
+# `constants` key. Copied in the corrected shape the trees above use - a `scope` of `output`, a
+# `kind` of `measurement`, `conversion` and `volatile` both present.
 SOLE_AND_NAMED = {
-    "c.ddd.json": {"constants": [{"name": "TREND_SAMPLES", "value": 16}]},
     "a.ddd.json": {
         "component": {
             "name": "A",
+            "constants": [{"name": "CELLS", "value": 4}],
             "interface": [
                 {
                     "scope": "output",
                     "definition": {
                         "kind": "measurement",
-                        "name": "Trend",
+                        "name": "Cells",
                         "datatype": "uint16",
                         "conversion": {"kind": "identity"},
                         "volatile": False,
-                        "dimensions": ["TREND_SAMPLES"],
+                        "dimensions": ["CELLS"],
                     },
                 }
             ],
@@ -936,18 +965,19 @@ class TestTheDescriptorsVerbs:
             )
         )
 
-    def test_a_constant_both_named_and_alone_is_refused_for_being_named(
+    def test_a_constant_both_named_and_last_of_its_list_is_refused_for_being_named(
         self, tmp_path: Path
     ) -> None:
-        # Both guards apply at once, and which sentence a reader meets must not depend on the
-        # order a dict happened to yield. Named-by-something is checked first, because it names a
-        # place the reader can go and undo; being alone in its file names only the file.
+        # Named-by-something is asked first, and on this entry the order is the difference
+        # between a refusal and a broken project: `CELLS` is also the last constant its
+        # component declares inline, and asked the other way round the plan would take the
+        # component's `constants` key away while `Cells` still names what it held.
         built, _root = built_of(tmp_path, **SOLE_AND_NAMED)
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:
-            remove_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", cache)
-        assert "is named by" in raised.value.message
-        assert "is all" not in raised.value.message
+            remove_entry(project_shared.CONSTANTS, built, "CELLS", cache)
+        assert raised.value.code == "invalid"
+        assert "'CELLS' is named by 1 shape, the first in a.ddd.json" in raised.value.message
 
     def test_add_refuses_a_raw_key_the_vocabulary_does_not_have(self, tmp_path: Path) -> None:
         # `raws` is this task's own surface - the old `add_constant` took a single `raw` - so a

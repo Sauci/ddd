@@ -119,10 +119,8 @@ export function RasterPanel({ name, revision, stopped, onClose, onGone, onMoved,
     rename: to === null ? null : { action: "rename", name, to },
     // Asked for only while nothing names the raster, which `rasterRemovable` is the one judge of:
     // a shape still naming it always refuses (`remove_entry`), and a control that would refuse the
-    // instant it was pressed is a lying button. The api's other refusal - a raster that is all its
-    // own file declares, whose list may not be emptied - is not in `RasterReply` for the panel to
-    // read, so it is met here: the plan is asked for and comes back refused, and `RasterPanelView`
-    // shows that sentence with no button under it.
+    // instant it was pressed is a lying button. The last raster a file declares is asked for like
+    // any other, since the file it leaves declaring nothing still loads.
     remove: entry !== undefined && rasterRemovable(entry.uses) ? { action: "remove", name } : null,
   } satisfies {
     event: (Extract<RasterPlanRequest, { action: "set" }> & { key: "event" }) | null;

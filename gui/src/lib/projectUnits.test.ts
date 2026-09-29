@@ -8,9 +8,12 @@ import type {
   UnitsReply,
 } from "../api/types";
 import {
+  adoptionAsked,
+  adoptionOffered,
   adoptionSentence,
   descriptionOf,
   findingCheck,
+  hasUnitsFile,
   offers,
   placeRole,
   planEdit,
@@ -85,6 +88,13 @@ const FREE: UnitsReply = {
     row("V", { variables: 2 }),
   ],
   adoptable: 5,
+};
+// The same project with its units file emptied: the file still opts it in, so every unit it
+// states is outside the vocabulary with a finding, and adopting would list them in a units file.
+const EMPTIED: UnitsReply = {
+  ...FREE,
+  vocabulary: [],
+  units: FREE.units.map((unit) => ({ ...unit, findings: 1 })),
 };
 
 function place(kind: UnitPlace["kind"], path: string, extra: Partial<UnitPlace> = {}): UnitPlace {
@@ -306,6 +316,38 @@ group("the rename picker", () => {
   });
 });
 
+group("adoption", () => {
+  test("is offered exactly where the server says how many units it would list", () => {
+    expect(adoptionOffered(FREE)).toBe(true);
+    expect(adoptionOffered(EMPTIED)).toBe(true);
+    expect(adoptionOffered({ ...FREE, adoptable: 0 })).toBe(true);
+    expect(adoptionOffered(VOCABULARY)).toBe(false);
+  });
+
+  test("reads the server's decision rather than working it out again from the vocabulary", () => {
+    // `adoptable` is answered by the plan's own guards, and two of them are nothing `vocabulary`
+    // shows: a file of the project that did not load, and a file already where adopting would
+    // write. Either can leave the reply looking like one adopting could serve - no units file in
+    // the first case here, an empty one in the second - and the page must offer nothing all the
+    // same.
+    expect(adoptionOffered({ ...FREE, adoptable: null })).toBe(false);
+    expect(adoptionOffered({ ...EMPTIED, adoptable: null })).toBe(false);
+  });
+
+  test("the banner knows a project with a units file from one without, whatever the file lists", () => {
+    expect(hasUnitsFile(FREE)).toBe(false);
+    expect(hasUnitsFile(EMPTIED)).toBe(true);
+    expect(hasUnitsFile(VOCABULARY)).toBe(true);
+  });
+
+  test("its plan is asked for only where adopting would list a unit", () => {
+    expect(adoptionAsked(FREE)).toBe(true);
+    expect(adoptionAsked(EMPTIED)).toBe(true);
+    expect(adoptionAsked({ ...FREE, adoptable: 0 })).toBe(false);
+    expect(adoptionAsked(VOCABULARY)).toBe(false);
+  });
+});
+
 group("what a plan says and sends", () => {
   test("renaming onto a spelling the vocabulary lists merges the two", () => {
     expect(renameConsequence(MERGE, RPM, "rpm", VOCABULARY)).toBe(
@@ -333,18 +375,33 @@ group("what a plan says and sends", () => {
   });
 
   test("the banner says what adopting writes, and that nothing more will be reported", () => {
-    expect(adoptionSentence(8)).toBe(
+    expect(adoptionSentence(8, false)).toBe(
       "This project has no units file, so no unit is checked against a vocabulary. " +
         "Adopting writes units.ddd.json with the 8 units in use and includes it in the " +
         "project: nothing is reported that is not reported today.",
     );
-    expect(adoptionSentence(1)).toContain("with the 1 unit in use");
+    expect(adoptionSentence(1, false)).toContain("with the 1 unit in use");
   });
 
   test("a project stating no unit has nothing to adopt, and the banner says so", () => {
-    expect(adoptionSentence(0)).toBe(
+    expect(adoptionSentence(0, false)).toBe(
       "This project has no units file, so no unit is checked against a vocabulary. " +
         "It states no unit, so there is nothing to adopt.",
+    );
+  });
+
+  test("with a units file listing no unit, the banner says none is in it and adopting lists them", () => {
+    // Not "writes units.ddd.json": a units file declaring nothing still opts the project in, and
+    // adopting fills the first the description includes rather than writing a second. Nor does
+    // it name that file: the page reads units files out of every file the project read, and the
+    // server out of the description's own includes, so only "a units file" is true of both.
+    expect(adoptionSentence(5, true)).toBe(
+      "No unit this project states is in its vocabulary. Adopting lists the 5 units in use " +
+        "in a units file: nothing is reported that is not reported today.",
+    );
+    expect(adoptionSentence(1, true)).toContain("lists the 1 unit in use");
+    expect(adoptionSentence(0, true)).toBe(
+      "This project states no unit, so there is nothing to adopt.",
     );
   });
 

@@ -302,12 +302,14 @@ def group_findings(
     something, they really are saying two different things and both are kept.
     """
     filed: set[Path] = set()
-    already = {(path, _identity(entry)) for path, entries in grouped.items() for entry in entries}
+    already = {
+        (path, finding_identity(entry)) for path, entries in grouped.items() for entry in entries
+    }
     for finding in bag.sorted:
         for entry in (finding, *_mirrors(finding)):
             path = entry.location.path if entry.location else fallback
             filed.add(path)
-            key = (path, _identity(entry))
+            key = (path, finding_identity(entry))
             if key in already:
                 continue
             already.add(key)
@@ -315,8 +317,12 @@ def group_findings(
     return filed
 
 
-def _identity(finding: Diagnostic) -> tuple[str, Severity, Location | None, str]:
-    """What makes two findings the same one, for a reader looking at an underline."""
+def finding_identity(finding: Diagnostic) -> tuple[str, Severity, Location | None, str]:
+    """What makes two findings the same one, for a reader looking at an underline.
+
+    Public because :func:`ddd.file_plans.new_errors` asks the same question of two analyses of
+    one project, the second with the root's ``includes`` changed, and one rule answers both.
+    """
     return (finding.check, finding.severity, finding.location, finding.message)
 
 

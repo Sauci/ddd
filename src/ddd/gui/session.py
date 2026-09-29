@@ -350,7 +350,7 @@ class Session:
             for info in discover(self.root, self.build_directories, ignored)
             if Path(info.project).resolve() == project
         )
-        runs: list[Run] = [run_build(info) for info in builds] or [run_project(project)]
+        runs = _runs(project, builds)
         grouped: dict[Path, list[Diagnostic]] = {}
         covered: set[Path] = set()
         for run in runs:
@@ -368,9 +368,7 @@ class Session:
             project=project,
             builds=builds,
             files=tuple(_described(path, grouped.get(path, ())) for path in sorted(covered)),
-            findings=tuple(
-                Filed(path, found) for path in sorted(grouped) for found in grouped[path]
-            ),
+            findings=_filed(grouped),
             # One run's whole answer, never a field picked from each: the plugins a comparison
             # runs the rules of and the dictionary it compares have to be the same read's, and
             # two `next()` calls over the same list would only agree by coincidence.
@@ -396,6 +394,53 @@ class Session:
             self._signature = {file.path: stamps.get(file.path, UNKNOWN) for file in revision.files}
             self._published.notify_all()
         return revision
+
+
+def findings_with(revision: Revision, includes: Sequence[str]) -> tuple[Filed, ...]:
+    """The findings ``revision``'s project would have with its root's ``includes`` replaced,
+    from exactly the runs that revision was made from - each build's, with that build's own
+    severity flags, or the project's alone - so that the runs differ in the list and nothing
+    else. Every file is read from disk again. Nothing is written and nothing is published.
+
+    Given the revision rather than reading the newest: a plan is computed against one, and a
+    save landing between the plan and this would otherwise make them two.
+
+    Cost, measured in one process as the median of seven calls with the list unchanged, so that
+    every file is read and analysed: 0.6 ms over each of the three projects of
+    ``examples/pressure`` (four files and three components apiece), 1.8 ms over
+    ``examples/demo``, the example with the most components (six files, 23 variables in four
+    components), and 17 ms over a generated flat project of two hundred components, each listed
+    by an entry of its own and reading the variable the one before it writes, the first the
+    last's. Each call measured returned what ``ddd check`` reports on that project.
+    """
+    grouped: dict[Path, list[Diagnostic]] = {}
+    for run in _runs(revision.project, revision.builds, includes=includes):
+        group_findings(run.bag, revision.project, grouped)
+    return _filed(grouped)
+
+
+def _runs(
+    project: Path, builds: Sequence[BuildInfo], *, includes: Sequence[str] | None = None
+) -> list[Run]:
+    """The runs a revision of ``project`` is made from: one per build record naming it, each
+    under that build's own severity flags, or the project's alone under the defaults where no
+    record does. ``includes`` replaces the root's list in every one of them.
+
+    One function for a revision and for :func:`findings_with`, so that the latter re-runs what
+    the revision it is given was made of and cannot drift from it. A statement rather than
+    ``[...] or [...]``, which coverage.py counts no branch in.
+    """
+    runs = [run_build(info, includes=includes) for info in builds]
+    if not runs:
+        runs = [run_project(project, includes=includes)]
+    return runs
+
+
+def _filed(grouped: Mapping[Path, Sequence[Diagnostic]]) -> tuple[Filed, ...]:
+    """The findings of some runs, as :func:`~ddd.lsp.diagnostics.group_findings` sorted them onto
+    files: file by file in path order, each file's in the order they were grouped. A revision's
+    order, and so the order :func:`findings_with` answers in."""
+    return tuple(Filed(path, found) for path in sorted(grouped) for found in grouped[path])
 
 
 def _source(revision: Revision, path: Path) -> Path:

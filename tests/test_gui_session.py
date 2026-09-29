@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import stat
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
 
 import ddd.gui.session as session_module
 from conftest import EXAMPLES, build_record, component, declare, project, write_tree
-from ddd.diagnostics import SeverityPolicy, UnknownCheckError
+from ddd.diagnostics import Severity, SeverityPolicy, UnknownCheckError
 from ddd.editing import (
     INVALID,
     STALE,
@@ -24,7 +25,15 @@ from ddd.editing import (
     fingerprint,
 )
 from ddd.gui import session as module
-from ddd.gui.session import MAX_UNDO, NoProjectError, NotInProjectError, Session, find_projects
+from ddd.gui.session import (
+    MAX_UNDO,
+    Filed,
+    NoProjectError,
+    NotInProjectError,
+    Session,
+    find_projects,
+    findings_with,
+)
 from ddd.lsp.diagnostics import Run
 
 REGISTERING_PLUGIN = """
@@ -89,13 +98,13 @@ def opened_and_settled(project_file: Path, poll_interval: float = 1.0) -> Sessio
     return session
 
 
-def saving_while_analysing(file: Path, unit: bytes) -> Callable[[Path], Run]:
+def saving_while_analysing(file: Path, unit: bytes) -> Callable[..., Run]:
     """``run_project``, and another editor saving the first unit of ``file`` as ``unit`` once the
     analysis has read the files but before the session has its answer."""
     real = module.run_project
 
-    def run(project_file: Path) -> Run:
-        answer = real(project_file)
+    def run(project_file: Path, *, includes: Sequence[str] | None = None) -> Run:
+        answer = real(project_file, includes=includes)
         saved = re.sub(rb'"unit": "[^"]*"', b'"unit": ' + unit, file.read_bytes(), count=1)
         file.write_bytes(saved)
         return answer
@@ -668,6 +677,100 @@ class TestUndoing:
     def test_an_undo_needs_an_open_project(self, shared: Path) -> None:
         with pytest.raises(NoProjectError):
             Session(shared.parent).undo(1)
+
+
+@pytest.fixture
+def vocabulary(tmp_path: Path) -> Path:
+    """A copy of ``examples/vocabulary``, whose pump sizes a buffer by a constant only
+    ``constants.ddd.json`` declares; returns the project file."""
+    shutil.copytree(EXAMPLES / "vocabulary", tmp_path / "vocabulary")
+    return tmp_path / "vocabulary" / "project.ddd.json"
+
+
+def errors_of(findings: tuple[Filed, ...]) -> list[Filed]:
+    return [filed for filed in findings if filed.diagnostic.severity is Severity.ERROR]
+
+
+class TestFindingsWith:
+    """What a revision's project would report with its root's ``includes`` replaced: the runs
+    the revision was made from, again, with one list differing."""
+
+    def test_a_file_left_out_is_analysed_as_gone(self, vocabulary: Path) -> None:
+        revision = opened_and_settled(vocabulary).revision
+        assert revision is not None
+        listed = json.loads(vocabulary.read_text(encoding="utf-8"))["project"]["includes"]
+        without = [entry for entry in listed if entry != "constants.ddd.json"]
+        assert len(without) == len(listed) - 1
+        found = [
+            (filed.file.name, filed.diagnostic.check, filed.diagnostic.severity)
+            for filed in findings_with(revision, without)
+        ]
+        assert found == [("pump.ddd.json", "unknown-constant", Severity.ERROR)]
+        assert revision.findings == ()
+
+    def test_each_build_is_run_again_under_its_own_severities(self, tmp_path: Path) -> None:
+        """Focus 2: the revision was made through a build record raising ``unused-output`` to an
+        error. Run under the project's defaults instead, the list unchanged would already answer
+        other errors than the revision's, for a reason no change of the list made."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Unread")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json", severity=["unused-output=error"])
+        revision = opened_and_settled(tmp_path / "p.ddd.json").revision
+        assert revision is not None
+        errors = errors_of(revision.findings)
+        assert [filed.diagnostic.check for filed in errors] == ["unused-output"]
+        assert errors_of(findings_with(revision, ["a.ddd.json"])) == errors
+
+    def test_the_list_replaced_reaches_every_builds_run(self, tmp_path: Path) -> None:
+        """The same record, over a consumer that reads the output: leaving the consumer out makes
+        the output unread, which only the build's own run, given the list, reports as an error."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json", severity=["unused-output=error"])
+        revision = opened_and_settled(tmp_path / "p.ddd.json").revision
+        assert revision is not None
+        assert errors_of(revision.findings) == []
+        found = errors_of(findings_with(revision, ["a.ddd.json"]))
+        assert [(filed.file.name, filed.diagnostic.check) for filed in found] == [
+            ("a.ddd.json", "unused-output")
+        ]
+
+    def test_the_findings_come_file_by_file_in_path_order(self, tmp_path: Path) -> None:
+        """A revision's order, whatever the severities: leaving `c.ddd.json` out leaves a warning
+        on `a.ddd.json` and an error on `b.ddd.json`, and the warning comes first although a run
+        reports its errors first. :func:`ddd.file_plans.new_errors` keeps the order it is given."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Torque")),
+                "c.ddd.json": component(
+                    "C", declare("input", "Speed"), declare("output", "Torque")
+                ),
+            },
+        )
+        revision = opened_and_settled(tmp_path / "p.ddd.json").revision
+        assert revision is not None
+        answer = findings_with(revision, ["a.ddd.json", "b.ddd.json"])
+        assert [(filed.file.name, filed.diagnostic.check) for filed in errors_of(answer)] == [
+            ("b.ddd.json", "missing-producer")
+        ]
+        assert list(dict.fromkeys(filed.file.name for filed in answer)) == [
+            "a.ddd.json",
+            "b.ddd.json",
+        ]
 
 
 def test_the_demo_opens_clean() -> None:

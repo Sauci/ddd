@@ -95,6 +95,26 @@ EMPTY_UNITS_FILE = {
     ),
 }
 
+# A units file that fails to load - the empty spelling is refused - in a project stating two units:
+# the analysis indexes none of its entries, and adopting is refused while it does not load.
+BROKEN_UNITS_FILE = {
+    "p.ddd.json": project("P", "units.ddd.json", "a.ddd.json"),
+    "units.ddd.json": {"units": ["rpm", ""]},
+    "a.ddd.json": component(
+        "A", declare("local", "Speed", unit="rpm"), declare("local", "Torque", unit="Nm")
+    ),
+}
+
+# A sub-project's units file declaring nothing, which is the very units.ddd.json adopting would
+# write beside the root description: the root lists no units file of its own, so adopting would
+# create one there, and the file is there already.
+SUB_PROJECTS_UNITS_FILE = {
+    "p.ddd.json": project("P", "sub.ddd.json", "a.ddd.json"),
+    "sub.ddd.json": project("Sub", "units.ddd.json"),
+    "units.ddd.json": {"units": []},
+    "a.ddd.json": component("A", declare("local", "Speed", unit="rpm")),
+}
+
 # A constant declared with no `description` at all - `set_entry`'s "nothing to remove" arm
 # needs an entry the key is already absent from, which no shipped example happens to have.
 NO_DESCRIPTION = {
@@ -2529,11 +2549,45 @@ class TestUnitsTab:
         (row,) = body["units"]
         assert (row["files"], row["findings"]) == ([posix(tmp_path, "units.ddd.json")], 2)
 
-    def test_a_project_the_analysis_could_not_read_has_no_rows_and_nothing_to_adopt(
+    def test_a_project_the_analysis_could_not_read_has_no_rows_and_is_offered_no_adoption(
         self, tmp_path: Path
     ) -> None:
-        body = get(unloaded(tmp_path), "/api/units").body
-        assert (body["units"], body["adoptable"]) == ([], 0)
+        """No index, so no plan: the offer answers as the plan does, and not with 0, which the
+        banner reads as "it states no unit" - of a project nobody could read."""
+        api = unloaded(tmp_path)
+        body = get(api, "/api/units").body
+        assert (body["units"], body["adoptable"]) == ([], None)
+        reply = get(api, "/api/unit-plan", action="adopt")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_a_units_file_that_did_not_load_is_offered_no_adoption_the_plan_would_refuse(
+        self, tmp_path: Path
+    ) -> None:
+        """The offer and the plan ask the same guards. Asked only whether a units file lists a
+        unit the index holds, the offer would read a file that did not load as one listing
+        nothing, and the banner would offer adopting two units the plan then refuses - a warning
+        with no Adopt under it, for as long as the file being edited does not load."""
+        api = opened(tmp_path, BROKEN_UNITS_FILE)
+        assert get(api, "/api/units").body["adoptable"] is None
+        reply = get(api, "/api/unit-plan", action="adopt")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"] == (
+            "units.ddd.json did not load, so adopting could not list every unit in use"
+        )
+
+    def test_a_sub_projects_units_file_where_adopting_would_write_is_offered_no_adoption(
+        self, tmp_path: Path
+    ) -> None:
+        """The same property in the rarer shape: the root description lists no units file, so
+        adopting would write units.ddd.json beside it - where a sub-project's own already is."""
+        api = opened(tmp_path, SUB_PROJECTS_UNITS_FILE)
+        assert get(api, "/api/units").body["adoptable"] is None
+        reply = get(api, "/api/unit-plan", action="adopt")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == (
+            "adopting writes units.ddd.json beside p.ddd.json, and a file of that name is there "
+            "already"
+        )
 
     def test_a_units_file_declaring_nothing_reports_every_unit_and_offers_adopting_them(
         self, tmp_path: Path

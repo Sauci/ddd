@@ -325,11 +325,12 @@ group("adoption", () => {
   });
 
   test("reads the server's decision rather than working it out again from the vocabulary", () => {
-    // `vocabulary` is read out of the files as they are written, so a units file that did not
-    // load still lists its units there while the analysis - and so `adopt_units` - reads none.
-    // The server answers `adoptable` from the one question `adopt_units` refuses by; asked here
-    // of `vocabulary` instead, the two could disagree about the very same project.
-    expect(adoptionOffered({ ...VOCABULARY, adoptable: 4 })).toBe(true);
+    // `adoptable` is answered by the plan's own guards, and two of them are nothing `vocabulary`
+    // shows: a file of the project that did not load, and a file already where adopting would
+    // write. Either can leave the reply looking like one adopting could serve - no units file in
+    // the first case here, an empty one in the second - and the page must offer nothing all the
+    // same.
+    expect(adoptionOffered({ ...FREE, adoptable: null })).toBe(false);
     expect(adoptionOffered({ ...EMPTIED, adoptable: null })).toBe(false);
   });
 

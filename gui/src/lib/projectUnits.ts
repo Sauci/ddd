@@ -162,16 +162,18 @@ export function renameConsequence(
   return `${changes}. ${vocabulary}.`;
 }
 
-/** Whether the Units tab offers adoption: exactly where the server says how many units adopting
- * would list.
+/** Whether the Units tab shows the adoption banner: exactly where the server answers how many
+ * units adopting would list - a count, or none where the project states none, which the banner
+ * says with no Adopt under it.
  *
- * The decision is the server's, made once: `UnitsReply.adoptable` is `null` exactly where
- * `ddd.lsp.units.adopt_units` refuses for a vocabulary already there, both asking
- * `ddd.lsp.units.listing_files`. It is read here, never worked out again from `vocabulary` - which
- * is read out of the files as written, so a units file that did not load lists its units there
- * while the plan, reading what the analysis loaded, sees none - since a second answer is one the
- * two could come to differently about the same project. */
-export function adoptionOffered(units: UnitsReply): boolean {
+ * The decision is the server's, and it is the plan's own: `UnitsReply.adoptable` is answered by
+ * `ddd.lsp.units.adoption`, the guards `ddd.lsp.units.adopt_units` refuses by, so the banner
+ * never offers adopting where the plan would refuse it. It is read here rather than worked out
+ * again from `vocabulary`, which cannot see two of those guards: a file of the project that did
+ * not load, and a file already where adopting would write - with either, `vocabulary` can look
+ * like a project adopting could serve. A type guard, so that the count reaches the banner
+ * without a fallback nothing could take. */
+export function adoptionOffered(units: UnitsReply): units is UnitsReply & { adoptable: number } {
   return units.adoptable !== null;
 }
 

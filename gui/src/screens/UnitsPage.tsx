@@ -114,7 +114,7 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
       )}
       {adoptionOffered(units.data) && (
         <AdoptBannerView
-          adoptable={adoptable ?? 0}
+          adoptable={units.data.adoptable}
           hasUnitsFile={hasUnitsFile(units.data)}
           plan={adoption.data ?? null}
           refusal={shownRefusal(stale, revision) ?? refused ?? adoption.error?.message ?? null}

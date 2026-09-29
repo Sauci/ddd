@@ -20,7 +20,7 @@ from ddd.diagnostics import Diagnostic
 from ddd.finding_routes import UNIT_CHECKS
 from ddd.lsp.navigation import Index, Site, UnitSite
 from ddd.lsp.ranges import Document, read
-from ddd.lsp.units import PlannedEdit, listing_files
+from ddd.lsp.units import PlannedEdit, UnitProject, UnitRefusalError, adoption
 from ddd.variables import Planned, declarations_of, hunks, planned
 
 
@@ -128,22 +128,25 @@ def located_on_unit(built: Index, unit: str, file: Path, finding: Diagnostic) ->
     )
 
 
-def adoptable(built: Index | None) -> int | None:
-    """How many units adopting a vocabulary would list - every unit in use - or ``None`` where a
-    units file of the project lists a unit already, and so there is nothing to adopt.
+def adoptable(built: Index | None, project: UnitProject) -> int | None:
+    """How many units adopting a vocabulary would list - every unit in use, none where the
+    project states none - or ``None`` where adopting is refused.
 
-    Asked of :func:`ddd.lsp.units.listing_files`, the one question
-    :func:`ddd.lsp.units.adopt_units` refuses by, so that the page offers adopting exactly where
-    the plan would not be refused for a vocabulary already there. A units file declaring nothing
-    is no such vocabulary: adopting fills it. A project the analysis could not read has no index
-    to ask, and reads no units file either - its includes were never followed - so it has
-    nothing to adopt.
+    Answered by :func:`ddd.lsp.units.adoption`, the guards :func:`ddd.lsp.units.adopt_units`
+    plans by, so the page offers adopting exactly where the plan comes to one: every refusal but
+    "nothing to adopt" answers ``None``, and that one answers ``0``, for which the banner says
+    there is nothing to adopt and draws no Adopt. A project the analysis could not read has no
+    index, and so no plan either.
     """
     if built is None:
-        return 0
-    if listing_files(built):
         return None
-    return len(built.units)
+    try:
+        planned = adoption(built, project)
+    except UnitRefusalError:
+        return None
+    if planned is None:
+        return 0
+    return len(planned.units)
 
 
 def previewed(

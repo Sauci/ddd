@@ -236,9 +236,9 @@ def remove_unit(
 
 def adopt_units(built: Index, project: UnitProject, cache: dict[Path, Document]) -> UnitPlan:
     """A vocabulary for a project whose units files list no unit: every unit in use,
-    alphabetically, each with an empty description.
+    alphabetically, each with an empty description, where :func:`adoption` says it goes.
 
-    Where it goes is decided by the project's units files, as :attr:`UnitProject.units_files`
+    Which file that is follows from the project's units files, as :attr:`UnitProject.units_files`
     reads them out of the description's own ``includes``:
 
     * none at all - :data:`ADOPTED` is written beside the description and its name appended to
@@ -247,15 +247,19 @@ def adopt_units(built: Index, project: UnitProject, cache: dict[Path, Document])
       and no file is written or included besides. Having a units file opts a project in whatever
       it declares, so an emptied or a new one reports every stated unit, and this is the one step
       listing them all;
-    * one listing a unit - refused: the vocabulary is there already, which is what
-      :func:`listing_files` answers for this plan and for the page offering it alike.
+    * one listing a unit - refused: the vocabulary is there already.
 
-    A known limitation, and the reach :func:`add_unit` has too: a units file only a sub-project
-    includes is not one of the description's own, so a project whose one units file is such a
-    file, declaring nothing, gets a new :data:`ADOPTED` beside its description rather than that
-    file filled. Nothing is checked wrongly - both files are the project's, and the analysis
-    reads every units file of the tree - but the empty one stays, reported as
-    ``empty-vocabulary``.
+    Every other refusal is :func:`adoption`'s, which the page's offer asks as well, so that
+    adopting is never offered where this would refuse it. The one raised here, "nothing to
+    adopt", the offer answers with a count of none: the banner says there is nothing to adopt and
+    draws no Adopt.
+
+    A known limitation, the reach :func:`add_unit` has too: a units file only a sub-project
+    includes is not one of the description's own. A project whose one units file is such a file,
+    declaring nothing, gets a new :data:`ADOPTED` beside its description rather than that file
+    filled - and where the sub-project's file is itself that :data:`ADOPTED`, a refusal, the
+    file being there already, and no offer. Nothing is checked wrongly either way: the analysis
+    reads every units file of the tree.
 
     Every unit in use, drifted spellings included, so that adopting reports nothing that was not
     reported before; two spellings of one unit are merged by renaming one of them afterwards.
@@ -263,37 +267,22 @@ def adopt_units(built: Index, project: UnitProject, cache: dict[Path, Document])
     entry to a line, so that the first edit anybody makes to it reads as a one-line change, and a
     filled one is laid out the same way by the engine's own insertions.
     """
-    held = listing_files(built)
-    if held:
-        raise UnitRefusalError("invalid", f"this project has a vocabulary already: {_names(held)}")
-    if project.unread:
-        raise UnitRefusalError(
-            "unreadable",
-            f"{_names(project.unread)} did not load, so adopting could not list every unit in use",
-        )
-    if not built.units:
+    planned = adoption(built, project)
+    if planned is None:
         raise UnitRefusalError(
             "invalid", "this project states no unit, so there is nothing to adopt"
         )
-    listing = [_raw({"unit": unit, "description": ""}) for unit in sorted(built.units)]
-    if project.units_files:
-        file = project.units_files[0]
-        listed = read(file, cache).value_at("units") or []
+    listing = [_raw({"unit": unit, "description": ""}) for unit in planned.units]
+    if planned.into is not None:
         return _plan(
             {
-                file: [
-                    Operation("insert", f"units[{len(listed) + position}]", entry)
+                planned.into: [
+                    Operation("insert", f"units[{position}]", entry)
                     for position, entry in enumerate(listing)
                 ]
             }
         )
     created = project.project.parent / ADOPTED
-    if created.exists():
-        raise UnitRefusalError(
-            "invalid",
-            f"adopting writes {ADOPTED} beside {project.project.name}, and a file of that name "
-            "is there already",
-        )
     laid_out = lay_out(
         f'{{"units": [{", ".join(listing)}]}}',
         one_line=False,
@@ -311,13 +300,63 @@ def adopt_units(built: Index, project: UnitProject, cache: dict[Path, Document])
     return UnitPlan(tuple(sorted(edits, key=lambda edit: edit.path.as_posix())))
 
 
-def listing_files(built: Index) -> list[Path]:
-    """The files of the project listing at least one unit, sorted: a vocabulary already, which
-    :func:`adopt_units` refuses to replace.
+@dataclass(frozen=True, slots=True)
+class Adoption:
+    """What adopting a vocabulary comes to once nothing refuses it: the units it lists, and the
+    units file they go into."""
 
-    One answer for the plan and for the page offering it - :func:`ddd.project_units.adoptable`
-    asks it too - so that the two cannot disagree about where adopting is offered. A units file
-    declaring nothing is not one of them: adopting fills it.
+    units: tuple[str, ...]
+    """Every unit in use, drifted spellings included, in the order the vocabulary will list
+    them: by code point."""
+
+    into: Path | None
+    """The units file filled, or ``None`` where :data:`ADOPTED` is written beside the description
+    instead.
+
+    The first units file the description includes, and one listing no entry at all: every file
+    of the project loaded, and none lists a unit the index holds. The units therefore go in from
+    ``units[0]``, with nothing to count first.
+    """
+
+
+def adoption(built: Index, project: UnitProject) -> Adoption | None:
+    """What adopting a vocabulary would write; ``None`` where the project states no unit, so that
+    there is nothing to adopt; or the refusal it meets.
+
+    The one set of guards adopting has, asked in one order: :func:`adopt_units` plans by it, and
+    :func:`ddd.project_units.adoptable` offers by it, so the page offers adopting exactly where
+    the plan comes to one. A neighbouring question answered apart would not do: a units file
+    that did not load lists nothing the index holds, and a sub-project's units file can be the
+    very file adopting would write, so asking only whether a file lists a unit offers both, and
+    the plan refuses both.
+    """
+    held = listing_files(built)
+    if held:
+        raise UnitRefusalError("invalid", f"this project has a vocabulary already: {_names(held)}")
+    if project.unread:
+        raise UnitRefusalError(
+            "unreadable",
+            f"{_names(project.unread)} did not load, so adopting could not list every unit in use",
+        )
+    if not built.units:
+        return None
+    units = tuple(sorted(built.units))
+    if project.units_files:
+        return Adoption(units, project.units_files[0])
+    if (project.project.parent / ADOPTED).exists():
+        raise UnitRefusalError(
+            "invalid",
+            f"adopting writes {ADOPTED} beside {project.project.name}, and a file of that name "
+            "is there already",
+        )
+    return Adoption(units, None)
+
+
+def listing_files(built: Index) -> list[Path]:
+    """The files of the project listing at least one unit that the index holds, sorted: a
+    vocabulary already, which adopting refuses to replace. One of :func:`adoption`'s guards, and
+    not the whole of them: a units file that did not load lists nothing here, which is why
+    :func:`adoption` asks ``unread`` too before it lets anything through.
     """
     return _paths(entry for listed in built.vocabulary.values() for entry in listed)
 

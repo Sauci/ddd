@@ -46,6 +46,7 @@ from ddd.lsp.units import (
     rename_unit,
     unit_project,
 )
+from ddd.project_units import adoptable
 
 
 def opened(
@@ -591,12 +592,14 @@ class TestAdopt:
     def test_a_project_stating_no_unit_has_nothing_to_adopt(self, tmp_path: Path) -> None:
         """Adopting lists the units in use, so with none there is nothing to adopt - the reason
         itself, and not the rule a units file once had to list a unit by, which it no longer
-        has; the Units tab words the same case the same way."""
+        has. The offer answers the same refusal with a count of none, which the Units tab's
+        banner words the same way, with no Adopt under it."""
         idx, where = opened(tmp_path, {"a.ddd.json": component("A", declare("output", "Flag"))})
         assert refusal(lambda: adopt_units(idx, where, {})) == (
             "invalid",
             "this project states no unit, so there is nothing to adopt",
         )
+        assert adoptable(idx, where) == 0
 
     @pytest.mark.parametrize("existing", [{"notes": "not a units file"}, {"units": ["rpm"]}])
     def test_a_file_where_the_vocabulary_would_go_is_never_written_over(

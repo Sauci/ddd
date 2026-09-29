@@ -77,6 +77,39 @@ class UnitPlan:
     edits: tuple[PlannedEdit, ...]
 
 
+def appended_at(listed: object) -> int:
+    """Where a new entry lands: at the end of a list read off disk, or at the front of a value
+    that is not a list at all - which the edit engine then refuses with a sentence of its own,
+    rather than this guessing at a position inside something that holds none."""
+    if isinstance(listed, list):
+        return len(listed)
+    return 0
+
+
+def created_beside(
+    project: Path, filename: str, text: str, cache: dict[Path, Document]
+) -> tuple[PlannedEdit, PlannedEdit]:
+    """The one shape a file is created in: beside ``project``, laid out as a person would write
+    it, and appended to ``project``'s own ``includes`` in the same plan.
+
+    The only creation :func:`ddd.gui.session._confined` allows - beside the description, by an
+    edit that adds it to the includes there - so a plan built any other way is refused when it
+    is applied. :func:`adopt_units`, :func:`ddd.shared_plans._created` and
+    :func:`ddd.file_plans.create_plan` all create through this, and cannot drift apart.
+    """
+    laid_out = lay_out(text, one_line=False, indent="", unit=DEFAULT_INDENT_UNIT, newline="\n")
+    includes = read(project, cache).value_at("project.includes")
+    return (
+        PlannedEdit(
+            project.parent / filename, (Operation("set", "", f"{laid_out}\n"),), creates=True
+        ),
+        PlannedEdit(
+            project,
+            (Operation("insert", f"project.includes[{appended_at(includes)}]", _raw(filename)),),
+        ),
+    )
+
+
 class UnitRefusalError(Exception):
     """A change of a unit that cannot be planned, and the code both clients refuse it with."""
 
@@ -282,21 +315,7 @@ def adopt_units(built: Index, project: UnitProject, cache: dict[Path, Document])
                 ]
             }
         )
-    created = project.project.parent / ADOPTED
-    laid_out = lay_out(
-        f'{{"units": [{", ".join(listing)}]}}',
-        one_line=False,
-        indent="",
-        unit=DEFAULT_INDENT_UNIT,
-        newline="\n",
-    )
-    whole = f"{laid_out}\n"
-    includes = read(project.project, cache).value_at("project.includes") or []
-    included = Operation("insert", f"project.includes[{len(includes)}]", _raw(ADOPTED))
-    edits = (
-        PlannedEdit(created, (Operation("set", "", whole),), creates=True),
-        PlannedEdit(project.project, (included,)),
-    )
+    edits = created_beside(project.project, ADOPTED, f'{{"units": [{", ".join(listing)}]}}', cache)
     return UnitPlan(tuple(sorted(edits, key=lambda edit: edit.path.as_posix())))
 
 

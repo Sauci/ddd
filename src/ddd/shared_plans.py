@@ -33,11 +33,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Literal
 
-from ddd.editing import DEFAULT_INDENT_UNIT, Operation, lay_out
+from ddd.editing import Operation
 from ddd.loading import included_files, resolve_path
 from ddd.lsp.navigation import Index, Site, rename_sites
 from ddd.lsp.ranges import Document, read
-from ddd.lsp.units import PlannedEdit
+from ddd.lsp.units import PlannedEdit, appended_at, created_beside
 from ddd.pointers import parent_pointer
 from ddd.project_shared import CONSTANTS, Vocabulary
 
@@ -316,7 +316,7 @@ def add_entry(
         _judged(vocabulary, key, raw, name, file)
         _untaken(vocabulary, built, None, key, raw, cache)
     listed = read(file, cache).value_at(vocabulary.containers[0])
-    position = _appended_at(listed)
+    position = appended_at(listed)
     operation = Operation(
         "insert", f"{vocabulary.containers[0]}[{position}]", _entry_text(vocabulary, name, raws)
     )
@@ -580,43 +580,9 @@ def _created(
     for key, raw in raws.items():
         _settable(vocabulary, key, created)
         _judged(vocabulary, key, raw, name, created)
-    laid_out = lay_out(
-        f'{{"{vocabulary.containers[0]}": [{_entry_text(vocabulary, name, raws)}]}}',
-        one_line=False,
-        indent="",
-        unit=DEFAULT_INDENT_UNIT,
-        newline="\n",
-    )
-    includes = read(project.project, cache).value_at("project.includes")
-    position = _appended_at(includes)
-    edits = (
-        PlannedEdit(created, (Operation("set", "", f"{laid_out}\n"),), creates=True),
-        PlannedEdit(
-            project.project,
-            (Operation("insert", f"project.includes[{position}]", _raw(vocabulary.filename)),),
-        ),
-    )
+    text = f'{{"{vocabulary.containers[0]}": [{_entry_text(vocabulary, name, raws)}]}}'
+    edits = created_beside(project.project, vocabulary.filename, text, cache)
     return SharedPlan(tuple(sorted(edits, key=lambda edit: edit.path.as_posix())))
-
-
-def _appended_at(listed: object) -> int:
-    """Where a new entry lands: at the end of a list read off disk, or at the front of a value
-    that is not a list at all.
-
-    A project whose ``includes`` is not a list, or a vocabulary file whose own list is not one,
-    is a shape the loader itself refuses - but a plan is built from the raw document, read
-    before anything validates it, so a length taken unconditionally would raise while building
-    the plan rather than let the caller reach the refusal the next ``ddd check`` already gives.
-
-    A function rather than ``len(listed) if isinstance(listed, list) else 0`` at each call site:
-    a conditional expression registers no branch at all with coverage.py, so the arm nobody
-    tests could hide behind a green 100 % run, and the assignment ``if``/``else`` ruff would
-    accept in its place trips ``SIM108``, which asks for that same ternary right back. An early
-    return answers to both.
-    """
-    if isinstance(listed, list):
-        return len(listed)
-    return 0
 
 
 def _entry_text(vocabulary: Vocabulary, name: str, raws: Mapping[str, str]) -> str:

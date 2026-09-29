@@ -30,7 +30,7 @@ from conftest import (
     write_tree,
 )
 from ddd.diagnostics import DiagnosticBag
-from ddd.editing import edit_text
+from ddd.editing import Operation, edit_text
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
 from ddd.lsp.ranges import Document
@@ -41,6 +41,7 @@ from ddd.lsp.units import (
     UnitRefusalError,
     add_unit,
     adopt_units,
+    created_beside,
     describe_unit,
     remove_unit,
     rename_unit,
@@ -674,3 +675,24 @@ def test_a_plans_edits_are_ordered_by_the_posix_spelling_of_their_path(tmp_path:
     idx, where = opened(tmp_path, files)
     plan = rename_unit(idx, where, "RPM", "1/min", {})
     assert [edit.path.name for edit in plan.edits] == ["Types.ddd.json", "sensors.ddd.json"]
+
+
+class TestCreatedBeside:
+    def test_the_file_is_laid_out_and_appended_to_includes(self, tmp_path: Path) -> None:
+        project = tmp_path / "p.ddd.json"
+        project.write_text(json.dumps({"project": {"name": "P", "includes": ["a.ddd.json"]}}))
+        made, included = created_beside(project, "u.ddd.json", '{"units": []}', {})
+        assert (made.path, made.creates) == (tmp_path / "u.ddd.json", True)
+        assert made.operations == (Operation("set", "", '{\n  "units": []\n}\n'),)
+        assert included.path == project
+        assert included.operations == (Operation("insert", "project.includes[1]", '"u.ddd.json"'),)
+
+    def test_an_includes_that_is_not_a_list_takes_the_entry_at_its_front(
+        self, tmp_path: Path
+    ) -> None:
+        """The case the two copies disagreed on: `len(includes or [])` answered the length of a
+        dict, where `_appended_at` answers the front."""
+        project = tmp_path / "p.ddd.json"
+        project.write_text(json.dumps({"project": {"name": "P", "includes": {"x": 1}}}))
+        _, included = created_beside(project, "u.ddd.json", '{"units": []}', {})
+        assert included.operations[0].pointer == "project.includes[0]"

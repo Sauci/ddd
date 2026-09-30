@@ -137,6 +137,17 @@ class TestLayering:
         neither has to take the other with it."""
         assert imported_modules(SOURCE / "elf.py") == set()
 
+    def test_the_toolbox_reaches_no_backend_and_no_command_line(self) -> None:
+        """A tool turns one thing into another; where its output goes is cli.py's alone, and
+        what DDD generates is none of its business."""
+        for path in SOURCE.joinpath("toolbox").rglob("*.py"):
+            leaked = sorted(
+                module
+                for module in imported_modules(path)
+                if module.startswith(("ddd.backends", "ddd.cli"))
+            )
+            assert not leaked, f"{path.name} reaches into {leaked}"
+
 
 class TestContract:
     def test_the_dictionary_round_trips_through_json(self, tree: Path) -> None:

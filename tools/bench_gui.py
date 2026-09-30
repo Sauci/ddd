@@ -36,7 +36,7 @@ from typing import Any, Final
 
 from ddd.editing import fingerprint
 from ddd.gui.api import Api, Reply
-from ddd.gui.session import Revision, Session
+from ddd.gui.session import Session
 from ddd.variables import Declared, declarations_of
 
 NAMES: Final[tuple[str, ...]] = (
@@ -78,17 +78,18 @@ class Measure:
 def measure(project: Path) -> list[Measure]:
     """Every measure of §4's server half, taken once over a fresh session opened on ``project``,
     left as it was found: the one edit this makes is undone before this returns, so a second run
-    measures the same project."""
+    measures the same project.
+
+    Refused with a ``RuntimeError`` naming the precondition, before any measure but ``open`` is
+    taken: ``project`` needs at least one component file (:func:`_analysis` has one to touch), at
+    least two distinct units stated somewhere in it (the edit has another to move to), and its
+    middle variable's first declaration must state its own unit rather than leave it to be filled
+    some other way (there is otherwise nothing for the edit to read as "current"). Every project
+    ``tools/generate_project.py`` makes satisfies all three.
+    """
     session = Session(project.parent)
     api = Api(session, project, wait_seconds=0.0)
     taken = [_opening(session, project)]
-
-    entries: list[dict[str, Any]] = []
-    for name in _ENDPOINTS:
-        elapsed, reply, size = _get(api, f"/api/{name}")
-        taken.append(Measure(name, elapsed, size))
-        if name == "files":
-            entries = reply.body["entries"]
 
     revision = session.revision
     if revision is None:
@@ -97,12 +98,38 @@ def measure(project: Path) -> list[Measure]:
     if built is None:
         raise RuntimeError(f"{project} did not analyse enough to be measured")
 
+    components = sorted(file.path for file in revision.files if file.kind == "component")
+    if not components:
+        raise RuntimeError(f"{project} has no component file for the benchmark to touch")
+
+    units = sorted(built.units)
+    if len(units) < 2:
+        raise RuntimeError(
+            f"{project} states {len(units)} unit(s); the benchmark needs at least two, so the "
+            "edit has another one to move the declaration to"
+        )
+
     variables = sorted(built.declarations)
     variable = variables[len(variables) // 2]
+    declared = declarations_of(built, variable, {})
+    if not declared:
+        raise RuntimeError(f"{variable!r} has no declaration left of {project} to edit")
+    if "unit" not in declared[0].stated:
+        raise RuntimeError(
+            f"{variable!r}'s first declaration in {project} does not state its own unit, "
+            "which the benchmark needs to choose the edit's own change"
+        )
+
+    entries: list[dict[str, Any]] = []
+    for name in _ENDPOINTS:
+        elapsed, reply, size = _get(api, f"/api/{name}")
+        taken.append(Measure(name, elapsed, size))
+        if name == "files":
+            entries = reply.body["entries"]
+
     elapsed, _, size = _get(api, "/api/variable", {"name": [variable]})
     taken.append(Measure("variable", elapsed, size))
 
-    units = sorted(built.units)
     elapsed, _, size = _get(api, "/api/unit", {"name": [units[0]]})
     taken.append(Measure("unit", elapsed, size))
 
@@ -114,11 +141,8 @@ def measure(project: Path) -> list[Measure]:
     elapsed, _, size = _get(api, "/api/files-plan", {"action": ["remove"], "path": [removed]})
     taken.append(Measure("remove judged", elapsed, size))
 
-    taken.append(_analysis(session, revision))
+    taken.append(_analysis(session, components[0]))
 
-    declared = declarations_of(built, variable, {})
-    if not declared:
-        raise RuntimeError(f"{variable!r} has no declaration left of {project} to edit")
     answered, analysed = _edit(api, declared[0], units, variable)
     taken.append(answered)
     taken.append(analysed)
@@ -133,11 +157,10 @@ def _opening(session: Session, project: Path) -> Measure:
     return Measure("open", _elapsed(start), None)
 
 
-def _analysis(session: Session, revision: Revision) -> Measure:
-    """One component file's modification time moved forward, then :meth:`Session.poll` until it
-    has analysed."""
-    components = sorted(file.path for file in revision.files if file.kind == "component")
-    target = components[0]
+def _analysis(session: Session, target: Path) -> Measure:
+    """``target``'s modification time moved forward, then :meth:`Session.poll` until it has
+    analysed. ``target`` is the first, sorted, of the project's own component files - chosen by
+    :func:`measure`, which already confirmed there is at least one."""
     forward = target.stat().st_mtime + _FORWARD_SECONDS
     os.utime(target, (forward, forward))
     start = time.perf_counter()

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import struct
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1024,6 +1025,24 @@ class TestRefusals:
             open_image(path)
         assert str(refused.value) == (
             f"'{path.as_posix()}' is an ELF file of type ET_CORE, not a linked image"
+        )
+
+    def test_an_image_whose_section_runs_past_the_end_of_its_file_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        data = bytearray((FIXTURES / "armv7m.elf").read_bytes())
+        with (FIXTURES / "armv7m.elf").open("rb") as stream:
+            elf = ELFFile(stream)
+            index = elf.get_section_index(".data")
+            entry = elf.header["e_shoff"] + index * elf.header["e_shentsize"]
+        struct.pack_into("<I", data, entry + 16, len(data) - 2)
+        path = tmp_path / "overrun.elf"
+        path.write_bytes(bytes(data))
+        with pytest.raises(ElfReadError) as refused:
+            open_image(path)
+        assert str(refused.value) == (
+            f"'{path.as_posix()}' is not an ELF image this tool can read: its section "
+            f"'.data' runs past the end of the file"
         )
 
     def test_a_unit_without_a_line_program_has_no_file_table(self) -> None:

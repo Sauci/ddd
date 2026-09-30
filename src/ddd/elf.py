@@ -380,6 +380,14 @@ def _image(path: Path, contents: bytes) -> Image:
     if not elf.has_dwarf_info(strict=True):
         msg = f"'{shown}' carries no DWARF debug information: build it with -g"
         raise ElfReadError(msg)
+    sections = _sections(elf)
+    for section in sections:
+        if section.offset is not None and section.offset + section.size > len(contents):
+            msg = (
+                f"'{shown}' is not an ELF image this tool can read: its section "
+                f"'{section.name}' runs past the end of the file"
+            )
+            raise ElfReadError(msg)
     dwarf = elf.get_dwarf_info(relocate_dwarf_sections=False, follow_links=False)
     units = [_PyelftoolsUnit(cu, dwarf) for cu in dwarf.iter_CUs()]
     variables = read_variables(
@@ -389,7 +397,7 @@ def _image(path: Path, contents: bytes) -> Image:
         path=path,
         byte_order="little" if elf.little_endian else "big",
         variables=variables,
-        sections=_sections(elf),
+        sections=sections,
         symbols=_symbols(elf, "STT_OBJECT"),
         contents=contents,
     )

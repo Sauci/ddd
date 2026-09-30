@@ -82,11 +82,24 @@ def new_errors(before: Sequence[Pair], after: Sequence[Pair]) -> tuple[Pair, ...
     is hidden only where an error of its check and severity leaves the same place - with the
     same message, where the place is a whole file or none - or where it has the shape of a
     mirror (see :func:`_as_reported`). A check filing every finding at one place, as a plugin's
-    may, hides there up to as many new errors as leave. ddd's own checks reach the first way
-    too, measured: where a build lowers ``duplicate-component`` or ``duplicate-type``, removing
-    the first declaration lets in the one the loader dropped, and a reader's disagreement at its
-    declaration changes what it is about while its place stays. Of ddd's own checks under the
-    default severities, no case of it was found.
+    may, hides there up to as many new errors as leave. ddd's own ``definition-mismatch`` reaches
+    the first way under the default severities, measured. A removal can take out the declaration
+    a comparison is made against - the owner, where several components write a variable, or the
+    first declaration read, where none does - and a declaration that disagreed with it on one
+    field, and disagrees on another with the one compared against next, keeps its check and its
+    place, so the count there does not move: ``W1`` writes ``X`` as ``uint16`` in ``rpm`` and
+    owns it, its name sorting first, ``W2`` writes it as ``uint32`` in ``Nm``, and ``R`` reads
+    it as ``uint32`` in ``rpm``; removing ``W1`` turns ``R``'s disagreement with ``W1`` over its
+    datatype into one with ``W2`` over its unit, and is allowed. A build lowering
+    ``duplicate-component`` or ``duplicate-type`` reaches it too, measured: removing the first
+    declaration lets in the one the loader dropped, and a reader's disagreement at its
+    declaration changes what it is about while its place stays. So does a build raising
+    ``storage-mismatch`` to an error, measured: that check compares the same two declarations,
+    and with the owner gone a reader's storage disagreement moves from one field to another at
+    its place. What holds is a bound: a change bringing a new error is answered with none only
+    where the project has an error of that error's check and severity now - at its place, or,
+    for one with a mirror's shape, at the place of the finding it copies - so a project with no
+    errors is never made to fail this way.
 
     What is reported is never a mirror :func:`_as_reported` tells, and never, word for word, an
     error ``before`` reports: a revision never lists one identity twice,

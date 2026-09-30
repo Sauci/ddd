@@ -728,8 +728,8 @@ class TestAFindingMovingByOrder:
 
 class TestAClashARemovalBrings:
     """A removal can bring in an error the project does not have while an error of its check
-    leaves from another place. Counted each at its own place, the one does not hide the other:
-    each removal here is refused."""
+    leaves. Counted each at its own place, the one hides the other only where both are at one
+    place: each removal here is refused but the last, which pins that cost."""
 
     def test_a_relaxed_duplicate_let_in_is_refused_for_the_conflict_it_brings(
         self, tmp_path: Path
@@ -888,6 +888,24 @@ class TestAClashARemovalBrings:
                 "(datatype: uint8 != uint16)",
             ),
         ]
+
+    def test_the_owner_gone_lets_through_a_readers_disagreement_over_another_field(
+        self, tmp_path: Path
+    ) -> None:
+        """The cost of counting per place, under the default severities: `W1` and `W2` both
+        write `X`, `W1` owning it, its name sorting first, and `R` reads it with `W2`'s datatype
+        and `W1`'s unit - a `definition-mismatch` with `W1` over its datatype, on `R`. Removing
+        `W1` ends the writers' conflict and makes `W2` the owner, and `R`'s disagreement becomes
+        one with `W2` over its unit: an error the project did not have, at the place the one it
+        had leaves, so counted as that one and let through. The answer asserted is the one
+        given."""
+        files = {
+            "p.ddd.json": project("P", "w1.ddd.json", "w2.ddd.json", "r.ddd.json"),
+            "w1.ddd.json": writing("W1", "X", datatype="uint16", unit="rpm"),
+            "w2.ddd.json": writing("W2", "X", datatype="uint32", unit="Nm"),
+            "r.ddd.json": component("R", declare("input", "X", "uint32", unit="rpm")),
+        }
+        assert judged(tmp_path, files, "w1.ddd.json") == []
 
 
 SAYS_PULLED_IN = (

@@ -1996,6 +1996,35 @@ class TestRemove:
             "matches it",
         )
 
+    def test_a_key_ending_in_a_link_to_a_patterns_file_is_refused_naming_the_link(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The pattern's refusal names the key as it was sent too. Only a link to a file ends in
+        a file a pattern brings in, and making one takes a privilege an ordinary Windows account
+        does not hold - a junction, the portable link, leads to a directory - so the key is made
+        to resolve as it would through one: `alias.ddd.json` to `sensors/b.ddd.json`."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "sensors/*.ddd.json"),
+                "a.ddd.json": component("A"),
+                "sensors/b.ddd.json": component("B"),
+            },
+        )
+        alias = tmp_path / "alias.ddd.json"
+        target = (tmp_path / "sensors" / "b.ddd.json").resolve()
+        resolving = file_plans.resolve_path
+        monkeypatch.setattr(
+            file_plans, "resolve_path", lambda path: target if path == alias else resolving(path)
+        )
+        with pytest.raises(FileRefusalError) as refused:
+            remove_plan(tmp_path / "p.ddd.json", alias, {})
+        assert (refused.value.code, refused.value.message) == (
+            "invalid",
+            "alias.ddd.json has no entry of its own: the pattern 'sensors/*.ddd.json' brings it "
+            "in, and only the whole pattern can be removed",
+        )
+
     def test_a_literal_entry_a_pattern_also_matches_is_taken_out_naming_the_pattern(
         self, tmp_path: Path
     ) -> None:

@@ -157,8 +157,8 @@ they judge an image, not a description.
 | `elf-section` | warning | once per section name the output states (section 4.7) |
 | `elf-name-synthesized` | warning | an anonymous structure or enum given a name (section 4.4) |
 | `elf-types-omitted` | warning | the array output holds a structured object (section 3.2) |
-| `elf-boolean-bitfield` | note | a `_Bool` bitfield described as a `uint8` one (section 4.4) |
-| `elf-not-inferred` | note | once per run that prints an entry: what the output never states (section 4.8) |
+| `elf-boolean-bitfield` | info | a `_Bool` bitfield described as a `uint8` one (section 4.4) |
+| `elf-not-inferred` | info | once per run that prints an entry: what the output never states (section 4.8) |
 
 DDD's own findings on the output (section 5.2) are reported with them, under DDD's own
 identifiers such as `init-invalid` or `schema`, and located at the declaration of the variable
@@ -166,7 +166,7 @@ they concern.
 
 A variable with an error is not printed. The exit code is the one every command has:
 
-- `0`: every argument was described. Warnings and notes do not change the code.
+- `0`: every argument was described. Warnings and infos do not change the code.
 - `1`: at least one error. Nothing is written, neither to standard output nor to `-o`, unless
   `--force` asks for the entries that were described. The code stays `1` either way, so that a
   script reads the verdict from the code rather than from the presence of the output.
@@ -223,7 +223,8 @@ the image does not know (`SPEC.md` 3.7).
 The conversion is `{"kind": "identity"}`, except for an enum, which becomes an `enum`
 conversion:
 
-- `name` is the nearest typedef name, else the tag, else a synthesised name (section 4.4).
+- `name` is the typedef closest to the enum, else the tag, else a synthesised name (section
+  4.4).
 - `enumerators` lists them in declaration order, in the object spelling `{"NAME": value}`.
 - The datatype is the enum's `DW_AT_byte_size`. It is signed when the enum's underlying type
   (`DW_AT_type`) is signed, or, where DWARF states no underlying type, when an enumerator is
@@ -253,8 +254,11 @@ A member that is a pointer, a union, an anonymous structure or union, a flexible
 zero length array, or of any other unsupported type, is `elf-type-unsupported`, naming the path
 to it (`Inlet_t.status.raw`). Every variable reaching the structure is then refused.
 
-**Naming.** The name is the nearest typedef name (`Inlet_t`), else the tag (`struct Inlet_s`
-gives `Inlet_s`), else a synthesised one. A type a variable reaches directly, through arrays if
+**Naming.** The name is the typedef closest to the structure (`Inlet_t`), else the tag
+(`struct Inlet_s` gives `Inlet_s`), else a synthesised one. Closest to the structure rather
+than to the variable, so that a variable declared through a second alias still names the
+structure's one entry; a typedef naming an array of the structure names the array, not the
+structure, and is passed over. A type a variable reaches directly, through arrays if
 any, is named `<Variable>_t`; a type a member reaches is named `<Structure>_<member>_t`.
 `elf-name-synthesized` states the name given. A synthesised name must be free: one that equals
 another type's name is `elf-type-conflict`. Enums are named by the same rule.
@@ -298,9 +302,9 @@ offset 4 without any packing, and AVR aligns everything to one byte. The user gu
 
 ### 4.6 Initial values
 
-- **A variable in a section without contents** (`SHT_NOBITS`, such as `.bss`) states `init`
-  `null`. That is faithful: its source had no initialiser, or a zero one, and C zeroes static
-  storage either way. A `.noinit` section, also without contents but not zeroed at startup,
+- **A variable in a section without contents** (`SHT_NOBITS`, such as `.bss`) states no
+  `init`, whose default, `null`, is DDD's implicit zero initialisation. That is faithful: its
+  source had no initialiser, or a zero one, and C zeroes static storage either way. A `.noinit` section, also without contents but not zeroed at startup,
   differs by placement only, and `section` carries placement (section 4.7).
 - **Any other variable** has its bytes read at its address in its section's contents, and
   decoded in the image's byte order according to its datatype:
@@ -369,14 +373,20 @@ that the planned address-map reading can use it without the toolbox.
 ```python
 def open_image(path: Path) -> Image: ...  # raises ElfReadError, with its reason
 
+@dataclass(frozen=True, slots=True)
 class Image:
     path: Path
     byte_order: Literal["little", "big"]
-    def variables(self) -> Sequence[Variable]: ...  # candidates, and names without storage
-    def symbol_names(self) -> frozenset[str]: ...  # the symbol table's objects, for the hint
+    variables: tuple[Variable, ...]  # candidates, and names without storage
+    sections: tuple[Section, ...]  # the allocated ones, thread-local ones left out
+    symbols: frozenset[str]  # the symbol table's objects, for the missing-symbol hint
+    contents: bytes
     def section_of(self, address: int) -> Section | None: ...
     def read(self, address: int, size: int) -> bytes | None: ...  # None without contents
 ```
+
+`Image` is plain data that `open_image` fills, so a test builds one by hand around a
+hand-built C model.
 
 - **A `Variable`** has its name, its unit, where it is declared (file and line, when DWARF
   says), its storage (an address, or why it has none: declared only, a constant,
@@ -403,9 +413,12 @@ class Image:
   - enumerator values in any form
   - strings in `.debug_str` or through `.debug_str_offsets`
   - compressed debug sections
-- **It reads DIEs through a narrow protocol** (tag, attributes, children, offset) that
-  pyelftools' `DIE` satisfies. A test double can then reach the branches no C compiler
-  produces, such as a non-zero `DW_AT_lower_bound` (section 7).
+- **It reads DIEs through two narrow protocols.** `Entry` (tag, attributes, children, offset)
+  is satisfied by pyelftools' `DIE`. `Unit` (its name, its top entry, expression parsing,
+  `.debug_addr` and the file table) is satisfied by a thin adapter over a pyelftools
+  compilation unit, whose file-table arithmetic is a pure function of plain data. A test double
+  can then reach the branches no C compiler produces, such as a non-zero `DW_AT_lower_bound` or
+  a location list (section 7).
 
 ### 5.2 The translator: `src/ddd/toolbox/from_elf.py`
 
@@ -427,16 +440,24 @@ dicts in the key order the examples use: `name`, `kind`, `datatype` or `typename
 
 **DDD checks what the translator built.** The translator writes the component, with its
 `types`, into a temporary directory, whichever output was asked for, and runs DDD's loader and
-analysis on it under the standalone policy, exactly what `ddd check --standalone` runs. For the
-array output, the component is named `FromElf`, a name that never reaches the output. Every
-finding points into that file:
+analysis on it under the standalone policy, exactly what `ddd check --standalone` runs, with
+one addition: `missing-id=ignore`. Every producing entry would otherwise earn DDD's
+`missing-id`, since the tool writes no `id` on purpose and `elf-not-inferred` already says so.
+For the array output, the component is named `FromElf`, a name that never reaches the output.
+Every finding points into that file:
 
-- A finding under `/component/interface/<i>` concerns the i-th variable.
-- A finding under `/component/types/<j>` concerns that type and every variable reaching it.
+- A finding under `component.interface[<i>]` concerns the i-th variable.
+- A finding under `component.types[<j>]` concerns that type and every variable reaching it.
+
+These are DDD's own pointer spellings, dotted, as `ddd check --format json` prints them.
 
 The findings are reported, located at the variables' declarations. Variables with an error are
-removed, and the check runs again on what remains, until it reports no error. A finding that
-points at neither is a fault of the tool: it is reported as it is, and the run exits `1`.
+removed, and the check runs again on what remains, until it reports no error. Running again is
+not optional: a load error, such as `schema`, stops DDD before its analysis, so an analysis
+error such as `init-invalid` only appears once the load errors are gone (measured on
+2026-09-30). The errors of every pass are reported; the warnings and infos of the last pass
+only, so that nothing is reported twice. A finding that points at neither is a fault of the
+tool: it is reported as it is, and the run exits `1`.
 
 DDD's rules are therefore stated once, in DDD. The translator neither repeats nor predicts
 them. The element and leaf caps, the nesting depth, an enumerator wider than a C `int` and a
@@ -477,19 +498,23 @@ changes.
 
 ### 6.1 The source
 
-`tests/fixtures/elf/src/` holds three units and a shared header:
+`tests/fixtures/elf/src/` holds four units and a shared header:
 
 - `main.c` holds a variable for every case of section 4, each named for its case. It also holds
   the entry symbol and the probes of section 6.4.
 - `unit_a.c` and `unit_b.c` hold a `static` of the same name, a structure from `shared.h` that
   they share, and a structure whose tag is the same in both and whose members are not.
+- `nodebug.c` is compiled without `-g`, so that its variable is in the symbol table and in no
+  DWARF: the case of `elf-symbol-missing`'s hint.
 
 Values are chosen so that a byte order mistake cannot pass: `0x1234`, `0x12345678`,
 `0x0102030405060708`, `-2` and `1.5f`. `-O2` keeps an unused `static` only when it is marked
-`__attribute__((used))`; one `static` is deliberately left unmarked, so that its storage is
-removed and `elf-no-storage` has a real case. A case that a toolchain cannot build, such as
-thread-local storage on a bare-metal target, is compiled out of that row by a macro, and the
-manifest says which cases each row has.
+`__attribute__((used))`; one `static const` is deliberately left unmarked and folded into the
+code, so that gcc replaces its storage by a `DW_AT_const_value` and `elf-no-storage` has a real
+case (measured with gcc 15 on 2026-09-30; built on the gcc rows only, since clang may drop the
+entry). A case that a toolchain cannot build, such as thread-local storage on a bare-metal
+target, is compiled out of that row by a macro, and the manifest says which cases each row
+has.
 
 ### 6.2 The image and the build
 
@@ -508,6 +533,11 @@ manifest says which cases each row has.
   - `main.o`, a relocatable object with DWARF, so that `.o` is refused for being relocatable
     rather than for lacking DWARF
   - `manifest.json`
+- **And `examples/firmware/firmware.elf`**, a copy of the `armv7m` row. The suite re-runs every
+  `$ ddd ...` transcript of the documentation in a scratch copy of `examples/`
+  (`tests/test_transcripts.py`), and a page showing commands must run at least one of them, so
+  the user guide's examples need an image there. A test holds the copy byte for byte to the
+  row.
 
 ```bash
 docker compose run --rm elf-fixtures
@@ -517,10 +547,10 @@ docker compose run --rm elf-fixtures
 
 | row | compiler | byte order | width | DWARF | covers as well |
 | --- | --- | --- | --- | --- | --- |
-| `x86_64` | gcc | little | 64 | 5 | the host's default |
+| `x86_64` | gcc, `-static-pie` | little | 64 | 5 | the host's default; an `ET_DYN` image |
 | `i686` | gcc | little | 32 | 4 | 8 byte types aligned to 4 inside a structure |
 | `armv7m` | arm-none-eabi-gcc | little | 32 | 4 | short enums, unsigned `char`: the typical microcontroller |
-| `armv7m-dwarf2` | arm-none-eabi-gcc | little | 32 | 2 | old toolchains: `DW_AT_bit_offset`, offsets as expressions |
+| `armv7m-dwarf2` | arm-none-eabi-gcc, `-gstrict-dwarf` | little | 32 | 2 | old toolchains: `DW_AT_bit_offset`, offsets as expressions, enums without an underlying type |
 | `armeb` | arm-none-eabi-gcc `-mbig-endian`, Cortex-R | big | 32 | 4 | |
 | `aarch64` | gcc | little | 64 | 5 | |
 | `powerpc` | gcc | big | 32 | 3 | the MPC5xxx family of automotive ECUs; big endian `DW_AT_bit_offset` |
@@ -528,8 +558,9 @@ docker compose run --rm elf-fixtures
 | `riscv32` | clang, lld | little | 32 | 5 | a second DWARF producer; `DW_OP_addrx` |
 | `aarch64_be` | clang, lld | big | 64 | 4 | clang in big endian |
 
-When a row's gcc is not packaged by the distribution, that row is built by clang and lld for
-the same target. The manifest records which compiler built it.
+Debian trixie packages every row's compiler (checked on 2026-09-30: cross gcc 14.2 for i686,
+arm-none-eabi, aarch64, powerpc, s390x and x86-64; clang, lld and llvm 19), so no row needs a
+substitute. The manifest records which compiler built each.
 
 ### 6.4 The manifest and the oracle
 
@@ -538,13 +569,20 @@ The oracle is the compiler and its binutils, never the reader under test.
 
 - **For each row:** the compiler and its version, the target, the flags and the cases built.
 - **The target's traits, as the toolchain itself states them:**
-  - byte order, `char` signedness and `sizeof(long)`, from the predefined macros
-    (`__BYTE_ORDER__`, `__CHAR_UNSIGNED__`, `__SIZEOF_LONG__`)
-  - enum size and the alignment of a `uint64_t` inside a structure, from the sizes that the
-    row's `nm -S` reports for probe variables
+  - byte order, `char` signedness, `sizeof(long)` and `sizeof(long double)`, from the
+    predefined macros (`__BYTE_ORDER__`, `__CHAR_UNSIGNED__`, `__SIZEOF_LONG__`,
+    `__SIZEOF_LONG_DOUBLE__`)
+  - enum size and the alignment of a `uint64_t` inside a structure, from the sizes GNU
+    `readelf -s` reports for probe variables
+  - whether the DWARF carries `DW_AT_alignment` at all, from GNU `readelf --debug-dump=info`
 - **For each fixture variable:** its section, whether that section has contents, and its size,
-  from the row's `objdump`.
-- **SHA-256 hashes** of the fixture source, the Dockerfile and the build script.
+  from GNU `readelf -s` and `readelf -S`.
+- **SHA-256 hashes** of the fixture source, the Dockerfile and the build script, each hashed
+  with its line endings normalised, so that a Windows checkout converting them does not read as
+  drift.
+
+GNU `readelf` is the one tool for every row: it reads the headers, symbols and DWARF of any
+target's ELF, where `objdump` and `nm` are built for one target.
 
 Target-independent expectations come from the values the source states: `Cal_Gain` is a
 `uint16` parameter initialised to `300` on every row. Target-dependent expectations come from
@@ -597,7 +635,8 @@ double and the hand-built models together reach every branch, and none is exclud
   - the `elf` extra beside the two runtime dependencies
 - **`docs/toolbox.rst`**, in the index, is the user guide:
   - installing the extra, and the `-g` requirement
-  - one worked example of each output
+  - one worked example of each output, as transcripts over `examples/firmware/firmware.elf`
+    that the suite re-runs
   - the table of what is and is not inferred
   - the layout caveat of section 4.5
   - that a structure's `types` entry belongs once in a project: in a shared types file when two
@@ -651,12 +690,43 @@ What each source settles, so that a later reader knows which claims rest on what
   (`needs_every_component` in the registry).
 - **PyPI, 2026-09-30:** pyelftools 0.33 is the newest release, and its installed package
   carries `py.typed` and no `.pyi` files.
+- **gcc 15.2.0 at `-O2`, DWARF 5, 4 and 2, linked `-nostdlib`, read through pyelftools 0.33**
+  on 2026-09-30:
+  - An `extern` declaration completed by a definition gives two entries: the declaration
+    carries the name, the type and `DW_AT_declaration`; the definition carries
+    `DW_AT_specification`, its own `DW_AT_decl_line` and the location.
+  - `const uint8_t a[4]` qualifies both the array and its element.
+  - An enum carries `DW_AT_type` and `DW_AT_encoding` at DWARF 5 and at non-strict DWARF 2; a
+    negative enumerator is `DW_FORM_sdata`, a positive one `DW_FORM_data1`.
+  - DWARF 5 states bitfields with `DW_AT_data_bit_offset`. DWARF 4 and 2 state
+    `DW_AT_byte_size`, `DW_AT_bit_offset` counted from the storage unit's most significant
+    end, and `DW_AT_data_member_location`, a constant at 4 and `DW_OP_plus_uconst` at 2.
+    `8 * location + 8 * byte_size - bit_offset - bit_size` gives DWARF 5's offsets exactly on
+    little endian.
+  - A thread-local variable's location ends in `DW_OP_form_tls_address` at DWARF 5 and in
+    `DW_OP_GNU_push_tls_address` at 4 and 2.
+  - An unused `static const` has `DW_AT_const_value` and no location.
+  - The DWARF 5 file table counts from 0, with directory 0 the compilation directory; 4 and 2
+    count from 1, with directory 0 the unit's `DW_AT_comp_dir`.
+  - `-gz=zlib` writes `SHF_COMPRESSED` sections still named `.debug_*`, which pyelftools
+    decompresses transparently.
+  - `-fPIE -static-pie -nostdlib` gives an `ET_DYN` image pyelftools reads like the others.
+- **pyelftools 0.33 on damaged input**: an empty, a three byte and a garbage file raise
+  `ELFError`; a truncated one raises `ELFParseError`, an `ELFError`, at its first section read.
+  `DWARFInfo.get_addr(cu, index)` resolves `DW_OP_addrx`, and `strx` forms arrive translated.
+- **Debian trixie, 2026-09-30:** `debian:trixie-slim` at
+  `sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a` packages every
+  row's compiler (section 6.3).
+- **`ddd check --standalone --format json`** on a component with one bad entry of each kind,
+  on 2026-09-30: pointers are dotted (`component.interface[4].definition`,
+  `component.types[0].members[0].conversion`); a `schema` error stops the run before the
+  analysis; every producing entry without an `id` earns `missing-id` as an info.
 - **Baseline:** the worktree at `06d8737` passes the suite, 4714 tests at 100% coverage.
 
-Not yet verified, and settled by the first increment:
-- clang's DWARF for the same bitfield, packing and alignment cases
-- pyelftools' reading of `DW_OP_addrx`, of `.debug_str_offsets` and of compressed sections
-- which cross gcc packages the pinned Debian release provides
+Not yet verified, and settled by the fixture build (the plan's first task):
+- clang's DWARF for the same bitfield and alignment cases
+- that every row links `-nostdlib` with its thread-local case, and gcc 14 folds the
+  `static const` the way gcc 15 does
 
 ## 11 Deferred
 

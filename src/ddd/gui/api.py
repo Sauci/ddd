@@ -35,7 +35,7 @@ from ddd.declaration_plans import (
     remove_declaration,
     scopes_for,
 )
-from ddd.diagnostics import CHECKS
+from ddd.diagnostics import CHECKS, Location
 from ddd.editing import (
     INVALID,
     STALE,
@@ -48,11 +48,22 @@ from ddd.editing import (
     parse_raw,
     unchanged,
 )
+from ddd.file_plans import (
+    CREATABLE,
+    FileRefusalError,
+    Pair,
+    add_plan,
+    create_plan,
+    included_entries,
+    new_errors,
+    remove_plan,
+)
 from ddd.finding_fixes import fixes_for
 from ddd.finding_routes import Route, route_of
 from ddd.graph import Module, graph_of
 from ddd.gui import contract
 from ddd.gui.compare import BaselineCache, BaselineRefusedError, compared
+from ddd.gui.session import KINDS as DESCRIPTION_KINDS
 from ddd.gui.session import (
     Filed,
     NoProjectError,
@@ -61,15 +72,20 @@ from ddd.gui.session import (
     Session,
     SourceFile,
     Undoable,
+    _read_json,
     _served,
     _source,
     find_projects,
+    findings_with,
+    kind_of,
 )
 from ddd.ir import DataDictionary
+from ddd.loading import resolve_path
 from ddd.lsp.edits import PROPAGATED_KEYS, settle
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import (
+    PlannedEdit,
     UnitPlan,
     UnitProject,
     UnitRefusalError,
@@ -208,6 +224,19 @@ vocabulary whose ``add`` says which key it is declaring, and a url reading ``?ev
 lets :func:`_declared` build the entry off the descriptor instead of off this route's memory of
 which key a vocabulary happens to require.
 """
+
+FILE_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
+    "create": ("kind", "name"),
+    "add": ("path",),
+    "remove": ("path",),
+}
+"""What each change of the project's files takes, beside the action itself: ``create`` the kind
+and the name of the new file, ``add`` a path relative to the description or absolute, as the
+reader typed it, and ``remove`` the key of a row of ``GET /api/files``.
+
+``create`` takes ``component`` as well, a new component's name, and may go without it: absent
+or empty, it reaches :func:`ddd.file_plans.create_plan` as ``None``, which refuses a component
+without a name in words of its own, and ignores it for every other kind."""
 
 DECLARATION_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
     "read": ("file", "name", "scope"),
@@ -885,6 +914,92 @@ class Api:
             ).model_dump(mode="json"),
         )
 
+    def _files(self, query: Query, body: bytes | None) -> Reply:
+        """The root's includes, each entry as the loader's own rule reads it, and what each
+        brings - the files a row joins ``State.files`` on, and the findings at the entry
+        itself, which a row naming nothing has no file to carry."""
+        revision = self._opened()
+        cache: dict[Path, Document] = {}
+        return Reply(
+            200,
+            contract.FilesReply(
+                revision=revision.number,
+                project=revision.project.as_posix(),
+                entries=[
+                    {
+                        "index": entry.index,
+                        "entry": entry.entry,
+                        "names": entry.names,
+                        "key": entry.key.as_posix(),
+                        "files": [file.as_posix() for file in entry.files],
+                        "findings": _at_entry(revision, entry.index),
+                    }
+                    for entry in included_entries(revision.project, cache)
+                ],
+                creatable=CREATABLE,
+            ).model_dump(mode="json"),
+        )
+
+    def _files_plan(self, query: Query, body: bytes | None) -> Reply:
+        """One change of the project's files - creating, adding or removing one - previewed and
+        never written, with the errors an add is counted to bring.
+
+        A parameter :data:`FILE_PLANS` names that is missing or empty is a bad request, and so
+        is a key to remove that is not absolute, as a row's never is: read against the server's
+        own working directory, a relative one named another file. Past that, each refusal is the
+        plan's own or :func:`_addition`'s and :func:`_removal`'s, in the order they ask them,
+        ``not-found`` answered 404 and every other 409; a judgement a file saved or come since the
+        revision would falsify is refused ``stale``.
+        """
+        revision = self._opened()
+        action = _single(query.get("action")) or ""
+        takes = FILE_PLANS.get(action)
+        if takes is None:
+            return _error(
+                400, "bad-request", f"files-plan takes ?action= one of {', '.join(FILE_PLANS)}"
+            )
+        given: dict[str, str] = {}
+        for part in takes:
+            value = _single(query.get(part))
+            if not value:
+                wanted = " and ".join(f"?{taken}=" for taken in takes)
+                return _error(400, "bad-request", f"{action} takes {wanted}")
+            given[part] = value
+        if action == "remove" and not Path(given["path"]).is_absolute():
+            return _error(
+                400,
+                "bad-request",
+                f"remove takes ?path= as a row's key, which is absolute, and '{given['path']}' "
+                "is not",
+            )
+        component = _single(query.get("component")) or None
+        cache: dict[Path, Document] = {}
+        try:
+            plan = _files_plan_of(action, revision, given, component, cache)
+        except FileRefusalError as refused:
+            status = 404 if refused.code == "not-found" else 409
+            return _error(status, refused.code, refused.message)
+        except EditError as refused:
+            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+        stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
+        try:
+            made = previewed(plan.edits, stamps)
+        except EditError as refused:
+            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+        return Reply(
+            200,
+            contract.FilesPlanReply(
+                revision=revision.number,
+                changes=_planned_changes(revision, made),
+                unjudged=plan.unjudged,
+                brings=[
+                    {"file": path.as_posix(), "check": found.check, "message": found.message}
+                    for path, found in plan.brings
+                ],
+                kept_by=plan.kept_by,
+            ).model_dump(mode="json"),
+        )
+
     def _constant_plan(self, query: Query, body: bytes | None) -> Reply:
         return self._shared_plan(CONSTANTS, CONSTANT_PLANS, _constant_plan_of, query)
 
@@ -1332,6 +1447,8 @@ _ROUTES: Final[dict[str, dict[str, Answer]]] = {
     "/api/section-plan": {"GET": Api._section_plan},
     "/api/raster": {"GET": Api._raster},
     "/api/raster-plan": {"GET": Api._raster_plan},
+    "/api/files": {"GET": Api._files},
+    "/api/files-plan": {"GET": Api._files_plan},
     "/api/declarable": {"GET": Api._declarable},
     "/api/declaration-plan": {"GET": Api._declaration_plan},
     "/api/values": {"GET": Api._values},
@@ -1434,6 +1551,54 @@ def _undeclared(revision: Revision, name: str) -> Reply:
             f"and {', '.join(changed)} changed since it was read",
         )
     return _error(404, "not-found", f"'{name}' is not declared in the open project")
+
+
+def _at_entry(revision: Revision, index: int) -> int:
+    """How many of the revision's findings, of every severity, are filed on the project
+    description at exactly ``project.includes[index]``.
+
+    Compared as a whole :class:`~ddd.diagnostics.Location`, the description's own path with the
+    entry's pointer, so that a sub-project's finding at its own entry of that index is not the
+    root's, and a finding placed nowhere - filed on the description, with no location - is no
+    entry's either."""
+    at = Location(revision.project, f"project.includes[{index}]")
+    return sum(1 for filed in revision.findings if filed.diagnostic.location == at)
+
+
+def _appeared_since(revision: Revision) -> list[str]:
+    """The name of every file an entry of the tree reaches now that the revision never read, each
+    once: description by description in the order ``revision.files`` has them, which is by path,
+    and within one in the order its entries bring them.
+
+    Every description the revision read whose kind is ``project`` - the root, and each
+    sub-project - has its entries expanded by the loader's own rule
+    (:func:`ddd.file_plans.included_entries`). A file one of them reaches that the revision
+    lacks appeared since: saved where a pattern matches it, or moved there. The session's poll
+    compares only the files a revision read, so a new file does not start an analysis, and
+    judged against a revision that never read it, an error of that file read as the change's.
+
+    Asked beside :func:`_changed_since`, and only where a plan is judged, as that is. Sound
+    there: every run of such a revision analysed the project, so every plain entry named a file
+    that exists - one naming none is ``file-not-found`` - and no ``include-cycle`` or
+    ``include-depth`` stood, all three errors no build lowers; so every file an entry reached
+    was read. Where a run was not analysed, a file an entry reaches may never have been read,
+    and nothing is judged there anyway.
+
+    Statements in loops rather than a comprehension's filters, which coverage.py counts no branch
+    in."""
+    read = {file.path for file in revision.files}
+    cache: dict[Path, Document] = {}
+    appeared: list[str] = []
+    for file in revision.files:
+        if file.kind != "project":
+            continue
+        for entry in included_entries(file.path, cache):
+            for reached in entry.files:
+                if reached in read:
+                    continue
+                read.add(reached)
+                appeared.append(reached.name)
+    return appeared
 
 
 def _changed_since(file: SourceFile) -> bool:
@@ -1671,6 +1836,219 @@ def _entry_findings(
         for filed in revision.findings
         if located_on_entry(vocabulary, built, name, filed.file, filed.diagnostic)
     ]
+
+
+@dataclass(frozen=True, slots=True)
+class _FilesPlanned:
+    """A change of the project's files as ``GET /api/files-plan`` answers it: the edits, and
+    what :class:`~ddd.gui.contract.FilesPlanReply` says beside them."""
+
+    edits: tuple[PlannedEdit, ...]
+    unjudged: str | None = None
+    brings: tuple[Pair, ...] = ()
+    kept_by: str | None = None
+
+
+def _files_plan_of(
+    action: str,
+    revision: Revision,
+    given: Mapping[str, str],
+    component: str | None,
+    cache: dict[Path, Document],
+) -> _FilesPlanned:
+    """The plan ``action`` names, over the parameters :data:`FILE_PLANS` says it takes. A row's
+    key is passed on as it arrived: :func:`ddd.file_plans.remove_plan` resolves it to compare, as
+    :func:`ddd.file_plans.included_entries` made it, and names it as it was sent. Resolved here
+    instead, a key ending in a link would be named by what the link leads to, which may lie
+    outside what is served."""
+    if action == "create":
+        return _FilesPlanned(_creation(revision, given["kind"], given["name"], component, cache))
+    if action == "add":
+        return _addition(revision, given["path"], cache)
+    return _removal(revision, Path(given["path"]), cache)
+
+
+def _creation(
+    revision: Revision,
+    kind: str,
+    name: str,
+    component: str | None,
+    cache: dict[Path, Document],
+) -> tuple[PlannedEdit, ...]:
+    """A new file, planned with what the revision knows of the whole tree rather than of the
+    root's own includes alone.
+
+    ``taken`` is the name of every component of the tree - a sub-project's, and one that did
+    not load, whose name is read off its file and clashes the moment it loads - since the
+    analysis groups every component the workspace holds. ``checks_units`` is whether any file of
+    the tree is a units file, as the loader decides a project is opted in: a project whose one
+    units file is a sub-project's is, and a root file listing its units again would fail it with
+    a ``duplicate-unit`` for each. Two statements in a loop rather than a comprehension's filter,
+    which coverage.py counts no branch in: a component naming itself nothing takes no name."""
+    taken: list[str] = []
+    for file in revision.files:
+        if file.kind != "component":
+            continue
+        if file.name is None:
+            continue
+        taken.append(file.name)
+    units = unit_project(
+        revision.project, [file.path for file in revision.files if not file.loaded], cache
+    )
+    return create_plan(
+        revision.project,
+        kind,
+        name,
+        component,
+        taken,
+        units,
+        revision.index,
+        cache,
+        checks_units=any(file.kind == "units" for file in revision.files),
+    )
+
+
+def _addition(revision: Revision, entry: str, cache: dict[Path, Document]) -> _FilesPlanned:
+    """An existing file appended to the includes, and the errors it is counted to bring -
+    previewed, never refused for them.
+
+    Refused, in this order: a file outside what the session serves, decided by
+    :func:`ddd.gui.session._served` itself so that adding a file and reading it never disagree;
+    then :func:`ddd.file_plans.add_plan`'s own, which the disk and the description answer;
+    then a file :func:`ddd.gui.session.kind_of` - the rule ``State.files`` shows a kind by -
+    finds no kind of description in: a python file, which a project names among its plugins,
+    or one the loader could not read as a description of any kind.
+
+    Judged where every run of the revision analysed the project, and otherwise answered with
+    the sentence saying why it could not be, true of both ways a run stops short: its read
+    reporting an error, or a plugin raising.
+
+    Counted as a removal's judgement is, by :func:`ddd.file_plans.new_errors`: the errors the
+    project would have more of at their places. So an error the file brings to a place where
+    one of its check and severity sits now, which that one leaves, is not listed - measured:
+    added, a writer owning a variable, its name sorting first, turns a reader's disagreement
+    with the old owner over its unit into one with the new owner over its datatype, and only
+    the writers' own conflict and disagreement are listed. The bound holds as it does for a
+    removal: a project with no errors is never answered that an add bringing one brings none."""
+    added = resolve_path(revision.project.parent / entry)
+    try:
+        _served(revision, added)
+    except NotInProjectError:
+        serves = " and ".join(directory.as_posix() for directory in revision.served)
+        raise FileRefusalError(
+            "invalid",
+            f"{entry} lies outside what ddd gui serves, {serves}; start it in a directory "
+            "holding this file to add it here",
+        ) from None
+    plan = add_plan(revision.project, entry, cache)
+    kind = kind_of(added, _read_json(added))
+    if kind == "plugin":
+        raise FileRefusalError(
+            "invalid",
+            f"{entry} is a python file, which a project names among its plugins rather than its "
+            "includes",
+        )
+    if kind == "unknown":
+        raise FileRefusalError(
+            "invalid",
+            f"{entry} is no kind of file a project includes: it cannot be read as json, or its "
+            f"top level holds none of {', '.join(DESCRIPTION_KINDS[:-1])} and "
+            f"{DESCRIPTION_KINDS[-1]}",
+        )
+    if not revision.analysed:
+        return _FilesPlanned(
+            plan.edits,
+            unjudged=f"not every analysis of this project ran to its end, so what adding {entry} "
+            "brings cannot be judged",
+        )
+    return _FilesPlanned(plan.edits, brings=_judged(revision, plan.includes))
+
+
+def _removal(revision: Revision, path: Path, cache: dict[Path, Document]) -> _FilesPlanned:
+    """Every entry whose key ``path`` resolves to taken out, refused where the project without
+    them would have an error more than it has now at its place.
+
+    :func:`ddd.file_plans.remove_plan`'s own refusals first. Then judged only where every run of
+    the revision analysed the project: a project any run of which stopped at its read, or at a
+    plugin raising, has no complete "now" to compare with, and judged, removing the very file
+    that stopped it would be refused for errors of an analysis the reader never saw. It is
+    allowed then, with the sentence saying why it was not judged, true of both ways a run stops
+    short.
+
+    The refusal counts what :func:`ddd.file_plans.new_errors` counts, and says so: errors the
+    project would have more of than it has now, at the places they are - a whole file's, and
+    one's placed nowhere, told apart by their words as well. Not a total: measured, a project with
+    four errors, whose removed writer reads a variable nothing writes, has five once it is gone -
+    the writer's own error leaving with it - where the count is two. The first of them is quoted
+    without being called new: where a place that had one error of a check would have two, the one
+    quoted can be the old one, re-worded.
+
+    Named by the entry taken out as the description writes it - the first, where several spell
+    one file - and not by the key it was asked by, which names where the entry leads: through a
+    link to a directory, a path no entry spells."""
+    plan = remove_plan(revision.project, path, cache)
+    removing = plan.removed[0]
+    if not revision.analysed:
+        return _FilesPlanned(
+            plan.edits,
+            unjudged=f"not every analysis of this project ran to its end, so what removing "
+            f"{removing} leaves cannot be judged",
+            kept_by=plan.kept_by,
+        )
+    errors = _judged(revision, plan.includes)
+    if errors:
+        where, first = errors[0]
+        if len(errors) == 1:
+            raise FileRefusalError(
+                "invalid",
+                f"removing {removing} would leave one error more than the project has now at "
+                f"its place, in {where.name}: {first.message}",
+            )
+        raise FileRefusalError(
+            "invalid",
+            f"removing {removing} would leave {len(errors)} errors more than the project has "
+            f"now at their places, the first in {where.name}: {first.message}",
+        )
+    return _FilesPlanned(plan.edits, kept_by=plan.kept_by)
+
+
+def _judged(revision: Revision, includes: Sequence[str]) -> tuple[Pair, ...]:
+    """The errors the project would have more of with its root's includes replaced by
+    ``includes``, by :func:`ddd.file_plans.new_errors`: the revision's findings against its own
+    runs made again with the list changed, the revision the plan was computed from and never a
+    fresher one.
+
+    Refused ``stale`` where any file of the revision no longer reads as it did - read afresh and
+    fingerprinted, as an edit's own check is. The revision's findings were made from those
+    bytes, and :func:`ddd.gui.session.findings_with` reads every file again: a description saved
+    since reads the root's findings through a list they were not made from, and a component
+    saved just before the next poll would make an error that save brought read as the
+    change's.
+
+    Refused ``stale`` too where an entry of the tree reaches a file the revision never read
+    (:func:`_appeared_since`): judged, an error of that file read as the change's.
+
+    Asked only where there is a judgement to spoil, never of a plan answered unjudged: a file
+    the revision could not read - the one a plain entry naming no file puts among its files -
+    reads as changed every time it is asked, and would refuse removing that very entry for
+    good. Its project is never analysed, ``file-not-found`` being an error no build lowers."""
+    saved = [file.path.name for file in revision.files if _changed_since(file)]
+    if saved:
+        raise EditError(
+            STALE,
+            f"{', '.join(saved)} changed since the project was analysed, so the change cannot "
+            "be judged until the project is analysed again",
+        )
+    appeared = _appeared_since(revision)
+    if appeared:
+        raise EditError(
+            STALE,
+            f"{', '.join(appeared)} appeared since the project was analysed, so the change cannot "
+            "be judged until the project is analysed again",
+        )
+    now = [(filed.file, filed.diagnostic) for filed in revision.findings]
+    after = [(filed.file, filed.diagnostic) for filed in findings_with(revision, includes)]
+    return new_errors(now, after)
 
 
 def _declaration_plan_of(

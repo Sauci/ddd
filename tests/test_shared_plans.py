@@ -11,13 +11,14 @@ import pytest
 
 from conftest import built_of, checks, component, declare, project, run_analysis, write_tree
 from ddd import project_shared
-from ddd.diagnostics import Location, Severity
-from ddd.editing import Operation, edit_text
-from ddd.loading import included_files
-from ddd.lsp.navigation import Index
+from ddd.diagnostics import DiagnosticBag, Location, Severity
+from ddd.editing import FileChange, Operation, edit_text, fingerprint
+from ddd.gui.session import Session
+from ddd.loading import included_files, load_workspace
+from ddd.lsp.navigation import Index, index
 from ddd.lsp.ranges import Document
 from ddd.lsp.units import PlannedEdit
-from ddd.project_shared import RASTERS, SECTIONS
+from ddd.project_shared import RASTERS, SECTIONS, Vocabulary
 from ddd.shared_plans import (
     CONSTANTS_FILE,
     SharedPlan,
@@ -915,6 +916,63 @@ class TestDeclaringOne:
                 cache,
             )
         assert raised.value.code == "invalid"
+
+    @pytest.mark.parametrize(
+        ("vocabulary", "name", "raws"),
+        [
+            pytest.param(
+                project_shared.CONSTANTS,
+                "N",
+                {"value": "3", "description": '""'},
+                id="a constant",
+            ),
+            pytest.param(
+                SECTIONS, ".fresh", {"access": '"read-write"', "alignment": "8"}, id="a section"
+            ),
+            pytest.param(RASTERS, "5ms", {"event": "2"}, id="a raster"),
+        ],
+    )
+    def test_a_file_created_in_a_project_listing_no_includes_is_read_and_passes(
+        self, tmp_path: Path, vocabulary: Vocabulary, name: str, raws: Mapping[str, str]
+    ) -> None:
+        """``includes`` may be left out of a description, and such a project - holding no file
+        of any vocabulary - is one the creating arm is reached in. There is no list to insert
+        the new file's name into, so the key is set to a list holding it alone, and the edit
+        made through the session as ``POST /api/edit`` makes it leaves a project that passes."""
+        write_tree(tmp_path, {"p.ddd.json": {"project": {"name": "Bare"}}})
+        root = tmp_path / "p.ddd.json"
+        workspace = load_workspace(root, DiagnosticBag())
+        assert workspace is not None
+        cache: dict[Path, Document] = {}
+        found = project_of(vocabulary, root, (), cache)
+        plan = add_entry(vocabulary, index(workspace), found, name, raws, cache)
+        assert [edit for edit in plan.edits if not edit.creates] == [
+            PlannedEdit(
+                root.resolve(),
+                (Operation("set", "project.includes", f'["{vocabulary.filename}"]'),),
+            )
+        ]
+        session = Session(tmp_path)
+        session.open(root)
+        revision, _ = session.edit(
+            [
+                FileChange(
+                    edit.path,
+                    None if edit.creates else fingerprint(edit.path.read_bytes()),
+                    edit.operations,
+                )
+                for edit in plan.edits
+            ],
+            "the entry declared",
+        )
+        assert [
+            (filed.file.name, filed.diagnostic.check)
+            for filed in revision.findings
+            if filed.diagnostic.severity is Severity.ERROR
+        ] == []
+        assert json.loads(root.read_text(encoding="utf-8"))["project"]["includes"] == [
+            vocabulary.filename
+        ]
 
 
 # A fourth tree, for the one test whose constant is both the last its component declares inline

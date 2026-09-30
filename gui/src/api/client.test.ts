@@ -7,6 +7,8 @@ import {
   getDeclarable,
   getDeclarationPlan,
   getFile,
+  getFiles,
+  getFilesPlan,
   getFix,
   getGraph,
   getProjects,
@@ -170,6 +172,14 @@ describe("requests to the server", () => {
     await getRasterPlan({ action: "rename", name: "10ms", to: "20ms" }, fetchImpl);
     await getRasterPlan({ action: "add", name: "10ms", event: "1" }, fetchImpl);
     await getRasterPlan({ action: "remove", name: "10ms" }, fetchImpl);
+    await getFiles(fetchImpl);
+    await getFilesPlan({ action: "create", kind: "types", name: "sizes" }, fetchImpl);
+    await getFilesPlan(
+      { action: "create", kind: "component", name: "pump", component: "Pump" },
+      fetchImpl,
+    );
+    await getFilesPlan({ action: "add", path: "sensors/a.ddd.json" }, fetchImpl);
+    await getFilesPlan({ action: "remove", path: "/tmp/p/a.ddd.json" }, fetchImpl);
     await getDeclarable("/tmp/c.ddd.json", fetchImpl);
     await getDeclarationPlan(
       { action: "read", file: "/tmp/c.ddd.json", name: "ValueC", scope: "input" },
@@ -279,6 +289,17 @@ describe("requests to the server", () => {
       ["/api/raster-plan?action=rename&name=10ms&to=20ms", { credentials: "same-origin" }],
       ["/api/raster-plan?action=add&name=10ms&event=1", { credentials: "same-origin" }],
       ["/api/raster-plan?action=remove&name=10ms", { credentials: "same-origin" }],
+      ["/api/files", { credentials: "same-origin" }],
+      ["/api/files-plan?action=create&kind=types&name=sizes", { credentials: "same-origin" }],
+      [
+        "/api/files-plan?action=create&kind=component&name=pump&component=Pump",
+        { credentials: "same-origin" },
+      ],
+      ["/api/files-plan?action=add&path=sensors%2Fa.ddd.json", { credentials: "same-origin" }],
+      [
+        "/api/files-plan?action=remove&path=%2Ftmp%2Fp%2Fa.ddd.json",
+        { credentials: "same-origin" },
+      ],
       ["/api/declarable?file=%2Ftmp%2Fc.ddd.json", { credentials: "same-origin" }],
       [
         "/api/declaration-plan?action=read&file=%2Ftmp%2Fc.ddd.json&name=ValueC&scope=input",

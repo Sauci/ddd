@@ -963,6 +963,39 @@ class TestRuns:
         assert service.run_project(tmp_path / "absent.ddd.json").index is None
 
 
+class TestTheOverrideReachesRunProjectAndRunBuild:
+    """``includes`` has to thread through ``_run`` from both of its callers.
+
+    Every other test of ``run_project`` and ``run_build`` passes no override, so a thread
+    silently dropped inside ``_run`` itself, or inside either function on its way there,
+    would still leave every one of those lines covered. Only a run that actually changes
+    what the root loads catches that: a component carrying a finding is there by default
+    and gone once ``includes=[]`` replaces the root's own list.
+    """
+
+    @staticmethod
+    def _tree(tmp_path: Path) -> Path:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Unread")),
+            },
+        )
+        return tmp_path / "p.ddd.json"
+
+    def test_run_project_applies_the_override(self, tmp_path: Path) -> None:
+        root = self._tree(tmp_path)
+        assert "unused-output" in checks(service.run_project(root).bag)
+        assert "unused-output" not in checks(service.run_project(root, includes=[]).bag)
+
+    def test_run_build_applies_the_override(self, tmp_path: Path) -> None:
+        root = self._tree(tmp_path)
+        info = BuildInfo(project=root.as_posix())
+        assert "unused-output" in checks(service.run_build(info).bag)
+        assert "unused-output" not in checks(service.run_build(info, includes=[]).bag)
+
+
 class TestTheProjectIsReadOnce:
     """How often a refresh and a request read the project above the document.
 

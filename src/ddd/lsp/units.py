@@ -77,6 +77,86 @@ class UnitPlan:
     edits: tuple[PlannedEdit, ...]
 
 
+def appended_at(listed: object) -> int:
+    """Where a new entry lands: at the end of a list read off disk, or at the front of a value
+    that is not a list at all - which the edit engine then refuses with a sentence of its own,
+    rather than this guessing at a position inside something that holds none.
+
+    A project whose ``includes`` is there and is not a list - ``null`` or ``3`` - or a
+    vocabulary file whose own list is not one, is a shape the loader itself refuses with a
+    ``schema`` error - but a plan is built from the raw document, read before anything
+    validates it, so a length taken unconditionally would raise while building the plan rather
+    than let the caller reach the refusal the next ``ddd check`` already gives. A description
+    with no ``includes`` at all is not that shape: the key may be left out, and such a project
+    is valid, so :func:`entry_appended` gives it a list rather than asking this.
+
+    A function rather than ``len(listed) if isinstance(listed, list) else 0`` at each call site:
+    a conditional expression registers no branch at all with coverage.py, so the arm nobody
+    tests could hide behind a green 100 % run, and the assignment ``if``/``else`` ruff would
+    accept in its place trips ``SIM108``, which asks for that same ternary right back. An early
+    return answers to both.
+    """
+    if isinstance(listed, list):
+        return len(listed)
+    return 0
+
+
+def entry_appended(project: Path, entry: str, cache: dict[Path, Document]) -> Operation:
+    """The operation adding ``entry`` to ``project``'s own ``includes``, after every entry there
+    is - or, where the description has no ``includes`` at all, setting the key to a list holding
+    ``entry`` alone.
+
+    The key may be left out: ``docs/file_formats/project.rst`` calls ``{"project": {"name":
+    "Bare"}}`` valid, and ``ddd check`` passes it. There is no list to insert into there, and
+    the edit engine refuses an insertion into none, so the list is written whole. Anything else
+    takes the insertion :func:`appended_at` answers - an ``includes`` that is there, even where
+    it is no list, and a description whose ``project`` is no object - the edit engine then
+    refusing what cannot hold it.
+
+    The one rule both plans adding an entry follow - :func:`created_beside`, for a file it
+    creates, and :func:`ddd.file_plans.add_plan`, for one that exists - so that the two cannot
+    come to different answers about the same description.
+    """
+    document = read(project, cache)
+    if _lacks_includes(document.value_at("project")):
+        return Operation("set", "project.includes", _raw([entry]))
+    listed = document.value_at("project.includes")
+    return Operation("insert", f"project.includes[{appended_at(listed)}]", _raw(entry))
+
+
+def _lacks_includes(described: object) -> bool:
+    """Whether a description's ``project`` is an object without an ``includes`` key. ``null``
+    there is a value the loader refuses, not a key left out; and a ``project`` that is no
+    object - which is what a document that does not parse reads as - holds no key to miss.
+
+    Two early returns rather than one ``and``, which coverage.py counts as a single branch
+    whichever operand decided it."""
+    if not isinstance(described, dict):
+        return False
+    return "includes" not in described
+
+
+def created_beside(
+    project: Path, filename: str, text: str, cache: dict[Path, Document]
+) -> tuple[PlannedEdit, PlannedEdit]:
+    """The one shape a file is created in: beside ``project``, laid out as a person would write
+    it, and added to ``project``'s own ``includes`` in the same plan, by
+    :func:`entry_appended`.
+
+    The only creation :func:`ddd.gui.session._confined` allows - beside the description, by an
+    edit that adds it to the includes there - so a plan built any other way is refused when it
+    is applied. :func:`adopt_units`, :func:`ddd.shared_plans._created` and
+    :func:`ddd.file_plans.create_plan` all create through this, and cannot drift apart.
+    """
+    laid_out = lay_out(text, one_line=False, indent="", unit=DEFAULT_INDENT_UNIT, newline="\n")
+    return (
+        PlannedEdit(
+            project.parent / filename, (Operation("set", "", f"{laid_out}\n"),), creates=True
+        ),
+        PlannedEdit(project, (entry_appended(project, filename, cache),)),
+    )
+
+
 class UnitRefusalError(Exception):
     """A change of a unit that cannot be planned, and the code both clients refuse it with."""
 
@@ -282,21 +362,7 @@ def adopt_units(built: Index, project: UnitProject, cache: dict[Path, Document])
                 ]
             }
         )
-    created = project.project.parent / ADOPTED
-    laid_out = lay_out(
-        f'{{"units": [{", ".join(listing)}]}}',
-        one_line=False,
-        indent="",
-        unit=DEFAULT_INDENT_UNIT,
-        newline="\n",
-    )
-    whole = f"{laid_out}\n"
-    includes = read(project.project, cache).value_at("project.includes") or []
-    included = Operation("insert", f"project.includes[{len(includes)}]", _raw(ADOPTED))
-    edits = (
-        PlannedEdit(created, (Operation("set", "", whole),), creates=True),
-        PlannedEdit(project.project, (included,)),
-    )
+    edits = created_beside(project.project, ADOPTED, f'{{"units": [{", ".join(listing)}]}}', cache)
     return UnitPlan(tuple(sorted(edits, key=lambda edit: edit.path.as_posix())))
 
 

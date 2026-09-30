@@ -4,10 +4,14 @@ import type {
   ConstantUse,
   DeclarableName,
   DeclarableReply,
+  FilesPlanReply,
+  FilesReply,
   Finding,
   FixReply,
   GridAxis,
+  IncludedEntryReply,
   KindForm,
+  PlannedChange,
   PlanReply,
   ProjectUnit,
   RasterReply,
@@ -18,6 +22,7 @@ import type {
   SettleReply,
   SharedEntry,
   SharedReply,
+  SourceFile,
   State,
   TypeReply,
   TypesReply,
@@ -956,9 +961,10 @@ export const PROJECT_FINDINGS: State = {
 const BENCH = "C:/work/demo/bench.ddd.json";
 
 /** `empty-vocabulary` on that file, filed at `rasters` - its own list, which is still there,
- * empty. It leads nowhere for a reason of its own: the finding is about the whole file, which no
- * panel shows, rather than about a place the file has moved on from. The check's own default is
- * info (`src/ddd/diagnostics.py`). */
+ * empty. Until part 16 it led nowhere, the finding being about the whole file rather than about a
+ * place the file had moved on from; `routeOf`'s own `file` arm now sends it to that file's own row
+ * on the Files tab instead (`ddd.finding_routes.FILE_CHECKS`). The check's own default is info
+ * (`src/ddd/diagnostics.py`). */
 export const EMPTY_RASTERS: Finding = {
   file: BENCH,
   check: "empty-vocabulary",
@@ -966,7 +972,7 @@ export const EMPTY_RASTERS: Finding = {
   message: "rasters file 'bench.ddd.json' declares no raster",
   pointer: "rasters",
   notes: [],
-  route: null,
+  route: { kind: "file", name: BENCH },
 };
 
 /** PROJECT_FINDINGS with bench.ddd.json among its files - a rasters file that loaded, with one
@@ -2534,4 +2540,581 @@ export const ADD_RASTER: PlanReply = {
       ],
     },
   ],
+};
+
+// --- FilesTableView (part 16, design §2) -------------------------------------------------------
+//
+// examples/vocabulary's own project.ddd.json: PumpDevice's five includes, in the order it lists
+// them - units.ddd.json, sections.ddd.json, constants.ddd.json and rasters.ddd.json beside
+// pump.ddd.json itself, every one a literal entry naming an existing file, no pattern and no
+// sub-project among them. `ddd check examples/vocabulary/project.ddd.json` answers "ok: 4
+// variables in 1 component are consistent", so every finding count below is 0 - the other five
+// stories each construct the one thing the shipped example has none of: a pattern, an entry
+// naming nothing, a sub-project, two rows of one key, and a route naming no row at all.
+
+/** examples/vocabulary's own project.ddd.json - a fresh path rather than DEMO above, which is a
+ * different project (examples/demo's own demo.ddd.json) sharing this file's one fake directory. */
+const VOCABULARY_PROJECT = "C:/work/demo/project.ddd.json";
+
+/** examples/vocabulary's own pump.ddd.json, flat beside project.ddd.json as the real example lays
+ * it out - unlike `PUMP` above, nested under a `components/` directory `examples/vocabulary` has
+ * no equivalent of, which this fixture's own literal entry ("pump.ddd.json", not
+ * "components/pump.ddd.json") has to resolve against. Exported: `FilesTableView.stories.tsx`'s
+ * own ASelectedRow needs this exact key to select. */
+export const VOCABULARY_PUMP = "C:/work/demo/pump.ddd.json";
+
+/** One literal entry: an existing file, named by the entry itself, its resolved path its own key
+ * and the one file it brings (`IncludedEntryReply.files`' own doc says a literal's is always
+ * itself alone). */
+function literalEntry(index: number, entry: string, path: string): IncludedEntryReply {
+  return { index, entry, names: true, key: path, files: [path], findings: 0 };
+}
+
+/** A file the analysis read and found nothing wrong with - every file below is, since PumpDevice
+ * itself is. */
+function cleanFile(
+  path: string,
+  kind: string,
+  name: string | null,
+  fingerprint: string,
+): SourceFile {
+  return {
+    path,
+    kind,
+    name,
+    loaded: true,
+    fingerprint,
+    findings: { error: 0, warning: 0, info: 0 },
+  };
+}
+
+/** `ddd.file_plans.CREATABLE`: the kinds New file offers, as `FilesReply.creatable` sends them -
+ * a reply's field here as in the page, which reads the list off the reply rather than restating
+ * it (the plan's Rulings 26). */
+const FILES_CREATABLE = ["component", "types", "units", "constants", "sections", "rasters"];
+
+/** The project's own list (true to examples/vocabulary, as the block comment above says): five
+ * literal entries, none of them a pattern, a miss or a sub-project - the table this tab draws for
+ * the shipped example as it stands today. */
+export const PROJECT_FILES: FilesReply = {
+  revision: 7,
+  project: VOCABULARY_PROJECT,
+  entries: [
+    literalEntry(0, "units.ddd.json", UNITS_FILE),
+    literalEntry(1, "sections.ddd.json", SECTIONS_FILE),
+    literalEntry(2, "constants.ddd.json", CONSTANTS_FILE),
+    literalEntry(3, "rasters.ddd.json", RASTERS_FILE),
+    literalEntry(4, "pump.ddd.json", VOCABULARY_PUMP),
+  ],
+  creatable: FILES_CREATABLE,
+};
+
+/** The five files `PROJECT_FILES`' entries resolve to: a vocabulary file carries no name of its
+ * own (only a component's or a project's own top level key does), and pump.ddd.json's is "Pump" -
+ * `examples/vocabulary/pump.ddd.json`'s own `component.name`. */
+export const PROJECT_SOURCE_FILES: readonly SourceFile[] = [
+  cleanFile(UNITS_FILE, "units", null, "a"),
+  cleanFile(SECTIONS_FILE, "sections", null, "b"),
+  cleanFile(CONSTANTS_FILE, "constants", null, "c"),
+  cleanFile(RASTERS_FILE, "rasters", null, "d"),
+  cleanFile(VOCABULARY_PUMP, "component", "Pump", "e"),
+];
+
+/** A file the last analysis did not read (constructed: every file `examples/vocabulary` includes
+ * loads cleanly) - `PROJECT_FILES`' own five entries, pump.ddd.json's own file missing from
+ * those the revision read. `FileRow.file`'s doc (lib/files.ts) gives ways that happens, among
+ * them an entry the description gained since the revision the page holds. This is that one's
+ * shape - one literal entry with no `SourceFile` to join, as the tab's own Add can leave where the
+ * page asks for the entries before a revision made after the edit reaches it
+ * (`IncludedEntryReply.files` says where that was measured) - without constructing the scenario
+ * whole, and kept apart from an entry naming nothing: pump.ddd.json is still named by `includes`,
+ * `PROJECT_FILES` untouched - only the file itself is missing here. */
+export const FILES_SOURCE_MISSING: readonly SourceFile[] = PROJECT_SOURCE_FILES.filter(
+  (file) => file.path !== VOCABULARY_PUMP,
+);
+
+// A pattern with its matched files (constructed: every one of examples/vocabulary's own five
+// entries is literal, so a glob is invented here) - "sensors/*.ddd.json" brings in two more
+// components, the shape `files.test.ts`'s own rowsOf fixtures already use, now drawn: the
+// pattern's own row carries no file, and each match is a child row indented beneath it.
+
+const SENSORS_INLET = "C:/work/demo/sensors/inlet.ddd.json";
+const SENSORS_OUTLET = "C:/work/demo/sensors/outlet.ddd.json";
+
+const SENSORS_PATTERN: IncludedEntryReply = {
+  index: 5,
+  entry: "sensors/*.ddd.json",
+  names: false,
+  key: "C:/work/demo/sensors/*.ddd.json",
+  files: [SENSORS_INLET, SENSORS_OUTLET],
+  findings: 0,
+};
+
+/** `PROJECT_FILES`' own five rows, with the pattern above appended as a sixth entry. */
+export const FILES_WITH_PATTERN: FilesReply = {
+  ...PROJECT_FILES,
+  entries: [...PROJECT_FILES.entries, SENSORS_PATTERN],
+};
+
+export const FILES_WITH_PATTERN_SOURCES: readonly SourceFile[] = [
+  ...PROJECT_SOURCE_FILES,
+  cleanFile(SENSORS_INLET, "component", "Inlet", "f"),
+  cleanFile(SENSORS_OUTLET, "component", "Outlet", "g"),
+];
+
+/** An entry naming nothing, carrying its finding (constructed: nothing in examples/vocabulary is
+ * missing) - a plain path the loader cannot find, `file-not-found` filed at its own index (not
+ * `include-empty`, which is a pattern's own word - matching no file, or unable to expand at all -
+ * never a plain path's; `IncludedEntryReply.findings`'s own docstring and `finding_routes.py`
+ * both say so, and `ddd check` on a project listing a missing plain path answers exactly
+ * `error[file-not-found]`, measured), no kind to draw (`rowsOf` gave the row no `SourceFile` of
+ * its own, having no file to join) and `cellsOf`'s own "names no file" for its State - spec §2's
+ * "shows as such". */
+const MISSING_ENTRY: IncludedEntryReply = {
+  index: 5,
+  entry: "missing.ddd.json",
+  names: false,
+  key: "C:/work/demo/missing.ddd.json",
+  files: [],
+  findings: 1,
+};
+
+export const FILES_WITH_MISSING: FilesReply = {
+  ...PROJECT_FILES,
+  entries: [...PROJECT_FILES.entries, MISSING_ENTRY],
+};
+
+/** A sub-project row (constructed: examples/vocabulary includes no other project) - a nested
+ * description, a literal entry exactly as pump.ddd.json's own is, its `SourceFile.kind` "project"
+ * and drawn no differently from any other kind, its own includes not expanded (design §2).
+ * Managing its own includes belongs to opening it as a project (design §6). */
+const SUBSYSTEM_PROJECT = "C:/work/demo/subsystem/subsystem.ddd.json";
+
+const SUBSYSTEM_ENTRY: IncludedEntryReply = {
+  index: 5,
+  entry: "subsystem/subsystem.ddd.json",
+  names: true,
+  key: SUBSYSTEM_PROJECT,
+  files: [SUBSYSTEM_PROJECT],
+  findings: 0,
+};
+
+export const FILES_WITH_SUBPROJECT: FilesReply = {
+  ...PROJECT_FILES,
+  entries: [...PROJECT_FILES.entries, SUBSYSTEM_ENTRY],
+};
+
+export const FILES_WITH_SUBPROJECT_SOURCES: readonly SourceFile[] = [
+  ...PROJECT_SOURCE_FILES,
+  cleanFile(SUBSYSTEM_PROJECT, "project", "Subsystem", "h"),
+];
+
+/** A selected row (`selectedIndices`, lib/files.ts: a route's own `path` selects every row of
+ * that key, which can be more than one) - constructed, and deliberately narrow: "*.ddd.json"
+ * stands for a pattern that would in fact match every file beside it, thinned here to
+ * pump.ddd.json alone so the photograph shows the one thing this story exists for. pump.ddd.json's
+ * own key now belongs to two rows - its literal entry's own, and this pattern's one child - and
+ * selecting it marks both, leaving the pattern's own summary row (a different key,
+ * `"C:/work/demo/*.ddd.json"`) bare. */
+const CATCH_ALL_PATTERN: IncludedEntryReply = {
+  index: 5,
+  entry: "*.ddd.json",
+  names: false,
+  key: "C:/work/demo/*.ddd.json",
+  files: [VOCABULARY_PUMP],
+  findings: 0,
+};
+
+export const FILES_SHARED_KEY: FilesReply = {
+  ...PROJECT_FILES,
+  entries: [...PROJECT_FILES.entries, CATCH_ALL_PATTERN],
+};
+
+/** A path no row of `PROJECT_FILES` carries (a sub-project's own `include-empty` or
+ * `empty-vocabulary` can route here, naming a place only that sub-project's own table would list -
+ * the plan's What was left open, "Routes that lead nowhere") - selecting it marks nothing, which
+ * is not an error. */
+export const NOTHING_AT_THAT_PATH = "C:/work/demo/subsystem/nested.ddd.json";
+
+// --- FileActionsView (part 16, design §3) ------------------------------------------------------
+//
+// What the running api answered, over the tree the test it names in tests/test_gui_api.py builds or
+// over a copy of examples/vocabulary, the temporary directory replaced by the fake one each fixture
+// spells: `GET /api/files-plan`'s plans and refusals and `GET /api/files`' entries whole - only the
+// revision of examples/vocabulary's plans set to match the table beside them - and, in the four
+// `*_SOURCES`, `GET /api/state`'s files less the project description's own, which no row of these
+// tables is about. Nothing is composed for a story. A sentence a test pins whole names that test, and
+// is the test's own text: where the page shows one of the server's refusals or its `unjudged`, the
+// story shows the server's sentence and no other.
+
+/** examples/vocabulary's project.ddd.json as the api read it on a fresh copy of the example: what
+ * `POST /api/edit` would check the plans below against. */
+const VOCABULARY_FINGERPRINT = "62e91546add8266f2b83d25fe06d8b00f25ba9738035e87a15967e92e8abf290";
+
+/** The edit appending `entry` to examples/vocabulary's includes, as every New file plan of it makes
+ * it: a sixth entry, after pump.ddd.json on line 11. */
+function vocabularyAppended(entry: string): PlannedChange {
+  return {
+    file: VOCABULARY_PROJECT,
+    fingerprint: VOCABULARY_FINGERPRINT,
+    operations: [{ op: "insert", pointer: "project.includes[5]", raw: JSON.stringify(entry) }],
+    hunks: [
+      {
+        line: 11,
+        before: ['      "pump.ddd.json"'],
+        after: ['      "pump.ddd.json",', `      "${entry}"`],
+      },
+    ],
+  };
+}
+
+/** A file a New file plan creates, whole: one `set` of its document root, written as its lines
+ * joined and ended with a newline (`ddd.lsp.units.created_beside`), every line of it new. */
+function createdFile(file: string, lines: readonly string[]): PlannedChange {
+  return {
+    file,
+    fingerprint: null,
+    operations: [{ op: "set", pointer: "", raw: `${lines.join("\n")}\n` }],
+    hunks: [{ line: 1, before: [], after: [...lines] }],
+  };
+}
+
+/** A plan with nothing beside its changes - `unjudged`, `brings` and `kept_by` all empty - as
+ * `GET /api/files-plan` answers every create. */
+function planned(changes: PlannedChange[]): FilesPlanReply {
+  return { revision: PROJECT_FILES.revision, changes, unjudged: null, brings: [], kept_by: null };
+}
+
+// New file on each kind, over examples/vocabulary: the changes in the order the api sorts them,
+// by path - the new file first where its name sorts before project.ddd.json, second where after.
+
+/** A component, `valve.ddd.json` declaring `Valve`: a name and an empty interface. */
+export const CREATE_COMPONENT: FilesPlanReply = planned([
+  vocabularyAppended("valve.ddd.json"),
+  createdFile("C:/work/demo/valve.ddd.json", [
+    "{",
+    '  "component": {',
+    '    "name": "Valve",',
+    '    "interface": []',
+    "  }",
+    "}",
+  ]),
+]);
+
+/** A types file, `sizes.ddd.json`, declaring nothing. */
+export const CREATE_TYPES: FilesPlanReply = planned([
+  vocabularyAppended("sizes.ddd.json"),
+  createdFile("C:/work/demo/sizes.ddd.json", ["{", '  "types": []', "}"]),
+]);
+
+/** A units file, `more_units.ddd.json`, declaring nothing: examples/vocabulary has units.ddd.json
+ * already, so the project is opted in and a second units file is created empty (design §3) -
+ * `TestCreatingAFile.test_a_units_file_of_a_project_a_sub_project_opted_in_is_created_empty` pins
+ * the same empty file where the units file is a sub-project's. */
+export const CREATE_UNITS: FilesPlanReply = planned([
+  createdFile("C:/work/demo/more_units.ddd.json", ["{", '  "units": []', "}"]),
+  vocabularyAppended("more_units.ddd.json"),
+]);
+
+/** A constants file, `limits.ddd.json`, declaring nothing - the whole answer pinned by
+ * `TestCreatingAFile.test_a_vocabulary_file_is_previewed_declaring_nothing`, its revision aside. */
+export const CREATE_CONSTANTS: FilesPlanReply = planned([
+  createdFile("C:/work/demo/limits.ddd.json", ["{", '  "constants": []', "}"]),
+  vocabularyAppended("limits.ddd.json"),
+]);
+
+/** A sections file, `memory.ddd.json`, declaring nothing. */
+export const CREATE_SECTIONS: FilesPlanReply = planned([
+  createdFile("C:/work/demo/memory.ddd.json", ["{", '  "sections": []', "}"]),
+  vocabularyAppended("memory.ddd.json"),
+]);
+
+/** A rasters file, `tasks.ddd.json`, declaring nothing. */
+export const CREATE_RASTERS: FilesPlanReply = planned([
+  vocabularyAppended("tasks.ddd.json"),
+  createdFile("C:/work/demo/tasks.ddd.json", ["{", '  "rasters": []', "}"]),
+]);
+
+/** New file refused over examples/vocabulary, a component named as `pump.ddd.json`'s own:
+ * `TestCreatingAFile.test_a_refused_creation_says_why[a component's name taken]` pins it whole,
+ * asked with exactly the story's fields - kind `component`, name `motor`, component `Pump`. */
+export const COMPONENT_NAME_TAKEN = "this project has a component called 'Pump' already";
+
+// A first units file (constructed: the tree of `TestCreatingAFile.test_a_first_units_file_lists_
+// every_unit_the_project_states`) - a project whose one component states `rpm` and `%` and which
+// has no units file anywhere, so the file created lists both rather than making each an
+// `unknown-unit` (design §3). The test pins the file's text; the rest was read off the same run.
+
+const FIRST_UNITS_PROJECT = "C:/work/first/p.ddd.json";
+const FIRST_UNITS_A = "C:/work/first/a.ddd.json";
+
+export const FIRST_UNITS_FILES: FilesReply = {
+  revision: 1,
+  project: FIRST_UNITS_PROJECT,
+  entries: [literalEntry(0, "a.ddd.json", FIRST_UNITS_A)],
+  creatable: FILES_CREATABLE,
+};
+
+/** Its one component, as `GET /api/state` answered: three findings, none an error. */
+export const FIRST_UNITS_SOURCES: readonly SourceFile[] = [
+  {
+    path: FIRST_UNITS_A,
+    kind: "component",
+    name: "A",
+    loaded: true,
+    fingerprint: "10dfb64a7ebe4f00293bf98796cc77df4570484b46f5aa28d78b059ce64272b1",
+    findings: { error: 0, warning: 1, info: 2 },
+  },
+];
+
+export const CREATE_FIRST_UNITS: FilesPlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: FIRST_UNITS_PROJECT,
+      fingerprint: "aee298e6d85cd3928e65c175f0e16d960912b92ac0d4312413103bfc61f6b7b6",
+      operations: [{ op: "insert", pointer: "project.includes[1]", raw: '"units.ddd.json"' }],
+      hunks: [
+        {
+          line: 5,
+          before: ['      "a.ddd.json"'],
+          after: ['      "a.ddd.json",', '      "units.ddd.json"'],
+        },
+      ],
+    },
+    createdFile("C:/work/first/units.ddd.json", [
+      "{",
+      '  "units": [',
+      '    { "unit": "%", "description": "" },',
+      '    { "unit": "rpm", "description": "" }',
+      "  ]",
+      "}",
+    ]),
+  ],
+  unjudged: null,
+  brings: [],
+  kept_by: null,
+};
+
+// Add (constructed: tests/test_gui_api.py's ADDABLE) - a root listing a.ddd.json and the pattern
+// lib/*.ddd.json, beside files a reader might add: b.ddd.json, whose component reads 'Torque' that
+// nothing writes, and lib/l.ddd.json, which the pattern brings in already.
+
+const ADDABLE_PROJECT = "C:/work/addable/p.ddd.json";
+const ADDABLE_A = "C:/work/addable/a.ddd.json";
+const ADDABLE_L = "C:/work/addable/lib/l.ddd.json";
+
+export const ADDABLE_FILES: FilesReply = {
+  revision: 1,
+  project: ADDABLE_PROJECT,
+  entries: [
+    literalEntry(0, "a.ddd.json", ADDABLE_A),
+    {
+      index: 1,
+      entry: "lib/*.ddd.json",
+      names: false,
+      key: "C:/work/addable/lib/*.ddd.json",
+      files: [ADDABLE_L],
+      findings: 0,
+    },
+  ],
+  creatable: FILES_CREATABLE,
+};
+
+export const ADDABLE_SOURCES: readonly SourceFile[] = [
+  {
+    path: ADDABLE_A,
+    kind: "component",
+    name: "A",
+    loaded: true,
+    fingerprint: "e2c31f1130bf19644e9a17048a5ae3d2bd2b971c8911dcb4614f62ea3b80346d",
+    findings: { error: 0, warning: 0, info: 1 },
+  },
+  {
+    path: ADDABLE_L,
+    kind: "component",
+    name: "L",
+    loaded: true,
+    fingerprint: "6a80355081d7d984f082028436d03c1b23423fe55ac8c59feb4fff78cabeb390",
+    findings: { error: 0, warning: 0, info: 0 },
+  },
+];
+
+/** b.ddd.json added, bringing one error - the whole answer, its brought error's words included,
+ * pinned by `TestAddingAFile.test_a_file_is_appended_with_the_errors_it_would_bring`. */
+export const ADD_BRINGING: FilesPlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: ADDABLE_PROJECT,
+      fingerprint: "c4b3ac676170017d3f031e9c5a3b458d2d6729cb4e35379ab02b57c5fcd0be6e",
+      operations: [{ op: "insert", pointer: "project.includes[2]", raw: '"b.ddd.json"' }],
+      hunks: [
+        {
+          line: 6,
+          before: ['      "lib/*.ddd.json"'],
+          after: ['      "lib/*.ddd.json",', '      "b.ddd.json"'],
+        },
+      ],
+    },
+  ],
+  unjudged: null,
+  brings: [
+    {
+      file: "C:/work/addable/b.ddd.json",
+      check: "missing-producer",
+      message: "'Torque' is read by component 'B' but no component declares it as output",
+    },
+  ],
+  kept_by: null,
+};
+
+/** lib/l.ddd.json refused, the pattern bringing it in already: pinned whole by
+ * `TestAddingAFile.test_a_refused_addition_says_why[a pattern's file]`, asked with the story's own
+ * path. */
+export const ADDED_BY_A_PATTERN =
+  "lib/l.ddd.json is part of this project already: the pattern 'lib/*.ddd.json' brings it in";
+
+// Remove refused, over examples/vocabulary: its constants.ddd.json declares TREND_SAMPLES, which
+// pump.ddd.json's PressureTrend is dimensioned by.
+
+/** constants.ddd.json's own key, as the table and the request carry it. */
+export const VOCABULARY_CONSTANTS = CONSTANTS_FILE;
+
+/** Pinned whole by `TestRemovingAFile.test_a_file_whose_declaration_is_used_is_refused_naming_the_
+ * error_it_would_leave` - the refusal `gui/e2e/files.spec.ts` reads too. */
+export const REMOVE_LEAVES_AN_ERROR =
+  "removing constants.ddd.json would leave one error more than the project has now at its place, " +
+  "in pump.ddd.json: 'PressureTrend' is dimensioned by 'TREND_SAMPLES', which is not a constant " +
+  "any file of this project declares";
+
+// Remove unjudged (constructed: tests/test_gui_api.py's READER_OF_A_BROKEN_WRITER) - a component
+// reading 'Speed', which only lib/b.ddd.json would write, and that file saved half-written: it did
+// not load, so not every analysis of the project ran to its end, and removing it is allowed without
+// a judgement - judged, it would be refused for the `missing-producer` its reader is left with, an
+// error of an analysis the reader never saw (the plan's ruling 2).
+
+const READER_PROJECT = "C:/work/reader/p.ddd.json";
+const READER_A = "C:/work/reader/a.ddd.json";
+
+/** The half-saved writer's key. */
+export const READER_BROKEN = "C:/work/reader/lib/b.ddd.json";
+
+export const READER_FILES: FilesReply = {
+  revision: 1,
+  project: READER_PROJECT,
+  entries: [
+    literalEntry(0, "a.ddd.json", READER_A),
+    literalEntry(1, "lib/b.ddd.json", READER_BROKEN),
+  ],
+  creatable: FILES_CREATABLE,
+};
+
+/** As `GET /api/state` answered: the half-saved file has no kind the page can tell, and its one
+ * error is that it does not parse. */
+export const READER_SOURCES: readonly SourceFile[] = [
+  {
+    path: READER_A,
+    kind: "component",
+    name: "A",
+    loaded: true,
+    fingerprint: "55d0e480d33f8d00ebe0e88742ba0c1a11868df2f52a0e7805c6b7d7611305ab",
+    findings: { error: 0, warning: 0, info: 0 },
+  },
+  {
+    path: READER_BROKEN,
+    kind: "unknown",
+    name: null,
+    loaded: false,
+    fingerprint: "6dda7f451ce5b9ede0f09c689854171e7780e6b3d7747a728c444979758e5f68",
+    findings: { error: 1, warning: 0, info: 0 },
+  },
+];
+
+/** The broken writer removed, unjudged: its `unjudged` is tests/test_gui_api.py's
+ * `UNJUDGED_REMOVING`, pinned by `TestRemovingAFile.test_a_broken_file_of_a_project_not_analysed_
+ * is_removed_unjudged`. */
+export const REMOVE_UNJUDGED: FilesPlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: READER_PROJECT,
+      fingerprint: "f6d29a29e6bf5cfe950093a7a519349737666affa4af9d18212062cb4c999f9e",
+      operations: [{ op: "remove", pointer: "project.includes[1]", raw: null }],
+      hunks: [
+        {
+          line: 5,
+          before: ['      "a.ddd.json",', '      "lib/b.ddd.json"'],
+          after: ['      "a.ddd.json"'],
+        },
+      ],
+    },
+  ],
+  unjudged:
+    "not every analysis of this project ran to its end, so what removing lib/b.ddd.json leaves " +
+    "cannot be judged",
+  brings: [],
+  kept_by: null,
+};
+
+// Remove kept in by a pattern (constructed: the tree of `TestRemovingAFile.test_a_file_a_pattern_
+// keeps_in_the_project_says_which`) - a root listing `*.ddd.json` and then `a.ddd.json`, which the
+// pattern matches too: two rows of one key. Removing it takes out the literal entry, and the
+// pattern left brings the file in all the same.
+
+const KEPT_PROJECT = "C:/work/kept/p.ddd.json";
+
+/** a.ddd.json's key: the literal's own row, and the pattern's one child. */
+export const KEPT_A = "C:/work/kept/a.ddd.json";
+
+export const KEPT_FILES: FilesReply = {
+  revision: 1,
+  project: KEPT_PROJECT,
+  entries: [
+    {
+      index: 0,
+      entry: "*.ddd.json",
+      names: false,
+      key: "C:/work/kept/*.ddd.json",
+      files: [KEPT_A],
+      findings: 0,
+    },
+    literalEntry(1, "a.ddd.json", KEPT_A),
+  ],
+  creatable: FILES_CREATABLE,
+};
+
+/** The one component, its one finding `empty-component`, at info. */
+export const KEPT_SOURCES: readonly SourceFile[] = [
+  {
+    path: KEPT_A,
+    kind: "component",
+    name: "A",
+    loaded: true,
+    fingerprint: "224e4cee37d5adb44bf720c2007b342dac61a15869a89c66121adf54ac94202e",
+    findings: { error: 0, warning: 0, info: 1 },
+  },
+];
+
+/** The literal entry removed, the pattern keeping the file in: `kept_by` and the operation pinned
+ * by that test; the hunk read off the same run. */
+export const REMOVE_KEPT: FilesPlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: KEPT_PROJECT,
+      fingerprint: "fe481d96b72a9897aeda604f24e2bf8c14a9dd95feabb3d926743ec8f72493e8",
+      operations: [{ op: "remove", pointer: "project.includes[1]", raw: null }],
+      hunks: [
+        {
+          line: 5,
+          before: ['      "*.ddd.json",', '      "a.ddd.json"'],
+          after: ['      "*.ddd.json"'],
+        },
+      ],
+    },
+  ],
+  unjudged: null,
+  brings: [],
+  kept_by: "*.ddd.json",
 };

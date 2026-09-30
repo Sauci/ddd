@@ -1,12 +1,14 @@
 import type {
   ConstantPlanRequest,
+  FilesPlanRequest,
   RasterPlanRequest,
   SectionPlanRequest,
   TypePlanRequest,
   UnitPlanRequest,
 } from "../api/client";
-import type { Finding, State, UndoneChange } from "../api/types";
+import type { Finding, PlanReply, State, UndoneChange } from "../api/types";
 import type { Mode } from "./declarations";
+import { relativeToProject } from "./findings";
 import { elementLabel } from "./objectValues";
 import { baseName, type ShownChange } from "./units";
 
@@ -62,6 +64,36 @@ export function rasterLabel(plan: RasterPlanRequest): string {
   if (plan.action === "add") return fitted(`'${plan.name}' declared as a raster`);
   if (plan.action === "remove") return fitted(`'${plan.name}' removed from the rasters`);
   return fitted(`the ${plan.key} of ${plan.name}`);
+}
+
+/** What a change of the project's files is called when it comes to be undone, in words true of
+ * what the change did - to the includes, never "the project": a file a pattern keeps in stays part
+ * of the project once its own entry is gone (`FilesPlanReply.kept_by`).
+ *
+ * A `create`'s new file by the name `answered` - the plan the server gave for it - creates it
+ * under: the base name of its change that carries no fingerprint, as a created file's change alone
+ * does (`PlannedChange.fingerprint`). `ddd.file_plans.create_plan` makes that name from the one
+ * typed and a suffix of its own, and the label takes it as made rather than making it again. An
+ * `add`'s by `path` exactly as typed, relative to the description or absolute, since that text is
+ * the entry the includes gain. A `remove`'s by its key - a row's absolute path - named relative to
+ * `project`'s directory (`relativeToProject`), as the table names a pattern's child: a pattern in a
+ * directory reads `lib/*.ddd.json`, never its last part, which another pattern may end in - a base
+ * name loses the very directory that tells the two apart. The cost: a key reached through a link
+ * to a directory is named by where it leads, a spelling no entry has; and a key outside the
+ * description's directory by its base name alone, `relativeToProject`'s own fallback. */
+export function filesLabel(plan: FilesPlanRequest, answered: PlanReply, project: string): string {
+  if (plan.action === "create") return fitted(`${createdBy(answered)} created`);
+  if (plan.action === "add") return fitted(`'${plan.path}' added to the includes`);
+  return fitted(`'${relativeToProject(plan.path, project)}' removed from the includes`);
+}
+
+/** Every file `answered` creates, quoted by its base name - one, for every plan `create_plan`
+ * makes. */
+function createdBy(answered: PlanReply): string {
+  return answered.changes
+    .filter((change) => change.fingerprint === null)
+    .map((change) => `'${baseName(change.file)}'`)
+    .join(", ");
 }
 
 /** What a declaration added to a component's interface is called when it comes to be undone -

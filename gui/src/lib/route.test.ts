@@ -102,6 +102,31 @@ test.each([
   expect(hrefOf(route)).toBe(href);
 });
 
+test.each([
+  ["/project", "?view=files", { page: "project", view: "files" }],
+  [
+    "/project",
+    "?view=files&path=C%3A%2Fp%2Fa%20b.ddd.json",
+    { page: "project", view: "files", path: "C:/p/a b.ddd.json" },
+  ],
+  // An empty `path`, like an empty `unit` or `type`, is as bare an address as leaving it out.
+  ["/project", "?view=files&path=", { page: "project", view: "files" }],
+] as const)("%s%s carries the files path %o", (pathname, search, route) => {
+  expect(parseRoute(pathname, search)).toEqual(route);
+});
+
+test.each([
+  [{ page: "project", view: "files" }, "/project?view=files"],
+  [
+    // A path holding characters an address must escape: `:`, `/` and the space, the same fixture
+    // `/component?file=` is pinned with above.
+    { page: "project", view: "files", path: "C:/p/a b.ddd.json" },
+    "/project?view=files&path=C%3A%2Fp%2Fa%20b.ddd.json",
+  ],
+] as const)("%o is at %s", (route, href) => {
+  expect(hrefOf(route)).toBe(href);
+});
+
 test("the shared files tab with nothing selected", () => {
   expect(parseRoute("/project", "?view=shared")).toEqual({ page: "project", view: "shared" });
   expect(hrefOf({ page: "project", view: "shared" })).toBe("/project?view=shared");

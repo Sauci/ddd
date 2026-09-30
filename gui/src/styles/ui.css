@@ -360,6 +360,11 @@ tr.changing td {
 .react-aria-Row.has-error .react-aria-Cell:first-child {
   box-shadow: inset 3px 0 var(--error);
 }
+/* The Files tab (design §2): a pattern's matched files, indented beneath its own row - the first
+   cell's own left padding widened, so the column still lines up above the pattern's own entry. */
+.react-aria-Row.child .react-aria-Cell:first-child {
+  padding-left: calc(10px + var(--space-4));
+}
 
 /* The Units tab (docs/superpowers/specs/2026-09-19-gui-units-project-design.md, 5): the table's
    spelling in bold and its count to the right; a unit's panel - its sub-heading, each change it
@@ -669,4 +674,37 @@ tr.changing td {
 .verdict.fail {
   background: var(--error-ground);
   color: var(--error);
+}
+
+/* The Files tab's actions (design §3): New file and Add a file side by side above the table, as the
+   adoption banner's own buttons sit; under a form, the quiet line saying where its file goes or
+   what its path is read against, set as a panel's other notes are (.rename-note); in a preview, the
+   errors an added file brings, each its check and file over its message and set apart from the
+   next; the sentence naming a pattern that keeps a removed file in, in the same quiet ink as the
+   notes; and the server's own sentence where a change could not be judged - in the warning ink a
+   refusal has, since it is a reason to look twice at what Apply would do, though nothing was
+   refused. */
+.file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.file-brings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.file-brings p {
+  margin: var(--space-1) 0 0;
+}
+.file-note {
+  margin: var(--space-2) 0 0;
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
+.file-unjudged {
+  margin: var(--space-2) 0 0;
+  color: var(--warning);
+  font-size: var(--text-small);
 }

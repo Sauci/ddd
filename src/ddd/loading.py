@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, field, fields
 from pathlib import Path, PurePath
 from typing import Any, Protocol
@@ -600,19 +600,26 @@ def _dictionary_format_is_supported(data: dict[str, Any], path: Path, bag: Diagn
     return False
 
 
-def load_workspace(path: Path, bag: DiagnosticBag) -> Workspace | None:
+def load_workspace(
+    path: Path, bag: DiagnosticBag, *, includes: Sequence[str] | None = None
+) -> Workspace | None:
     """Load ``path`` (a project or a single component file) and everything it includes.
 
     Returns ``None`` only when the root file itself is unusable; every other problem
     is reported through ``bag`` so that as many findings as possible are collected
     in one run.
+
+    ``includes`` replaces the root project's own list for this one read, and the root's only:
+    what the Files tab judges a removal by is the project exactly as it would be, every file
+    read from disk and one list differing. Never taken from a request - the server computes it.
     """
-    return _Loader(bag).load(path)
+    return _Loader(bag, includes=includes).load(path)
 
 
 class _Loader:
-    def __init__(self, bag: DiagnosticBag) -> None:
+    def __init__(self, bag: DiagnosticBag, *, includes: Sequence[str] | None = None) -> None:
         self._bag = bag
+        self._root_includes = includes
         self._components: list[LoadedComponent] = []
         self._projects: list[LoadedProject] = []
         self._components_by_name: dict[str, LoadedComponent] = {}
@@ -1003,7 +1010,12 @@ class _Loader:
 
         child_parents = (*parents, loaded.name)
         child_stack = (*stack, path)
-        for index, pattern in enumerate(model.project.includes):
+        entries: Sequence[str] = model.project.includes
+        if not stack and self._root_includes is not None:
+            # The root alone: it is the one project loaded with an empty stack, and a
+            # sub-project keeps the list its own file gives it.
+            entries = tuple(self._root_includes)
+        for index, pattern in enumerate(entries):
             origin = Location(path, f"project.includes[{index}]")
             for included in self._expand(path, pattern, origin, {path}):
                 self._load_include(included, origin, child_parents, child_stack)
@@ -1432,10 +1444,11 @@ def included_files(source: Path, entry: Any) -> list[Path]:
     """The files one ``includes`` entry names, or none for an entry the loader cannot expand -
     one that is not a string, or a pattern pathlib refuses - which the run has reported already.
 
-    Beside :func:`expand_include` and public for the same reason it is: two clients that ask
-    which files a project includes - the unit plans, and the constants a shared files tab adds
-    to - must not come to a different answer than the run that checks the project, and each
-    swallowing the three exceptions its own way is how they would drift apart.
+    Beside :func:`expand_include` and public for the same reason it is: whatever asks which files
+    a project includes - the unit plans, the vocabulary a shared files tab adds to and the rows
+    of the Files tab among them - must not come to a different answer than the run that checks
+    the project, and each client swallowing the three exceptions its own way is how they would
+    drift apart.
     """
     if not isinstance(entry, str):
         return []

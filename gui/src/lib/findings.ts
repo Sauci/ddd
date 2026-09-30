@@ -97,7 +97,35 @@ export function routeLabel(finding: Finding, state: State): string | null {
     const listed = state.files.find((file) => file.path === finding.file);
     return `Open ${listed?.name ?? baseName(finding.file)}`;
   }
+  if (route.kind === "file" && route.name !== null) {
+    // Unlike the component arm above, no listed file's own declared name is ever worth
+    // preferring here - not because neither check's file ever has one (a project description's
+    // own name reads through `SourceFile.name` too, `ddd.gui.session._name_in` keying off
+    // `parsed[kind]["name"]`), but because neither check's *route* ever names a file that both
+    // sits in `State.files` and carries a name: `include-empty` is filed wherever a pattern
+    // cannot be expanded at all (`ddd.loading._expand`'s own words, "cannot expand pattern") or
+    // expands to no file, so its route names that pattern either way, which `State.files` -
+    // files the loader actually read - never lists; `empty-vocabulary`'s names the vocabulary
+    // file it is filed on, which `State.files` does list, but a vocabulary's own top-level key
+    // holds a list there, not the dict `_name_in` reads a name from - a component's and a
+    // project's own both do, a vocabulary's alone does not. A row of the Files tab is one entry
+    // among others the same directory can hold, so the path relative to the project - the very
+    // shape an entry is itself written in (`sensors/a.ddd.json`) - says which one a `baseName`
+    // alone, repeated across two directories, could not.
+    return `Open ${relativeToProject(route.name, state.project)}`;
+  }
   return `Open ${route.name}`;
+}
+
+/** A path named the way an `includes` entry would spell it - relative to the project
+ * description's own directory - or, where it does not sit inside that directory at all, by its
+ * base name: the fallback `routeLabel`'s `component` arm always takes, kept here for a path an
+ * entry reached by a parent directory (`../`) rather than one beneath the project. Exported: the
+ * Files tab's own `cellsOf` (`lib/files.ts`) names a pattern's matched file the very same way
+ * (design §2, part 16), and imports this rather than a second copy of it. */
+export function relativeToProject(path: string, project: string): string {
+  const directory = project.slice(0, project.lastIndexOf("/") + 1);
+  return path.startsWith(directory) ? path.slice(directory.length) : baseName(path);
 }
 
 /** The page's own route a finding leads to, or `null` when it leads nowhere.
@@ -131,6 +159,12 @@ export function routeOf(finding: Finding): Route | null {
     // adding a third one beside it.
     return { page: "project", view: "shared", kind: route.kind, name: route.name };
   }
+  if (route.kind === "file" && route.name !== null) {
+    // The Files tab's own row, keyed by `route.name` exactly as `rowsOf` (lib/files.ts) keys a
+    // row: the resolved path `ddd.finding_routes.route_of`'s `FILE_CHECKS` branch answers, an
+    // entry's own key for `include-empty` or the file's own path for `empty-vocabulary`.
+    return { page: "project", view: "files", path: route.name };
+  }
   return { page: "component", file: finding.file };
 }
 
@@ -160,7 +194,7 @@ export function namesThisVariable(finding: Finding, name: string): boolean {
 /** The files a tab's table cannot show the contents of, by name: those of the tab's own kinds
  * that did not load, and those that did not load without saying what kind they are.
  *
- * Two lists because the tab can only speak for the first. `ddd.gui.session._kind` reads a file's
+ * Two lists because the tab can only speak for the first. `ddd.gui.session.kind_of` reads a file's
  * kind off its own top-level key, so a file nobody could parse has none to read and the server
  * answers `unknown` - correctly, since a constants file and a types file cannot be told apart when
  * neither could be read. Filtering by kind alone, as both tabs did, missed the commonest way a file
@@ -192,10 +226,13 @@ export function unreadable(
  *
  * Units, types, sections and rasters belong here and were missing in turn: each had a tab before
  * its own kind joined this set, and a reader whose finding led nowhere was told their file had no
- * page. What reaches this line for one of them now is `empty-vocabulary`, about the whole file, or
- * a pointer the file has moved on from - `duplicate-unit`, `duplicate-section` and
- * `duplicate-raster`, the checks that used to arrive here with somewhere to go, route to the
- * unit, the section or the raster they name instead. */
+ * page. What reaches this line for one of them now is a pointer the file has moved on from -
+ * `duplicate-unit`, `duplicate-section` and `duplicate-raster`, the checks that used to arrive
+ * here with somewhere to go, route to the unit, the section or the raster they name instead.
+ * `empty-vocabulary` used to arrive here too, about the whole file; it no longer does, `routeOf`'s
+ * own `file` arm (part 16) giving it a route to the Files tab before this line is ever read, the
+ * same as `include-empty` already had nothing to do with this set - neither is filed inside a
+ * component. */
 const SHOWN = new Set(["component", "constants", "types", "units", "sections", "rasters"]);
 
 /** Why a finding leads nowhere, in the words the panel says it.
@@ -203,8 +240,9 @@ const SHOWN = new Set(["component", "constants", "types", "units", "sections", "
  * The three the server answers `null` for are said in its own terms (`ddd.finding_routes`): a
  * file that did not load, a kind of file the page has no screen for, and a finding that names
  * no place at all - a check about the project, whose pointer is empty. A pointer that is one
- * top level key names the file's own list - where `empty-vocabulary` is drawn, the list being
- * empty - and so the whole of what the file declares, which no panel shows. What is left is a
+ * top level key names the file's own list - the shape `empty-vocabulary` was drawn at, the list
+ * being empty, until part 16 gave it its own route to the Files tab (`routeOf`'s `file` arm) -
+ * and so the whole of what the file declares, which no panel shows. What is left is a
  * finding that does name a place the file no longer has: a declaration moved since the
  * analysis read it, or a unit no longer stated where it was. Neither is about the project, and
  * neither is a sentence to guess at, so the reason says only what is certain of both. */

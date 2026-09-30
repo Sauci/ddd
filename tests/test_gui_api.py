@@ -16,6 +16,7 @@ from conftest import (
     EXAMPLES,
     component,
     declare,
+    directory_link,
     project,
     scalar_type,
     struct_type,
@@ -27,6 +28,7 @@ from ddd import __version__
 from ddd.cli import EXIT_OK, main
 from ddd.diagnostics import CHECKS
 from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
+from ddd.file_plans import CREATABLE
 from ddd.gui.api import (
     RASTER_PLANS,
     SECTION_PLANS,
@@ -5091,3 +5093,1266 @@ class TestTheValuesGrid:
         reply = get(api, "/api/values-plan", name="ValueA", raw="1")
         assert (reply.status, reply.body["error"]) == (409, "invalid")
         assert reply.body["message"] == "'ValueA' has no cell for a value to sit in"
+
+
+# The four shapes an entry of the root's includes takes, in one list: a literal naming a file, a
+# pattern matching two, a plain path naming no file and a pattern matching none. The last two carry
+# the findings filed at the entry itself - `file-not-found` and `include-empty` - and the first
+# names a file with a finding of its own, `empty-vocabulary`, which is the file's and not its row's.
+ENTRIES_OF_EVERY_SHAPE = {
+    "p.ddd.json": project(
+        "P", "units.ddd.json", "sensors/*.ddd.json", "missing.ddd.json", "nothing/*.ddd.json"
+    ),
+    "units.ddd.json": {"units": []},
+    "sensors/b.ddd.json": component("B"),
+    "sensors/a.ddd.json": component("A"),
+}
+
+# A root that loads, its first entry an empty vocabulary and its second a pattern matching no file:
+# both findings the Files tab gives a row to, on files the analysis loaded, so both have a route.
+FINDINGS_ABOUT_FILES = {
+    "p.ddd.json": project("P", "units.ddd.json", "nothing/*.ddd.json"),
+    "units.ddd.json": {"units": []},
+}
+
+
+class TestTheFilesTab:
+    """``GET /api/files``: the root's includes, one row per entry, as the loader reads them."""
+
+    def test_each_entry_is_listed_in_order_with_what_it_brings(self, tmp_path: Path) -> None:
+        api = opened(tmp_path, ENTRIES_OF_EVERY_SHAPE)
+        reply = get(api, "/api/files")
+        assert reply == Reply(
+            200,
+            {
+                "revision": 1,
+                "project": posix(tmp_path, "p.ddd.json"),
+                "entries": [
+                    {
+                        "index": 0,
+                        "entry": "units.ddd.json",
+                        "names": True,
+                        "key": posix(tmp_path, "units.ddd.json"),
+                        "files": [posix(tmp_path, "units.ddd.json")],
+                        "findings": 0,
+                    },
+                    {
+                        "index": 1,
+                        "entry": "sensors/*.ddd.json",
+                        "names": False,
+                        "key": posix(tmp_path, "sensors/*.ddd.json"),
+                        "files": [
+                            posix(tmp_path, "sensors/a.ddd.json"),
+                            posix(tmp_path, "sensors/b.ddd.json"),
+                        ],
+                        "findings": 0,
+                    },
+                    {
+                        "index": 2,
+                        "entry": "missing.ddd.json",
+                        "names": False,
+                        "key": posix(tmp_path, "missing.ddd.json"),
+                        "files": [],
+                        "findings": 1,
+                    },
+                    {
+                        "index": 3,
+                        "entry": "nothing/*.ddd.json",
+                        "names": False,
+                        "key": posix(tmp_path, "nothing/*.ddd.json"),
+                        "files": [],
+                        "findings": 1,
+                    },
+                ],
+                "creatable": ["component", "types", "units", "constants", "sections", "rasters"],
+            },
+        )
+
+    def test_a_row_counts_the_findings_at_its_entry_and_its_file_keeps_its_own(
+        self, tmp_path: Path
+    ) -> None:
+        """Which finding each count is: the two rows naming nothing carry the two findings filed
+        at their own entries, and the vocabulary's `empty-vocabulary` is counted on its file in
+        `State.files`, never again on the row naming it."""
+        api = opened(tmp_path, ENTRIES_OF_EVERY_SHAPE)
+        at_entries = {
+            (finding["check"], finding["pointer"])
+            for finding in get(api, "/api/state").body["findings"]
+            if finding["file"] == posix(tmp_path, "p.ddd.json")
+        }
+        assert at_entries == {
+            ("file-not-found", "project.includes[2]"),
+            ("include-empty", "project.includes[3]"),
+        }
+        files = {file["path"]: file for file in get(api, "/api/state").body["files"]}
+        assert files[posix(tmp_path, "units.ddd.json")]["findings"] == {
+            "error": 0,
+            "warning": 0,
+            "info": 1,
+        }
+        counts = [entry["findings"] for entry in get(api, "/api/files").body["entries"]]
+        assert counts == [0, 0, 1, 1]
+
+    def test_a_finding_at_an_entry_of_a_sub_project_is_not_the_root_s(self, tmp_path: Path) -> None:
+        """The sub-project's own first entry matches nothing, and the finding sits at its
+        `project.includes[0]` - the same pointer as the root's first entry, on another file."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "sub/project.ddd.json", "a.ddd.json"),
+                "sub/project.ddd.json": project("Sub", "nothing/*.ddd.json"),
+                "a.ddd.json": component("A"),
+            },
+        )
+        filed = [
+            (finding["file"], finding["check"], finding["pointer"])
+            for finding in get(api, "/api/state").body["findings"]
+        ]
+        assert filed == [
+            (posix(tmp_path, "sub/project.ddd.json"), "include-empty", "project.includes[0]")
+        ]
+        counts = [entry["findings"] for entry in get(api, "/api/files").body["entries"]]
+        assert counts == [0, 0]
+
+    def test_a_finding_at_an_entry_is_counted_whatever_its_severity(self, tmp_path: Path) -> None:
+        """A build may lower `include-empty` to a warning; the row carries it all the same, as a
+        file's three counts together carry every finding filed on it."""
+        from conftest import build_record
+
+        write_tree(tmp_path, FINDINGS_ABOUT_FILES)
+        build_record(tmp_path, tmp_path / "p.ddd.json", severity=["include-empty=warning"])
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        api = Api(session, tmp_path / "p.ddd.json", wait_seconds=0.05)
+        at_entries = [
+            (finding["check"], finding["severity"], finding["pointer"])
+            for finding in get(api, "/api/state").body["findings"]
+            if finding["file"] == posix(tmp_path, "p.ddd.json")
+        ]
+        assert at_entries == [("include-empty", "warning", "project.includes[1]")]
+        counts = [entry["findings"] for entry in get(api, "/api/files").body["entries"]]
+        assert counts == [0, 1]
+
+    def test_a_root_failing_its_schema_lists_files_the_analysis_never_read(
+        self, tmp_path: Path
+    ) -> None:
+        """A schema error in the root stops its read before its includes, so no file they bring
+        is among `State.files`, while the entries, read off the description, still name them."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "lib/*.ddd.json", colour="red"),
+                "a.ddd.json": component("A"),
+                "lib/l.ddd.json": component("L"),
+            },
+        )
+        read = {file["path"] for file in get(api, "/api/state").body["files"]}
+        assert read == {posix(tmp_path, "p.ddd.json")}
+        listed = [
+            file for entry in get(api, "/api/files").body["entries"] for file in entry["files"]
+        ]
+        assert listed == [posix(tmp_path, "a.ddd.json"), posix(tmp_path, "lib/l.ddd.json")]
+
+    def test_what_can_be_created_is_the_plans_own_list(self, tmp_path: Path) -> None:
+        """Sent rather than restated on the page, where a second copy could drift from the server's
+        with nothing to catch it."""
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        body = get(api, "/api/files").body
+        assert body["creatable"] == list(CREATABLE)
+        assert [
+            (entry["entry"], entry["names"], entry["findings"]) for entry in body["entries"]
+        ] == [
+            ("units.ddd.json", True, 0),
+            ("sections.ddd.json", True, 0),
+            ("constants.ddd.json", True, 0),
+            ("rasters.ddd.json", True, 0),
+            ("pump.ddd.json", True, 0),
+        ]
+
+    def test_a_finding_about_an_entry_or_a_file_leads_to_its_row(self, tmp_path: Path) -> None:
+        """What `route_of` names is what a row is keyed by, read through both endpoints the page
+        joins: the pattern's `include-empty` to the pattern's row, the vocabulary's
+        `empty-vocabulary` to its own."""
+        api = opened(tmp_path, FINDINGS_ABOUT_FILES)
+        routes = {
+            finding["check"]: finding["route"]
+            for finding in get(api, "/api/state").body["findings"]
+        }
+        keys = [entry["key"] for entry in get(api, "/api/files").body["entries"]]
+        assert routes == {
+            "include-empty": {"kind": "file", "name": keys[1]},
+            "empty-vocabulary": {"kind": "file", "name": keys[0]},
+        }
+
+    def test_a_missing_file_s_finding_leads_nowhere(self, tmp_path: Path) -> None:
+        """`file-not-found` is a load check, so the description carrying it did not load and its
+        findings lead nowhere - the `include-empty` beside it among them. Its row is reached by
+        the tab, not by a link."""
+        api = opened(tmp_path, ENTRIES_OF_EVERY_SHAPE)
+        routes = {
+            finding["check"]: finding["route"]
+            for finding in get(api, "/api/state").body["findings"]
+            if finding["file"] == posix(tmp_path, "p.ddd.json")
+        }
+        assert routes == {"file-not-found": None, "include-empty": None}
+
+    def test_the_files_need_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root)), "/api/files")
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+
+def files_plan(api: Api, action: str, **query: str) -> Reply:
+    """``GET /api/files-plan`` as the page asks it."""
+    return get(api, "/api/files-plan", action=action, **query)
+
+
+def refused(reply: Reply) -> tuple[int, str, str]:
+    """A refusal as the page receives it: its status, its code and its whole sentence."""
+    return reply.status, reply.body["error"], reply.body["message"]
+
+
+def written(preview: dict[str, Any], file: Path) -> str:
+    """What a preview's change of ``file`` writes: the text of the one ``set`` creating it."""
+    change = next(change for change in preview["changes"] if change["file"] == file.as_posix())
+    [operation] = change["operations"]
+    return operation["raw"]
+
+
+def errors_in(api: Api) -> list[tuple[str, str, str]]:
+    """Every error the open project reports now, by file name, check and message."""
+    return [
+        (Path(finding["file"]).name, finding["check"], finding["message"])
+        for finding in get(api, "/api/state").body["findings"]
+        if finding["severity"] == "error"
+    ]
+
+
+def vocabulary_below(tmp_path: Path) -> Api:
+    """``examples/vocabulary`` included as a sub-project by a root with no units file of its own,
+    ``Device``: its only units file, and its only component, ``Pump``, are the sub-project's."""
+    shutil.copytree(EXAMPLES / "vocabulary", tmp_path / "vocabulary")
+    return opened(tmp_path, {"p.ddd.json": project("Device", "vocabulary/project.ddd.json")})
+
+
+# A root with a literal entry and a pattern, and beside them files a reader might add: one bringing
+# an error - it reads what nothing writes - one bringing none, and three the loader recognises no
+# kind in: json that is no description, a half-saved file, and a plugin's python.
+ADDABLE = {
+    "p.ddd.json": project("P", "a.ddd.json", "lib/*.ddd.json"),
+    "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+    "lib/l.ddd.json": component("L", declare("input", "Speed", unit="rpm")),
+    "b.ddd.json": component("B", declare("input", "Torque", unit="Nm")),
+    "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
+    "notes.json": {"title": "not a description"},
+    "half.ddd.json": '{"component": {"name": "H',
+    "tool.py": "print('a plugin')\n",
+}
+
+# A component reading what the one file writing it would write, that file - in a directory of
+# its own - saved half-edited: the project is not analysed, and removing the broken file would
+# leave `missing-producer` if judged.
+READER_OF_A_BROKEN_WRITER = {
+    "p.ddd.json": project("P", "a.ddd.json", "lib/b.ddd.json"),
+    "a.ddd.json": component("A", declare("input", "Speed", unit="rpm")),
+    "lib/b.ddd.json": json.dumps(component("B", declare("output", "Speed")), indent=2)[:60],
+}
+
+# A reader of three variables, each written by a component that a pattern in a directory of its
+# own brings in: one in `lib`, two in `sensors`.
+WRITERS_IN_DIRECTORIES = {
+    "p.ddd.json": project("P", "a.ddd.json", "lib/*.ddd.json", "sensors/*.ddd.json"),
+    "a.ddd.json": component(
+        "A",
+        declare("input", "Speed", unit="rpm"),
+        declare("input", "Torque", unit="Nm"),
+        declare("input", "Flow", unit="l/min"),
+    ),
+    "lib/speed.ddd.json": component("S", declare("output", "Speed", unit="rpm")),
+    "sensors/torque.ddd.json": component("T", declare("output", "Torque", unit="Nm")),
+    "sensors/flow.ddd.json": component("F", declare("output", "Flow", unit="l/min")),
+}
+
+# A root whose pattern will match a file created once the revision is analysed, beside a file
+# nothing uses and one it could add.
+PATTERN_OVER_A_DIRECTORY = {
+    "p.ddd.json": project("P", "a.ddd.json", "lib/*.ddd.json", "spare.ddd.json"),
+    "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+    "lib/l.ddd.json": component("L", declare("input", "Speed", unit="rpm")),
+    "spare.ddd.json": component("Spare"),
+    "c.ddd.json": component("C"),
+}
+
+NEW_READER = component("N", declare("input", "Torque", unit="Nm"))
+"""A component saved into a matched directory after the analysis, reading what nothing writes:
+judged against a revision that never read it, its error read as the change's."""
+
+APPEARED = (
+    "new.ddd.json appeared since the project was analysed, so the change cannot be judged until "
+    "the project is analysed again"
+)
+
+NO_KIND = (
+    "is no kind of file a project includes: it cannot be read as json, or its top level holds "
+    "none of project, component, types, units, sections, constants and rasters"
+)
+
+UNJUDGED_ADDING = (
+    "not every analysis of this project ran to its end, so what adding c.ddd.json brings cannot "
+    "be judged"
+)
+"""What an add to READER_OF_A_BROKEN_WRITER is answered with: nothing brought, and why."""
+
+UNJUDGED_REMOVING = (
+    "not every analysis of this project ran to its end, so what removing lib/b.ddd.json leaves "
+    "cannot be judged"
+)
+"""What removing READER_OF_A_BROKEN_WRITER's broken writer is answered with: allowed, and why
+unjudged - the file named as the includes spell it, from the description's directory."""
+
+
+class TestAFilesPlanRequest:
+    """What ``GET /api/files-plan`` takes, before any plan is asked for."""
+
+    @pytest.mark.parametrize("action", ["", "rename"])
+    def test_an_action_it_does_not_take_is_a_bad_request(self, api: Api, action: str) -> None:
+        assert refused(files_plan(api, action)) == (
+            400,
+            "bad-request",
+            "files-plan takes ?action= one of create, add, remove",
+        )
+
+    @pytest.mark.parametrize(
+        ("action", "query", "says"),
+        [
+            pytest.param(
+                "create", {"name": "sizes"}, "create takes ?kind= and ?name=", id="no kind"
+            ),
+            pytest.param(
+                "create",
+                {"kind": "types", "name": ""},
+                "create takes ?kind= and ?name=",
+                id="no name",
+            ),
+            pytest.param("add", {}, "add takes ?path=", id="add, no path"),
+            pytest.param("add", {"path": ""}, "add takes ?path=", id="add, an empty path"),
+            pytest.param("remove", {}, "remove takes ?path=", id="remove, no path"),
+        ],
+    )
+    def test_a_parameter_missing_or_empty_is_a_bad_request(
+        self, api: Api, action: str, query: dict[str, str], says: str
+    ) -> None:
+        assert refused(files_plan(api, action, **query)) == (400, "bad-request", says)
+
+    @pytest.mark.parametrize("path", ["a.ddd.json", "../p/a.ddd.json"])
+    def test_a_key_to_remove_that_is_not_absolute_is_a_bad_request(
+        self, api: Api, path: str
+    ) -> None:
+        """A row's key is absolute. Read against the server's own working directory, a relative
+        one named another file, and the refusal said no entry names a file one names."""
+        assert refused(files_plan(api, "remove", path=path)) == (
+            400,
+            "bad-request",
+            f"remove takes ?path= as a row's key, which is absolute, and '{path}' is not",
+        )
+
+    def test_a_plan_needs_an_open_project(self, root: Path) -> None:
+        reply = files_plan(Api(Session(root)), "remove", path=posix(root, "a.ddd.json"))
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+    def test_a_files_plan_the_engine_refuses_is_a_refusal_the_page_can_act_on(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The same pattern as every other plan endpoint's, over this handler's own call to
+        `previewed`."""
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+
+        def refuse(*_: object) -> None:
+            raise EditError(UNVERIFIED, "does not read back")
+
+        monkeypatch.setattr("ddd.gui.api.previewed", refuse)
+        reply = files_plan(api, "create", kind="types", name="more")
+        assert (reply.status, reply.body["error"]) == (409, "unverified")
+
+
+class TestCreatingAFile:
+    """``create``: a new file beside the description, appended to its includes in one edit."""
+
+    def test_a_vocabulary_file_is_previewed_declaring_nothing(self, tmp_path: Path) -> None:
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        described = root / "project.ddd.json"
+        reply = files_plan(api, "create", kind="constants", name="limits")
+        assert reply == Reply(
+            200,
+            {
+                "revision": 1,
+                "changes": [
+                    {
+                        "file": posix(root, "limits.ddd.json"),
+                        "fingerprint": None,
+                        "operations": [
+                            {"op": "set", "pointer": "", "raw": '{\n  "constants": []\n}\n'}
+                        ],
+                        "hunks": [
+                            {
+                                "line": 1,
+                                "before": [],
+                                "after": ["{", '  "constants": []', "}"],
+                            }
+                        ],
+                    },
+                    {
+                        "file": posix(root, "project.ddd.json"),
+                        "fingerprint": fingerprint(described.read_bytes()),
+                        "operations": [
+                            {
+                                "op": "insert",
+                                "pointer": "project.includes[5]",
+                                "raw": '"limits.ddd.json"',
+                            }
+                        ],
+                        "hunks": [
+                            {
+                                "line": 11,
+                                "before": ['      "pump.ddd.json"'],
+                                "after": ['      "pump.ddd.json",', '      "limits.ddd.json"'],
+                            }
+                        ],
+                    },
+                ],
+                "unjudged": None,
+                "brings": [],
+                "kept_by": None,
+            },
+        )
+
+    def test_a_first_units_file_lists_every_unit_the_project_states(self, tmp_path: Path) -> None:
+        """No units file anywhere in the tree: the file created opts the project in, so it lists
+        what the project states rather than making each of them `unknown-unit`."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm"), declare("local", "Load", unit="%")
+                ),
+            },
+        )
+        preview = files_plan(api, "create", kind="units", name="units").body
+        assert written(preview, (tmp_path / "units.ddd.json").resolve()) == (
+            '{\n  "units": [\n    { "unit": "%", "description": "" },\n'
+            '    { "unit": "rpm", "description": "" }\n  ]\n}\n'
+        )
+
+    def test_a_units_file_of_a_project_a_sub_project_opted_in_is_created_empty(
+        self, tmp_path: Path
+    ) -> None:
+        """Whether a units file is the first is asked of every file of the tree, not of the
+        root's own includes: listing the sub-project's four units again in a root file would fail
+        the project with a `duplicate-unit` for each. Applied, and the project read again."""
+        api = vocabulary_below(tmp_path)
+        before = errors_in(api)
+        preview = files_plan(api, "create", kind="units", name="units").body
+        assert written(preview, (tmp_path / "units.ddd.json").resolve()) == '{\n  "units": []\n}\n'
+        assert applied(api, preview).status == 200
+        assert (tmp_path / "units.ddd.json").read_text(encoding="utf-8") == (
+            '{\n  "units": []\n}\n'
+        )
+        assert errors_in(api) == before == []
+
+    def test_a_component_is_refused_the_name_of_a_sub_project_s_but_for_its_case(
+        self, tmp_path: Path
+    ) -> None:
+        """Every component of the tree takes its name, a sub-project's among them."""
+        api = vocabulary_below(tmp_path)
+        assert refused(
+            files_plan(api, "create", kind="component", name="pump", component="pump")
+        ) == (
+            409,
+            "invalid",
+            "this project has a component called 'Pump' already, and 'pump' differs from it only "
+            "in upper and lower case, so the two would ask for the same generated header",
+        )
+
+    def test_a_component_that_did_not_load_still_takes_its_name(self, tmp_path: Path) -> None:
+        """Its name read off the file, since it clashes the moment the file is fixed; and a
+        component naming itself nothing takes no name at all, so that a name no component has is
+        compared, case folded, with the names there are and nothing else."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "broken.ddd.json", "nameless.ddd.json"),
+                "broken.ddd.json": {"component": {"name": "Broken", "interface": 3}},
+                "nameless.ddd.json": {"component": {"interface": []}},
+            },
+        )
+        assert refused(
+            files_plan(api, "create", kind="component", name="other", component="Broken")
+        ) == (409, "invalid", "this project has a component called 'Broken' already")
+        reply = files_plan(api, "create", kind="component", name="fresh", component="Fresh")
+        assert reply.status == 200
+
+    def test_the_project_s_own_name_is_no_component_s(self, tmp_path: Path) -> None:
+        """A description's name is no component's: only a component takes one from a new
+        component. Measured, a component named as its project passes `ddd check`."""
+        api = vocabulary_below(tmp_path)
+        reply = files_plan(api, "create", kind="component", name="device", component="Device")
+        assert reply.status == 200
+
+    @pytest.mark.parametrize(
+        ("query", "says"),
+        [
+            pytest.param(
+                {"kind": "project", "name": "sub"},
+                "no file of kind 'project' can be created here; the kinds that can are component, "
+                "types, units, constants, sections and rasters",
+                id="a kind",
+            ),
+            pytest.param(
+                {"kind": "types", "name": "a.b"},
+                "'a.b' cannot name a new file: a name is one or more of the letters a to z and A "
+                "to Z, the digits 0 to 9, '_' and '-', and .ddd.json is added to it",
+                id="a name",
+            ),
+            pytest.param(
+                {"kind": "types", "name": "units"},
+                "units.ddd.json is there already, beside project.ddd.json",
+                id="a file there already",
+            ),
+            pytest.param(
+                {"kind": "component", "name": "motor"},
+                "a new component needs a name, besides its file's",
+                id="no component's name",
+            ),
+            pytest.param(
+                {"kind": "component", "name": "motor", "component": ""},
+                "a new component needs a name, besides its file's",
+                id="an empty component's name",
+            ),
+            pytest.param(
+                {"kind": "component", "name": "motor", "component": "2Motor"},
+                "'2Motor' cannot name a component, not being a usable c identifier",
+                id="no c identifier",
+            ),
+            pytest.param(
+                {"kind": "component", "name": "motor", "component": "int"},
+                "'int' cannot name a component, being reserved by c or by a header DDD generates",
+                id="a reserved name",
+            ),
+            pytest.param(
+                {"kind": "component", "name": "motor", "component": "Pump"},
+                "this project has a component called 'Pump' already",
+                id="a component's name taken",
+            ),
+        ],
+    )
+    def test_a_refused_creation_says_why(
+        self, tmp_path: Path, query: dict[str, str], says: str
+    ) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        assert refused(files_plan(api, "create", **query)) == (409, "invalid", says)
+
+    def test_a_first_units_file_is_refused_while_a_file_did_not_load(self, tmp_path: Path) -> None:
+        api = opened(tmp_path, HALF_SAVED)
+        assert refused(files_plan(api, "create", kind="units", name="units")) == (
+            409,
+            "unreadable",
+            "b.ddd.json did not load, so a first units file could not list every unit in use",
+        )
+
+    def test_a_file_created_where_a_pattern_matches_its_name_is_applied_and_read(
+        self, tmp_path: Path
+    ) -> None:
+        """The new file is appended by its own name although the pattern reaches it: an edit may
+        create a file only where an entry names it. Applied through the edit a page posts, and
+        the project read again: listed twice, read once, and passing."""
+        api = opened(
+            tmp_path,
+            {"p.ddd.json": project("P", "*.ddd.json"), "a.ddd.json": component("A")},
+        )
+        preview = files_plan(api, "create", kind="component", name="extra", component="Extra")
+        assert preview.status == 200
+        assert applied(api, preview.body).status == 200
+        described = json.loads((tmp_path / "p.ddd.json").read_text(encoding="utf-8"))
+        assert described["project"]["includes"] == ["*.ddd.json", "extra.ddd.json"]
+        assert json.loads((tmp_path / "extra.ddd.json").read_text(encoding="utf-8")) == {
+            "component": {"name": "Extra", "interface": []}
+        }
+        assert errors_in(api) == []
+        assert posix(tmp_path, "extra.ddd.json") in {
+            file["path"] for file in get(api, "/api/state").body["files"]
+        }
+
+
+class TestAddingAFile:
+    """``add``: an existing file appended to the includes as written, and the errors it is
+    counted to bring - previewed, never refused by the analysis."""
+
+    def test_an_added_owner_turning_a_readers_disagreement_leaves_it_unlisted(
+        self, tmp_path: Path
+    ) -> None:
+        """The cost of counting per place, an add's as a removal's: `W2` writes `X` as `uint32`
+        in `Nm` and `R` reads it as `uint32` in `rpm`, a `definition-mismatch` with `W2` over its
+        unit, on `R`. Added, `W1` writes it as `uint16` in `rpm` and owns it, its name sorting
+        first, and `R`'s disagreement becomes one with `W1` over its datatype at the same place:
+        counted as the one `R` has, it is not listed, while the writers' conflict and `W2`'s
+        disagreement with `W1` are. Applied, the project reports it. The answer asserted is the
+        one given."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w2.ddd.json", "r.ddd.json"),
+                "w1.ddd.json": component("W1", declare("output", "X", "uint16", unit="rpm")),
+                "w2.ddd.json": component("W2", declare("output", "X", "uint32", unit="Nm")),
+                "r.ddd.json": component("R", declare("input", "X", "uint32", unit="rpm")),
+            },
+        )
+        reply = files_plan(api, "add", path="w1.ddd.json")
+        assert reply.body["unjudged"] is None
+        assert [
+            (Path(brought["file"]).name, brought["check"], brought["message"])
+            for brought in reply.body["brings"]
+        ] == [
+            (
+                "w1.ddd.json",
+                "multiple-producers",
+                "'X' is written by component 'W1' and by component 'W2'; exactly one writer is "
+                "allowed",
+            ),
+            (
+                "w2.ddd.json",
+                "definition-mismatch",
+                "'X' is declared differently by component 'W2' than by 'W1' (datatype: uint32 != "
+                "uint16, unit: 'Nm' != 'rpm')",
+            ),
+        ]
+        assert applied(api, reply.body).status == 200
+        assert (
+            "r.ddd.json",
+            "definition-mismatch",
+            "'X' is declared differently by component 'R' than by 'W1' (datatype: uint32 != "
+            "uint16)",
+        ) in errors_in(api)
+
+    def test_an_absolute_path_is_appended_as_typed(self, tmp_path: Path) -> None:
+        """A path need not be written from the description's directory: one inside what is
+        served may be absolute, and is appended so."""
+        api = opened(tmp_path, ADDABLE)
+        typed = posix(tmp_path, "c.ddd.json")
+        reply = files_plan(api, "add", path=typed)
+        assert (reply.status, reply.body["unjudged"], reply.body["brings"]) == (200, None, [])
+        assert reply.body["changes"][0]["operations"] == [
+            {"op": "insert", "pointer": "project.includes[2]", "raw": json.dumps(typed)}
+        ]
+
+    def test_a_file_is_appended_with_the_errors_it_would_bring(self, tmp_path: Path) -> None:
+        api = opened(tmp_path, ADDABLE)
+        described = tmp_path / "p.ddd.json"
+        reply = files_plan(api, "add", path="b.ddd.json")
+        assert reply == Reply(
+            200,
+            {
+                "revision": 1,
+                "changes": [
+                    {
+                        "file": posix(tmp_path, "p.ddd.json"),
+                        "fingerprint": fingerprint(described.read_bytes()),
+                        "operations": [
+                            {
+                                "op": "insert",
+                                "pointer": "project.includes[2]",
+                                "raw": '"b.ddd.json"',
+                            }
+                        ],
+                        "hunks": [
+                            {
+                                "line": 6,
+                                "before": ['      "lib/*.ddd.json"'],
+                                "after": ['      "lib/*.ddd.json",', '      "b.ddd.json"'],
+                            }
+                        ],
+                    }
+                ],
+                "unjudged": None,
+                "brings": [
+                    {
+                        "file": posix(tmp_path, "b.ddd.json"),
+                        "check": "missing-producer",
+                        "message": "'Torque' is read by component 'B' but no component declares "
+                        "it as output",
+                    }
+                ],
+                "kept_by": None,
+            },
+        )
+
+    def test_a_file_bringing_nothing_brings_nothing(self, tmp_path: Path) -> None:
+        body = files_plan(opened(tmp_path, ADDABLE), "add", path="c.ddd.json").body
+        assert (body["unjudged"], body["brings"], body["kept_by"]) == (None, [], None)
+
+    @pytest.mark.parametrize(
+        ("path", "status", "code", "says"),
+        [
+            pytest.param(
+                "missing.ddd.json",
+                404,
+                "not-found",
+                "missing.ddd.json names no file; a file not there yet is created, not added",
+                id="no file",
+            ),
+            pytest.param(
+                "p.ddd.json",
+                409,
+                "invalid",
+                "p.ddd.json is this project's own description, which it cannot include",
+                id="the description",
+            ),
+            pytest.param(
+                "./a.ddd.json",
+                409,
+                "invalid",
+                "./a.ddd.json is part of this project already, as the entry 'a.ddd.json'",
+                id="an entry's file",
+            ),
+            pytest.param(
+                "lib/l.ddd.json",
+                409,
+                "invalid",
+                "lib/l.ddd.json is part of this project already: the pattern 'lib/*.ddd.json' "
+                "brings it in",
+                id="a pattern's file",
+            ),
+            pytest.param("notes.json", 409, "invalid", f"notes.json {NO_KIND}", id="no kind"),
+            pytest.param(
+                "half.ddd.json", 409, "invalid", f"half.ddd.json {NO_KIND}", id="half saved"
+            ),
+            pytest.param(
+                "tool.py",
+                409,
+                "invalid",
+                "tool.py is a python file, which a project names among its plugins rather than "
+                "its includes",
+                id="a plugin",
+            ),
+        ],
+    )
+    def test_a_refused_addition_says_why(
+        self, tmp_path: Path, path: str, status: int, code: str, says: str
+    ) -> None:
+        assert refused(files_plan(opened(tmp_path, ADDABLE), "add", path=path)) == (
+            status,
+            code,
+            says,
+        )
+
+    @pytest.fixture
+    def served_below(self, tmp_path: Path) -> Api:
+        """``ddd gui`` started in ``inside``, a description file lying one directory up."""
+        write_tree(
+            tmp_path,
+            {
+                "outside.ddd.json": component("S", declare("output", "Speed", unit="rpm")),
+                "inside/p.ddd.json": project("P", "a.ddd.json"),
+                "inside/a.ddd.json": component("A", declare("input", "Speed", unit="rpm")),
+            },
+        )
+        session = Session(tmp_path / "inside")
+        session.open(tmp_path / "inside" / "p.ddd.json")
+        return Api(session, tmp_path / "inside" / "p.ddd.json", wait_seconds=0.05)
+
+    @pytest.mark.parametrize("path", ["../outside.ddd.json", "../missing.ddd.json"])
+    def test_a_file_outside_what_the_session_serves_is_refused_first(
+        self, served_below: Api, tmp_path: Path, path: str
+    ) -> None:
+        """Decided by the rule every read and every edit is, so that adding and reading never
+        disagree; asked before anything else, a file there or not."""
+        assert refused(files_plan(served_below, "add", path=path)) == (
+            409,
+            "invalid",
+            f"{path} lies outside what ddd gui serves, {(tmp_path / 'inside').resolve().as_posix()}"
+            "; start it in a directory holding this file to add it here",
+        )
+
+    def test_a_file_the_project_has_is_refused_as_such_before_its_kind(
+        self, tmp_path: Path
+    ) -> None:
+        api = opened(
+            tmp_path,
+            {"p.ddd.json": project("P", "lib/*.ddd.json"), "lib/half.ddd.json": '{"component": '},
+        )
+        assert refused(files_plan(api, "add", path="lib/half.ddd.json")) == (
+            409,
+            "invalid",
+            "lib/half.ddd.json is part of this project already: the pattern 'lib/*.ddd.json' "
+            "brings it in",
+        )
+
+    def test_an_addition_to_a_project_not_analysed_brings_nothing_unjudged(
+        self, tmp_path: Path
+    ) -> None:
+        api = opened(tmp_path, {**READER_OF_A_BROKEN_WRITER, "c.ddd.json": component("C")})
+        body = files_plan(api, "add", path="c.ddd.json").body
+        assert (body["unjudged"], body["brings"], body["kept_by"]) == (UNJUDGED_ADDING, [], None)
+
+    def test_an_addition_is_refused_where_a_file_changed_since_the_analysis(
+        self, tmp_path: Path
+    ) -> None:
+        """What the file brings is judged against the revision's findings, which a file saved
+        since no longer says."""
+        api = opened(tmp_path, ADDABLE)
+        (tmp_path / "lib" / "l.ddd.json").write_text(
+            json.dumps(component("L", declare("input", "Speed", unit="km/h"))), encoding="utf-8"
+        )
+        assert refused(files_plan(api, "add", path="c.ddd.json")) == (
+            409,
+            "stale",
+            "l.ddd.json changed since the project was analysed, so the change cannot be judged "
+            "until the project is analysed again",
+        )
+
+    def test_an_addition_is_refused_where_a_file_appeared_since_the_analysis(
+        self, tmp_path: Path
+    ) -> None:
+        """What the added file brings was listed with the new file's error beside it, which no
+        revision had shown."""
+        api = opened(tmp_path, PATTERN_OVER_A_DIRECTORY)
+        write_tree(tmp_path, {"lib/new.ddd.json": NEW_READER})
+        assert refused(files_plan(api, "add", path="c.ddd.json")) == (409, "stale", APPEARED)
+
+    def test_an_addition_the_disk_refuses_is_refused_so_though_a_file_changed_since(
+        self, tmp_path: Path
+    ) -> None:
+        """What the disk answers holds whenever it is asked; only the judgement is the revision's
+        to spoil."""
+        api = opened(tmp_path, ADDABLE)
+        (tmp_path / "a.ddd.json").write_bytes((tmp_path / "a.ddd.json").read_bytes() + b"\n")
+        assert refused(files_plan(api, "add", path="missing.ddd.json")) == (
+            404,
+            "not-found",
+            "missing.ddd.json names no file; a file not there yet is created, not added",
+        )
+
+    def test_an_unjudged_addition_is_not_refused_for_a_file_saved_since(
+        self, tmp_path: Path
+    ) -> None:
+        """Nothing is judged, so nothing is stale: a project not analysed is answered unjudged,
+        with no refusal, whatever was saved since."""
+        api = opened(tmp_path, {**READER_OF_A_BROKEN_WRITER, "c.ddd.json": component("C")})
+        (tmp_path / "a.ddd.json").write_bytes((tmp_path / "a.ddd.json").read_bytes() + b"\n")
+        body = files_plan(api, "add", path="c.ddd.json").body
+        assert (body["unjudged"], body["brings"]) == (UNJUDGED_ADDING, [])
+
+
+class TestRemovingAFile:
+    """``remove``: every entry keyed by the path taken out, refused where the project without it
+    would have an error more than it has now at its place."""
+
+    def test_the_units_file_is_removed_and_the_project_read_again_checking_no_unit(
+        self, tmp_path: Path
+    ) -> None:
+        """`pump.ddd.json` states units `units.ddd.json` declares, but a units file is what opts
+        a project into checking its units: with none left no unit is checked, and nothing
+        fails."""
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        described = root / "project.ddd.json"
+        reply = files_plan(api, "remove", path=posix(root, "units.ddd.json"))
+        assert reply == Reply(
+            200,
+            {
+                "revision": 1,
+                "changes": [
+                    {
+                        "file": posix(root, "project.ddd.json"),
+                        "fingerprint": fingerprint(described.read_bytes()),
+                        "operations": [
+                            {"op": "remove", "pointer": "project.includes[0]", "raw": None}
+                        ],
+                        "hunks": [{"line": 7, "before": ['      "units.ddd.json",'], "after": []}],
+                    }
+                ],
+                "unjudged": None,
+                "brings": [],
+                "kept_by": None,
+            },
+        )
+        assert applied(api, reply.body).status == 200
+        assert json.loads(described.read_text(encoding="utf-8"))["project"]["includes"] == [
+            "sections.ddd.json",
+            "constants.ddd.json",
+            "rasters.ddd.json",
+            "pump.ddd.json",
+        ]
+        assert errors_in(api) == []
+
+    def test_a_file_whose_declaration_is_used_is_refused_naming_the_error_it_would_leave(
+        self, tmp_path: Path
+    ) -> None:
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        assert refused(files_plan(api, "remove", path=posix(root, "constants.ddd.json"))) == (
+            409,
+            "invalid",
+            "removing constants.ddd.json would leave one error more than the project has now at "
+            "its place, in pump.ddd.json: 'PressureTrend' is dimensioned by 'TREND_SAMPLES', "
+            "which is not a constant any file of this project declares",
+        )
+
+    def test_a_file_leaving_several_errors_is_refused_naming_the_first_and_how_many(
+        self, tmp_path: Path
+    ) -> None:
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        assert refused(files_plan(api, "remove", path=posix(root, "sections.ddd.json"))) == (
+            409,
+            "invalid",
+            "removing sections.ddd.json would leave 3 errors more than the project has now at "
+            "their places, the first in pump.ddd.json: 'PumpSpeed' is placed in '.fast_ram', "
+            "which is not a section any file of this project declares",
+        )
+
+    @pytest.mark.parametrize(
+        ("pattern", "says"),
+        [
+            pytest.param(
+                "lib/*.ddd.json",
+                "removing lib/*.ddd.json would leave one error more than the project has now at "
+                "its place, in a.ddd.json: 'Speed' is read by component 'A' but no component "
+                "declares it as output",
+                id="one error",
+            ),
+            pytest.param(
+                "sensors/*.ddd.json",
+                "removing sensors/*.ddd.json would leave 2 errors more than the project has now "
+                "at their places, the first in a.ddd.json: 'Torque' is read by component 'A' but "
+                "no component declares it as output",
+                id="several",
+            ),
+        ],
+    )
+    def test_a_pattern_in_a_directory_is_named_as_the_includes_spell_it(
+        self, tmp_path: Path, pattern: str, says: str
+    ) -> None:
+        """Named relative to the description's directory, as its entry is written, and not by
+        its last part: `lib/*.ddd.json`, never `*.ddd.json`, which another pattern may end in."""
+        api = opened(tmp_path, WRITERS_IN_DIRECTORIES)
+        assert refused(files_plan(api, "remove", path=posix(tmp_path, pattern))) == (
+            409,
+            "invalid",
+            says,
+        )
+
+    def test_a_failing_project_s_count_is_of_errors_more_at_their_places_not_a_total(
+        self, tmp_path: Path
+    ) -> None:
+        """The project fails already, with four errors, and the writer removed reads a variable
+        nothing writes. Measured: five errors once it is gone, its own leaving with it, so read as
+        a total, "two errors more than it has now" would say six."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "w.ddd.json"),
+                "a.ddd.json": component(
+                    "A", *(declare("input", name) for name in ("X1", "X2", "X3", "Y1", "Y2"))
+                ),
+                "w.ddd.json": component(
+                    "W", declare("output", "Y1"), declare("output", "Y2"), declare("input", "Z")
+                ),
+            },
+        )
+        assert len(errors_in(api)) == 4
+        assert refused(files_plan(api, "remove", path=posix(tmp_path, "w.ddd.json"))) == (
+            409,
+            "invalid",
+            "removing w.ddd.json would leave 2 errors more than the project has now at their "
+            "places, the first in a.ddd.json: 'Y1' is read by component 'A' but no component "
+            "declares it as output",
+        )
+
+    def test_a_removal_is_named_by_its_entry_as_the_includes_spell_it(self, tmp_path: Path) -> None:
+        """Written through a link to a directory, the pattern is keyed by where the link leads,
+        and named as it is written - not by the key, which names a pattern no entry spells."""
+        write_tree(tmp_path, {"lib/w.ddd.json": component("W", declare("output", "Speed"))})
+        directory_link(tmp_path / "link", tmp_path / "lib")
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "link/*.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "Speed")),
+            },
+        )
+        key = get(api, "/api/files").body["entries"][1]["key"]
+        assert key == posix(tmp_path, "lib/*.ddd.json")
+        assert refused(files_plan(api, "remove", path=key)) == (
+            409,
+            "invalid",
+            "removing link/*.ddd.json would leave one error more than the project has now at its "
+            "place, in a.ddd.json: 'Speed' is read by component 'A' but no component declares it "
+            "as output",
+        )
+
+    def test_a_file_listed_twice_is_named_by_the_first_entry_removed(self, tmp_path: Path) -> None:
+        """Every entry naming the file goes, and the one the list has first names the removal."""
+        api = opened(
+            tmp_path,
+            {
+                **READER_OF_A_BROKEN_WRITER,
+                "p.ddd.json": project("P", "./lib/b.ddd.json", "a.ddd.json", "lib/b.ddd.json"),
+            },
+        )
+        body = files_plan(api, "remove", path=posix(tmp_path, "lib/b.ddd.json")).body
+        assert body["unjudged"] == (
+            "not every analysis of this project ran to its end, so what removing ./lib/b.ddd.json "
+            "leaves cannot be judged"
+        )
+        assert body["changes"][0]["operations"] == [
+            {"op": "remove", "pointer": "project.includes[2]", "raw": None},
+            {"op": "remove", "pointer": "project.includes[0]", "raw": None},
+        ]
+
+    def test_a_file_a_pattern_pulled_in_is_refused_naming_the_pattern(self, tmp_path: Path) -> None:
+        api = opened(
+            tmp_path,
+            {"p.ddd.json": project("P", "lib/*.ddd.json"), "lib/a.ddd.json": component("A")},
+        )
+        assert refused(files_plan(api, "remove", path=posix(tmp_path, "lib/a.ddd.json"))) == (
+            409,
+            "invalid",
+            "a.ddd.json has no entry of its own: the pattern 'lib/*.ddd.json' brings it in, and "
+            "only the whole pattern can be removed",
+        )
+
+    def test_a_path_no_entry_brings_in_is_not_found(self, tmp_path: Path) -> None:
+        api = opened(
+            tmp_path, {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A")}
+        )
+        assert refused(files_plan(api, "remove", path=posix(tmp_path, "other.ddd.json"))) == (
+            404,
+            "not-found",
+            "no entry of p.ddd.json's includes names other.ddd.json, and none of its patterns "
+            "matches it",
+        )
+
+    def test_a_key_ending_in_a_link_is_named_as_the_request_sent_it(self, tmp_path: Path) -> None:
+        """Never by what it resolves to: `elsewhere`, a link among the files served, leads to
+        `outside`, a directory beside them that is not served, and the refusal names only what
+        the request wrote."""
+        write_tree(
+            tmp_path,
+            {
+                "served/p.ddd.json": project("P", "a.ddd.json"),
+                "served/a.ddd.json": component("A"),
+                "outside/secret.ddd.json": component("S"),
+            },
+        )
+        directory_link(tmp_path / "served" / "elsewhere", tmp_path / "outside")
+        session = Session(tmp_path / "served")
+        session.open(tmp_path / "served" / "p.ddd.json")
+        api = Api(session, tmp_path / "served" / "p.ddd.json", wait_seconds=0.05)
+        sent = (tmp_path / "served" / "elsewhere").as_posix()
+        assert refused(files_plan(api, "remove", path=sent)) == (
+            404,
+            "not-found",
+            "no entry of p.ddd.json's includes names elsewhere, and none of its patterns "
+            "matches it",
+        )
+
+    def test_a_file_a_pattern_keeps_in_the_project_says_which(self, tmp_path: Path) -> None:
+        """The literal entry goes, and the pattern left still brings the file in: allowed, and
+        the plan says so for the preview to tell the reader."""
+        api = opened(
+            tmp_path,
+            {"p.ddd.json": project("P", "*.ddd.json", "a.ddd.json"), "a.ddd.json": component("A")},
+        )
+        body = files_plan(api, "remove", path=posix(tmp_path, "a.ddd.json")).body
+        assert (body["unjudged"], body["brings"], body["kept_by"]) == (None, [], "*.ddd.json")
+        assert body["changes"][0]["operations"] == [
+            {"op": "remove", "pointer": "project.includes[1]", "raw": None}
+        ]
+
+    def test_an_unjudged_removal_says_which_pattern_keeps_the_file_all_the_same(
+        self, tmp_path: Path
+    ) -> None:
+        """Whether a pattern keeps the file is the loader's rule over the entries left, and needs
+        no analysis: a project that is not analysed is told it too."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "*.ddd.json", "a.ddd.json"),
+                "a.ddd.json": component("A"),
+                "b.ddd.json": '{"component": ',
+            },
+        )
+        body = files_plan(api, "remove", path=posix(tmp_path, "a.ddd.json")).body
+        assert (body["unjudged"], body["brings"], body["kept_by"]) == (
+            "not every analysis of this project ran to its end, so what removing a.ddd.json "
+            "leaves cannot be judged",
+            [],
+            "*.ddd.json",
+        )
+
+    def test_a_row_s_key_spelled_another_way_still_names_its_row(self, tmp_path: Path) -> None:
+        """Resolved before it is compared, as every path the page sends is, and as the row's own
+        key was made."""
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        spelled = f"{root.resolve().as_posix()}/sub/../units.ddd.json"
+        body = files_plan(api, "remove", path=spelled).body
+        assert body["changes"][0]["operations"] == [
+            {"op": "remove", "pointer": "project.includes[0]", "raw": None}
+        ]
+
+    def test_a_broken_file_of_a_project_not_analysed_is_removed_unjudged(
+        self, tmp_path: Path
+    ) -> None:
+        """Judged, removing the half-saved writer would be refused for the `missing-producer`
+        its reader is left with - an error of an analysis that never ran on the project as it is,
+        so one the reader cannot see. Not every run analysed: allowed, and said to be unjudged."""
+        api = opened(tmp_path, READER_OF_A_BROKEN_WRITER)
+        reply = files_plan(api, "remove", path=posix(tmp_path, "lib/b.ddd.json"))
+        assert reply.status == 200
+        assert (reply.body["unjudged"], reply.body["brings"], reply.body["kept_by"]) == (
+            UNJUDGED_REMOVING,
+            [],
+            None,
+        )
+
+    def test_a_missing_file_s_entry_is_removed_unjudged(self, tmp_path: Path) -> None:
+        """A plain path naming no file is `file-not-found`, a load check: the project is not
+        analysed, and taking the entry out is allowed without a judgement."""
+        api = opened(tmp_path, ENTRIES_OF_EVERY_SHAPE)
+        body = files_plan(api, "remove", path=posix(tmp_path, "missing.ddd.json")).body
+        assert (body["unjudged"], body["brings"], body["kept_by"]) == (
+            "not every analysis of this project ran to its end, so what removing missing.ddd.json "
+            "leaves cannot be judged",
+            [],
+            None,
+        )
+        assert body["changes"][0]["operations"] == [
+            {"op": "remove", "pointer": "project.includes[2]", "raw": None}
+        ]
+
+    def test_a_removal_is_refused_where_any_file_changed_since_the_analysis(
+        self, tmp_path: Path
+    ) -> None:
+        """Not only the description: a component saved just before the next poll would make an
+        error that save brought read as the removal's. Every file saved since is named, in the
+        revision's order."""
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        for saved in ("rasters.ddd.json", "pump.ddd.json"):
+            (root / saved).write_bytes((root / saved).read_bytes() + b"\n")
+        assert refused(files_plan(api, "remove", path=posix(root, "units.ddd.json"))) == (
+            409,
+            "stale",
+            "pump.ddd.json, rasters.ddd.json changed since the project was analysed, so the "
+            "change cannot be judged until the project is analysed again",
+        )
+
+    def test_a_removal_is_refused_where_a_file_appeared_since_the_analysis(
+        self, tmp_path: Path
+    ) -> None:
+        """Saved where the pattern matches once the revision was analysed, a new component reads
+        what nothing writes. Judged, removing a file nothing uses was refused for the new file's
+        error, which no revision had shown."""
+        api = opened(tmp_path, PATTERN_OVER_A_DIRECTORY)
+        write_tree(tmp_path, {"lib/new.ddd.json": NEW_READER})
+        assert refused(files_plan(api, "remove", path=posix(tmp_path, "spare.ddd.json"))) == (
+            409,
+            "stale",
+            APPEARED,
+        )
+
+    def test_a_file_appearing_under_a_sub_project_s_pattern_is_seen_too(
+        self, tmp_path: Path
+    ) -> None:
+        """Every description of the tree is expanded, a sub-project's as well as the root's."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "sub/project.ddd.json", "spare.ddd.json"),
+                "sub/project.ddd.json": project("Sub", "lib/*.ddd.json"),
+                "sub/lib/l.ddd.json": component("L"),
+                "spare.ddd.json": component("Spare"),
+            },
+        )
+        write_tree(tmp_path, {"sub/lib/new.ddd.json": NEW_READER})
+        assert refused(files_plan(api, "remove", path=posix(tmp_path, "spare.ddd.json"))) == (
+            409,
+            "stale",
+            APPEARED,
+        )
+
+    def test_a_file_two_entries_reach_is_named_once(self, tmp_path: Path) -> None:
+        """Both patterns match what the analysis read, and both reach the new file."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "lib/*.ddd.json", "lib/*w.ddd.json", "spare.ddd.json"),
+                "lib/low.ddd.json": component("Low"),
+                "spare.ddd.json": component("Spare"),
+            },
+        )
+        write_tree(tmp_path, {"lib/new.ddd.json": NEW_READER})
+        assert refused(files_plan(api, "remove", path=posix(tmp_path, "spare.ddd.json"))) == (
+            409,
+            "stale",
+            APPEARED,
+        )
+
+    def test_a_file_changed_is_named_before_one_that_appeared(self, tmp_path: Path) -> None:
+        api = opened(tmp_path, PATTERN_OVER_A_DIRECTORY)
+        write_tree(tmp_path, {"lib/new.ddd.json": NEW_READER})
+        (tmp_path / "a.ddd.json").write_bytes((tmp_path / "a.ddd.json").read_bytes() + b"\n")
+        assert refused(files_plan(api, "remove", path=posix(tmp_path, "spare.ddd.json"))) == (
+            409,
+            "stale",
+            "a.ddd.json changed since the project was analysed, so the change cannot be judged "
+            "until the project is analysed again",
+        )
+
+    def test_an_unjudged_plan_is_not_refused_for_a_file_that_appeared(self, tmp_path: Path) -> None:
+        """Nothing is judged, so nothing appearing spoils a judgement: a project not analysed is
+        answered unjudged, whatever a pattern matches since."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "lib/*.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "Speed")),
+                "lib/b.ddd.json": READER_OF_A_BROKEN_WRITER["lib/b.ddd.json"],
+                "c.ddd.json": component("C"),
+            },
+        )
+        write_tree(tmp_path, {"lib/new.ddd.json": NEW_READER})
+        removed = files_plan(api, "remove", path=posix(tmp_path, "a.ddd.json")).body
+        assert removed["unjudged"] == (
+            "not every analysis of this project ran to its end, so what removing a.ddd.json "
+            "leaves cannot be judged"
+        )
+        added = files_plan(api, "add", path="c.ddd.json").body
+        assert added["unjudged"] == UNJUDGED_ADDING
+
+    def test_a_removal_the_disk_refuses_is_refused_so_though_a_file_changed_since(
+        self, tmp_path: Path
+    ) -> None:
+        """What the disk answers holds whenever it is asked; only the judgement is the revision's
+        to spoil."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "b.ddd.json", "lib/*.ddd.json"),
+                "b.ddd.json": component("B"),
+                "lib/a.ddd.json": component("A"),
+            },
+        )
+        (tmp_path / "b.ddd.json").write_bytes((tmp_path / "b.ddd.json").read_bytes() + b"\n")
+        assert refused(files_plan(api, "remove", path=posix(tmp_path, "lib/a.ddd.json"))) == (
+            409,
+            "invalid",
+            "a.ddd.json has no entry of its own: the pattern 'lib/*.ddd.json' brings it in, and "
+            "only the whole pattern can be removed",
+        )
+
+    def test_an_unjudged_removal_is_not_refused_for_a_file_saved_since(
+        self, tmp_path: Path
+    ) -> None:
+        """Nothing is judged, so nothing is stale: a project not analysed has its removal answered
+        unjudged, with no refusal, whatever was saved since."""
+        api = opened(tmp_path, READER_OF_A_BROKEN_WRITER)
+        (tmp_path / "a.ddd.json").write_bytes((tmp_path / "a.ddd.json").read_bytes() + b"\n")
+        body = files_plan(api, "remove", path=posix(tmp_path, "lib/b.ddd.json")).body
+        assert (body["unjudged"], body["brings"]) == (UNJUDGED_REMOVING, [])

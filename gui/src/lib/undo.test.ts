@@ -197,7 +197,7 @@ test.each([
     answered(DESCRIBED),
     "'limits.ddd.json' removed from the includes",
   ],
-] as const)("%o is undone as %s", (plan, reply, label) => {
+] as const)("%o, planned as %o, is undone as %s", (plan, reply, label) => {
   expect(filesLabel(plan, reply, "C:/work/demo/demo.ddd.json")).toBe(label);
 });
 

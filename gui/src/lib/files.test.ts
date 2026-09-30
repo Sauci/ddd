@@ -119,7 +119,7 @@ describe("a pattern matching files", () => {
   });
 
   test("a file a literal entry also names keeps two rows of one key, each its own count", () => {
-    // Task 4: `New file` appends a literal entry even where a pattern already matches the new
+    // Rulings 16: `New file` appends a literal entry even where a pattern already matches the new
     // name, so the loader reads the file once but the tab still offers both entries as separate
     // rows - each its own request to act on, `FileRow.key`'s own doc says how. `rowsOf` never
     // de-duplicates by `key`: a later "don't show a file twice" tidy-up would silently take one

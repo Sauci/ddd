@@ -1183,8 +1183,19 @@ class IncludedEntryReply(_Frozen):
 
     The page joins them to ``State.files`` on the path, and not every one is there. A schema
     error in the root's own description stops its read before its includes, so that no file they
-    bring is among ``State.files``; and a pattern can match a file created since the revision,
-    which the revision never read."""
+    bring is among ``State.files``; a pattern can match a file created since the revision, which
+    the revision never read; and the entries are read off the description when asked, so that one
+    it gained since the revision the page holds - saved outside the page, or written by the Files
+    tab's own New file or Add - brings a file that revision never read, until the page holds the
+    next.
+
+    The tab's own edit leaves such a row where the page asks for the entries again before the
+    revision the edit made reaches it: ``POST /api/edit`` answers once that revision is made, the
+    page asks on that answer, and the revision comes through ``GET /api/state``, whose reply is
+    built finding by finding. Measured, driving the built page on a running ``ddd gui``: never,
+    in eighteen creates and eighteen adds, on a copy of ``examples/vocabulary``; every time, for
+    0.86 to 1.42 seconds, in eight creates and eight adds on a project of 300 components and
+    18000 findings."""
 
     findings: int
     """How many of the revision's findings, of every severity, are filed on the project

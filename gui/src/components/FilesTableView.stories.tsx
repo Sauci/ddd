@@ -56,8 +56,8 @@ export const AnEntryNamingNothing = () => <Files reply={FILES_WITH_MISSING} />;
 /** pump.ddd.json, a literal entry `includes` still names, but its own file missing from those the
  * last analysis read (constructed: examples/vocabulary loads cleanly) - blank Kind, "not read by
  * the last analysis" under State: kept apart from AnEntryNamingNothing's own "names no file"
- * above, since this entry does name a file - the revision has simply not read it yet (Task 6's own
- * ruling, fixtures.ts says the two real causes). */
+ * above, since this entry does name a file - the revision the page holds has not read it
+ * (`FileRow.file`'s doc names the causes, fixtures.ts the one this shape stands for). */
 export const AFileTheLastAnalysisDidNotRead = () => <Files files={FILES_SOURCE_MISSING} />;
 
 /** subsystem.ddd.json, a sub-project (constructed: the shipped example includes no other

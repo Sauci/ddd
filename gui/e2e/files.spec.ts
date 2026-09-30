@@ -57,7 +57,7 @@ test("a component is created, an existing file is added, and one removal is refu
   // Remove, refused: constants.ddd.json declares TREND_SAMPLES, which pump.ddd.json's own
   // PressureTrend is dimensioned by - the sentence pinned whole in tests/test_gui_api.py's
   // TestRemovingAFile (and by REMOVE_LEAVES_AN_ERROR in gui/src/stories/fixtures.ts, "the
-  // refusal the Task 9 journey reads too"), read here rather than restated - a second spelling
+  // refusal `gui/e2e/files.spec.ts` reads too"), read here rather than restated - a second spelling
   // could drift from the server's with nothing to catch it. No plan follows the refusal, so
   // there is no button to press.
   await page.getByRole("row", { name: "constants.ddd.json" }).click();

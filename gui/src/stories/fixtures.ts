@@ -2588,8 +2588,9 @@ function cleanFile(
   };
 }
 
-/** `ddd.file_plans.CREATABLE`: the kinds New file offers (Task 8), sent so this tab's stories
- * never restate a list Task 6 already ruled the page must read off the reply instead. */
+/** `ddd.file_plans.CREATABLE`: the kinds New file offers, as `FilesReply.creatable` sends them -
+ * a reply's field here as in the page, which reads the list off the reply rather than restating
+ * it (the plan's Rulings 26). */
 const FILES_CREATABLE = ["component", "types", "units", "constants", "sections", "rasters"];
 
 /** The project's own list (true to examples/vocabulary, as the block comment above says): five
@@ -2621,12 +2622,13 @@ export const PROJECT_SOURCE_FILES: readonly SourceFile[] = [
 
 /** A file the last analysis did not read (constructed: every file `examples/vocabulary` includes
  * loads cleanly) - `PROJECT_FILES`' own five entries, pump.ddd.json's own file missing from
- * those the revision read. Task 6's `FileRow.file` doc names the two real causes: the root's own
- * schema failing before its includes are read, or a pattern matching a file created since the
- * revision - this fixture leaves either's own shape behind (a literal entry with no `SourceFile`
- * to join) without constructing either scenario whole, kept apart from an entry naming nothing:
- * pump.ddd.json is still named by `includes`, `PROJECT_FILES` untouched - only the file itself is
- * missing here. */
+ * those the revision read. `FileRow.file`'s doc (lib/files.ts) names the causes: the root's own
+ * schema failing before its includes are read, a pattern matching a file created since, or an
+ * entry the description gained since the revision the page holds. This is the last one's shape -
+ * one literal entry with no `SourceFile` to join, as the tab's own Add leaves until the revision
+ * after it arrives - without constructing the scenario whole, and kept apart from an entry naming
+ * nothing: pump.ddd.json is still named by `includes`, `PROJECT_FILES` untouched - only the file
+ * itself is missing here. */
 export const FILES_SOURCE_MISSING: readonly SourceFile[] = PROJECT_SOURCE_FILES.filter(
   (file) => file.path !== VOCABULARY_PUMP,
 );
@@ -2666,7 +2668,7 @@ export const FILES_WITH_PATTERN_SOURCES: readonly SourceFile[] = [
  * never a plain path's; `IncludedEntryReply.findings`'s own docstring and `finding_routes.py`
  * both say so, and `ddd check` on a project listing a missing plain path answers exactly
  * `error[file-not-found]`, measured), no kind to draw (`rowsOf` gave the row no `SourceFile` of
- * its own, Controller ruling) and `cellsOf`'s own "names no file" for its State - spec §2's
+ * its own, having no file to join) and `cellsOf`'s own "names no file" for its State - spec §2's
  * "shows as such". */
 const MISSING_ENTRY: IncludedEntryReply = {
   index: 5,
@@ -2684,8 +2686,8 @@ export const FILES_WITH_MISSING: FilesReply = {
 
 /** A sub-project row (constructed: examples/vocabulary includes no other project) - a nested
  * description, a literal entry exactly as pump.ddd.json's own is, its `SourceFile.kind` "project"
- * and drawn no differently from any other kind (Controller ruling: "not expanded"). Managing its
- * own includes belongs to opening it as a project (design §6). */
+ * and drawn no differently from any other kind, its own includes not expanded (design §2).
+ * Managing its own includes belongs to opening it as a project (design §6). */
 const SUBSYSTEM_PROJECT = "C:/work/demo/subsystem/subsystem.ddd.json";
 
 const SUBSYSTEM_ENTRY: IncludedEntryReply = {
@@ -2707,12 +2709,13 @@ export const FILES_WITH_SUBPROJECT_SOURCES: readonly SourceFile[] = [
   cleanFile(SUBSYSTEM_PROJECT, "project", "Subsystem", "h"),
 ];
 
-/** A selected row (Controller ruling: a route's own `path` selects every row of that key, which
- * can be more than one) - constructed, and deliberately narrow: "*.ddd.json" stands for a pattern
- * that would in fact match every file beside it, thinned here to pump.ddd.json alone so the
- * photograph shows the one thing this story exists for. pump.ddd.json's own key now belongs to
- * two rows - its literal entry's own, and this pattern's one child - and selecting it marks both,
- * leaving the pattern's own summary row (a different key, `"C:/work/demo/*.ddd.json"`) bare. */
+/** A selected row (`selectedIndices`, lib/files.ts: a route's own `path` selects every row of
+ * that key, which can be more than one) - constructed, and deliberately narrow: "*.ddd.json"
+ * stands for a pattern that would in fact match every file beside it, thinned here to
+ * pump.ddd.json alone so the photograph shows the one thing this story exists for. pump.ddd.json's
+ * own key now belongs to two rows - its literal entry's own, and this pattern's one child - and
+ * selecting it marks both, leaving the pattern's own summary row (a different key,
+ * `"C:/work/demo/*.ddd.json"`) bare. */
 const CATCH_ALL_PATTERN: IncludedEntryReply = {
   index: 5,
   entry: "*.ddd.json",
@@ -2727,9 +2730,10 @@ export const FILES_SHARED_KEY: FilesReply = {
   entries: [...PROJECT_FILES.entries, CATCH_ALL_PATTERN],
 };
 
-/** A path no row of `PROJECT_FILES` carries (Controller ruling: a sub-project's own
- * `include-empty` or `empty-vocabulary` can route here naming a place only that sub-project's own
- * table would list) - selecting it marks nothing, which is not an error. */
+/** A path no row of `PROJECT_FILES` carries (a sub-project's own `include-empty` or
+ * `empty-vocabulary` can route here, naming a place only that sub-project's own table would list -
+ * the plan's What was left open, "Routes that lead nowhere") - selecting it marks nothing, which
+ * is not an error. */
 export const NOTHING_AT_THAT_PATH = "C:/work/demo/subsystem/nested.ddd.json";
 
 // --- FileActionsView (part 16, design §3) ------------------------------------------------------
@@ -2978,7 +2982,7 @@ export const ADDED_BY_A_PATTERN =
 export const VOCABULARY_CONSTANTS = CONSTANTS_FILE;
 
 /** Pinned whole by `TestRemovingAFile.test_a_file_whose_declaration_is_used_is_refused_naming_the_
- * error_it_would_leave` - the refusal the Task 9 journey reads too. */
+ * error_it_would_leave` - the refusal `gui/e2e/files.spec.ts` reads too. */
 export const REMOVE_LEAVES_AN_ERROR =
   "removing constants.ddd.json would leave one error more than the project has now at its place, " +
   "in pump.ddd.json: 'PressureTrend' is dimensioned by 'TREND_SAMPLES', which is not a constant " +

@@ -22,11 +22,13 @@ export interface FileRow {
   entry: IncludedEntryReply;
   /** The file this very row is about: a literal's own, or one of a pattern's matched files -
    * `null` for a pattern's own row, whose files are its children rather than itself, and for a
-   * row naming nothing at all. Also `null` where `State.files` does not hold it: the revision
-   * never read it, either because the root's own schema failed before its includes were read, or
-   * because a pattern matches a file created since. That is a row naming a file all the same,
-   * told apart from a row naming nothing by `entry.names` or `entry.files` alone - never by
-   * whether this is `null`, which the two can share. */
+   * row naming nothing at all. Also `null` where `State.files` does not hold it: the revision the
+   * page holds never read it - the root's own schema failed before its includes were read; a
+   * pattern matches a file created since; or the entry is one the description gained since, the
+   * entries being read off it when asked (`IncludedEntryReply.files` says when each happens).
+   * That is a row naming a file all the same, told apart from a row naming nothing by
+   * `entry.names` or `entry.files` alone - never by whether this is `null`, which the two can
+   * share. */
   file: SourceFile | null;
   /** What a plan to act on this very row is asked with: a literal's or a pattern's own key
    * (`IncludedEntryReply.key`) for their own row, and a matched file's own absolute path (one of
@@ -142,13 +144,15 @@ export function cellsOf(row: FileRow, project: string): FileCells {
  *
  * The two remaining branches fall through to "not read by the last analysis": a literal entry's
  * own row whose file `State.files` lacks (`!row.child && row.entry.names`), and a pattern's child
- * row whose matched file it lacks (`row.child`) - the two causes Task 6's own ruling names (a root
- * whose read stopped at its own schema before its includes were read; a pattern matching a file
- * created since the revision). Both are a row naming a file all the same, never a row naming
- * nothing - which is why the check above this, `!row.entry.names && row.entry.files.length ===
- * 0`, is exactly `rowsOf`'s own test for that (Task 6: "names is False for every pattern, matching
- * files or not" - `names` alone never tells a pattern apart from a row naming nothing, `files` is
- * what does), read first so a row naming nothing is never mistaken for one merely unread. */
+ * row whose matched file it lacks (`row.child`) - for any of the causes `FileRow.file` names (a
+ * root whose read stopped at its own schema before its includes were read; a pattern matching a
+ * file created since; an entry the description gained since the revision the page holds). Both
+ * are a row naming a file all the same, never a row naming nothing - which is why the check above
+ * this, `!row.entry.names && row.entry.files.length === 0`, is exactly `rowsOf`'s own test for
+ * that (`IncludedEntryReply.names` is false for a pattern, matching files or not, and for a plain
+ * path naming no file - `names` alone never tells a pattern apart from a row naming nothing,
+ * `files` is what does), read first so a row naming nothing is never mistaken for one merely
+ * unread. */
 function stateOf(row: FileRow): string {
   if (row.file !== null) return row.file.loaded ? "" : "did not load";
   if (!row.entry.names && row.entry.files.length === 0) return "names no file";
@@ -231,8 +235,9 @@ export interface FileRemoval {
 }
 
 /** The Remove panel for `selected`, the route's own `path`, or `null` where nothing is selected
- * or no row carries that key - a sub-project's `include-empty` routes to such a key (Task 5's
- * ruling) - so that no panel opens and nothing is asked for a row the reader cannot see. */
+ * or no row carries that key - a sub-project's `include-empty` routes to such a key, naming a
+ * place only that sub-project's own table would list - so that no panel opens and nothing is
+ * asked for a row the reader cannot see. */
 export function fileRemoval(
   rows: readonly FileRow[],
   selected: string | undefined,
@@ -313,7 +318,7 @@ function applyOf(plan: FilesPlanReply, removing: string | null): string | null {
 
 /** What the Remove preview says where an entry left keeps the file in the project all the same -
  * `FilesPlanReply.kept_by`, of the three values only a files plan carries the one this page frames
- * in words of its own (Task 8's ruling): `brings` is listed and `unjudged` drawn as they come - or
+ * in words of its own (Rulings 19): `brings` is listed and `unjudged` drawn as they come - or
  * `null` where nothing left brings the file back.
  *
  * "The pattern", because nothing else can keep it: `remove_plan` takes out every entry whose key

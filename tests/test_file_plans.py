@@ -75,8 +75,8 @@ class TestNewErrors:
         assert new_errors((found,), (found,)) == ()
 
     def test_an_error_worded_otherwise_at_its_place_is_the_one_it_has(self) -> None:
-        """Important 1: the file declaring `TREND_SAMPLES` goes, and the error at the shape
-        naming `TREND_SAMPLE` no longer suggests it."""
+        """The file declaring `TREND_SAMPLES` goes, and the error at the shape naming
+        `TREND_SAMPLE` no longer suggests it."""
         pointer = "component.interface[0].definition.dimensions[0]"
         typo = "'Trend' is dimensioned by 'TREND_SAMPLE', which is not a constant any file declares"
         suggesting = f"{typo} - did you mean 'TREND_SAMPLES'?"
@@ -115,9 +115,9 @@ class TestNewErrors:
         assert new_errors((e1, e2), (y, x, e1)) == (x,)
 
     def test_the_error_quoted_as_new_is_one_the_project_does_not_have(self) -> None:
-        """Case j: a place's one error becomes two, the new one listed first. The old one is
-        matched word for word before anything is matched by place; taken by place alone in
-        order, the new one used up the old one's place, and the old one was quoted as new."""
+        """A place's one error becomes two, the new one listed first. The old one is matched
+        word for word before anything is matched by place; taken by place alone in order, the new
+        one used up the old one's place, and the old one was quoted as new."""
         old = filed("policy/unread", Severity.ERROR, PROJECT, "project.name", "'Zq' is unread")
         new = filed("policy/unread", Severity.ERROR, PROJECT, "project.name", "'Ay' is unread")
         assert new_errors((old,), (new, old)) == (new,)
@@ -424,10 +424,10 @@ class TestJudgingAProject:
         ]
 
     def test_a_plugins_finding_at_an_entry_keeps_its_position(self, tmp_path: Path) -> None:
-        """Case k: the plugin reads the list in the file, and files at the pattern's position
-        there, `project.includes[3]`, before the change and after it. Removing `u.ddd.json`,
-        listed before the pattern, changes nothing it says; keyed by the entry the changed
-        list has at that position, its finding read as new."""
+        """The plugin reads the list in the file, and files at the pattern's position there,
+        `project.includes[3]`, before the change and after it. Removing `u.ddd.json`, listed
+        before the pattern, changes nothing it says; keyed by the entry the changed list has at
+        that position, its finding read as new."""
         files = {
             "tools/policy.py": PATTERNS_PLUGIN,
             "p.ddd.json": project(
@@ -458,7 +458,7 @@ class TestAMirrorMoving:
     def test_ending_a_conflict_of_writers_keeps_the_readers_disagreement(
         self, tmp_path: Path
     ) -> None:
-        """Case b, `definition-mismatch`, and Important 1's own workflow: removing `W1` ends the
+        """`definition-mismatch`, and the removal the tab most needs: removing `W1` ends the
         conflict of two writers, and `R`'s disagreement with them - mirrored onto the owner, the
         writer whose component name sorts first - moves from `W1` onto `W2`."""
         files = {
@@ -694,8 +694,8 @@ class TestAFindingMovingByOrder:
     def test_a_local_gone_from_beside_its_two_writers_is_refused_for_the_conflict_it_relabels(
         self, tmp_path: Path
     ) -> None:
-        """H3, a relabel: `F` declares `X` local while `W1` and `W2` write it, a `local-conflict`
-        on each, and writes `Y` and `V` beside `Y2` and `V2`. Removing `F` ends the conflicts over
+        """A relabel: `F` declares `X` local while `W1` and `W2` write it, a `local-conflict` on
+        each, and writes `Y` and `V` beside `Y2` and `V2`. Removing `F` ends the conflicts over
         `Y` and `V`, and `W1` and `W2` writing `X` is reported as `multiple-producers` on `W2`,
         where the project reported a `local-conflict`."""
         files = {
@@ -761,10 +761,9 @@ class TestAClashARemovalBrings:
     def test_a_new_owner_drawing_a_curve_over_a_private_axis_is_refused(
         self, tmp_path: Path
     ) -> None:
-        """H1: `W1` owns `C`, drawn over its own `Ax1`, and reads `L`'s private `T2`; `W2` writes
-        `C` over `T2`. Removing `W1` hands `C` to `W2`, and `C` reaches the dictionary bound to
-        `T2` - a conflict the project did not have, while `W1`'s own read of `T2` leaves with
-        it."""
+        """`W1` owns `C`, drawn over its own `Ax1`, and reads `L`'s private `T2`; `W2` writes `C`
+        over `T2`. Removing `W1` hands `C` to `W2`, and `C` reaches the dictionary bound to `T2` -
+        a conflict the project did not have, while `W1`'s own read of `T2` leaves with it."""
         files = {
             "p.ddd.json": project("P", "w1.ddd.json", "w2.ddd.json", "l.ddd.json"),
             "w1.ddd.json": component(
@@ -785,8 +784,8 @@ class TestAClashARemovalBrings:
     def test_the_local_gone_to_end_a_conflict_is_refused_for_the_private_axis_it_binds(
         self, tmp_path: Path
     ) -> None:
-        """H1b: `K1` declares `C` local, over its own axis, and `K2` writes `C` too, over `L`'s
-        private `T2` - the conflict the project has. Removing `K1` is the natural fix, and it
+        """`K1` declares `C` local, over its own axis, and `K2` writes `C` too, over `L`'s private
+        `T2` - the conflict the project has. Removing `K1` is the natural fix, and it
         leaves `C` to `K2`, bound to `T2`: reported on `K2`, and shown to an editor on `L` as
         well. An axis measuring another component's private input takes the same path, not a
         test of its own: an axis's `input` and a curve's `axis` are both entries of the
@@ -802,7 +801,7 @@ class TestAClashARemovalBrings:
         assert judged(tmp_path, files, "k1.ddd.json") == [("k2.ddd.json", "local-conflict", use)]
 
     def test_a_copy_of_an_enum_nobody_checked_put_first_is_refused(self, tmp_path: Path) -> None:
-        """H2, `enum-duplicate-value` raised to an error by the build: `CA` holds the first copy
+        """`enum-duplicate-value` raised to an error by the build: `CA` holds the first copy
         of `Mode_t`, which is checked, and `Flag_t`, whose two enumerators share a value. Removing
         `CA` makes `CB`'s copy of `Mode_t` the one met first - two of its enumerators share a
         value too - while `Flag_t`'s leaves with `CA`."""
@@ -824,7 +823,7 @@ class TestAClashARemovalBrings:
     def test_the_read_taking_an_axis_for_a_measurement_gone_is_refused_for_the_curve_let_in(
         self, tmp_path: Path
     ) -> None:
-        """T5, under the default severities. Nothing writes `AX`: `RA`, read first, declares it a
+        """Under the default severities. Nothing writes `AX`: `RA`, read first, declares it a
         measurement, and `RB` an axis, a `definition-mismatch` on `RB`. `W` draws the curve `X`
         over it, a `reference-kind`, and `R`'s disagreement with `W` over `X` is never compared.
         Removing `RA` makes `AX` an axis, and the disagreement comes in, on `R`, as `AX`'s leaves
@@ -848,7 +847,7 @@ class TestAClashARemovalBrings:
     def test_the_owner_gone_is_refused_for_the_disagreement_it_lets_in_though_fewer_are_left(
         self, tmp_path: Path
     ) -> None:
-        """E1, under the default severities. `A` owns `X` and `Y`, its name sorting first, and
+        """Under the default severities. `A` owns `X` and `Y`, its name sorting first, and
         holds no `definition-mismatch`. It states no limits for `X`, so the first declaration read
         that does, `R1`'s, is the one `B`, `R2` and `R3` differ from; and it draws `Y` over
         `NOPE`, which nobody declares, and `S`'s disagreement with `C` over `Y` is never compared.

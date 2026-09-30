@@ -839,8 +839,8 @@ class TestEveryRunAnalysed:
     speak for it, each grading the checks by its own severities."""
 
     def test_a_run_its_read_stopped_leaves_the_revision_unanalysed(self, tmp_path: Path) -> None:
-        """Important 2: `release` reads a dead pattern as an error and stops there; `dev` relaxes
-        it and analyses, so the revision resolved. Removing the pattern would surface as new what
+        """`release` reads a dead pattern as an error and stops there; `dev` relaxes it and
+        analyses, so the revision resolved. Removing the pattern would surface as new what
         `release`'s run never checked - its strictness raises `Unread` to an error."""
         write_tree(
             tmp_path,
@@ -863,7 +863,7 @@ class TestEveryRunAnalysed:
         assert revision.analysed is False
 
     def test_a_run_its_read_stopped_hides_what_a_removal_would_break(self, tmp_path: Path) -> None:
-        """Important 2, the other way: `release` stops at a dead pattern, and `dev` relaxes that
+        """The other way: `release` stops at a dead pattern, and `dev` relaxes that
         and `missing-producer`, so leaving out `u.ddd.json` - whose `Y` `R` reads - breaks
         nothing either run reports, while `release` without the pattern says it does."""
         write_tree(

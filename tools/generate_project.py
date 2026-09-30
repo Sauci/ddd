@@ -33,7 +33,9 @@ SHAPES: Final = ("many", "large", "mixed")
 """Many small components; a few large ones sharing every declaration; or half of each."""
 
 SMALL: Final = 30
-"""The declarations of a component of the "many" shape - the size the spec's §2 measured."""
+"""The declarations of a component of the "many" shape: thirty, as many as the spec's §2
+components had outputs - here split evenly, half outputs and half inputs, not §2's own
+30-output, 5-input shape."""
 
 LARGE: Final = 30
 """How many components the "large" shape shares its declarations between; the "mixed" shape has
@@ -42,8 +44,8 @@ half as many large ones, beside its small ones."""
 LAYER: Final = 30
 """How many components on a reader's output sits, in the "many" shape: the canvas then lays the
 project out in layers about this many components across, rather than as one chain as deep as the
-project is long, which ``@dagrejs/dagre`` 3.1.1 runs out of stack on past about 1,500
-components."""
+project is long - measured while planning, ``@dagrejs/dagre`` 3.1.1 overflowed its stack on a
+chain of 1,800 components, where one of 1,200 laid out."""
 
 FEWEST: Final = 120
 """The smallest project generated: fewer declarations leave the "many" shape a component or two,

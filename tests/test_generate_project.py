@@ -104,8 +104,8 @@ def test_a_density_is_spread_over_the_whole_project(tmp_path: Path) -> None:
 
 def test_the_ids_are_scattered_not_sequential(tmp_path: Path) -> None:
     """Neighbouring declarations do not read alike: the first component's second and third
-    outputs, one id apart in number, do not have ids one apart, or alike in any digit but the
-    trailing run a small project never fills."""
+    outputs, numbered one apart, do not have ids one apart either, nor alike beyond the
+    digits these two small numbers leave untouched."""
     generate(tmp_path / "p", 1200, "many")
     ids = {
         entry["definition"]["name"]: entry["definition"]["id"]

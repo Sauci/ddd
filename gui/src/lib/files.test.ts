@@ -367,8 +367,10 @@ describe("fileCreate", () => {
   });
 
   test("a vocabulary file is asked for by its kind and name, and never with a component's name", () => {
-    // `toStrictEqual`, since `toEqual` would pass an object carrying `component: undefined` - the
-    // key must be absent, so that `filesQuery` sends no `?component=` for a vocabulary file.
+    // The text typed into a Component name field left from an earlier choice is not sent: `toEqual`
+    // alone would catch `component: "Left over"`, the one form of it `filesQuery` puts in the url.
+    // `toStrictEqual` also refuses a `component: undefined` key, which `filesQuery` would skip as
+    // readily - so it pins the object's own shape, `FilesPlanRequest`'s, not the url.
     expect(fileCreate("constants", "limits", "Left over")).toStrictEqual({
       action: "create",
       kind: "constants",
@@ -526,7 +528,7 @@ describe("previewOf", () => {
     });
   });
 
-  test("an Add's errors are listed in the server's order, each file named as an entry spells it", () => {
+  test("an Add's errors are listed in the server's order, each file named as the table names a pattern's child", () => {
     const brings = [
       { file: SENSORS_X, check: "missing-producer", message: "'Torque' is read but not written" },
       { file: A, check: "multiple-producers", message: "'Speed' is written twice" },
@@ -588,11 +590,25 @@ describe("previewOf", () => {
     });
   });
 
-  test("a file a pattern keeps in from a directory is named as an entry would spell it", () => {
+  test("a file a pattern keeps in from a directory is named as the table names a pattern's child", () => {
     expect(previewOf(plan({ kept_by: "sensors/*.ddd.json" }), PROJECT, SENSORS_X).kept).toBe(
       "sensors/x.ddd.json stays in the project all the same: the pattern 'sensors/*.ddd.json' " +
         "brings it in.",
     );
+  });
+
+  test("a plan that changes nothing offers nothing to apply, a removal's no more than an add's", () => {
+    // `consequence`'s own words for no change, and no button: `apply` is what decides that there
+    // is one, so that the view draws Apply only where this says there is something to apply.
+    const nothing = {
+      brought: [],
+      unjudged: null,
+      kept: null,
+      consequence: "Nothing to change",
+      apply: null,
+    };
+    expect(previewOf(plan({ changes: [] }), PROJECT, null)).toEqual(nothing);
+    expect(previewOf(plan({ changes: [] }), PROJECT, A)).toEqual(nothing);
   });
 
   test("a pattern named in a plan that is no removal's is not put into words", () => {

@@ -31,14 +31,14 @@ export function isStale(error: Error): boolean {
 }
 
 /**
- * The one refusal an action shows, of the three it can have at once: an Apply refused as stale,
- * while the revision it was refused at stands; else an Apply refused for another reason; else why
- * its plan was refused when asked for, in the server's own words.
+ * The one refusal an action shows, of the three it can have: an Apply refused as stale, while the
+ * revision it was refused at stands; else an Apply refused for another reason; else why its plan
+ * was refused when asked for, in the server's own words.
  *
- * An Apply's comes first because it is the newer answer: its plan was shown and could be applied,
- * so the plan itself was not refused when the Apply was. A stale Apply's gives way to the plan's
- * own refusal once the analysis has moved past it - the plan is asked for again at the new
- * revision, and what it answers then is what is true.
+ * The precedence the other panels already have, kept rather than argued afresh: `UnitsPage`'s
+ * adoption banner writes this very expression, and `ConstantPanel`'s own `offer` asks in the same
+ * order - though once a stale refusal's revision has passed, that one shows nothing, where this, as
+ * `UnitsPage`'s does, falls through to whichever of the other two there is.
  */
 export function refusalShown(
   stale: Refused | null,

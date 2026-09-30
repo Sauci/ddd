@@ -243,8 +243,9 @@ export function RemoveFileView(props: RemoveFileViewProps) {
  * what `previewOf` (`lib/files.ts`) says it draws beside the plan - the errors an added file brings,
  * the server's sentence where the change could not be judged, the pattern keeping a removed file
  * in - then what the change writes, its lines once Show changes opens them, and the button applying
- * it. The shape of `ConstantPanelView`'s own `Outcome`, with the three lines only a files plan
- * carries, and nothing chosen here that `previewOf` did not choose.
+ * it, where `previewOf` says there is one. The shape of `ConstantPanelView`'s own `Outcome`, with
+ * the three lines only a files plan carries. What is drawn, and in what words, is `previewOf`'s to
+ * decide; only whether the changes are open is this view's, being the reader's own toggle.
  */
 function Preview({
   offer,
@@ -293,7 +294,7 @@ function Preview({
           {preview.unjudged !== null && <p className="file-unjudged">{preview.unjudged}</p>}
           {preview.kept !== null && <p className="file-note">{preview.kept}</p>}
           <p className="consequence">{preview.consequence}</p>
-          {plan.changes.length > 0 && (
+          {preview.apply !== null && (
             <>
               {changesShown && <Changes changes={shownChanges(plan.changes)} />}
               <div className="panel-actions">

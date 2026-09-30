@@ -103,12 +103,12 @@ function totalOf(file: SourceFile | null): number {
 export interface FileCells {
   /** A row's own line shows the entry as `includes` spells it (`IncludedEntryReply.entry`) - the
    * same text whether it names a file, a pattern, or nothing. A child shows the file it is about
-   * instead, named the way an entry would spell it: relative to the project's own directory
-   * (`relativeToProject`, `lib/findings.ts`) - spec §2's "beneath it every file it matched" is a
-   * file, not the component or vocabulary it happens to declare, which is why this is never
-   * `file?.name`: two rows of one file (a literal and a pattern's child) must read as the one
-   * file they are, and a matched file's own declared name is not always there to read besides
-   * (`file` is `null` where the revision has not read it yet). */
+   * instead, by its path relative to the project's own directory, or by its base name where a
+   * pattern reaches outside that directory (`relativeToProject`, `lib/findings.ts`) - spec §2's
+   * "beneath it every file it matched" is a file, not the component or vocabulary it happens to
+   * declare, which is why this is never `file?.name`: two rows of one file (a literal and a
+   * pattern's child) must read as the one file they are, and a matched file's own declared name is
+   * not always there to read besides (`file` is `null` where the revision has not read it yet). */
   entry: string;
   /** The file's own kind, or blank where the row has none: a pattern's own row, an entry naming
    * nothing, and a file the last analysis did not read alike - none has a `SourceFile` to read a
@@ -264,8 +264,9 @@ export interface FilePreview {
   /** What the button applying it says: for a removal, what the entry is taken out of - the
    * includes, as the constants panel's own says "Remove from the constants": not the project, which
    * a file a pattern keeps in stays part of (`kept`), and not the disk, which nothing here touches -
-   * else the files the edit writes, as every other panel's Apply counts them. */
-  apply: string;
+   * else the files the edit writes, as every other panel's Apply counts them. `null` where the plan
+   * changes nothing: there is nothing to apply, and no button is drawn. */
+  apply: string | null;
 }
 
 /** One error `FilesPlanReply.brings` lists, as the Add preview draws it. */
@@ -275,8 +276,8 @@ export interface BroughtRow {
   key: string;
   check: string;
   message: string;
-  /** The file it is filed on, named as an entry would spell it (`relativeToProject`), as the
-   * table names a pattern's child. */
+  /** The file it is filed on, named as the table names a pattern's child (`relativeToProject`):
+   * by its path relative to the description's directory, or by its base name outside it. */
   file: string;
 }
 
@@ -298,11 +299,16 @@ export function previewOf(
     unjudged: plan.unjudged,
     kept: removing === null ? null : keptBy(plan, removing, project),
     consequence: consequence(plan.changes),
-    apply:
-      removing === null
-        ? `Apply to ${plan.changes.length} file${plan.changes.length === 1 ? "" : "s"}`
-        : "Remove from the includes",
+    apply: applyOf(plan, removing),
   };
+}
+
+/** `FilePreview.apply`: nothing where the plan changes nothing, Remove's words for a removal, and
+ * otherwise the files the edit writes. */
+function applyOf(plan: FilesPlanReply, removing: string | null): string | null {
+  if (plan.changes.length === 0) return null;
+  if (removing !== null) return "Remove from the includes";
+  return `Apply to ${plan.changes.length} file${plan.changes.length === 1 ? "" : "s"}`;
 }
 
 /** What the Remove preview says where an entry left keeps the file in the project all the same -

@@ -2734,13 +2734,14 @@ export const NOTHING_AT_THAT_PATH = "C:/work/demo/subsystem/nested.ddd.json";
 
 // --- FileActionsView (part 16, design §3) ------------------------------------------------------
 //
-// Every reply below is what the running api answered - `GET /api/files-plan`'s plans and refusals,
-// `GET /api/files`' entries, `GET /api/state`'s files - over the tree the test it names in
-// tests/test_gui_api.py builds, or over a copy of examples/vocabulary, the temporary directory
-// replaced by the fake one each fixture spells. Only the revision of examples/vocabulary's plans is
-// set to match the table beside them; nothing is composed for a story. A sentence a test pins whole
-// names that test, and is the test's own text: where the page shows one of the server's refusals or
-// its `unjudged`, the story shows the server's sentence and no other.
+// What the running api answered, over the tree the test it names in tests/test_gui_api.py builds or
+// over a copy of examples/vocabulary, the temporary directory replaced by the fake one each fixture
+// spells: `GET /api/files-plan`'s plans and refusals and `GET /api/files`' entries whole - only the
+// revision of examples/vocabulary's plans set to match the table beside them - and, in the four
+// `*_SOURCES`, `GET /api/state`'s files less the project description's own, which no row of these
+// tables is about. Nothing is composed for a story. A sentence a test pins whole names that test, and
+// is the test's own text: where the page shows one of the server's refusals or its `unjudged`, the
+// story shows the server's sentence and no other.
 
 /** examples/vocabulary's project.ddd.json as the api read it on a fresh copy of the example: what
  * `POST /api/edit` would check the plans below against. */

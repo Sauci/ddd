@@ -418,6 +418,82 @@ The commands
        the format itself does not have. A finding
        naming a constant, a section or a raster leads to the tab, a name no file declares
        landing on the form that declares it.
+       A Files tab lists the root project's own ``includes``, one row per entry in the
+       description's own order - a pattern's own row followed immediately by every file it
+       matched, indented beneath it - each named as the description spells it, or, for one
+       of a pattern's files, by its path relative to the project's own directory. A row's
+       Kind, State and Findings columns are the same ``State.files`` reads for every other
+       tab: State is blank for a file that loaded, ``did not load`` for one that did not,
+       ``not read by the last analysis`` for a file an entry names that the revision has
+       not read yet - the root's own schema having failed before its includes were read,
+       or a pattern matching a file created since - and ``names no file`` for a plain
+       entry naming nothing at all, a missing path or a pattern matching none. New file,
+       Add a file and Remove are its three actions, the first two above the table and the
+       third opened by selecting a row. New file takes a kind - ``component``, ``types``,
+       ``units``, ``constants``, ``sections`` or ``rasters``, the list ``GET /api/files``
+       itself sends rather than a copy of it kept here - and a name, creating the file
+       beside the project description and adding it to the includes in the same edit: a
+       vocabulary file declares nothing and a component takes a second name of its own,
+       while a units file is the exception, listing every unit the project states where
+       no file of its tree is a units file already, so the one click cannot fail a passing
+       project with ``unknown-unit`` at once, and created empty where a sub-project's own
+       units file has opted the whole tree in already. Add a file takes a path from the
+       project description's own directory, appended to the includes exactly as written, and
+       previews every error it would bring rather than refusing for them - the spec's own
+       ``informs rather than refuses``. Remove offers to take every entry of the selected
+       row's own key out of the includes - the files stay on disk - refused where the
+       analysis finds errors the project does not have now, naming the first and how many,
+       and an allowed removal a pattern still keeps in the project all the same says so,
+       naming the pattern. Each is refused in the server's own words. New file: a kind it
+       does not create - ``no file of kind 'project' can be created here; the kinds that
+       can are component, types, units, constants, sections and rasters``; a name outside
+       what a file may be called - ``'a.b' cannot name a new file: a name is one or more
+       of the letters a to z and A to Z, the digits 0 to 9, '_' and '-', and .ddd.json is
+       added to it``; a file of that name there already, naming both - ``units.ddd.json
+       is there already, beside project.ddd.json``; a component with no second name - ``a
+       new component needs a name, besides its file's``; one no c identifier - ``'2Motor'
+       cannot name a component, not being a usable c identifier``; one c or a generated
+       header reserves - ``'int' cannot name a component, being reserved by c or by a
+       header DDD generates``; and one taken already, naming the component that has it
+       - ``this project has a component called 'Pump' already`` - or naming it and the
+       case-folded spelling offered - ``this project has a component called 'Pump' already,
+       and 'pump' differs from it only in upper and lower case, so the two would ask for
+       the same generated header``. A first units file is refused too, where a file of the
+       project did not load - ``b.ddd.json did not load, so a first units file could not
+       list every unit in use``. Add a file: a path lying outside what ``ddd gui`` serves,
+       naming the path and the directories served - ``../outside.ddd.json lies outside
+       what ddd gui serves, /home/you/project; start it in a directory holding this file
+       to add it here``; one naming no file - ``missing.ddd.json names no file; a file not
+       there yet is created, not added``; the project's own description - ``p.ddd.json is
+       this project's own description, which it cannot include``; a file the project has
+       already, naming the entry - ``./a.ddd.json is part of this project already, as the
+       entry 'a.ddd.json'`` - or naming the pattern that brings it in - ``lib/l.ddd.json is
+       part of this project already: the pattern 'lib/*.ddd.json' brings it in``; a python
+       file - ``tool.py is a python file, which a project names among its plugins rather
+       than its includes``; and one no kind the loader recognises at all - ``notes.json
+       is no kind of file a project includes: it cannot be read as json, or its top level
+       holds none of project, component, types, units, sections, constants and rasters``.
+       Remove: a file only a pattern brings in, naming it - ``a.ddd.json has no entry of
+       its own: the pattern 'lib/*.ddd.json' brings it in, and only the whole pattern
+       can be removed``; a path no entry or pattern reaches - ``no entry of p.ddd.json's
+       includes names other.ddd.json, and none of its patterns matches it``; and, where
+       the analysis finds the project would have more errors without it, naming the first
+       and how many - ``removing constants.ddd.json would leave one error more than the
+       project has now at its place, in pump.ddd.json: 'PressureTrend' is dimensioned by
+       'TREND_SAMPLES', which is not a constant any file of this project declares`` for
+       one, and, for several, ``removing sections.ddd.json would leave 3 errors more than
+       the project has now at their places, the first in pump.ddd.json: 'PumpSpeed' is
+       placed in '.fast_ram', which is not a section any file of this project declares``.
+       Adding and removing alike are refused ``stale`` sooner than judged where a file
+       changed since the project was analysed, naming every one changed - ``pump.ddd.json,
+       rasters.ddd.json changed since the project was analysed, so the change cannot be
+       judged until the project is analysed again`` - or a pattern reaches a file created
+       since, naming it - ``new.ddd.json appeared since the project was analysed, so the
+       change cannot be judged until the project is analysed again`` - and are allowed
+       unjudged instead of refused, with the same reason stated rather than a verdict,
+       where the project's own last analysis did not run to its end at all - ``not every
+       analysis of this project ran to its end, so what removing lib/b.ddd.json leaves
+       cannot be judged``, adding answered the same way about what it would bring.
        What the page reads and writes is bounded by the directory ``ddd gui`` was started in,
        and by the project's own where a project elsewhere was named on the command line. A file
        the project includes from outside those is read by ``ddd check`` like any other and named

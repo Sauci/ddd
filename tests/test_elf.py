@@ -1066,3 +1066,97 @@ class TestRefusals:
 
     def test_a_unit_without_a_line_program_has_no_file_table(self) -> None:
         assert file_table(None, ".") is None
+
+
+def damaged(tmp_path: Path, row: str, name: str, change: Any) -> Path:
+    """A copy of a row whose bytes ``change(data, elf)`` altered, written as ``name``."""
+    source = FIXTURES / f"{row}.elf"
+    data = bytearray(source.read_bytes())
+    with source.open("rb") as stream:
+        change(data, ELFFile(stream))
+    path = tmp_path / name
+    path.write_bytes(bytes(data))
+    return path
+
+
+def refusal(path: Path) -> str:
+    with pytest.raises(ElfReadError) as refused:
+        open_image(path)
+    return str(refused.value)
+
+
+class TestDamagedImages:
+    """An image is untrusted input, and pyelftools answers a damaged one with whatever its parse
+    runs into: any exception while reading refuses the image, naming the exception, rather than
+    escaping as a traceback (a seeded fuzz of the rows' debug sections found KeyError,
+    zlib.error, TypeError, AssertionError, OverflowError and AttributeError)."""
+
+    def test_a_compressed_section_that_does_not_decompress_names_zlib_s_error(
+        self, tmp_path: Path
+    ) -> None:
+        def change(data: bytearray, elf: ELFFile) -> None:
+            section = elf.get_section_by_name(".debug_info")
+            assert section.compressed
+            # The zlib stream starts right after the compression header, with its CMF byte.
+            data[section["sh_offset"] + elf.structs.Elf_Chdr.sizeof()] = 0
+
+        path = damaged(tmp_path, "s390x", "inflated.elf", change)
+        assert refusal(path) == (
+            f"'{path.as_posix()}' is not an ELF image this tool can read: zlib.error: Error -3 "
+            f"while decompressing data: incorrect header check"
+        )
+
+    def test_an_entry_pyelftools_cannot_parse_names_its_exception(self, tmp_path: Path) -> None:
+        def change(data: bytearray, elf: ELFFile) -> None:
+            # A DWARF 5 unit's header is twelve bytes; its first entry starts with the code
+            # of its abbreviation, which no table of the row reaches as far as 0x7f.
+            data[elf.get_section_by_name(".debug_info")["sh_offset"] + 12] = 0x7F
+
+        path = damaged(tmp_path, "x86_64", "abbreviated.elf", change)
+        assert refusal(path) == (
+            f"'{path.as_posix()}' is not an ELF image this tool can read: KeyError: 127"
+        )
+
+    def test_an_exception_without_a_message_is_named_alone(self, tmp_path: Path) -> None:
+        """clang's strings go through .debug_str_offsets; renamed, it is missing, and pyelftools
+        fails an assertion of its own that carries no message."""
+
+        def change(data: bytearray, elf: ELFFile) -> None:
+            names = elf.get_section(elf.header["e_shstrndx"])
+            start = names["sh_offset"] + data[names["sh_offset"] :].index(b".debug_str_offsets")
+            data[start : start + 18] = b".debug_str_offsetz"
+
+        path = damaged(tmp_path, "riscv32", "unindexed.elf", change)
+        assert refusal(path) == (
+            f"'{path.as_posix()}' is not an ELF image this tool can read: AssertionError"
+        )
+
+    def test_debug_information_compressed_with_zstd_names_gz_zlib(self, tmp_path: Path) -> None:
+        """pyelftools reads zlib alone, and answers zstd - gcc's -gz=zstd, measured with gcc 15.2
+        - with "Unknown compression type: 0x2"."""
+
+        def change(data: bytearray, elf: ELFFile) -> None:
+            for section in elf.iter_sections():
+                if section.compressed:
+                    # ch_type, the compression header's first word: ELFCOMPRESS_ZSTD.
+                    data[section["sh_offset"] : section["sh_offset"] + 4] = (2).to_bytes(4, "big")
+
+        path = damaged(tmp_path, "s390x", "zstd.elf", change)
+        assert refusal(path) == (
+            f"'{path.as_posix()}' is not an ELF image this tool can read: its debug information "
+            f"is compressed with zstd, which this tool does not read; build it with -gz=zlib"
+        )
+
+    def test_a_section_that_is_not_compressed_is_never_read_as_compressed(
+        self, tmp_path: Path
+    ) -> None:
+        """.comment is read by nothing; its first word reading as zstd's compression type must
+        not make the image one compressed with zstd."""
+
+        def change(data: bytearray, elf: ELFFile) -> None:
+            section = elf.get_section_by_name(".comment")
+            assert not section.compressed
+            data[section["sh_offset"] : section["sh_offset"] + 4] = (2).to_bytes(4, "little")
+
+        path = damaged(tmp_path, "x86_64", "commented.elf", change)
+        assert by_name(open_image(path), "Cal_Gain").address is not None

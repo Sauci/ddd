@@ -48,6 +48,7 @@ THREAD_LOCAL: Final = "it is thread-local, with an address of its own in every t
 NOT_AN_ADDRESS: Final = "its location is not a fixed address"
 
 _DW_OP_PLUS_UCONST: Final = 0x23
+_ELFCOMPRESS_ZSTD: Final = 2
 _TLS_OPERATIONS: Final = frozenset({"DW_OP_form_tls_address", "DW_OP_GNU_push_tls_address"})
 _DATA_WIDTHS: Final = {
     "DW_FORM_data1": 8,
@@ -350,7 +351,13 @@ def read_variables(
 
 
 def open_image(path: Path) -> Image:
-    """Read a linked ELF image and its DWARF; :class:`ElfReadError` says why one cannot be."""
+    """Read a linked ELF image and its DWARF; :class:`ElfReadError` says why one cannot be.
+
+    An image is untrusted input, and pyelftools answers a damaged one with whatever its parse
+    runs into - a KeyError, a zlib.error, a failed assertion - as often as with an error of its
+    own. Any exception while reading refuses the image, naming the exception, so that a damaged
+    file is a usage error rather than a traceback.
+    """
     shown = path.as_posix()
     try:
         contents = path.read_bytes()
@@ -359,9 +366,27 @@ def open_image(path: Path) -> Image:
         raise ElfReadError(msg) from None
     try:
         return _image(path, contents)
+    except ElfReadError:
+        raise
     except (ELFError, DWARFError) as error:
         msg = f"'{shown}' is not an ELF image this tool can read: {error}"
         raise ElfReadError(msg) from None
+    except Exception as error:
+        msg = f"'{shown}' is not an ELF image this tool can read: {_named(error)}"
+        raise ElfReadError(msg) from None
+
+
+def _named(error: Exception) -> str:
+    """An exception as a refusal names it: its type, qualified by its module unless it is a
+    builtin - ``zlib.error`` says more than ``error`` - and its message, where it has one."""
+    kind = type(error)
+    name = kind.__qualname__
+    if kind.__module__ != "builtins":
+        name = f"{kind.__module__}.{name}"
+    message = str(error)
+    if not message:
+        return name
+    return f"{name}: {message}"
 
 
 def _image(path: Path, contents: bytes) -> Image:
@@ -388,6 +413,19 @@ def _image(path: Path, contents: bytes) -> Image:
                 f"'{section.name}' runs past the end of the file"
             )
             raise ElfReadError(msg)
+    byte_order: Literal["little", "big"] = "little" if elf.little_endian else "big"
+    for stored in elf.iter_sections():
+        if not stored["sh_flags"] & SH_FLAGS.SHF_COMPRESSED:
+            continue
+        # A compressed section starts with its compression header, whose first word, in
+        # ELF32 and ELF64 alike, is the compression's type.
+        start = stored["sh_offset"]
+        if int.from_bytes(contents[start : start + 4], byte_order) == _ELFCOMPRESS_ZSTD:
+            msg = (
+                f"'{shown}' is not an ELF image this tool can read: its debug information is "
+                f"compressed with zstd, which this tool does not read; build it with -gz=zlib"
+            )
+            raise ElfReadError(msg)
     dwarf = elf.get_dwarf_info(relocate_dwarf_sections=False, follow_links=False)
     units = [_PyelftoolsUnit(cu, dwarf) for cu in dwarf.iter_CUs()]
     variables = read_variables(
@@ -395,7 +433,7 @@ def _image(path: Path, contents: bytes) -> Image:
     )
     return Image(
         path=path,
-        byte_order="little" if elf.little_endian else "big",
+        byte_order=byte_order,
         variables=variables,
         sections=sections,
         symbols=_symbols(elf, "STT_OBJECT"),

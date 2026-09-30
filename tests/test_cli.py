@@ -4186,6 +4186,29 @@ class TestToolFromElf:
             f"ddd: '{stripped.as_posix()}' carries no DWARF debug information: build it with -g\n"
         )
 
+    def test_a_damaged_image_is_a_usage_error_rather_than_a_traceback(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        """pyelftools answers a damaged compressed section with zlib's own error, which once
+        escaped as a traceback and exit 1, the code of a finding."""
+        from elftools.elf.elffile import ELFFile
+
+        source = FIXTURES / "s390x.elf"
+        data = bytearray(source.read_bytes())
+        with source.open("rb") as stream:
+            elf = ELFFile(stream)
+            section = elf.get_section_by_name(".debug_info")
+            data[section["sh_offset"] + elf.structs.Elf_Chdr.sizeof()] = 0
+        damaged = tmp_path / "inflated.elf"
+        damaged.write_bytes(bytes(data))
+        code, out, err = from_elf(capsys, str(damaged), "Cal_Gain")
+        assert (code, out, err) == (
+            EXIT_USAGE,
+            "",
+            f"ddd: '{damaged.as_posix()}' is not an ELF image this tool can read: zlib.error: "
+            f"Error -3 while decompressing data: incorrect header check\n",
+        )
+
     @pytest.mark.parametrize("name", ["1bad", "N" * 129])
     def test_a_component_name_that_is_no_c_identifier_is_a_usage_error(
         self, capsys: pytest.CaptureFixture[str], name: str

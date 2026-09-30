@@ -5889,9 +5889,12 @@ class TestRemovingAFile:
     """``remove``: every entry keyed by the path taken out, refused where the project without it
     would have an error more than it has now at its place."""
 
-    def test_a_file_nothing_uses_is_removed_and_the_project_read_again(
+    def test_the_units_file_is_removed_and_the_project_read_again_checking_no_unit(
         self, tmp_path: Path
     ) -> None:
+        """`pump.ddd.json` states units `units.ddd.json` declares, but a units file is what opts
+        a project into checking its units: with none left no unit is checked, and nothing
+        fails."""
         api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
         described = root / "project.ddd.json"
         reply = files_plan(api, "remove", path=posix(root, "units.ddd.json"))
@@ -6128,8 +6131,8 @@ class TestRemovingAFile:
         )
 
     def test_a_row_s_key_spelled_another_way_still_names_its_row(self, tmp_path: Path) -> None:
-        """Resolved as it arrives, as every path the page sends is, and as the row's own key
-        was made."""
+        """Resolved before it is compared, as every path the page sends is, and as the row's own
+        key was made."""
         api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
         spelled = f"{root.resolve().as_posix()}/sub/../units.ddd.json"
         body = files_plan(api, "remove", path=spelled).body

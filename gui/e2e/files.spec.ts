@@ -5,9 +5,9 @@ import { expect, test } from "./fixtures";
 
 /** A component the project does not include yet, declaring nothing - written into the copy
  * `vocabularyGui` hands this journey before the page opens, the way `sections.spec.ts`'s own
- * `misplacePumpSpeed` writes into its copy (Controller ruling, task 9): reading nothing and
- * writing nothing, adding it brings no error to preview, so the journey's Add a file step is
- * about the row it leaves rather than about what the server lists beside it. */
+ * `misplacePumpSpeed` writes into its copy: reading nothing and writing nothing, adding it brings
+ * no error to preview, so the journey's Add a file step is about the row it leaves rather than
+ * about what the server lists beside it. */
 const EXTRA = "extra.ddd.json";
 
 test("a component is created, an existing file is added, and one removal is refused where another goes through", async ({
@@ -72,8 +72,9 @@ test("a component is created, an existing file is added, and one removal is refu
   );
   await expect(constantsRemoving.getByRole("button")).toHaveCount(0);
 
-  // Remove, allowed: units.ddd.json is a file nothing uses once removed (Controller ruling,
-  // task 9, measured against the real example) - the plan changes the project description alone,
+  // Remove, allowed: pump.ddd.json states units units.ddd.json declares, but a units file is what
+  // opts a project into checking its units (`_check_units`, src/ddd/analysis.py), so with none
+  // left no unit is checked and nothing fails - the plan changes the project description alone,
   // and applying it takes the row away.
   await page.getByRole("row", { name: UNITS }).click();
   const unitsPanel = page.getByRole("complementary", { name: UNITS });
@@ -84,7 +85,7 @@ test("a component is created, an existing file is added, and one removal is refu
 
   // And the project reports exactly these three edits, nothing else: a component declaring no
   // variable is `empty-component`, at info, and both of the bare ones this journey made carry
-  // it - removing a file nothing uses leaves nothing of its own behind.
+  // it - removing the units file leaves nothing behind, since no unit is checked without one.
   await page.getByRole("link", { name: "Findings" }).click();
   await expect(page.getByText("2 findings · 2 notes")).toBeVisible();
   await expect(page.getByRole("row", { name: "empty-component" })).toHaveCount(2);

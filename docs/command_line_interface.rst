@@ -421,30 +421,39 @@ The commands
        A Files tab lists the root project's own ``includes``, one row per entry in the
        description's own order - a pattern's own row followed immediately by every file it
        matched, indented beneath it - each named as the description spells it, or, for one
-       of a pattern's files, by its path relative to the project's own directory. A row's
-       Kind, State and Findings columns are the same ``State.files`` reads for every other
-       tab: State is blank for a file that loaded, ``did not load`` for one that did not,
-       ``not read by the last analysis`` for a file an entry names that the revision has
-       not read yet - the root's own schema having failed before its includes were read,
-       or a pattern matching a file created since - and ``names no file`` for a plain
-       entry naming nothing at all, a missing path or a pattern matching none. New file,
-       Add a file and Remove are its three actions, the first two above the table and the
-       third opened by selecting a row. New file takes a kind - ``component``, ``types``,
-       ``units``, ``constants``, ``sections`` or ``rasters``, the list ``GET /api/files``
-       itself sends rather than a copy of it kept here - and a name, creating the file
-       beside the project description and adding it to the includes in the same edit: a
+       of a pattern's files, by its path relative to the project's own directory, or by its
+       base name where it lies outside that directory. A row's Kind and State columns are
+       read off the same ``State.files`` every other tab reads, and its Findings column
+       counts what is filed on its file there, and on an entry's own row what is filed on
+       the entry itself as well: a pattern's own row adds up every file it matched, and a
+       row naming nothing has only its entry's. State
+       is blank for a file that loaded, ``did not load`` for one that did not, ``not read
+       by the last analysis`` for a file an entry names that the revision the page holds
+       has not read - the root's own schema having failed before its includes were read, a
+       pattern matching a file created since, or an entry the description gained since,
+       which the tab's own New file and Add show until the revision after them arrives:
+       measured, never on a copy of ``examples/vocabulary``, and for about a second on a
+       project of 18000 findings - and ``names no file`` for an entry naming nothing at
+       all, a plain path to no file or a pattern matching none. New file, Add a file and
+       Remove are its three actions, the first two above the table and the third opened by
+       selecting a row. New file takes a kind - ``component``, ``types``, ``units``,
+       ``constants``, ``sections`` or ``rasters``, offered as ``GET /api/files`` sends the
+       list, the page keeping no copy of its own - and a name, creating the file beside the
+       project description and adding it to the includes in the same edit: a
        vocabulary file declares nothing and a component takes a second name of its own,
        while a units file is the exception, listing every unit the project states where
        no file of its tree is a units file already, so the one click cannot fail a passing
        project with ``unknown-unit`` at once, and created empty where a sub-project's own
-       units file has opted the whole tree in already. Add a file takes a path from the
-       project description's own directory, appended to the includes exactly as written, and
-       previews every error it would bring rather than refusing for them - the spec's own
-       ``informs rather than refuses``. Remove offers to take every entry of the selected
-       row's own key out of the includes - the files stay on disk - refused where the
-       analysis finds errors the project does not have now, naming the first and how many,
-       and an allowed removal a pattern still keeps in the project all the same says so,
-       naming the pattern. Each is refused in the server's own words. New file: a kind it
+       units file has opted the whole tree in already. Add a file takes a path, written from
+       the project description's own directory or absolute, appended to the includes exactly
+       as written, and previews every error it would bring rather than refusing for them: it
+       informs rather than refuses. Remove offers to take every entry of the selected row's
+       own key out of the includes - the files stay on disk - refused where the analysis
+       counts an error more at some place than the project has there now, naming the first
+       and how many; counted place by place, an error that takes the place of another of its
+       check is not counted, which never lets a project with no errors come to have one. An
+       allowed removal a pattern still keeps in the project all the same says so, naming the
+       pattern. Each is refused in the server's own words. New file: a kind it
        does not create - ``no file of kind 'project' can be created here; the kinds that
        can are component, types, units, constants, sections and rasters``; a name outside
        what a file may be called - ``'a.b' cannot name a new file: a name is one or more
@@ -477,8 +486,8 @@ The commands
        its own: the pattern 'lib/*.ddd.json' brings it in, and only the whole pattern
        can be removed``; a path no entry or pattern reaches - ``no entry of p.ddd.json's
        includes names other.ddd.json, and none of its patterns matches it``; and, where
-       the analysis finds the project would have more errors without it, naming the first
-       and how many - ``removing constants.ddd.json would leave one error more than the
+       the analysis counts more errors at their places without it, naming the first and
+       how many - ``removing constants.ddd.json would leave one error more than the
        project has now at its place, in pump.ddd.json: 'PressureTrend' is dimensioned by
        'TREND_SAMPLES', which is not a constant any file of this project declares`` for
        one, and, for several, ``removing sections.ddd.json would leave 3 errors more than
@@ -488,10 +497,10 @@ The commands
        changed since the project was analysed, naming every one changed - ``pump.ddd.json,
        rasters.ddd.json changed since the project was analysed, so the change cannot be
        judged until the project is analysed again`` - or a pattern reaches a file created
-       since, naming it - ``new.ddd.json appeared since the project was analysed, so the
-       change cannot be judged until the project is analysed again`` - and are allowed
-       unjudged instead of refused, with the same reason stated rather than a verdict,
-       where the project's own last analysis did not run to its end at all - ``not every
+       since, naming every one that appeared - ``new.ddd.json appeared since the project was
+       analysed, so the change cannot be judged until the project is analysed again`` - and
+       are allowed unjudged instead of refused, with the same reason stated rather than a
+       verdict, where the project's own last analysis did not run to its end at all - ``not every
        analysis of this project ran to its end, so what removing lib/b.ddd.json leaves
        cannot be judged``, adding answered the same way about what it would bring.
        What the page reads and writes is bounded by the directory ``ddd gui`` was started in,

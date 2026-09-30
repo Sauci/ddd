@@ -1670,6 +1670,27 @@ class TestAdd:
             ("a.ddd.json", path),
         )
 
+    def test_an_absolute_path_is_appended_as_written_too(self, tmp_path: Path) -> None:
+        """A path need not be written from the description's directory."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A"),
+                "sensors/b.ddd.json": component("B"),
+            },
+        )
+        path = (tmp_path / "sensors" / "b.ddd.json").as_posix()
+        assert add_plan(tmp_path / "p.ddd.json", path, {}) == FilePlan(
+            (
+                PlannedEdit(
+                    described(tmp_path),
+                    (Operation("insert", "project.includes[1]", json.dumps(path)),),
+                ),
+            ),
+            ("a.ddd.json", path),
+        )
+
     @pytest.mark.parametrize(
         ("path", "code", "says"),
         [

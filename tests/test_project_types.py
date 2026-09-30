@@ -130,8 +130,8 @@ class TestRows:
         assert row_of(built, "Sensor_t", findings, cache).findings == 0
 
     def test_a_row_asks_its_own_file_and_never_walks_every_finding(self, built, cache) -> None:
-        # Walking every finding once per row, two paths resolved each, is what the Types tab
-        # spent its second on at 100,000 declarations; the rows ask by file instead.
+        # A row asks the findings of its own entry's file, and walks none of the others: a
+        # finding shown on another file cannot be filed inside the type's entry.
         temperature = built.types["Temperature_t"]
         findings = Unwalked(
             [(temperature.path, _finding("unknown-unit", f"{temperature.pointer}.unit"))]

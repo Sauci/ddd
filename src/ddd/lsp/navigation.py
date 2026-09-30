@@ -218,11 +218,23 @@ class Index:
     """Unit -> every entry of the units files listing it, at ``units[i]``, whether the entry is
     the spelling on its own or an object naming it. Two entries are a unit listed twice."""
 
+    scopes: dict[Site, str] = field(default_factory=dict)
+    """Declaration -> the scope it states, ``input``, ``output`` or ``local``, as the analysis
+    loaded it: keyed by its ``definition``, as :attr:`declarations` records it.
+
+    With :attr:`components`, what a unit's panel names a variable by where its file still reads
+    as the analysis read it, rather than parse every file stating the unit again for two strings
+    of each."""
+
+    components: dict[Path, str] = field(default_factory=dict)
+    """Component file -> the name of the component it declares, as the analysis loaded it."""
+
 
 def index(workspace: Workspace) -> Index:
     """Read the positions out of an already loaded project."""
     built = Index()
     for loaded in workspace.components:
+        built.components[loaded.path] = loaded.component.name
         # A plain `None` check: a component need not name a default raster, and the model has
         # already validated this field to `str | None` - there is no drifted third shape here
         # for an `isinstance` to be guarding against.
@@ -236,6 +248,7 @@ def index(workspace: Workspace) -> Index:
             site = Site(location.path, location.pointer)
             name = declaration.definition.name
             built.declarations.setdefault(name, []).append(site)
+            built.scopes[site] = declaration.scope.value
             built.kinds.setdefault(name, declaration.definition.kind.value)
             if declaration.scope.is_producer:
                 built.producers.setdefault(name, []).append(site)

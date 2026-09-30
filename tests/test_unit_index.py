@@ -243,3 +243,39 @@ class TestTheUnitsInUse:
             },
         )
         assert units_in_use(idx) == (("RPM", 1), ("rpm", 1))
+
+
+class TestWhatEachDeclarationSays:
+    """Each declaration's scope and each component file's name, as the analysis loaded them: what
+    a unit's panel reads a variable's component and role from, rather than parse every file
+    stating the unit again."""
+
+    def test_each_declaration_s_scope_is_recorded_at_its_definition(self, tmp_path: Path) -> None:
+        idx = built(
+            tmp_path,
+            **{
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm"), declare("local", "Idle")
+                ),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+            },
+        )
+        assert idx.scopes == {
+            at(tmp_path, "a.ddd.json", "component.interface[0].definition"): "output",
+            at(tmp_path, "a.ddd.json", "component.interface[1].definition"): "local",
+            at(tmp_path, "b.ddd.json", "component.interface[0].definition"): "input",
+        }
+
+    def test_each_component_file_is_recorded_with_its_component_s_name(
+        self, tmp_path: Path
+    ) -> None:
+        """Named by the component, which need not be the file's own name; a file of another kind
+        declares no component."""
+        idx = built(
+            tmp_path,
+            **{
+                "a.ddd.json": component("Alpha", declare("output", "Speed", unit="rpm")),
+                "types.ddd.json": types(scalar_type("Speed_t", unit="rpm")),
+            },
+        )
+        assert idx.components == {(tmp_path / "a.ddd.json").resolve(): "Alpha"}

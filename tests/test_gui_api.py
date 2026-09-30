@@ -2676,6 +2676,34 @@ class TestUnit:
         sites = get(api, "/api/unit", name="rpm").body["sites"]
         assert [(s["component"], s["name"]) for s in sites] == [("A", "Speed")]
 
+    def test_a_place_on_a_file_unchanged_since_the_analysis_is_named_unread(
+        self, api: Api, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Its component and role are the index's record of what the analysis loaded there:
+        nothing reads a declaration again, where every file stating the unit was parsed."""
+
+        def unread(*_: object) -> None:
+            raise AssertionError("a declaration was read again from a file the analysis read")
+
+        monkeypatch.setattr("ddd.project_units.declarations_of", unread)
+        sites = get(api, "/api/unit", name="rpm").body["sites"]
+        assert [(s["component"], s["name"], s["role"]) for s in sites] == [
+            ("A", "Speed", "produces"),
+            ("B", "Speed", "reads"),
+        ]
+
+    def test_a_place_on_a_file_changed_since_the_analysis_is_read_as_it_now_stands(
+        self, api: Api, root: Path
+    ) -> None:
+        """Its component and its role as the file states them now, not as the analysis loaded
+        them: the file's bytes are not the ones the revision fingerprinted."""
+        write_tree(root, {"b.ddd.json": component("Bee", declare("output", "Speed", unit="rpm"))})
+        sites = get(api, "/api/unit", name="rpm").body["sites"]
+        assert [(s["component"], s["name"], s["role"]) for s in sites] == [
+            ("A", "Speed", "produces"),
+            ("Bee", "Speed", "produces"),
+        ]
+
     def test_a_unit_listed_twice_has_its_findings_on_both_entries(self, tmp_path: Path) -> None:
         body = get(opened(tmp_path, LISTED_TWICE), "/api/unit", name="rpm").body
         units = posix(tmp_path, "units.ddd.json")

@@ -94,7 +94,7 @@ def declarations_of(built: Index, name: str, cache: dict[Path, Document]) -> tup
             Declared(
                 site=site,
                 component=component_of(document, site.path),
-                role=_role_of(document.value_at(f"{_entry(site)}.scope")),
+                role=role_of(document.value_at(f"{_entry(site)}.scope")),
                 stated=_stated(document, site.pointer, ("kind", *sorted(PROPAGATED_KEYS))),
                 type_name=type_name,
                 fixed=_fixed(built, type_name, cache),
@@ -260,7 +260,9 @@ def component_of(document: Document, path: Path) -> str:
     return named if isinstance(named, str) else path.name.removesuffix(".ddd.json")
 
 
-def _role_of(scope: Any) -> str:
+def role_of(scope: Any) -> str:
+    """What a declaration's scope says its component does with the variable, by :data:`ROLES`:
+    ``produces``, ``reads`` or ``local``, and ``reads`` for a scope it does not name."""
     return next((role for spelled, role in ROLES if spelled == scope), "reads")
 
 

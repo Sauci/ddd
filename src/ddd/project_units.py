@@ -12,7 +12,7 @@ with the lines it changes, computed without writing anything.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,7 +22,7 @@ from ddd.findings_by_file import FindingsByFile, Pair
 from ddd.lsp.navigation import Index, Site, UnitSite
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit, UnitProject, UnitRefusalError, adoption
-from ddd.variables import Planned, declarations_of, hunks, planned
+from ddd.variables import Planned, declarations_of, hunks, planned, role_of
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,8 +65,8 @@ def unit_rows(
     Counted from the index's record as it stands, the way the picker counts the units in use:
     a variable several components declare counts once, and so does a type or a member. The
     findings are walked once, whole, for the ``unknown-unit`` and ``duplicate-unit`` among them,
-    rather than asked file by file: a unit is as often as not stated in every file of a project,
-    and the two checks are what is kept.
+    rather than asked file by file: the two checks are what is kept, and one unit may be stated
+    in every file of a project.
     """
     own = [(file, finding) for file, finding in findings if finding.check in UNIT_CHECKS]
     return tuple(
@@ -94,20 +94,35 @@ def description_of(built: Index, unit: str, cache: dict[Path, Document]) -> str 
     return described if isinstance(described, str) else None
 
 
-def places_of(built: Index, unit: str, cache: dict[Path, Document]) -> tuple[Place, ...]:
+def places_of(
+    built: Index, unit: str, cache: dict[Path, Document], changed: Callable[[Path], bool]
+) -> tuple[Place, ...]:
     """Every place the index recorded stating ``unit``, in the order it recorded them.
 
-    A variable comes with its component and its role as :func:`ddd.variables.declarations_of`
-    reads them, and a variable its file no longer declares where the index recorded it is left
-    out, as that function leaves it out: the file changed since the analysis, and the next
-    revision lists it where it went.
+    A variable comes with its component and its role. On a file ``changed`` answers still reads
+    as the analysis read it, both are what the analysis loaded there, the index's
+    :attr:`~ddd.lsp.navigation.Index.components` and :attr:`~ddd.lsp.navigation.Index.scopes`,
+    and the file is not parsed: read as :func:`ddd.variables.declarations_of` reads them, the
+    12,500 places of ``A`` in a generated project of 100,000 declarations in 3,333 components,
+    clean, took 2,822 ms, and 91 ms this way (Linux development PC, one run each). On a file
+    changed since, the variable is read as that function reads it, and one its file no longer
+    declares where the index recorded it is left out, as that function leaves it out: the next
+    revision lists it where it went. ``changed`` is asked once of each file holding a variable
+    stating the unit.
     """
     found: list[Place] = []
+    since: dict[Path, bool] = {}
     for stated in built.units.get(unit, ()):
         if stated.kind != "variable":
             found.append(Place(stated, None, None))
             continue
-        definition = Site(stated.site.path, stated.site.pointer.removesuffix(".unit"))
+        path = stated.site.path
+        definition = Site(path, stated.site.pointer.removesuffix(".unit"))
+        if path not in since:
+            since[path] = changed(path)
+        if not since[path]:
+            found.append(Place(stated, built.components[path], role_of(built.scopes[definition])))
+            continue
         declared = next(
             (d for d in declarations_of(built, stated.name, cache) if d.site == definition), None
         )

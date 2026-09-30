@@ -637,7 +637,7 @@ class Api:
                         "component": place.component,
                         "role": place.role,
                     }
-                    for place in places_of(built, unit, cache)
+                    for place in places_of(built, unit, cache, _changed_in(derived))
                 ],
                 findings=_listed(derived, unit_findings(built, unit, derived.findings), cache),
             ).model_dump(mode="json"),
@@ -1615,6 +1615,18 @@ def _appeared_since(revision: Revision) -> list[str]:
                 read.add(reached)
                 appeared.append(reached.name)
     return appeared
+
+
+def _changed_in(derived: Derived) -> Callable[[Path], bool]:
+    """Whether a file no longer reads as the revision ``derived`` came from read it: one the
+    revision did not read at all, or one :func:`_changed_since` finds changed - read afresh and
+    fingerprinted, against the revision's own fingerprint of it."""
+
+    def changed(path: Path) -> bool:
+        source = derived.files.get(path.resolve())
+        return source is None or _changed_since(source)
+
+    return changed
 
 
 def _changed_since(file: SourceFile) -> bool:

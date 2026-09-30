@@ -1,5 +1,7 @@
 # The project's files in the GUI
 
+> **As built.** This is the design as approved. Where the build departed from it, the plan's *Rulings taken* (`docs/superpowers/plans/2026-09-29-gui-files.md`) records it with its reason - above all §4's matching of findings "by `_identity`": a removal is judged by counting errors place by place over the findings as `ddd check` reports them, after a word-for-word pass, because a message names what else the project holds and moves with the order the project is read in. Two sentences false when written are corrected where they stand, each saying so.
+
 Part 16 of the browser interface, and the last of milestone 6: *"Shared project files: types and
 structures, units, sections, constants, rasters, the project's includes, new files."* Parts 12 to 15
 gave every vocabulary a tab. This part gives the list they all hang off — the project's `includes` —
@@ -43,12 +45,12 @@ project lists them.
 - **A pattern** shows the pattern as written, and beneath it every file it matched, each with its own
   kind, state and count. This is what lets the tab say why a file cannot be removed on its own.
 - **An entry naming nothing** — a missing file, a pattern matching no file — shows as such, carrying
-  the `include-empty` finding the loader already files there.
+  the finding the loader already files there: `include-empty` for a pattern matching no file, `file-not-found` for a plain path naming none. *(Corrected at close-out: this sentence first named `include-empty` for both; a plain path naming no file is read as that file and reported `file-not-found`, a load check - measured.)*
 - **A sub-project** is a row of kind `project`. Its own `includes` are neither expanded nor editable
   here; managing them is opening it as a project.
 
 **Two findings lead here, and lead nowhere today.** `include-empty`, filed at `project.includes[i]`
-for a pattern or path matching no file, and `empty-vocabulary`, filed at a vocabulary file's own list:
+for a pattern matching no file or one that cannot be expanded, and `empty-vocabulary`, filed at a vocabulary file's own list:
 `finding_routes.route_of` answers `None` for both, measured. Each is about an entry or a whole file
 rather than anything a panel shows, and this tab is the one screen that shows both. `route_of` gains
 a `file` route naming the entry or the file, and `contract.FindingRoute.kind`'s `Literal` gains the

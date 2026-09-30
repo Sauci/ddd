@@ -409,7 +409,7 @@ SILENTLY_SHOWN: dict[str, int] = {
     "docs/file_formats/types.rst": 14,
     "docs/generated_artefacts.rst": 1,
 }
-"""How many ``$ ddd`` commands each page shows that nothing here re-runs: 51 of 170.
+"""How many ``$ ddd`` commands each page shows that nothing here re-runs: 51 of 173.
 
 A ledger rather than a rule. The convention is that a page which runs one of its commands
 has the rest read as illustrations, which is what keeps a page free to show a command whose

@@ -200,7 +200,7 @@ export function App() {
             onOpen={navigate}
           />
         ) : route.view === "files" ? (
-          <FilesPage state={state} path={route.path} onPath={openFiles} />
+          <FilesPage state={state} path={route.path} onPath={openFiles} stopped={stopped} />
         ) : route.view === "findings" ? (
           <FindingsPage state={state} stopped={stopped} onOpen={navigate} />
         ) : route.view === "compare" ? (

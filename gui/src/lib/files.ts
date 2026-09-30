@@ -1,5 +1,7 @@
-import type { FilesReply, IncludedEntryReply, SourceFile } from "../api/types";
+import type { FilesPlanRequest } from "../api/client";
+import type { FilesPlanReply, FilesReply, IncludedEntryReply, SourceFile } from "../api/types";
 import { relativeToProject } from "./findings";
+import { consequence } from "./units";
 
 /**
  * One row of the Files tab: an entry's own row, or one of a pattern's matched files, indented
@@ -161,4 +163,162 @@ function stateOf(row: FileRow): string {
  * sub-project's own entry, named by a route this table has no row for. */
 export function selectedIndices(rows: readonly FileRow[], selected: string): number[] {
   return rows.flatMap((row, index) => (row.key === selected ? [index] : []));
+}
+
+// --- The three actions (design §3) ------------------------------------------------------------
+//
+// New file, Add and Remove each ask `GET /api/files-plan` as the reader types or selects, and show
+// the plan or the server's refusal in its own words: nothing below judges a name, a path or a
+// removal. What is decided here is what to ask, what the Remove panel is called, and what a
+// preview draws beside the plan's lines - the server's own sentences as they come, the errors it
+// lists as it lists them, and `kept_by` put into words.
+
+/** The kind of file New file asks a second name for, in the word `ddd.file_plans.CREATABLE`
+ * spells it with, which `FilesReply.creatable` sends: `ddd.gui.api.FILE_PLANS`' docstring says
+ * `create` takes `component` as well, "a new component's name", and `create_plan` ignores it for
+ * every other kind. A server renaming the kind would stop the field being drawn, and its own
+ * refusal - "a new component needs a name, besides its file's" - would say what is missing. */
+const COMPONENT_KIND = "component";
+
+/** Whether New file asks for a component's name beside the file's, the kind field holding
+ * `kind`. Compared exactly, as `create_plan` compares a kind with `CREATABLE`: text naming no
+ * kind the server creates - "Component" among it - asks for nothing more, and the server refuses
+ * the kind in its own words. */
+export function asksComponentName(kind: string): boolean {
+  return kind === COMPONENT_KIND;
+}
+
+/** The plan New file asks for as its three fields stand, or `null` while the kind or the file's
+ * name is still empty: `create` takes both (`FILE_PLANS`), and answers a missing or empty one 400
+ * - a mistake about the request, not a refusal a reader could act on, as `constantAdd`'s own doc
+ * (`lib/shared.ts`) says of `add`'s.
+ *
+ * Everything else is sent as typed, and the server judges it on every keystroke: a kind it
+ * creates no file of, a name `FILE_NAME` does not take, a file there already, a component's name
+ * unusable or taken - each refused in its own words, none of them restated here. Nothing is
+ * trimmed, since "  " is a name the server refuses in words where the page would say nothing.
+ *
+ * `component` travels for a component alone (`asksComponentName`), and travels empty too: the
+ * server answers an empty one with "a new component needs a name, besides its file's", which is
+ * what a reader who has not reached that field yet needs to be told. For every other kind it is
+ * left out rather than sent to be ignored, so the request says what the plan is made from. */
+export function fileCreate(kind: string, name: string, component: string): FilesPlanRequest | null {
+  if (kind === "" || name === "") return null;
+  if (asksComponentName(kind)) return { action: "create", kind, name, component };
+  return { action: "create", kind, name };
+}
+
+/** The plan Add asks for as its field stands, or `null` while it is empty - `add`'s one parameter,
+ * which the server answers 400 for empty, as `fileCreate`'s are. Sent exactly as typed, since that
+ * is the text `add_plan` appends to the includes: relative to the description, as an entry is
+ * written. Where it leads - outside what `ddd gui` serves, to no file, to one the project has
+ * already - the server says. */
+export function fileAdd(path: string): FilesPlanRequest | null {
+  return path === "" ? null : { action: "add", path };
+}
+
+/** What the Remove panel is about: the row a route's `path` selects, and the plan asked for it. */
+export interface FileRemoval {
+  /** The panel's title: the first row of that key in `rowsOf`'s list - the description's own
+   * order - named as the table's own Entry cell names it (`cellsOf`). Two rows can share a key, a
+   * literal entry and a pattern's child naming one file, and either can come first: the child,
+   * where the pattern is listed before the literal. Both name the one file the panel is about. */
+  title: string;
+  /** Asked with the row's key, one for every row sharing it: the server takes out every entry of
+   * that key (`remove_plan`), refuses a file only a pattern brings in, naming the pattern, and
+   * judges what is left - the page asks, and never decides on its own that Remove is possible. */
+  request: Extract<FilesPlanRequest, { action: "remove" }>;
+}
+
+/** The Remove panel for `selected`, the route's own `path`, or `null` where nothing is selected
+ * or no row carries that key - a sub-project's `include-empty` routes to such a key (Task 5's
+ * ruling) - so that no panel opens and nothing is asked for a row the reader cannot see. */
+export function fileRemoval(
+  rows: readonly FileRow[],
+  selected: string | undefined,
+  project: string,
+): FileRemoval | null {
+  const row = rows.find((candidate) => candidate.key === selected);
+  if (row === undefined) return null;
+  return { title: cellsOf(row, project).entry, request: { action: "remove", path: row.key } };
+}
+
+/** What a preview of one of the three actions draws beside the plan's own lines - decided here,
+ * so that `FileActionsView` only draws it. */
+export interface FilePreview {
+  /** Every error an added file brings, as the server lists them (`BroughtRow`): in its order, none
+   * left out, and none framed by a sentence of the page's own. `ddd.gui.contract.BroughtError` says
+   * why no heading could be trusted: "the count is what is new" - an error listed can be one the
+   * project has now, re-worded, or a mirror's words - so a line calling them new errors would be
+   * false of some. Empty for New file and Remove, whose plans bring none. */
+  brought: BroughtRow[];
+  /** Why the change could not be judged - `FilesPlanReply.unjudged`, the server's own sentence,
+   * drawn exactly as it comes - or `null` where it was judged, and for New file. No line of the
+   * page's own says that a change was, or was not, judged. */
+  unjudged: string | null;
+  /** For a removal a pattern left keeps the file in all the same, the sentence saying so
+   * (`keptBy`); `null` otherwise. */
+  kept: string | null;
+  /** What the change writes (`consequence`, `lib/units.ts`), as every panel's preview says it. */
+  consequence: string;
+  /** What the button applying it says: Remove's own words, naming what the entry is taken out of
+   * - the project, where a reader of a button called Remove could fear the disk - else the files
+   * the edit writes, as every other panel's Apply counts them. */
+  apply: string;
+}
+
+/** One error `FilesPlanReply.brings` lists, as the Add preview draws it. */
+export interface BroughtRow {
+  /** The error's place in the list: two errors can be worded alike (`new_errors` counts per
+   * place, which a `BroughtError` does not carry), so nothing else tells two rows apart. */
+  key: string;
+  check: string;
+  message: string;
+  /** The file it is filed on, named as an entry would spell it (`relativeToProject`), as the
+   * table names a pattern's child. */
+  file: string;
+}
+
+/** A plan of New file, Add or Remove as its preview draws it. `removing` is the key a removal was
+ * asked with (`FileRemoval.request.path`), and `null` for New file and Add: it is what names the
+ * file a pattern keeps in, and what makes the button Remove's. */
+export function previewOf(
+  plan: FilesPlanReply,
+  project: string,
+  removing: string | null,
+): FilePreview {
+  return {
+    brought: plan.brings.map((brought, index) => ({
+      key: String(index),
+      check: brought.check,
+      message: brought.message,
+      file: relativeToProject(brought.file, project),
+    })),
+    unjudged: plan.unjudged,
+    kept: removing === null ? null : keptBy(plan, removing, project),
+    consequence: consequence(plan.changes),
+    apply:
+      removing === null
+        ? `Apply to ${plan.changes.length} file${plan.changes.length === 1 ? "" : "s"}`
+        : "Remove from the project",
+  };
+}
+
+/** What the Remove preview says where an entry left keeps the file in the project all the same -
+ * `FilesPlanReply.kept_by`, of the three values only a files plan carries the one this page frames
+ * in words of its own (Task 8's ruling): `brings` is listed and `unjudged` drawn as they come - or
+ * `null` where nothing left brings the file back.
+ *
+ * "The pattern", because nothing else can keep it: `remove_plan` takes out every entry whose key
+ * is the file, and a literal entry's key is always the file it names, so what is left bringing it
+ * in is a pattern (`FilePlan.kept_by`'s own docstring: "a pattern, every entry naming the file
+ * being taken out"). "Brings it in" is the server's own phrase for a pattern, in the refusals
+ * `add_plan` and `remove_plan` make. The file is named as the table names a pattern's child
+ * (`relativeToProject`), `key` being the file's own path. */
+function keptBy(plan: FilesPlanReply, key: string, project: string): string | null {
+  if (plan.kept_by === null) return null;
+  return (
+    `${relativeToProject(key, project)} stays in the project all the same: the pattern ` +
+    `'${plan.kept_by}' brings it in.`
+  );
 }

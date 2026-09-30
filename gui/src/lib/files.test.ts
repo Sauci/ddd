@@ -1,6 +1,21 @@
 import { describe, expect, test } from "vitest";
-import type { FilesReply, IncludedEntryReply, SourceFile } from "../api/types";
-import { cellsOf, rowsOf, selectedIndices } from "./files";
+import type {
+  FilesPlanReply,
+  FilesReply,
+  IncludedEntryReply,
+  PlannedChange,
+  SourceFile,
+} from "../api/types";
+import {
+  asksComponentName,
+  cellsOf,
+  fileAdd,
+  fileCreate,
+  fileRemoval,
+  previewOf,
+  rowsOf,
+  selectedIndices,
+} from "./files";
 
 const PROJECT = "C:/work/demo/demo.ddd.json";
 const A = "C:/work/demo/a.ddd.json";
@@ -316,5 +331,273 @@ describe("selectedIndices", () => {
   test("a key that no row holds selects none", () => {
     const rows = rowsOf(reply([entry()]), [sourceFile()]);
     expect(selectedIndices(rows, "C:/work/demo/nothing-any-row-carries.ddd.json")).toEqual([]);
+  });
+});
+
+describe("asksComponentName", () => {
+  test("a component is the one kind New file asks a second name for", () => {
+    expect(asksComponentName("component")).toBe(true);
+  });
+
+  test.each(["types", "units", "constants", "sections", "rasters"])(
+    "a %s file is created with its file's name alone",
+    (kind) => {
+      expect(asksComponentName(kind)).toBe(false);
+    },
+  );
+
+  test.each(["", "comp", "Component"])(
+    "text naming no kind the server creates, %j among it, asks for no component's name",
+    (kind) => {
+      // The kind field takes any text, and the server refuses what is not one of its own words
+      // (`create_plan` compares with `in CREATABLE`, case and all): a field drawn for "Component"
+      // would ask for a name the server then refuses the kind of.
+      expect(asksComponentName(kind)).toBe(false);
+    },
+  );
+});
+
+describe("fileCreate", () => {
+  test("nothing is asked while no kind is chosen", () => {
+    expect(fileCreate("", "limits", "")).toBeNull();
+  });
+
+  test("nothing is asked while the file has no name", () => {
+    expect(fileCreate("constants", "", "")).toBeNull();
+  });
+
+  test("a vocabulary file is asked for by its kind and name, and never with a component's name", () => {
+    // `toStrictEqual`, since `toEqual` would pass an object carrying `component: undefined` - the
+    // key must be absent, so that `filesQuery` sends no `?component=` for a vocabulary file.
+    expect(fileCreate("constants", "limits", "Left over")).toStrictEqual({
+      action: "create",
+      kind: "constants",
+      name: "limits",
+    });
+  });
+
+  test("a component is asked for with its own name beside its file's", () => {
+    expect(fileCreate("component", "valve", "Valve")).toStrictEqual({
+      action: "create",
+      kind: "component",
+      name: "valve",
+      component: "Valve",
+    });
+  });
+
+  test("a component is asked for while its own name is still empty, for the server to say why", () => {
+    // `create_plan` answers "a new component needs a name, besides its file's" - the server's own
+    // sentence - where the page withholding the request would say nothing at all.
+    expect(fileCreate("component", "valve", "")).toStrictEqual({
+      action: "create",
+      kind: "component",
+      name: "valve",
+      component: "",
+    });
+  });
+
+  test.each([
+    ["a kind the server creates no file of", "project", "sub"],
+    ["a name with a dot in it", "types", "a.b"],
+    ["a name of spaces alone", "types", "  "],
+  ])("%s is asked for as typed, for the server to judge", (_, kind, name) => {
+    expect(fileCreate(kind, name, "")).toStrictEqual({ action: "create", kind, name });
+  });
+});
+
+describe("fileAdd", () => {
+  test("nothing is asked while the path is empty", () => {
+    expect(fileAdd("")).toBeNull();
+  });
+
+  test.each(["b.ddd.json", "lib/l.ddd.json", "../outside.ddd.json", "  "])(
+    "%j is asked for exactly as typed",
+    (path) => {
+      expect(fileAdd(path)).toStrictEqual({ action: "add", path });
+    },
+  );
+});
+
+describe("fileRemoval", () => {
+  const literal = entry({ index: 0, entry: "./a.ddd.json", names: true, key: A, files: [A] });
+  const pattern = entry({
+    index: 1,
+    entry: "sensors/*.ddd.json",
+    names: false,
+    key: "C:/work/demo/sensors/*.ddd.json",
+    files: [SENSORS_X],
+  });
+  const rows = rowsOf(reply([literal, pattern]), [sourceFile()]);
+
+  test("no row selected asks nothing", () => {
+    expect(fileRemoval(rows, undefined, PROJECT)).toBeNull();
+  });
+
+  test("a key no row carries asks nothing, and opens no panel", () => {
+    expect(fileRemoval(rows, "C:/work/demo/sub/nested.ddd.json", PROJECT)).toBeNull();
+  });
+
+  test("a literal entry's row is asked for by its key, and named as its entry is spelled", () => {
+    expect(fileRemoval(rows, A, PROJECT)).toEqual({
+      title: "./a.ddd.json",
+      request: { action: "remove", path: A },
+    });
+  });
+
+  test("a pattern's own row is asked for by the pattern's key, to take it out whole", () => {
+    expect(fileRemoval(rows, "C:/work/demo/sensors/*.ddd.json", PROJECT)).toEqual({
+      title: "sensors/*.ddd.json",
+      request: { action: "remove", path: "C:/work/demo/sensors/*.ddd.json" },
+    });
+  });
+
+  test("a pattern's matched file is asked for by its own path, for the server to refuse", () => {
+    // `remove_plan` refuses a file no entry of its own names, naming the pattern: asked with the
+    // child's own key, the refusal reaches the reader in the server's words.
+    expect(fileRemoval(rows, SENSORS_X, PROJECT)).toEqual({
+      title: "sensors/x.ddd.json",
+      request: { action: "remove", path: SENSORS_X },
+    });
+  });
+
+  test("of two rows of one key, the first names the panel", () => {
+    // A literal entry and a pattern's child naming one file, the literal listed first here: its own
+    // spelling - "./a.ddd.json", not the child's "a.ddd.json" - titles the panel, whichever of the
+    // two rows was clicked.
+    const catchAll = entry({
+      index: 1,
+      entry: "*.ddd.json",
+      names: false,
+      key: "C:/work/demo/*.ddd.json",
+      files: [A],
+    });
+    const shared = rowsOf(reply([literal, catchAll]), [sourceFile()]);
+    expect(selectedIndices(shared, A)).toEqual([0, 2]);
+    expect(fileRemoval(shared, A, PROJECT)).toEqual({
+      title: "./a.ddd.json",
+      request: { action: "remove", path: A },
+    });
+  });
+
+  test("a pattern listed before the literal puts its child first, and the child names the panel", () => {
+    // `FileRemoval.title`'s own doc: either row of a shared key can come first. The request is the
+    // one key either way, so which of the two names the panel changes nothing that is asked.
+    const catchAll = entry({
+      index: 0,
+      entry: "*.ddd.json",
+      names: false,
+      key: "C:/work/demo/*.ddd.json",
+      files: [A],
+    });
+    const later = entry({ index: 1, entry: "./a.ddd.json", names: true, key: A, files: [A] });
+    const shared = rowsOf(reply([catchAll, later]), [sourceFile()]);
+    expect(selectedIndices(shared, A)).toEqual([1, 2]);
+    expect(fileRemoval(shared, A, PROJECT)).toEqual({
+      title: "a.ddd.json",
+      request: { action: "remove", path: A },
+    });
+  });
+});
+
+/** A plan as `GET /api/files-plan` answers one, changing the project description alone. */
+function plan(fields: Partial<FilesPlanReply> = {}): FilesPlanReply {
+  return {
+    revision: 3,
+    changes: [change(PROJECT)],
+    unjudged: null,
+    brings: [],
+    kept_by: null,
+    ...fields,
+  };
+}
+
+function change(file: string): PlannedChange {
+  return { file, fingerprint: "x", operations: [], hunks: [] };
+}
+
+describe("previewOf", () => {
+  test("a New file's plan draws what it writes, and an Apply counting its files", () => {
+    expect(previewOf(plan({ changes: [change(A), change(PROJECT)] }), PROJECT, null)).toEqual({
+      brought: [],
+      unjudged: null,
+      kept: null,
+      consequence: "Changes 2 files: a.ddd.json, demo.ddd.json",
+      apply: "Apply to 2 files",
+    });
+  });
+
+  test("an Add's errors are listed in the server's order, each file named as an entry spells it", () => {
+    const brings = [
+      { file: SENSORS_X, check: "missing-producer", message: "'Torque' is read but not written" },
+      { file: A, check: "multiple-producers", message: "'Speed' is written twice" },
+    ];
+    expect(previewOf(plan({ brings }), PROJECT, null)).toEqual({
+      brought: [
+        {
+          key: "0",
+          check: "missing-producer",
+          message: "'Torque' is read but not written",
+          file: "sensors/x.ddd.json",
+        },
+        {
+          key: "1",
+          check: "multiple-producers",
+          message: "'Speed' is written twice",
+          file: "a.ddd.json",
+        },
+      ],
+      unjudged: null,
+      kept: null,
+      consequence: "Changes 1 file: demo.ddd.json",
+      apply: "Apply to 1 file",
+    });
+  });
+
+  test("two errors worded alike are two rows, each keyed apart", () => {
+    // `new_errors` counts errors per place, and a `BroughtError` carries no place: two errors of
+    // one check and one wording at two places of one file arrive as two equal entries.
+    const same = {
+      file: A,
+      check: "missing-producer",
+      message: "'Torque' is read but not written",
+    };
+    const brought = previewOf(plan({ brings: [same, same] }), PROJECT, null).brought;
+    expect(brought.map((row) => row.key)).toEqual(["0", "1"]);
+  });
+
+  test("a change not judged carries the server's sentence exactly as it came", () => {
+    const unjudged =
+      "not every analysis of this project ran to its end, so what removing lib/b.ddd.json " +
+      "leaves cannot be judged";
+    expect(previewOf(plan({ unjudged }), PROJECT, A)).toEqual({
+      brought: [],
+      unjudged,
+      kept: null,
+      consequence: "Changes 1 file: demo.ddd.json",
+      apply: "Remove from the project",
+    });
+  });
+
+  test("a removal a pattern keeps the file in through names the pattern, and the file it keeps", () => {
+    expect(previewOf(plan({ kept_by: "*.ddd.json" }), PROJECT, A)).toEqual({
+      brought: [],
+      unjudged: null,
+      kept: "a.ddd.json stays in the project all the same: the pattern '*.ddd.json' brings it in.",
+      consequence: "Changes 1 file: demo.ddd.json",
+      apply: "Remove from the project",
+    });
+  });
+
+  test("a file a pattern keeps in from a directory is named as an entry would spell it", () => {
+    expect(previewOf(plan({ kept_by: "sensors/*.ddd.json" }), PROJECT, SENSORS_X).kept).toBe(
+      "sensors/x.ddd.json stays in the project all the same: the pattern 'sensors/*.ddd.json' " +
+        "brings it in.",
+    );
+  });
+
+  test("a pattern named in a plan that is no removal's is not put into words", () => {
+    // `kept_by` is always `None` for an add and a create (`FilesPlanReply.kept_by`'s own doc), and
+    // the sentence needs the file a removal was asked with, which neither has.
+    expect(previewOf(plan({ kept_by: "*.ddd.json" }), PROJECT, null).kept).toBeNull();
   });
 });

@@ -4,12 +4,14 @@ import type {
   ConstantUse,
   DeclarableName,
   DeclarableReply,
+  FilesPlanReply,
   FilesReply,
   Finding,
   FixReply,
   GridAxis,
   IncludedEntryReply,
   KindForm,
+  PlannedChange,
   PlanReply,
   ProjectUnit,
   RasterReply,
@@ -2729,3 +2731,385 @@ export const FILES_SHARED_KEY: FilesReply = {
  * `include-empty` or `empty-vocabulary` can route here naming a place only that sub-project's own
  * table would list) - selecting it marks nothing, which is not an error. */
 export const NOTHING_AT_THAT_PATH = "C:/work/demo/subsystem/nested.ddd.json";
+
+// --- FileActionsView (part 16, design §3) ------------------------------------------------------
+//
+// Every reply below is what the running api answered - `GET /api/files-plan`'s plans and refusals,
+// `GET /api/files`' entries, `GET /api/state`'s files - over the tree the test it names in
+// tests/test_gui_api.py builds, or over a copy of examples/vocabulary, the temporary directory
+// replaced by the fake one each fixture spells. Only the revision of examples/vocabulary's plans is
+// set to match the table beside them; nothing is composed for a story. A sentence a test pins whole
+// names that test, and is the test's own text: where the page shows one of the server's refusals or
+// its `unjudged`, the story shows the server's sentence and no other.
+
+/** examples/vocabulary's project.ddd.json as the api read it on a fresh copy of the example: what
+ * `POST /api/edit` would check the plans below against. */
+const VOCABULARY_FINGERPRINT = "62e91546add8266f2b83d25fe06d8b00f25ba9738035e87a15967e92e8abf290";
+
+/** The edit appending `entry` to examples/vocabulary's includes, as every New file plan of it makes
+ * it: a sixth entry, after pump.ddd.json on line 11. */
+function vocabularyAppended(entry: string): PlannedChange {
+  return {
+    file: VOCABULARY_PROJECT,
+    fingerprint: VOCABULARY_FINGERPRINT,
+    operations: [{ op: "insert", pointer: "project.includes[5]", raw: JSON.stringify(entry) }],
+    hunks: [
+      {
+        line: 11,
+        before: ['      "pump.ddd.json"'],
+        after: ['      "pump.ddd.json",', `      "${entry}"`],
+      },
+    ],
+  };
+}
+
+/** A file a New file plan creates, whole: one `set` of its document root, written as its lines
+ * joined and ended with a newline (`ddd.lsp.units.created_beside`), every line of it new. */
+function createdFile(file: string, lines: readonly string[]): PlannedChange {
+  return {
+    file,
+    fingerprint: null,
+    operations: [{ op: "set", pointer: "", raw: `${lines.join("\n")}\n` }],
+    hunks: [{ line: 1, before: [], after: [...lines] }],
+  };
+}
+
+/** A plan with nothing beside its changes - `unjudged`, `brings` and `kept_by` all empty - as
+ * `GET /api/files-plan` answers every create. */
+function planned(changes: PlannedChange[]): FilesPlanReply {
+  return { revision: PROJECT_FILES.revision, changes, unjudged: null, brings: [], kept_by: null };
+}
+
+// New file on each kind, over examples/vocabulary: the changes in the order the api sorts them,
+// by path - the new file first where its name sorts before project.ddd.json, second where after.
+
+/** A component, `valve.ddd.json` declaring `Valve`: a name and an empty interface. */
+export const CREATE_COMPONENT: FilesPlanReply = planned([
+  vocabularyAppended("valve.ddd.json"),
+  createdFile("C:/work/demo/valve.ddd.json", [
+    "{",
+    '  "component": {',
+    '    "name": "Valve",',
+    '    "interface": []',
+    "  }",
+    "}",
+  ]),
+]);
+
+/** A types file, `sizes.ddd.json`, declaring nothing. */
+export const CREATE_TYPES: FilesPlanReply = planned([
+  vocabularyAppended("sizes.ddd.json"),
+  createdFile("C:/work/demo/sizes.ddd.json", ["{", '  "types": []', "}"]),
+]);
+
+/** A units file, `more_units.ddd.json`, declaring nothing: examples/vocabulary has units.ddd.json
+ * already, so the project is opted in and a second units file is created empty (design §3) -
+ * `TestCreatingAFile.test_a_units_file_of_a_project_a_sub_project_opted_in_is_created_empty` pins
+ * the same empty file where the units file is a sub-project's. */
+export const CREATE_UNITS: FilesPlanReply = planned([
+  createdFile("C:/work/demo/more_units.ddd.json", ["{", '  "units": []', "}"]),
+  vocabularyAppended("more_units.ddd.json"),
+]);
+
+/** A constants file, `limits.ddd.json`, declaring nothing - the whole answer pinned by
+ * `TestCreatingAFile.test_a_vocabulary_file_is_previewed_declaring_nothing`, its revision aside. */
+export const CREATE_CONSTANTS: FilesPlanReply = planned([
+  createdFile("C:/work/demo/limits.ddd.json", ["{", '  "constants": []', "}"]),
+  vocabularyAppended("limits.ddd.json"),
+]);
+
+/** A sections file, `memory.ddd.json`, declaring nothing. */
+export const CREATE_SECTIONS: FilesPlanReply = planned([
+  createdFile("C:/work/demo/memory.ddd.json", ["{", '  "sections": []', "}"]),
+  vocabularyAppended("memory.ddd.json"),
+]);
+
+/** A rasters file, `tasks.ddd.json`, declaring nothing. */
+export const CREATE_RASTERS: FilesPlanReply = planned([
+  vocabularyAppended("tasks.ddd.json"),
+  createdFile("C:/work/demo/tasks.ddd.json", ["{", '  "rasters": []', "}"]),
+]);
+
+/** New file refused over examples/vocabulary, a component named as `pump.ddd.json`'s own:
+ * `TestCreatingAFile.test_a_refused_creation_says_why[a component's name taken]` pins it whole,
+ * asked with exactly the story's fields - kind `component`, name `motor`, component `Pump`. */
+export const COMPONENT_NAME_TAKEN = "this project has a component called 'Pump' already";
+
+// A first units file (constructed: the tree of `TestCreatingAFile.test_a_first_units_file_lists_
+// every_unit_the_project_states`) - a project whose one component states `rpm` and `%` and which
+// has no units file anywhere, so the file created lists both rather than making each an
+// `unknown-unit` (design §3). The test pins the file's text; the rest was read off the same run.
+
+const FIRST_UNITS_PROJECT = "C:/work/first/p.ddd.json";
+const FIRST_UNITS_A = "C:/work/first/a.ddd.json";
+
+export const FIRST_UNITS_FILES: FilesReply = {
+  revision: 1,
+  project: FIRST_UNITS_PROJECT,
+  entries: [literalEntry(0, "a.ddd.json", FIRST_UNITS_A)],
+  creatable: FILES_CREATABLE,
+};
+
+/** Its one component, as `GET /api/state` answered: three findings, none an error. */
+export const FIRST_UNITS_SOURCES: readonly SourceFile[] = [
+  {
+    path: FIRST_UNITS_A,
+    kind: "component",
+    name: "A",
+    loaded: true,
+    fingerprint: "10dfb64a7ebe4f00293bf98796cc77df4570484b46f5aa28d78b059ce64272b1",
+    findings: { error: 0, warning: 1, info: 2 },
+  },
+];
+
+export const CREATE_FIRST_UNITS: FilesPlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: FIRST_UNITS_PROJECT,
+      fingerprint: "aee298e6d85cd3928e65c175f0e16d960912b92ac0d4312413103bfc61f6b7b6",
+      operations: [{ op: "insert", pointer: "project.includes[1]", raw: '"units.ddd.json"' }],
+      hunks: [
+        {
+          line: 5,
+          before: ['      "a.ddd.json"'],
+          after: ['      "a.ddd.json",', '      "units.ddd.json"'],
+        },
+      ],
+    },
+    createdFile("C:/work/first/units.ddd.json", [
+      "{",
+      '  "units": [',
+      '    { "unit": "%", "description": "" },',
+      '    { "unit": "rpm", "description": "" }',
+      "  ]",
+      "}",
+    ]),
+  ],
+  unjudged: null,
+  brings: [],
+  kept_by: null,
+};
+
+// Add (constructed: tests/test_gui_api.py's ADDABLE) - a root listing a.ddd.json and the pattern
+// lib/*.ddd.json, beside files a reader might add: b.ddd.json, whose component reads 'Torque' that
+// nothing writes, and lib/l.ddd.json, which the pattern brings in already.
+
+const ADDABLE_PROJECT = "C:/work/addable/p.ddd.json";
+const ADDABLE_A = "C:/work/addable/a.ddd.json";
+const ADDABLE_L = "C:/work/addable/lib/l.ddd.json";
+
+export const ADDABLE_FILES: FilesReply = {
+  revision: 1,
+  project: ADDABLE_PROJECT,
+  entries: [
+    literalEntry(0, "a.ddd.json", ADDABLE_A),
+    {
+      index: 1,
+      entry: "lib/*.ddd.json",
+      names: false,
+      key: "C:/work/addable/lib/*.ddd.json",
+      files: [ADDABLE_L],
+      findings: 0,
+    },
+  ],
+  creatable: FILES_CREATABLE,
+};
+
+export const ADDABLE_SOURCES: readonly SourceFile[] = [
+  {
+    path: ADDABLE_A,
+    kind: "component",
+    name: "A",
+    loaded: true,
+    fingerprint: "e2c31f1130bf19644e9a17048a5ae3d2bd2b971c8911dcb4614f62ea3b80346d",
+    findings: { error: 0, warning: 0, info: 1 },
+  },
+  {
+    path: ADDABLE_L,
+    kind: "component",
+    name: "L",
+    loaded: true,
+    fingerprint: "6a80355081d7d984f082028436d03c1b23423fe55ac8c59feb4fff78cabeb390",
+    findings: { error: 0, warning: 0, info: 0 },
+  },
+];
+
+/** b.ddd.json added, bringing one error - the whole answer, its brought error's words included,
+ * pinned by `TestAddingAFile.test_a_file_is_appended_with_the_errors_it_would_bring`. */
+export const ADD_BRINGING: FilesPlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: ADDABLE_PROJECT,
+      fingerprint: "c4b3ac676170017d3f031e9c5a3b458d2d6729cb4e35379ab02b57c5fcd0be6e",
+      operations: [{ op: "insert", pointer: "project.includes[2]", raw: '"b.ddd.json"' }],
+      hunks: [
+        {
+          line: 6,
+          before: ['      "lib/*.ddd.json"'],
+          after: ['      "lib/*.ddd.json",', '      "b.ddd.json"'],
+        },
+      ],
+    },
+  ],
+  unjudged: null,
+  brings: [
+    {
+      file: "C:/work/addable/b.ddd.json",
+      check: "missing-producer",
+      message: "'Torque' is read by component 'B' but no component declares it as output",
+    },
+  ],
+  kept_by: null,
+};
+
+/** lib/l.ddd.json refused, the pattern bringing it in already: pinned whole by
+ * `TestAddingAFile.test_a_refused_addition_says_why[a pattern's file]`, asked with the story's own
+ * path. */
+export const ADDED_BY_A_PATTERN =
+  "lib/l.ddd.json is part of this project already: the pattern 'lib/*.ddd.json' brings it in";
+
+// Remove refused, over examples/vocabulary: its constants.ddd.json declares TREND_SAMPLES, which
+// pump.ddd.json's PressureTrend is dimensioned by.
+
+/** constants.ddd.json's own key, as the table and the request carry it. */
+export const VOCABULARY_CONSTANTS = CONSTANTS_FILE;
+
+/** Pinned whole by `TestRemovingAFile.test_a_file_whose_declaration_is_used_is_refused_naming_the_
+ * error_it_would_leave` - the refusal the Task 9 journey reads too. */
+export const REMOVE_LEAVES_AN_ERROR =
+  "removing constants.ddd.json would leave one error more than the project has now at its place, " +
+  "in pump.ddd.json: 'PressureTrend' is dimensioned by 'TREND_SAMPLES', which is not a constant " +
+  "any file of this project declares";
+
+// Remove unjudged (constructed: tests/test_gui_api.py's READER_OF_A_BROKEN_WRITER) - a component
+// reading 'Speed', which only lib/b.ddd.json would write, and that file saved half-written: it did
+// not load, so not every analysis of the project ran to its end, and removing it is allowed without
+// a judgement - judged, it would be refused for the `missing-producer` its reader is left with, an
+// error of an analysis the reader never saw (the plan's ruling 2).
+
+const READER_PROJECT = "C:/work/reader/p.ddd.json";
+const READER_A = "C:/work/reader/a.ddd.json";
+
+/** The half-saved writer's key. */
+export const READER_BROKEN = "C:/work/reader/lib/b.ddd.json";
+
+export const READER_FILES: FilesReply = {
+  revision: 1,
+  project: READER_PROJECT,
+  entries: [
+    literalEntry(0, "a.ddd.json", READER_A),
+    literalEntry(1, "lib/b.ddd.json", READER_BROKEN),
+  ],
+  creatable: FILES_CREATABLE,
+};
+
+/** As `GET /api/state` answered: the half-saved file has no kind the page can tell, and its one
+ * error is that it does not parse. */
+export const READER_SOURCES: readonly SourceFile[] = [
+  {
+    path: READER_A,
+    kind: "component",
+    name: "A",
+    loaded: true,
+    fingerprint: "55d0e480d33f8d00ebe0e88742ba0c1a11868df2f52a0e7805c6b7d7611305ab",
+    findings: { error: 0, warning: 0, info: 0 },
+  },
+  {
+    path: READER_BROKEN,
+    kind: "unknown",
+    name: null,
+    loaded: false,
+    fingerprint: "6dda7f451ce5b9ede0f09c689854171e7780e6b3d7747a728c444979758e5f68",
+    findings: { error: 1, warning: 0, info: 0 },
+  },
+];
+
+/** The broken writer removed, unjudged: its `unjudged` is tests/test_gui_api.py's
+ * `UNJUDGED_REMOVING`, pinned by `TestRemovingAFile.test_a_broken_file_of_a_project_not_analysed_
+ * is_removed_unjudged`. */
+export const REMOVE_UNJUDGED: FilesPlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: READER_PROJECT,
+      fingerprint: "f6d29a29e6bf5cfe950093a7a519349737666affa4af9d18212062cb4c999f9e",
+      operations: [{ op: "remove", pointer: "project.includes[1]", raw: null }],
+      hunks: [
+        {
+          line: 5,
+          before: ['      "a.ddd.json",', '      "lib/b.ddd.json"'],
+          after: ['      "a.ddd.json"'],
+        },
+      ],
+    },
+  ],
+  unjudged:
+    "not every analysis of this project ran to its end, so what removing lib/b.ddd.json leaves " +
+    "cannot be judged",
+  brings: [],
+  kept_by: null,
+};
+
+// Remove kept in by a pattern (constructed: the tree of `TestRemovingAFile.test_a_file_a_pattern_
+// keeps_in_the_project_says_which`) - a root listing `*.ddd.json` and then `a.ddd.json`, which the
+// pattern matches too: two rows of one key. Removing it takes out the literal entry, and the
+// pattern left brings the file in all the same.
+
+const KEPT_PROJECT = "C:/work/kept/p.ddd.json";
+
+/** a.ddd.json's key: the literal's own row, and the pattern's one child. */
+export const KEPT_A = "C:/work/kept/a.ddd.json";
+
+export const KEPT_FILES: FilesReply = {
+  revision: 1,
+  project: KEPT_PROJECT,
+  entries: [
+    {
+      index: 0,
+      entry: "*.ddd.json",
+      names: false,
+      key: "C:/work/kept/*.ddd.json",
+      files: [KEPT_A],
+      findings: 0,
+    },
+    literalEntry(1, "a.ddd.json", KEPT_A),
+  ],
+  creatable: FILES_CREATABLE,
+};
+
+/** The one component, its one finding `empty-component`, at info. */
+export const KEPT_SOURCES: readonly SourceFile[] = [
+  {
+    path: KEPT_A,
+    kind: "component",
+    name: "A",
+    loaded: true,
+    fingerprint: "224e4cee37d5adb44bf720c2007b342dac61a15869a89c66121adf54ac94202e",
+    findings: { error: 0, warning: 0, info: 1 },
+  },
+];
+
+/** The literal entry removed, the pattern keeping the file in: `kept_by` and the operation pinned
+ * by that test; the hunk read off the same run. */
+export const REMOVE_KEPT: FilesPlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: KEPT_PROJECT,
+      fingerprint: "fe481d96b72a9897aeda604f24e2bf8c14a9dd95feabb3d926743ec8f72493e8",
+      operations: [{ op: "remove", pointer: "project.includes[1]", raw: null }],
+      hunks: [
+        {
+          line: 5,
+          before: ['      "*.ddd.json",', '      "a.ddd.json"'],
+          after: ['      "*.ddd.json"'],
+        },
+      ],
+    },
+  ],
+  unjudged: null,
+  brings: [],
+  kept_by: "*.ddd.json",
+};

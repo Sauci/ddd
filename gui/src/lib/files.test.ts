@@ -574,7 +574,7 @@ describe("previewOf", () => {
       unjudged,
       kept: null,
       consequence: "Changes 1 file: demo.ddd.json",
-      apply: "Remove from the project",
+      apply: "Remove from the includes",
     });
   });
 
@@ -584,7 +584,7 @@ describe("previewOf", () => {
       unjudged: null,
       kept: "a.ddd.json stays in the project all the same: the pattern '*.ddd.json' brings it in.",
       consequence: "Changes 1 file: demo.ddd.json",
-      apply: "Remove from the project",
+      apply: "Remove from the includes",
     });
   });
 

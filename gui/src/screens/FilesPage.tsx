@@ -133,7 +133,7 @@ function useFilesPlan(request: FilesPlanRequest | null, revision: number | undef
 /**
  * Applying one of the three plans the way every other panel applies its own: the edit posted is
  * the plan's, under the label an undo of it will offer (`filesLabel`, from the very request the
- * plan was asked with); a refusal because a file changed on disk is held until the analysis moves
+ * plan was asked with, a removal's key named relative to `project`); a refusal because a file changed on disk is held until the analysis moves
  * past it, and any other until the reader chooses again (`refusalShown` says which is shown).
  * Once an Apply is answered, applied or refused, the tab's entries and every plan are asked for
  * again - each of the three edits the project description, whose fingerprint every plan carries -
@@ -141,6 +141,7 @@ function useFilesPlan(request: FilesPlanRequest | null, revision: number | undef
  */
 function useFilesApply(
   request: FilesPlanRequest | null,
+  project: string,
   plan: UseQueryResult<FilesPlanReply>,
   revision: number | undefined,
   onApplied: () => void,
@@ -153,7 +154,7 @@ function useFilesApply(
       const edit =
         request === null || plan.data === undefined
           ? null
-          : planEdit(plan.data, filesLabel(request));
+          : planEdit(plan.data, filesLabel(request, project));
       if (edit === null) throw new Error("there is nothing to change");
       return postEdit(edit);
     },
@@ -210,7 +211,7 @@ function NewFile({
   const request = fileCreate(kind, name, component);
   const plan = useFilesPlan(request, revision);
   // Created, the form closes: the new file's row is the table's to show, once it reads again.
-  const { apply, refusal, chose } = useFilesApply(request, plan, revision, onClose);
+  const { apply, refusal, chose } = useFilesApply(request, project, plan, revision, onClose);
   return (
     <NewFileView
       project={project}
@@ -257,7 +258,7 @@ function AddFile({
   const request = fileAdd(path);
   const plan = useFilesPlan(request, revision);
   // Added, the form closes: the file's row is the table's to show, once it reads again.
-  const { apply, refusal, chose } = useFilesApply(request, plan, revision, onClose);
+  const { apply, refusal, chose } = useFilesApply(request, project, plan, revision, onClose);
   return (
     <AddFileView
       project={project}
@@ -295,7 +296,7 @@ function RemoveFile({
   // Removed, the panel closes, the address going bare: the row is gone - and where a pattern
   // keeps the file in all the same, the row left is the pattern's child, whose own Remove the
   // server would refuse, naming the pattern, the moment it was selected again.
-  const { apply, refusal } = useFilesApply(removal.request, plan, revision, onClose);
+  const { apply, refusal } = useFilesApply(removal.request, project, plan, revision, onClose);
   return (
     <RemoveFileView
       removal={removal}

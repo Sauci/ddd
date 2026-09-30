@@ -138,16 +138,27 @@ test.each([
     { action: "create", kind: "component", name: "pump", component: "Pump" },
     "'pump.ddd.json' created",
   ],
-  [{ action: "add", path: "sensors/a.ddd.json" }, "'a.ddd.json' added to the project"],
-  [{ action: "add", path: "a.ddd.json" }, "'a.ddd.json' added to the project"],
+  // An add is named by the path exactly as typed: that text is the entry the includes gain.
+  [{ action: "add", path: "sensors/a.ddd.json" }, "'sensors/a.ddd.json' added to the includes"],
+  [{ action: "add", path: "./a.ddd.json" }, "'./a.ddd.json' added to the includes"],
+  // A removal is named by its key relative to the project's directory: a pattern in a directory
+  // as `lib/*.ddd.json`, never `*.ddd.json`, which `test_a_pattern_in_a_directory_is_named_as_
+  // the_includes_spell_it` rules out of the server's own sentences.
   [
-    // `remove`'s `path` is a row's own absolute key, unlike `add`'s, which is typed relative to
-    // the description - both read by their base name all the same.
     { action: "remove", path: "C:/work/demo/sensors/a.ddd.json" },
-    "'a.ddd.json' removed from the project",
+    "'sensors/a.ddd.json' removed from the includes",
+  ],
+  [
+    { action: "remove", path: "C:/work/demo/lib/*.ddd.json" },
+    "'lib/*.ddd.json' removed from the includes",
+  ],
+  // A key outside the description's directory falls back to its base name (`relativeToProject`).
+  [
+    { action: "remove", path: "C:/work/shared/limits.ddd.json" },
+    "'limits.ddd.json' removed from the includes",
   ],
 ] as const)("%o is undone as %s", (plan, label) => {
-  expect(filesLabel(plan)).toBe(label);
+  expect(filesLabel(plan, "C:/work/demo/demo.ddd.json")).toBe(label);
 });
 
 test("an undone paste is named by the object whose table it replaced", () => {

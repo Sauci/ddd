@@ -261,9 +261,10 @@ export interface FilePreview {
   kept: string | null;
   /** What the change writes (`consequence`, `lib/units.ts`), as every panel's preview says it. */
   consequence: string;
-  /** What the button applying it says: Remove's own words, naming what the entry is taken out of
-   * - the project, where a reader of a button called Remove could fear the disk - else the files
-   * the edit writes, as every other panel's Apply counts them. */
+  /** What the button applying it says: for a removal, what the entry is taken out of - the
+   * includes, as the constants panel's own says "Remove from the constants": not the project, which
+   * a file a pattern keeps in stays part of (`kept`), and not the disk, which nothing here touches -
+   * else the files the edit writes, as every other panel's Apply counts them. */
   apply: string;
 }
 
@@ -300,7 +301,7 @@ export function previewOf(
     apply:
       removing === null
         ? `Apply to ${plan.changes.length} file${plan.changes.length === 1 ? "" : "s"}`
-        : "Remove from the project",
+        : "Remove from the includes",
   };
 }
 

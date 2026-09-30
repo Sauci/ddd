@@ -8,6 +8,7 @@ import type {
 } from "../api/client";
 import type { Finding, State, UndoneChange } from "../api/types";
 import type { Mode } from "./declarations";
+import { relativeToProject } from "./findings";
 import { elementLabel } from "./objectValues";
 import { baseName, type ShownChange } from "./units";
 
@@ -71,15 +72,22 @@ export function rasterLabel(plan: RasterPlanRequest): string {
  * different, shorter name rather than the file the reader actually made. */
 const FILE_SUFFIX = ".ddd.json";
 
-/** What a change of the project's files is called when it comes to be undone - a `create`'s new
- * file by the name it was given, and an `add`'s or a `remove`'s existing one by its base name:
- * `add`'s `path` is typed relative to the description and `remove`'s is a row's absolute key, so
- * one field name spells two different shapes of path, and an undo naming either in full would
- * read worse the deeper one sat, for no reader benefit a short name does not give already. */
-export function filesLabel(plan: FilesPlanRequest): string {
+/** What a change of the project's files is called when it comes to be undone, in words true of
+ * what the change did - to the includes, never "the project": a file a pattern keeps in stays part
+ * of the project once its own entry is gone (`FilesPlanReply.kept_by`).
+ *
+ * A `create`'s new file by the name it was given. An `add`'s by `path` exactly as typed, relative
+ * to the description, since that text is the entry the includes gain. A `remove`'s by its key - a
+ * row's absolute path - named relative to `project`'s directory (`relativeToProject`), as the table
+ * names a pattern's child: a pattern in a directory reads `lib/*.ddd.json`, never its last part,
+ * which another pattern may end in - a base name loses the very directory that tells the two
+ * apart. The cost: a key reached through a link to a directory is named by where it leads, a
+ * spelling no entry has; and a key outside the description's directory by its base name alone,
+ * `relativeToProject`'s own fallback. */
+export function filesLabel(plan: FilesPlanRequest, project: string): string {
   if (plan.action === "create") return fitted(`'${plan.name}${FILE_SUFFIX}' created`);
-  if (plan.action === "add") return fitted(`'${baseName(plan.path)}' added to the project`);
-  return fitted(`'${baseName(plan.path)}' removed from the project`);
+  if (plan.action === "add") return fitted(`'${plan.path}' added to the includes`);
+  return fitted(`'${relativeToProject(plan.path, project)}' removed from the includes`);
 }
 
 /** What a declaration added to a component's interface is called when it comes to be undone -

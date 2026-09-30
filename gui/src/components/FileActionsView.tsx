@@ -222,7 +222,7 @@ export interface RemoveFileViewProps {
 export function RemoveFileView(props: RemoveFileViewProps) {
   return (
     <Panel title={props.removal.title} onClose={props.onClose}>
-      <section className="panel-offer" aria-label="Remove from the project">
+      <section className="panel-offer" aria-label="Remove from the includes">
         <Preview
           offer={props.offer}
           project={props.project}

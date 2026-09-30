@@ -422,39 +422,43 @@ The commands
        description's own order - a pattern's own row followed immediately by every file it
        matched, indented beneath it - each named as the description spells it, or, for one
        of a pattern's files, by its path relative to the project's own directory, or by its
-       base name where it lies outside that directory. A row's Kind and State columns are
-       read off the same ``State.files`` every other tab reads, and its Findings column
-       counts what is filed on its file there, and on an entry's own row what is filed on
-       the entry itself as well: a pattern's own row adds up every file it matched, and a
-       row naming nothing has only its entry's. State
-       is blank for a file that loaded, ``did not load`` for one that did not, ``not read
-       by the last analysis`` for a file an entry names that the revision the page holds
-       has not read - the root's own schema having failed before its includes were read, a
+       base name where it lies outside that directory. A row's Kind is read off the same
+       ``State.files`` every other tab reads, and its Findings column counts what is filed
+       on its file there, and on an entry's own row what is filed on the entry itself as
+       well: a pattern's own row adds up every file it matched, and a row naming nothing
+       has only its entry's. Its State is read off ``State.files`` where the row's file is
+       there - blank for a file that loaded, ``did not load`` for one that did not - and off
+       the entry where it is not: blank for a pattern's own row, ``names no file`` for an
+       entry naming nothing at all, a plain path to no file or a pattern matching none, and
+       ``not read by the last analysis`` for a file an entry names that the revision the
+       page holds has not read. Among the causes of that last: the root's own schema failing
+       before its includes are read, a plugin's model raising while the project is read, a
        pattern matching a file created since, or an entry the description gained since,
        which the tab's own New file and Add show until the revision after them arrives:
        measured, never on a copy of ``examples/vocabulary``, and for about a second on a
-       project of 18000 findings - and ``names no file`` for an entry naming nothing at
-       all, a plain path to no file or a pattern matching none. New file, Add a file and
-       Remove are its three actions, the first two above the table and the third opened by
-       selecting a row. New file takes a kind - ``component``, ``types``, ``units``,
-       ``constants``, ``sections`` or ``rasters``, offered as ``GET /api/files`` sends the
-       list, the page keeping no copy of its own - and a name, creating the file beside the
-       project description and adding it to the includes in the same edit: a
-       vocabulary file declares nothing and a component takes a second name of its own,
-       while a units file is the exception, listing every unit the project states where
-       no file of its tree is a units file already, so the one click cannot fail a passing
-       project with ``unknown-unit`` at once, and created empty where a sub-project's own
-       units file has opted the whole tree in already. Add a file takes a path, written from
-       the project description's own directory or absolute, appended to the includes exactly
-       as written, and previews every error it would bring rather than refusing for them: it
-       informs rather than refuses. Remove offers to take every entry of the selected row's
-       own key out of the includes - the files stay on disk - refused where the analysis
-       counts an error more at some place than the project has there now, naming the first
-       and how many; counted place by place, an error that takes the place of another of its
-       check is not counted, which never lets a project with no errors come to have one. An
-       allowed removal a pattern still keeps in the project all the same says so, naming the
-       pattern. Each is refused in the server's own words. New file: a kind it
-       does not create - ``no file of kind 'project' can be created here; the kinds that
+       project of 18000 findings. New file, Add a file and Remove are its three actions, the
+       first two above the table and the third opened by selecting a row. New file takes a
+       kind - ``component``, ``types``, ``units``, ``constants``, ``sections`` or
+       ``rasters``, offered as ``GET /api/files`` sends the list, the page keeping no copy of
+       its own - and a name, creating the file beside the project description and adding it
+       to the includes in the same edit: a vocabulary file declares nothing and a component
+       takes a second name of its own, while a units file is the exception, listing every
+       unit the project states where no file of its tree is a units file already, so the one
+       click cannot fail a passing project with ``unknown-unit`` at once, and created empty
+       where a sub-project's own units file has opted the whole tree in already. Add a file
+       takes a path, written from the project description's own directory or absolute,
+       appended to the includes exactly as written, and previews the errors the analysis
+       counts it bringing rather than refusing for them: it informs rather than refuses.
+       Remove offers to take every entry of the selected row's own key out of the includes -
+       the files stay on disk - refused where the analysis counts an error more at some place
+       than the project has there now, naming the first and how many. Both count place by
+       place, so an error that takes the place of another of its check at a place within a
+       file is not counted: Add's preview can leave it out, and a removal can let it through,
+       but never in a project with no errors. On a whole file, or on no place at all, the two
+       are told apart by their words as well, and such an error is counted. An allowed
+       removal a pattern still keeps in the project all the same says so, naming the pattern.
+       Each is refused in the server's own words. New file: a kind it does not create - ``no
+       file of kind 'project' can be created here; the kinds that
        can are component, types, units, constants, sections and rasters``; a name outside
        what a file may be called - ``'a.b' cannot name a new file: a name is one or more
        of the letters a to z and A to Z, the digits 0 to 9, '_' and '-', and .ddd.json is

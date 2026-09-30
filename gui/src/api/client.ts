@@ -305,8 +305,8 @@ export const getFiles = (fetchImpl: Fetch = fetch) =>
  * needs, and nothing it does not - `create`'s `component` is a new component's own name, taken
  * only for a `kind` of `"component"` and ignored for every other: `ddd.file_plans.create_plan`'s
  * own rule, stated in `FILE_PLANS`'s docstring though `component` is not itself one of the
- * parameters that dict lists. `add`'s `path` is typed relative to the project description, the
- * way a reader spells an `includes` entry; `remove`'s is a row's own absolute key
+ * parameters that dict lists. `add`'s `path` is typed relative to the project description or
+ * absolute, the way a reader spells an `includes` entry; `remove`'s is a row's own absolute key
  * (`IncludedEntryReply.key`, or one of a pattern's own `files`) - one field name, two different
  * shapes of path, because that is what the two actions each take a path *as*. */
 export type FilesPlanRequest =

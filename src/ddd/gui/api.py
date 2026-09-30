@@ -231,8 +231,8 @@ FILE_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
     "remove": ("path",),
 }
 """What each change of the project's files takes, beside the action itself: ``create`` the kind
-and the name of the new file, ``add`` a path relative to the description as the reader typed it,
-and ``remove`` the key of a row of ``GET /api/files``.
+and the name of the new file, ``add`` a path relative to the description or absolute, as the
+reader typed it, and ``remove`` the key of a row of ``GET /api/files``.
 
 ``create`` takes ``component`` as well, a new component's name, and may go without it: absent
 or empty, it reaches :func:`ddd.file_plans.create_plan` as ``None``, which refuses a component

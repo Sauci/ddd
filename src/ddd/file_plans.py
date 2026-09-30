@@ -516,9 +516,9 @@ def _stated_units(described: Path, units: UnitProject, built: Index | None) -> l
 
 
 def add_plan(project: Path, entry: str, cache: dict[Path, Document]) -> FilePlan:
-    """``entry`` - a path to an existing file, relative to the description, as the reader wrote
-    it - appended to the root's ``includes`` as written. Always a literal: the loader reads an
-    entry naming a file as that file, whatever it spells.
+    """``entry`` - a path to an existing file, relative to the description or absolute, as the
+    reader wrote it - appended to the root's ``includes`` as written. Always a literal: the loader
+    reads an entry naming a file as that file, whatever it spells.
 
     Refused, in this order, by what the description and the files on disk can answer: ``entry``
     naming no file, ``not-found``, a file that is not there being created rather than added;

@@ -5687,6 +5687,17 @@ class TestAddingAFile:
     """``add``: an existing file appended to the includes as written, and what it would bring -
     previewed, never refused by the analysis."""
 
+    def test_an_absolute_path_is_appended_as_typed(self, tmp_path: Path) -> None:
+        """A path need not be written from the description's directory: one inside what is
+        served may be absolute, and is appended so."""
+        api = opened(tmp_path, ADDABLE)
+        typed = posix(tmp_path, "c.ddd.json")
+        reply = files_plan(api, "add", path=typed)
+        assert (reply.status, reply.body["unjudged"], reply.body["brings"]) == (200, None, [])
+        assert reply.body["changes"][0]["operations"] == [
+            {"op": "insert", "pointer": "project.includes[2]", "raw": json.dumps(typed)}
+        ]
+
     def test_a_file_is_appended_with_the_errors_it_would_bring(self, tmp_path: Path) -> None:
         api = opened(tmp_path, ADDABLE)
         described = tmp_path / "p.ddd.json"

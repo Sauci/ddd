@@ -214,9 +214,9 @@ export function fileCreate(kind: string, name: string, component: string): Files
 
 /** The plan Add asks for as its field stands, or `null` while it is empty - `add`'s one parameter,
  * which the server answers 400 for empty, as `fileCreate`'s are. Sent exactly as typed, since that
- * is the text `add_plan` appends to the includes: relative to the description, as an entry is
- * written. Where it leads - outside what `ddd gui` serves, to no file, to one the project has
- * already - the server says. */
+ * is the text `add_plan` appends to the includes: relative to the description or absolute, as an
+ * entry may be written. Where it leads - outside what `ddd gui` serves, to no file, to one the
+ * project has already - the server says. */
 export function fileAdd(path: string): FilesPlanRequest | null {
   return path === "" ? null : { action: "add", path };
 }

@@ -6958,12 +6958,12 @@ class TestAnswersKeptForARevision:
         the files the revision read - so no revision could say a kept answer had gone stale: the
         tab is answered anew, and lists the file at the next request."""
         api = opened(tmp_path, PATTERNED)
-        assert api.session.poll()
+        assert not api.session.poll()
         before = get(api, "/api/files").body
         write_tree(tmp_path, {"lib/c.ddd.json": component("C")})
         assert not api.session.poll()
         after = get(api, "/api/files").body
-        assert (before["revision"], after["revision"]) == (2, 2)
+        assert (before["revision"], after["revision"]) == (1, 1)
         assert [Path(file).name for file in before["entries"][1]["files"]] == ["b.ddd.json"]
         assert [Path(file).name for file in after["entries"][1]["files"]] == [
             "b.ddd.json",
@@ -6977,7 +6977,7 @@ class TestAnswersKeptForARevision:
         names nor one a root pattern has come to match starts an analysis: the offer is answered
         anew, as the plan would be made."""
         api = opened(tmp_path, PATTERNED)
-        assert api.session.poll()
+        assert not api.session.poll()
         assert get(api, "/api/units").body["adoptable"] == 1
         write_tree(tmp_path, {"units.ddd.json": {"units": []}})
         assert not api.session.poll()
@@ -6985,7 +6985,7 @@ class TestAnswersKeptForARevision:
         write_tree(tmp_path, {"lib/units.ddd.json": {"units": ["rpm"]}})
         assert not api.session.poll()
         body = get(api, "/api/units").body
-        assert (body["revision"], body["adoptable"]) == (2, 1)
+        assert (body["revision"], body["adoptable"]) == (1, 1)
         assert body == get(Api(api.session, api.project), "/api/units").body
 
     def test_a_revision_is_derived_once_and_its_successor_anew(self, api: Api, root: Path) -> None:

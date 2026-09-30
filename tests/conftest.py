@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import threading
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ from ddd.backends import (
 )
 from ddd.build_info import BUILD_INFO_FILENAME
 from ddd.diagnostics import DiagnosticBag, SeverityPolicy
+from ddd.gui.session import Revision, Session
 from ddd.ir import DataDictionary
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
@@ -277,3 +279,41 @@ def build_record(base: Path, project_file: Path, image: str = "firmware.elf", **
     payload = {"format": 1, "project": project_file.as_posix(), "image": image, **extra}
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
+
+
+# The session of `ddd gui`, for the suites that open a project in one: the api's, the server's
+# and the session's own, and the plans' that apply an edit through it.
+
+
+def first_revision(root: Path, project_file: Path) -> Revision:
+    """The revision opening ``project_file`` makes, in a session on ``root`` that nobody started:
+    such a session makes the analysis before :meth:`~ddd.gui.session.Session.open` returns, which
+    answers nothing of its own."""
+    session = Session(root)
+    session.open(project_file)
+    revision = session.revision
+    assert revision is not None
+    return revision
+
+
+class Gated(Session):
+    """A session whose analyses are counted, announce that they have begun, and wait at a gate
+    the test opens: what lets a test land an edit while an analysis runs without sleeping."""
+
+    def __init__(self, root: Path) -> None:
+        # Polling an hour apart: the poller start() starts never polls while a test runs.
+        super().__init__(root, poll_interval=3600)
+        self.begun = threading.Semaphore(0)
+        self.gate = threading.Event()
+        self.analyses = 0
+
+    def _analysed(self, project: Path) -> Revision:
+        self.analyses += 1
+        self.begun.release()
+        assert self.gate.wait(timeout=10), "the test never opened the gate"
+        return super()._analysed(project)
+
+
+def begun(session: Gated) -> None:
+    """Wait until one more analysis has begun."""
+    assert session.begun.acquire(timeout=10), "no analysis began"

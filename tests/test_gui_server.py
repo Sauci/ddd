@@ -985,6 +985,34 @@ class TestRunning:
         monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
         assert run(None, [], 0, open_browser=False, static=pages) == EXIT_OK
 
+    def test_every_way_out_ends_the_analyser_and_the_poller(
+        self, project_file, pages, monkeypatch, capsys
+    ) -> None:
+        """Both are started before the project is opened, so a way out before anything is served
+        - a file that is no project, an address that cannot be bound - has them to end as much
+        as the server shutting down has."""
+
+        def running() -> list[str]:
+            names = ("ddd-gui-analyse", "ddd-gui-poll")
+            return sorted(thread.name for thread in threading.enumerate() if thread.name in names)
+
+        before = running()
+        not_a_project = project_file.parent / "a.ddd.json"
+        assert run(not_a_project, [], 0, open_browser=False, static=pages) == EXIT_USAGE
+        assert running() == before
+
+        def refuses_the_address(self, api, static, port=0, host="127.0.0.1"):
+            raise OSError("Cannot assign requested address")
+
+        with monkeypatch.context() as refusing:
+            refusing.setattr(GuiServer, "__init__", refuses_the_address)
+            assert run(project_file, [], 8123, open_browser=False, static=pages) == EXIT_USAGE
+        assert running() == before
+
+        monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
+        assert run(project_file, [], 0, open_browser=False, static=pages) == EXIT_OK
+        assert running() == before
+
 
 def test_the_windows_server_does_not_share_a_port() -> None:
     assert GuiServer.allow_reuse_address is (sys.platform != "win32")

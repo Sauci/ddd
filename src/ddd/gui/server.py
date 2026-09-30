@@ -363,36 +363,44 @@ def run(
         )
         return EXIT_USAGE
     session = Session(Path.cwd(), build_directories)
-    if project is not None:
+    # Started before the project is opened, so that its first analysis runs on the analyser's
+    # own thread, and stopped on every way out of here, which ends that thread and the poller's.
+    session.start()
+    try:
+        if project is not None:
+            try:
+                session.open(project)
+            except ValueError as error:
+                print(f"ddd: {error}", file=sys.stderr)
+                return EXIT_USAGE
+            # So that the address printed below serves the project analysed, as it did before
+            # the analyser: Task 6 takes this wait out.
+            session.settled(None)
         try:
-            session.open(project)
-        except ValueError as error:
-            print(f"ddd: {error}", file=sys.stderr)
-            return EXIT_USAGE
-    try:
-        server = GuiServer(Api(session, project), pages, port, address)
-    except OSError as error:
-        return _refused(address, port, error)
-    print(f"ddd gui (preview) serving {server.address}", flush=True)
-    if beyond_loopback:
-        # No browser to open in a container, and nothing left to protect this with either:
-        # the Host and Origin allow-lists above still only admit 127.0.0.1 and localhost, so
-        # a client that merely reaches the port could forge both. The token in the address
-        # this just printed is what is left, hence publishing the port on the host's loopback
-        # alone rather than trusting the network between here and there.
-        print(
-            f"ddd gui: listening on {address}:{server.port}, beyond this computer's loopback; "
-            f"publish it on the host's loopback only, -p 127.0.0.1:{server.port}:{server.port}, "
-            "since the token in the address is what keeps others out",
-            file=sys.stderr,
-        )
-    elif open_browser:
-        webbrowser.open(server.address)
-    session.start_polling()
-    try:
-        with contextlib.suppress(KeyboardInterrupt):
-            server.serve_forever()
+            server = GuiServer(Api(session, project), pages, port, address)
+        except OSError as error:
+            return _refused(address, port, error)
+        print(f"ddd gui (preview) serving {server.address}", flush=True)
+        if beyond_loopback:
+            # No browser to open in a container, and nothing left to protect this with either:
+            # the Host and Origin allow-lists above still only admit 127.0.0.1 and localhost,
+            # so a client that merely reaches the port could forge both. The token in the
+            # address this just printed is what is left, hence publishing the port on the
+            # host's loopback alone rather than trusting the network between here and there.
+            print(
+                f"ddd gui: listening on {address}:{server.port}, beyond this computer's "
+                "loopback; publish it on the host's loopback only, "
+                f"-p 127.0.0.1:{server.port}:{server.port}, since the token in the address is "
+                "what keeps others out",
+                file=sys.stderr,
+            )
+        elif open_browser:
+            webbrowser.open(server.address)
+        try:
+            with contextlib.suppress(KeyboardInterrupt):
+                server.serve_forever()
+        finally:
+            server.server_close()
     finally:
         session.stop()
-        server.server_close()
     return EXIT_OK

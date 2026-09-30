@@ -13,7 +13,17 @@ from pathlib import Path
 import pytest
 
 import ddd.gui.session as session_module
-from conftest import EXAMPLES, build_record, component, declare, project, write_tree
+from conftest import (
+    EXAMPLES,
+    Gated,
+    begun,
+    build_record,
+    component,
+    declare,
+    first_revision,
+    project,
+    write_tree,
+)
 from ddd.diagnostics import Severity, SeverityPolicy, UnknownCheckError
 from ddd.editing import (
     INVALID,
@@ -30,6 +40,7 @@ from ddd.gui.session import (
     Filed,
     NoProjectError,
     NotInProjectError,
+    Revision,
     Session,
     find_projects,
     findings_with,
@@ -109,7 +120,9 @@ def mismatches(session: Session) -> int:
 
 
 def opened_and_settled(project_file: Path, poll_interval: float = 1.0) -> Session:
-    """A session on the project, past the one analysis more that opening it costs."""
+    """A session on the project, past any analysis more that opening it costs: one, where a
+    sub-project's files had no stamp before the first analysis read them, and none for a flat
+    project, whose files opening stamps."""
     session = Session(project_file.parent, poll_interval=poll_interval)
     session.open(project_file)
     session.poll()
@@ -180,7 +193,7 @@ class TestOpening:
     def test_a_revision_describes_every_file_and_resolves_the_dictionary(
         self, shared: Path
     ) -> None:
-        revision = Session(shared.parent).open(shared)
+        revision = first_revision(shared.parent, shared)
         described = {f.path.name: (f.kind, f.name, f.loaded) for f in revision.files}
         assert described == {
             "p.ddd.json": ("project", "P", True),
@@ -196,7 +209,7 @@ class TestOpening:
             (shared.parent / "b.ddd.json").read_text(encoding="utf-8").replace("rpm", "Hz"),
             encoding="utf-8",
         )
-        revision = Session(shared.parent).open(shared)
+        revision = first_revision(shared.parent, shared)
         filed = {
             f.file.name for f in revision.findings if f.diagnostic.check == "definition-mismatch"
         }
@@ -207,7 +220,8 @@ class TestOpening:
     def test_opening_again_makes_a_newer_revision(self, shared: Path) -> None:
         session = Session(shared.parent)
         session.open(shared)
-        assert session.open(shared).number == 2
+        session.open(shared)
+        assert session.revision is not None and session.revision.number == 2
 
     def test_a_build_records_severities_and_plugin_checks_apply(self, tmp_path: Path) -> None:
         write_tree(
@@ -219,7 +233,7 @@ class TestOpening:
             },
         )
         build_record(tmp_path, tmp_path / "p.ddd.json", severity=["unused-output=error"])
-        revision = Session(tmp_path).open(tmp_path / "p.ddd.json")
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
         assert [b.image for b in revision.builds] == ["firmware.elf"]
         unused = [f.diagnostic for f in revision.findings if f.diagnostic.check == "unused-output"]
         assert [d.severity.value for d in unused] == ["error"]
@@ -232,7 +246,7 @@ class TestOpening:
         self, shared: Path, content: str
     ) -> None:
         (shared.parent / "b.ddd.json").write_text(content, encoding="utf-8")
-        revision = Session(shared.parent).open(shared)
+        revision = first_revision(shared.parent, shared)
         broken = next(f for f in revision.files if f.path.name == "b.ddd.json")
         assert (broken.kind, broken.name, broken.loaded) == ("unknown", None, False)
         assert revision.dictionary is None
@@ -254,8 +268,7 @@ def test_a_revision_keeps_the_index_its_analysis_built(tmp_path: Path) -> None:
             "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
         },
     )
-    session = Session(tmp_path)
-    revision = session.open(tmp_path / "p.ddd.json")
+    revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
     assert revision.index is not None
     assert len(revision.index.declarations["Speed"]) == 2
 
@@ -264,17 +277,6 @@ class TestFollowingTheDisk:
     def test_nothing_is_polled_while_no_project_is_open(self, tmp_path: Path) -> None:
         assert Session(tmp_path).poll() is False
 
-    def test_after_the_one_analysis_more_opening_costs_an_unchanged_project_is_left_alone(
-        self, shared: Path
-    ) -> None:
-        """Opening learns which files the project has from the analysis that reads them, so none
-        of them was stamped before it was read, and the first poll analyses once more."""
-        session = Session(shared.parent)
-        session.open(shared)
-        assert session.poll() is True
-        assert session.poll() is False
-        assert session.revision is not None and session.revision.number == 2
-
     def test_a_file_changed_on_disk_makes_a_new_revision(self, shared: Path) -> None:
         session = opened_and_settled(shared)
         (shared.parent / "b.ddd.json").write_text(
@@ -282,7 +284,7 @@ class TestFollowingTheDisk:
             encoding="utf-8",
         )
         assert session.poll() is True
-        assert session.revision is not None and session.revision.number == 3
+        assert session.revision is not None and session.revision.number == 2
 
     def test_a_file_removed_from_disk_makes_a_new_revision(self, shared: Path) -> None:
         session = opened_and_settled(shared)
@@ -376,8 +378,8 @@ class TestFollowingTheDisk:
         session.start_polling()  # a second start keeps the one thread
         try:
             (shared.parent / "a.ddd.json").write_text("{}", encoding="utf-8")
-            revision = session.wait(2, timeout=5)
-            assert revision is not None and revision.number == 3
+            revision = session.wait(1, timeout=5)
+            assert revision is not None and revision.number == 2
         finally:
             session.stop()
 
@@ -402,6 +404,214 @@ class TestFollowingTheDisk:
 
     def test_stopping_a_session_that_never_polled_is_harmless(self, tmp_path: Path) -> None:
         Session(tmp_path).stop()
+
+
+class TestTheAnalyser:
+    def test_an_edit_answers_before_its_analysis_and_the_next_revision_includes_it(
+        self, shared: Path
+    ) -> None:
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            assert session.settled(timeout=10) is not None
+            session.gate.clear()
+            at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            revision = session.revision
+            assert revision is not None and revision.edits < at and mismatches(session) == 0
+            session.gate.set()
+            settled = session.settled(timeout=10)
+            assert settled is not None and settled.edits == at and mismatches(session) == 2
+        finally:
+            session.gate.set()
+            session.stop()
+
+    def test_edits_landing_while_an_analysis_runs_make_one_analysis_more_not_one_each(
+        self, shared: Path
+    ) -> None:
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            session.settled(timeout=10)
+            session.gate.clear()
+            session.edit([unit_of_b(shared, "Hz")], "one")
+            begun(session)
+            last = 0
+            for unit in ("kPa", "Nm", "rpm"):
+                last, _ = session.edit([unit_of_b(shared, unit)], unit)
+            session.gate.set()
+            settled = session.settled(timeout=10)
+            assert settled is not None and settled.edits == last
+            assert session.analyses == 3  # opening, the first edit, and the three after it
+        finally:
+            session.gate.set()
+            session.stop()
+
+    def test_a_project_opened_while_another_is_analysed_throws_that_analysis_away(
+        self, shared: Path
+    ) -> None:
+        write_tree(shared.parent, {"q.ddd.json": project("Q", "a.ddd.json")})
+        other = shared.parent / "q.ddd.json"
+        session = Gated(shared.parent)
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            session.open(other)
+            session.gate.set()
+            settled = session.settled(timeout=10)
+            assert settled is not None and settled.project == other.resolve()
+            assert (settled.number, session.analyses) == (1, 2)
+        finally:
+            session.gate.set()
+            session.stop()
+
+    def test_an_analysis_failing_on_the_thread_is_printed_and_asked_for_again(
+        self, shared: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        class Failing(Gated):
+            def _analysed(self, project: Path) -> Revision:
+                revision = super()._analysed(project)
+                if self.analyses == 2:
+                    raise RuntimeError("boom")
+                return revision
+
+        session = Failing(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            first = session.settled(timeout=10)
+            at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            assert session.settled(timeout=10) is first
+            assert capsys.readouterr().err.splitlines()[-1] == (
+                "ddd gui: analysing the project failed: boom"
+            )
+            assert session.poll() is True
+            settled = session.settled(timeout=10)
+            assert settled is not None and settled.edits == at and mismatches(session) == 2
+        finally:
+            session.stop()
+
+    def test_where_no_analyser_runs_a_failing_analysis_is_raised_to_the_call_that_asked(
+        self, shared: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A session nobody started makes the analysis in the call that asked for it, as every
+        call did before the analyser: the failure is that call's to report, printed by nothing
+        here, and leaves no analysis running - the next poll asks again."""
+
+        class Failing(Session):
+            analyses = 0
+
+            def _analysed(self, project: Path) -> Revision:
+                self.analyses += 1
+                if self.analyses == 2:
+                    raise RuntimeError("boom")
+                return super()._analysed(project)
+
+        session = Failing(shared.parent)
+        session.open(shared)
+        first = session.revision
+        with pytest.raises(RuntimeError, match=r"^boom$"):
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+        assert session.revision is first
+        assert capsys.readouterr().err == ""
+        assert session.poll() is True
+        revision = session.revision
+        assert revision is not None and revision.edits == 1 and mismatches(session) == 2
+
+    def test_a_second_start_keeps_the_one_analyser(self, shared: Path) -> None:
+        session = Gated(shared.parent)
+        session.start()
+        analyser = session._analyser
+        try:
+            session.start()
+            assert analyser is not None and session._analyser is analyser
+        finally:
+            session.stop()
+
+    def test_stopping_ends_the_analyser_and_the_poller(self, shared: Path) -> None:
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        session.open(shared)
+        session.settled(timeout=10)
+        session.stop()
+        assert session._analyser is not None and not session._analyser.is_alive()
+        assert session._poller is not None and not session._poller.is_alive()
+
+    def test_the_project_open_is_known_before_its_first_analysis_lands(self, shared: Path) -> None:
+        session = Gated(shared.parent)
+        assert session.project is None
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            assert (session.project, session.revision) == (shared.resolve(), None)
+        finally:
+            session.gate.set()
+            session.stop()
+
+    def test_settled_answers_after_its_timeout_while_an_analysis_waits(self, shared: Path) -> None:
+        session = Gated(shared.parent)
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            assert session.settled(timeout=0.01) is None
+        finally:
+            session.gate.set()
+            session.stop()
+
+
+class TestStamps:
+    def test_opening_a_project_analyses_it_once(self, shared: Path) -> None:
+        """Opening stamps the description and every file its own includes name before the
+        analysis reads one, so the first poll finds nothing changed. Opening used to learn which
+        files the project has from the analysis that read them, none of them stamped before it
+        was read, and the first poll analysed the whole project once more."""
+        session = Session(shared.parent)
+        session.open(shared)
+        assert session.poll() is False
+        assert session.revision is not None and session.revision.number == 1
+
+    def test_a_sub_projects_files_still_cost_opening_one_analysis_more(
+        self, tmp_path: Path
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "sub/s.ddd.json"),
+                "sub/s.ddd.json": project("S", "c.ddd.json"),
+                "sub/c.ddd.json": component("C", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        assert session.poll() is True
+        assert session.poll() is False
+
+    def test_a_file_an_edit_created_costs_no_second_analysis(self, shared: Path) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        session.edit(adoption(shared), "the vocabulary")
+        assert session.poll() is False
+
+    def test_an_undo_takes_a_number_of_its_own_and_the_revision_includes_it(
+        self, shared: Path
+    ) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+        undone = session.undo(at)
+        assert undone == at + 1
+        assert session.revision is not None and session.revision.edits == undone
 
 
 class TestReadingAndEditing:
@@ -480,7 +690,9 @@ class TestReadingAndEditing:
     def test_an_edit_is_written_and_analysed_again(self, shared: Path) -> None:
         session = Session(shared.parent)
         session.open(shared)
-        revision, written = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        _, written = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        revision = session.revision
+        assert revision is not None
         assert revision.number == 2
         assert [file.path for file in written] == [(shared.parent / "b.ddd.json").resolve()]
         assert {f.diagnostic.check for f in revision.findings} >= {"definition-mismatch"}
@@ -553,7 +765,9 @@ class TestCreatingAFile:
         session = Session(shared.parent)
         session.open(shared)
         units = (shared.parent / "units.ddd.json").resolve()
-        revision, written = session.edit(adoption(shared), "the vocabulary adopted")
+        _, written = session.edit(adoption(shared), "the vocabulary adopted")
+        revision = session.revision
+        assert revision is not None
         assert units.read_bytes() == b'{"units": ["rpm"]}'
         assert {file.path for file in written} == {units, shared.resolve()}
         described = {f.path.name: (f.kind, f.loaded) for f in revision.files}
@@ -630,7 +844,9 @@ class TestUndoing:
         b = shared.parent / "b.ddd.json"
         before = b.read_bytes()
         session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
-        revision = session.undo(1)
+        session.undo(1)
+        revision = session.revision
+        assert revision is not None
         assert b.read_bytes() == before
         assert revision.number == 3
         assert session.undoable is None
@@ -915,7 +1131,7 @@ class TestEveryRunAnalysed:
 
 def test_the_demo_opens_clean() -> None:
     demo = EXAMPLES / "demo" / "demo.ddd.json"
-    revision = Session(demo.parent).open(demo)
+    revision = first_revision(demo.parent, demo)
     assert not [f for f in revision.findings if f.diagnostic.severity.value == "error"]
     assert {f.name for f in revision.files if f.kind == "component"} == {
         "Controller",

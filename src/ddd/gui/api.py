@@ -332,6 +332,9 @@ class Api:
             self.session.open(wanted)
         except ValueError as error:
             return _error(409, "not-a-project", str(error))
+        # Answered once the first analysis is in, as before the analyser: Task 6 takes this wait
+        # out, and the page follows the analysis from the state.
+        self.session.settled(None)
         return Reply(200, self._session_body())
 
     def _state(self, query: Query, body: bytes | None) -> Reply:
@@ -476,15 +479,18 @@ class Api:
         if isinstance(request, Reply):
             return request
         try:
-            revision, written = self.session.edit(
+            _, written = self.session.edit(
                 [_file_change(c) for c in request.changes], request.label
             )
         except EditError as refusal:
             return _error(409 if refusal.code in REFUSALS else 500, refusal.code, str(refusal))
+        # Answered with the revision that includes the edit, as before the analyser: Task 6
+        # takes this wait out and answers the edit's own number instead.
+        self.session.settled(None)
         return Reply(
             200,
             contract.EditReply(
-                revision=revision.number,
+                revision=self._opened().number,
                 files=[
                     {"path": file.path.as_posix(), "fingerprint": file.fingerprint}
                     for file in written
@@ -516,10 +522,15 @@ class Api:
         if isinstance(request, Reply):
             return request
         try:
-            revision = self.session.undo(request.at)
+            self.session.undo(request.at)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(200, contract.UndoReply(revision=revision.number).model_dump(mode="json"))
+        # Answered with the revision that includes the undo, as before the analyser: Task 6
+        # takes this wait out and answers the undo's own number instead.
+        self.session.settled(None)
+        return Reply(
+            200, contract.UndoReply(revision=self._opened().number).model_dump(mode="json")
+        )
 
     def _variable(self, query: Query, body: bytes | None) -> Reply:
         revision = self._opened()
@@ -1430,12 +1441,12 @@ class Api:
         reason: both expand the includes on disk as it stands, which no revision records, and a
         file appearing where a pattern matches starts no analysis.
 
-        Keyed by the edits the session has written as well as by the revision. Today an edit and
-        an undo are each analysed in the call that writes them, so the revision moves with every
-        write. From Task 6 on, an edit answers once written, and an answer reading its files as
-        they stand - a type's description - changes before the revision does, which the count of
-        edits covers. ``Session.edits`` counts no undo until Task 5 gives an undo a number of its
-        own, so the key covers an undo from then, before Task 6 opens that window.
+        Keyed by the edits the session has written as well as by the revision: an edit is written
+        at once and analysed after, so an answer reading its files as they stand - a type's
+        description - changes before the revision does, which the count of edits covers, an
+        undo's as well, each taking a number of its own. Until Task 6 the api answers a write
+        only once its analysis has ended, which keeps that window from the request that wrote;
+        from Task 6 on it answers once written.
 
         Not guarded: requests are answered on threads of their own. Two requests of one revision
         that both find nothing kept both make it, and an answer made for a revision a newer one

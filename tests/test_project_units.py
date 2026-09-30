@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 
 import pytest
@@ -15,11 +16,14 @@ from conftest import (
     value_member,
     write_tree,
 )
-from ddd.diagnostics import DiagnosticBag
+from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
+from ddd.findings_by_file import FindingsByFile, Pair
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
 from ddd.lsp.ranges import Document
-from ddd.project_units import places_of
+from ddd.project_units import places_of, unit_findings
+
+UNIT = "component.interface[0].definition.unit"
 
 FILES = {
     "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "types.ddd.json"),
@@ -96,3 +100,24 @@ def test_each_file_holding_a_variable_is_asked_about_once(
 
     places_of(built, "rpm", {}, since)
     assert asked == ["a.ddd.json", "b.ddd.json"]
+
+
+def test_a_unit_s_findings_ask_each_file_once_however_many_places_it_holds(
+    tmp_path: Path,
+) -> None:
+    """`a.ddd.json` holds two places of `rpm` and is named once: each file named is a path
+    resolved, and the 12,500 places of the first unit of a generated project of 100,000
+    declarations lie in its 3,333 component files."""
+    built = indexed(tmp_path)
+    named: list[str] = []
+
+    class Counted(FindingsByFile):
+        def on_any(self, paths: Iterable[Path]) -> list[Pair]:
+            listed_paths = list(paths)
+            named.extend(path.name for path in listed_paths)
+            return super().on_any(listed_paths)
+
+    a = (tmp_path / "a.ddd.json").resolve()
+    found = Diagnostic("unknown-unit", Severity.ERROR, "not listed", Location(a, UNIT))
+    assert unit_findings(built, "rpm", Counted([(a, found)])) == [(a, found)]
+    assert sorted(named) == ["a.ddd.json", "b.ddd.json", "types.ddd.json"]

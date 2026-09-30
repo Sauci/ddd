@@ -86,7 +86,7 @@ def type_rows(
 
     Each row counts the findings of its own entry's file alone, which :class:`FindingsByFile`
     resolved once per file rather than once per (type, finding) pair: the same answer as
-    :func:`located_in_type` asked of every finding, at O(types + findings) resolves instead of
+    :func:`located_in_type` asked of every finding, at O(types + files) resolves instead of
     O(types x findings) with two each.
     """
     rows = []

@@ -36,6 +36,7 @@ from ddd.gui.api import (
     SECTION_PLANS,
     Api,
     Reply,
+    _changed_in,
     _declared,
     _finding,
     _json_texts,
@@ -2703,6 +2704,20 @@ class TestUnit:
             ("A", "Speed", "produces"),
             ("Bee", "Speed", "produces"),
         ]
+
+    def test_a_file_has_changed_since_unless_it_reads_as_the_revision_read_it(
+        self, api: Api, root: Path
+    ) -> None:
+        """However the file is spelled; and a file the revision did not read at all has changed,
+        having no reading to compare with."""
+        revision = api.session.revision
+        assert revision is not None
+        changed = _changed_in(api._derive(revision))
+        (root / "sub").mkdir()
+        assert not changed(root / "sub" / ".." / "a.ddd.json")
+        assert changed(root / "other" / "q.ddd.json")
+        write_tree(root, {"b.ddd.json": component("B", declare("input", "Speed", unit="Hz"))})
+        assert changed(root / "b.ddd.json")
 
     def test_a_unit_listed_twice_has_its_findings_on_both_entries(self, tmp_path: Path) -> None:
         body = get(opened(tmp_path, LISTED_TWICE), "/api/unit", name="rpm").body
@@ -6924,17 +6939,23 @@ class TestAnswersKeptForARevision:
         assert again is not first
         assert again == first
 
-    def test_a_revision_is_derived_once_and_its_successor_s_answers_replace_its_own(
-        self, api: Api, root: Path
-    ) -> None:
+    def test_a_revision_is_derived_once_and_its_successor_anew(self, api: Api, root: Path) -> None:
         revision = api.session.revision
         assert revision is not None
-        assert api._derive(revision) is api._derive(revision)
-        for path in KEPT:
-            get(api, path)
+        kept = api._derive(revision)
+        assert api._derive(revision) is kept
         assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
         newer = api.session.revision
         assert newer is not None
-        assert api._derive(newer) is not api._derive(revision)
+        assert api._derive(newer) is not kept
+        assert api._derive(newer).number == newer.number
+
+    def test_the_answers_kept_are_the_newest_revision_s_alone(self, api: Api, root: Path) -> None:
+        """A revision's kept answers go with it: the graph asked first of the next revision, the
+        one answer that reads nothing derived, is kept in place of every answer of the last."""
+        for path in KEPT:
+            get(api, path)
+        assert {key[1] for key in api._memo} == {1}
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
         get(api, "/api/graph")
-        assert {key[1] for key in api._memo} == {newer.number}
+        assert sorted(api._memo) == [(("graph",), 2, 1)]

@@ -148,7 +148,7 @@ def unit_findings(built: Index, unit: str, findings: FindingsByFile) -> list[Pai
     """Every finding that is ``unit``'s own, in the order given: what :func:`located_on_unit`
     keeps of every finding, asked only of the findings on the files its places and its entries
     are in, which are the only ones it can keep. Each file is named once, however many places it
-    holds: a unit is stated three times over in a file as readily as once."""
+    holds, each name being a path resolved."""
     files = dict.fromkeys(site.path for site in _sites(built, unit))
     return [
         (file, found)

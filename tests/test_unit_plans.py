@@ -223,11 +223,13 @@ class TestTheProject:
     def test_a_file_that_is_not_utf8_is_no_units_file_though_it_spells_the_key(
         self, tmp_path: Path
     ) -> None:
-        """Skipped unread, as the parse would have found it: reading it makes an empty document,
+        """Skipped, and not read a second time to find so: reading it makes an empty document,
         which is no units file either."""
         write_tree(tmp_path, {"p.ddd.json": project("P", "units.ddd.json")})
         (tmp_path / "units.ddd.json").write_bytes(b'{"units": ["\xb5s"]}')
-        assert unit_project(tmp_path / "p.ddd.json", (), {}).units_files == ()
+        cache: dict[Path, Document] = {}
+        assert unit_project(tmp_path / "p.ddd.json", (), cache).units_files == ()
+        assert (tmp_path / "units.ddd.json").resolve() not in cache
 
     def test_a_file_already_read_is_what_its_read_says_it_is(self, tmp_path: Path) -> None:
         """The request's cache is what every other question of it reads, so a file read already

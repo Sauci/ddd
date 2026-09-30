@@ -714,6 +714,9 @@ def main() -> None:
                 str(OUTPUT / f"{STRIPPED_ROW}.elf"),
             ]
         )
+        # strip gives what it writes an executable's mode; a fixture is read, never run, and the
+        # images beside it are copies without that mode.
+        (OUTPUT / "stripped.elf").chmod(0o644)
         run(
             [
                 "x86_64-linux-gnu-gcc",
@@ -747,7 +750,7 @@ In `docker-compose.yml`, after the `gui-screenshots` service and before `volumes
   # tests/fixtures/elf/src/ and the pinned cross toolchains of docker/elf-fixtures.Dockerfile. The
   # images are committed, so the suite needs neither Docker nor a compiler: this service is only
   # for changing them. Its image is its own rather than ddd:dev, and what it writes into the
-  # checkout is handed back to whoever owns tests/fixtures/elf, since the image runs as root.
+  # checkout is handed back to the checkout's owner, since the image runs as root.
   elf-fixtures:
     build:
       context: docker
@@ -762,7 +765,7 @@ In `docker-compose.yml`, after the `gui-screenshots` service and before `volumes
       - |
         python3 docker/build_elf_fixtures.py
         status=$$?
-        chown -R "$$(stat -c %u:%g tests/fixtures/elf)" tests/fixtures/elf examples/firmware
+        chown -R "$$(stat -c %u:%g .)" tests/fixtures/elf examples/firmware
         exit $$status
 ```
 

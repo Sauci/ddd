@@ -41,6 +41,7 @@ from ddd.cli import EXIT_OK, _build_parser, main, schema_models
 from ddd.diagnostics import CHECKS
 from ddd.loading import FILE_KINDS
 from ddd.models import Component, DataObject, Datatype, ObjectKind, ScalarType
+from ddd.toolbox.findings import FINDINGS
 
 ROOT = Path(__file__).resolve().parents[1]
 README = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -3138,3 +3139,25 @@ class TestTheRuleAJsonSchemaCannotCarry:
     ) -> None:
         described = published(kind)["$defs"][model]["properties"][key]["description"]
         assert phrase in described, described
+
+
+class TestToolbox:
+    """The findings of ddd tool from-elf, held to the one table of them: each is named in the
+    user guide and in the specification, as every check of the catalogue is."""
+
+    GUIDE = PAGES["docs/toolbox.rst"]
+
+    @pytest.mark.parametrize("finding", sorted(FINDINGS))
+    def test_every_finding_of_the_tool_is_named_in_the_guide(self, finding: str) -> None:
+        assert f"``{finding}``" in self.GUIDE
+
+    @pytest.mark.parametrize("finding", sorted(FINDINGS))
+    def test_every_finding_of_the_tool_is_named_in_the_spec(self, finding: str) -> None:
+        assert f"`{finding}`" in SPEC
+
+    @pytest.mark.parametrize(("finding", "severity"), sorted(FINDINGS.items()))
+    def test_the_guide_gives_every_finding_the_severity_the_tool_reports_it_with(
+        self, finding: str, severity: str
+    ) -> None:
+        """A finding's severity decides the exit status; the guide is where a user reads it."""
+        assert f"   * - ``{finding}``\n     - {severity}\n" in self.GUIDE

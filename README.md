@@ -50,6 +50,8 @@ Licence terms are in [LICENSE](https://github.com/Sauci/ddd/blob/master/LICENSE)
 ## Installation
 
 Requires Python 3.12 or newer; the only runtime dependencies are pydantic and jinja2.
+`ddd tool from-elf` reads ELF images with pyelftools, which the `elf` extra installs:
+`pip install 'ddd-tool[elf]'`.
 
 ```bash
 pip install ddd-tool                 # from the index

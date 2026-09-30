@@ -418,11 +418,11 @@ never compared with any, and nobody notice. Written down, the number moves only 
 somebody moves it, and the diff says which page gained or lost a silent command.
 """
 
-PINNED_EXIT_STATUSES = 3
+PINNED_EXIT_STATUSES = 5
 """How many of the documented runs pin an exit status with ``$ echo $?``.
 
 Every run's output is compared line by line; its status is compared only where the page
-shows one. Three of eighty-four is the honest figure, and this is where it is said out loud.
+shows one. Five of eighty-seven is the honest figure, and this is where it is said out loud.
 """
 
 

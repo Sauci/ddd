@@ -4213,7 +4213,6 @@ Section 4.6 of the spec. Bytes rather than values decide whether an array is one
 In `tests/test_toolbox_from_elf.py`, add to the imports:
 
 ```python
-import json
 import math
 import struct
 
@@ -4435,6 +4434,8 @@ git commit -m "$(printf 'decode initial values the way ddd states them\n\nIn the
 In `tests/test_toolbox_from_elf.py`, add to the imports:
 
 ```python
+import json
+
 from ddd.diagnostics import STANDALONE_POLICY
 from ddd.toolbox.checked import POLICY
 from ddd.toolbox.from_elf import (

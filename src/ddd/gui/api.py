@@ -1856,12 +1856,15 @@ def _files_plan_of(
     cache: dict[Path, Document],
 ) -> _FilesPlanned:
     """The plan ``action`` names, over the parameters :data:`FILE_PLANS` says it takes. A row's
-    key is resolved again as it arrives, as :func:`ddd.file_plans.included_entries` made it."""
+    key is passed on as it arrived: :func:`ddd.file_plans.remove_plan` resolves it to compare, as
+    :func:`ddd.file_plans.included_entries` made it, and names it as it was sent. Resolved here
+    instead, a key ending in a link would be named by what the link leads to, which may lie
+    outside what is served."""
     if action == "create":
         return _FilesPlanned(_creation(revision, given["kind"], given["name"], component, cache))
     if action == "add":
         return _addition(revision, given["path"], cache)
-    return _removal(revision, resolve_path(Path(given["path"])), cache)
+    return _removal(revision, Path(given["path"]), cache)
 
 
 def _creation(
@@ -1953,8 +1956,8 @@ def _addition(revision: Revision, entry: str, cache: dict[Path, Document]) -> _F
 
 
 def _removal(revision: Revision, path: Path, cache: dict[Path, Document]) -> _FilesPlanned:
-    """Every entry keyed by ``path`` taken out, refused where the project without them would
-    have errors it does not have now.
+    """Every entry whose key ``path`` resolves to taken out, refused where the project without
+    them would have an error more than it has now at its place.
 
     :func:`ddd.file_plans.remove_plan`'s own refusals first. Then judged only where every run of
     the revision analysed the project: a project any run of which stopped at its read, or at a

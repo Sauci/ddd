@@ -5887,7 +5887,7 @@ class TestAddingAFile:
 
 class TestRemovingAFile:
     """``remove``: every entry keyed by the path taken out, refused where the project without it
-    has errors it does not have now."""
+    would have an error more than it has now at its place."""
 
     def test_a_file_nothing_uses_is_removed_and_the_project_read_again(
         self, tmp_path: Path
@@ -6066,6 +6066,30 @@ class TestRemovingAFile:
             404,
             "not-found",
             "no entry of p.ddd.json's includes names other.ddd.json, and none of its patterns "
+            "matches it",
+        )
+
+    def test_a_key_ending_in_a_link_is_named_as_the_request_sent_it(self, tmp_path: Path) -> None:
+        """Never by what it resolves to: `elsewhere`, a link among the files served, leads to
+        `outside`, a directory beside them that is not served, and the refusal names only what
+        the request wrote."""
+        write_tree(
+            tmp_path,
+            {
+                "served/p.ddd.json": project("P", "a.ddd.json"),
+                "served/a.ddd.json": component("A"),
+                "outside/secret.ddd.json": component("S"),
+            },
+        )
+        directory_link(tmp_path / "served" / "elsewhere", tmp_path / "outside")
+        session = Session(tmp_path / "served")
+        session.open(tmp_path / "served" / "p.ddd.json")
+        api = Api(session, tmp_path / "served" / "p.ddd.json", wait_seconds=0.05)
+        sent = (tmp_path / "served" / "elsewhere").as_posix()
+        assert refused(files_plan(api, "remove", path=sent)) == (
+            404,
+            "not-found",
+            "no entry of p.ddd.json's includes names elsewhere, and none of its patterns "
             "matches it",
         )
 

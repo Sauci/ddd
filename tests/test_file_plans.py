@@ -20,6 +20,7 @@ from conftest import (
     built_of,
     component,
     declare,
+    directory_link,
     project,
     scalar_type,
     types,
@@ -1952,6 +1953,48 @@ class TestRemove:
         with pytest.raises(FileRefusalError) as refused:
             remove_plan(tmp_path / "p.ddd.json", (tmp_path / path).resolve(), {})
         assert (refused.value.code, refused.value.message) == ("not-found", says)
+
+    def test_a_key_spelled_through_a_link_takes_out_the_entry_it_resolves_to(
+        self, tmp_path: Path
+    ) -> None:
+        """A key is compared resolved, as :func:`included_entries` makes one: `link/b.ddd.json`
+        is `lib/b.ddd.json`'s key, spelled through a link to its directory."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "lib/b.ddd.json"),
+                "a.ddd.json": component("A"),
+                "lib/b.ddd.json": component("B"),
+            },
+        )
+        directory_link(tmp_path / "link", tmp_path / "lib")
+        assert remove_plan(
+            tmp_path / "p.ddd.json", tmp_path / "link" / "b.ddd.json", {}
+        ) == FilePlan(
+            (PlannedEdit(described(tmp_path), (Operation("remove", "project.includes[1]"),)),),
+            ("a.ddd.json",),
+            removed=("lib/b.ddd.json",),
+        )
+
+    def test_a_key_ending_in_a_link_is_refused_naming_the_link(self, tmp_path: Path) -> None:
+        """Named as it was sent, never by what it resolves to: `elsewhere` leads to `outside`,
+        a directory beside the project's, and the refusal names only what the caller wrote."""
+        write_tree(
+            tmp_path,
+            {
+                "served/p.ddd.json": project("P", "a.ddd.json"),
+                "served/a.ddd.json": component("A"),
+                "outside/secret.ddd.json": component("S"),
+            },
+        )
+        directory_link(tmp_path / "served" / "elsewhere", tmp_path / "outside")
+        with pytest.raises(FileRefusalError) as refused:
+            remove_plan(tmp_path / "served" / "p.ddd.json", tmp_path / "served" / "elsewhere", {})
+        assert (refused.value.code, refused.value.message) == (
+            "not-found",
+            "no entry of p.ddd.json's includes names elsewhere, and none of its patterns "
+            "matches it",
+        )
 
     def test_a_literal_entry_a_pattern_also_matches_is_taken_out_naming_the_pattern(
         self, tmp_path: Path

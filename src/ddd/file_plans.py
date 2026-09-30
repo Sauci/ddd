@@ -565,8 +565,13 @@ def add_plan(project: Path, entry: str, cache: dict[Path, Document]) -> FilePlan
 
 def remove_plan(project: Path, path: Path, cache: dict[Path, Document]) -> FilePlan:
     """Every entry of the root's ``includes`` whose key is ``path`` taken out - ``path`` being a
-    row's key as :func:`included_entries` answers it. A pattern's key takes the pattern out
-    whole. The files stay on disk.
+    row's key as :func:`included_entries` answers it, or any spelling of one. A pattern's key
+    takes the pattern out whole. The files stay on disk.
+
+    ``path`` is resolved before it is compared, as a key is made, and a refusal names it as it
+    was sent, by its own base name - never by what it resolves to, whose base name, where
+    ``path`` ends in a link, is that of whatever the link leads to: a file that can lie outside
+    what the caller may read.
 
     Every one, where two spellings of one file are one key: removing a row is to take its file
     out of the project, and an entry left naming it would keep it in. The last goes first, since
@@ -580,14 +585,15 @@ def remove_plan(project: Path, path: Path, cache: dict[Path, Document]) -> FileP
     that is every entry, and the pattern bringing the file in is the one refused.
     """
     described = resolve_path(project)
+    key = resolve_path(path)
     removed: list[IncludedEntry] = []
     kept: list[IncludedEntry] = []
     for included in included_entries(described, cache):
-        if included.key == path:
+        if included.key == key:
             removed.append(included)
         else:
             kept.append(included)
-    brought_by = _brought_by(kept, path)
+    brought_by = _brought_by(kept, key)
     if removed:
         operations = tuple(
             Operation("remove", f"project.includes[{gone.index}]") for gone in reversed(removed)

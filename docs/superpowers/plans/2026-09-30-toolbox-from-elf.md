@@ -354,7 +354,26 @@ uint32_t fixture_entry(void) {
     return Meas_Bss;
 #endif
 }
+
+/* Appended after the entry point, so that no line above it moves: the user guide's transcripts
+   cite lines of this file. A structure holding an array of structures, a two dimensional array
+   and signed bitfields - the member shapes the cases above leave out. */
+typedef struct {
+    int8_t low : 3;
+    int16_t high : 5;
+    uint8_t level;
+} Sample_t;
+
+typedef struct Frame_s {
+    Sample_t samples[3];
+    uint16_t grid[2][3];
+    int8_t trim : 4;
+} Frame_t;
+
+Frame_t Nested_Frame;
 ```
+
+The last block was added at the maintainer's request after Task 1's first commit (ruling 11): gcc 15 lays it out, measured, with `low` at bit 0, `high` at bit 3, `level` at byte 1 (`Sample_t` 2 bytes), and `samples` at byte 0, `grid` at byte 6 as one array of two subranges, `trim` at bit 144 (`Frame_t` 20 bytes); DDD's own check accepts the signed `bits` members its description needs.
 
 Two cases the spec lists are not here, on purpose. A custom section without contents: gcc gives `@nobits` to a section only when its name starts `.bss.`, and the default linker scripts fold `.bss.*` into `.bss`, so no portable spelling yields one; Task 7 covers it with a hand-built image. An `_Atomic` variable: whether DWARF keeps the qualifier depends on the DWARF version and strictness, so no row-independent expectation exists; Task 2 covers it with a double (ruling 2).
 
@@ -2381,6 +2400,36 @@ class TestTheMatrix:
         assert [(m.name, m.bit_offset, m.bit_size) for m in padded.members] == [
             ("a", 0, 7),
             ("b", 8, 2),
+        ]
+
+    def test_structures_of_structures_arrays_and_signed_bitfields_read_the_same_everywhere(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """An array of structures inside a structure, a two dimensional array member and
+        signed bitfields: the member shapes the fixture gained after Task 1. DWARF 2 to 4 state
+        a bitfield from its storage unit's most significant bit, so on big endian rows the
+        conversion runs the other way; the offsets must not move."""
+        image, _ = row
+        frame = core(by_name(image, "Nested_Frame").type)
+        assert isinstance(frame, Struct)
+        samples, grid, trim = frame.members
+        assert isinstance(samples.type, Array)
+        assert (samples.name, samples.bit_offset, samples.type.dimensions) == ("samples", 0, (3,))
+        assert isinstance(grid.type, Array)
+        assert (grid.name, grid.bit_offset, grid.type.dimensions) == ("grid", 48, (2, 3))
+        assert (trim.name, trim.bit_offset, trim.bit_size) == ("trim", 144, 4)
+        sample = core(samples.type)
+        assert isinstance(sample, Struct)
+        assert [(m.name, m.bit_offset, m.bit_size) for m in sample.members] == [
+            ("low", 0, 3),
+            ("high", 3, 5),
+            ("level", 8, None),
+        ]
+        signed = [core(member.type) for member in (*sample.members[:2], trim)]
+        assert [(base.encoding, base.size) for base in signed if isinstance(base, Base)] == [
+            (DW_ATE_SIGNED_CHAR, 1),
+            (DW_ATE_SIGNED, 2),
+            (DW_ATE_SIGNED_CHAR, 1),
         ]
 
     def test_an_explicit_alignment_is_read_where_the_dwarf_states_it(
@@ -5171,6 +5220,55 @@ In `tests/test_cli.py`, add `import sys` to the standard library imports, `_buil
 FIXTURES = Path(__file__).parent / "fixtures" / "elf"
 FIXTURE_ROWS = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))["rows"]
 X86 = FIXTURES / "x86_64.elf"
+SAMPLE_ENTRY = {
+    "type": "struct",
+    "name": "Sample_t",
+    "members": [
+        {
+            "name": "low",
+            "member": "bits",
+            "datatype": "sint8",
+            "conversion": {"kind": "identity"},
+            "bits": 3,
+        },
+        {
+            "name": "high",
+            "member": "bits",
+            "datatype": "sint16",
+            "conversion": {"kind": "identity"},
+            "bits": 5,
+        },
+        {
+            "name": "level",
+            "member": "value",
+            "datatype": "uint8",
+            "conversion": {"kind": "identity"},
+        },
+    ],
+}
+FRAME_ENTRY = {
+    "type": "struct",
+    "name": "Frame_t",
+    "members": [
+        {"name": "samples", "member": "value", "typename": "Sample_t", "dimensions": [3]},
+        {
+            "name": "grid",
+            "member": "value",
+            "datatype": "uint16",
+            "conversion": {"kind": "identity"},
+            "dimensions": [2, 3],
+        },
+        {
+            "name": "trim",
+            "member": "bits",
+            "datatype": "sint8",
+            "conversion": {"kind": "identity"},
+            "bits": 4,
+        },
+    ],
+}
+"""An array of structures inside a structure, a two dimensional array member and signed
+bitfields, as every row must describe them."""
 
 
 def fixture_line(unit: str, text: str) -> int:
@@ -5285,6 +5383,12 @@ def expected_definitions(traits: dict[str, Any]) -> dict[str, dict[str, Any]]:
         "typename": "Inlet_t",
         "volatile": False,
     }
+    definitions["Nested_Frame"] = {
+        "name": "Nested_Frame",
+        "kind": "measurement",
+        "typename": "Frame_t",
+        "volatile": False,
+    }
     return definitions
 
 
@@ -5300,9 +5404,12 @@ class TestToolFromElf:
             capsys, str(FIXTURES / f"{row}.elf"), *expected, "--component", "Fixture"
         )
         assert code == EXIT_OK, err
-        interface = json.loads(out)["component"]["interface"]
+        document = json.loads(out)["component"]
+        interface = document["interface"]
         assert {entry["definition"]["name"]: entry["definition"] for entry in interface} == expected
         assert {entry["scope"] for entry in interface} == {"output"}
+        types = {entry["name"]: entry for entry in document["types"]}
+        assert (types["Sample_t"], types["Frame_t"]) == (SAMPLE_ENTRY, FRAME_ENTRY)
 
     @pytest.mark.parametrize("row", sorted(FIXTURE_ROWS))
     def test_long_double_is_a_float64_only_where_the_target_makes_it_eight_bytes(
@@ -5329,6 +5436,7 @@ class TestToolFromElf:
             "Struct_Qualified",
             "Layout_*",
             "Shared_*",
+            "Nested_Frame",
             "--component",
             "Fixture",
         )
@@ -5343,6 +5451,8 @@ class TestToolFromElf:
             "Gapped_s",
             "Padded_s",
             "Shared_t",
+            "Sample_t",
+            "Frame_t",
         ]
         written = tmp_path / "fixture.ddd.json"
         written.write_text(out, encoding="utf-8")
@@ -6310,3 +6420,4 @@ Filled in as the work goes. Each entry says what was not done and what it costs.
 | 8 | **Task 8 writes the least documentation a new command owes** - the README's row, the command page's row and its `--format json` count, the spec's list, the test's command set | The documentation tests fail on an undocumented command, and no commit may leave a gate red | Task 9 writes the rest; nothing is documented twice |
 | 9 | **The x86_64 row is a static PIE** | It gives `ET_DYN` a real image, the spec accepting both kinds | None |
 | 10 | **Spec corrections made while planning** (commit `aa2984b` and the plan's own commit): `note` is `info`; the check adds `missing-id=ignore`; the typedef closest to a type names it; a section without contents states no `init` rather than `init: null`; strict DWARF 2 and a unit without `-g` join the matrix | Each measured or read off DDD's code while this plan was written | Recorded in the spec's evidence section |
+| 11 | **The fixture gains an array of structures inside a structure, a two dimensional array member and signed bitfields** (`Sample_t`, `Frame_t`, `Nested_Frame`), appended after `fixture_entry` - asked for by the maintainer after Task 1's first commit | The fixture had one-dimensional arrays and unsigned bitfields in structures only; these shapes were reached by hand-built models alone. Appended at the end so no line an earlier case or a transcript cites moves; Task 3 and Task 8 hold every row to them | A row laying them out differently fails Task 3's new test, which is what it is there to find |

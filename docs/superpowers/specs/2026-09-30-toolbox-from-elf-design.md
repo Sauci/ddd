@@ -503,7 +503,9 @@ changes.
 `tests/fixtures/elf/src/` holds four units and a shared header:
 
 - `main.c` holds a variable for every case of section 4, each named for its case. It also holds
-  the entry symbol and the probes of section 6.4.
+  the entry symbol and the probes of section 6.4, and, after the entry symbol so that no line
+  the documentation cites moves, a structure holding an array of structures, a two dimensional
+  array and signed bitfields (`Nested_Frame`).
 - `unit_a.c` and `unit_b.c` hold a `static` of the same name, a structure from `shared.h` that
   they share, and a structure whose tag is the same in both and whose members are not.
 - `nodebug.c` is compiled without `-g`, so that its variable is in the symbol table and in no

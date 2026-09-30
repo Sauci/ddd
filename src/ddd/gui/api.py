@@ -15,7 +15,7 @@ never a hand-assembled ``dict`` - so the shape answered here and the shape
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
@@ -35,7 +35,7 @@ from ddd.declaration_plans import (
     remove_declaration,
     scopes_for,
 )
-from ddd.diagnostics import CHECKS, Location
+from ddd.diagnostics import CHECKS
 from ddd.editing import (
     INVALID,
     STALE,
@@ -59,10 +59,11 @@ from ddd.file_plans import (
 )
 from ddd.finding_fixes import fixes_for
 from ddd.finding_routes import Route, route_of
-from ddd.findings_by_file import FindingsByFile, Pair
+from ddd.findings_by_file import Pair
 from ddd.graph import Module, graph_of
 from ddd.gui import contract
 from ddd.gui.compare import BaselineCache, BaselineRefusedError, compared
+from ddd.gui.derived import Derived, derived
 from ddd.gui.session import KINDS as DESCRIPTION_KINDS
 from ddd.gui.session import (
     Filed,
@@ -96,32 +97,32 @@ from ddd.lsp.units import (
     rename_unit,
     unit_project,
 )
-from ddd.object_values import ValueRefusalError, grid_of, set_cell, set_values
+from ddd.object_values import Grid, ValueRefusalError, grid_of, set_cell, set_values
 from ddd.project_shared import (
     CONSTANTS,
     RASTERS,
     SECTIONS,
     Vocabulary,
+    entry_findings,
     shared_rows,
     shown,
 )
-from ddd.project_shared import located_on as located_on_entry
 from ddd.project_shared import uses_of as uses_of_entry
 from ddd.project_types import (
     SCALAR_KEYS,
     fixed_by,
-    located_in_type,
     members_of,
     row_of,
+    type_findings,
     type_rows,
     uses_of,
 )
 from ddd.project_units import (
     adoptable,
     description_of,
-    located_on_unit,
     places_of,
     previewed,
+    unit_findings,
     unit_rows,
 )
 from ddd.shared_plans import (
@@ -281,6 +282,8 @@ class Api:
         self.project = None if project is None else project.resolve()
         self.wait_seconds = wait_seconds
         self._compare_cache: BaselineCache = {}
+        self._derived: Derived | None = None
+        self._memo: dict[tuple[object, ...], Reply] = {}
 
     def handle(self, method: str, path: str, query: Query, body: bytes | None) -> Reply:
         route = _ROUTES.get(path)
@@ -340,7 +343,7 @@ class Api:
         if revision is None:
             raise NoProjectError("no project is open")
         top = self.session.undoable
-        sources = {file.path.resolve(): file for file in revision.files}
+        derived = self._derive(revision)
         cache: dict[Path, Document] = {}
         return Reply(
             200,
@@ -363,8 +366,8 @@ class Api:
                     for file in revision.files
                 ],
                 findings=[
-                    _finding(filed, sources.get(filed.file.resolve()), cache)
-                    for filed in revision.findings
+                    _finding(filed, source, cache)
+                    for filed, source in zip(revision.findings, derived.sources, strict=True)
                 ],
                 undoable=None if top is None else {"at": top.at, "label": top.label},
             ).model_dump(mode="json"),
@@ -402,9 +405,10 @@ class Api:
         )
 
     def _graph(self, query: Query, body: bytes | None) -> Reply:
-        revision = self.session.revision
-        if revision is None:
-            raise NoProjectError("no project is open")
+        revision = self._opened()
+        return self._memoised(revision, ("graph",), lambda: self._graph_of(revision))
+
+    def _graph_of(self, revision: Revision) -> Reply:
         modules = [_module(file) for file in revision.files if file.kind == "component"]
         findings = [(PurePosixPath(f.file.as_posix()), f.diagnostic) for f in revision.findings]
         built = graph_of(revision.dictionary, modules, findings)
@@ -527,7 +531,7 @@ class Api:
         declared = () if built is None else declarations_of(built, name, cache)
         if built is None or not declared:
             return _undeclared(revision, name)
-        sources = {file.path.resolve(): file for file in revision.files}
+        derived = self._derive(revision)
         return Reply(
             200,
             contract.VariableReply(
@@ -549,16 +553,25 @@ class Api:
                 # field; the contract validates what comes out, so a name that drifts apart
                 # fails here rather than reaching the page.
                 keys=[asdict(offer) for offer in offers(built, declared)],
-                findings=[
-                    _finding(filed, sources.get(filed.file.resolve()), cache)
-                    for filed in revision.findings
-                    if located_on(declared, filed.file, filed.diagnostic)
-                ],
+                findings=_listed(
+                    derived,
+                    [
+                        (file, found)
+                        for file, found in derived.findings.on_any(
+                            entry.site.path for entry in declared
+                        )
+                        if located_on(declared, file, found)
+                    ],
+                    cache,
+                ),
             ).model_dump(mode="json"),
         )
 
     def _units(self, query: Query, body: bytes | None) -> Reply:
         revision = self._opened()
+        return self._memoised(revision, ("units",), lambda: self._units_of(revision))
+
+    def _units_of(self, revision: Revision) -> Reply:
         cache: dict[Path, Document] = {}
         vocabulary = vocabulary_of(
             [read(file.path, cache) for file in revision.files if file.kind == "units"]
@@ -570,13 +583,7 @@ class Api:
             revision.project, [file.path for file in revision.files if not file.loaded], cache
         )
         used = () if built is None else units_in_use(built)
-        rows = (
-            ()
-            if built is None
-            else unit_rows(
-                built, FindingsByFile((f.file, f.diagnostic) for f in revision.findings), cache
-            )
-        )
+        rows = () if built is None else unit_rows(built, self._derive(revision).findings, cache)
         return Reply(
             200,
             contract.UnitsReply(
@@ -610,7 +617,7 @@ class Api:
         if built is None or (unit not in built.units and unit not in built.vocabulary):
             return _undeclared(revision, unit)
         cache: dict[Path, Document] = {}
-        sources = {file.path.resolve(): file for file in revision.files}
+        derived = self._derive(revision)
         return Reply(
             200,
             contract.UnitReply(
@@ -632,11 +639,7 @@ class Api:
                     }
                     for place in places_of(built, unit, cache)
                 ],
-                findings=[
-                    _finding(filed, sources.get(filed.file.resolve()), cache)
-                    for filed in revision.findings
-                    if located_on_unit(built, unit, filed.file, filed.diagnostic)
-                ],
+                findings=_listed(derived, unit_findings(built, unit, derived.findings), cache),
             ).model_dump(mode="json"),
         )
 
@@ -684,15 +687,12 @@ class Api:
 
     def _types(self, query: Query, body: bytes | None) -> Reply:
         revision = self._opened()
+        return self._memoised(revision, ("types",), lambda: self._types_of(revision))
+
+    def _types_of(self, revision: Revision) -> Reply:
         built = revision.index
         cache: dict[Path, Document] = {}
-        rows = (
-            ()
-            if built is None
-            else type_rows(
-                built, FindingsByFile((f.file, f.diagnostic) for f in revision.findings), cache
-            )
-        )
+        rows = () if built is None else type_rows(built, self._derive(revision).findings, cache)
         return Reply(
             200,
             contract.TypesReply(
@@ -720,12 +720,10 @@ class Api:
             return _undeclared(revision, name)
         cache: dict[Path, Document] = {}
         site = built.types[name]
-        row = row_of(
-            built, name, FindingsByFile((f.file, f.diagnostic) for f in revision.findings), cache
-        )
+        derived = self._derive(revision)
+        row = row_of(built, name, derived.findings, cache)
         stated = fixed_by(built, name, cache)
         header = stated.get("header")
-        sources = {file.path.resolve(): file for file in revision.files}
         return Reply(
             200,
             contract.TypeReply(
@@ -765,11 +763,7 @@ class Api:
                     }
                     for member in members_of(built, name, cache)
                 ],
-                findings=[
-                    _finding(filed, sources.get(filed.file.resolve()), cache)
-                    for filed in revision.findings
-                    if located_in_type(built, name, filed.file, filed.diagnostic)
-                ],
+                findings=_listed(derived, type_findings(built, name, derived.findings), cache),
             ).model_dump(mode="json"),
         )
 
@@ -815,15 +809,12 @@ class Api:
 
     def _shared(self, query: Query, body: bytes | None) -> Reply:
         revision = self._opened()
+        return self._memoised(revision, ("shared",), lambda: self._shared_of(revision))
+
+    def _shared_of(self, revision: Revision) -> Reply:
         built = revision.index
         cache: dict[Path, Document] = {}
-        rows = (
-            ()
-            if built is None
-            else shared_rows(
-                built, FindingsByFile((f.file, f.diagnostic) for f in revision.findings), cache
-            )
-        )
+        rows = () if built is None else shared_rows(built, self._derive(revision).findings, cache)
         return Reply(
             200,
             contract.SharedReply(
@@ -866,7 +857,7 @@ class Api:
                 file=site.path.resolve().as_posix(),
                 pointer=site.pointer,
                 uses=_entry_uses(CONSTANTS, built, name, cache),
-                findings=_entry_findings(CONSTANTS, revision, built, name, cache),
+                findings=_entry_findings(CONSTANTS, self._derive(revision), built, name, cache),
             ).model_dump(mode="json"),
         )
 
@@ -892,7 +883,7 @@ class Api:
                 file=site.path.resolve().as_posix(),
                 pointer=site.pointer,
                 uses=_entry_uses(SECTIONS, built, name, cache),
-                findings=_entry_findings(SECTIONS, revision, built, name, cache),
+                findings=_entry_findings(SECTIONS, self._derive(revision), built, name, cache),
             ).model_dump(mode="json"),
         )
 
@@ -918,7 +909,7 @@ class Api:
                 file=site.path.resolve().as_posix(),
                 pointer=site.pointer,
                 uses=_entry_uses(RASTERS, built, name, cache),
-                findings=_entry_findings(RASTERS, revision, built, name, cache),
+                findings=_entry_findings(RASTERS, self._derive(revision), built, name, cache),
             ).model_dump(mode="json"),
         )
 
@@ -927,6 +918,10 @@ class Api:
         brings - the files a row joins ``State.files`` on, and the findings at the entry
         itself, which a row naming nothing has no file to carry."""
         revision = self._opened()
+        return self._memoised(revision, ("files",), lambda: self._files_of(revision))
+
+    def _files_of(self, revision: Revision) -> Reply:
+        at_entry = self._derive(revision).at_entry
         cache: dict[Path, Document] = {}
         return Reply(
             200,
@@ -940,7 +935,7 @@ class Api:
                         "names": entry.names,
                         "key": entry.key.as_posix(),
                         "files": [file.as_posix() for file in entry.files],
-                        "findings": _at_entry(revision, entry.index),
+                        "findings": at_entry.get(entry.index, 0),
                     }
                     for entry in included_entries(revision.project, cache)
                 ],
@@ -1256,7 +1251,7 @@ class Api:
             if refused.code == "not-found":
                 return _error(404, refused.code, refused.message)
             return _error(409, refused.code, refused.message)
-        sources = {file.path.resolve(): file for file in revision.files}
+        derived = self._derive(revision)
         cache: dict[Path, Document] = {}
         return Reply(
             200,
@@ -1284,14 +1279,7 @@ class Api:
                 ],
                 owner=grid.owner,
                 file=grid.file,
-                findings=[
-                    _finding(filed, sources.get(filed.file.resolve()), cache)
-                    for filed in revision.findings
-                    if grid.pointer is not None
-                    and filed.file.resolve().as_posix() == grid.file
-                    and filed.diagnostic.location is not None
-                    and filed.diagnostic.location.pointer == f"{grid.pointer}.definition.init"
-                ],
+                findings=_listed(derived, _grid_findings(derived, grid), cache),
             ).model_dump(mode="json"),
         )
 
@@ -1405,6 +1393,38 @@ class Api:
         if revision is None:
             raise NoProjectError("no project is open")
         return revision
+
+    def _derive(self, revision: Revision) -> Derived:
+        """What the api derives from ``revision`` (:func:`ddd.gui.derived.derived`), derived once
+        for it: the one kept where it is that revision's, else derived now and kept in its place,
+        the answers :meth:`_memoised` kept beside the last one emptied with it."""
+        kept = self._derived
+        if kept is not None and kept.number == revision.number:
+            return kept
+        made = derived(revision)
+        self._derived = made
+        self._memo = {}
+        return made
+
+    def _memoised(
+        self, revision: Revision, key: tuple[object, ...], make: Callable[[], Reply]
+    ) -> Reply:
+        """The answer ``key`` names - ``("graph",)``, ``("units",)`` - for ``revision``, made by
+        ``make`` once and kept while no edit has been written since: an answer reading the files
+        as they stand, as a vocabulary's descriptions are read, changes with an edit before the
+        analysis of it does. Kept beside what :meth:`_derive` keeps for the newest revision, and
+        emptied with it, so it holds the answers of one revision at a time.
+
+        Two requests of one revision that both find nothing kept both make it - harmless, and
+        cheaper than a lock around a computation of hundreds of milliseconds.
+        """
+        self._derive(revision)
+        keyed = (key, revision.number, self.session.edits)
+        kept = self._memo.get(keyed)
+        if kept is None:
+            kept = make()
+            self._memo[keyed] = kept
+        return kept
 
     def _session_body(self) -> dict[str, Any]:
         revision = self.session.revision
@@ -1559,18 +1579,6 @@ def _undeclared(revision: Revision, name: str) -> Reply:
             f"and {', '.join(changed)} changed since it was read",
         )
     return _error(404, "not-found", f"'{name}' is not declared in the open project")
-
-
-def _at_entry(revision: Revision, index: int) -> int:
-    """How many of the revision's findings, of every severity, are filed on the project
-    description at exactly ``project.includes[index]``.
-
-    Compared as a whole :class:`~ddd.diagnostics.Location`, the description's own path with the
-    entry's pointer, so that a sub-project's finding at its own entry of that index is not the
-    root's, and a finding placed nowhere - filed on the description, with no location - is no
-    entry's either."""
-    at = Location(revision.project, f"project.includes[{index}]")
-    return sum(1 for filed in revision.findings if filed.diagnostic.location == at)
 
 
 def _appeared_since(revision: Revision) -> list[str]:
@@ -1831,18 +1839,39 @@ def _entry_uses(
 
 def _entry_findings(
     vocabulary: Vocabulary,
-    revision: Revision,
+    derived: Derived,
     built: Index,
     name: str,
     cache: dict[Path, Document],
 ) -> list[dict[str, Any]]:
     """Every finding of the revision that entry of ``vocabulary`` owns: filed inside its own
     record, or at a shape naming it - a constant's dimension, a section's placement."""
-    sources = {file.path.resolve(): file for file in revision.files}
+    return _listed(derived, entry_findings(vocabulary, built, name, derived.findings), cache)
+
+
+def _listed(
+    derived: Derived, found: Iterable[Pair], cache: dict[Path, Document]
+) -> list[dict[str, Any]]:
+    """Findings of the revision as a panel lists them, in the order given, each with where it
+    leads: its file's description looked up among the revision's own."""
     return [
-        _finding(filed, sources.get(filed.file.resolve()), cache)
-        for filed in revision.findings
-        if located_on_entry(vocabulary, built, name, filed.file, filed.diagnostic)
+        _finding(Filed(file, diagnostic), derived.files.get(file.resolve()), cache)
+        for file, diagnostic in found
+    ]
+
+
+def _grid_findings(derived: Derived, grid: Grid) -> list[Pair]:
+    """The findings about a grid's own ``init``, filed at its declaration's ``definition.init``:
+    asked only of the findings on the file the grid is read from, which is resolved already.
+    None for a grid that not exactly one declaration produces, which has no file and no place of
+    its own to hold one."""
+    if grid.pointer is None or grid.file is None:
+        return []
+    at = f"{grid.pointer}.definition.init"
+    return [
+        (file, found)
+        for file, found in derived.findings.on(Path(grid.file))
+        if found.location is not None and found.location.pointer == at
     ]
 
 

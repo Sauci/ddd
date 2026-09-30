@@ -512,6 +512,23 @@ class TestReadingAndEditing:
         with pytest.raises(NoProjectError):
             Session(shared.parent).edit([unit_of_b(shared, "Hz")], "the unit of Torque")
 
+    def test_the_edits_written_are_counted_and_a_refused_one_is_not(self, shared: Path) -> None:
+        """What a kept answer is keyed by beside its revision: each edit written counts one, the
+        number an undo of it names, and one refused before anything was written counts none."""
+        session = Session(shared.parent)
+        session.open(shared)
+        assert session.edits == 0
+        session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        stale = unit_of_b(shared, "rad")
+        session.edit([unit_of_b(shared, "rad")], "the unit of Torque")
+        assert session.edits == 2
+        top = session.undoable
+        assert top is not None
+        assert top.at == session.edits
+        with pytest.raises(EditError):
+            session.edit([stale], "the unit of Torque")
+        assert session.edits == 2
+
 
 def adoption(project_file: Path, name: str = "units.ddd.json") -> list[FileChange]:
     """What adopting a vocabulary posts: a units file created beside the project, and its name

@@ -18,7 +18,7 @@ from pathlib import Path
 
 from ddd.diagnostics import Diagnostic
 from ddd.finding_routes import UNIT_CHECKS
-from ddd.findings_by_file import FindingsByFile
+from ddd.findings_by_file import FindingsByFile, Pair
 from ddd.lsp.navigation import Index, Site, UnitSite
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit, UnitProject, UnitRefusalError, adoption
@@ -125,10 +125,31 @@ def located_on_unit(built: Index, unit: str, file: Path, finding: Diagnostic) ->
     shown = file.resolve()
     return any(
         site.pointer == location.pointer and site.path.resolve() == shown
-        for site in (
-            *(stated.site for stated in built.units.get(unit, ())),
-            *built.vocabulary.get(unit, ()),
-        )
+        for site in _sites(built, unit)
+    )
+
+
+def unit_findings(built: Index, unit: str, findings: FindingsByFile) -> list[Pair]:
+    """Every finding that is ``unit``'s own, in the order given: what :func:`located_on_unit`
+    keeps of every finding, asked only of the findings on the files its places and its entries
+    are in, which are the only ones it can keep. Each file is named once, however many places it
+    holds: a unit is stated three times over in a file as readily as once."""
+    files = dict.fromkeys(site.path for site in _sites(built, unit))
+    return [
+        (file, found)
+        for file, found in findings.on_any(files)
+        if located_on_unit(built, unit, file, found)
+    ]
+
+
+def _sites(built: Index, unit: str) -> tuple[Site, ...]:
+    """Everywhere a finding of ``unit``'s own can be filed: each place stating it, then each entry
+    of the vocabulary listing it. What :func:`located_on_unit` compares a finding against, and so
+    the files :func:`unit_findings` asks the findings of - one list, so that the files asked and
+    the places compared cannot come to name different places."""
+    return (
+        *(stated.site for stated in built.units.get(unit, ())),
+        *built.vocabulary.get(unit, ()),
     )
 
 

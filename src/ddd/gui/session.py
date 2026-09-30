@@ -332,6 +332,13 @@ class Session:
             return self._publish(self._analysed(revision.project), stamps)
 
     @property
+    def edits(self) -> int:
+        """How many edits this session has written: the number the last of them took, and what
+        an undo names it by. An edit refused before anything was written counts none."""
+        with self._lock:
+            return self._edits
+
+    @property
     def undoable(self) -> Undoable | None:
         """The edit an undo would put back: the top of the stack, or ``None`` when it is
         empty."""

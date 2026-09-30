@@ -6830,3 +6830,83 @@ class TestEachAnswerIsEveryFindingAskedAlone:
         ]
         assert [entry["findings"] for entry in entries] == counted
         assert any(counted) is not spelled_again
+
+
+# A vocabulary of two units, and one variable read as it is written: an edit of the reader's unit
+# to one the vocabulary does not list brings an `unknown-unit`, which the Units tab counts.
+LISTED = {
+    "p.ddd.json": project("P", "units.ddd.json", "a.ddd.json", "b.ddd.json"),
+    "units.ddd.json": {"units": ["rpm", "Hz"]},
+    "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+    "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+}
+
+KEPT: Final = ("/api/graph", "/api/units", "/api/types", "/api/shared", "/api/files")
+"""The answers made once per revision and kept for as long as it is the newest."""
+
+
+class TestAnswersKeptForARevision:
+    """What the api makes of one revision it makes once: the findings grouped by file, and the
+    graph and the tabs' rows, each kept until a new revision - or an edit - is written."""
+
+    @pytest.mark.parametrize("path", KEPT)
+    def test_one_revision_answers_with_the_very_reply_it_made_first(
+        self, api: Api, path: str
+    ) -> None:
+        first = get(api, path)
+        assert first.status == 200
+        assert get(api, path) is first
+
+    def test_a_new_revision_answers_the_graph_anew_showing_the_change(
+        self, api: Api, root: Path
+    ) -> None:
+        before = get(api, "/api/graph")
+        assert [flow["disagreements"] for flow in before.body["flows"]] == [[]]
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        after = get(api, "/api/graph")
+        assert after is not before
+        assert after.body["revision"] == 2
+        (flow,) = after.body["flows"]
+        assert [d["check"] for d in flow["disagreements"]] == ["definition-mismatch"]
+
+    def test_a_new_revision_counts_its_own_findings_on_the_tabs_rows(self, tmp_path: Path) -> None:
+        """The rows count the findings the newest revision groups, never the last one's: the
+        unit the edit brings is counted with the finding it brings."""
+        api = opened(tmp_path, LISTED)
+        before = get(api, "/api/units").body["units"]
+        assert [(row["unit"], row["findings"]) for row in before] == [("Hz", 0), ("rpm", 0)]
+        assert post(api, "/api/edit", unit_edit(api, tmp_path, "Nm")).status == 200
+        after = get(api, "/api/units").body
+        assert after["revision"] == 2
+        assert [(row["unit"], row["findings"]) for row in after["units"]] == [
+            ("Hz", 0),
+            ("Nm", 1),
+            ("rpm", 0),
+        ]
+
+    def test_an_edit_written_before_its_analysis_answers_anew(
+        self, api: Api, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An answer reading the files as they stand changes with an edit before the revision
+        does, once an edit no longer waits for its analysis: kept by the edits written as well
+        as by the revision. Stood for here by the count moving on its own."""
+        first = get(api, "/api/units")
+        monkeypatch.setattr(api.session, "_edits", api.session.edits + 1)
+        again = get(api, "/api/units")
+        assert again is not first
+        assert again == first
+
+    def test_a_revision_is_derived_once_and_its_successor_s_answers_replace_its_own(
+        self, api: Api, root: Path
+    ) -> None:
+        revision = api.session.revision
+        assert revision is not None
+        assert api._derive(revision) is api._derive(revision)
+        for path in KEPT:
+            get(api, path)
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        newer = api.session.revision
+        assert newer is not None
+        assert api._derive(newer) is not api._derive(revision)
+        get(api, "/api/graph")
+        assert {key[1] for key in api._memo} == {newer.number}

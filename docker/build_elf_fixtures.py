@@ -252,6 +252,9 @@ def main() -> None:
                 str(OUTPUT / f"{STRIPPED_ROW}.elf"),
             ]
         )
+        # strip gives what it writes an executable's mode; a fixture is read, never run, and the
+        # images beside it are copies without that mode.
+        (OUTPUT / "stripped.elf").chmod(0o644)
         run(
             [
                 "x86_64-linux-gnu-gcc",

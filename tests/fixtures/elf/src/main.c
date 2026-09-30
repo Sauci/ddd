@@ -125,3 +125,20 @@ uint32_t fixture_entry(void) {
     return Meas_Bss;
 #endif
 }
+
+/* Appended after the entry point, so that no line above it moves: the user guide's transcripts
+   cite lines of this file. A structure holding an array of structures, a two dimensional array
+   and signed bitfields - the member shapes the cases above leave out. */
+typedef struct {
+    int8_t low : 3;
+    int16_t high : 5;
+    uint8_t level;
+} Sample_t;
+
+typedef struct Frame_s {
+    Sample_t samples[3];
+    uint16_t grid[2][3];
+    int8_t trim : 4;
+} Frame_t;
+
+Frame_t Nested_Frame;

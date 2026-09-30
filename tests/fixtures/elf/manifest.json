@@ -1,12 +1,12 @@
 {
   "hashes": {
-    "tests/fixtures/elf/src/main.c": "450c2ea42c153a3b5aea5eb18ae0a908be00fa95120593eb1c49ba61b26e6544",
+    "tests/fixtures/elf/src/main.c": "d57958512c09764c9d0e96e026bd7369f1a57a8e9c2e745b2969203e70c789fc",
     "tests/fixtures/elf/src/nodebug.c": "4d9b7026ea22d7bcf5558ec25e9cbe531201e7702b06db9d6a813f2c27515ae1",
     "tests/fixtures/elf/src/shared.h": "9cdfa71b5de8dd20c26451a0102a1de36c6f0f07d9c71941e9cc6cf6f761f214",
     "tests/fixtures/elf/src/unit_a.c": "351fa8d9126b52c0de1c4f72e5532ea947df0c62974fba594bb7c49e45fe00c1",
     "tests/fixtures/elf/src/unit_b.c": "ec38dd2e9fc4c4fa8d81ada8f4884014f99938f47c50e7555fbe41fc28a0962c",
     "docker/elf-fixtures.Dockerfile": "84b3660bf2de19f5044542b62912173797e7ef15c3b8bccc575ee92bfb39d0a5",
-    "docker/build_elf_fixtures.py": "98153dba87c873c3998cace4f65d78ca72b4658427ab4f18932b87d635f22c9e"
+    "docker/build_elf_fixtures.py": "ebe758027fa24dd6b2ae749d96747e060d5b24d0337837a7fa825e4a3281cf4e"
   },
   "rows": {
     "x86_64": {
@@ -148,6 +148,12 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Nested_Frame",
+          "section": ".bss",
+          "contents": false,
+          "size": 20
         },
         {
           "name": "Nodebug_Counter",
@@ -470,6 +476,12 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Nested_Frame",
+          "section": ".bss",
+          "contents": false,
+          "size": 20
         },
         {
           "name": "Nodebug_Counter",
@@ -798,6 +810,12 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Nested_Frame",
+          "section": ".bss",
+          "contents": false,
+          "size": 20
         },
         {
           "name": "Nodebug_Counter",
@@ -1129,6 +1147,12 @@
           "size": 4
         },
         {
+          "name": "Nested_Frame",
+          "section": ".bss",
+          "contents": false,
+          "size": 20
+        },
+        {
           "name": "Nodebug_Counter",
           "section": ".data",
           "contents": true,
@@ -1456,6 +1480,12 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Nested_Frame",
+          "section": ".bss",
+          "contents": false,
+          "size": 20
         },
         {
           "name": "Nodebug_Counter",
@@ -1786,6 +1816,12 @@
           "size": 4
         },
         {
+          "name": "Nested_Frame",
+          "section": ".bss",
+          "contents": false,
+          "size": 20
+        },
+        {
           "name": "Nodebug_Counter",
           "section": ".data",
           "contents": true,
@@ -2106,6 +2142,12 @@
           "section": ".sdata",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Nested_Frame",
+          "section": ".bss",
+          "contents": false,
+          "size": 20
         },
         {
           "name": "Nodebug_Counter",
@@ -2431,6 +2473,12 @@
           "size": 4
         },
         {
+          "name": "Nested_Frame",
+          "section": ".bss",
+          "contents": false,
+          "size": 20
+        },
+        {
           "name": "Nodebug_Counter",
           "section": ".data",
           "contents": true,
@@ -2748,6 +2796,12 @@
           "size": 4
         },
         {
+          "name": "Nested_Frame",
+          "section": ".bss",
+          "contents": false,
+          "size": 20
+        },
+        {
           "name": "Nodebug_Counter",
           "section": ".sdata",
           "contents": true,
@@ -3061,6 +3115,12 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Nested_Frame",
+          "section": ".bss",
+          "contents": false,
+          "size": 20
         },
         {
           "name": "Nodebug_Counter",

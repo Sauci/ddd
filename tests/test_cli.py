@@ -4228,6 +4228,26 @@ class TestToolFromElf:
             f"ddd: '{stripped.as_posix()}' carries no DWARF debug information: build it with -g\n"
         )
 
+    def test_a_variable_the_linker_discarded_is_refused_rather_than_read_from_address_0(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """gc-sections.elf's text starts at 0, where GNU ld put Cal_Discarded's DWARF address:
+        read from there, it once printed the first bytes of the code as its initial value."""
+        code, out, err = from_elf(
+            capsys, str(FIXTURES / "gc-sections.elf"), "Cal_Discarded", "Cal_Kept", "--force"
+        )
+        assert code == EXIT_FINDINGS
+        (entry,) = json.loads(out)
+        assert (entry["definition"]["name"], entry["definition"]["init"]) == (
+            "Cal_Kept",
+            0x55667788,
+        )
+        line = fixture_line("gc_sections.c", "const uint32_t Cal_Discarded")
+        assert err.splitlines()[0] == (
+            f"gc_sections.c:{line}: error[elf-no-storage]: 'Cal_Discarded' has no address in the "
+            f"image: the linker discarded its storage"
+        )
+
     def test_a_damaged_image_is_a_usage_error_rather_than_a_traceback(
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
     ) -> None:

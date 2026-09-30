@@ -16,6 +16,7 @@ from elftools.elf.elffile import ELFFile
 
 from ddd.elf import (
     DECLARED_ONLY,
+    DISCARDED,
     DW_ATE_SIGNED,
     DW_ATE_SIGNED_CHAR,
     DW_ATE_UNSIGNED,
@@ -548,6 +549,63 @@ class TestVariables:
         (found,) = read(variable(DW_AT_location=location))
         assert (found.address, found.missing) == (None, NOT_AN_ADDRESS)
 
+    @pytest.mark.parametrize(
+        ("address", "size"), [(0, 4), (0, 8), (0xFFFF_FFFF, 4), (0xFFFF_FFFF_FFFF_FFFF, 8)]
+    )
+    def test_a_variable_at_the_address_a_linker_gives_what_it_discarded_was_discarded(
+        self, address: int, size: int
+    ) -> None:
+        """GNU ld resolves a discarded variable's DW_OP_addr to 0 and keeps its entry; lld
+        writes 0 too (measured, lld 19), or all ones at the image's address size."""
+        location = Attr([("DW_OP_addr", [address])], "DW_FORM_exprloc")
+        (found,) = read_variables(
+            [FakeUnit(die("DW_TAG_compile_unit", variable(b"Gone", DW_AT_location=location)))],
+            big_endian=False,
+            address_size=size,
+        )
+        assert (found.address, found.missing) == (None, DISCARDED)
+
+    def test_an_indexed_address_the_linker_discarded_was_discarded_too(self) -> None:
+        """clang at DWARF 5 reaches the address through .debug_addr, where lld writes 0."""
+        location = Attr([("DW_OP_addrx", [1])], "DW_FORM_exprloc")
+        (found,) = read(variable(b"Gone", DW_AT_location=location), addresses={1: 0})
+        assert (found.address, found.missing) == (None, DISCARDED)
+
+    def test_all_ones_is_an_address_where_the_image_s_addresses_are_wider(self) -> None:
+        location = Attr([("DW_OP_addr", [0xFFFF_FFFF])], "DW_FORM_exprloc")
+        (found,) = read_variables(
+            [FakeUnit(die("DW_TAG_compile_unit", variable(b"High", DW_AT_location=location)))],
+            big_endian=False,
+            address_size=8,
+        )
+        assert (found.address, found.missing) == (0xFFFF_FFFF, "")
+
+    def test_a_symbol_of_its_name_at_that_address_is_a_variable_really_there(self) -> None:
+        """A microcontroller's flash starts at 0, and so may its first variable."""
+        location = Attr([("DW_OP_addr", [0])], "DW_FORM_exprloc")
+        (found,) = read_variables(
+            [FakeUnit(die("DW_TAG_compile_unit", variable(b"Vectors", DW_AT_location=location)))],
+            big_endian=False,
+            objects=frozenset({("Vectors", 0)}),
+        )
+        assert (found.address, found.missing) == (0, "")
+
+    @pytest.mark.parametrize(
+        "objects",
+        [frozenset({("Gone", 0x100)}), frozenset({("Vectors", 0)})],
+        ids=["its name elsewhere", "another name there"],
+    )
+    def test_a_symbol_of_another_name_or_at_another_address_keeps_nothing(
+        self, objects: frozenset[tuple[str, int]]
+    ) -> None:
+        location = Attr([("DW_OP_addr", [0])], "DW_FORM_exprloc")
+        (found,) = read_variables(
+            [FakeUnit(die("DW_TAG_compile_unit", variable(b"Gone", DW_AT_location=location)))],
+            big_endian=False,
+            objects=objects,
+        )
+        assert (found.address, found.missing) == (None, DISCARDED)
+
     def test_a_variable_the_compiler_folded_has_no_address(self) -> None:
         (found,) = read(variable(located=False, DW_AT_const_value=7))
         assert (found.address, found.missing) == (None, FOLDED)
@@ -1025,6 +1083,31 @@ class TestTheMatrix:
         assert [member.name for member in inner.members] == ["inner"]
 
 
+class TestDiscarded:
+    """gc-sections.elf: text at address 0, as flash is on many microcontrollers, linked with
+    --gc-sections, which discards Cal_Discarded and keeps its entry at address 0, where the
+    code sits (the manifest's symbols hold Cal_Kept alone)."""
+
+    def test_the_variable_the_linker_discarded_has_no_address(self) -> None:
+        image = open_image(FIXTURES / "gc-sections.elf")
+        assert (
+            by_name(image, "Cal_Discarded").address,
+            by_name(image, "Cal_Discarded").missing,
+        ) == (
+            None,
+            DISCARDED,
+        )
+
+    def test_the_variable_it_kept_is_where_its_symbol_says(self) -> None:
+        image = open_image(FIXTURES / "gc-sections.elf")
+        kept = by_name(image, "Cal_Kept")
+        assert kept.address is not None
+        section = image.section_of(kept.address)
+        assert section is not None
+        (record,) = MANIFEST["negatives"]["gc-sections"]["variables"]
+        assert (record["name"], section.name) == ("Cal_Kept", record["section"])
+
+
 class TestRefusals:
     """What open_image refuses, each in a sentence naming the file. Where the end of the
     sentence is pyelftools' own words about a damaged file, the test pins ours and leaves
@@ -1117,6 +1200,30 @@ class TestRefusals:
         assert str(refused.value) == (
             f"'{path.as_posix()}' is not an ELF image this tool can read: its section "
             f"'.data' runs past the end of the file"
+        )
+
+    @pytest.mark.parametrize("name", ["type-units-dwarf4", "type-units-dwarf5"])
+    def test_an_image_whose_types_are_in_type_units_is_refused_naming_the_option(
+        self, name: str
+    ) -> None:
+        """At DWARF 4 in a .debug_types section of their own, at 5 as DW_UT_type units of
+        .debug_info: a type unit's entries restart their offsets, and pyelftools cannot resolve a
+        DWARF 5 signature at all (measured with gcc 15.2: wrong types at 4, a KeyError at 5)."""
+        path = FIXTURES / f"{name}.elf"
+        assert refusal(path) == (
+            f"'{path.as_posix()}' is not an ELF image this tool can read: its DWARF holds type "
+            f"units, which -fdebug-types-section writes and this tool does not read; build it "
+            f"without -fdebug-types-section"
+        )
+
+    def test_an_image_gcc_optimised_at_link_time_is_refused_naming_the_option(self) -> None:
+        """gcc -flto locates every variable in an <artificial> unit, produced by GNU GIMPLE,
+        whose entries have no names, and names them in the early unit without a location: read
+        as it is, every variable would be one the compiler removed."""
+        path = FIXTURES / "gcc-lto.elf"
+        assert refusal(path) == (
+            f"'{path.as_posix()}' is not an ELF image this tool can read: its DWARF comes from "
+            f"gcc's link-time optimisation, which this tool does not read; build it without -flto"
         )
 
     def test_a_unit_without_a_line_program_has_no_file_table(self) -> None:

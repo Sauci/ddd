@@ -46,9 +46,13 @@ FOLDED: Final = "the compiler replaced it by its value, and gave it no storage"
 REMOVED: Final = "the compiler removed its storage"
 THREAD_LOCAL: Final = "it is thread-local, with an address of its own in every thread"
 NOT_AN_ADDRESS: Final = "its location is not a fixed address"
+DISCARDED: Final = "the linker discarded its storage"
 
 _DW_OP_PLUS_UCONST: Final = 0x23
 _ELFCOMPRESS_ZSTD: Final = 2
+_LTO_PRODUCER: Final = "GNU GIMPLE"
+"""The producer gcc names in the units its link-time optimisation writes, as ``GNU GIMPLE
+15.2.0``."""
 _TLS_OPERATIONS: Final = frozenset({"DW_OP_form_tls_address", "DW_OP_GNU_push_tls_address"})
 _DATA_WIDTHS: Final = {
     "DW_FORM_data1": 8,
@@ -321,7 +325,12 @@ def size_of(ctype: CType) -> int | None:
 
 
 def read_variables(
-    units: Iterable[Unit], *, big_endian: bool, thread_local: frozenset[str] = frozenset()
+    units: Iterable[Unit],
+    *,
+    big_endian: bool,
+    thread_local: frozenset[str] = frozenset(),
+    objects: frozenset[tuple[str, int]] = frozenset(),
+    address_size: int = 4,
 ) -> tuple[Variable, ...]:
     """The variables at the top of every unit, each with its type, address and declaration.
 
@@ -330,15 +339,22 @@ def read_variables(
     every declaration of it. ``thread_local`` names the thread-local symbols of the image: a
     target whose DWARF cannot state a thread-local address gives such a variable no location
     at all, and only the symbol table still says what it is.
+
+    ``objects`` holds the name and address of every object symbol of the image, and
+    ``address_size`` the width of its addresses in bytes. A linker keeps the entry of a variable
+    it discarded and resolves its address to a tombstone: GNU ld and lld 19 write 0, and lld
+    all ones when told to (``-z dead-reloc-in-nonalloc``). A variable at 0, or at all ones at
+    the image's width, is one the linker discarded, unless a symbol of its name sits there.
     """
     types = _Types(big_endian=big_endian)
+    symbols = _Symbols(thread_local, objects, frozenset({0, (1 << (8 * address_size)) - 1}))
     defined: list[Variable] = []
     declared: dict[str, Variable] = {}
     for unit in units:
         for entry in unit.top.iter_children():
             if entry.tag != "DW_TAG_variable":
                 continue
-            variable = _variable(entry, unit, types, thread_local)
+            variable = _variable(entry, unit, types, symbols)
             if variable is None:
                 continue
             if variable.missing == DECLARED_ONLY:
@@ -427,16 +443,42 @@ def _image(path: Path, contents: bytes) -> Image:
             )
             raise ElfReadError(msg)
     dwarf = elf.get_dwarf_info(relocate_dwarf_sections=False, follow_links=False)
-    units = [_PyelftoolsUnit(cu, dwarf) for cu in dwarf.iter_CUs()]
+    compile_units = list(dwarf.iter_CUs())
+    # A type unit's entries count their offsets from its own start, and pyelftools resolves no
+    # DWARF 5 signature: gcc's -fdebug-types-section read as it is gave wrong types at DWARF 4
+    # and a KeyError at 5 (measured with gcc 15.2).
+    if elf.get_section_by_name(".debug_types") is not None or any(
+        cu.header.get("unit_type") == "DW_UT_type" for cu in compile_units
+    ):
+        msg = (
+            f"'{shown}' is not an ELF image this tool can read: its DWARF holds type units, "
+            f"which -fdebug-types-section writes and this tool does not read; build it without "
+            f"-fdebug-types-section"
+        )
+        raise ElfReadError(msg)
+    units = [_PyelftoolsUnit(cu, dwarf) for cu in compile_units]
+    # gcc -flto names a variable in the unit of its source, without a location, and locates it
+    # in a unit of GNU GIMPLE's, without a name: read as it is, every variable was removed.
+    if any(unit.producer.startswith(_LTO_PRODUCER) for unit in units):
+        msg = (
+            f"'{shown}' is not an ELF image this tool can read: its DWARF comes from gcc's "
+            f"link-time optimisation, which this tool does not read; build it without -flto"
+        )
+        raise ElfReadError(msg)
+    objects = _symbols(elf, "STT_OBJECT")
     variables = read_variables(
-        units, big_endian=not elf.little_endian, thread_local=_symbols(elf, "STT_TLS")
+        units,
+        big_endian=not elf.little_endian,
+        thread_local=frozenset(name for name, _ in _symbols(elf, "STT_TLS")),
+        objects=objects,
+        address_size=elf.elfclass // 8,
     )
     return Image(
         path=path,
         byte_order=byte_order,
         variables=variables,
         sections=sections,
-        symbols=_symbols(elf, "STT_OBJECT"),
+        symbols=frozenset(name for name, _ in objects),
         contents=contents,
     )
 
@@ -452,17 +494,18 @@ def _sections(elf: ELFFile) -> tuple[Section, ...]:
     return tuple(sections)
 
 
-def _symbols(elf: ELFFile, kind: str) -> frozenset[str]:
-    """The names of the symbols of type ``kind`` (``STT_OBJECT``, ``STT_TLS``) in any table."""
-    names: set[str] = set()
+def _symbols(elf: ELFFile, kind: str) -> frozenset[tuple[str, int]]:
+    """The name and address of every symbol of type ``kind`` (``STT_OBJECT``, ``STT_TLS``), in
+    any table, global and local alike."""
+    found: set[tuple[str, int]] = set()
     for section in elf.iter_sections():
         if isinstance(section, SymbolTableSection):
-            names.update(
-                symbol.name
+            found.update(
+                (symbol.name, symbol["st_value"])
                 for symbol in section.iter_symbols()
                 if symbol["st_info"]["type"] == kind
             )
-    return frozenset(names)
+    return frozenset(found)
 
 
 class _PyelftoolsUnit:
@@ -474,6 +517,7 @@ class _PyelftoolsUnit:
         self._parser = DWARFExprParser(cu.structs)
         self.top: Entry = cu.get_top_DIE()
         self.name = _text(self.top.attributes.get("DW_AT_name")) or ""
+        self.producer = _text(self.top.attributes.get("DW_AT_producer")) or ""
         self._files = file_table(
             dwarf.line_program_for_CU(cu), _text(self.top.attributes.get("DW_AT_comp_dir")) or ""
         )
@@ -502,9 +546,17 @@ def file_table(program: Any, compilation_directory: str) -> FileTable | None:
     )
 
 
-def _variable(
-    entry: Entry, unit: Unit, types: _Types, thread_local: frozenset[str]
-) -> Variable | None:
+@dataclass(frozen=True, slots=True)
+class _Symbols:
+    """What the symbol table says of the variables DWARF describes."""
+
+    thread_local: frozenset[str]
+    objects: frozenset[tuple[str, int]]
+    discarded_at: frozenset[int]
+    """The addresses a linker gives a variable it discarded."""
+
+
+def _variable(entry: Entry, unit: Unit, types: _Types, symbols: _Symbols) -> Variable | None:
     named = entry
     if "DW_AT_specification" in entry.attributes:
         named = entry.get_DIE_from_attribute("DW_AT_specification")
@@ -520,11 +572,13 @@ def _variable(
     missing = ""
     if "DW_AT_location" in attributes:
         address, missing = _address(attributes["DW_AT_location"].value, unit)
+        if address in symbols.discarded_at and (name, address) not in symbols.objects:
+            address, missing = None, DISCARDED
     elif "DW_AT_const_value" in attributes:
         missing = FOLDED
     elif "DW_AT_declaration" in attributes:
         missing = DECLARED_ONLY
-    elif name in thread_local:
+    elif name in symbols.thread_local:
         # aarch64's gcc 14 and clang 19 state no location at all for a thread-local variable
         # (the trial build); its symbol, of type STT_TLS, still says what it is.
         missing = THREAD_LOCAL

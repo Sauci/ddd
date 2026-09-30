@@ -2169,7 +2169,80 @@ Measures §3 does not budget at all:
 
 ### Page, before
 
-*(Task 3, Step 5 - eight projects.)*
+Linux development PC: Intel(R) Core(TM) i9-14900HX (32 threads), 30 GiB memory, Ubuntu 26.04.1
+LTS, kernel 7.0.0-34-generic (as *Server, before* above gives the machine). Browser: Google Chrome
+153.0.8010.52 (`PLAYWRIGHT_CHANNEL=chrome`). `feature/gui-large-projects` at `5706f5f`, one run
+each, alone on the machine, 2026-09-30 13:31-14:17 UTC: `npm run bench` (`gui/bench/page.bench.ts`)
+over the eight `<declarations>-<shape>-<clean|heavy>` projects the brief names for this step -
+10,000, 35,000 and 100,000 declarations in the "many" shape, clean and heavy, and
+35,000-large-heavy and 35,000-mixed-heavy - each project's own fresh `ddd gui` server and a fresh
+browser process per measure. A measure that had not finished after 120 s reads `> 120000`.
+
+Milliseconds:
+
+| project | answering | first screen | Table | Units | Types | Shared files | Files | Findings | typing | scrolling | apply shows | findings current |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 10000-many-clean | 1233 | 1198 | 549 | 839 | 130 | 127 | 242 | 63 | 0 | 0 | 844 | 418 |
+| 10000-many-heavy | 1296 | 1307 | 611 | 840 | 751 | 646 | 730 | 3169 | 0 | 0 | 840 | 2695 |
+| 35000-many-clean | 4019 | 5499 | 2787 | 3907 | 56 | 2646 | 3143 | 2580 | 0 | 0 | 1338 | 1313 |
+| 35000-many-heavy | 4345 | 2809 | 2699 | 4542 | 896 | 249 | 2954 | > 120000 | 0 | > 120000 | 1846 | 9456 |
+| 100000-many-clean | > 120000 | > 120000 | > 120000 | > 120000 | > 120000 | > 120000 | > 120000 | > 120000 | > 120000 | > 120000 | > 120000 | > 120000 |
+| 100000-many-heavy | 4661 | > 120000 | 6006 | > 120000 | 9402 | 130 | 1828 | > 120000 | 0 | > 120000 | 4867 | > 120000 |
+| 35000-large-heavy | 2025 | 153 | 7898 | 1341 | 8401 | 88 | 91 | > 120000 | 482 | > 120000 | 3045 | 12496 |
+| 35000-mixed-heavy | 2615 | 1089 | 7720 | 1350 | 3846 | 944 | 365 | > 120000 | 358 | > 120000 | 3096 | 11386 |
+
+`Types` and `Shared files` waited on their own sentence for none (a generated project declares
+neither, resolution #1), never a first row; `Table`, `Units`, `Files` and `typing`/`apply
+shows`/`findings current`'s own setup on the first component's first row; `Findings` and
+`scrolling` on a first row or "Nothing to report", whichever the project's own density showed.
+`answering` and `first screen` both crashed or exceeded the cap at 100,000 declarations for
+`opening the project itself` - not only for the tab or panel each row otherwise names - which is
+why every measure reads capped for `100000-many-clean`: `openProject` (the shared setup every
+other row also uses) is itself capped, and a row whose own setup never finished has nothing further
+to measure.
+
+Against §3's budgets - a figure read against `tools/bench_gui.py`'s own `analysis` column for
+these eight projects (260-4,141 ms) where the budget is "within one analysis plus 1 s":
+
+- **"The page answering after a project is opened... under 1 s"**: over on all eight, 1,233-4,661
+  ms measured where it finished at all, capped at 100,000-many-clean - there is no separate fast
+  shell answer today (the server half's own commentary already says the same of `open`).
+- **"The first analysed screen, within one analysis plus 1 s"**: under budget at 10,000
+  declarations, both densities (1,198 ms against a 1,260 ms budget clean, 1,307 against 1,351 ms
+  heavy), and at 35,000-large-heavy and 35,000-mixed-heavy (153 and 1,089 ms, against 2,332 and
+  2,325 ms); over at 35,000 declarations "many" shape, both densities (5,499 ms against 2,038 ms
+  clean, 2,809 against 2,366 ms heavy), and capped at 100,000 declarations, both densities
+  (against 4,285 and 5,141 ms).
+- **"Any tab or panel drawing, once analysed, under 1 s"**, tab by tab: `Table` stayed under 1 s
+  only at 10,000 declarations, both densities (549 and 611 ms), and read over it at every other
+  project - 2,699-7,898 ms where it finished, capped at 100,000-many-clean. `Units` likewise
+  stayed under only at 10,000 declarations (839 and 840 ms) and read over elsewhere - 1,341-4,542
+  ms where it finished, capped at both 100,000-declaration projects, clean and heavy. `Types`
+  stayed under at 10,000 and 35,000 declarations "many" shape, both densities (56-896 ms), and
+  read over at 100,000 declarations and both `large`/`mixed` heavy projects - 3,846-9,402 ms where
+  it finished, capped at 100,000-many-clean. `Shared files` stayed under everywhere but
+  35,000-many-clean (2,646 ms) and the capped 100,000-many-clean - six of the eight, 88-944 ms.
+  `Files` stayed under at 10,000 declarations and 35,000-large-heavy and 35,000-mixed-heavy
+  (91-730 ms) and read over at 35,000-many declarations, both densities, and 100,000-many-heavy -
+  1,828-3,143 ms where it finished, capped at 100,000-many-clean. `Findings` stayed under 1 s only
+  at 10,000-many-clean (63 ms, the one project with nothing for it to show) and read over
+  everywhere else - 3,169 and 2,580 ms at 10,000-many-heavy and 35,000-many-clean, capped at the
+  remaining five findings-heavy or 100,000-declaration projects (35,000-many-heavy,
+  100,000-many-clean, 100,000-many-heavy, 35,000-large-heavy, 35,000-mixed-heavy).
+- **"Typing or scrolling stalling, never over 100 ms"**: `typing` read `0` (no stall reached 50 ms)
+  at 10,000 and 35,000 declarations "many" shape, both densities, and at 100,000-many-heavy; it
+  read over 100 ms at 35,000-large-heavy (482 ms) and 35,000-mixed-heavy (358 ms), and capped at
+  100,000-many-clean. `scrolling` read `0` only at 10,000 declarations, both densities, and
+  35,000-many-clean; it capped at every other project tested - every findings-heavy project past
+  10,000 declarations, and 100,000-many-clean, whose Findings tab never finished drawing a table
+  to scroll within the cap at all.
+- **"An Apply's own change showing, under 500 ms"**: over on all eight, 840-4,867 ms measured
+  where it finished at all, capped at 100,000-many-clean.
+- **"The findings current after an edit, within one analysis plus 1 s"**: under budget only at
+  10,000-many-clean and 35,000-many-clean (418 ms against 1,260 ms, 1,313 against 2,038 ms); over
+  at 10,000-many-heavy (2,695 against 1,351 ms), 35,000-many-heavy (9,456 against 2,366 ms),
+  35,000-large-heavy and 35,000-mixed-heavy (12,496 and 11,386 ms, against 2,332 and 2,325 ms),
+  and capped at 100,000 declarations, both densities.
 
 ### Server, after
 

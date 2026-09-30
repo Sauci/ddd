@@ -602,6 +602,25 @@ class TestVariables:
         (found,) = read(declaration, definition)
         assert found == Variable("Spec", "unit.c", U8_TYPE, Declared("unit.c", 5), 0x100)
 
+    def test_a_definition_completing_an_array_of_no_size_takes_its_own_type(self) -> None:
+        """``extern const uint16_t Cal_Curve[];`` then ``const uint16_t Cal_Curve[4] = ...``:
+        gcc 15.2 states the completed type on the definition, beside DW_AT_specification, and
+        the declaration's array has no extent (measured)."""
+        declaration = variable(
+            b"Curve",
+            of=die("DW_TAG_array_type", subrange(), of=U8),
+            located=False,
+            DW_AT_declaration=DECLARATION,
+        )
+        definition = die(
+            "DW_TAG_variable",
+            specification=declaration,
+            of=die("DW_TAG_array_type", subrange(DW_AT_upper_bound=3), of=U8),
+            DW_AT_location=Attr(AT, "DW_FORM_exprloc"),
+        )
+        (found,) = read(declaration, definition)
+        assert (found.name, found.type) == ("Curve", Array(U8_TYPE, (4,)))
+
     def test_an_entry_without_a_name_is_passed_over(self) -> None:
         assert read(die("DW_TAG_variable", of=U8, DW_AT_location=Attr(AT, "DW_FORM_exprloc"))) == ()
 

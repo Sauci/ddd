@@ -473,7 +473,9 @@ def _variable(
     name = _text(named.attributes.get("DW_AT_name"))
     if name is None:
         return None
-    ctype = types.inner(named, unit)
+    # A definition states a type of its own where it completes the declaration's - the size of
+    # an array a header declared without one - and takes the declaration's otherwise.
+    ctype = types.inner(entry if "DW_AT_type" in entry.attributes else named, unit)
     declared_at = _declared(entry, named, unit)
     attributes = entry.attributes
     address: int | None = None

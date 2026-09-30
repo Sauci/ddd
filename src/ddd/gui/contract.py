@@ -35,6 +35,7 @@ from pydantic.json_schema import GenerateJsonSchema, models_json_schema
 from ddd.diagnostics import Severity
 
 __all__ = [
+    "BroughtError",
     "BuildSummary",
     "Change",
     "Changes",
@@ -49,6 +50,8 @@ __all__ = [
     "EditReply",
     "EditedFile",
     "FileContent",
+    "FilesPlanReply",
+    "FilesReply",
     "Finding",
     "FindingCounts",
     "FindingRoute",
@@ -62,6 +65,7 @@ __all__ = [
     "GraphReply",
     "GridAxis",
     "Hunk",
+    "IncludedEntryReply",
     "KindForm",
     "Note",
     "OpenProject",
@@ -262,11 +266,11 @@ class FindingRoute(_Frozen):
     """What the page can open for a finding."""
 
     kind: Literal[
-        "variable", "unit", "component", "type", "values", "constant", "section", "raster"
+        "variable", "unit", "component", "type", "values", "constant", "section", "raster", "file"
     ]
     """Which screen: a variable's panel, a unit's panel, the component's own page, the type's
-    own panel on the Types tab, an object's values grid, or a constant's, a section's or a
-    raster's own panel on the Shared files tab.
+    own panel on the Types tab, an object's values grid, a constant's, a section's or a
+    raster's own panel on the Shared files tab, or an entry's or a file's row on the Files tab.
 
     Every kind :class:`ddd.finding_routes.Route` answers has to be a member here: ``_finding``
     in :mod:`ddd.gui.api` builds this model for every finding of every request, so a kind left
@@ -274,8 +278,10 @@ class FindingRoute(_Frozen):
     """
 
     name: str | None
-    """The variable's name, the unit's spelling or the type's name; ``None`` for a component,
-    which the finding's own ``file`` already names."""
+    """The variable's name, the unit's spelling or the type's name; for a file, the absolute,
+    posix-separated path of the entry or the file the finding is about - of the root's own, an
+    entry's :attr:`IncludedEntryReply.key` or one of its :attr:`~IncludedEntryReply.files`;
+    ``None`` for a component, which the finding's own ``file`` already names."""
 
 
 class Finding(_Frozen):
@@ -1145,6 +1151,136 @@ class RasterReply(_Frozen):
     :data:`ddd.finding_routes.ABOUT_THE_DECLARATION` says are the declaration's."""
 
 
+# --- GET /api/files, GET /api/files-plan -----------------------------------------------------
+
+
+class IncludedEntryReply(_Frozen):
+    """One entry of the root project's ``includes``, as the loader's own rule reads it."""
+
+    index: int
+    """Where it is in the list: a finding filed at the entry itself is at
+    ``project.includes[index]``."""
+
+    entry: str
+    """The entry as the description spells it."""
+
+    names: bool
+    """Whether the entry names an existing file, and so is that file whatever it spells: the
+    loader tries an entry as a file before it reads it as a pattern. ``False`` for a pattern,
+    matching files or not, and for a plain path naming no file."""
+
+    key: str
+    """Absolute, posix-separated path: the description's directory joined with the entry and
+    resolved - the file, for an entry naming one, and otherwise the path or the pattern the entry
+    spells. What the row is selected by, and what a ``file`` route of a finding at the entry
+    names."""
+
+    files: tuple[str, ...]
+    """Absolute, posix-separated paths of the files the entry brings that exist, read off the
+    disk when asked: its own, for an entry naming one; a pattern's matches, in the loader's order,
+    the description never among them; none, for a path naming no file and for a pattern matching
+    none.
+
+    The page joins them to ``State.files`` on the path, and not every one is there. Among the
+    ways: a schema error in the root's own description stops its read before its includes, so
+    that no file they bring is among ``State.files``, and a plugin's model raising while the
+    project is read leaves the root alone there too, measured; a pattern can match a file created
+    since the revision, which the revision never read; and the entries are read off the
+    description when asked, so that an entry it gained since the revision the page holds - saved
+    outside the page, or written by the Files tab's own New file or Add - can bring a file that
+    revision never read, until the page holds a revision made after the change. Not every such
+    entry does: one naming a file a sub-project includes already brings a file that was read.
+
+    The tab's own edit leaves such a row where the page asks for the entries again before a
+    revision made after the edit reaches it: ``POST /api/edit`` answers once the edit's own
+    revision is made, the page asks on that answer, and revisions come through
+    ``GET /api/state``, whose reply is built finding by finding. Measured, driving the built page
+    on a running ``ddd gui``: never, in eighteen creates and eighteen adds, on a copy of
+    ``examples/vocabulary``; every time, for 0.86 to 1.42 seconds, in eight creates and eight adds
+    on a project of 300 components and 18000 findings."""
+
+    findings: int
+    """How many of the revision's findings, of every severity, are filed on the project
+    description at exactly ``project.includes[index]``: what an entry naming nothing carries -
+    ``include-empty`` for a pattern matching no file, ``file-not-found`` for a plain path naming
+    none - since such a row has no ``SourceFile`` to count them. A file's own findings are not
+    here: they are its ``SourceFile``'s."""
+
+
+class FilesReply(_Frozen):
+    """What ``GET /api/files`` answers: the root's includes, in order, as the loader reads
+    them. Each file's kind, load state and findings are ``State.files``' - the page joins on
+    the path rather than this repeating them, where the revision read the file at all
+    (:attr:`IncludedEntryReply.files` gives ways it may not have).
+
+    The entries are read off the description when asked, and their counts off the revision: a
+    save landing between the analysis and the request can put one poll's count on the wrong row,
+    as every tab's reads can, until the next revision is read."""
+
+    revision: int
+    """The revision the entries' counts were read from."""
+
+    project: str
+    """Absolute, posix-separated path of the project description whose includes these are."""
+
+    entries: tuple[IncludedEntryReply, ...]
+    """Every entry that is a string, in the order the description lists them; none where its
+    ``includes`` is no list."""
+
+    creatable: tuple[str, ...]
+    """The kinds of file ``GET /api/files-plan`` creates, in the order a reader is offered them:
+    :data:`ddd.file_plans.CREATABLE`, sent so that the page never has to restate it."""
+
+
+class BroughtError(_Frozen):
+    """One of the errors the project would have more of with a file added than it has now, as
+    :func:`ddd.file_plans.new_errors` lists them, counted at their places. The count is what is
+    new: the error listed can be one the project has now, re-worded, or carry the words of a
+    mirror the page already shows."""
+
+    file: str
+    """Absolute, posix-separated path of the file it is filed on."""
+
+    check: str
+    """The check that files it, e.g. ``"multiple-producers"``."""
+
+    message: str
+    """What it says."""
+
+
+class FilesPlanReply(PlanReply):
+    """What ``GET /api/files-plan`` answers: the plan, and what it would bring - for an add that
+    was judged, the errors the project would have more of with the file added than it has now,
+    where the count is what is new; for a create, an add that was not judged, and a remove the
+    reader is allowed to make, none."""
+
+    unjudged: str | None
+    """Why what an add would bring, or a remove would leave, could not be judged: the sentence
+    the preview says it in, the server's like every sentence of the preview. Where not every run
+    the revision was made from analysed the project - a run's read reported an error, or a
+    plugin raised - there was no complete "now" to compare the change against: nothing is
+    brought then, and a removal is allowed unjudged.
+
+    ``None`` where the change was judged, and always for a create, which cannot be: the new file
+    does not exist until the edit is made, so :func:`ddd.gui.session.findings_with`, reading every
+    file from the disk, cannot read it. Measured under the default severities, an empty file
+    brings one finding alone - ``empty-vocabulary`` or ``empty-component``, both INFO by default -
+    and a first units file, listing every unit in use, none. A build raising either to an error,
+    or a plugin's check, can make a create fail all the same, and the preview does not say so."""
+
+    brings: tuple[BroughtError, ...]
+    """For an add that was judged - ``unjudged`` being ``None`` - what
+    :func:`ddd.file_plans.new_errors` answers of the project with the file added: the errors it
+    would have more of than it has now, at their places, in the order a revision lists its
+    findings - the count being what is new, each error listed possibly one the project has now,
+    re-worded, or in a mirror's words. Empty otherwise, an unjudged add's among them."""
+
+    kept_by: str | None
+    """For a remove, the entry left that still brings the file into the project -
+    :attr:`ddd.file_plans.FilePlan.kept_by`, passed on as the plan computed it; ``None`` for a
+    remove nothing left brings the file back by, and always for an add and a create."""
+
+
 # --- GET /api/declarable ---------------------------------------------------------------------
 
 
@@ -1527,6 +1663,8 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (ConstantReply, "serialization"),
     (SectionReply, "serialization"),
     (RasterReply, "serialization"),
+    (FilesReply, "serialization"),
+    (FilesPlanReply, "serialization"),
     (DeclarableReply, "serialization"),
     (PlanReply, "serialization"),
     (ValuesReply, "serialization"),

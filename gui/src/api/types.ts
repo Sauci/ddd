@@ -3,6 +3,7 @@
 // that a model added to the contract without a page type here fails the build instead of the
 // two silently drifting apart.
 export type {
+  BroughtError,
   Change,
   Changes,
   CompareReply,
@@ -12,6 +13,8 @@ export type {
   DeclarableReply,
   EditReply,
   FileContent,
+  FilesPlanReply,
+  FilesReply,
   Finding,
   FindingRoute,
   FixOffered,
@@ -24,6 +27,7 @@ export type {
   GraphReply,
   GridAxis,
   Hunk,
+  IncludedEntryReply,
   KindForm,
   Note,
   Operation,

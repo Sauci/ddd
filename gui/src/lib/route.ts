@@ -1,5 +1,13 @@
-/** Which of the project screen's seven tabs is open. */
-export type ProjectView = "graph" | "table" | "units" | "types" | "shared" | "findings" | "compare";
+/** Which of the project screen's eight tabs is open. */
+export type ProjectView =
+  | "graph"
+  | "table"
+  | "units"
+  | "types"
+  | "shared"
+  | "files"
+  | "findings"
+  | "compare";
 
 export type Route =
   | { page: "start" }
@@ -9,6 +17,12 @@ export type Route =
   | { page: "project"; view: "types"; type?: string }
   | { page: "project"; view: "shared" }
   | { page: "project"; view: "shared"; kind: "constant" | "section" | "raster"; name: string }
+  // `path` is a row's key (`IncludedEntryReply.key`, or one of a pattern's own
+  // `IncludedEntryReply.files`): the same absolute, posix-separated string `rowsOf` (lib/files.ts)
+  // keys a row by, so the address a finding's `file` route writes (`routeOf` in lib/findings.ts)
+  // and the one a reader's click writes select the very same row. Optional, as `units`' and
+  // `types`' own selection is: the bare tab is a route of its own, not an absent one.
+  | { page: "project"; view: "files"; path?: string }
   | { page: "project"; view: "findings" }
   | { page: "project"; view: "compare" }
   | { page: "component"; file: string; variable?: string }
@@ -50,6 +64,12 @@ export function parseRoute(pathname: string, search: string): Route {
       return (kind === "constant" || kind === "section" || kind === "raster") && name !== undefined
         ? { page: "project", view: "shared", kind, name }
         : { page: "project", view: "shared" };
+    }
+    if (view === "files") {
+      const path = query.get("path") || undefined;
+      return path === undefined
+        ? { page: "project", view: "files" }
+        : { page: "project", view: "files", path };
     }
     if (view === "findings") return { page: "project", view: "findings" };
     if (view === "compare") return { page: "project", view: "compare" };
@@ -94,6 +114,11 @@ export function hrefOf(route: Route): string {
         return "kind" in route
           ? `/project?view=shared&kind=${route.kind}&name=${encodeURIComponent(route.name)}`
           : "/project?view=shared";
+      }
+      if (route.view === "files") {
+        return route.path === undefined
+          ? "/project?view=files"
+          : `/project?view=files&path=${encodeURIComponent(route.path)}`;
       }
       if (route.view === "findings") return "/project?view=findings";
       if (route.view === "compare") return "/project?view=compare";

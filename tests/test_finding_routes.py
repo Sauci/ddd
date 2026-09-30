@@ -8,6 +8,7 @@ from typing import Any, get_args, get_type_hints
 import pytest
 
 from conftest import EXAMPLES, component, declare, project, scalar_type, types, write_tree
+from ddd.file_plans import included_entries
 from ddd.finding_routes import Route, route_of
 from ddd.gui.contract import FindingRoute
 from ddd.lsp.ranges import Document
@@ -975,6 +976,58 @@ class TestARaster:
         )
 
 
+class TestAFile:
+    """`include-empty` and `empty-vocabulary`: a finding about an entry of the root's includes,
+    and one about a whole file, both of which led nowhere until the Files tab gave them a row.
+
+    Each is asserted at the kind of file it is really filed on - the project description and the
+    vocabulary itself - neither of which is a component, which is what pins the arm above the
+    `kind != COMPONENT_KIND` gate."""
+
+    @pytest.mark.parametrize("entry", ["sensors/*.ddd.json", "lib/../sensors/*.ddd.json"])
+    def test_an_include_matching_nothing_leads_to_the_row_of_its_entry(
+        self, tmp_path: Path, entry: str
+    ) -> None:
+        """The entry read at the finding's own pointer - the second here, so not the first read
+        by chance - joined to the description's directory as the loader joins it, and resolved:
+        the key :func:`ddd.file_plans.included_entries` gives that entry's row, which is what the
+        page selects by, however the entry spells its way there."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", entry),
+                "a.ddd.json": component("A"),
+            },
+        )
+        described = (tmp_path / "p.ddd.json").resolve()
+        route = route_of("include-empty", described, "project.includes[1]", "project", True, {})
+        assert route == Route("file", (tmp_path / "sensors" / "*.ddd.json").resolve().as_posix())
+        assert route.name == included_entries(described, {})[1].key.as_posix()
+
+    @pytest.mark.parametrize("kind", ["units", "types", "constants", "sections", "rasters"])
+    def test_a_vocabulary_declaring_nothing_leads_to_the_row_of_its_file(
+        self, tmp_path: Path, kind: str
+    ) -> None:
+        """Filed at the vocabulary's own list, whose pointer is the kind itself - measured,
+        `Location(path, kind)` - and about the whole file, so the file is what it names."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", "v.ddd.json"), "v.ddd.json": {kind: []}})
+        vocabulary = (tmp_path / "v.ddd.json").resolve()
+        assert route_of("empty-vocabulary", vocabulary, kind, kind, True, {}) == Route(
+            "file", vocabulary.as_posix()
+        )
+
+    def test_an_entry_the_description_no_longer_holds_leads_nowhere(self, tmp_path: Path) -> None:
+        """The analysis read the description; the pointer is where the entry was then, and a
+        description saved since with fewer entries holds nothing there to name a row by."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", "sensors/*.ddd.json")})
+        assert (
+            route_of(
+                "include-empty", tmp_path / "p.ddd.json", "project.includes[3]", "project", True, {}
+            )
+            is None
+        )
+
+
 def test_every_kind_a_route_answers_is_one_the_contract_publishes() -> None:
     """The guard for the drift that has now come within one test of shipping three parts running.
 
@@ -1005,4 +1058,5 @@ def test_every_kind_a_route_answers_is_one_the_contract_publishes() -> None:
         "constant",
         "section",
         "raster",
+        "file",
     }

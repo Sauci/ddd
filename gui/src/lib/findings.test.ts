@@ -257,6 +257,45 @@ describe("where a finding leads", () => {
     expect(routeLabel(elsewhere, state([elsewhere]))).toBe("Open elsewhere.ddd.json");
   });
 
+  test("a file, by its own row on the Files tab - the route empty-vocabulary and include-empty share", () => {
+    const one = finding({
+      check: "empty-vocabulary",
+      severity: "info",
+      file: CONSTANTS,
+      pointer: "constants",
+      route: { kind: "file", name: CONSTANTS },
+    });
+    expect(routeLabel(one, state([one]))).toBe("Open constants.ddd.json");
+    expect(routeHref(one)).toBe(`/project?view=files&path=${encodeURIComponent(CONSTANTS)}`);
+    expect(routeOf(one)).toEqual({ page: "project", view: "files", path: CONSTANTS });
+  });
+
+  test("a file inside a subdirectory, named relative to the project rather than by its base name", () => {
+    // `sensors/a.ddd.json` says which of two identically-named files a `baseName` alone,
+    // repeated across directories, could not.
+    const nested = "C:/work/demo/sensors/a.ddd.json";
+    const one = finding({
+      check: "include-empty",
+      file: PROJECT,
+      pointer: "project.includes[1]",
+      route: { kind: "file", name: nested },
+    });
+    expect(routeLabel(one, state([one]))).toBe("Open sensors/a.ddd.json");
+  });
+
+  test("a file outside the project's own directory, named by its base name", () => {
+    // The fallback `routeLabel`'s `component` arm always takes: a path a `../` entry reached
+    // does not sit under the project's own directory, so there is no relative spelling to prefer.
+    const outside = "D:/elsewhere/x.ddd.json";
+    const one = finding({
+      check: "include-empty",
+      file: PROJECT,
+      pointer: "project.includes[2]",
+      route: { kind: "file", name: outside },
+    });
+    expect(routeLabel(one, state([one]))).toBe("Open x.ddd.json");
+  });
+
   test("nowhere, when the answer says so", () => {
     const one = finding({ route: null });
     expect(routeLabel(one, state([one]))).toBeNull();
@@ -446,7 +485,7 @@ describe("why a finding leads nowhere", () => {
   });
 
   test("a file that did not load without saying what kind it is counts as untold", () => {
-    // `session._kind` reads the kind off the document's own top-level key, so a file nobody could
+    // `session.kind_of` reads the kind off the document's own top-level key, so a file nobody could
     // parse has none to read - it answers "unknown", correctly, because a constants file and a
     // types file are indistinguishable when neither could be read. Filtering by kind alone, every
     // tab's banner missed the commonest way a file fails: an editor saving it half-written.

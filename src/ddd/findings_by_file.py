@@ -2,11 +2,14 @@
 
 Every per-name question the browser interface asks - which findings are a variable's, a unit's,
 a type's, a shared entry's - comes down to a finding shown on a file one of the name's places is
-in. Asked finding by finding, each question resolved both paths: over a project of 66,005
-findings ``GET /api/variable`` spent 2.9 s of its 3.9 s (profiled) in
-:meth:`pathlib.Path.resolve`, the same 1,200 files resolved for every finding. Grouped here once,
-a question reads only the findings of the files it is about, and gets them in the order they were
-given - the revision's own - so that an answer asked this way is the answer asked of them all.
+in. Asked finding by finding, each question resolved both paths: ``GET /api/variable`` spent
+2.9 s of its 3.9 s in :meth:`pathlib.Path.resolve`, the same 1,200 files resolved for every
+finding - one run profiled with cProfile, which roughly doubles a Python call's time, on the Linux
+development PC while this part was planned, over the 36,000-declaration "many" project of the
+spec's section 2 probe: 1,200 components, 66,005 findings, about two a declaration. Grouped
+here once, a question reads only the findings of the files it is about, and gets them in the
+order they were given - the revision's own - so that an answer asked this way is the answer asked
+of them all.
 """
 
 from __future__ import annotations

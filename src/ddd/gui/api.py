@@ -568,10 +568,13 @@ class Api:
         )
 
     def _units(self, query: Query, body: bytes | None) -> Reply:
-        revision = self._opened()
-        return self._memoised(revision, ("units",), lambda: self._units_of(revision))
+        """The vocabulary, the units in use, the Units tab's rows and whether adopting is offered.
 
-    def _units_of(self, revision: Revision) -> Reply:
+        Answered anew each time, never kept (:meth:`_memoised`): the offer reads the disk as it
+        stands - the includes expanded to find the units files, and whether ``units.ddd.json``
+        is there beside the description - which no revision records: neither a file appearing
+        where a pattern matches nor one no include names starts an analysis."""
+        revision = self._opened()
         cache: dict[Path, Document] = {}
         vocabulary = vocabulary_of(
             [read(file.path, cache) for file in revision.files if file.kind == "units"]
@@ -916,11 +919,12 @@ class Api:
     def _files(self, query: Query, body: bytes | None) -> Reply:
         """The root's includes, each entry as the loader's own rule reads it, and what each
         brings - the files a row joins ``State.files`` on, and the findings at the entry
-        itself, which a row naming nothing has no file to carry."""
-        revision = self._opened()
-        return self._memoised(revision, ("files",), lambda: self._files_of(revision))
+        itself, which a row naming nothing has no file to carry.
 
-    def _files_of(self, revision: Revision) -> Reply:
+        Answered anew each time, never kept (:meth:`_memoised`): the includes are expanded on
+        disk as it stands, which no revision records - a file appearing where a pattern matches
+        starts no analysis."""
+        revision = self._opened()
         at_entry = self._derive(revision).at_entry
         cache: dict[Path, Document] = {}
         return Reply(
@@ -1395,9 +1399,16 @@ class Api:
         return revision
 
     def _derive(self, revision: Revision) -> Derived:
-        """What the api derives from ``revision`` (:func:`ddd.gui.derived.derived`), derived once
-        for it: the one kept where it is that revision's, else derived now and kept in its place,
-        the answers :meth:`_memoised` kept beside the last one emptied with it."""
+        """What the api derives from ``revision`` (:func:`ddd.gui.derived.derived`): the one kept
+        where it is that revision's, else derived now and kept in its place, the answers
+        :meth:`_memoised` kept beside the last one emptied with it.
+
+        Once per revision while its requests come one at a time, and not guarded: requests are
+        answered on threads of their own, so two first requests of one revision can both derive
+        it, and a request still holding an older revision derives that one again, replacing the
+        newer derivation and emptying the newer revision's kept answers, which the newer
+        revision's next request makes again. Each answer is made from the revision its own
+        request holds, so each stays what it would be; only work is repeated."""
         kept = self._derived
         if kept is not None and kept.number == revision.number:
             return kept
@@ -1409,14 +1420,29 @@ class Api:
     def _memoised(
         self, revision: Revision, key: tuple[object, ...], make: Callable[[], Reply]
     ) -> Reply:
-        """The answer ``key`` names - ``("graph",)``, ``("units",)`` - for ``revision``, made by
-        ``make`` once and kept while no edit has been written since: an answer reading the files
-        as they stand, as a vocabulary's descriptions are read, changes with an edit before the
-        analysis of it does. Kept beside what :meth:`_derive` keeps for the newest revision, and
-        emptied with it, so it holds the answers of one revision at a time.
+        """The answer ``key`` names - ``("graph",)``, ``("types",)`` - for ``revision``, made by
+        ``make`` once and kept beside what :meth:`_derive` keeps for the newest revision, emptied
+        with it.
 
-        Two requests of one revision that both find nothing kept both make it - harmless, and
-        cheaper than a lock around a computation of hundreds of milliseconds.
+        Kept only where all it reads is the revision and the files the revision read: a save to
+        one of those is what the poll notices, making a new revision, so the revision's number
+        says when the answer has gone stale. The Files and the Units tabs are not kept for that
+        reason: both expand the includes on disk as it stands, which no revision records, and a
+        file appearing where a pattern matches starts no analysis.
+
+        Keyed by the edits the session has written as well as by the revision. Today an edit and
+        an undo are each analysed in the call that writes them, so the revision moves with every
+        write. From Task 6 on, an edit answers once written, and an answer reading its files as
+        they stand - a type's description - changes before the revision does, which the count of
+        edits covers. ``Session.edits`` counts no undo until Task 5 gives an undo a number of its
+        own, so the key covers an undo from then, before Task 6 opens that window.
+
+        Not guarded: requests are answered on threads of their own. Two requests of one revision
+        that both find nothing kept both make it, and an answer made for a revision a newer one
+        has since replaced can be kept beside the newer revision's - under its own revision's
+        number, so it answers for no other, and goes at the next derivation. Each answer stays
+        what it would be; only work is repeated, where a lock around the making would hold every
+        other request for a kept answer behind the one being made.
         """
         self._derive(revision)
         keyed = (key, revision.number, self.session.edits)

@@ -6884,13 +6884,24 @@ LISTED = {
     "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
 }
 
-KEPT: Final = ("/api/graph", "/api/units", "/api/types", "/api/shared", "/api/files")
-"""The answers made once per revision and kept for as long as it is the newest."""
+KEPT: Final = ("/api/graph", "/api/types", "/api/shared")
+"""The answers made once per revision and kept for as long as it is the newest: each reads only
+the revision and the files it read."""
+
+# A root including a pattern, one file of which is there to be matched: a file appearing where the
+# pattern matches is one no revision read, so the poll never notices it.
+PATTERNED = {
+    "p.ddd.json": project("P", "a.ddd.json", "lib/*.ddd.json"),
+    "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+    "lib/b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+}
 
 
 class TestAnswersKeptForARevision:
     """What the api makes of one revision it makes once: the findings grouped by file, and the
-    graph and the tabs' rows, each kept until a new revision - or an edit - is written."""
+    graph, the Types and the Shared files tabs, each kept until a new revision - or an edit - is
+    written. The Files and the Units tabs are answered anew each time: each reads what no revision
+    records."""
 
     @pytest.mark.parametrize("path", KEPT)
     def test_one_revision_answers_with_the_very_reply_it_made_first(
@@ -6930,14 +6941,52 @@ class TestAnswersKeptForARevision:
     def test_an_edit_written_before_its_analysis_answers_anew(
         self, api: Api, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """An answer reading the files as they stand changes with an edit before the revision
-        does, once an edit no longer waits for its analysis: kept by the edits written as well
-        as by the revision. Stood for here by the count moving on its own."""
-        first = get(api, "/api/units")
+        """An answer reading the files as they stand - a type's description - changes with an
+        edit before the revision does, once an edit no longer waits for its analysis (Task 6):
+        kept by the edits written as well as by the revision. Stood for here by the count moving
+        on its own."""
+        first = get(api, "/api/types")
         monkeypatch.setattr(api.session, "_edits", api.session.edits + 1)
-        again = get(api, "/api/units")
+        again = get(api, "/api/types")
         assert again is not first
         assert again == first
+
+    def test_the_files_tab_lists_a_file_appearing_where_a_pattern_matches(
+        self, tmp_path: Path
+    ) -> None:
+        """A file appearing where a root pattern matches starts no analysis - the poll compares
+        the files the revision read - so no revision could say a kept answer had gone stale: the
+        tab is answered anew, and lists the file at the next request."""
+        api = opened(tmp_path, PATTERNED)
+        assert api.session.poll()
+        before = get(api, "/api/files").body
+        write_tree(tmp_path, {"lib/c.ddd.json": component("C")})
+        assert not api.session.poll()
+        after = get(api, "/api/files").body
+        assert (before["revision"], after["revision"]) == (2, 2)
+        assert [Path(file).name for file in before["entries"][1]["files"]] == ["b.ddd.json"]
+        assert [Path(file).name for file in after["entries"][1]["files"]] == [
+            "b.ddd.json",
+            "c.ddd.json",
+        ]
+        assert after == get(Api(api.session, api.project), "/api/files").body
+
+    def test_the_units_tab_offers_adopting_as_the_disk_now_allows(self, tmp_path: Path) -> None:
+        """Whether adopting may write units.ddd.json beside the description, and which units file
+        it would fill instead, are read from the disk as it stands, and neither a file no include
+        names nor one a root pattern has come to match starts an analysis: the offer is answered
+        anew, as the plan would be made."""
+        api = opened(tmp_path, PATTERNED)
+        assert api.session.poll()
+        assert get(api, "/api/units").body["adoptable"] == 1
+        write_tree(tmp_path, {"units.ddd.json": {"units": []}})
+        assert not api.session.poll()
+        assert get(api, "/api/units").body["adoptable"] is None
+        write_tree(tmp_path, {"lib/units.ddd.json": {"units": ["rpm"]}})
+        assert not api.session.poll()
+        body = get(api, "/api/units").body
+        assert (body["revision"], body["adoptable"]) == (2, 1)
+        assert body == get(Api(api.session, api.project), "/api/units").body
 
     def test_a_revision_is_derived_once_and_its_successor_anew(self, api: Api, root: Path) -> None:
         revision = api.session.revision

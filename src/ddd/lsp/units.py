@@ -205,8 +205,10 @@ def _may_list_units(file: Path, cache: dict[Path, Document]) -> bool:
     """Whether ``file`` can be a units file at all, asked before parsing it: a document with
     ``units`` at its top spells that key in its text, as ``"units"`` or with an escape somewhere
     in it. A file already parsed is left to the parse. ``GET /api/units`` spent 1.4 s of its
-    1.5 s (profiled) parsing every file of a 1,200-component project to find its one units file;
-    reading them for two strings is what is left of that."""
+    1.5 s parsing every file of a 1,200-component project to find its one units file - one run
+    profiled with cProfile, which roughly doubles a Python call's time, on the Linux development
+    PC while this part was planned, over the 36,000-declaration "many" project of the spec's
+    section 2 probe (66,005 findings); reading them for two strings is what is left of that."""
     if file in cache:
         return True
     try:

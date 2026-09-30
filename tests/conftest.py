@@ -317,3 +317,12 @@ class Gated(Session):
 def begun(session: Gated) -> None:
     """Wait until one more analysis has begun."""
     assert session.begun.acquire(timeout=10), "no analysis began"
+
+
+def stopped(session: Session) -> None:
+    """Stop the session, failing the test rather than hanging the suite where its threads do not
+    end: :meth:`~ddd.gui.session.Session.stop` joins them without a timeout."""
+    stopping = threading.Thread(target=session.stop, name="stopping", daemon=True)
+    stopping.start()
+    stopping.join(timeout=10)
+    assert not stopping.is_alive(), "the session did not stop"

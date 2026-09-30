@@ -22,6 +22,7 @@ from conftest import (
     declare,
     first_revision,
     project,
+    stopped,
     write_tree,
 )
 from ddd.diagnostics import Severity, SeverityPolicy, UnknownCheckError
@@ -406,6 +407,25 @@ class TestFollowingTheDisk:
         Session(tmp_path).stop()
 
 
+class Stepped(Session):
+    """A session whose analyses announce that they have begun, as a :class:`Gated` one's do, and
+    each wait for a go of its own: what lets a test let one analysis finish while the next one
+    waits."""
+
+    def __init__(self, root: Path) -> None:
+        super().__init__(root, poll_interval=3600)
+        self.begun = threading.Semaphore(0)
+        self.goes = (threading.Event(), threading.Event(), threading.Event())
+        self.analyses = 0
+
+    def _analysed(self, project: Path) -> Revision:
+        go = self.goes[self.analyses]
+        self.analyses += 1
+        self.begun.release()
+        assert go.wait(timeout=10), "the test never let this analysis go"
+        return super()._analysed(project)
+
+
 class TestTheAnalyser:
     def test_an_edit_answers_before_its_analysis_and_the_next_revision_includes_it(
         self, shared: Path
@@ -427,7 +447,7 @@ class TestTheAnalyser:
             assert settled is not None and settled.edits == at and mismatches(session) == 2
         finally:
             session.gate.set()
-            session.stop()
+            stopped(session)
 
     def test_edits_landing_while_an_analysis_runs_make_one_analysis_more_not_one_each(
         self, shared: Path
@@ -451,7 +471,85 @@ class TestTheAnalyser:
             assert session.analyses == 3  # opening, the first edit, and the three after it
         finally:
             session.gate.set()
-            session.stop()
+            stopped(session)
+
+    def test_a_revision_counts_the_edits_on_disk_when_its_analysis_began(
+        self, shared: Path
+    ) -> None:
+        """Not those written while it ran, whatever it happened to read: the analysis of the
+        first edit here reads the disk after the second is written, and still counts only the
+        first. The one after it counts the second."""
+        session = Stepped(shared.parent)
+        opening, first, second = session.goes
+        opening.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            assert session.settled(timeout=10) is not None
+            at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            later, _ = session.edit([unit_of_b(shared, "kPa")], "the unit of Speed")
+            first.set()
+            begun(session)  # the second edit's analysis, begun once the first edit's is in
+            revision = session.revision
+            assert revision is not None and (revision.number, revision.edits) == (2, at)
+            second.set()
+            settled = session.settled(timeout=10)
+            assert settled is not None and (settled.number, settled.edits) == (3, later)
+        finally:
+            for go in session.goes:
+                go.set()
+            stopped(session)
+
+    def test_the_poll_does_not_take_an_edits_own_write_for_a_change_its_analysis_missed(
+        self, shared: Path
+    ) -> None:
+        """While an analysis runs, the stamps it took before it read a file - after the edit's
+        write - stand in for the last revision's."""
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            assert session.settled(timeout=10) is not None
+            session.gate.clear()
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            assert session.poll() is False
+            session.gate.set()
+            assert session.settled(timeout=10) is not None
+            assert session.analyses == 2
+        finally:
+            session.gate.set()
+            stopped(session)
+
+    def test_another_project_opened_answers_for_none_of_the_last_ones_files(
+        self, shared: Path
+    ) -> None:
+        """Until its own first analysis lands it has no revision, so that an edit of a file of
+        the project open before it is refused rather than written."""
+        write_tree(shared.parent, {"q.ddd.json": project("Q", "a.ddd.json")})
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            assert session.settled(timeout=10) is not None
+            session.gate.clear()
+            session.open(shared.parent / "q.ddd.json")
+            begun(session)
+            assert session.revision is None
+            b = shared.parent / "b.ddd.json"
+            before = b.read_bytes()
+            with pytest.raises(NoProjectError):
+                session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            assert b.read_bytes() == before
+        finally:
+            session.gate.set()
+            stopped(session)
 
     def test_a_project_opened_while_another_is_analysed_throws_that_analysis_away(
         self, shared: Path
@@ -470,7 +568,7 @@ class TestTheAnalyser:
             assert (settled.number, session.analyses) == (1, 2)
         finally:
             session.gate.set()
-            session.stop()
+            stopped(session)
 
     def test_an_analysis_failing_on_the_thread_is_printed_and_asked_for_again(
         self, shared: Path, capsys: pytest.CaptureFixture[str]
@@ -497,7 +595,7 @@ class TestTheAnalyser:
             settled = session.settled(timeout=10)
             assert settled is not None and settled.edits == at and mismatches(session) == 2
         finally:
-            session.stop()
+            stopped(session)
 
     def test_where_no_analyser_runs_a_failing_analysis_is_raised_to_the_call_that_asked(
         self, shared: Path, capsys: pytest.CaptureFixture[str]
@@ -534,7 +632,7 @@ class TestTheAnalyser:
             session.start()
             assert analyser is not None and session._analyser is analyser
         finally:
-            session.stop()
+            stopped(session)
 
     def test_stopping_ends_the_analyser_and_the_poller(self, shared: Path) -> None:
         session = Gated(shared.parent)
@@ -542,7 +640,7 @@ class TestTheAnalyser:
         session.start()
         session.open(shared)
         session.settled(timeout=10)
-        session.stop()
+        stopped(session)
         assert session._analyser is not None and not session._analyser.is_alive()
         assert session._poller is not None and not session._poller.is_alive()
 
@@ -556,7 +654,7 @@ class TestTheAnalyser:
             assert (session.project, session.revision) == (shared.resolve(), None)
         finally:
             session.gate.set()
-            session.stop()
+            stopped(session)
 
     def test_settled_answers_after_its_timeout_while_an_analysis_waits(self, shared: Path) -> None:
         session = Gated(shared.parent)
@@ -567,7 +665,7 @@ class TestTheAnalyser:
             assert session.settled(timeout=0.01) is None
         finally:
             session.gate.set()
-            session.stop()
+            stopped(session)
 
 
 class TestStamps:

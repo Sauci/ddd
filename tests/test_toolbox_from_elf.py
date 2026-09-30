@@ -1130,6 +1130,28 @@ class TestTheCheckByDdd:
             ("init-invalid", Location(Path("unit.c"), line=3), ("'Wide' is left out", None)),
         ]
 
+    def test_an_error_found_while_loading_skips_the_analysis_even_when_it_still_loaded(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No real check of ddd's reaches this under one component file: every ``None``
+        workspace already comes with an error of its own, so a real load never shows this
+        guard pinning anything beyond ``not found.has_errors`` alone - which is why
+        ``workspace is not None`` is dropped above and nothing dies. Patched in directly:
+        a load that both errors and still returns a workspace must not reach ``analyze``."""
+
+        def fake_load_workspace(path: Path, bag: DiagnosticBag) -> object:
+            bag.add("made-up", "a made-up load problem", Location(Path("nowhere")))
+            return object()
+
+        def fake_analyze(workspace: Any, bag: DiagnosticBag) -> None:
+            raise AssertionError("analyze must not run once a load error is on the bag")
+
+        monkeypatch.setattr("ddd.toolbox.checked.load_workspace", fake_load_workspace)
+        monkeypatch.setattr("ddd.toolbox.checked.analyze", fake_analyze)
+        description, bag = run(image(stored("Gain", U8, line=1)), "Gain")
+        assert names(description) == ["Gain"]
+        assert [d.check for d in bag.sorted] == ["made-up", "elf-not-inferred"]
+
     def test_a_finding_on_a_type_refuses_every_variable_reaching_it(self) -> None:
         wide = Enum("Wide_e", 8, False, (("HUGE", 1 << 40),))
         holder = structure("Holder_s", Member("level", wide, 0), size=8)

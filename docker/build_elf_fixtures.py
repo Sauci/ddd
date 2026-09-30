@@ -5,9 +5,10 @@ Usage, from the repository root: ``docker compose run --rm elf-fixtures``
 
 Each row of :data:`ROWS` compiles ``tests/fixtures/elf/src/`` with one toolchain and links it
 into ``tests/fixtures/elf/<row>.elf``, beside a stripped copy of one row, a relocatable object,
-and a copy of the ``armv7m`` row at ``examples/firmware/firmware.elf`` for the documentation's
-re-run transcripts. The images are committed, so that the suite needs neither Docker nor a
-compiler.
+the images of :data:`NEGATIVES` - each a small source of its own, for a case the reader refuses
+rather than reads - and a copy of the ``armv7m`` row at ``examples/firmware/firmware.elf`` for
+the documentation's re-run transcripts. The images are committed, so that the suite needs
+neither Docker nor a compiler.
 
 The manifest records what each toolchain itself says about its target - never what ddd's
 reader says, which is what the tests check against it - and a hash of everything the images
@@ -60,6 +61,16 @@ class Row:
     drop the entry of a folded static rather than give it a ``DW_AT_const_value``."""
 
 
+@dataclass(frozen=True)
+class Negative:
+    """An image built from a source of its own under ``tests/fixtures/elf/src/``, for one host-like
+    target, of a case the reader refuses rather than reads."""
+
+    name: str
+    source: str
+    flags: tuple[str, ...]
+
+
 GNU_LINK = ("-static", "-no-pie")
 CORTEX_M4 = ("-mcpu=cortex-m4", "-mthumb")
 ROWS = (
@@ -95,11 +106,35 @@ ROWS = (
     ),
 )
 
+NEGATIVE_COMPILER = "x86_64-linux-gnu-gcc"
+NEGATIVES = (
+    Negative("type-units-dwarf4", "type_units", ("-gdwarf-4", "-fdebug-types-section")),
+    Negative("type-units-dwarf5", "type_units", ("-gdwarf-5", "-fdebug-types-section")),
+    Negative("gcc-lto", "lto", ("-gdwarf-5", "-flto")),
+    Negative(
+        "gc-sections",
+        "gc_sections",
+        (
+            "-gdwarf-5",
+            "-fdata-sections",
+            "-ffunction-sections",
+            "-Wl,--gc-sections",
+            "-Wl,-Ttext=0x0",
+        ),
+    ),
+)
+"""DWARF type units at version 4 and at 5, gcc's link-time optimisation, and a variable the
+linker discarded where its address, 0, holds code."""
+
 _SYMBOL = re.compile(
     r"^\s*\d+:\s+[0-9a-f]+\s+(?P<size>0x[0-9a-f]+|\d+)\s+(?P<type>\w+)\s+\w+\s+\w+\s+"
     r"(?P<index>\S+)\s+(?P<name>\S+)$"
 )
 _SECTION = re.compile(r"^\s*\[\s*(?P<index>\d+)\]\s+(?P<name>\S+)\s+(?P<type>\S+)\s")
+_FLAGS = re.compile(
+    r"^\s*\[\s*\d+\]\s+(?P<name>\S+)\s+\S+\s+[0-9a-f]+\s+[0-9a-f]+\s+[0-9a-f]+\s+[0-9a-f]+\s+"
+    r"(?P<flags>[A-Za-z]*)\s+\d+\s+\d+\s+\d+\s*$"
+)
 
 
 def digest(path: Path) -> str:
@@ -208,6 +243,51 @@ def variables(image: Path) -> list[dict[str, object]]:
     return sorted(found, key=lambda entry: (str(entry["name"]), str(entry["section"])))
 
 
+def facts(image: Path) -> dict[str, object]:
+    """What readelf says of an image as a file: its type, the versions and unit types of its
+    DWARF, its debug sections and whether they are compressed."""
+    (kind,) = [
+        line.split()[1]
+        for line in run(["readelf", "-h", str(image)]).splitlines()
+        if line.strip().startswith("Type:")
+    ]
+    dump = run(["readelf", "--debug-dump=info", str(image)])
+    debug: dict[str, str] = {}
+    for line in run(["readelf", "-S", "-W", str(image)]).splitlines():
+        match = _FLAGS.match(line)
+        if match is not None and match["name"].startswith(".debug"):
+            debug[match["name"]] = match["flags"]
+    return {
+        "elf_type": kind,
+        "dwarf_versions": sorted(
+            {int(version) for version in re.findall(r"^\s+Version:\s+(\d+)$", dump, re.M)}
+        ),
+        "unit_types": sorted(set(re.findall(r"^\s+Unit Type:\s+(DW_UT_\w+)", dump, re.M))),
+        "debug_sections": sorted(debug),
+        "compressed": any("C" in flags for flags in debug.values()),
+    }
+
+
+def build_negative(negative: Negative, work: Path) -> Path:
+    """Compile and link one negative input; the image lands in ``work``."""
+    image = work / f"{negative.name}.elf"
+    run(
+        [
+            NEGATIVE_COMPILER,
+            *COMMON,
+            *negative.flags,
+            f"-ffile-prefix-map={SOURCE}=.",
+            "-nostdlib",
+            "-Wl,-e,entry",
+            *GNU_LINK,
+            f"{negative.source}.c",
+            "-o",
+            str(image),
+        ]
+    )
+    return image
+
+
 def traits(row: Row, image: Path, found: list[dict[str, object]]) -> dict[str, object]:
     """What the row's toolchain says about its target, the answers the tests hold ddd to."""
     defined = macros(row)
@@ -227,9 +307,10 @@ def traits(row: Row, image: Path, found: list[dict[str, object]]) -> dict[str, o
 
 
 def main() -> None:
-    """Build every row, the two negative inputs and the example copy, then the manifest."""
+    """Build every row, the negative inputs and the example copy, then the manifest."""
     OUTPUT.mkdir(parents=True, exist_ok=True)
     rows: dict[str, object] = {}
+    negatives: dict[str, object] = {}
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
         for row in ROWS:
@@ -241,7 +322,18 @@ def main() -> None:
                 "flags": [*row.compiler[1:], *row.target, *COMMON, *row.dwarf, *row.link],
                 "cases": list(row.cases),
                 "traits": traits(row, image, found),
+                "image": facts(image),
                 "variables": found,
+            }
+        for negative in NEGATIVES:
+            image = build_negative(negative, work)
+            shutil.copyfile(image, OUTPUT / image.name)
+            negatives[negative.name] = {
+                "compiler": run([NEGATIVE_COMPILER, "--version"]).splitlines()[0],
+                "source": f"{negative.source}.c",
+                "flags": [*COMMON, *negative.flags, *GNU_LINK],
+                "image": facts(image),
+                "variables": variables(image),
             }
         run(
             [
@@ -269,7 +361,7 @@ def main() -> None:
         )
     EXAMPLE.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(OUTPUT / f"{EXAMPLE_ROW}.elf", EXAMPLE)
-    manifest = {"hashes": hashed(), "rows": rows}
+    manifest = {"hashes": hashed(), "rows": rows, "negatives": negatives}
     (OUTPUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", "utf-8")
     print(f"wrote {len(ROWS)} rows into {OUTPUT.relative_to(ROOT).as_posix()}")
 

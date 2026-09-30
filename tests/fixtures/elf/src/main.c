@@ -142,3 +142,30 @@ typedef struct Frame_s {
 } Frame_t;
 
 Frame_t Nested_Frame;
+
+/* Appended after Nested_Frame, so that no line above it moves. An array a header declares
+   without its size and the definition completes, as tables usually are; and the members
+   section 4.4 refuses: a flexible array, a zero length array (a GNU extension) and an
+   anonymous structure (C11). */
+extern const uint16_t Cal_Curve[];
+const uint16_t Cal_Curve[4] = {0x1234, 0x5678, 0x9ABC, 0xDEF0};
+
+struct Flexible_s {
+    uint8_t count;
+    uint8_t data[];
+};
+struct Flexible_s Member_Flexible;
+
+struct Zero_s {
+    uint8_t count;
+    uint8_t none[0];
+};
+struct Zero_s Member_Zero;
+
+struct Anonymous_s {
+    uint8_t before;
+    struct {
+        uint8_t inner;
+    };
+};
+struct Anonymous_s Member_Anonymous;

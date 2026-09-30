@@ -969,6 +969,61 @@ class TestTheMatrix:
         twins = sorted(variable.unit for variable in image.variables if variable.name == "Twin")
         assert twins == ["unit_a.c", "unit_b.c"]
 
+    def test_a_tentative_definition_two_units_share_is_described_by_both_at_one_address(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """The common pair: the linker makes the two one variable, and each unit's DWARF still
+        describes it; the selection, not the reader, makes them one again."""
+        image, _ = row
+        found = [variable for variable in image.variables if variable.name == "Common_Counter"]
+        assert sorted(variable.unit for variable in found) == ["unit_a.c", "unit_b.c"]
+        assert len({variable.address for variable in found}) == 1
+        assert None not in {variable.address for variable in found}
+
+    def test_an_array_a_definition_completes_has_the_definition_s_size_and_values(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """``extern const uint16_t Cal_Curve[];`` completed by ``Cal_Curve[4]``, as a header
+        and its source usually declare a table."""
+        image, _ = row
+        curve = by_name(image, "Cal_Curve")
+        node = curve.type
+        while not isinstance(node, Array):
+            assert isinstance(node, Qualified | Typedef)
+            node = node.inner
+        assert node.dimensions == (4,)
+        assert curve.declared_at == Declared("main.c", line_of("const uint16_t Cal_Curve[4]"))
+        assert curve.address is not None
+        raw = image.read(curve.address, 8)
+        assert raw is not None
+        values = [int.from_bytes(raw[at : at + 2], image.byte_order) for at in range(0, 8, 2)]
+        assert values == [0x1234, 0x5678, 0x9ABC, 0xDEF0]
+
+    @pytest.mark.parametrize(
+        ("name", "member"), [("Member_Flexible", "data"), ("Member_Zero", "none")]
+    )
+    def test_a_flexible_or_zero_length_array_member_is_unsupported_where_it_sits(
+        self, row: tuple[Image, dict[str, Any]], name: str, member: str
+    ) -> None:
+        image, _ = row
+        structure = core(by_name(image, name).type)
+        assert isinstance(structure, Struct)
+        count, array = structure.members
+        assert (count.name, array.name) == ("count", member)
+        assert array.type == Unsupported("an array without a fixed size of at least one element")
+
+    def test_an_anonymous_structure_member_is_a_member_without_a_name(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        image, _ = row
+        structure = core(by_name(image, "Member_Anonymous").type)
+        assert isinstance(structure, Struct)
+        before, anonymous = structure.members
+        assert (before.name, anonymous.name) == ("before", None)
+        inner = core(anonymous.type)
+        assert isinstance(inner, Struct)
+        assert [member.name for member in inner.members] == ["inner"]
+
 
 class TestRefusals:
     """What open_image refuses, each in a sentence naming the file. Where the end of the

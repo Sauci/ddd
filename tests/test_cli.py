@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import codecs
 import errno
+import functools
 import json
 import os
 import re
@@ -3928,6 +3929,13 @@ def expected_definitions(traits: dict[str, Any]) -> dict[str, dict[str, Any]]:
         value("Cal_Tunable", "parameter", "uint8", 0x5A, volatile=True),
         value("Cal_Table", "value_block", "sint32", [-2, 0x12345678, 0, 1], dimensions=[4]),
         value("Cal_Declared_First", "parameter", "uint16", 0x1234),
+        value(
+            "Cal_Curve",
+            "value_block",
+            "uint16",
+            [0x1234, 0x5678, 0x9ABC, 0xDEF0],
+            dimensions=[4],
+        ),
         value("Type_Bool", "measurement", "boolean", True),
         value("Type_Char", "measurement", "uint8" if traits["char_unsigned"] else "sint8", 65),
         value("Type_Long", "measurement", {4: "sint32", 8: "sint64"}[traits["sizeof_long"]], -2),
@@ -4013,6 +4021,40 @@ class TestToolFromElf:
         assert {entry["scope"] for entry in interface} == {"output"}
         types = {entry["name"]: entry for entry in document["types"]}
         assert (types["Sample_t"], types["Frame_t"]) == (SAMPLE_ENTRY, FRAME_ENTRY)
+
+    @pytest.mark.parametrize("row", sorted(FIXTURE_ROWS))
+    def test_every_row_refuses_a_flexible_a_zero_length_and_an_anonymous_member(
+        self, capsys: pytest.CaptureFixture[str], row: str
+    ) -> None:
+        """Section 4.4 refuses each at the member, naming its path. gcc states no line for an
+        anonymous member, clang the line its structure opens on."""
+        code, out, err = from_elf(
+            capsys,
+            str(FIXTURES / f"{row}.elf"),
+            "Member_Flexible",
+            "Member_Zero",
+            "Member_Anonymous",
+        )
+        line = functools.partial(fixture_line, "main.c")
+        expected = [
+            f"main.c:{line('struct Flexible_s Member_Flexible;')}: error[elf-type-unsupported]: "
+            f"'Member_Flexible' cannot be described: 'Flexible_s.data' is an array without a "
+            f"fixed size of at least one element, which DDD cannot state",
+            f"    note: main.c:{line('uint8_t data[];')}: 'Flexible_s.data' is declared here",
+            f"main.c:{line('struct Zero_s Member_Zero;')}: error[elf-type-unsupported]: "
+            f"'Member_Zero' cannot be described: 'Zero_s.none' is an array without a fixed size "
+            f"of at least one element, which DDD cannot state",
+            f"    note: main.c:{line('uint8_t none[0];')}: 'Zero_s.none' is declared here",
+            f"main.c:{line('struct Anonymous_s Member_Anonymous;')}: "
+            f"error[elf-type-unsupported]: 'Member_Anonymous' cannot be described: "
+            f"'Anonymous_s.<anonymous>' is an anonymous member, which DDD cannot state",
+        ]
+        if "clang" in FIXTURE_ROWS[row]["compiler"]:
+            expected.append(
+                f"    note: main.c:{line('struct Anonymous_s {') + 2}: "
+                f"'Anonymous_s.<anonymous>' is declared here"
+            )
+        assert (code, out, err.splitlines()) == (EXIT_FINDINGS, "", [*expected, "3 errors"])
 
     @pytest.mark.parametrize("row", sorted(FIXTURE_ROWS))
     def test_long_double_is_a_float64_only_where_the_target_makes_it_eight_bytes(

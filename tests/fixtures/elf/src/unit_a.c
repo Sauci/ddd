@@ -11,3 +11,7 @@ Shared_t Shared_A;
 struct Clash_s {
     uint8_t a;
 } Clash_A;
+
+/* Appended: a tentative definition of one name in both units, which the common attribute - or
+   -fcommon - makes one variable at one address, described by the DWARF of each. */
+__attribute__((common)) uint32_t Common_Counter;

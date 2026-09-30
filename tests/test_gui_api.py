@@ -15,12 +15,14 @@ import pytest
 
 from conftest import (
     EXAMPLES,
+    Awaited,
     build_record,
     component,
     declare,
     directory_link,
     project,
     scalar_type,
+    stopped,
     struct_type,
     types,
     value_member,
@@ -1307,6 +1309,28 @@ class TestUndoing:
         reply = api.handle("DELETE", "/api/undo", {}, None)
         assert (reply.status, reply.body["error"]) == (405, "method-not-allowed")
         assert reply.body["message"] == "/api/undo takes GET or POST"
+
+
+class TestAnsweredOnceAnalysed:
+    """Behind the analyser, which analyses on a thread of its own: opening a project, an edit and
+    an undo are each answered once the analysis it asked for is in, as they were before the
+    analyser. Task 6 answers them at once."""
+
+    def test_opening_an_edit_and_its_undo_answer_what_their_analyses_made(self, root: Path) -> None:
+        session = Awaited(root)
+        session.start()
+        try:
+            api = Api(session, wait_seconds=0.05)
+            opened = post(api, "/api/open", {"path": (root / "p.ddd.json").as_posix()})
+            assert (opened.status, opened.body["project"]["name"]) == (200, "P")
+            edited = post(api, "/api/edit", unit_edit(api, root, "Hz"))
+            assert (edited.status, edited.body["revision"]) == (200, 2)
+            findings = get(api, "/api/state").body["findings"]
+            assert "definition-mismatch" in {finding["check"] for finding in findings}
+            undone = post(api, "/api/undo", {"at": 1})
+            assert (undone.status, undone.body) == (200, {"revision": 3})
+        finally:
+            stopped(session)
 
 
 class TestVariable:

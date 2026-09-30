@@ -17,14 +17,14 @@ from urllib.parse import quote
 import pytest
 
 import ddd
-from conftest import EXAMPLES, component, declare, project, write_tree
+from conftest import EXAMPLES, Awaited, component, declare, project, write_tree
 from ddd.cli import EXIT_OK, EXIT_USAGE
 from ddd.editing import fingerprint
 from ddd.gui import api as api_module
 from ddd.gui import server as module
 from ddd.gui.api import Api, Reply
 from ddd.gui.server import MAX_BODY, GuiServer, is_loopback, run, static_directory
-from ddd.gui.session import Session
+from ddd.gui.session import Revision, Session
 
 FOREIGN_COOKIES = ('prefs={"lang":"en"}', "arr[0]=1", "user@site=1", "lonely")
 """Cookies other apps on 127.0.0.1 leave in a browser, which sends them to every port."""
@@ -1012,6 +1012,22 @@ class TestRunning:
         monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
         assert run(project_file, [], 0, open_browser=False, static=pages) == EXIT_OK
         assert running() == before
+
+    def test_it_serves_once_the_projects_first_analysis_is_in(
+        self, project_file, pages, monkeypatch, capsys
+    ) -> None:
+        """The first analysis runs on the analyser's thread, and the address is printed and
+        served once it is in, as it was before the analyser. Task 6 serves at once."""
+        monkeypatch.setattr(module, "Session", Awaited)
+        served: list[Revision | None] = []
+
+        def serve(self, poll_interval=0.5):
+            served.append(self.api.session.revision)
+
+        monkeypatch.setattr(GuiServer, "serve_forever", serve)
+        assert run(project_file, [], 0, open_browser=False, static=pages) == EXIT_OK
+        (revision,) = served
+        assert revision is not None and revision.project == project_file.resolve()
 
 
 def test_the_windows_server_does_not_share_a_port() -> None:

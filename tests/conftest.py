@@ -6,7 +6,7 @@ import io
 import json
 import os
 import threading
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -317,6 +317,25 @@ class Gated(Session):
 def begun(session: Gated) -> None:
     """Wait until one more analysis has begun."""
     assert session.begun.acquire(timeout=10), "no analysis began"
+
+
+class Awaited(Session):
+    """A session each of whose analyses waits until something waits for the session to settle:
+    an answer made without waiting for the analysis it asked for finds that analysis not in yet,
+    however the two threads happen to run."""
+
+    def __init__(self, root: Path, build_directories: Sequence[Path] = ()) -> None:
+        # Polling an hour apart, as a Gated session does.
+        super().__init__(root, build_directories, poll_interval=3600)
+        self.awaited = threading.Semaphore(0)
+
+    def settled(self, timeout: float | None) -> Revision | None:
+        self.awaited.release()
+        return super().settled(timeout)
+
+    def _analysed(self, project: Path) -> Revision:
+        assert self.awaited.acquire(timeout=10), "nothing waited for this analysis"
+        return super()._analysed(project)
 
 
 def stopped(session: Session) -> None:

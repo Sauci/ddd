@@ -2622,13 +2622,13 @@ export const PROJECT_SOURCE_FILES: readonly SourceFile[] = [
 
 /** A file the last analysis did not read (constructed: every file `examples/vocabulary` includes
  * loads cleanly) - `PROJECT_FILES`' own five entries, pump.ddd.json's own file missing from
- * those the revision read. `FileRow.file`'s doc (lib/files.ts) names the causes: the root's own
- * schema failing before its includes are read, a pattern matching a file created since, or an
- * entry the description gained since the revision the page holds. This is the last one's shape -
- * one literal entry with no `SourceFile` to join, as the tab's own Add leaves until the revision
- * after it arrives - without constructing the scenario whole, and kept apart from an entry naming
- * nothing: pump.ddd.json is still named by `includes`, `PROJECT_FILES` untouched - only the file
- * itself is missing here. */
+ * those the revision read. `FileRow.file`'s doc (lib/files.ts) gives ways that happens, among
+ * them an entry the description gained since the revision the page holds. This is that one's
+ * shape - one literal entry with no `SourceFile` to join, as the tab's own Add can leave where the
+ * page asks for the entries before a revision made after the edit reaches it
+ * (`IncludedEntryReply.files` says where that was measured) - without constructing the scenario
+ * whole, and kept apart from an entry naming nothing: pump.ddd.json is still named by `includes`,
+ * `PROJECT_FILES` untouched - only the file itself is missing here. */
 export const FILES_SOURCE_MISSING: readonly SourceFile[] = PROJECT_SOURCE_FILES.filter(
   (file) => file.path !== VOCABULARY_PUMP,
 );

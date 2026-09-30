@@ -1181,21 +1181,23 @@ class IncludedEntryReply(_Frozen):
     the description never among them; none, for a path naming no file and for a pattern matching
     none.
 
-    The page joins them to ``State.files`` on the path, and not every one is there. A schema
-    error in the root's own description stops its read before its includes, so that no file they
-    bring is among ``State.files``; a pattern can match a file created since the revision, which
-    the revision never read; and the entries are read off the description when asked, so that one
-    it gained since the revision the page holds - saved outside the page, or written by the Files
-    tab's own New file or Add - brings a file that revision never read, until the page holds the
-    next.
+    The page joins them to ``State.files`` on the path, and not every one is there. Among the
+    ways: a schema error in the root's own description stops its read before its includes, so
+    that no file they bring is among ``State.files``, and a plugin's model raising while the
+    project is read leaves the root alone there too, measured; a pattern can match a file created
+    since the revision, which the revision never read; and the entries are read off the
+    description when asked, so that an entry it gained since the revision the page holds - saved
+    outside the page, or written by the Files tab's own New file or Add - can bring a file that
+    revision never read, until the page holds a revision made after the change. Not every such
+    entry does: one naming a file a sub-project includes already brings a file that was read.
 
-    The tab's own edit leaves such a row where the page asks for the entries again before the
-    revision the edit made reaches it: ``POST /api/edit`` answers once that revision is made, the
-    page asks on that answer, and the revision comes through ``GET /api/state``, whose reply is
-    built finding by finding. Measured, driving the built page on a running ``ddd gui``: never,
-    in eighteen creates and eighteen adds, on a copy of ``examples/vocabulary``; every time, for
-    0.86 to 1.42 seconds, in eight creates and eight adds on a project of 300 components and
-    18000 findings."""
+    The tab's own edit leaves such a row where the page asks for the entries again before a
+    revision made after the edit reaches it: ``POST /api/edit`` answers once the edit's own
+    revision is made, the page asks on that answer, and revisions come through
+    ``GET /api/state``, whose reply is built finding by finding. Measured, driving the built page
+    on a running ``ddd gui``: never, in eighteen creates and eighteen adds, on a copy of
+    ``examples/vocabulary``; every time, for 0.86 to 1.42 seconds, in eight creates and eight adds
+    on a project of 300 components and 18000 findings."""
 
     findings: int
     """How many of the revision's findings, of every severity, are filed on the project
@@ -1209,7 +1211,7 @@ class FilesReply(_Frozen):
     """What ``GET /api/files`` answers: the root's includes, in order, as the loader reads
     them. Each file's kind, load state and findings are ``State.files``' - the page joins on
     the path rather than this repeating them, where the revision read the file at all
-    (:attr:`IncludedEntryReply.files` says when it did not).
+    (:attr:`IncludedEntryReply.files` gives ways it may not have).
 
     The entries are read off the description when asked, and their counts off the revision: a
     save landing between the analysis and the request can put one poll's count on the wrong row,

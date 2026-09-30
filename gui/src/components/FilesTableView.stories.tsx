@@ -57,7 +57,7 @@ export const AnEntryNamingNothing = () => <Files reply={FILES_WITH_MISSING} />;
  * last analysis read (constructed: examples/vocabulary loads cleanly) - blank Kind, "not read by
  * the last analysis" under State: kept apart from AnEntryNamingNothing's own "names no file"
  * above, since this entry does name a file - the revision the page holds has not read it
- * (`FileRow.file`'s doc names the causes, fixtures.ts the one this shape stands for). */
+ * (`FileRow.file`'s doc gives ways that happens, fixtures.ts the one this shape stands for). */
 export const AFileTheLastAnalysisDidNotRead = () => <Files files={FILES_SOURCE_MISSING} />;
 
 /** subsystem.ddd.json, a sub-project (constructed: the shipped example includes no other

@@ -1,0 +1,3242 @@
+{
+  "hashes": {
+    "tests/fixtures/elf/src/main.c": "450c2ea42c153a3b5aea5eb18ae0a908be00fa95120593eb1c49ba61b26e6544",
+    "tests/fixtures/elf/src/nodebug.c": "4d9b7026ea22d7bcf5558ec25e9cbe531201e7702b06db9d6a813f2c27515ae1",
+    "tests/fixtures/elf/src/shared.h": "9cdfa71b5de8dd20c26451a0102a1de36c6f0f07d9c71941e9cc6cf6f761f214",
+    "tests/fixtures/elf/src/unit_a.c": "351fa8d9126b52c0de1c4f72e5532ea947df0c62974fba594bb7c49e45fe00c1",
+    "tests/fixtures/elf/src/unit_b.c": "ec38dd2e9fc4c4fa8d81ada8f4884014f99938f47c50e7555fbe41fc28a0962c",
+    "docker/elf-fixtures.Dockerfile": "84b3660bf2de19f5044542b62912173797e7ef15c3b8bccc575ee92bfb39d0a5",
+    "docker/build_elf_fixtures.py": "98153dba87c873c3998cace4f65d78ca72b4658427ab4f18932b87d635f22c9e"
+  },
+  "rows": {
+    "x86_64": {
+      "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "flags": [
+        "-fPIE",
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-static-pie"
+      ],
+      "cases": [
+        "FIXTURE_TLS",
+        "FIXTURE_FOLDED"
+      ],
+      "traits": {
+        "byte_order": "little",
+        "char_unsigned": false,
+        "sizeof_long": 8,
+        "sizeof_long_double": 16,
+        "pointer_size": 8,
+        "sizeof_enum": 4,
+        "uint64_alignment": 8,
+        "alignment_attribute": true
+      },
+      "variables": [
+        {
+          "name": "Cal_Declared_First",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Gain",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Cal_Tunable",
+          "section": ".rodata",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Clash_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 1
+        },
+        {
+          "name": "Clash_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Enum_Anonymous",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_Signed",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_State",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Layout_Aligned",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Layout_Gapped",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Layout_Padded",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Meas_Array",
+          "section": ".data",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_Bss",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Meas_Fill",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Meas_Matrix",
+          "section": ".data",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_U16",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Meas_Volatile",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Nodebug_Counter",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Probe_Align",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Probe_Enum",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Section_Calib",
+          "section": ".calib",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Shared_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Shared_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Static_Used",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Struct_Anonymous",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_Config",
+          "section": ".rodata",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Struct_Configs",
+          "section": ".rodata",
+          "contents": true,
+          "size": 32
+        },
+        {
+          "name": "Struct_Inlet",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Struct_Inlets",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Struct_Qualified",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_With_Pointer",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Tls_Counter",
+          "section": ".tbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Type_Bool",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Char",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Complex",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Type_F32",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F32_Tenth",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Long",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Long_Double",
+          "section": ".data",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Type_Pointer",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Type_S64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_U64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Union",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "_DYNAMIC",
+          "section": ".dynamic",
+          "contents": true,
+          "size": 0
+        }
+      ]
+    },
+    "i686": {
+      "compiler": "i686-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-4",
+        "-static",
+        "-no-pie"
+      ],
+      "cases": [
+        "FIXTURE_TLS",
+        "FIXTURE_FOLDED"
+      ],
+      "traits": {
+        "byte_order": "little",
+        "char_unsigned": false,
+        "sizeof_long": 4,
+        "sizeof_long_double": 12,
+        "pointer_size": 4,
+        "sizeof_enum": 4,
+        "uint64_alignment": 4,
+        "alignment_attribute": true
+      },
+      "variables": [
+        {
+          "name": "Cal_Declared_First",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Gain",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Cal_Tunable",
+          "section": ".rodata",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Clash_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 1
+        },
+        {
+          "name": "Clash_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Enum_Anonymous",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_Signed",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_State",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Layout_Aligned",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Layout_Gapped",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Layout_Padded",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Meas_Array",
+          "section": ".data",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_Bss",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Meas_Fill",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Meas_Matrix",
+          "section": ".data",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_U16",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Meas_Volatile",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Nodebug_Counter",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Probe_Align",
+          "section": ".bss",
+          "contents": false,
+          "size": 12
+        },
+        {
+          "name": "Probe_Enum",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Section_Calib",
+          "section": ".calib",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Shared_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Shared_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Static_Used",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Struct_Anonymous",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_Config",
+          "section": ".rodata",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Struct_Configs",
+          "section": ".rodata",
+          "contents": true,
+          "size": 32
+        },
+        {
+          "name": "Struct_Inlet",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Struct_Inlets",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Struct_Qualified",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_With_Pointer",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Tls_Counter",
+          "section": ".tbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Type_Bool",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Char",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Complex",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Type_F32",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F32_Tenth",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Long",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_Long_Double",
+          "section": ".data",
+          "contents": true,
+          "size": 12
+        },
+        {
+          "name": "Type_Pointer",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Type_S64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_U64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Union",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "_GLOBAL_OFFSET_TABLE_",
+          "section": ".got.plt",
+          "contents": true,
+          "size": 0
+        }
+      ]
+    },
+    "armv7m": {
+      "compiler": "arm-none-eabi-gcc (15:14.2.rel1-1) 14.2.1 20241119",
+      "flags": [
+        "-mcpu=cortex-m4",
+        "-mthumb",
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-4"
+      ],
+      "cases": [
+        "FIXTURE_TLS",
+        "FIXTURE_FOLDED"
+      ],
+      "traits": {
+        "byte_order": "little",
+        "char_unsigned": true,
+        "sizeof_long": 4,
+        "sizeof_long_double": 8,
+        "pointer_size": 4,
+        "sizeof_enum": 1,
+        "uint64_alignment": 8,
+        "alignment_attribute": true
+      },
+      "variables": [
+        {
+          "name": "$d",
+          "section": ".tbss",
+          "contents": false,
+          "size": 0
+        },
+        {
+          "name": "Cal_Declared_First",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Gain",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Cal_Tunable",
+          "section": ".rodata",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Clash_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 1
+        },
+        {
+          "name": "Clash_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Enum_Anonymous",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Enum_Signed",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Enum_State",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Enum_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Layout_Aligned",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Layout_Gapped",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Layout_Padded",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Meas_Array",
+          "section": ".data",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_Bss",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Meas_Fill",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Meas_Matrix",
+          "section": ".data",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_U16",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Meas_Volatile",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Nodebug_Counter",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Probe_Align",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Probe_Enum",
+          "section": ".bss",
+          "contents": false,
+          "size": 1
+        },
+        {
+          "name": "Section_Calib",
+          "section": ".calib",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Shared_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Shared_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Static_Used",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Struct_Anonymous",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_Config",
+          "section": ".rodata",
+          "contents": true,
+          "size": 12
+        },
+        {
+          "name": "Struct_Configs",
+          "section": ".rodata",
+          "contents": true,
+          "size": 24
+        },
+        {
+          "name": "Struct_Inlet",
+          "section": ".bss",
+          "contents": false,
+          "size": 12
+        },
+        {
+          "name": "Struct_Inlets",
+          "section": ".bss",
+          "contents": false,
+          "size": 24
+        },
+        {
+          "name": "Struct_Qualified",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_With_Pointer",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Tls_Counter",
+          "section": ".tbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Type_Bool",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Char",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Complex",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Type_F32",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F32_Tenth",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Long",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_Long_Double",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Pointer",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Type_S64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_U64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Union",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "_TLS_MODULE_BASE_",
+          "section": ".tbss",
+          "contents": false,
+          "size": 0
+        }
+      ]
+    },
+    "armv7m-dwarf2": {
+      "compiler": "arm-none-eabi-gcc (15:14.2.rel1-1) 14.2.1 20241119",
+      "flags": [
+        "-mcpu=cortex-m4",
+        "-mthumb",
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-2",
+        "-gstrict-dwarf"
+      ],
+      "cases": [
+        "FIXTURE_TLS",
+        "FIXTURE_FOLDED"
+      ],
+      "traits": {
+        "byte_order": "little",
+        "char_unsigned": true,
+        "sizeof_long": 4,
+        "sizeof_long_double": 8,
+        "pointer_size": 4,
+        "sizeof_enum": 1,
+        "uint64_alignment": 8,
+        "alignment_attribute": false
+      },
+      "variables": [
+        {
+          "name": "$d",
+          "section": ".tbss",
+          "contents": false,
+          "size": 0
+        },
+        {
+          "name": "Cal_Declared_First",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Gain",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Cal_Tunable",
+          "section": ".rodata",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Clash_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 1
+        },
+        {
+          "name": "Clash_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Enum_Anonymous",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Enum_Signed",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Enum_State",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Enum_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Layout_Aligned",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Layout_Gapped",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Layout_Padded",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Meas_Array",
+          "section": ".data",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_Bss",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Meas_Fill",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Meas_Matrix",
+          "section": ".data",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_U16",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Meas_Volatile",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Nodebug_Counter",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Probe_Align",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Probe_Enum",
+          "section": ".bss",
+          "contents": false,
+          "size": 1
+        },
+        {
+          "name": "Section_Calib",
+          "section": ".calib",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Shared_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Shared_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Static_Used",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Struct_Anonymous",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_Config",
+          "section": ".rodata",
+          "contents": true,
+          "size": 12
+        },
+        {
+          "name": "Struct_Configs",
+          "section": ".rodata",
+          "contents": true,
+          "size": 24
+        },
+        {
+          "name": "Struct_Inlet",
+          "section": ".bss",
+          "contents": false,
+          "size": 12
+        },
+        {
+          "name": "Struct_Inlets",
+          "section": ".bss",
+          "contents": false,
+          "size": 24
+        },
+        {
+          "name": "Struct_Qualified",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_With_Pointer",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Tls_Counter",
+          "section": ".tbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Type_Bool",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Char",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Complex",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Type_F32",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F32_Tenth",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Long",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_Long_Double",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Pointer",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Type_S64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_U64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Union",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "_TLS_MODULE_BASE_",
+          "section": ".tbss",
+          "contents": false,
+          "size": 0
+        }
+      ]
+    },
+    "armeb": {
+      "compiler": "arm-none-eabi-gcc (15:14.2.rel1-1) 14.2.1 20241119",
+      "flags": [
+        "-mcpu=cortex-r5",
+        "-marm",
+        "-mbig-endian",
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-4"
+      ],
+      "cases": [
+        "FIXTURE_TLS",
+        "FIXTURE_FOLDED"
+      ],
+      "traits": {
+        "byte_order": "big",
+        "char_unsigned": true,
+        "sizeof_long": 4,
+        "sizeof_long_double": 8,
+        "pointer_size": 4,
+        "sizeof_enum": 1,
+        "uint64_alignment": 8,
+        "alignment_attribute": true
+      },
+      "variables": [
+        {
+          "name": "$d",
+          "section": ".tbss",
+          "contents": false,
+          "size": 0
+        },
+        {
+          "name": "Cal_Declared_First",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Gain",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Cal_Tunable",
+          "section": ".rodata",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Clash_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 1
+        },
+        {
+          "name": "Clash_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Enum_Anonymous",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Enum_Signed",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Enum_State",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Enum_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Layout_Aligned",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Layout_Gapped",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Layout_Padded",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Meas_Array",
+          "section": ".data",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_Bss",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Meas_Fill",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Meas_Matrix",
+          "section": ".data",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_U16",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Meas_Volatile",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Nodebug_Counter",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Probe_Align",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Probe_Enum",
+          "section": ".bss",
+          "contents": false,
+          "size": 1
+        },
+        {
+          "name": "Section_Calib",
+          "section": ".calib",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Shared_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Shared_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Static_Used",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Struct_Anonymous",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_Config",
+          "section": ".rodata",
+          "contents": true,
+          "size": 12
+        },
+        {
+          "name": "Struct_Configs",
+          "section": ".rodata",
+          "contents": true,
+          "size": 24
+        },
+        {
+          "name": "Struct_Inlet",
+          "section": ".bss",
+          "contents": false,
+          "size": 12
+        },
+        {
+          "name": "Struct_Inlets",
+          "section": ".bss",
+          "contents": false,
+          "size": 24
+        },
+        {
+          "name": "Struct_Qualified",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_With_Pointer",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Tls_Counter",
+          "section": ".tbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Type_Bool",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Char",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Complex",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Type_F32",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F32_Tenth",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Long",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_Long_Double",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Pointer",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Type_S64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_U64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Union",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "_TLS_MODULE_BASE_",
+          "section": ".tbss",
+          "contents": false,
+          "size": 0
+        }
+      ]
+    },
+    "aarch64": {
+      "compiler": "aarch64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-static",
+        "-no-pie"
+      ],
+      "cases": [
+        "FIXTURE_TLS",
+        "FIXTURE_FOLDED"
+      ],
+      "traits": {
+        "byte_order": "little",
+        "char_unsigned": true,
+        "sizeof_long": 8,
+        "sizeof_long_double": 16,
+        "pointer_size": 8,
+        "sizeof_enum": 4,
+        "uint64_alignment": 8,
+        "alignment_attribute": true
+      },
+      "variables": [
+        {
+          "name": "$d",
+          "section": ".tbss",
+          "contents": false,
+          "size": 0
+        },
+        {
+          "name": "Cal_Declared_First",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Gain",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Cal_Tunable",
+          "section": ".rodata",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Clash_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 1
+        },
+        {
+          "name": "Clash_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Enum_Anonymous",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_Signed",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_State",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Layout_Aligned",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Layout_Gapped",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Layout_Padded",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Meas_Array",
+          "section": ".data",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_Bss",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Meas_Fill",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Meas_Matrix",
+          "section": ".data",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_U16",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Meas_Volatile",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Nodebug_Counter",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Probe_Align",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Probe_Enum",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Section_Calib",
+          "section": ".calib",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Shared_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Shared_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Static_Used",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Struct_Anonymous",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_Config",
+          "section": ".rodata",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Struct_Configs",
+          "section": ".rodata",
+          "contents": true,
+          "size": 32
+        },
+        {
+          "name": "Struct_Inlet",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Struct_Inlets",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Struct_Qualified",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_With_Pointer",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Tls_Counter",
+          "section": ".tbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Type_Bool",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Char",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Complex",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Type_F32",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F32_Tenth",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Long",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Long_Double",
+          "section": ".data",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Type_Pointer",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Type_S64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_U64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Union",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "_TLS_MODULE_BASE_",
+          "section": ".tbss",
+          "contents": false,
+          "size": 0
+        }
+      ]
+    },
+    "powerpc": {
+      "compiler": "powerpc-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-3",
+        "-static",
+        "-no-pie"
+      ],
+      "cases": [
+        "FIXTURE_TLS",
+        "FIXTURE_FOLDED"
+      ],
+      "traits": {
+        "byte_order": "big",
+        "char_unsigned": true,
+        "sizeof_long": 4,
+        "sizeof_long_double": 16,
+        "pointer_size": 4,
+        "sizeof_enum": 4,
+        "uint64_alignment": 8,
+        "alignment_attribute": true
+      },
+      "variables": [
+        {
+          "name": "Cal_Declared_First",
+          "section": ".sdata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Gain",
+          "section": ".sdata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Cal_Tunable",
+          "section": ".sdata",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Clash_A",
+          "section": ".sbss",
+          "contents": false,
+          "size": 1
+        },
+        {
+          "name": "Clash_B",
+          "section": ".sbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Enum_Anonymous",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_Signed",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_State",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_Table",
+          "section": ".sdata",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Layout_Aligned",
+          "section": ".sbss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Layout_Gapped",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Layout_Padded",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Meas_Array",
+          "section": ".sdata",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_Bss",
+          "section": ".sbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Meas_Fill",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Meas_Matrix",
+          "section": ".sdata",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_U16",
+          "section": ".sdata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Meas_Volatile",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Nodebug_Counter",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Probe_Align",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Probe_Enum",
+          "section": ".sbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Section_Calib",
+          "section": ".calib",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Shared_A",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Shared_B",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Static_Used",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Struct_Anonymous",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_Config",
+          "section": ".rodata",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Struct_Configs",
+          "section": ".rodata",
+          "contents": true,
+          "size": 32
+        },
+        {
+          "name": "Struct_Inlet",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Struct_Inlets",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Struct_Qualified",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_With_Pointer",
+          "section": ".sbss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Tls_Counter",
+          "section": ".tbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Type_Bool",
+          "section": ".sdata",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Char",
+          "section": ".sdata",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Complex",
+          "section": ".sbss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Type_F32",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F32_Tenth",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F64",
+          "section": ".sdata",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Long",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_Long_Double",
+          "section": ".data",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Type_Pointer",
+          "section": ".sbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Type_S64",
+          "section": ".sdata",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_U64",
+          "section": ".sdata",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Union",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "_SDA_BASE_",
+          "section": ".sdata",
+          "contents": true,
+          "size": 0
+        }
+      ]
+    },
+    "s390x": {
+      "compiler": "s390x-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-gz=zlib",
+        "-static",
+        "-no-pie"
+      ],
+      "cases": [
+        "FIXTURE_TLS",
+        "FIXTURE_FOLDED"
+      ],
+      "traits": {
+        "byte_order": "big",
+        "char_unsigned": true,
+        "sizeof_long": 8,
+        "sizeof_long_double": 16,
+        "pointer_size": 8,
+        "sizeof_enum": 4,
+        "uint64_alignment": 8,
+        "alignment_attribute": true
+      },
+      "variables": [
+        {
+          "name": "Cal_Declared_First",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Gain",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Cal_Tunable",
+          "section": ".rodata",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Clash_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 1
+        },
+        {
+          "name": "Clash_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Enum_Anonymous",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_Signed",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_State",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Layout_Aligned",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Layout_Gapped",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Layout_Padded",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Meas_Array",
+          "section": ".data",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_Bss",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Meas_Fill",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Meas_Matrix",
+          "section": ".data",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_U16",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Meas_Volatile",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Nodebug_Counter",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Probe_Align",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Probe_Enum",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Section_Calib",
+          "section": ".calib",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Shared_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Shared_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Static_Used",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Struct_Anonymous",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_Config",
+          "section": ".rodata",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Struct_Configs",
+          "section": ".rodata",
+          "contents": true,
+          "size": 32
+        },
+        {
+          "name": "Struct_Inlet",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Struct_Inlets",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Struct_Qualified",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_With_Pointer",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Tls_Counter",
+          "section": ".tbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Type_Bool",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Char",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Complex",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Type_F32",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F32_Tenth",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Long",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Long_Double",
+          "section": ".data",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Type_Pointer",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Type_S64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_U64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Union",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        }
+      ]
+    },
+    "riscv32": {
+      "compiler": "Debian clang version 19.1.7 (3+b1)",
+      "flags": [
+        "--target=riscv32-unknown-elf",
+        "-march=rv32imac",
+        "-mabi=ilp32",
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-fuse-ld=lld"
+      ],
+      "cases": [
+        "FIXTURE_TLS"
+      ],
+      "traits": {
+        "byte_order": "little",
+        "char_unsigned": true,
+        "sizeof_long": 4,
+        "sizeof_long_double": 16,
+        "pointer_size": 4,
+        "sizeof_enum": 4,
+        "uint64_alignment": 8,
+        "alignment_attribute": true
+      },
+      "variables": [
+        {
+          "name": "Cal_Declared_First",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Gain",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Cal_Tunable",
+          "section": ".rodata",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Clash_A",
+          "section": ".sbss",
+          "contents": false,
+          "size": 1
+        },
+        {
+          "name": "Clash_B",
+          "section": ".sbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Enum_Anonymous",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_Signed",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_State",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Layout_Aligned",
+          "section": ".sbss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Layout_Gapped",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Layout_Padded",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Meas_Array",
+          "section": ".sdata",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_Bss",
+          "section": ".sbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Meas_Fill",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Meas_Matrix",
+          "section": ".sdata",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_U16",
+          "section": ".sdata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Meas_Volatile",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Nodebug_Counter",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Probe_Align",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Probe_Enum",
+          "section": ".sbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Section_Calib",
+          "section": ".calib",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Shared_A",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Shared_B",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Static_Used",
+          "section": ".sdata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Struct_Anonymous",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_Config",
+          "section": ".rodata",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Struct_Configs",
+          "section": ".rodata",
+          "contents": true,
+          "size": 32
+        },
+        {
+          "name": "Struct_Inlet",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Struct_Inlets",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Struct_Qualified",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_With_Pointer",
+          "section": ".sbss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Tls_Counter",
+          "section": ".tbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Twin",
+          "section": ".sdata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Twin",
+          "section": ".sdata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Type_Bool",
+          "section": ".sdata",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Char",
+          "section": ".sdata",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Complex",
+          "section": ".sbss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Type_F32",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F32_Tenth",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F64",
+          "section": ".sdata",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Long",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_Long_Double",
+          "section": ".data",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Type_Pointer",
+          "section": ".sbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Type_S64",
+          "section": ".sdata",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_U64",
+          "section": ".sdata",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Union",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        }
+      ]
+    },
+    "aarch64_be": {
+      "compiler": "Debian clang version 19.1.7 (3+b1)",
+      "flags": [
+        "--target=aarch64_be-none-elf",
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-4",
+        "-fuse-ld=lld"
+      ],
+      "cases": [
+        "FIXTURE_TLS"
+      ],
+      "traits": {
+        "byte_order": "big",
+        "char_unsigned": true,
+        "sizeof_long": 8,
+        "sizeof_long_double": 16,
+        "pointer_size": 8,
+        "sizeof_enum": 4,
+        "uint64_alignment": 8,
+        "alignment_attribute": true
+      },
+      "variables": [
+        {
+          "name": "Cal_Declared_First",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Gain",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Cal_Tunable",
+          "section": ".rodata",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Clash_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 1
+        },
+        {
+          "name": "Clash_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Enum_Anonymous",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_Signed",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_State",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Enum_Table",
+          "section": ".rodata",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Layout_Aligned",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Layout_Gapped",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Layout_Padded",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Meas_Array",
+          "section": ".data",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_Bss",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Meas_Fill",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Meas_Matrix",
+          "section": ".data",
+          "contents": true,
+          "size": 6
+        },
+        {
+          "name": "Meas_U16",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Meas_Volatile",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Nodebug_Counter",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Probe_Align",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Probe_Enum",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Section_Calib",
+          "section": ".calib",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Shared_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Shared_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Static_Used",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Struct_Anonymous",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_Config",
+          "section": ".rodata",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Struct_Configs",
+          "section": ".rodata",
+          "contents": true,
+          "size": 32
+        },
+        {
+          "name": "Struct_Inlet",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Struct_Inlets",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Struct_Qualified",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Struct_With_Pointer",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Tls_Counter",
+          "section": ".tbss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Twin",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Type_Bool",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Char",
+          "section": ".data",
+          "contents": true,
+          "size": 1
+        },
+        {
+          "name": "Type_Complex",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Type_F32",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F32_Tenth",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Type_F64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Long",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Long_Double",
+          "section": ".data",
+          "contents": true,
+          "size": 16
+        },
+        {
+          "name": "Type_Pointer",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
+          "name": "Type_S64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_U64",
+          "section": ".data",
+          "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Type_Union",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        }
+      ]
+    }
+  }
+}

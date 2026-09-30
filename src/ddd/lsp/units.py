@@ -181,13 +181,16 @@ def unit_project(project: Path, unread: Sequence[Path], cache: dict[Path, Docume
     The units files are read out of the description's own ``includes``, each entry expanded by
     the loader's rule, so that the first of them is the first a run of ``ddd check`` reads. A
     units file is a document with ``units`` at its top, which is how the loader tells one; a file
-    that does not parse is none, since what it is cannot be told.
+    that does not parse is none, since what it is cannot be told. A file whose text cannot spell
+    that key is not parsed at all (:func:`_may_list_units`).
     """
     path = resolve_path(project)
     listed = read(path, cache).value_at("project.includes")
     found: list[Path] = []
     for entry in listed if isinstance(listed, list) else ():
         for file in included_files(path, entry):
+            if not _may_list_units(file, cache):
+                continue
             document = read(file, cache).data
             if file not in found and isinstance(document, dict) and "units" in document:
                 found.append(file)
@@ -196,6 +199,21 @@ def unit_project(project: Path, unread: Sequence[Path], cache: dict[Path, Docume
         tuple(found),
         tuple(sorted({resolve_path(file) for file in unread}, key=Path.as_posix)),
     )
+
+
+def _may_list_units(file: Path, cache: dict[Path, Document]) -> bool:
+    """Whether ``file`` can be a units file at all, asked before parsing it: a document with
+    ``units`` at its top spells that key in its text, as ``"units"`` or with an escape somewhere
+    in it. A file already parsed is left to the parse. ``GET /api/units`` spent 1.4 s of its
+    1.5 s (profiled) parsing every file of a 1,200-component project to find its one units file;
+    reading them for two strings is what is left of that."""
+    if file in cache:
+        return True
+    try:
+        text = file.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeDecodeError):
+        return False
+    return '"units"' in text or "\\u" in text
 
 
 def rename_unit(

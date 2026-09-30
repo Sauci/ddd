@@ -185,6 +185,58 @@ class TestTheProject:
             b.resolve(),
         )
 
+    def test_a_file_that_cannot_list_units_is_never_parsed(self, tmp_path: Path) -> None:
+        """Parsing every included file to find the units files among them was the whole of the
+        Units tab's cost on a large project; a file whose text cannot spell the key is skipped."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "units.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "units.ddd.json": {"units": ["rpm"]},
+            },
+        )
+        cache: dict[Path, Document] = {}
+        found = unit_project(tmp_path / "p.ddd.json", (), cache)
+        assert found.units_files == ((tmp_path / "units.ddd.json").resolve(),)
+        assert (tmp_path / "a.ddd.json").resolve() not in cache
+
+    def test_a_units_key_spelled_with_an_escape_is_still_a_units_file(self, tmp_path: Path) -> None:
+        """Json may spell any letter of a key as an escape, which the loader reads as the key:
+        the skip looks for one, and leaves such a file to the parse. Found in the includes'
+        order among plain ones, so that skipping has not reordered them."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "late.ddd.json", "escaped.ddd.json", "early.ddd.json"),
+                "late.ddd.json": {"units": ["rpm"]},
+                "escaped.ddd.json": '{"\\u0075nits": ["Nm"]}',
+                "early.ddd.json": {"units": ["kPa"]},
+            },
+        )
+        assert unit_project(tmp_path / "p.ddd.json", (), {}).units_files == (
+            (tmp_path / "late.ddd.json").resolve(),
+            (tmp_path / "escaped.ddd.json").resolve(),
+            (tmp_path / "early.ddd.json").resolve(),
+        )
+
+    def test_a_file_that_is_not_utf8_is_no_units_file_though_it_spells_the_key(
+        self, tmp_path: Path
+    ) -> None:
+        """Skipped unread, as the parse would have found it: reading it makes an empty document,
+        which is no units file either."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", "units.ddd.json")})
+        (tmp_path / "units.ddd.json").write_bytes(b'{"units": ["\xb5s"]}')
+        assert unit_project(tmp_path / "p.ddd.json", (), {}).units_files == ()
+
+    def test_a_file_already_read_is_what_its_read_says_it_is(self, tmp_path: Path) -> None:
+        """The request's cache is what every other question of it reads, so a file read already
+        is judged as read, not as its text on disk now says."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", "units.ddd.json"), "units.ddd.json": {}})
+        listed = (tmp_path / "units.ddd.json").resolve()
+        cache = {listed: Document('{"units": ["rpm"]}')}
+        assert unit_project(tmp_path / "p.ddd.json", (), cache).units_files == (listed,)
+
 
 class TestRename:
     def test_every_place_the_unit_is_stated_takes_the_new_spelling_and_nothing_else_changes(

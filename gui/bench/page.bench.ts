@@ -17,22 +17,26 @@
  * Every measure is capped at `CAP_MS`: `capped()` and `elapsedCapped()` race the page against a
  * plain timer, so a measure that has not finished by then is reported `> 120000` and abandoned -
  * never awaited further, and never failing the test - rather than one stuck page holding up the
- * rest of the run. The design doc's own measurement already named the Findings tab as likely to
- * run past that cap by itself (it froze the page for more than two minutes at 36,000
- * findings-heavy declarations), and validating this script found it can go further still there -
- * opening it crashed the renderer outright at 35,000 declarations, not merely freezing it
- * (`isPageCrash`'s own doc). The graph is its own, separate finding: at 100,000 declarations it
- * can block the main thread for well over `CAP_MS` (confirmed as a genuine freeze every time - a
- * page still there, just never answering within the cap, never the crash the Findings tab gave;
- * `openProject`'s own doc), past which `answering`, `first screen` and every other measure's own
- * setup can run - which is why that setup is `capped()` too, not a plain wait (`openProject`'s own
- * doc again). `scrolling` additionally caps opening the Findings tab separately from scrolling it,
- * so the two capped waits together still fit inside one test's own budget (300,000 ms, below).
- * Every measure's own setup beyond opening the project - a component's declarations, one
- * endpoint's own answer - stayed at a few seconds at every size the design doc measured, so it is
- * simply awaited, generously but plainly, and a genuine failure there still fails the test loudly
- * rather than being read as "slow" (Step 3's own purpose: a measure that caps or reads 0 ms on a
- * small project is this script's fault, not the page's).
+ * rest of the run. A renderer crash settles sooner than that and is reported as its own word,
+ * `crashed` (`formatMs`'s own doc), never folded into `> 120000`: the design doc's own measurement
+ * already named the Findings tab as likely to run past the cap by itself (it froze the page for
+ * more than two minutes at 36,000 findings-heavy declarations), and validating this script found
+ * opening it can go further still - crashing the renderer outright at 35,000 declarations,
+ * confirmed by the crash's own error text (`isPageCrash`'s own doc) and settling in fifteen to
+ * twenty seconds there, nowhere near the cap. The graph is a second place this script needed to
+ * treat as no longer answering: every run measured here found `answering`, `first screen` and
+ * every other measure's own setup capped - the plain `> 120000`, not a crash - at 100,000
+ * declarations, and the one project where `answering` itself stayed fast (`100000-many-heavy`,
+ * 5.0 s) still capped on `first screen`'s own further wait for a module node, the same click
+ * otherwise unchanged (`openProject`'s own doc has the full account); the direct culprit was not
+ * separately isolated, but the graph is what stands between those two waits. `scrolling`
+ * additionally caps opening the Findings tab separately from scrolling it, so the two capped waits
+ * together still fit inside one test's own budget (300,000 ms, below). Every measure's own setup
+ * beyond opening the project - a component's declarations, one endpoint's own answer - stayed at a
+ * few seconds at every size the design doc measured, so it is simply awaited, generously but
+ * plainly, and a genuine failure there still fails the test loudly rather than being read as
+ * "slow" (Step 3's own purpose: a measure that caps or reads 0 ms on a small project is this
+ * script's fault, not the page's).
  */
 import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, statSync } from "node:fs";
@@ -97,9 +101,21 @@ const CAP_MS = 120_000;
  * stacking one of each still fits inside a test's own 300,000 ms budget (below). */
 const LONG_TIMEOUT = 180_000;
 
-/** What `capped()` returns for an action that did not settle within `CAP_MS`. */
+/** What `capped()` returns for an action that had not settled by `CAP_MS`. */
 const CAPPED = Symbol("capped");
-type Capped<T> = T | typeof CAPPED;
+/** What `capped()` returns for an action that settled early because the renderer crashed
+ * (`isPageCrash`) - a genuinely different outcome from `CAPPED`, reported as a different word
+ * (`formatMs`'s own doc): the measure finished, just not the way a reader waiting for it would
+ * call finishing. */
+const CRASHED = Symbol("crashed");
+type Capped<T> = T | typeof CAPPED | typeof CRASHED;
+
+/** True for a `capped()` result that is not a real value - `CAPPED` and `CRASHED` are two quite
+ * different ends of a wait (`formatMs`'s own doc), but mean the same thing to a caller only
+ * deciding whether it has anything left to act on. */
+function didNotFinish(value: unknown): value is typeof CAPPED | typeof CRASHED {
+  return value === CAPPED || value === CRASHED;
+}
 
 /** True for an error that means the page's own renderer is gone, rather than a mistake in this
  * file's own selectors (which should still fail the test loudly - Step 3's own purpose). Confirmed
@@ -121,15 +137,16 @@ function isPageCrash(error: unknown): boolean {
  * Runs `action`, capped at `CAP_MS`: if it has not settled by then, `CAPPED` is returned and
  * `action`'s own eventual settlement - success or failure, whenever it comes - is never awaited
  * or thrown, since the next test's fresh page is what matters from here (so a tab that froze in
- * one test does not freeze the next). A renderer crash (`isPageCrash`) is reported the same way,
- * `CAPPED`, but at once rather than waiting out the rest of `CAP_MS`: there is nothing left to
- * wait for once the page itself is gone. A genuine failure of any other kind *before* the cap
- * still rejects normally, surfacing a script bug the way Step 3's trial run is for, rather than
- * reading as a slow page.
+ * one test does not freeze the next). A renderer crash (`isPageCrash`) instead returns `CRASHED`,
+ * at once rather than waiting out the rest of `CAP_MS`: there is nothing left to wait for once the
+ * page itself is gone, and a crash is a different outcome from a timeout, not the same one reached
+ * a different way (`formatMs`'s own doc reports the two as different words for exactly this
+ * reason). A genuine failure of any other kind *before* the cap still rejects normally, surfacing a
+ * script bug the way Step 3's trial run is for, rather than reading as a slow page.
  */
 async function capped<T>(action: () => Promise<T>): Promise<Capped<T>> {
   const settlement: Promise<Capped<T>> = action().catch((error: unknown) => {
-    if (isPageCrash(error)) return CAPPED;
+    if (isPageCrash(error)) return CRASHED;
     throw error;
   });
   settlement.catch(() => {});
@@ -152,11 +169,17 @@ async function elapsedCapped(action: () => Promise<void>): Promise<Capped<number
   return capped(() => action().then(() => Date.now() - start));
 }
 
-/** The report row's own `<ms>` column: `> 120000` for a capped measure, else the plain
- * millisecond figure, rounded - `typing` and `scrolling` read a `DOMHighResTimeStamp`, which is
- * fractional; every other measure is already a whole millisecond. */
+/** The report row's own `<ms>` column: `> 120000` for a measure that had not finished by the cap,
+ * `crashed` for one that finished sooner because the renderer crashed (`capped()`'s own doc says
+ * why these are written as two different words rather than folded into one) - a plan reading
+ * either as "took at least 120000 ms" would be reading a crashed cell's own duration wrong, since
+ * a crash can settle in a small fraction of that. Otherwise the plain millisecond figure, rounded
+ * - `typing` and `scrolling` read a `DOMHighResTimeStamp`, which is fractional; every other
+ * measure is already a whole millisecond. */
 function formatMs(value: Capped<number>): string {
-  return value === CAPPED ? `> ${CAP_MS}` : String(Math.round(value));
+  if (value === CAPPED) return `> ${CAP_MS}`;
+  if (value === CRASHED) return "crashed";
+  return String(Math.round(value));
 }
 
 declare global {
@@ -274,12 +297,16 @@ function record(measure: string, ms: string): void {
  * every other measure's own setup. `tools/bench_gui.py`'s own `open` figures put the *server's*
  * side of this under 4.1 s even at 100,000 declarations, but the *page's* side is not only that
  * answer: clicking the project's button also starts the graph rendering in the background (the
- * default screen a project opens on), and at 100,000 declarations that rendering can block the
- * main thread - and so this very click, and every UI interaction after it - for a long while
- * (confirmed while validating this script: capped at `CAP_MS` here, `Table`'s own click on a
- * fresh page right after still needed the same, `Units`' the same again). So this is `capped()`
- * too, not a plain wait: every caller below checks for `CAPPED` and records its own measure
- * capped in turn rather than trying to act on a page that has not even answered this much yet. */
+ * default screen a project opens on), which at 100,000 declarations was observed to block the
+ * main thread - and so this very click, and every UI interaction after it - well past `CAP_MS`.
+ * Observed, not merely theorised: every measure capped on `100000-many-clean` (all twelve rows,
+ * `Table`'s and `Units`' own click on a fresh page included), and on `100000-many-heavy`,
+ * `answering` itself finished in 5.0 s while `first screen` - the same click, waiting further only
+ * for a module node to appear - capped at the full two minutes; the graph is what stands between
+ * those two waits, though this script never isolated it further (a page profile, not a benchmark
+ * script's own job). So this is `capped()` too, not a plain wait: every caller below checks
+ * whether opening finished (`didNotFinish`) and records its own measure the same way opening's own
+ * did, rather than trying to act on a page that has not even answered this much yet. */
 async function openProject(page: Page): Promise<Capped<void>> {
   return capped(async () => {
     await page.goto(address);
@@ -290,13 +317,14 @@ async function openProject(page: Page): Promise<Capped<void>> {
   });
 }
 
-/** `openProject`, recording `measure` capped and telling the caller not to proceed if opening
- * itself capped - every measure below opens the project this same way first, and none of them
- * has anything left to measure once that alone did not finish. */
+/** `openProject`, recording `measure` capped or crashed - whichever opening itself did - and
+ * telling the caller not to proceed if it did not finish: every measure below opens the project
+ * this same way first, and none of them has anything left to measure once that alone did not
+ * finish. */
 async function openedProject(page: Page, measure: string): Promise<boolean> {
   const opened = await openProject(page);
-  if (opened === CAPPED) {
-    record(measure, formatMs(CAPPED));
+  if (didNotFinish(opened)) {
+    record(measure, formatMs(opened));
     return false;
   }
   return true;
@@ -360,7 +388,27 @@ const UNDO_TIMEOUT = 30_000;
  * own doc says why this waits rather than checking once. Leaves the project as generated for
  * whichever test opens it next (brief: "so the project is as generated for the next run" - needed
  * after both `apply shows` and `findings current`, since each presses Apply on its own fresh page
- * and the second would otherwise find nothing left to change). */
+ * and the second would otherwise find nothing left to change).
+ *
+ * Called unconditionally after `apply shows`'s and `findings current`'s own measured
+ * `elapsedCapped` span, whether that span read a real number, `CAPPED` or `CRASHED` - in every
+ * case observed across all eight figures-before projects, that span was a real number by the time
+ * this ran (nothing in it capped or crashed on any of them), so the two paths below are read off
+ * the design rather than exercised yet:
+ *   - **crashed**: the renderer is gone: every `page.XXX()` call below rejects, caught by the
+ *     `try`/`catch` the same way `capped()` itself catches a crash, and there is nothing this step
+ *     could do with a dead page regardless - `apply shows`/`findings current` already recorded
+ *     `crashed` for their own row by this point, and whatever the edit did server-side stays as it
+ *     is, same as a crash during any other measure leaves the state it was in.
+ *   - **capped** (page alive, merely still busy): the measured action above is abandoned, not
+ *     cancelled (`capped()`'s own doc), so it may still be mid-flight here - reading `undo`'s own
+ *     visibility, which is all the *first* wait below does, does not itself write anything, and an
+ *     abandoned `apply.click()` that only fires later targets a locator Playwright re-resolves at
+ *     click time, not a stale element handle, so it either lands on the same control this step
+ *     also uses or finds nothing there to click. Not proven race-free, only reasoned through: the
+ *     safer alternative - skipping this step whenever the measured span did not settle cleanly -
+ *     risks the exact "left dirty" failure fix round 1 already found once (a missing `undo.click()`
+ *     there, not this one), which seemed the worse default to design around. */
 async function undoLastEditIfAny(page: Page): Promise<void> {
   const undo = page.getByRole("button", { name: /^Undo / });
   const appeared = await expect(undo)
@@ -370,11 +418,15 @@ async function undoLastEditIfAny(page: Page): Promise<void> {
       () => false,
     );
   if (!appeared) return;
-  await undo.click();
-  const confirm = page.getByRole("button", { name: /^Put back \d+ files?$/ });
-  await expect(confirm).toBeVisible({ timeout: LONG_TIMEOUT });
-  await confirm.click();
-  await expect(undo).toBeHidden({ timeout: LONG_TIMEOUT });
+  try {
+    await undo.click();
+    const confirm = page.getByRole("button", { name: /^Put back \d+ files?$/ });
+    await expect(confirm).toBeVisible({ timeout: LONG_TIMEOUT });
+    await confirm.click();
+    await expect(undo).toBeHidden({ timeout: LONG_TIMEOUT });
+  } catch (error) {
+    if (!isPageCrash(error)) throw error;
+  }
 }
 
 test("answering", async ({ page }) => {
@@ -465,8 +517,8 @@ test("typing", async ({ page }) => {
   await installLongTaskObserver(page);
   if (!(await openedProject(page, "typing"))) return;
   const opened = await capped(() => openFirstVariablePicker(page));
-  if (opened === CAPPED) {
-    record("typing", formatMs(CAPPED));
+  if (didNotFinish(opened)) {
+    record("typing", formatMs(opened));
     return;
   }
   const combobox = page.getByRole("combobox", { name: `Unit of ${opened}`, exact: true });
@@ -485,11 +537,11 @@ test("scrolling", async ({ page }) => {
   await installLongTaskObserver(page);
   if (!(await openedProject(page, "scrolling"))) return;
   const opened = await capped(() => openFindingsTab(page));
-  if (opened === CAPPED) {
+  if (didNotFinish(opened)) {
     // Today's own freeze or crash (`isPageCrash`'s own doc): the tab did not finish drawing
-    // within the cap, so there is no table yet to scroll over either - capped again, rather than
-    // scrolling something that was never fully there.
-    record("scrolling", formatMs(CAPPED));
+    // either way, so there is no table yet to scroll over - recorded the same way opening's own
+    // wait was, rather than scrolling something that was never fully there.
+    record("scrolling", formatMs(opened));
     return;
   }
   const table = page.getByRole("grid", { name: "Findings", exact: true });
@@ -512,8 +564,8 @@ test("scrolling", async ({ page }) => {
 test("apply shows", async ({ page }) => {
   if (!(await openedProject(page, "apply shows"))) return;
   const opened = await capped(() => openFirstVariablePicker(page));
-  if (opened === CAPPED) {
-    record("apply shows", formatMs(CAPPED));
+  if (didNotFinish(opened)) {
+    record("apply shows", formatMs(opened));
     return;
   }
   const variable = opened;
@@ -538,8 +590,8 @@ test("apply shows", async ({ page }) => {
 test("findings current", async ({ page }) => {
   if (!(await openedProject(page, "findings current"))) return;
   const opened = await capped(() => openFirstVariablePicker(page));
-  if (opened === CAPPED) {
-    record("findings current", formatMs(CAPPED));
+  if (didNotFinish(opened)) {
+    record("findings current", formatMs(opened));
     return;
   }
   const variable = opened;

@@ -2176,7 +2176,9 @@ each, alone on the machine, 2026-09-30 13:31-14:17 UTC: `npm run bench` (`gui/be
 over the eight `<declarations>-<shape>-<clean|heavy>` projects the brief names for this step -
 10,000, 35,000 and 100,000 declarations in the "many" shape, clean and heavy, and
 35,000-large-heavy and 35,000-mixed-heavy - each project's own fresh `ddd gui` server and a fresh
-browser process per measure. A measure that had not finished after 120 s reads `> 120000`.
+browser process per measure. A measure that had not finished after 120 s reads `> 120000`; one
+that settled sooner because the page's own renderer crashed instead reads `crashed` - a different
+outcome, told apart below the table.
 
 Milliseconds:
 
@@ -2185,21 +2187,39 @@ Milliseconds:
 | 10000-many-clean | 1233 | 1198 | 549 | 839 | 130 | 127 | 242 | 63 | 0 | 0 | 844 | 418 |
 | 10000-many-heavy | 1296 | 1307 | 611 | 840 | 751 | 646 | 730 | 3169 | 0 | 0 | 840 | 2695 |
 | 35000-many-clean | 4019 | 5499 | 2787 | 3907 | 56 | 2646 | 3143 | 2580 | 0 | 0 | 1338 | 1313 |
-| 35000-many-heavy | 4345 | 2809 | 2699 | 4542 | 896 | 249 | 2954 | > 120000 | 0 | > 120000 | 1846 | 9456 |
+| 35000-many-heavy | 4345 | 2809 | 2699 | 4542 | 896 | 249 | 2954 | crashed | 0 | crashed | 1846 | 9456 |
 | 100000-many-clean | > 120000 | > 120000 | > 120000 | > 120000 | > 120000 | > 120000 | > 120000 | > 120000 | > 120000 | > 120000 | > 120000 | > 120000 |
 | 100000-many-heavy | 4661 | > 120000 | 6006 | > 120000 | 9402 | 130 | 1828 | > 120000 | 0 | > 120000 | 4867 | > 120000 |
-| 35000-large-heavy | 2025 | 153 | 7898 | 1341 | 8401 | 88 | 91 | > 120000 | 482 | > 120000 | 3045 | 12496 |
-| 35000-mixed-heavy | 2615 | 1089 | 7720 | 1350 | 3846 | 944 | 365 | > 120000 | 358 | > 120000 | 3096 | 11386 |
+| 35000-large-heavy | 2025 | 153 | 7898 | 1341 | 8401 | 88 | 91 | crashed | 482 | crashed | 3045 | 12496 |
+| 35000-mixed-heavy | 2615 | 1089 | 7720 | 1350 | 3846 | 944 | 365 | crashed | 358 | crashed | 3096 | 11386 |
+
+**How `crashed` was told apart from `> 120000`.** `page-before.log`'s own per-test duration -
+printed beside the `✓`, distinct from the `<ms>` figure recorded in the row above - is what a
+capped measure and a crashed one cannot share: `capped()` only ever returns after the full
+`CAP_MS` timer fires or the renderer crashes (`isPageCrash`'s own doc), and nothing else, so a
+test whose own duration reads nowhere near 120 s can only have taken the crash path. Read this way
+for every `> 120000`/`crashed` cell of all eight projects, not only the six named above:
+`35000-many-heavy`'s `Findings` (`✓ 8 ... Findings (16.6s)`) and `scrolling` (`✓ 10 ... scrolling
+(16.7s)`), `35000-large-heavy`'s `Findings` (`20.5s`) and `scrolling` (`15.9s`), and
+`35000-mixed-heavy`'s `Findings` (`18.1s`) and `scrolling` (`18.1s`) all read a small fraction of
+120 s - the six `crashed` cells above, and the only ones this run's own log settles this way
+without needing a re-run. Every other capped cell's own duration reads close to `2.0m` instead -
+`100000-many-clean`'s own twelve rows, and `100000-many-heavy`'s `first screen`, `Units`,
+`Findings` and `scrolling` - or `2.6m` for `100000-many-heavy`'s own `findings current` (its own
+untimed setup, reaching the variable picker on a 100,000-declaration heavy project, adds to the
+120 s its own measured span still capped at) - a genuine timeout each time, not a crash, even
+where a sibling project's own `Findings` tab (the three named above) crashed instead: at
+100,000 declarations findings-heavy, `Findings` capped rather than crashed, unlike at 35,000.
 
 `Types` and `Shared files` waited on their own sentence for none (a generated project declares
 neither, resolution #1), never a first row; `Table`, `Units`, `Files` and `typing`/`apply
 shows`/`findings current`'s own setup on the first component's first row; `Findings` and
 `scrolling` on a first row or "Nothing to report", whichever the project's own density showed.
-`answering` and `first screen` both crashed or exceeded the cap at 100,000 declarations for
-`opening the project itself` - not only for the tab or panel each row otherwise names - which is
-why every measure reads capped for `100000-many-clean`: `openProject` (the shared setup every
-other row also uses) is itself capped, and a row whose own setup never finished has nothing further
-to measure.
+`answering` and `first screen` both exceeded the cap at 100,000 declarations for opening the
+project itself - a genuine timeout each time, confirmed the same way as the paragraph above, never
+a crash - not only for the tab or panel each row otherwise names, which is why every measure reads
+capped for `100000-many-clean`: `openProject` (the shared setup every other row also uses) is
+itself capped, and a row whose own setup never finished has nothing further to measure.
 
 Against §3's budgets - a figure read against `tools/bench_gui.py`'s own `analysis` column for
 these eight projects (260-4,141 ms) where the budget is "within one analysis plus 1 s":
@@ -2226,23 +2246,24 @@ these eight projects (260-4,141 ms) where the budget is "within one analysis plu
   (91-730 ms) and read over at 35,000-many declarations, both densities, and 100,000-many-heavy -
   1,828-3,143 ms where it finished, capped at 100,000-many-clean. `Findings` stayed under 1 s only
   at 10,000-many-clean (63 ms, the one project with nothing for it to show) and read over
-  everywhere else - 3,169 and 2,580 ms at 10,000-many-heavy and 35,000-many-clean, capped at the
-  remaining five findings-heavy or 100,000-declaration projects (35,000-many-heavy,
-  100,000-many-clean, 100,000-many-heavy, 35,000-large-heavy, 35,000-mixed-heavy).
+  everywhere else - 3,169 and 2,580 ms at 10,000-many-heavy and 35,000-many-clean; crashed, not
+  merely capped, at 35,000-many-heavy, 35,000-large-heavy and 35,000-mixed-heavy (over budget
+  either way, but by crashing in fifteen to twenty seconds, not by taking at least 120 s - the
+  table's own note above); and genuinely capped at 100,000-many-clean and 100,000-many-heavy.
 - **"Typing or scrolling stalling, never over 100 ms"**: `typing` read `0` (no stall reached 50 ms)
   at 10,000 and 35,000 declarations "many" shape, both densities, and at 100,000-many-heavy; it
   read over 100 ms at 35,000-large-heavy (482 ms) and 35,000-mixed-heavy (358 ms), and capped at
   100,000-many-clean. `scrolling` read `0` only at 10,000 declarations, both densities, and
-  35,000-many-clean; it capped at every other project tested - every findings-heavy project past
-  10,000 declarations, and 100,000-many-clean, whose Findings tab never finished drawing a table
-  to scroll within the cap at all.
+  35,000-many-clean; at every other project tested it never reached the scrolling itself, its own
+  opening of the Findings tab crashing first at 35,000-many-heavy, 35,000-large-heavy and
+  35,000-mixed-heavy, and genuinely capping first at 100,000-many-clean and 100,000-many-heavy.
 - **"An Apply's own change showing, under 500 ms"**: over on all eight, 840-4,867 ms measured
   where it finished at all, capped at 100,000-many-clean.
-- **"The findings current after an edit, within one analysis plus 1 s"**: under budget only at
-  10,000-many-clean and 35,000-many-clean (418 ms against 1,260 ms, 1,313 against 2,038 ms); over
-  at 10,000-many-heavy (2,695 against 1,351 ms), 35,000-many-heavy (9,456 against 2,366 ms),
-  35,000-large-heavy and 35,000-mixed-heavy (12,496 and 11,386 ms, against 2,332 and 2,325 ms),
-  and capped at 100,000 declarations, both densities.
+- **"The findings current after an edit, within one analysis plus 1 s... the page saying
+  "updating" until then"**: under budget only at 10,000-many-clean and 35,000-many-clean (418 ms
+  against 1,260 ms, 1,313 against 2,038 ms); over at 10,000-many-heavy (2,695 against 1,351 ms),
+  35,000-many-heavy (9,456 against 2,366 ms), 35,000-large-heavy and 35,000-mixed-heavy (12,496
+  and 11,386 ms, against 2,332 and 2,325 ms), and capped at 100,000 declarations, both densities.
 
 ### Server, after
 

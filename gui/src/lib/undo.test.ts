@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from "vitest";
-import type { Finding, UndoneChange } from "../api/types";
+import type { Finding, PlanReply, UndoneChange } from "../api/types";
 import {
   constantLabel,
   declareLabel,
@@ -132,33 +132,73 @@ test.each([
   expect(rasterLabel(plan)).toBe(label);
 });
 
+/** A files plan as `GET /api/files-plan` answers it, cut to what `filesLabel` reads: its changes,
+ * each a file and the fingerprint it was read at - none, for a file the plan creates. */
+function answered(...changes: (readonly [string, string | null])[]): PlanReply {
+  return {
+    revision: 1,
+    changes: changes.map(([file, fingerprint]) => ({
+      file,
+      fingerprint,
+      operations: [],
+      hunks: [],
+    })),
+  };
+}
+
+/** The description every one of the three plans edits, read at some fingerprint. */
+const DESCRIBED = ["C:/work/demo/demo.ddd.json", "5d41402abc4b2a76"] as const;
+
 test.each([
-  [{ action: "create", kind: "types", name: "sizes" }, "'sizes.ddd.json' created"],
+  [
+    { action: "create", kind: "types", name: "sizes" },
+    answered(DESCRIBED, ["C:/work/demo/sizes.ddd.json", null]),
+    "'sizes.ddd.json' created",
+  ],
   [
     { action: "create", kind: "component", name: "pump", component: "Pump" },
+    answered(DESCRIBED, ["C:/work/demo/pump.ddd.json", null]),
     "'pump.ddd.json' created",
   ],
+  // A created file is named as the plan creates it, never by the name typed with a suffix the
+  // page would have to restate: a server creating it under another suffix is followed.
+  [
+    { action: "create", kind: "types", name: "sizes" },
+    answered(DESCRIBED, ["C:/work/demo/sizes.ddd.jsonc", null]),
+    "'sizes.ddd.jsonc' created",
+  ],
   // An add is named by the path exactly as typed: that text is the entry the includes gain.
-  [{ action: "add", path: "sensors/a.ddd.json" }, "'sensors/a.ddd.json' added to the includes"],
-  [{ action: "add", path: "./a.ddd.json" }, "'./a.ddd.json' added to the includes"],
+  [
+    { action: "add", path: "sensors/a.ddd.json" },
+    answered(DESCRIBED),
+    "'sensors/a.ddd.json' added to the includes",
+  ],
+  [
+    { action: "add", path: "./a.ddd.json" },
+    answered(DESCRIBED),
+    "'./a.ddd.json' added to the includes",
+  ],
   // A removal is named by its key relative to the project's directory: a pattern in a directory
   // as `lib/*.ddd.json`, never `*.ddd.json`, which `test_a_pattern_in_a_directory_is_named_as_
   // the_includes_spell_it` rules out of the server's own sentences.
   [
     { action: "remove", path: "C:/work/demo/sensors/a.ddd.json" },
+    answered(DESCRIBED),
     "'sensors/a.ddd.json' removed from the includes",
   ],
   [
     { action: "remove", path: "C:/work/demo/lib/*.ddd.json" },
+    answered(DESCRIBED),
     "'lib/*.ddd.json' removed from the includes",
   ],
   // A key outside the description's directory falls back to its base name (`relativeToProject`).
   [
     { action: "remove", path: "C:/work/shared/limits.ddd.json" },
+    answered(DESCRIBED),
     "'limits.ddd.json' removed from the includes",
   ],
-] as const)("%o is undone as %s", (plan, label) => {
-  expect(filesLabel(plan, "C:/work/demo/demo.ddd.json")).toBe(label);
+] as const)("%o is undone as %s", (plan, reply, label) => {
+  expect(filesLabel(plan, reply, "C:/work/demo/demo.ddd.json")).toBe(label);
 });
 
 test("an undone paste is named by the object whose table it replaced", () => {

@@ -133,8 +133,10 @@ function useFilesPlan(request: FilesPlanRequest | null, revision: number | undef
 /**
  * Applying one of the three plans the way every other panel applies its own: the edit posted is
  * the plan's, under the label an undo of it will offer (`filesLabel`, from the very request the
- * plan was asked with, a removal's key named relative to `project`); a refusal because a file changed on disk is held until the analysis moves
- * past it, and any other until the reader chooses again (`refusalShown` says which is shown).
+ * plan was asked with and the plan itself: a created file named as the plan creates it, a
+ * removal's key relative to `project`); a refusal because a file changed on disk is held until
+ * the analysis moves past it, and any other until the reader chooses again (`refusalShown` says
+ * which is shown).
  * Once an Apply is answered, applied or refused, the tab's entries and every plan are asked for
  * again - each of the three edits the project description, whose fingerprint every plan carries -
  * and applied, `onApplied` closes the panel.
@@ -154,7 +156,7 @@ function useFilesApply(
       const edit =
         request === null || plan.data === undefined
           ? null
-          : planEdit(plan.data, filesLabel(request, project));
+          : planEdit(plan.data, filesLabel(request, plan.data, project));
       if (edit === null) throw new Error("there is nothing to change");
       return postEdit(edit);
     },

@@ -6950,6 +6950,15 @@ class TestAnswersKeptForARevision:
         assert api._derive(newer) is not kept
         assert api._derive(newer).number == newer.number
 
+    def test_each_kept_answer_is_the_one_its_own_route_makes(self, api: Api) -> None:
+        """Kept side by side, each under its own name: asked again after every other, each route
+        answers what an api that has kept nothing answers it."""
+        for path in KEPT:
+            get(api, path)
+        fresh = Api(api.session, api.project, wait_seconds=0.05)
+        for path in KEPT:
+            assert get(api, path).body == get(fresh, path).body, path
+
     def test_the_answers_kept_are_the_newest_revision_s_alone(self, api: Api, root: Path) -> None:
         """A revision's kept answers go with it: the graph asked first of the next revision, the
         one answer that reads nothing derived, is kept in place of every answer of the last."""

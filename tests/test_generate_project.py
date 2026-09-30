@@ -59,6 +59,23 @@ def test_no_component_reads_its_own_output(tmp_path: Path) -> None:
         assert not own & read
 
 
+def test_the_many_shape_lays_its_reader_a_layer_away(tmp_path: Path) -> None:
+    """The canvas lays the "many" shape out in layers about thirty components across, rather
+    than as one chain as deep as the project is long: of sixty components, the first one's
+    output is read thirty components later, not by its very next neighbour."""
+    generate(tmp_path / "p", 1800, "many")
+    written = interfaces(tmp_path / "p")
+
+    def reads_the_first_output(component: list[dict[str, object]]) -> bool:
+        return any(
+            entry["scope"] == "input" and entry["definition"]["name"] == "C00000_O0000"
+            for entry in component
+        )
+
+    assert reads_the_first_output(written[30])
+    assert not reads_the_first_output(written[1])
+
+
 def test_the_findings_asked_for_are_the_findings_reported(tmp_path: Path) -> None:
     """1200 declarations in the "many" shape are 600 outputs and 600 inputs. Half the inputs
     written as outputs: 300 of them, each leaving its output unread and unread itself - 600 -
@@ -83,6 +100,20 @@ def test_a_density_is_spread_over_the_whole_project(tmp_path: Path) -> None:
     ]
     assert sum(unnamed) == 150
     assert max(unnamed) <= 2
+
+
+def test_the_ids_are_scattered_not_sequential(tmp_path: Path) -> None:
+    """Neighbouring declarations do not read alike: the first component's second and third
+    outputs, one id apart in number, do not have ids one apart, or alike in any digit but the
+    trailing run a small project never fills."""
+    generate(tmp_path / "p", 1200, "many")
+    ids = {
+        entry["definition"]["name"]: entry["definition"]["id"]
+        for entry in interfaces(tmp_path / "p")[0]
+        if entry["scope"] == "output"
+    }
+    assert ids["C00000_O0001"] == "vq8rdscaaaaa"
+    assert ids["C00000_O0002"] == "c567g8eaaaaa"
 
 
 def test_the_same_arguments_write_the_same_bytes(tmp_path: Path) -> None:

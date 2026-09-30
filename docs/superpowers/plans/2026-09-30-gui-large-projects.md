@@ -2075,7 +2075,97 @@ Filled in by Tasks 2, 3 and 13, each table saying the machine, the commit and th
 
 ### Server, before
 
-*(Task 2, Step 6.)*
+Linux development PC: Intel(R) Core(TM) i9-14900HX (32 threads), 30 GiB memory, Ubuntu 26.04.1
+LTS, kernel 7.0.0-34-generic, Python 3.14.4. `feature/gui-large-projects` at `b9121e1`, one run
+each, alone on the machine, 2026-09-30 09:57-10:01 UTC: `tools/bench_gui.py --json
+server-before.json` over the eighteen `<declarations>-<shape>-<clean|heavy>` projects Step 5
+generated. `edit answered` and `edit analysed` are the same span, not two: before Task 5,
+`Session.edit` still analyses inside the call it writes in, so its answer and the revision that
+follows it are one event, timed once.
+
+Milliseconds:
+
+| project | open | state | graph | units | types | shared | files | variable | unit | remove judged | analysis | edit answered | edit analysed |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 10000-many-clean | 286 | 5 | 16 | 257 | 0 | 0 | 5 | 7 | 286 | 278 | 260 | 296 | 296 |
+| 10000-many-heavy | 305 | 523 | 10 | 235 | 117 | 16 | 8 | 231 | 264 | 362 | 351 | 410 | 410 |
+| 10000-large-clean | 249 | 0 | 3 | 236 | 0 | 0 | 1 | 19 | 283 | 259 | 249 | 291 | 291 |
+| 10000-large-heavy | 305 | 473 | 9 | 241 | 118 | 0 | 3 | 239 | 251 | 331 | 327 | 363 | 363 |
+| 10000-mixed-clean | 245 | 2 | 4 | 253 | 0 | 0 | 3 | 12 | 279 | 266 | 296 | 266 | 266 |
+| 10000-mixed-heavy | 317 | 505 | 8 | 230 | 118 | 0 | 5 | 357 | 258 | 347 | 336 | 387 | 387 |
+| 35000-many-clean | 1025 | 14 | 19 | 903 | 0 | 0 | 17 | 19 | 1020 | 1011 | 1038 | 1164 | 1164 |
+| 35000-many-heavy | 1240 | 1850 | 34 | 826 | 414 | 1 | 27 | 795 | 922 | 1452 | 1366 | 1330 | 1330 |
+| 35000-large-clean | 929 | 0 | 9 | 813 | 0 | 0 | 1 | 62 | 961 | 962 | 909 | 1089 | 1089 |
+| 35000-large-heavy | 1234 | 1681 | 22 | 866 | 410 | 1 | 9 | 824 | 883 | 1225 | 1332 | 1317 | 1317 |
+| 35000-mixed-clean | 1024 | 7 | 16 | 833 | 0 | 0 | 9 | 39 | 971 | 971 | 1066 | 1051 | 1051 |
+| 35000-mixed-heavy | 1207 | 1755 | 94 | 800 | 406 | 1 | 18 | 1210 | 894 | 1262 | 1325 | 1522 | 1522 |
+| 100000-many-clean | 3043 | 40 | 53 | 2550 | 0 | 0 | 49 | 52 | 2894 | 2958 | 3285 | 2878 | 2878 |
+| 100000-many-heavy | 3742 | 5041 | 135 | 2586 | 1160 | 4 | 74 | 2256 | 2687 | 3932 | 4141 | 3851 | 3851 |
+| 100000-large-clean | 2855 | 0 | 28 | 2446 | 0 | 0 | 1 | 175 | 2805 | 2769 | 2919 | 3275 | 3275 |
+| 100000-large-heavy | 3614 | 4865 | 251 | 2365 | 1162 | 5 | 27 | 2381 | 2884 | 3626 | 3867 | 4309 | 4309 |
+| 100000-mixed-clean | 3004 | 20 | 45 | 2441 | 0 | 0 | 24 | 114 | 2823 | 2804 | 3129 | 3091 | 3091 |
+| 100000-mixed-heavy | 3622 | 5112 | 254 | 2332 | 1171 | 4 | 51 | 2267 | 2873 | 4060 | 3851 | 4301 | 4301 |
+
+Bytes, the reply serialised as the server sends it (`open`, `analysis` and `edit analysed` have
+no reply of their own):
+
+| project | state | graph | units | types | shared | files | variable | unit | remove judged | edit answered |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 10000-many-clean | 117,433 | 297,767 | 2,857 | 28 | 30 | 51,155 | 83,543 | 375,485 | 470 | 270 |
+| 10000-many-heavy | 5,683,102 | 258,063 | 2,865 | 28 | 30 | 51,155 | 123,470 | 377,360 | 470 | 270 |
+| 10000-large-clean | 11,416 | 109,789 | 2,865 | 28 | 30 | 5,436 | 83,548 | 377,988 | 471 | 271 |
+| 10000-large-heavy | 5,601,584 | 69,909 | 2,873 | 28 | 30 | 5,436 | 123,483 | 379,863 | 471 | 271 |
+| 10000-mixed-clean | 64,417 | 212,186 | 2,865 | 28 | 30 | 28,388 | 83,546 | 377,357 | 471 | 271 |
+| 10000-mixed-heavy | 5,648,592 | 172,578 | 2,873 | 28 | 30 | 28,388 | 124,022 | 379,231 | 471 | 271 |
+| 35000-many-clean | 408,983 | 1,012,745 | 2,873 | 28 | 30 | 176,938 | 283,547 | 1,313,207 | 470 | 270 |
+| 35000-many-heavy | 19,888,823 | 874,707 | 2,873 | 28 | 30 | 176,938 | 423,473 | 1,320,070 | 470 | 270 |
+| 35000-large-clean | 11,416 | 306,069 | 2,881 | 28 | 30 | 5,436 | 283,552 | 1,323,632 | 471 | 271 |
+| 35000-large-heavy | 19,594,084 | 162,469 | 2,881 | 28 | 30 | 5,436 | 423,482 | 1,330,498 | 471 | 271 |
+| 35000-mixed-clean | 210,784 | 870,817 | 2,881 | 28 | 30 | 91,772 | 283,550 | 1,320,609 | 471 | 271 |
+| 35000-mixed-heavy | 19,763,913 | 629,743 | 2,881 | 28 | 30 | 91,772 | 424,026 | 1,327,473 | 471 | 271 |
+| 100000-many-clean | 1,170,769 | 2,875,834 | 2,881 | 28 | 30 | 507,492 | 803,551 | 3,764,861 | 471 | 271 |
+| 100000-many-heavy | 56,952,438 | 2,482,128 | 2,889 | 28 | 30 | 507,492 | 1,203,477 | 3,783,611 | 471 | 271 |
+| 100000-large-clean | 11,449 | 822,459 | 2,889 | 28 | 30 | 5,470 | 803,558 | 3,802,366 | 472 | 272 |
+| 100000-large-heavy | 56,161,677 | 418,899 | 2,897 | 28 | 30 | 5,470 | 1,203,485 | 5,714,866 | 472 | 272 |
+| 100000-mixed-clean | 592,601 | 2,470,221 | 2,889 | 28 | 30 | 258,073 | 803,555 | 3,789,867 | 472 | 272 |
+| 100000-mixed-heavy | 56,621,056 | 2,071,399 | 2,897 | 28 | 30 | 258,073 | 1,203,478 | 5,696,117 | 472 | 272 |
+
+Against §3's budgets, which are the page's own; the server half measures only the ingredients, so
+a figure under its budget does not by itself show the page meets it, but a figure already over one
+means the page cannot:
+
+- **"An Apply's own change showing, under 500 ms"**: `edit answered` (one with `edit analysed`
+  here) stayed under 500 ms only at 10,000 declarations (266-410 ms); it read over 500 ms at
+  every one of the twelve 35,000- and 100,000-declaration projects, clean or heavy, 1,051-4,309 ms
+  - because the edit still waits for its own analysis before answering.
+- **"Any tab or panel drawing, once analysed, under 1 s"**: `state` read over 1 s on the six
+  findings-heavy projects at 35,000 and 100,000 declarations (1,681-5,112 ms), its body up to
+  56,952,438 bytes (about 57 MB) at 100,000; `units` read over 1 s on all six 100,000-declaration
+  projects, clean and heavy alike (2,332-2,586 ms, close between the two densities - a cost that
+  tracks declarations rather than findings); `unit` read over 1 s on one 35,000-declaration project
+  (1,020 ms) and all six at 100,000 (2,687-2,894 ms); `types` read over 1 s on the three
+  100,000-declaration findings-heavy projects (1,160-1,171 ms); `variable` read over 1 s on four
+  findings-heavy projects, one at 35,000 and three at 100,000 (1,210-2,381 ms). `graph`, `shared`
+  and `files` stayed under 1 s at every size and density measured here.
+- **"The first analysed screen, within one analysis plus 1 s"** and **"the findings current after
+  an edit, within one analysis plus 1 s"**: read against each project's own `analysis` figure,
+  `open` and `edit analysed` stayed within this budget at all eighteen projects. Today there is no
+  separate fast answer for §3's first budget row - "the page answering after a project is opened...
+  under 1 s" - to read a figure against: `open` already waits for the whole first analysis, which
+  is what Task 5 changes.
+- **"Typing or scrolling stalling, never over 100 ms"**: nothing measured here stands for it; it is
+  a page-only cost, for Task 3's benchmark rather than this one.
+
+Measures §3 does not budget at all:
+
+- **`remove judged`**: judging a Files tab removal is not one of §3's six rows; *What was left
+  open* already accepts its cost as the analysis's own - over 1 s on ten of the eighteen projects
+  here (four of the six at 35,000 declarations, all six at 100,000), 2,769-4,060 ms at 100,000.
+- **`analysis` itself**: §3 places no cap on the analysis, only an estimate - "about 4.4 s at
+  100,000 declarations, at today's rate" - which these figures broadly agree with (2,919-4,141 ms
+  at 100,000 declarations, this machine).
+- Reply **sizes**: §3 has no byte budget; `state`'s reply nonetheless reaches about 57 MB at
+  100,000 declarations, findings-heavy, which is exactly what §5 and §7 remove from it.
 
 ### Page, before
 

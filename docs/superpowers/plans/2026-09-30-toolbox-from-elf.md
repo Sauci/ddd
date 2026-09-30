@@ -5929,6 +5929,13 @@ class TestToolbox:
     @pytest.mark.parametrize("finding", sorted(FINDINGS))
     def test_every_finding_of_the_tool_is_named_in_the_spec(self, finding: str) -> None:
         assert f"`{finding}`" in SPEC
+
+    @pytest.mark.parametrize(("finding", "severity"), sorted(FINDINGS.items()))
+    def test_the_guide_gives_every_finding_the_severity_the_tool_reports_it_with(
+        self, finding: str, severity: str
+    ) -> None:
+        """A finding's severity decides the exit status; the guide is where a user reads it."""
+        assert f"   * - ``{finding}``\n     - {severity}\n" in self.GUIDE
 ```
 
 Run: `.venv/bin/python -m pytest tests/test_documentation.py --no-cov -k Toolbox`
@@ -6353,13 +6360,13 @@ Expected: `DOCS=0`, the build running with `-W`. Open `build/docs/html/toolbox.h
 
 - [ ] **Step 6: Ablation**
 
-In a scratch worktree: drop the `elf-alignment` row from the guide's table and its name from section 7.3 (both parametrized cases of `elf-alignment` die).
+In a scratch worktree: drop the `elf-alignment` row from the guide's table and its name from section 7.3 (the three parametrized cases of `elf-alignment` die); then, on its own, make `FINDINGS["elf-alignment"]` `Severity.ERROR` in `src/ddd/toolbox/findings.py` (its severity case dies).
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add docs/toolbox.rst docs/index.rst docs/command_line_interface.rst docs/developer_documentation.rst SPEC.md README.md CHANGELOG.md tests/test_documentation.py
-git commit -m "$(printf 'document ddd tool from-elf: its guide, section 7.3, and its fixtures\n\nThe guide s transcripts run over examples/firmware/firmware.elf in the suite,\nand every finding of the tool is held to being named in the guide and in the\nspecification, as every check of the catalogue is.\n\nCo-Authored-By: <your model> <noreply@anthropic.com>')"
+git commit -m "$(printf 'document ddd tool from-elf: its guide, section 7.3, and its fixtures\n\nThe guide s transcripts run over examples/firmware/firmware.elf in the suite,\nand every finding of the tool is held to being named in the guide, with its\nseverity, and in the specification, as every check of the catalogue is.\n\nCo-Authored-By: <your model> <noreply@anthropic.com>')"
 ```
 
 ## Milestone gate

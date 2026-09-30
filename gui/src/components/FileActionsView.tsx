@@ -157,9 +157,10 @@ export interface AddFileViewProps {
 
 /**
  * Add a file (design §3): a path, then the plan the server makes of it, asked for again as it is
- * typed - with every error the file would bring listed as the server lists it, and never refused
- * for them: the spec's "informs rather than refuses". Where the server could not judge what the
- * file brings, its own sentence says so, drawn as it comes; nothing here says it in other words.
+ * typed - with the errors the server counts the file bringing, listed as it lists them, and never
+ * refused for them: the spec's "informs rather than refuses". Where the server could not judge
+ * what the file brings, its own sentence says so, drawn as it comes; nothing here says it in other
+ * words.
  */
 export function AddFileView(props: AddFileViewProps) {
   return (
@@ -240,12 +241,13 @@ export function RemoveFileView(props: RemoveFileViewProps) {
 
 /**
  * One action's preview: why it cannot be applied, if it cannot; then, once its plan has come,
- * what `previewOf` (`lib/files.ts`) says it draws beside the plan - the errors an added file brings,
- * the server's sentence where the change could not be judged, the pattern keeping a removed file
- * in - then what the change writes, its lines once Show changes opens them, and the button applying
- * it, where `previewOf` says there is one. The shape of `ConstantPanelView`'s own `Outcome`, with
- * the three lines only a files plan carries. What is drawn, and in what words, is `previewOf`'s to
- * decide; only whether the changes are open is this view's, being the reader's own toggle.
+ * what `previewOf` (`lib/files.ts`) says it draws beside the plan - the errors the server counts an
+ * added file bringing, the server's sentence where the change could not be judged, the pattern
+ * keeping a removed file in - then what the change writes, its lines once Show changes opens them,
+ * and the button applying it, where `previewOf` says there is one. The shape of
+ * `ConstantPanelView`'s own `Outcome`, with the three lines only a files plan carries. What is
+ * drawn, and in what words, is `previewOf`'s to decide; only whether the changes are open is this
+ * view's, being the reader's own toggle.
  */
 function Preview({
   offer,

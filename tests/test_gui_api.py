@@ -5684,8 +5684,54 @@ class TestCreatingAFile:
 
 
 class TestAddingAFile:
-    """``add``: an existing file appended to the includes as written, and what it would bring -
-    previewed, never refused by the analysis."""
+    """``add``: an existing file appended to the includes as written, and the errors it is
+    counted to bring - previewed, never refused by the analysis."""
+
+    def test_an_added_owner_turning_a_readers_disagreement_leaves_it_unlisted(
+        self, tmp_path: Path
+    ) -> None:
+        """The cost of counting per place, an add's as a removal's: `W2` writes `X` as `uint32`
+        in `Nm` and `R` reads it as `uint32` in `rpm`, a `definition-mismatch` with `W2` over its
+        unit, on `R`. Added, `W1` writes it as `uint16` in `rpm` and owns it, its name sorting
+        first, and `R`'s disagreement becomes one with `W1` over its datatype at the same place:
+        counted as the one `R` has, it is not listed, while the writers' conflict and `W2`'s
+        disagreement with `W1` are. Applied, the project reports it. The answer asserted is the
+        one given."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w2.ddd.json", "r.ddd.json"),
+                "w1.ddd.json": component("W1", declare("output", "X", "uint16", unit="rpm")),
+                "w2.ddd.json": component("W2", declare("output", "X", "uint32", unit="Nm")),
+                "r.ddd.json": component("R", declare("input", "X", "uint32", unit="rpm")),
+            },
+        )
+        reply = files_plan(api, "add", path="w1.ddd.json")
+        assert reply.body["unjudged"] is None
+        assert [
+            (Path(brought["file"]).name, brought["check"], brought["message"])
+            for brought in reply.body["brings"]
+        ] == [
+            (
+                "w1.ddd.json",
+                "multiple-producers",
+                "'X' is written by component 'W1' and by component 'W2'; exactly one writer is "
+                "allowed",
+            ),
+            (
+                "w2.ddd.json",
+                "definition-mismatch",
+                "'X' is declared differently by component 'W2' than by 'W1' (datatype: uint32 != "
+                "uint16, unit: 'Nm' != 'rpm')",
+            ),
+        ]
+        assert applied(api, reply.body).status == 200
+        assert (
+            "r.ddd.json",
+            "definition-mismatch",
+            "'X' is declared differently by component 'R' than by 'W1' (datatype: uint32 != "
+            "uint16)",
+        ) in errors_in(api)
 
     def test_an_absolute_path_is_appended_as_typed(self, tmp_path: Path) -> None:
         """A path need not be written from the description's directory: one inside what is

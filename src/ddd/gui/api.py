@@ -942,7 +942,7 @@ class Api:
 
     def _files_plan(self, query: Query, body: bytes | None) -> Reply:
         """One change of the project's files - creating, adding or removing one - previewed and
-        never written, with what it would bring.
+        never written, with the errors an add is counted to bring.
 
         A parameter :data:`FILE_PLANS` names that is missing or empty is a bad request, and so
         is a key to remove that is not absolute, as a row's never is: read against the server's
@@ -1909,8 +1909,8 @@ def _creation(
 
 
 def _addition(revision: Revision, entry: str, cache: dict[Path, Document]) -> _FilesPlanned:
-    """An existing file appended to the includes, and the errors it would bring - previewed,
-    never refused for them.
+    """An existing file appended to the includes, and the errors it is counted to bring -
+    previewed, never refused for them.
 
     Refused, in this order: a file outside what the session serves, decided by
     :func:`ddd.gui.session._served` itself so that adding a file and reading it never disagree;
@@ -1921,7 +1921,15 @@ def _addition(revision: Revision, entry: str, cache: dict[Path, Document]) -> _F
 
     Judged where every run of the revision analysed the project, and otherwise answered with
     the sentence saying why it could not be, true of both ways a run stops short: its read
-    reporting an error, or a plugin raising."""
+    reporting an error, or a plugin raising.
+
+    Counted as a removal's judgement is, by :func:`ddd.file_plans.new_errors`: the errors the
+    project would have more of at their places. So an error the file brings to a place where
+    one of its check and severity sits now, which that one leaves, is not listed - measured:
+    added, a writer owning a variable, its name sorting first, turns a reader's disagreement
+    with the old owner over its unit into one with the new owner over its datatype, and only
+    the writers' own conflict and disagreement are listed. The bound holds as it does for a
+    removal: a project with no errors is never answered that an add bringing one brings none."""
     added = resolve_path(revision.project.parent / entry)
     try:
         _served(revision, added)

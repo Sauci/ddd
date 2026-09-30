@@ -23,12 +23,12 @@ export interface FileRow {
   /** The file this very row is about: a literal's own, or one of a pattern's matched files -
    * `null` for a pattern's own row, whose files are its children rather than itself, and for a
    * row naming nothing at all. Also `null` where `State.files` does not hold it: the revision the
-   * page holds never read it - the root's own schema failed before its includes were read; a
-   * pattern matches a file created since; or the entry is one the description gained since, the
-   * entries being read off it when asked (`IncludedEntryReply.files` says when each happens).
-   * That is a row naming a file all the same, told apart from a row naming nothing by
-   * `entry.names` or `entry.files` alone - never by whether this is `null`, which the two can
-   * share. */
+   * page holds never read it. Among the ways: the root's own schema failing before its includes
+   * are read; a plugin's model raising while the project is read; a pattern matching a file
+   * created since; an entry the description gained since, naming a file nothing else brought in,
+   * the entries being read off the description when asked (`IncludedEntryReply.files`). That is a
+   * row naming a file all the same, told apart from a row naming nothing by `entry.names` or
+   * `entry.files` alone - never by whether this is `null`, which the two can share. */
   file: SourceFile | null;
   /** What a plan to act on this very row is asked with: a literal's or a pattern's own key
    * (`IncludedEntryReply.key`) for their own row, and a matched file's own absolute path (one of
@@ -144,15 +144,15 @@ export function cellsOf(row: FileRow, project: string): FileCells {
  *
  * The two remaining branches fall through to "not read by the last analysis": a literal entry's
  * own row whose file `State.files` lacks (`!row.child && row.entry.names`), and a pattern's child
- * row whose matched file it lacks (`row.child`) - for any of the causes `FileRow.file` names (a
- * root whose read stopped at its own schema before its includes were read; a pattern matching a
- * file created since; an entry the description gained since the revision the page holds). Both
- * are a row naming a file all the same, never a row naming nothing - which is why the check above
- * this, `!row.entry.names && row.entry.files.length === 0`, is exactly `rowsOf`'s own test for
- * that (`IncludedEntryReply.names` is false for a pattern, matching files or not, and for a plain
- * path naming no file - `names` alone never tells a pattern apart from a row naming nothing,
- * `files` is what does), read first so a row naming nothing is never mistaken for one merely
- * unread. */
+ * row whose matched file it lacks (`row.child`) - whatever kept the revision the page holds from
+ * reading it (`FileRow.file` gives ways it happens: a root whose read stopped at its own schema,
+ * a plugin's model raising, a pattern matching a file created since, an entry the description
+ * gained since). Both are a row naming a file all the same, never a row naming nothing - which is
+ * why the check above this, `!row.entry.names && row.entry.files.length === 0`, is exactly
+ * `rowsOf`'s own test for that (`IncludedEntryReply.names` is false for a pattern, matching files
+ * or not, and for a plain path naming no file - `names` alone never tells a pattern apart from a
+ * row naming nothing, `files` is what does), read first so a row naming nothing is never mistaken
+ * for one merely unread. */
 function stateOf(row: FileRow): string {
   if (row.file !== null) return row.file.loaded ? "" : "did not load";
   if (!row.entry.names && row.entry.files.length === 0) return "names no file";
@@ -251,11 +251,13 @@ export function fileRemoval(
 /** What a preview of one of the three actions draws beside the plan's own lines - decided here,
  * so that `FileActionsView` only draws it. */
 export interface FilePreview {
-  /** Every error an added file brings, as the server lists them (`BroughtRow`): in its order, none
-   * left out, and none framed by a sentence of the page's own. `ddd.gui.contract.BroughtError` says
-   * why no heading could be trusted: "the count is what is new" - an error listed can be one the
-   * project has now, re-worded, or a mirror's words - so a line calling them new errors would be
-   * false of some. Empty for New file and Remove, whose plans bring none. */
+  /** Every error the server lists an added file bringing (`BroughtRow`): in its order, none of
+   * its list left out, and none framed by a sentence of the page's own. The server counts them
+   * place by place, as a removal is judged, so its list can leave out an error taking the place
+   * of one the project has (`ddd.gui.api._addition`). `ddd.gui.contract.BroughtError` says why no
+   * heading could be trusted: "the count is what is new" - an error listed can be one the project
+   * has now, re-worded, or a mirror's words - so a line calling them new errors would be false of
+   * some. Empty for New file and Remove, whose plans bring none. */
   brought: BroughtRow[];
   /** Why the change could not be judged - `FilesPlanReply.unjudged`, the server's own sentence,
    * drawn exactly as it comes - or `null` where it was judged, and for New file. No line of the

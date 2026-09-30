@@ -406,6 +406,7 @@ class TestCommands:
             "templates-dir",
             "sources",
             "artefacts",
+            "tool",
         }
 
 

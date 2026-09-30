@@ -2103,7 +2103,9 @@ carrying `check`, `default_severity`, `description`, `overridable`,
 `needs_every_component` and `comparison`, the
 built-in ones in the order of the registry and then each `--plugin`'s checks in their
 declared order); reporting where its build system integration and its example templates
-live (`ddd cmake-dir`, `ddd templates-dir`; a piece not installed is a usage error); and
+live (`ddd cmake-dir`, `ddd templates-dir`; a piece not installed is a usage error);
+describing the C variables of a linked ELF image as declarations (`ddd tool from-elf`, the
+first tool of a toolbox); and
 printing its own version (`ddd --version`). Beside the command line, the package publishes
 a pre-commit hook, `ddd-id`, that runs `ddd id --assign` on the staged description files.
 The root handed to a command is a project or a single component file; a component alone is

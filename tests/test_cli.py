@@ -7,6 +7,7 @@ import errno
 import json
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -30,12 +31,13 @@ from ddd.cli import (
     EXIT_FINDINGS,
     EXIT_OK,
     EXIT_USAGE,
+    _build_parser,
     _display_width,
     _displayed_path,
     main,
 )
 from ddd.deliveries import read_dictionary
-from ddd.diagnostics import DiagnosticBag
+from ddd.diagnostics import DiagnosticBag, where
 from ddd.ir import DICTIONARY_FORMAT
 from ddd.models.common import OBJECT_ID_PATTERN
 
@@ -3814,3 +3816,446 @@ class TestGui:
             main(["gui", "--port", port])
         assert exited.value.code == EXIT_USAGE
         assert "is not a port number from 0 to 65535" in capsys.readouterr().err
+
+
+FIXTURES = Path(__file__).parent / "fixtures" / "elf"
+FIXTURE_ROWS = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))["rows"]
+X86 = FIXTURES / "x86_64.elf"
+SAMPLE_ENTRY = {
+    "type": "struct",
+    "name": "Sample_t",
+    "members": [
+        {
+            "name": "low",
+            "member": "bits",
+            "datatype": "sint8",
+            "conversion": {"kind": "identity"},
+            "bits": 3,
+        },
+        {
+            "name": "high",
+            "member": "bits",
+            "datatype": "sint16",
+            "conversion": {"kind": "identity"},
+            "bits": 5,
+        },
+        {
+            "name": "level",
+            "member": "value",
+            "datatype": "uint8",
+            "conversion": {"kind": "identity"},
+        },
+    ],
+}
+FRAME_ENTRY = {
+    "type": "struct",
+    "name": "Frame_t",
+    "members": [
+        {"name": "samples", "member": "value", "typename": "Sample_t", "dimensions": [3]},
+        {
+            "name": "grid",
+            "member": "value",
+            "datatype": "uint16",
+            "conversion": {"kind": "identity"},
+            "dimensions": [2, 3],
+        },
+        {
+            "name": "trim",
+            "member": "bits",
+            "datatype": "sint8",
+            "conversion": {"kind": "identity"},
+            "bits": 4,
+        },
+    ],
+}
+"""An array of structures inside a structure, a two dimensional array member and signed
+bitfields, as every row must describe them."""
+
+
+def fixture_line(unit: str, text: str) -> int:
+    """The line of a fixture unit holding ``text``: the oracle for where DWARF says a variable
+    is declared."""
+    lines = (FIXTURES / "src" / unit).read_text(encoding="utf-8").splitlines()
+    (found,) = [number for number, line in enumerate(lines, start=1) if text in line]
+    return found
+
+
+def from_elf(capsys: pytest.CaptureFixture[str], *arguments: str) -> tuple[int, str, str]:
+    code = main(["tool", "from-elf", *arguments])
+    out, err = capsys.readouterr()
+    return code, out, err
+
+
+def expected_definitions(traits: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """What a row must print for the variables of main.c every row describes: the values the
+    source states, and what the row's own toolchain said its target makes of the rest."""
+    identity = {"kind": "identity"}
+    unsigned_enum = {1: "uint8", 4: "uint32"}[traits["sizeof_enum"]]
+    signed_enum = {1: "sint8", 4: "sint32"}[traits["sizeof_enum"]]
+    state = {
+        "kind": "enum",
+        "name": "State_t",
+        "enumerators": {"STATE_OFF": 0, "STATE_ON": 1, "STATE_FAULT": 200},
+    }
+
+    def value(
+        name: str,
+        kind: str,
+        datatype: str,
+        init: Any = None,
+        *,
+        dimensions: list[int] | None = None,
+        conversion: dict[str, Any] = identity,
+        volatile: bool = False,
+    ) -> dict[str, Any]:
+        definition: dict[str, Any] = {"name": name, "kind": kind, "datatype": datatype}
+        if dimensions is not None:
+            definition["dimensions"] = dimensions
+        definition["conversion"] = conversion
+        if init is not None:
+            definition["init"] = init
+        definition["volatile"] = volatile
+        return definition
+
+    rows = [
+        value("Meas_U16", "measurement", "uint16", 0x1234),
+        value("Meas_Volatile", "measurement", "uint32", 0x12345678, volatile=True),
+        value("Meas_Array", "measurement", "sint16", [-2, 0x1234, 7], dimensions=[3]),
+        value("Meas_Matrix", "measurement", "uint8", [[1, 2, 3], [4, 5, 6]], dimensions=[2, 3]),
+        value("Meas_Fill", "measurement", "uint8", 9, dimensions=[4]),
+        value("Meas_Bss", "measurement", "uint32"),
+        value("Cal_Gain", "parameter", "uint16", 300),
+        value("Cal_Tunable", "parameter", "uint8", 0x5A, volatile=True),
+        value("Cal_Table", "value_block", "sint32", [-2, 0x12345678, 0, 1], dimensions=[4]),
+        value("Cal_Declared_First", "parameter", "uint16", 0x1234),
+        value("Type_Bool", "measurement", "boolean", True),
+        value("Type_Char", "measurement", "uint8" if traits["char_unsigned"] else "sint8", 65),
+        value("Type_Long", "measurement", {4: "sint32", 8: "sint64"}[traits["sizeof_long"]], -2),
+        value("Type_U64", "measurement", "uint64", 0x0102030405060708),
+        value("Type_S64", "measurement", "sint64", -0x0102030405060708),
+        value("Type_F32", "measurement", "float32", 1.5),
+        value("Type_F32_Tenth", "measurement", "float32", 0.1),
+        value("Type_F64", "measurement", "float64", 0.1),
+        value("Enum_State", "measurement", unsigned_enum, 1, conversion=state),
+        value(
+            "Enum_Signed",
+            "measurement",
+            signed_enum,
+            -2,
+            conversion={
+                "kind": "enum",
+                "name": "Signed_e",
+                "enumerators": {"SIGNED_NEG": -2, "SIGNED_POS": 3},
+            },
+        ),
+        value(
+            "Enum_Anonymous",
+            "measurement",
+            unsigned_enum,
+            2,
+            conversion={
+                "kind": "enum",
+                "name": "Enum_Anonymous_t",
+                "enumerators": {"ANON_A": 1, "ANON_B": 2},
+            },
+        ),
+        value(
+            "Enum_Table", "value_block", unsigned_enum, [200, 0], dimensions=[2], conversion=state
+        ),
+        value("Static_Used", "measurement", "uint16", 0x0102),
+    ]
+    definitions = {definition["name"]: definition for definition in rows}
+    definitions["Section_Calib"] = {
+        "name": "Section_Calib",
+        "kind": "parameter",
+        "datatype": "uint16",
+        "conversion": identity,
+        "init": 0x1234,
+        "section": ".calib",
+        "volatile": False,
+    }
+    for name, dimensions in (("Struct_Inlet", None), ("Struct_Inlets", [2])):
+        structured: dict[str, Any] = {"name": name, "kind": "measurement", "typename": "Inlet_t"}
+        if dimensions is not None:
+            structured["dimensions"] = dimensions
+        structured["volatile"] = False
+        definitions[name] = structured
+    definitions["Struct_Config"] = {
+        "name": "Struct_Config",
+        "kind": "parameter",
+        "typename": "Inlet_t",
+        "volatile": False,
+    }
+    definitions["Nested_Frame"] = {
+        "name": "Nested_Frame",
+        "kind": "measurement",
+        "typename": "Frame_t",
+        "volatile": False,
+    }
+    return definitions
+
+
+class TestToolFromElf:
+    """``ddd tool from-elf`` end to end, over the committed fixture matrix."""
+
+    @pytest.mark.parametrize("row", sorted(FIXTURE_ROWS))
+    def test_every_row_prints_what_its_toolchain_says_its_variables_are(
+        self, capsys: pytest.CaptureFixture[str], row: str
+    ) -> None:
+        expected = expected_definitions(FIXTURE_ROWS[row]["traits"])
+        code, out, err = from_elf(
+            capsys, str(FIXTURES / f"{row}.elf"), *expected, "--component", "Fixture"
+        )
+        assert code == EXIT_OK, err
+        document = json.loads(out)["component"]
+        interface = document["interface"]
+        assert {entry["definition"]["name"]: entry["definition"] for entry in interface} == expected
+        assert {entry["scope"] for entry in interface} == {"output"}
+        types = {entry["name"]: entry for entry in document["types"]}
+        assert (types["Sample_t"], types["Frame_t"]) == (SAMPLE_ENTRY, FRAME_ENTRY)
+
+    @pytest.mark.parametrize("row", sorted(FIXTURE_ROWS))
+    def test_long_double_is_a_float64_only_where_the_target_makes_it_eight_bytes(
+        self, capsys: pytest.CaptureFixture[str], row: str
+    ) -> None:
+        size = FIXTURE_ROWS[row]["traits"]["sizeof_long_double"]
+        code, out, err = from_elf(
+            capsys, str(FIXTURES / f"{row}.elf"), "Type_Long_Double", "--force"
+        )
+        if size == 8:
+            assert code == EXIT_OK, err
+            (entry,) = json.loads(out)
+            assert (entry["definition"]["datatype"], entry["definition"]["init"]) == (
+                "float64",
+                1.0,
+            )
+        else:
+            assert code == EXIT_FINDINGS
+            assert f"'long double', a floating point number of {size} bytes" in err
+
+    def test_the_component_output_carries_its_types_and_passes_ddd_check_standalone(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        code, out, err = from_elf(
+            capsys,
+            str(X86),
+            "Struct_Inlet",
+            "Struct_Anonymous",
+            "Struct_Qualified",
+            "Layout_*",
+            "Shared_*",
+            "Nested_Frame",
+            "--component",
+            "Fixture",
+        )
+        assert code == EXIT_OK, err
+        document = json.loads(out)["component"]
+        assert [entry["name"] for entry in document["types"]] == [
+            "Inlet_t_pair_t",
+            "Inlet_t",
+            "Struct_Anonymous_t",
+            "Qualified_s",
+            "Aligned_s",
+            "Gapped_s",
+            "Padded_s",
+            "Shared_t",
+            "Sample_t",
+            "Frame_t",
+        ]
+        written = tmp_path / "fixture.ddd.json"
+        written.write_text(out, encoding="utf-8")
+        assert main(["check", "--standalone", str(written)]) == EXIT_OK
+
+    def test_every_finding_about_a_variable_is_shown_at_its_line_of_the_source(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, _, err = from_elf(
+            capsys,
+            str(X86),
+            "Type_Pointer",
+            "Struct_With_Pointer",
+            "Tls_Counter",
+            "Static_Folded",
+            "Nodebug_Counter",
+            "Twin",
+            "Struct_Config",
+            "Layout_Gapped",
+            "Section_Calib",
+        )
+        assert code == EXIT_FINDINGS
+        lines = err.splitlines()
+        main_c = "main.c"
+        expected = [
+            f"{main_c}:{fixture_line(main_c, 'uint8_t *Type_Pointer;')}: "
+            f"error[elf-type-unsupported]: 'Type_Pointer' is a pointer, which DDD cannot state",
+            f"{main_c}:{fixture_line(main_c, '} Struct_With_Pointer;')}: "
+            f"error[elf-type-unsupported]: 'Struct_With_Pointer' cannot be described: "
+            f"'Holder_s.ptr' is a pointer, which DDD cannot state",
+            f"    note: {main_c}:{fixture_line(main_c, 'uint8_t *ptr;')}: "
+            f"'Holder_s.ptr' is declared here",
+            f"{main_c}:{fixture_line(main_c, '_Thread_local uint32_t Tls_Counter;')}: "
+            f"error[elf-no-storage]: 'Tls_Counter' has no address in the image: it is "
+            f"thread-local, with an address of its own in every thread",
+            f"{main_c}:{fixture_line(main_c, 'static const uint32_t Static_Folded = 7;')}: "
+            f"error[elf-no-storage]: 'Static_Folded' has no address in the image: the compiler "
+            f"replaced it by its value, and gave it no storage",
+            f"{where(X86).render(Path.cwd())}: error[elf-symbol-missing]: the image's debug "
+            f"information holds no variable named 'Nodebug_Counter'; the symbol table holds it, "
+            f"so the unit defining it was built without debug information (-g)",
+            f"unit_a.c:{fixture_line('unit_a.c', 'static uint16_t Twin')}: "
+            f"error[elf-symbol-ambiguous]: 'Twin' names a variable in 2 units, 'unit_a.c', "
+            f"'unit_b.c': prefix it with one, as 'unit_a.c:Twin'",
+            f"{main_c}:{fixture_line(main_c, 'const Inlet_t Struct_Config =')}: "
+            f"warning[elf-init-dropped]: 'Struct_Config' starts with values the image holds, "
+            f"which DDD does not carry: a structured object is zero-initialised, and its values "
+            f"reach it from the running software or from the calibration tool",
+            # Gapped_s.b is the line after its unnamed field; Padded_s has a `b : 2` of its own.
+            f"{main_c}:{fixture_line(main_c, 'uint8_t : 3;') + 1}: warning[elf-bitfield-gap]: "
+            f"'Gapped_s.b' starts at bit 5 although it fits at bit 2: an unnamed or zero width "
+            f"bitfield leaves such a gap, which DDD cannot state, so the structure DDD generates "
+            f"starts it at bit 2",
+            f"{main_c}:{fixture_line(main_c, 'const uint16_t Section_Calib')}: "
+            f"warning[elf-section]: 'Section_Calib' is placed in '.calib', the name of the "
+            f"image's output section: DDD's section is the one the source places it in, which "
+            f"the linker script may have renamed, and the project has to declare it in a "
+            f"sections file, or 'ddd check' reports unknown-section",
+        ]
+        for line in expected:
+            assert line in lines, line
+
+    def test_an_error_writes_nothing_and_exits_1(self, capsys: pytest.CaptureFixture[str]) -> None:
+        code, out, _ = from_elf(capsys, str(X86), "Cal_Gain", "Type_Pointer")
+        assert (code, out) == (EXIT_FINDINGS, "")
+
+    def test_force_writes_what_was_described_and_still_exits_1(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, out, _ = from_elf(capsys, str(X86), "Cal_Gain", "Type_Pointer", "--force")
+        assert code == EXIT_FINDINGS
+        assert [entry["definition"]["name"] for entry in json.loads(out)] == ["Cal_Gain"]
+
+    def test_a_consumer_s_entries_state_no_storage(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, out, _ = from_elf(capsys, str(X86), "Section_Calib", "--scope", "input")
+        assert code == EXIT_OK
+        (entry,) = json.loads(out)
+        assert entry["scope"] == "input"
+        assert {"init", "section"}.isdisjoint(entry["definition"])
+
+    def test_the_findings_go_to_stderr_as_json_and_the_declarations_stay_on_stdout(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, out, err = from_elf(capsys, str(X86), "Cal_Gain", "--format", "json")
+        assert code == EXIT_OK
+        assert json.loads(out)[0]["definition"]["name"] == "Cal_Gain"
+        assert [d["check"] for d in json.loads(err)["diagnostics"]] == ["elf-not-inferred"]
+
+    def test_output_writes_the_file_and_leaves_it_alone_when_nothing_changes(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        target = tmp_path / "gain.json"
+        code, out, err = from_elf(capsys, str(X86), "Cal_Gain", "-o", str(target))
+        assert (code, out) == (EXIT_OK, "")
+        assert json.loads(target.read_text(encoding="utf-8"))[0]["definition"]["name"] == "Cal_Gain"
+        assert err.splitlines()[-1] == f"wrote       {target.as_posix()} (created)"
+        code, _, err = from_elf(capsys, str(X86), "Cal_Gain", "-o", str(target), "--format", "json")
+        assert code == EXIT_OK
+        assert json.loads(err)["generated"] == [{"path": target.as_posix(), "status": "unchanged"}]
+
+    def test_an_output_naming_the_image_is_refused_and_the_image_kept(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        image = tmp_path / "copy.elf"
+        image.write_bytes(X86.read_bytes())
+        code, _, err = from_elf(capsys, str(image), "Cal_Gain", "-o", str(image))
+        assert code == EXIT_USAGE
+        assert err.splitlines()[-1] == (
+            f"ddd: -o would write over '{image.as_posix()}', which this run reads; give it a "
+            f"file of its own"
+        )
+        assert image.read_bytes() == X86.read_bytes()
+
+    def test_an_image_that_cannot_be_used_is_a_usage_error(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        stripped = FIXTURES / "stripped.elf"
+        code, out, err = from_elf(capsys, str(stripped), "Cal_Gain")
+        assert (code, out) == (EXIT_USAGE, "")
+        assert err == (
+            f"ddd: '{stripped.as_posix()}' carries no DWARF debug information: build it with -g\n"
+        )
+
+    @pytest.mark.parametrize("name", ["1bad", "N" * 129])
+    def test_a_component_name_that_is_no_c_identifier_is_a_usage_error(
+        self, capsys: pytest.CaptureFixture[str], name: str
+    ) -> None:
+        code, _, err = from_elf(capsys, str(X86), "Cal_Gain", "--component", name)
+        assert (code, err) == (
+            EXIT_USAGE,
+            f"ddd: --component takes a C identifier of at most 128 characters, not '{name}'\n",
+        )
+
+    def test_a_malformed_symbol_is_a_usage_error(self, capsys: pytest.CaptureFixture[str]) -> None:
+        code, _, err = from_elf(capsys, str(X86), "main.c:")
+        assert (code, err) == (
+            EXIT_USAGE,
+            "ddd: 'main.c:' names no variable: give a name or a pattern after the unit\n",
+        )
+
+    def test_without_pyelftools_the_command_names_the_extra(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An import answers from sys.modules before it looks at a parent package, so every
+        elftools module an earlier test loaded is taken out too - otherwise ddd.elf imports
+        again, and its classes are no longer the ones the toolbox tests instances against."""
+        loaded = [name for name in sys.modules if name.partition(".")[0] == "elftools"]
+        for name in loaded:
+            monkeypatch.delitem(sys.modules, name)
+        monkeypatch.setitem(sys.modules, "elftools", None)
+        monkeypatch.delitem(sys.modules, "ddd.elf", raising=False)
+        code, _, err = from_elf(capsys, str(X86), "Cal_Gain")
+        assert (code, err) == (
+            EXIT_USAGE,
+            "ddd: reading an ELF image needs pyelftools, which the 'elf' extra installs: "
+            "pip install 'ddd-tool[elf]'\n",
+        )
+
+    def test_a_broken_install_is_not_blamed_on_the_extra(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(sys.modules, "ddd.elf", None)
+        with pytest.raises(ModuleNotFoundError):
+            main(["tool", "from-elf", str(X86), "Cal_Gain"])
+
+    def test_the_toolbox_without_a_tool_is_a_usage_error(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with pytest.raises(SystemExit) as exited:
+            main(["tool"])
+        assert exited.value.code == EXIT_USAGE
+        assert "TOOL" in capsys.readouterr().err
+
+    def test_the_scopes_offered_are_ddd_s_scopes(self) -> None:
+        from ddd.models.component import Scope
+
+        def subcommands(parser: Any) -> dict[str, Any]:
+            (action,) = [a for a in parser._actions if a.__class__.__name__ == "_SubParsersAction"]
+            return dict(action.choices)
+
+        tool = subcommands(subcommands(_build_parser())["tool"])["from-elf"]
+        (scope,) = [action for action in tool._actions if action.dest == "scope"]
+        assert set(scope.choices) == {member.value for member in Scope}
+
+    def test_the_diagnostics_formats_offered_are_text_and_json(self) -> None:
+        """No test above asks for ``--format text`` by name: the default bypasses the choice
+        check, so a ``choices`` list that quietly lost ``"text"`` - or gained a third value
+        nothing else here exercises - would pass every other test in this class."""
+
+        def subcommands(parser: Any) -> dict[str, Any]:
+            (action,) = [a for a in parser._actions if a.__class__.__name__ == "_SubParsersAction"]
+            return dict(action.choices)
+
+        tool = subcommands(subcommands(_build_parser())["tool"])["from-elf"]
+        (output_format,) = [action for action in tool._actions if action.dest == "format"]
+        assert set(output_format.choices) == {"text", "json"}

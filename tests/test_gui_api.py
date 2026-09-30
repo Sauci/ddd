@@ -7,6 +7,7 @@ import json
 import re
 import shutil
 import threading
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, Final
 
@@ -14,6 +15,7 @@ import pytest
 
 from conftest import (
     EXAMPLES,
+    build_record,
     component,
     declare,
     directory_link,
@@ -26,7 +28,7 @@ from conftest import (
 )
 from ddd import __version__
 from ddd.cli import EXIT_OK, main
-from ddd.diagnostics import CHECKS
+from ddd.diagnostics import CHECKS, Location
 from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
 from ddd.file_plans import CREATABLE
 from ddd.gui.api import (
@@ -35,12 +37,20 @@ from ddd.gui.api import (
     Api,
     Reply,
     _declared,
+    _finding,
     _json_texts,
     _required_keys,
 )
-from ddd.gui.session import Session
-from ddd.project_shared import RASTERS, SECTIONS
+from ddd.gui.session import Filed, Revision, Session
+from ddd.lsp.navigation import Index, Site
+from ddd.lsp.ranges import Document
+from ddd.object_values import grid_of
+from ddd.project_shared import CONSTANTS, RASTERS, SECTIONS, Vocabulary
+from ddd.project_shared import located_on as located_on_entry
+from ddd.project_types import located_in_type
+from ddd.project_units import located_on_unit
 from ddd.variable_keys import KEY_ORDER
+from ddd.variables import declarations_of, located_on
 
 UNIT = "component.interface[0].definition.unit"
 
@@ -6356,3 +6366,467 @@ class TestRemovingAFile:
         (tmp_path / "a.ddd.json").write_bytes((tmp_path / "a.ddd.json").read_bytes() + b"\n")
         body = files_plan(api, "remove", path=posix(tmp_path, "lib/b.ddd.json")).body
         assert (body["unjudged"], body["brings"]) == (UNJUDGED_REMOVING, [])
+
+
+LOWERED: Final = tuple(
+    f"{check}=warning"
+    for check in (
+        "duplicate-unit",
+        "duplicate-constant",
+        "duplicate-type",
+        "duplicate-section",
+        "duplicate-event",
+        "include-empty",
+    )
+)
+"""The load checks the drifted examples below report, lowered by their build record: each is an
+error that stops a run at its read, and lowered, the analysis goes on, so that one revision
+carries what the read and the analysis say alike."""
+
+
+def definition_of(document: dict[str, Any], name: str) -> dict[str, Any]:
+    """The definition a component's document declares ``name`` by."""
+    return next(
+        entry["definition"]
+        for entry in document["component"]["interface"]
+        if entry["definition"]["name"] == name
+    )
+
+
+def changed(root: Path, name: str, change: Callable[[dict[str, Any]], object]) -> None:
+    """``root / name`` read as json, ``change`` made to it, and written back."""
+    path = root / name
+    document = json.loads(path.read_text(encoding="utf-8"))
+    change(document)
+    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+
+
+def unnamed(value: Any) -> Any:
+    """``value`` with every ``id`` taken out, however deep: each producing declaration is then a
+    ``missing-id``."""
+    if isinstance(value, dict):
+        return {key: unnamed(entry) for key, entry in value.items() if key != "id"}
+    if isinstance(value, list):
+        return [unnamed(entry) for entry in value]
+    return value
+
+
+def drift_demo(root: Path) -> None:
+    """The sub-project read first, so that the index lists `event_logger.ddd.json`'s
+    declarations before the components' while the revision files them last; a vocabulary
+    listing `%` twice and leaving `V`, `degC` and `ms` out; `ValueE` read as `V` against its
+    producer's `Hz`; a structure member stating `degC`; an `init` no `uint16` holds; and an
+    include matching nothing."""
+    changed(
+        root,
+        "demo.ddd.json",
+        lambda document: document["project"].update(
+            includes=[
+                "subsystems/logging/logging.ddd.json",
+                "components/*.ddd.json",
+                "units.ddd.json",
+                "missing/*.ddd.json",
+            ]
+        ),
+    )
+    write_tree(root, {"units.ddd.json": {"units": ["%", "%", {"unit": "Hz"}]}})
+    changed(
+        root,
+        "subsystems/logging/event_logger.ddd.json",
+        lambda document: definition_of(document, "ValueE").update(unit="V"),
+    )
+    changed(
+        root,
+        "components/sensor_hub.ddd.json",
+        lambda document: document["component"]["types"][1]["members"][1].update(unit="degC"),
+    )
+    changed(
+        root,
+        "components/controller.ddd.json",
+        lambda document: definition_of(document, "ParameterA").update(init=999999),
+    )
+
+
+def drift_pump(document: dict[str, Any]) -> None:
+    """A unit the vocabulary does not list, a measurement placed in read-only memory, an `init` no
+    `uint16` holds on a parameter naming a raster, a constant no shape can be sized by, and
+    limits the type's own datatype cannot reach."""
+    definition_of(document, "PumpSpeed")["unit"] = "bar"
+    definition_of(document, "ManifoldPressure")["section"] = ".calib"
+    definition_of(document, "TorqueLimit").update(init=99999999, raster="10ms")
+    document["component"]["constants"][0]["value"] = 0
+    document["component"]["types"][0]["limits"] = {"min": 0, "max": 99999999}
+
+
+def drift_vocabulary(root: Path) -> None:
+    """Every vocabulary of the example given a finding: `pump.ddd.json` drifted as
+    :func:`drift_pump` says, a unit, a constant and a section each declared twice, two rasters
+    claiming one event, and an include matching nothing."""
+    changed(root, "pump.ddd.json", drift_pump)
+    changed(root, "units.ddd.json", lambda document: document["units"].append("rpm"))
+    changed(
+        root,
+        "rasters.ddd.json",
+        lambda document: document["rasters"].append({"raster": "5ms", "event": 1}),
+    )
+    changed(
+        root,
+        "sections.ddd.json",
+        lambda document: document["sections"].append(
+            {"section": ".calib", "access": "read-only", "alignment": 4}
+        ),
+    )
+    changed(
+        root,
+        "constants.ddd.json",
+        lambda document: document["constants"].append({"name": "TREND_SAMPLES", "value": 16}),
+    )
+    changed(
+        root,
+        "project.ddd.json",
+        lambda document: document["project"]["includes"].insert(1, "missing/*.ddd.json"),
+    )
+
+
+def drift_structures(root: Path) -> None:
+    """A vocabulary listing `ms` twice and `degC` not at all, `Temperature_t` declared a second
+    time by the component producing `Inlet`, `Inlet` read as another type than it is written as -
+    `sensing.ddd.json`, which the index lists first, filed after `monitoring.ddd.json` - and an
+    include matching nothing."""
+    changed(
+        root,
+        "project.ddd.json",
+        lambda document: document["project"].update(
+            includes=["units.ddd.json", *document["project"]["includes"], "missing/*.ddd.json"]
+        ),
+    )
+    write_tree(root, {"units.ddd.json": {"units": ["ms", "ms"]}})
+    changed(
+        root,
+        "sensing.ddd.json",
+        lambda document: document["component"].update(
+            types=[scalar_type("Temperature_t", "uint8", unit="degC")]
+        ),
+    )
+    changed(
+        root,
+        "monitoring.ddd.json",
+        lambda document: definition_of(document, "Inlet").update(typename="Sample_t"),
+    )
+
+
+DRIFTED: Final[dict[str, tuple[str, Callable[[Path], None]]]] = {
+    "demo": ("demo.ddd.json", drift_demo),
+    "vocabulary": ("project.ddd.json", drift_vocabulary),
+    "structures": ("project.ddd.json", drift_structures),
+}
+"""Each example the answers are checked on, with its description and how it is drifted."""
+
+
+def through(path: Path, real: Path, link: Path) -> Path:
+    """``path``, under ``real``, spelled through ``link`` instead."""
+    return link / path.relative_to(real)
+
+
+def respelled(filed: Filed, real: Path, link: Path) -> Filed:
+    """A finding shown on the same file and place, both spelled through ``link``: a second
+    spelling of every path, as a plugin filing its findings by a path of its own would give."""
+    found = filed.diagnostic
+    location = found.location
+    if location is not None:
+        found = dataclasses.replace(
+            found, location=dataclasses.replace(location, path=through(location.path, real, link))
+        )
+    return Filed(through(filed.file, real, link), found)
+
+
+def drifted(
+    tmp_path: Path, example: str, monkeypatch: pytest.MonkeyPatch, *, spelled_again: bool
+) -> Api:
+    """``ddd gui``'s api over a copy of one of the examples, every id taken out and the rest
+    drifted until the analysis reports findings on every kind of name the panels list - under
+    :data:`LOWERED`, so the analysis runs to its end. ``spelled_again``: every finding of the
+    revision filed through a link to the directory the copy is in, before any request."""
+    description, drift = DRIFTED[example]
+    real = tmp_path / "real"
+    root = real / example
+    shutil.copytree(EXAMPLES / example, root)
+    for path in root.rglob("*.ddd.json"):
+        document = unnamed(json.loads(path.read_text(encoding="utf-8")))
+        path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    drift(root)
+    build_record(root, root / description, severity=list(LOWERED))
+    session = Session(root)
+    session.open(root / description)
+    revision = session.revision
+    assert revision is not None
+    assert revision.analysed
+    if spelled_again:
+        link = tmp_path / "link"
+        directory_link(link, real)
+        findings = tuple(respelled(filed, real.resolve(), link) for filed in revision.findings)
+        monkeypatch.setattr(session, "_revision", dataclasses.replace(revision, findings=findings))
+    return Api(session, root / description, wait_seconds=0.05)
+
+
+def analysed(api: Api) -> tuple[Revision, Index]:
+    revision = api.session.revision
+    assert revision is not None
+    assert revision.index is not None
+    return revision, revision.index
+
+
+def as_listed(api: Api, found: Iterable[Filed]) -> list[dict[str, Any]]:
+    """Findings as a panel lists them, each with where it leads: what the api answered for the
+    findings a predicate kept, before it indexed a revision's findings by file."""
+    revision, _ = analysed(api)
+    sources = {file.path.resolve(): file for file in revision.files}
+    cache: dict[Path, Document] = {}
+    return [_finding(filed, sources.get(filed.file.resolve()), cache) for filed in found]
+
+
+def places_as_read(built: Index, unit: str) -> list[dict[str, Any]]:
+    """Every place stating ``unit`` as ``GET /api/unit`` answered it before this part: a
+    variable's component and role read by :func:`ddd.variables.declarations_of`, and one its file
+    no longer declares left out."""
+    cache: dict[Path, Document] = {}
+    sites = []
+    for stated in built.units.get(unit, ()):
+        component_name = role = None
+        if stated.kind == "variable":
+            definition = Site(stated.site.path, stated.site.pointer.removesuffix(".unit"))
+            declared = next(
+                (d for d in declarations_of(built, stated.name, cache) if d.site == definition),
+                None,
+            )
+            if declared is None:
+                continue
+            component_name, role = declared.component, declared.role
+        sites.append(
+            {
+                "path": stated.site.path.resolve().as_posix(),
+                "pointer": stated.site.pointer,
+                "kind": stated.kind,
+                "name": stated.name,
+                "component": component_name,
+                "role": role,
+            }
+        )
+    return sites
+
+
+BY_KIND: Final[dict[str, tuple[Vocabulary, str]]] = {
+    "constant": (CONSTANTS, "/api/constant"),
+    "section": (SECTIONS, "/api/section"),
+    "raster": (RASTERS, "/api/raster"),
+}
+"""Each kind of row of the Shared files tab, with its vocabulary and its panel's route."""
+
+
+@pytest.mark.parametrize("spelled_again", [False, True], ids=["as-filed", "through-a-link"])
+class TestEachAnswerIsEveryFindingAskedAlone:
+    """Every name's panel and every tab's count, against what the api computed before it indexed
+    a revision's findings: every finding of the revision asked the name's own predicate, in the
+    revision's order - which is file by file in path order, and not the order the index lists a
+    name's places in. Each example is drifted so that the two orders differ where a name's
+    findings lie on several files, and asked once as the analysis filed it and once with every
+    finding filed through a link, a second spelling of every path."""
+
+    @pytest.mark.parametrize("example", list(DRIFTED))
+    def test_the_state_lists_every_finding_with_where_it_leads(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, example: str, spelled_again: bool
+    ) -> None:
+        api = drifted(tmp_path, example, monkeypatch, spelled_again=spelled_again)
+        revision, _ = analysed(api)
+        listed = get(api, "/api/state").body["findings"]
+        assert listed == as_listed(api, revision.findings)
+        assert listed
+
+    @pytest.mark.parametrize("example", list(DRIFTED))
+    def test_every_variable_s_panel_lists_its_findings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, example: str, spelled_again: bool
+    ) -> None:
+        api = drifted(tmp_path, example, monkeypatch, spelled_again=spelled_again)
+        revision, built = analysed(api)
+        answered = 0
+        for name in sorted(built.declarations):
+            declared = declarations_of(built, name, {})
+            expected = as_listed(
+                api,
+                [
+                    filed
+                    for filed in revision.findings
+                    if located_on(declared, filed.file, filed.diagnostic)
+                ],
+            )
+            assert get(api, "/api/variable", name=name).body["findings"] == expected, name
+            answered += len(expected)
+        assert answered
+
+    @pytest.mark.parametrize("example", list(DRIFTED))
+    def test_every_unit_s_panel_lists_its_places_and_findings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, example: str, spelled_again: bool
+    ) -> None:
+        api = drifted(tmp_path, example, monkeypatch, spelled_again=spelled_again)
+        revision, built = analysed(api)
+        answered = 0
+        for unit in sorted(built.units.keys() | built.vocabulary.keys()):
+            body = get(api, "/api/unit", name=unit).body
+            expected = as_listed(
+                api,
+                [
+                    filed
+                    for filed in revision.findings
+                    if located_on_unit(built, unit, filed.file, filed.diagnostic)
+                ],
+            )
+            assert body["findings"] == expected, unit
+            assert body["sites"] == places_as_read(built, unit), unit
+            answered += len(expected)
+        assert answered
+
+    @pytest.mark.parametrize("example", list(DRIFTED))
+    def test_every_type_s_panel_lists_its_findings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, example: str, spelled_again: bool
+    ) -> None:
+        api = drifted(tmp_path, example, monkeypatch, spelled_again=spelled_again)
+        revision, built = analysed(api)
+        answered = 0
+        for name in sorted(built.types):
+            expected = as_listed(
+                api,
+                [
+                    filed
+                    for filed in revision.findings
+                    if located_in_type(built, name, filed.file, filed.diagnostic)
+                ],
+            )
+            assert get(api, "/api/type", name=name).body["findings"] == expected, name
+            answered += len(expected)
+        assert answered
+
+    def test_every_constant_section_and_raster_s_panel_lists_its_findings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spelled_again: bool
+    ) -> None:
+        """The vocabulary example alone declares entries of the three vocabularies."""
+        api = drifted(tmp_path, "vocabulary", monkeypatch, spelled_again=spelled_again)
+        revision, built = analysed(api)
+        answered = 0
+        for vocabulary, route in BY_KIND.values():
+            for name in sorted(vocabulary.entries(built)):
+                expected = as_listed(
+                    api,
+                    [
+                        filed
+                        for filed in revision.findings
+                        if located_on_entry(vocabulary, built, name, filed.file, filed.diagnostic)
+                    ],
+                )
+                assert get(api, route, name=name).body["findings"] == expected, name
+                answered += len(expected)
+        assert answered
+
+    @pytest.mark.parametrize("example", ["demo", "vocabulary"])
+    def test_every_grid_lists_the_findings_about_its_init(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, example: str, spelled_again: bool
+    ) -> None:
+        """The two examples that state an `init` a grid shows a finding about. A name with no grid
+        - one the dictionary holds no object of - is refused before any finding is read."""
+        api = drifted(tmp_path, example, monkeypatch, spelled_again=spelled_again)
+        revision, built = analysed(api)
+        assert revision.dictionary is not None
+        answered = 0
+        for name in sorted(built.declarations):
+            reply = get(api, "/api/values", name=name)
+            if reply.status != 200:
+                continue
+            grid = grid_of(revision.dictionary, built, name)
+            at = f"{grid.pointer}.definition.init"
+            expected = as_listed(
+                api,
+                [
+                    filed
+                    for filed in revision.findings
+                    if grid.pointer is not None
+                    and filed.file.resolve().as_posix() == grid.file
+                    and filed.diagnostic.location is not None
+                    and filed.diagnostic.location.pointer == at
+                ],
+            )
+            assert reply.body["findings"] == expected, name
+            answered += len(expected)
+        assert answered
+
+    @pytest.mark.parametrize("example", list(DRIFTED))
+    def test_the_units_and_types_tabs_count_what_each_panel_lists(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, example: str, spelled_again: bool
+    ) -> None:
+        api = drifted(tmp_path, example, monkeypatch, spelled_again=spelled_again)
+        revision, built = analysed(api)
+        units = get(api, "/api/units").body["units"]
+        assert [row["unit"] for row in units] == sorted(built.units.keys() | built.vocabulary)
+        assert [row["findings"] for row in units] == [
+            sum(
+                1
+                for filed in revision.findings
+                if located_on_unit(built, row["unit"], filed.file, filed.diagnostic)
+            )
+            for row in units
+        ]
+        types_listed = get(api, "/api/types").body["types"]
+        assert [row["name"] for row in types_listed] == sorted(built.types)
+        assert [row["findings"] for row in types_listed] == [
+            sum(
+                1
+                for filed in revision.findings
+                if located_in_type(built, row["name"], filed.file, filed.diagnostic)
+            )
+            for row in types_listed
+        ]
+        assert any(row["findings"] for row in units)
+        assert any(row["findings"] for row in types_listed)
+
+    def test_the_shared_files_tab_counts_what_each_panel_lists(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spelled_again: bool
+    ) -> None:
+        api = drifted(tmp_path, "vocabulary", monkeypatch, spelled_again=spelled_again)
+        revision, built = analysed(api)
+        rows = get(api, "/api/shared").body["entries"]
+        assert [(row["kind"], row["name"]) for row in rows] == sorted(
+            (vocabulary.kind, name)
+            for vocabulary, _ in BY_KIND.values()
+            for name in vocabulary.entries(built)
+        )
+        assert [row["findings"] for row in rows] == [
+            sum(
+                1
+                for filed in revision.findings
+                if located_on_entry(
+                    BY_KIND[row["kind"]][0], built, row["name"], filed.file, filed.diagnostic
+                )
+            )
+            for row in rows
+        ]
+        assert any(row["findings"] for row in rows)
+
+    @pytest.mark.parametrize("example", list(DRIFTED))
+    def test_the_files_tab_counts_the_findings_at_each_entry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, example: str, spelled_again: bool
+    ) -> None:
+        """Compared as a whole location, the description's own path and the entry's pointer, as
+        the tab always compared them - so an entry's finding filed through the link is no entry's,
+        and the tab counts none where the analysis filed one."""
+        api = drifted(tmp_path, example, monkeypatch, spelled_again=spelled_again)
+        revision, _ = analysed(api)
+        entries = get(api, "/api/files").body["entries"]
+        counted = [
+            sum(
+                1
+                for filed in revision.findings
+                if filed.diagnostic.location
+                == Location(revision.project, f"project.includes[{entry['index']}]")
+            )
+            for entry in entries
+        ]
+        assert [entry["findings"] for entry in entries] == counted
+        assert any(counted) is not spelled_again

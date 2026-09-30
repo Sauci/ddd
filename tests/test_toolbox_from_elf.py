@@ -5,6 +5,7 @@ file, so every case is exactly the one its test names."""
 
 from __future__ import annotations
 
+import json
 import math
 import struct
 from pathlib import Path
@@ -12,7 +13,7 @@ from typing import Any, Literal
 
 import pytest
 
-from ddd.diagnostics import CHECKS, DiagnosticBag, Location, Severity, where
+from ddd.diagnostics import CHECKS, STANDALONE_POLICY, DiagnosticBag, Location, Severity, where
 from ddd.elf import (
     DW_ATE_BOOLEAN,
     DW_ATE_COMPLEX_FLOAT,
@@ -35,7 +36,16 @@ from ddd.elf import (
     Unsupported,
     Variable,
 )
+from ddd.toolbox.checked import POLICY
 from ddd.toolbox.findings import FINDINGS, place, report
+from ddd.toolbox.from_elf import (
+    DEFAULT_SECTIONS,
+    NOT_INFERRED,
+    VALUE_BLOCKS,
+    Description,
+    describe,
+    document_text,
+)
 from ddd.toolbox.mapping import Mapper, Shape, Typed, datatype_of, described, shape_of
 from ddd.toolbox.selection import Wanted, select, wanted
 from ddd.toolbox.values import UnstatableValueError, initial_value, shortest_float32
@@ -819,3 +829,379 @@ class TestValues:
         with pytest.raises(UnstatableValueError) as refused:
             initial_value(bytes([0xFF]), "boolean", (), "little")
         assert str(refused.value) == "a boolean byte of 255, which is neither 0 nor 1"
+
+
+def run(
+    img: Image, *arguments: str, scope: str = "output", component: str | None = None
+) -> tuple[Description, DiagnosticBag]:
+    bag = DiagnosticBag()
+    return describe(img, list(arguments), scope=scope, component=component, bag=bag), bag
+
+
+def filled(*pairs: tuple[int, bytes], size: int = 0x100) -> bytes:
+    data = bytearray(size)
+    for offset, raw in pairs:
+        data[offset : offset + len(raw)] = raw
+    return bytes(data)
+
+
+def names(description: Description) -> list[str]:
+    return [entry["definition"]["name"] for entry in description.interface]
+
+
+class TestDescribe:
+    def test_a_variable_becomes_one_entry_and_the_run_says_what_it_leaves_out(self) -> None:
+        img = image(stored("Gain", U16, line=3), contents=filled((0, bytes([0x2C, 0x01]))))
+        description, bag = run(img, "Gain")
+        assert description == Description(
+            (
+                {
+                    "scope": "output",
+                    "definition": {
+                        "name": "Gain",
+                        "kind": "measurement",
+                        "datatype": "uint16",
+                        "conversion": IDENTITY,
+                        "init": 300,
+                        "volatile": False,
+                    },
+                },
+            ),
+            (),
+        )
+        assert found(bag) == [("elf-not-inferred", Severity.INFO, NOT_INFERRED)]
+
+    def test_a_definition_states_its_keys_in_the_examples_order(self) -> None:
+        calib = Section(".calib", 0x100, 0x100, 0)
+        img = image(
+            stored("Table", Array(Qualified(U8, const=True), (2,))),
+            sections=(calib,),
+            contents=filled((0, bytes([1, 2]))),
+        )
+        description, _ = run(img, "Table")
+        assert list(description.interface[0]["definition"]) == [
+            "name",
+            "kind",
+            "datatype",
+            "dimensions",
+            "conversion",
+            "init",
+            "section",
+            "volatile",
+        ]
+
+    def test_a_consumer_states_no_storage_and_reads_none(self) -> None:
+        img = image(
+            stored("Level", F32),
+            sections=(Section(".calib", 0x100, 4, 0),),
+            contents=filled((0, struct.pack("<f", math.nan))),
+        )
+        description, bag = run(img, "Level", scope="input")
+        assert description.interface[0] == {
+            "scope": "input",
+            "definition": {
+                "name": "Level",
+                "kind": "measurement",
+                "datatype": "float32",
+                "conversion": IDENTITY,
+                "volatile": False,
+            },
+        }
+        assert [check for check, _, _ in found(bag)] == ["elf-not-inferred"]
+
+    def test_a_local_states_its_storage_as_an_output_does(self) -> None:
+        img = image(stored("Gain", U16), contents=filled((0, bytes([0x2C, 0x01]))))
+        description, _ = run(img, "Gain", scope="local")
+        assert description.interface[0]["scope"] == "local"
+        assert description.interface[0]["definition"]["init"] == 300
+
+    def test_a_default_section_without_contents_states_neither_init_nor_section(self) -> None:
+        bss = Section(".bss", 0x200, 4, None)
+        description, _ = run(
+            image(stored("Counter", U16, address=0x200), sections=(DATA, bss)), "Counter"
+        )
+        assert {"init", "section"}.isdisjoint(description.interface[0]["definition"])
+
+    def test_a_custom_section_without_contents_is_stated_without_an_init(self) -> None:
+        """The case no portable C spelling builds (Task 1): a .noinit the startup code leaves
+        alone."""
+        noinit = Section(".noinit", 0x200, 4, None)
+        img = image(stored("Retained", U16, address=0x200), sections=(DATA, noinit))
+        description, bag = run(img, "Retained")
+        definition = description.interface[0]["definition"]
+        assert ("init" in definition, definition["section"]) == (False, ".noinit")
+        assert [check for check, _, _ in found(bag)] == ["elf-section", "elf-not-inferred"]
+
+    @pytest.mark.parametrize("section", sorted(DEFAULT_SECTIONS))
+    def test_a_toolchain_default_section_is_not_stated(self, section: str) -> None:
+        img = image(stored("Gain", U16), sections=(Section(section, 0x100, 4, 0),))
+        description, _ = run(img, "Gain")
+        assert "section" not in description.interface[0]["definition"]
+
+    def test_a_section_the_output_states_is_warned_about_once(self) -> None:
+        calib = Section(".calib", 0x100, 8, 0)
+        img = image(
+            stored("A", U16, line=3), stored("B", U16, address=0x102, line=4), sections=(calib,)
+        )
+        _, bag = run(img, "A", "B")
+        sections = [d for d in bag.sorted if d.check == "elf-section"]
+        assert [(d.message, d.location) for d in sections] == [
+            (
+                "'A' is placed in '.calib', the name of the image's output section: DDD's "
+                "section is the one the source places it in, which the linker script may have "
+                "renamed, and the project has to declare it in a sections file, or 'ddd check' "
+                "reports unknown-section",
+                Location(Path("unit.c"), line=3),
+            )
+        ]
+
+    def test_an_address_no_section_holds_is_refused(self) -> None:
+        description, bag = run(image(stored("Lost", U16, address=0x900)), "Lost")
+        assert description.interface == ()
+        assert found(bag) == [
+            (
+                "elf-no-storage",
+                Severity.ERROR,
+                "'Lost' has an address, 0x900, that no section of the image holds",
+            )
+        ]
+
+    def test_a_variable_running_past_its_section_is_refused(self) -> None:
+        img = image(stored("Wide", Base("unsigned int", DW_ATE_UNSIGNED, 4), address=0x1FE))
+        _, bag = run(img, "Wide")
+        assert found(bag) == [
+            (
+                "elf-init-unsupported",
+                Severity.ERROR,
+                "'Wide' runs past the end of section '.data', so its initial value cannot be read",
+            )
+        ]
+
+    def test_a_value_ddd_cannot_state_is_refused(self) -> None:
+        img = image(stored("Level", F32), contents=filled((0, struct.pack("<f", math.nan))))
+        _, bag = run(img, "Level")
+        assert found(bag) == [
+            (
+                "elf-init-unsupported",
+                Severity.ERROR,
+                "'Level' starts as NaN, which DDD cannot state as an initial value",
+            )
+        ]
+
+    def test_a_structured_object_s_values_are_dropped_and_said_to_be(self) -> None:
+        img = image(
+            stored("Config", Qualified(PAIR, const=True), line=7),
+            contents=filled((0, bytes([1, 2]))),
+        )
+        description, bag = run(img, "Config", component="Pump")
+        assert description.interface[0]["definition"] == {
+            "name": "Config",
+            "kind": "parameter",
+            "typename": "Pair_s",
+            "volatile": False,
+        }
+        assert description.types == (PAIR_ENTRY,)
+        assert found(bag)[0] == (
+            "elf-init-dropped",
+            Severity.WARNING,
+            "'Config' starts with values the image holds, which DDD does not carry: a structured "
+            "object is zero-initialised, and its values reach it from the running software or "
+            "from the calibration tool",
+        )
+
+    def test_a_structured_object_of_zeros_loses_nothing(self) -> None:
+        _, bag = run(image(stored("Config", PAIR)), "Config", component="Pump")
+        assert [check for check, _, _ in found(bag)] == ["elf-not-inferred"]
+
+    def test_the_list_output_says_where_the_types_went(self) -> None:
+        _, bag = run(image(stored("Config", PAIR)), "Config")
+        assert (
+            "elf-types-omitted",
+            Severity.WARNING,
+            "the list output has no place for the types its structured objects name: "
+            "'--component NAME' prints a component file that holds them",
+        ) in found(bag)
+
+    def test_a_value_block_adds_why_it_is_one_to_what_the_run_leaves_out(self) -> None:
+        _, bag = run(image(stored("Table", Array(Qualified(U8, const=True), (2,)))), "Table")
+        assert found(bag) == [("elf-not-inferred", Severity.INFO, NOT_INFERRED + VALUE_BLOCKS)]
+
+    def test_what_is_not_inferred_and_why_a_value_block_is_one_are_spelled_out_word_for_word(
+        self,
+    ) -> None:
+        """The two tests above compare against ``NOT_INFERRED``/``VALUE_BLOCKS`` themselves, so
+        a wording change to either constant would not fail them: pinned here against the
+        literal sentences instead."""
+        _, bag = run(image(stored("Table", Array(Qualified(U8, const=True), (2,)))), "Table")
+        assert found(bag) == [
+            (
+                "elf-not-inferred",
+                Severity.INFO,
+                "an image states no unit, description, limits, scaling or id, so the output "
+                "states none: every conversion but an enum's is the identity, the limits are "
+                "the ones DDD derives, and 'ddd id --assign' writes the ids; and a const array "
+                "is a value block, since nothing in an image tells a curve, a map or an axis "
+                "from any other array",
+            )
+        ]
+
+    def test_every_variable_reaching_a_name_defined_two_ways_is_refused(self) -> None:
+        first = structure(
+            "Clash_s", Member("a", U8, 0), size=1, declared_at=Declared("unit_a.c", 11)
+        )
+        second = structure(
+            "Clash_s", Member("a", U16, 0), size=2, declared_at=Declared("unit_b.c", 10)
+        )
+        img = image(
+            stored("A", first, unit="unit_a.c", line=13),
+            stored("B", second, unit="unit_b.c", line=13),
+            stored("Gain", U8),
+        )
+        description, bag = run(img, "A", "B", "Gain")
+        assert names(description) == ["Gain"]
+        conflicts = [d for d in bag.sorted if d.check == "elf-type-conflict"]
+        assert [d.message for d in conflicts] == [
+            f"'{name}' reaches 'Clash_s', which the image defines 2 different ways, so no one "
+            f"description of it is right"
+            for name in ("A", "B")
+        ]
+        assert conflicts[0].notes == (
+            ("'Clash_s' is defined one way here", Location(Path("unit_a.c"), line=11)),
+            ("'Clash_s' is defined one way here", Location(Path("unit_b.c"), line=10)),
+        )
+
+    def test_a_variable_the_mapping_refuses_is_left_out_and_the_rest_described(self) -> None:
+        img = image(stored("Pointer", Unsupported("a pointer")), stored("Gain", U16))
+        description, bag = run(img, "Pointer", "Gain")
+        assert names(description) == ["Gain"]
+        assert [check for check, _, _ in found(bag)] == ["elf-type-unsupported", "elf-not-inferred"]
+
+    def test_a_malformed_argument_is_refused_before_anything_is_read(self) -> None:
+        with pytest.raises(ValueError):
+            run(image(), "unit.c:")
+
+
+class TestDocumentText:
+    def test_the_list_output_is_the_entries(self) -> None:
+        description = Description(
+            ({"scope": "output", "definition": {"name": "A"}},), (PAIR_ENTRY,)
+        )
+        assert document_text(description, None) == (
+            '[\n  {\n    "scope": "output",\n    "definition": {\n'
+            '      "name": "A"\n    }\n  }\n]\n'
+        )
+
+    def test_the_component_output_holds_the_types_where_there_are_some(self) -> None:
+        with_types = Description(({"scope": "output", "definition": {"name": "A"}},), (PAIR_ENTRY,))
+        without = Description(with_types.interface, ())
+        document = json.loads(document_text(with_types, "Pump"))
+        assert document == {
+            "component": {
+                "name": "Pump",
+                "types": [PAIR_ENTRY],
+                "interface": list(with_types.interface),
+            }
+        }
+        assert list(document["component"]) == ["name", "types", "interface"]
+        assert json.loads(document_text(without, "Pump")) == {
+            "component": {"name": "Pump", "interface": list(without.interface)}
+        }
+
+
+class TestTheCheckByDdd:
+    def test_the_policy_is_standalone_s_and_leaves_missing_id_out(self) -> None:
+        assert (*STANDALONE_POLICY, "missing-id=ignore") == POLICY
+
+    def test_a_load_error_then_an_analysis_error_each_refuse_their_variable(self) -> None:
+        """Review Focus 4: the schema error stops DDD before its analysis, so the enumerator
+        wider than an int is only found on the second pass."""
+        wide = Enum("Wide_e", 8, False, (("SMALL", 1), ("HUGE", 1 << 40)))
+        long_name = "L" * 130
+        img = image(
+            stored("Good", U8, line=1),
+            stored(long_name, U8, address=0x101, line=2),
+            stored("Wide", wide, address=0x108, line=3),
+        )
+        description, bag = run(img, "Good", "L*", "Wide")
+        assert names(description) == ["Good"]
+        errors = [d for d in bag.sorted if d.severity is Severity.ERROR]
+        assert [(d.check, d.location, d.notes[-1]) for d in errors] == [
+            ("schema", Location(Path("unit.c"), line=2), (f"'{long_name}' is left out", None)),
+            ("init-invalid", Location(Path("unit.c"), line=3), ("'Wide' is left out", None)),
+        ]
+
+    def test_a_finding_on_a_type_refuses_every_variable_reaching_it(self) -> None:
+        wide = Enum("Wide_e", 8, False, (("HUGE", 1 << 40),))
+        holder = structure("Holder_s", Member("level", wide, 0), size=8)
+        img = image(
+            stored("A", holder, line=4),
+            stored("B", holder, address=0x108, line=5),
+            stored("Good", U8, address=0x110),
+        )
+        description, bag = run(img, "A", "B", "Good", component="Pump")
+        assert names(description) == ["Good"]
+        assert description.types == ()
+        (error,) = [d for d in bag.sorted if d.severity is Severity.ERROR]
+        assert (error.check, error.location) == ("init-invalid", Location(Path("unit.c"), line=4))
+        assert error.notes[-2:] == (("'A' is left out", None), ("'B' is left out", None))
+
+    def test_ddd_s_warnings_of_the_last_pass_are_relayed_at_the_declaration(self) -> None:
+        twice = Enum("Twice_e", 1, False, (("ONE", 1), ("UNO", 1)))
+        _, bag = run(image(stored("Mode", twice, line=6)), "Mode")
+        (duplicate,) = [d for d in bag.sorted if d.check == "enum-duplicate-value"]
+        assert (duplicate.severity, duplicate.location) == (
+            Severity.WARNING,
+            Location(Path("unit.c"), line=6),
+        )
+
+    def test_a_warning_with_no_error_leaves_its_candidate_in_the_output(self) -> None:
+        """Were ``errors``'s filter to admit a warning alongside the errors it is meant for,
+        ``Mode`` would be refused for one; it is kept, and both findings are still reported."""
+        twice = Enum("Twice_e", 1, False, (("ONE", 1), ("UNO", 1)))
+        description, bag = run(image(stored("Mode", twice, line=6)), "Mode")
+        assert names(description) == ["Mode"]
+        assert [check for check, _, _ in found(bag)] == ["enum-duplicate-value", "elf-not-inferred"]
+
+    def test_a_note_of_ddd_s_is_moved_to_the_declaration_it_points_at(self) -> None:
+        img = image(stored("gain", U8, line=1), stored("Gain", U8, address=0x101, line=2))
+        _, bag = run(img, "gain", "Gain")
+        (similar,) = [d for d in bag.sorted if d.check == "name-similar"]
+        assert (similar.severity, similar.location) == (
+            Severity.WARNING,
+            Location(Path("unit.c"), line=1),
+        )
+        assert similar.notes == (("other variable", Location(Path("unit.c"), line=2)),)
+
+    def test_a_note_pointing_outside_every_candidate_gets_no_location(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No check of ddd's own reaches this in the tests above: every note one of them adds
+        here names another candidate. Patched in directly, to pin the branch coverage cannot
+        see - a note ``_concerned`` cannot place gets no location, rather than the wrong one."""
+
+        def fake_analyze(workspace: Any, bag: DiagnosticBag) -> None:
+            bag.add(
+                "made-up",
+                "a made-up problem",
+                Location(Path("nowhere"), "component.interface[0]"),
+                notes=[("elsewhere", Location(Path("nowhere"), "component.name"))],
+            )
+
+        monkeypatch.setattr("ddd.toolbox.checked.analyze", fake_analyze)
+        _, bag = run(image(stored("Gain", U8, line=1)), "Gain")
+        (diagnostic,) = [d for d in bag.sorted if d.check == "made-up"]
+        assert diagnostic.notes[0] == ("elsewhere", None)
+
+    def test_a_finding_about_no_variable_is_relayed_at_the_image_and_ends_the_passes(
+        self,
+    ) -> None:
+        description, bag = run(image(stored("Gain", U8)), "Gain", component="1bad")
+        (error,) = [d for d in bag.sorted if d.severity is Severity.ERROR]
+        assert (error.check, error.location) == ("schema", where(Path("hand.elf")))
+        assert names(description) == ["Gain"]
+
+    def test_a_run_ddd_refuses_everything_of_has_nothing_left_to_check(self) -> None:
+        wide = Enum("Wide_e", 8, False, (("HUGE", 1 << 40),))
+        description, bag = run(image(stored("Wide", wide)), "Wide")
+        assert description.interface == ()
+        assert [d.check for d in bag.sorted] == ["init-invalid"]

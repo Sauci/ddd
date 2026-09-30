@@ -51,7 +51,6 @@ from ddd.editing import (
 from ddd.file_plans import (
     CREATABLE,
     FileRefusalError,
-    Pair,
     add_plan,
     create_plan,
     included_entries,
@@ -60,6 +59,7 @@ from ddd.file_plans import (
 )
 from ddd.finding_fixes import fixes_for
 from ddd.finding_routes import Route, route_of
+from ddd.findings_by_file import FindingsByFile, Pair
 from ddd.graph import Module, graph_of
 from ddd.gui import contract
 from ddd.gui.compare import BaselineCache, BaselineRefusedError, compared
@@ -573,7 +573,9 @@ class Api:
         rows = (
             ()
             if built is None
-            else unit_rows(built, [(f.file, f.diagnostic) for f in revision.findings], cache)
+            else unit_rows(
+                built, FindingsByFile((f.file, f.diagnostic) for f in revision.findings), cache
+            )
         )
         return Reply(
             200,
@@ -687,7 +689,9 @@ class Api:
         rows = (
             ()
             if built is None
-            else type_rows(built, [(f.file, f.diagnostic) for f in revision.findings], cache)
+            else type_rows(
+                built, FindingsByFile((f.file, f.diagnostic) for f in revision.findings), cache
+            )
         )
         return Reply(
             200,
@@ -716,7 +720,9 @@ class Api:
             return _undeclared(revision, name)
         cache: dict[Path, Document] = {}
         site = built.types[name]
-        row = row_of(built, name, [(f.file, f.diagnostic) for f in revision.findings], cache)
+        row = row_of(
+            built, name, FindingsByFile((f.file, f.diagnostic) for f in revision.findings), cache
+        )
         stated = fixed_by(built, name, cache)
         header = stated.get("header")
         sources = {file.path.resolve(): file for file in revision.files}
@@ -814,7 +820,9 @@ class Api:
         rows = (
             ()
             if built is None
-            else shared_rows(built, [(f.file, f.diagnostic) for f in revision.findings], cache)
+            else shared_rows(
+                built, FindingsByFile((f.file, f.diagnostic) for f in revision.findings), cache
+            )
         )
         return Reply(
             200,

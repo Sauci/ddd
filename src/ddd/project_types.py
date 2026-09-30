@@ -16,12 +16,12 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
 from ddd.diagnostics import Diagnostic
+from ddd.findings_by_file import FindingsByFile, Pair
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document, read
 from ddd.variables import declarations_of
@@ -80,28 +80,27 @@ class Use:
 
 
 def type_rows(
-    built: Index, findings: Iterable[tuple[Path, Diagnostic]], cache: dict[Path, Document]
+    built: Index, findings: FindingsByFile, cache: dict[Path, Document]
 ) -> tuple[TypeRow, ...]:
     """Every type the project declares, by name, with what it is and how much it has to fix.
 
-    Every finding's file is resolved once, grouped into ``by_path``, rather than once per
-    (type, finding) pair through :func:`located_in_type`: the same answer, but O(types +
-    findings) resolves instead of O(types x findings) with two each.
+    Each row counts the findings of its own entry's file alone, which :class:`FindingsByFile`
+    resolved once per file rather than once per (type, finding) pair: the same answer as
+    :func:`located_in_type` asked of every finding, at O(types + findings) resolves instead of
+    O(types x findings) with two each.
     """
-    by_path: dict[Path, list[Diagnostic]] = {}
-    for file, found in findings:
-        by_path.setdefault(file.resolve(), []).append(found)
     rows = []
     for name in sorted(built.types):
         site = built.types[name]
-        filed = by_path.get(site.path.resolve(), ())
         rows.append(
             TypeRow(
                 name=name,
                 kind=kind_of(built, name, cache),
                 description=_string(built, name, "description", cache),
                 uses=len(built.type_uses.get(name, ())),
-                findings=sum(1 for found in filed if _within_entry(found, site)),
+                findings=sum(
+                    1 for _, found in findings.on(site.path) if _within_entry(found, site)
+                ),
             )
         )
     return tuple(rows)
@@ -110,21 +109,32 @@ def type_rows(
 def row_of(
     built: Index,
     name: str,
-    findings: Iterable[tuple[Path, Diagnostic]],
+    findings: FindingsByFile,
     cache: dict[Path, Document],
 ) -> TypeRow:
     """One type's own row: what :func:`type_rows` would answer for ``name`` alone, without
     building every other type's row alongside it - what ``GET /api/type`` pulls one of from its
     whole table today. Trusts ``name`` is one of ``built.types``, as the api checks before it
     asks, the way :func:`type_rows`' own comprehension does by never naming one it did not."""
-    filed = list(findings)
     return TypeRow(
         name=name,
         kind=kind_of(built, name, cache),
         description=_string(built, name, "description", cache),
         uses=len(built.type_uses.get(name, ())),
-        findings=sum(1 for file, found in filed if located_in_type(built, name, file, found)),
+        findings=len(type_findings(built, name, findings)),
     )
+
+
+def type_findings(built: Index, name: str, findings: FindingsByFile) -> list[Pair]:
+    """Every finding filed inside ``name``'s own entry, in the order given: what
+    :func:`located_in_type` keeps of every finding, asked only of the findings on the file the
+    entry is in, which are the only ones it can keep. Trusts ``name`` is one of ``built.types``,
+    as :func:`row_of` does."""
+    return [
+        (file, found)
+        for file, found in findings.on(built.types[name].path)
+        if located_in_type(built, name, file, found)
+    ]
 
 
 def uses_of(built: Index, name: str, cache: dict[Path, Document]) -> tuple[Use, ...]:

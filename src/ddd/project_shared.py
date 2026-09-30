@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, Final, Literal
@@ -31,6 +31,7 @@ from pydantic import BeforeValidator, TypeAdapter
 
 from ddd.diagnostics import Diagnostic
 from ddd.finding_routes import ABOUT_THE_DECLARATION
+from ddd.findings_by_file import FindingsByFile, Pair
 from ddd.lsp.navigation import Index, Site, rename_problem
 from ddd.lsp.ranges import Document, read
 from ddd.models.constants import ConstantValue
@@ -321,13 +322,23 @@ def located_on(
         return False
     if found.location is None:
         return False
+    wanted = file.resolve()
+    return any(
+        _at(place, wanted, found.location.pointer) for place in _places(vocabulary, built, name)
+    )
+
+
+def _places(vocabulary: Vocabulary, built: Index, name: str) -> list[Site]:
+    """Everywhere a finding of that entry can be filed: its own record where a file declares it,
+    then every shape naming it. What :func:`located_on` compares a finding against, and so the
+    files :func:`entry_findings` asks the findings of - one list, so that the files asked and the
+    places compared cannot come to name different places."""
     entry = vocabulary.entries(built).get(name)
     places: list[Site] = []
     if entry is not None:
         places.append(entry)
     places.extend(vocabulary.used(built).get(name, ()))
-    wanted = file.resolve()
-    return any(_at(place, wanted, found.location.pointer) for place in places)
+    return places
 
 
 def _at(place: Site, path: Path, pointer: str) -> bool:
@@ -340,17 +351,12 @@ def _at(place: Site, path: Path, pointer: str) -> bool:
 
 
 def shared_rows(
-    built: Index, findings: Iterable[tuple[Path, Diagnostic]], cache: dict[Path, Document]
+    built: Index, findings: FindingsByFile, cache: dict[Path, Document]
 ) -> tuple[SharedRow, ...]:
     """Every entry the tab lists, sorted by kind then name: every vocabulary in :data:`HELD`, from
-    every home each declares its entries at.
-
-    ``findings`` is read into a list once rather than walked per row: the api hands this a
-    generator, and a second walk of a spent one would count nothing for every row but the first.
-    """
-    filed = list(findings)
+    every home each declares its entries at."""
     rows = [
-        row_of(vocabulary, built, name, filed, cache)
+        row_of(vocabulary, built, name, findings, cache)
         for vocabulary in HELD
         for name in vocabulary.entries(built)
     ]
@@ -361,22 +367,33 @@ def row_of(
     vocabulary: Vocabulary,
     built: Index,
     name: str,
-    findings: Iterable[tuple[Path, Diagnostic]],
+    findings: FindingsByFile,
     cache: dict[Path, Document],
 ) -> SharedRow:
     """One entry's own row: what :func:`shared_rows` would answer for ``name`` of ``vocabulary``
     alone, without building every other row alongside it - what ``GET /api/constant`` needs one
     of."""
-    filed = list(findings)
     return SharedRow(
         kind=vocabulary.kind,
         name=name,
         states=vocabulary.states(shown(vocabulary, built, name, cache)),
         uses=len(vocabulary.used(built).get(name, ())),
-        findings=sum(
-            1 for file, found in filed if located_on(vocabulary, built, name, file, found)
-        ),
+        findings=len(entry_findings(vocabulary, built, name, findings)),
     )
+
+
+def entry_findings(
+    vocabulary: Vocabulary, built: Index, name: str, findings: FindingsByFile
+) -> list[Pair]:
+    """Every finding that entry of ``vocabulary`` owns, in the order given: what
+    :func:`located_on` keeps of every finding, asked only of the findings on the files its places
+    are in, which are the only ones it can keep. Every entry asked every finding was
+    O(entries x findings), each asking resolving two paths."""
+    return [
+        (file, found)
+        for file, found in findings.on_any(place.path for place in _places(vocabulary, built, name))
+        if located_on(vocabulary, built, name, file, found)
+    ]
 
 
 def shown(

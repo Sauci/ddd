@@ -10,6 +10,7 @@ import pytest
 
 from conftest import built_of, component, declare, write_tree
 from ddd.diagnostics import Diagnostic, Location, Severity
+from ddd.findings_by_file import FindingsByFile
 from ddd.lsp.navigation import _DIMENSION_KEY, _RASTER_KEY, _SECTION_KEY
 from ddd.lsp.ranges import Document
 from ddd.project_shared import (
@@ -247,13 +248,25 @@ ONE_OF_EACH = {
 }
 
 
+def _at(path: Path, check: str, pointer: str) -> Diagnostic:
+    """A finding of ``check`` filed at ``pointer`` of ``path``."""
+    return Diagnostic(check, Severity.ERROR, "a finding", Location(path, pointer))
+
+
+class Unwalked(FindingsByFile):
+    """Findings a table may ask file by file and never walk whole."""
+
+    def __iter__(self):
+        raise AssertionError("every finding was walked, where a row asks only its places' files")
+
+
 class TestTheRows:
     def test_every_constant_of_both_homes_is_a_row(self, tmp_path: Path) -> None:
         """A reader looking for CELLS does not know whether a constants file or a component's own
         list declares it, so one table holds both."""
         built, _ = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
-        rows = shared_rows(built, (), cache)
+        rows = shared_rows(built, FindingsByFile(()), cache)
         assert [(row.kind, row.name, row.states) for row in rows] == [
             ("constant", "CELLS", "2.0"),
             ("constant", "TREND_SAMPLES", "16"),
@@ -265,12 +278,12 @@ class TestTheRows:
         an edit built from that row would retype it."""
         built, _ = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
-        assert row_of(CONSTANTS, built, "CELLS", (), cache).states == "2.0"
+        assert row_of(CONSTANTS, built, "CELLS", FindingsByFile(()), cache).states == "2.0"
 
     def test_a_row_counts_the_shapes_that_name_it(self, tmp_path: Path) -> None:
         built, _ = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
-        assert {row.name: row.uses for row in shared_rows(built, (), cache)} == {
+        assert {row.name: row.uses for row in shared_rows(built, FindingsByFile(()), cache)} == {
             "CELLS": 0,
             "TREND_SAMPLES": 1,
         }
@@ -291,7 +304,9 @@ class TestTheRows:
         )
         rows = {
             row.name: row.findings
-            for row in shared_rows(built, [(tmp_path / "a.ddd.json", at_the_shape)], cache)
+            for row in shared_rows(
+                built, FindingsByFile([(tmp_path / "a.ddd.json", at_the_shape)]), cache
+            )
         }
         assert rows == {"CELLS": 0, "TREND_SAMPLES": 1}
 
@@ -306,13 +321,15 @@ class TestTheRows:
         )
         rows = {
             row.name: row.findings
-            for row in shared_rows(built, [(tmp_path / "c.ddd.json", at_the_entry)], cache)
+            for row in shared_rows(
+                built, FindingsByFile([(tmp_path / "c.ddd.json", at_the_entry)]), cache
+            )
         }
         assert rows["TREND_SAMPLES"] == 1
 
     def test_findings_are_read_once_however_many_rows_there_are(self, tmp_path: Path) -> None:
-        """The api hands this a generator. Walked once per row, every row after the first would
-        count nothing."""
+        """A generator is read once, into the findings by file. Walked once per row, every row
+        after the first would count nothing."""
         built, _ = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
         at_the_entry = Diagnostic(
@@ -322,8 +339,41 @@ class TestTheRows:
             location=Location(tmp_path / "c.ddd.json", "constants[0].name"),
         )
         given = iter([(tmp_path / "c.ddd.json", at_the_entry)])
-        rows = {row.name: row.findings for row in shared_rows(built, given, cache)}
+        rows = {row.name: row.findings for row in shared_rows(built, FindingsByFile(given), cache)}
         assert rows["TREND_SAMPLES"] == 1
+
+    def test_a_finding_on_a_file_two_entries_share_counts_on_its_own_row_only(
+        self, tmp_path: Path
+    ) -> None:
+        """`a.ddd.json` declares CELLS and names TREND_SAMPLES in a shape, so both rows ask its
+        findings, and each counts its own: one inside CELLS' entry, one at the shape."""
+        built, _ = built_of(tmp_path, **TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        a = tmp_path / "a.ddd.json"
+        findings = FindingsByFile(
+            [
+                (a, _at(a, "dimension-value", "component.interface[0].definition.dimensions[0]")),
+                (a, _at(a, "duplicate-constant", "component.constants[0].value")),
+            ]
+        )
+        rows = {row.name: row.findings for row in shared_rows(built, findings, cache)}
+        assert rows == {"CELLS": 1, "TREND_SAMPLES": 1}
+        assert row_of(CONSTANTS, built, "CELLS", findings, cache).findings == 1
+        assert row_of(CONSTANTS, built, "TREND_SAMPLES", findings, cache).findings == 1
+
+    def test_a_row_asks_its_own_places_files_and_never_walks_every_finding(
+        self, tmp_path: Path
+    ) -> None:
+        """Every entry asked every finding is O(entries x findings); a row asks the files its
+        entry and the shapes naming it are in, and no other."""
+        built, _ = built_of(tmp_path, **TWO_HOMES)
+        cache: dict[Path, Document] = {}
+        a = tmp_path / "a.ddd.json"
+        findings = Unwalked(
+            [(a, _at(a, "dimension-value", "component.interface[0].definition.dimensions[0]"))]
+        )
+        rows = {row.name: row.findings for row in shared_rows(built, findings, cache)}
+        assert rows == {"CELLS": 0, "TREND_SAMPLES": 1}
 
     def test_a_finding_with_no_place_belongs_to_no_constant(self, tmp_path: Path) -> None:
         built, _ = built_of(tmp_path, **TWO_HOMES)
@@ -685,7 +735,7 @@ class TestTheDescriptor:
             RASTERS, keys=("event", "description"), strings=frozenset({"description"})
         )
         with pytest.raises(KeyError, match="cycle"):
-            row_of(short, built, "10ms", (), cache)
+            row_of(short, built, "10ms", FindingsByFile(()), cache)
 
 
 class TestTheDescriptorsInvariants:
@@ -724,7 +774,7 @@ class TestSections:
     ) -> None:
         built, _root = built_of(tmp_path, **PLACED)
         cache: dict[Path, Document] = {}
-        row = row_of(SECTIONS, built, ".calib", (), cache)
+        row = row_of(SECTIONS, built, ".calib", FindingsByFile(()), cache)
         assert (row.kind, row.name, row.states) == ("section", ".calib", "read-only, align 4")
 
     def test_a_definition_placing_data_in_it_is_a_use_naming_its_variable(
@@ -742,7 +792,7 @@ class TestSections:
         # vocabulary it is in.
         built, _root = built_of(tmp_path, **PLACED_AND_SIZED)
         cache: dict[Path, Document] = {}
-        assert [(row.kind, row.name) for row in shared_rows(built, (), cache)] == [
+        assert [(row.kind, row.name) for row in shared_rows(built, FindingsByFile(()), cache)] == [
             ("constant", "TREND_SAMPLES"),
             ("section", ".calib"),
         ]
@@ -869,7 +919,7 @@ class TestRasters:
     def test_a_raster_states_its_event_and_its_cycle(self, tmp_path: Path) -> None:
         built, _ = built_of(tmp_path, **TIMED)
         cache: dict[Path, Document] = {}
-        row = row_of(RASTERS, built, "10ms", (), cache)
+        row = row_of(RASTERS, built, "10ms", FindingsByFile(()), cache)
         assert (row.kind, row.name, row.states) == ("raster", "10ms", "event 1, 10ms")
 
     def test_a_raster_with_no_cycle_states_its_event_alone(self, tmp_path: Path) -> None:
@@ -877,7 +927,7 @@ class TestRasters:
         first row cell composed from a key that may not be there."""
         built, _ = built_of(tmp_path, **UNTIMED)
         cache: dict[Path, Document] = {}
-        assert row_of(RASTERS, built, "20ms", (), cache).states == "event 2"
+        assert row_of(RASTERS, built, "20ms", FindingsByFile(()), cache).states == "event 2"
 
     def test_a_raster_writing_its_absent_cycle_out_as_null_states_its_event_alone(
         self, tmp_path: Path
@@ -889,14 +939,14 @@ class TestRasters:
         `event 2, null` and the row above `event 1, "10ms"`."""
         built, _ = built_of(tmp_path, **NULL_CYCLE)
         cache: dict[Path, Document] = {}
-        assert row_of(RASTERS, built, "20ms", (), cache).states == "event 2"
+        assert row_of(RASTERS, built, "20ms", FindingsByFile(()), cache).states == "event 2"
 
     def test_all_three_vocabularies_share_the_table(self, tmp_path: Path) -> None:
         # The whole point of one tab, now said for the third vocabulary: a reader looking for a
         # name does not first choose which of the three it is in.
         built, _ = built_of(tmp_path, **ONE_OF_EACH)
         cache: dict[Path, Document] = {}
-        assert [(row.kind, row.name) for row in shared_rows(built, (), cache)] == [
+        assert [(row.kind, row.name) for row in shared_rows(built, FindingsByFile(()), cache)] == [
             ("constant", "TREND_SAMPLES"),
             ("raster", "10ms"),
             ("section", ".calib"),
@@ -907,7 +957,7 @@ class TestRasters:
         definition naming it directly are two shapes, and the tab's Uses column counts both."""
         built, _ = built_of(tmp_path, **TIMED)
         cache: dict[Path, Document] = {}
-        assert row_of(RASTERS, built, "10ms", (), cache).uses == 2
+        assert row_of(RASTERS, built, "10ms", FindingsByFile(()), cache).uses == 2
 
     def test_the_uses_a_panel_lists_come_through_the_descriptors_own_reader(
         self, tmp_path: Path

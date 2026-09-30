@@ -18,6 +18,7 @@ from conftest import (
     write_tree,
 )
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
+from ddd.findings_by_file import FindingsByFile
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
 from ddd.lsp.ranges import Document
@@ -38,6 +39,13 @@ def _finding(check: str, pointer: str) -> Diagnostic:
     return Diagnostic(check, Severity.ERROR, "message", Location(Path(), pointer))
 
 
+class Unwalked(FindingsByFile):
+    """Findings a table may ask file by file and never walk whole."""
+
+    def __iter__(self):
+        raise AssertionError("every finding was walked, where a row asks only its own file's")
+
+
 @pytest.fixture
 def built() -> Index:
     return index(load_workspace(EXAMPLES / "structures" / "project.ddd.json", DiagnosticBag()))
@@ -55,8 +63,8 @@ def cache() -> dict[Path, Document]:
 
 class TestRows:
     def test_every_type_is_a_row_with_its_kind_and_description(self, built, cache) -> None:
-        rows = {row.name: row for row in type_rows(built, (), cache)}
-        assert [row.name for row in type_rows(built, (), cache)] == sorted(rows)
+        rows = {row.name: row for row in type_rows(built, FindingsByFile(()), cache)}
+        assert [row.name for row in type_rows(built, FindingsByFile(()), cache)] == sorted(rows)
         assert (rows["Temperature_t"].kind, rows["Temperature_t"].uses) == ("scalar", 3)
         assert rows["Temperature_t"].description.startswith("A temperature as every component")
         assert rows["DriverStatus_t"].kind == "external"
@@ -66,7 +74,7 @@ class TestRows:
         # Measured against examples/structures as it stands: every type there is named at least
         # once, and Sensor_t twice - by the component that produces Inlet and the one that reads
         # it. A test asserting a type nothing names belongs to a project built for it, below.
-        rows = {row.name: row.uses for row in type_rows(built, (), cache)}
+        rows = {row.name: row.uses for row in type_rows(built, FindingsByFile(()), cache)}
         assert rows == {
             "DriverStatus_t": 1,
             "Sample_t": 1,
@@ -83,7 +91,7 @@ class TestRows:
             for name, site in built.types.items()
             if name == "Temperature_t"
         ]
-        rows = {row.name: row for row in type_rows(built, findings, cache)}
+        rows = {row.name: row for row in type_rows(built, FindingsByFile(findings), cache)}
         assert rows["Temperature_t"].findings == 1
         assert rows["Sample_t"].findings == 0
 
@@ -96,9 +104,41 @@ class TestRows:
             for name, site in built.types.items()
             if name == "Temperature_t"
         ]
-        rows = {row.name: row for row in type_rows(built, findings, cache)}
-        assert row_of(built, "Temperature_t", findings, cache) == rows["Temperature_t"]
-        assert row_of(built, "Sample_t", findings, cache) == rows["Sample_t"]
+        rows = {row.name: row for row in type_rows(built, FindingsByFile(findings), cache)}
+        assert (
+            row_of(built, "Temperature_t", FindingsByFile(findings), cache) == rows["Temperature_t"]
+        )
+        assert row_of(built, "Sample_t", FindingsByFile(findings), cache) == rows["Sample_t"]
+
+    def test_a_finding_on_a_file_two_types_share_counts_on_its_own_row_only(
+        self, built, cache
+    ) -> None:
+        # examples/structures declares every type in one file, so each row's candidates are the
+        # findings of that file - both of these - and only its own entry's count.
+        temperature, sample = built.types["Temperature_t"], built.types["Sample_t"]
+        assert temperature.path == sample.path
+        findings = FindingsByFile(
+            [
+                (sample.path, _finding("type-kind", f"{sample.pointer}.members[1]")),
+                (temperature.path, _finding("unknown-unit", f"{temperature.pointer}.unit")),
+            ]
+        )
+        rows = {row.name: row.findings for row in type_rows(built, findings, cache)}
+        assert rows == {name: int(name in ("Temperature_t", "Sample_t")) for name in built.types}
+        assert row_of(built, "Temperature_t", findings, cache).findings == 1
+        assert row_of(built, "Sample_t", findings, cache).findings == 1
+        assert row_of(built, "Sensor_t", findings, cache).findings == 0
+
+    def test_a_row_asks_its_own_file_and_never_walks_every_finding(self, built, cache) -> None:
+        # Walking every finding once per row, two paths resolved each, is what the Types tab
+        # spent its second on at 100,000 declarations; the rows ask by file instead.
+        temperature = built.types["Temperature_t"]
+        findings = Unwalked(
+            [(temperature.path, _finding("unknown-unit", f"{temperature.pointer}.unit"))]
+        )
+        rows = {row.name: row.findings for row in type_rows(built, findings, cache)}
+        assert rows["Temperature_t"] == 1
+        assert row_of(built, "Temperature_t", findings, cache).findings == 1
 
     def test_a_finding_elsewhere_or_on_no_type_locates_nothing(self, built) -> None:
         # `type_rows` only ever asks about a finding already paired with the type's own file,
@@ -152,7 +192,7 @@ class TestUses:
         ]
         # The row's own count is read straight from the index and must agree with what this
         # lists, or the panel shows one place and lists none.
-        rows = {row.name: row for row in type_rows(demo, (), cache)}
+        rows = {row.name: row for row in type_rows(demo, FindingsByFile(()), cache)}
         assert rows["DriverState_t"].uses == len(uses)
 
     def test_a_name_no_type_holds_has_no_uses_and_states_nothing(self, built, cache) -> None:
@@ -176,7 +216,9 @@ class TestUses:
             },
         )
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
-        assert [(row.name, row.uses) for row in type_rows(built, (), cache)] == [("Spare_t", 0)]
+        assert [(row.name, row.uses) for row in type_rows(built, FindingsByFile(()), cache)] == [
+            ("Spare_t", 0)
+        ]
 
     def test_a_member_whose_own_name_has_drifted_is_not_a_use(self, tmp_path, cache) -> None:
         # A member whose `name` a later edit dropped and a structure whose `name` a later edit

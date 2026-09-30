@@ -12,12 +12,13 @@ with the lines it changes, computed without writing anything.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from ddd.diagnostics import Diagnostic
 from ddd.finding_routes import UNIT_CHECKS
+from ddd.findings_by_file import FindingsByFile
 from ddd.lsp.navigation import Index, Site, UnitSite
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit, UnitProject, UnitRefusalError, adoption
@@ -56,13 +57,16 @@ class Place:
 
 
 def unit_rows(
-    built: Index, findings: Iterable[tuple[Path, Diagnostic]], cache: dict[Path, Document]
+    built: Index, findings: FindingsByFile, cache: dict[Path, Document]
 ) -> tuple[UnitRow, ...]:
     """Every unit the project states or its vocabulary lists, by spelling, with how many
     variables, types and structure members state it and how many of its own findings are filed.
 
     Counted from the index's record as it stands, the way the picker counts the units in use:
-    a variable several components declare counts once, and so does a type or a member.
+    a variable several components declare counts once, and so does a type or a member. The
+    findings are walked once, whole, for the ``unknown-unit`` and ``duplicate-unit`` among them,
+    rather than asked file by file: a unit is as often as not stated in every file of a project,
+    and the two checks are what is kept.
     """
     own = [(file, finding) for file, finding in findings if finding.check in UNIT_CHECKS]
     return tuple(

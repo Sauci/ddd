@@ -304,6 +304,34 @@ class TestTypes:
         )
         assert type_of(entry) == Enum(None, 2, True, (("WIDE", 255),))
 
+    @pytest.mark.parametrize(
+        ("form", "raw"),
+        [
+            ("DW_FORM_data1", 0xFF),
+            ("DW_FORM_data2", 0xFFFF),
+            ("DW_FORM_data4", 0xFFFF_FFFF),
+            ("DW_FORM_data8", 0xFFFF_FFFF_FFFF_FFFF),
+        ],
+    )
+    def test_an_enumerator_is_sign_extended_from_the_width_of_its_form(
+        self, form: str, raw: int
+    ) -> None:
+        """Each ``DW_FORM_dataN`` sign-extends from its own width: ``raw`` is all ones at
+        that width and no wider, so it reads as -1 only where the width is the right one."""
+        entry = die(
+            "DW_TAG_enumeration_type",
+            enumerator(b"NEG", raw, form),
+            of=die(
+                "DW_TAG_base_type",
+                DW_AT_name=b"int",
+                DW_AT_encoding=DW_ATE_SIGNED,
+                DW_AT_byte_size=4,
+            ),
+            DW_AT_name=b"Wide_e",
+            DW_AT_byte_size=4,
+        )
+        assert type_of(entry) == Enum("Wide_e", 4, True, (("NEG", -1),))
+
     def test_an_enum_declared_but_never_defined_is_unsupported(self) -> None:
         entry = die("DW_TAG_enumeration_type", DW_AT_declaration=DECLARATION)
         assert type_of(entry) == Unsupported("an enum declared but never defined")
@@ -317,6 +345,15 @@ class TestTypes:
             DW_AT_decl_line=7,
         )
         assert type_of(entry) == Enum(None, 4, False, (("A", 1),), Declared("unit.c", 7))
+
+    def test_a_child_that_is_no_enumerator_is_passed_over(self) -> None:
+        entry = die(
+            "DW_TAG_enumeration_type",
+            die("DW_TAG_subprogram"),
+            enumerator(b"A", 1),
+            DW_AT_byte_size=1,
+        )
+        assert type_of(entry) == Enum(None, 1, False, (("A", 1),))
 
     def test_a_structure_lists_its_members_where_they_start(self) -> None:
         entry = die(

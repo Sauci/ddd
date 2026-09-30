@@ -658,6 +658,14 @@ class TestStructures:
         mapped(Enum("Mode_e", 4, False, (("A", 2),)), "b", mapper=mapper)
         assert set(mapper.conflicts()) == {"Mode_e"}
 
+        # The same enumerators, only reordered, are not proven identical either: comparing
+        # by their serialised text (rather than as dicts, which `==` would call equal
+        # whatever order their keys came in) is what tells the two apart.
+        reordered = Mapper(image(), DiagnosticBag())
+        mapped(Enum("Pair_e", 4, False, (("A", 1), ("B", 2))), "c", mapper=reordered)
+        mapped(Enum("Pair_e", 4, False, (("B", 2), ("A", 1))), "d", mapper=reordered)
+        assert set(reordered.conflicts()) == {"Pair_e"}
+
     def test_types_lists_only_the_structures_it_is_asked_for(self) -> None:
         mapper = Mapper(image(), DiagnosticBag())
         mapped(PAIR, mapper=mapper)

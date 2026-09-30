@@ -893,6 +893,18 @@ class TestTheMatrix:
         assert placed
         assert not placed & {section.name for section in image.sections}
 
+    def test_an_unallocated_section_is_left_out_of_the_image(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """The other half of _sections' filter: .symtab and .debug_info are in every file but
+        never loaded into the target's memory and state no real address - unfiltered, either
+        could shadow a real section that happens to start at address zero."""
+        image, _ = row
+        with image.path.open("rb") as stream:
+            names = {section.name for section in ELFFile(stream).iter_sections()}
+        assert {".symtab", ".debug_info"} <= names
+        assert not {".symtab", ".debug_info"} & {section.name for section in image.sections}
+
     def test_a_folded_static_has_no_address_where_the_row_builds_one(
         self, row: tuple[Image, dict[str, Any]]
     ) -> None:
@@ -908,6 +920,19 @@ class TestTheMatrix:
         image, _ = row
         assert "Nodebug_Counter" in image.symbols
         assert "Nodebug_Counter" not in {variable.name for variable in image.variables}
+
+    def test_a_function_and_a_thread_local_variable_are_left_out_of_the_symbols(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """The other half of _symbols' filter: a function is STT_FUNC and a thread-local
+        variable is STT_TLS, neither of which the STT_OBJECT-only image.symbols keeps."""
+        image, entry = row
+        with image.path.open("rb") as stream:
+            symtab = ELFFile(stream).get_section_by_name(".symtab")
+            names = {symbol.name for symbol in symtab.iter_symbols()}
+        assert "fixture_entry" in names
+        assert any(record["name"] == "Tls_Counter" for record in entry["variables"])
+        assert not {"fixture_entry", "Tls_Counter"} & image.symbols
 
     def test_a_definition_completing_a_declaration_is_declared_at_its_own_line(
         self, row: tuple[Image, dict[str, Any]]

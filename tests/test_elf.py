@@ -4,12 +4,14 @@ linked images to it (over the fixture matrix, from Task 3 on)."""
 from __future__ import annotations
 
 import itertools
+import json
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import pytest
+from elftools.elf.elffile import ELFFile
 
 from ddd.elf import (
     DECLARED_ONLY,
@@ -25,6 +27,7 @@ from ddd.elf import (
     Base,
     CType,
     Declared,
+    ElfReadError,
     Enum,
     FileTable,
     Image,
@@ -36,6 +39,8 @@ from ddd.elf import (
     Unsupported,
     Variable,
     file_path,
+    file_table,
+    open_image,
     read_variables,
     size_of,
 )
@@ -697,3 +702,304 @@ class TestImage:
         assert found is not None
         assert found.name == ".data"
         assert IMAGE.section_of(0x104) is None
+
+
+FIXTURES = Path(__file__).parent / "fixtures" / "elf"
+MANIFEST = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
+MAIN = (FIXTURES / "src" / "main.c").read_text(encoding="utf-8").splitlines()
+
+
+def line_of(text: str) -> int:
+    """The line of main.c holding ``text``: the oracle for where a variable is declared."""
+    (found,) = [number for number, line in enumerate(MAIN, start=1) if text in line]
+    return found
+
+
+def by_name(image: Image, name: str) -> Variable:
+    (found,) = [variable for variable in image.variables if variable.name == name]
+    return found
+
+
+def core(ctype: CType) -> CType:
+    while isinstance(ctype, Qualified | Typedef | Array):
+        ctype = ctype.element if isinstance(ctype, Array) else ctype.inner
+    return ctype
+
+
+@pytest.fixture(scope="module", params=sorted(MANIFEST["rows"]))
+def row(request: pytest.FixtureRequest) -> tuple[Image, dict[str, Any]]:
+    """One row of the matrix, opened once for every test that reads it."""
+    return open_image(FIXTURES / f"{request.param}.elf"), MANIFEST["rows"][request.param]
+
+
+class TestTheMatrix:
+    """Every row read against what its own toolchain said about it (the manifest)."""
+
+    def test_the_byte_order_is_the_toolchain_s(self, row: tuple[Image, dict[str, Any]]) -> None:
+        image, entry = row
+        assert image.byte_order == entry["traits"]["byte_order"]
+
+    def test_every_variable_is_in_the_section_the_symbol_table_puts_it_in(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        image, entry = row
+        found: dict[str, set[tuple[str, bool]]] = {}
+        for variable in image.variables:
+            if variable.address is None:
+                continue
+            section = image.section_of(variable.address)
+            assert section is not None, variable.name
+            found.setdefault(variable.name, set()).add((section.name, section.offset is not None))
+        expected: dict[str, set[tuple[str, bool]]] = {}
+        for record in entry["variables"]:
+            if record["name"] in found:
+                expected.setdefault(record["name"], set()).add(
+                    (record["section"], record["contents"])
+                )
+        assert found == expected
+
+    def test_every_sized_variable_is_the_size_the_symbol_table_gives_it(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        image, entry = row
+        sizes = {record["name"]: record["size"] for record in entry["variables"]}
+        stored = [variable for variable in image.variables if variable.address is not None]
+        unsized = {variable.name for variable in stored if size_of(variable.type) is None}
+        assert unsized == {"Type_Pointer", "Type_Union"}
+        for variable in stored:
+            if variable.name not in unsized:
+                assert size_of(variable.type) == sizes[variable.name], variable.name
+
+    @pytest.mark.parametrize(
+        ("name", "value"),
+        [
+            ("Meas_U16", 0x1234),
+            ("Meas_Volatile", 0x12345678),
+            ("Cal_Gain", 300),
+            ("Type_U64", 0x0102030405060708),
+            ("Static_Used", 0x0102),
+        ],
+    )
+    def test_an_initial_value_reads_back_in_the_image_s_byte_order(
+        self, row: tuple[Image, dict[str, Any]], name: str, value: int
+    ) -> None:
+        image, _ = row
+        variable = by_name(image, name)
+        assert variable.address is not None
+        size = size_of(variable.type)
+        assert size is not None
+        raw = image.read(variable.address, size)
+        assert raw is not None
+        assert int.from_bytes(raw, image.byte_order) == value
+
+    def test_char_long_and_long_double_are_what_the_target_makes_them(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        image, entry = row
+        traits = entry["traits"]
+        char = core(by_name(image, "Type_Char").type)
+        assert isinstance(char, Base)
+        unsigned = traits["char_unsigned"]
+        assert char.encoding == (DW_ATE_UNSIGNED_CHAR if unsigned else DW_ATE_SIGNED_CHAR)
+        assert size_of(by_name(image, "Type_Long").type) == traits["sizeof_long"]
+        assert size_of(by_name(image, "Type_Long_Double").type) == traits["sizeof_long_double"]
+
+    def test_an_enum_is_as_wide_as_the_target_makes_it_and_signed_where_its_values_are(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """Review Focus 2: on strict DWARF 2 an enum states no underlying type and no
+        encoding, and only its negative enumerator says it is signed."""
+        image, entry = row
+        state = core(by_name(image, "Enum_State").type)
+        signed = core(by_name(image, "Enum_Signed").type)
+        assert isinstance(state, Enum)
+        assert isinstance(signed, Enum)
+        width = entry["traits"]["sizeof_enum"]
+        assert (state.size, state.signed) == (width, False)
+        assert (signed.size, signed.signed) == (width, True)
+        assert signed.enumerators == (("SIGNED_NEG", -2), ("SIGNED_POS", 3))
+
+    def test_bitfields_start_at_the_same_bits_whatever_the_byte_order_or_the_dwarf(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """Review Focus 1: DWARF 2 and 3 count DW_AT_bit_offset from the storage unit's most
+        significant bit, so the conversion differs by byte order; the offsets must not."""
+        image, _ = row
+        gapped = core(by_name(image, "Layout_Gapped").type)
+        padded = core(by_name(image, "Layout_Padded").type)
+        assert isinstance(gapped, Struct)
+        assert isinstance(padded, Struct)
+        assert [(m.name, m.bit_offset, m.bit_size) for m in gapped.members] == [
+            ("a", 0, 2),
+            ("b", 5, 2),
+            ("c", 7, 9),
+        ]
+        assert [(m.name, m.bit_offset, m.bit_size) for m in padded.members] == [
+            ("a", 0, 7),
+            ("b", 8, 2),
+        ]
+
+    def test_structures_of_structures_arrays_and_signed_bitfields_read_the_same_everywhere(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """An array of structures inside a structure, a two dimensional array member and
+        signed bitfields: the member shapes the fixture gained after Task 1. DWARF 2 to 4 state
+        a bitfield from its storage unit's most significant bit, so on big endian rows the
+        conversion runs the other way; the offsets must not move."""
+        image, _ = row
+        frame = core(by_name(image, "Nested_Frame").type)
+        assert isinstance(frame, Struct)
+        samples, grid, trim = frame.members
+        assert isinstance(samples.type, Array)
+        assert (samples.name, samples.bit_offset, samples.type.dimensions) == ("samples", 0, (3,))
+        assert isinstance(grid.type, Array)
+        assert (grid.name, grid.bit_offset, grid.type.dimensions) == ("grid", 48, (2, 3))
+        assert (trim.name, trim.bit_offset, trim.bit_size) == ("trim", 144, 4)
+        sample = core(samples.type)
+        assert isinstance(sample, Struct)
+        assert [(m.name, m.bit_offset, m.bit_size) for m in sample.members] == [
+            ("low", 0, 3),
+            ("high", 3, 5),
+            ("level", 8, None),
+        ]
+        signed = [core(member.type) for member in (*sample.members[:2], trim)]
+        assert [(base.encoding, base.size) for base in signed if isinstance(base, Base)] == [
+            (DW_ATE_SIGNED_CHAR, 1),
+            (DW_ATE_SIGNED, 2),
+            (DW_ATE_SIGNED_CHAR, 1),
+        ]
+
+    def test_an_explicit_alignment_is_read_where_the_dwarf_states_it(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """gcc on the Linux targets states it on the structure and on the member, gcc for
+        arm-none-eabi and clang on the member alone (the trial build): the member is held to
+        the trait, the structure may carry it or not."""
+        image, entry = row
+        aligned = core(by_name(image, "Layout_Aligned").type)
+        assert isinstance(aligned, Struct)
+        expected = 8 if entry["traits"]["alignment_attribute"] else None
+        assert aligned.members[0].alignment == expected
+        assert aligned.alignment in (expected, None)
+
+    def test_thread_local_storage_has_no_address_and_its_sections_are_left_out(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """Review Focus 5: .tbss shares its addresses with the section after it."""
+        image, entry = row
+        assert "FIXTURE_TLS" in entry["cases"], "every row builds the thread-local case"
+        assert by_name(image, "Tls_Counter").missing == THREAD_LOCAL
+        placed = {r["section"] for r in entry["variables"] if r["name"] == "Tls_Counter"}
+        assert placed
+        assert not placed & {section.name for section in image.sections}
+
+    def test_a_folded_static_has_no_address_where_the_row_builds_one(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        image, entry = row
+        names = {variable.name for variable in image.variables}
+        assert ("Static_Folded" in names) == ("FIXTURE_FOLDED" in entry["cases"])
+        if "Static_Folded" in names:
+            assert by_name(image, "Static_Folded").missing == FOLDED
+
+    def test_a_variable_of_a_unit_without_dwarf_is_in_the_symbol_table_only(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        image, _ = row
+        assert "Nodebug_Counter" in image.symbols
+        assert "Nodebug_Counter" not in {variable.name for variable in image.variables}
+
+    def test_a_definition_completing_a_declaration_is_declared_at_its_own_line(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        image, _ = row
+        assert by_name(image, "Cal_Declared_First").declared_at == Declared(
+            "main.c", line_of("const uint16_t Cal_Declared_First = 0x1234;")
+        )
+
+    def test_a_static_two_units_define_is_two_variables(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        image, _ = row
+        twins = sorted(variable.unit for variable in image.variables if variable.name == "Twin")
+        assert twins == ["unit_a.c", "unit_b.c"]
+
+
+class TestRefusals:
+    """What open_image refuses, each in a sentence naming the file. Where the end of the
+    sentence is pyelftools' own words about a damaged file, the test pins ours and leaves
+    theirs to them."""
+
+    def test_a_file_that_cannot_be_read_is_refused(self, tmp_path: Path) -> None:
+        path = tmp_path / "missing.elf"
+        with pytest.raises(ElfReadError) as refused:
+            open_image(path)
+        assert str(refused.value) == (f"cannot read '{path.as_posix()}': No such file or directory")
+
+    def test_a_file_that_is_not_elf_is_refused(self, tmp_path: Path) -> None:
+        path = tmp_path / "notes.txt"
+        path.write_bytes(b"not an image")
+        with pytest.raises(ElfReadError) as refused:
+            open_image(path)
+        assert str(refused.value) == (
+            f"'{path.as_posix()}' is not an ELF image this tool can read: "
+            f"Magic number does not match"
+        )
+
+    def test_a_truncated_image_is_refused(self, tmp_path: Path) -> None:
+        data = (FIXTURES / "x86_64.elf").read_bytes()
+        path = tmp_path / "truncated.elf"
+        path.write_bytes(data[: len(data) // 2])
+        with pytest.raises(ElfReadError) as refused:
+            open_image(path)
+        assert str(refused.value).startswith(
+            f"'{path.as_posix()}' is not an ELF image this tool can read: "
+        )
+
+    def test_debug_information_of_a_version_pyelftools_does_not_read_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        data = bytearray((FIXTURES / "x86_64.elf").read_bytes())
+        with (FIXTURES / "x86_64.elf").open("rb") as stream:
+            offset = ELFFile(stream).get_section_by_name(".debug_info")["sh_offset"]
+        # A unit's header: a four byte length, then its two byte version.
+        data[offset + 4 : offset + 6] = (9).to_bytes(2, "little")
+        path = tmp_path / "future.elf"
+        path.write_bytes(bytes(data))
+        with pytest.raises(ElfReadError) as refused:
+            open_image(path)
+        assert str(refused.value) == (
+            f"'{path.as_posix()}' is not an ELF image this tool can read: "
+            f"Expected supported DWARF version. Got '9'"
+        )
+
+    def test_an_image_without_dwarf_is_refused_naming_g(self) -> None:
+        path = FIXTURES / "stripped.elf"
+        with pytest.raises(ElfReadError) as refused:
+            open_image(path)
+        assert str(refused.value) == (
+            f"'{path.as_posix()}' carries no DWARF debug information: build it with -g"
+        )
+
+    def test_a_relocatable_object_is_refused(self) -> None:
+        path = FIXTURES / "main.o"
+        with pytest.raises(ElfReadError) as refused:
+            open_image(path)
+        assert str(refused.value) == (
+            f"'{path.as_posix()}' is a relocatable object, not a linked image: its addresses "
+            f"and its initial values are not final until it is linked"
+        )
+
+    def test_an_elf_file_of_another_kind_is_refused(self, tmp_path: Path) -> None:
+        data = bytearray((FIXTURES / "x86_64.elf").read_bytes())
+        data[16:18] = (4).to_bytes(2, "little")  # e_type ET_CORE; the row is little endian
+        path = tmp_path / "core.elf"
+        path.write_bytes(bytes(data))
+        with pytest.raises(ElfReadError) as refused:
+            open_image(path)
+        assert str(refused.value) == (
+            f"'{path.as_posix()}' is an ELF file of type ET_CORE, not a linked image"
+        )
+
+    def test_a_unit_without_a_line_program_has_no_file_table(self) -> None:
+        assert file_table(None, ".") is None

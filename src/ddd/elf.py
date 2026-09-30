@@ -19,10 +19,17 @@ branches no C compiler produces are reached that way.
 
 from __future__ import annotations
 
+import io
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Final, Literal, Protocol
+
+from elftools.common.exceptions import DWARFError, ELFError
+from elftools.dwarf.dwarf_expr import DWARFExprParser
+from elftools.elf.constants import SH_FLAGS
+from elftools.elf.elffile import ELFFile
+from elftools.elf.sections import SymbolTableSection
 
 DW_ATE_BOOLEAN: Final = 0x02
 DW_ATE_COMPLEX_FLOAT: Final = 0x03
@@ -340,6 +347,113 @@ def read_variables(
     names = {variable.name for variable in defined}
     defined.extend(variable for name, variable in declared.items() if name not in names)
     return tuple(defined)
+
+
+def open_image(path: Path) -> Image:
+    """Read a linked ELF image and its DWARF; :class:`ElfReadError` says why one cannot be."""
+    shown = path.as_posix()
+    try:
+        contents = path.read_bytes()
+    except OSError as error:
+        msg = f"cannot read '{shown}': {error.strerror}"
+        raise ElfReadError(msg) from None
+    try:
+        return _image(path, contents)
+    except (ELFError, DWARFError) as error:
+        msg = f"'{shown}' is not an ELF image this tool can read: {error}"
+        raise ElfReadError(msg) from None
+
+
+def _image(path: Path, contents: bytes) -> Image:
+    shown = path.as_posix()
+    elf = ELFFile(io.BytesIO(contents))
+    kind = elf.header["e_type"]
+    if kind == "ET_REL":
+        msg = (
+            f"'{shown}' is a relocatable object, not a linked image: its addresses and its "
+            f"initial values are not final until it is linked"
+        )
+        raise ElfReadError(msg)
+    if kind not in ("ET_EXEC", "ET_DYN"):
+        msg = f"'{shown}' is an ELF file of type {kind}, not a linked image"
+        raise ElfReadError(msg)
+    if not elf.has_dwarf_info(strict=True):
+        msg = f"'{shown}' carries no DWARF debug information: build it with -g"
+        raise ElfReadError(msg)
+    dwarf = elf.get_dwarf_info(relocate_dwarf_sections=False, follow_links=False)
+    units = [_PyelftoolsUnit(cu, dwarf) for cu in dwarf.iter_CUs()]
+    variables = read_variables(
+        units, big_endian=not elf.little_endian, thread_local=_symbols(elf, "STT_TLS")
+    )
+    return Image(
+        path=path,
+        byte_order="little" if elf.little_endian else "big",
+        variables=variables,
+        sections=_sections(elf),
+        symbols=_symbols(elf, "STT_OBJECT"),
+        contents=contents,
+    )
+
+
+def _sections(elf: ELFFile) -> tuple[Section, ...]:
+    sections: list[Section] = []
+    for section in elf.iter_sections():
+        flags = section["sh_flags"]
+        if not flags & SH_FLAGS.SHF_ALLOC or flags & SH_FLAGS.SHF_TLS:
+            continue
+        offset = None if section["sh_type"] == "SHT_NOBITS" else section["sh_offset"]
+        sections.append(Section(section.name, section["sh_addr"], section["sh_size"], offset))
+    return tuple(sections)
+
+
+def _symbols(elf: ELFFile, kind: str) -> frozenset[str]:
+    """The names of the symbols of type ``kind`` (``STT_OBJECT``, ``STT_TLS``) in any table."""
+    names: set[str] = set()
+    for section in elf.iter_sections():
+        if isinstance(section, SymbolTableSection):
+            names.update(
+                symbol.name
+                for symbol in section.iter_symbols()
+                if symbol["st_info"]["type"] == kind
+            )
+    return frozenset(names)
+
+
+class _PyelftoolsUnit:
+    """A pyelftools compilation unit, as :class:`Unit` asks for one."""
+
+    def __init__(self, cu: Any, dwarf: Any) -> None:
+        self._cu = cu
+        self._dwarf = dwarf
+        self._parser = DWARFExprParser(cu.structs)
+        self.top: Entry = cu.get_top_DIE()
+        self.name = _text(self.top.attributes.get("DW_AT_name")) or ""
+        self._files = file_table(
+            dwarf.line_program_for_CU(cu), _text(self.top.attributes.get("DW_AT_comp_dir")) or ""
+        )
+
+    def operations(self, expression: Sequence[int]) -> list[tuple[str, list[Any]]]:
+        return [(op.op_name, list(op.args)) for op in self._parser.parse_expr(expression)]
+
+    def indexed_address(self, index: int) -> int:
+        return int(self._dwarf.get_addr(self._cu, index))
+
+    def file(self, index: int) -> str | None:
+        return file_path(self._files, index)
+
+
+def file_table(program: Any, compilation_directory: str) -> FileTable | None:
+    """A pyelftools line program's file table as plain data; None for a unit without one."""
+    if program is None:
+        return None
+    return FileTable(
+        version=int(program["version"]),
+        files=tuple(
+            (_decoded(entry.name), int(entry.dir_index)) for entry in program["file_entry"]
+        ),
+        directories=tuple(_decoded(directory) for directory in program["include_directory"]),
+        compilation_directory=compilation_directory,
+    )
 
 
 def _variable(

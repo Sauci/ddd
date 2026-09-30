@@ -1566,8 +1566,9 @@ def _at_entry(revision: Revision, index: int) -> int:
 
 
 def _appeared_since(revision: Revision) -> list[str]:
-    """The name of every file an entry of the tree reaches now that the revision never read, in
-    the order the descriptions and their entries list them, each once.
+    """The name of every file an entry of the tree reaches now that the revision never read, each
+    once: description by description in the order ``revision.files`` has them, which is by path,
+    and within one in the order its entries bring them.
 
     Every description the revision read whose kind is ``project`` - the root, and each
     sub-project - has its entries expanded by the loader's own rule

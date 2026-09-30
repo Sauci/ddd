@@ -5,6 +5,8 @@ file, so every case is exactly the one its test names."""
 
 from __future__ import annotations
 
+import math
+import struct
 from pathlib import Path
 from typing import Any, Literal
 
@@ -36,6 +38,7 @@ from ddd.elf import (
 from ddd.toolbox.findings import FINDINGS, place, report
 from ddd.toolbox.mapping import Mapper, Shape, Typed, datatype_of, described, shape_of
 from ddd.toolbox.selection import Wanted, select, wanted
+from ddd.toolbox.values import UnstatableValueError, initial_value, shortest_float32
 
 U8 = Base("unsigned char", DW_ATE_UNSIGNED_CHAR, 1)
 DATA = Section(".data", 0x100, 0x100, 0)
@@ -714,3 +717,105 @@ class TestLayout:
 
     def test_a_member_whose_offset_is_unknown_leaves_the_next_unjudged(self) -> None:
         assert self.layout(Member("a", U8, None, 2), Member("b", U8, 5, 2)) == []
+
+
+class TestValues:
+    @pytest.mark.parametrize(
+        ("raw", "datatype", "byte_order", "value"),
+        [
+            (bytes([0x34, 0x12]), "uint16", "little", 0x1234),
+            (bytes([0x12, 0x34]), "uint16", "big", 0x1234),
+            (bytes([0xFE, 0xFF]), "sint16", "little", -2),
+            (bytes([1, 2, 3, 4, 5, 6, 7, 8]), "uint64", "big", 0x0102030405060708),
+            (bytes([0xFF]), "sint8", "little", -1),
+            (bytes([1]), "boolean", "little", True),
+            (bytes([0]), "boolean", "little", False),
+            (struct.pack(">d", 0.1), "float64", "big", 0.1),
+            (struct.pack("<f", 1.5), "float32", "little", 1.5),
+            (struct.pack("<f", 0.1), "float32", "little", 0.1),
+        ],
+    )
+    def test_a_scalar_is_read_in_the_image_s_byte_order(
+        self, raw: bytes, datatype: str, byte_order: str, value: Any
+    ) -> None:
+        result = initial_value(raw, datatype, (), byte_order)
+        assert result == value
+        assert type(result) is type(value)
+
+    def test_an_array_is_nested_lists_in_c_order(self) -> None:
+        assert initial_value(bytes([1, 2, 3, 4, 5, 6]), "uint8", (2, 3), "little") == [
+            [1, 2, 3],
+            [4, 5, 6],
+        ]
+
+    def test_three_dimensions_nest_three_deep(self) -> None:
+        assert initial_value(bytes(range(8)), "uint8", (2, 2, 2), "little") == [
+            [[0, 1], [2, 3]],
+            [[4, 5], [6, 7]],
+        ]
+
+    def test_an_array_of_one_value_is_that_value(self) -> None:
+        assert initial_value(bytes([9, 9, 9, 9]), "uint8", (4,), "little") == 9
+
+    def test_bytes_not_values_decide_whether_an_array_is_one_value(self) -> None:
+        value = initial_value(struct.pack("<ff", -0.0, 0.0), "float32", (2,), "little")
+        assert [math.copysign(1.0, item) for item in value] == [-1.0, 1.0]
+
+    @pytest.mark.parametrize(
+        ("raw", "datatype", "reason"),
+        [
+            (bytes([2]), "boolean", "a boolean byte of 2, which is neither 0 nor 1"),
+            (struct.pack("<f", math.nan), "float32", "NaN"),
+            (struct.pack("<d", -math.inf), "float64", "an infinity"),
+        ],
+    )
+    def test_a_value_ddd_has_no_spelling_for_is_refused(
+        self, raw: bytes, datatype: str, reason: str
+    ) -> None:
+        with pytest.raises(UnstatableValueError) as refused:
+            initial_value(raw, datatype, (), "little")
+        assert str(refused.value) == reason
+
+    def test_one_element_ddd_has_no_spelling_for_refuses_the_array(self) -> None:
+        with pytest.raises(UnstatableValueError):
+            initial_value(bytes([1, 3]), "boolean", (2,), "little")
+
+    def test_a_float32_is_spelled_with_the_fewest_digits_that_read_it_back(self) -> None:
+        tenth = struct.unpack("<f", struct.pack("<f", 0.1))[0]
+        assert shortest_float32(tenth) == 0.1
+
+    def test_the_largest_float32_is_not_spelled_past_what_a_float32_holds(self) -> None:
+        largest = struct.unpack("<f", (0x7F7FFFFF).to_bytes(4, "little"))[0]
+        assert shortest_float32(largest) == 3.4028235e38
+
+    def test_a_float32_needing_nine_digits_gets_nine(self) -> None:
+        value = struct.unpack("<f", (0x03AD66B5).to_bytes(4, "little"))[0]
+        assert shortest_float32(value) == 1.01916065e-36
+
+    @pytest.mark.parametrize(
+        ("raw", "datatype", "value"),
+        [
+            (bytes([0xFF]), "uint8", 255),
+            (bytes([0xFF, 0xFF]), "uint16", 0xFFFF),
+            (bytes([0xFF, 0xFF, 0xFF, 0xFF]), "uint32", 0xFFFFFFFF),
+            (bytes([0xFF, 0xFF, 0xFF, 0xFF]), "sint32", -1),
+            (bytes([0xFF] * 8), "uint64", 0xFFFFFFFFFFFFFFFF),
+            (bytes([0xFF] * 8), "sint64", -1),
+        ],
+    )
+    def test_every_row_of_formats_keeps_its_own_width_and_signedness(
+        self, raw: bytes, datatype: str, value: int
+    ) -> None:
+        """``uint32``, ``sint32`` and ``sint64`` appear in no test above; ``uint8``,
+        ``uint16`` and ``uint64`` do, but only under 128 (2**15 for ``uint16``, 2**63 for
+        ``uint64``), where the signed reading of the same bytes agrees. All bits set
+        disagrees, and pins the row; a wrong width instead sends this same call into
+        ``_nested`` with no dimensions, back as a list rather than the int compared above."""
+        assert initial_value(raw, datatype, (), "little") == value
+
+    def test_a_boolean_byte_is_read_as_unsigned(self) -> None:
+        """The 2 above stays under 128, where ``b`` (signed) and ``B`` (unsigned) read back
+        the same value; 255 does not, and only ``B`` spells the refusal this way."""
+        with pytest.raises(UnstatableValueError) as refused:
+            initial_value(bytes([0xFF]), "boolean", (), "little")
+        assert str(refused.value) == "a boolean byte of 255, which is neither 0 nor 1"

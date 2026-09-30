@@ -409,7 +409,8 @@ hand-built C model.
     order
   - a member offset given as a constant or as a location expression
   - `DW_OP_addr` or `DW_OP_addrx` through `.debug_addr`
-  - thread-local locations
+  - thread-local locations, and a thread-local variable given no location at all, as aarch64's
+    gcc and clang give one; the image's `STT_TLS` symbol then says what it is
   - enumerator values in any form
   - strings in `.debug_str` or through `.debug_str_offsets`
   - compressed debug sections
@@ -474,9 +475,10 @@ of section 3.3.
 
 ### 5.4 The dependency
 
-- A new `requirements-elf.txt` holds `pyelftools>=X,<1`. `X` is the oldest release the whole
-  fixture matrix passes on, found in the first increment by running the reader tests against
-  releases down from 0.33, the newest on 2026-09-30.
+- A new `requirements-elf.txt` holds `pyelftools>=0.32,<1`. 0.32 is the oldest release that
+  reads the whole trial matrix exactly as 0.33 does; 0.31 and every older release tried, down
+  to 0.27, lack `has_dwarf_info(strict=...)`, which is what tells a stripped image from one
+  with DWARF (measured on 2026-09-30, and re-measured by the plan's Task 3).
 - `[tool.hatch.metadata.hooks.requirements_txt.optional-dependencies]` gains
   `elf = ["requirements-elf.txt"]`, and `dev` becomes
   `["requirements-dev.txt", "requirements-elf.txt"]`. Every environment that runs the suite
@@ -518,10 +520,13 @@ has.
 
 ### 6.2 The image and the build
 
-- **`docker/elf-fixtures/Dockerfile`** is a Debian image pinned by digest, holding the cross
+- **`docker/elf-fixtures.Dockerfile`** is a Debian image pinned by digest, holding the cross
   gcc packages, clang, lld and each target's binutils. It lives in `docker/`, which
   `pyproject.toml` describes as the scripts the container runs.
-- **`docker/elf-fixtures/build_fixtures.py`** compiles every row and writes the files below.
+- **`docker/build_elf_fixtures.py`** compiles every row and writes the files below. It sits
+  directly in `docker/`, which `pyproject.toml` puts on pytest's path, so that the drift guard
+  imports its own `hashed` rather than restating it; a hyphenated subdirectory would be no
+  package.
 - **The compose service `elf-fixtures`** has an image tag of its own. Like `gui-screenshots`,
   it hands what it wrote back to the checkout's owner.
 - **Flags:** `-O2 -g<version> -ffreestanding -nostdlib`, statically linked where the target
@@ -575,8 +580,9 @@ The oracle is the compiler and its binutils, never the reader under test.
   - enum size and the alignment of a `uint64_t` inside a structure, from the sizes GNU
     `readelf -s` reports for probe variables
   - whether the DWARF carries `DW_AT_alignment` at all, from GNU `readelf --debug-dump=info`
-- **For each fixture variable:** its section, whether that section has contents, and its size,
-  from GNU `readelf -s` and `readelf -S`.
+- **For each object and thread-local symbol:** its section, whether that section has contents,
+  and its size, from GNU `readelf -s` and `readelf -S`. A thread-local variable's symbol is of
+  type `TLS`, not `OBJECT`, and its section is what the reader is held to leaving out.
 - **SHA-256 hashes** of the fixture source, the Dockerfile and the build script, each hashed
   with its line endings normalised, so that a Windows checkout converting them does not read as
   drift.
@@ -598,8 +604,9 @@ Tests first, in the files that own each concern:
     to 5 variants and compressed sections.
   - The refusals: a file that is not ELF, a truncated one, `stripped.elf` and `main.o`.
   - The test double of section 5.1, for the branches no compiler produces.
-  - **The drift guard:** the hashes in the manifest must match the files. If they do not, the
-    test fails naming `docker compose run --rm elf-fixtures`.
+- **`tests/test_elf_fixtures.py` is the drift guard:** the hashes in the manifest must match the
+  files, or the test fails naming `docker compose run --rm elf-fixtures`. It is a file of its
+  own because it comes first, before the reader it would otherwise have to import exists.
 - **`tests/test_toolbox_from_elf.py` tests the translator** on hand-built C models:
   - every rule of section 4, including what no fixture compiler produces cleanly, such as a
     128 bit type, a NaN initial value or a synthesised name that is taken
@@ -723,10 +730,15 @@ What each source settles, so that a later reader knows which claims rest on what
   analysis; every producing entry without an `id` earns `missing-id` as an info.
 - **Baseline:** the worktree at `06d8737` passes the suite, 4714 tests at 100% coverage.
 
-Not yet verified, and settled by the fixture build (the plan's first task):
-- clang's DWARF for the same bitfield and alignment cases
-- that every row links `-nostdlib` with its thread-local case, and gcc 14 folds the
-  `static const` the way gcc 15 does
+- **The trial build of the whole matrix, 2026-09-30**, in the pinned image, with the fixture
+  source and build script the plan carries: every row built on the first run, with its
+  thread-local case, and every gcc row with its folded `static const`. Every row reads
+  `Gapped_s`'s bitfields at bits 0, 5 and 7 and `Padded_s`'s at 0 and 8, big endian and DWARF 2
+  and 3 included, and `Enum_Signed` as signed, strict DWARF 2 included. gcc on the Linux targets
+  states `DW_AT_alignment` on a structure and on its `_Alignas` member, arm-none-eabi-gcc and
+  clang on the member only, and strict DWARF 2 nowhere. On aarch64, gcc 14 and clang 19 give a
+  thread-local variable no location at all. DDD's own check accepted every declaration the
+  translator drafted for every row.
 
 ## 11 Deferred
 

@@ -493,7 +493,12 @@ def _sections(elf: ELFFile) -> tuple[Section, ...]:
         if not flags & SH_FLAGS.SHF_ALLOC or flags & SH_FLAGS.SHF_TLS:
             continue
         offset = None if section["sh_type"] == "SHT_NOBITS" else section["sh_offset"]
-        sections.append(Section(section.name, section["sh_addr"], section["sh_size"], offset))
+        # A section's name comes from .shstrtab, not DWARF, but reaches the same places a
+        # DWARF string does - a refusal, a finding, the output - so it is untrusted the same
+        # way: _decoded() writes out its control characters here, as it does for DWARF's.
+        sections.append(
+            Section(_decoded(section.name), section["sh_addr"], section["sh_size"], offset)
+        )
     return tuple(sections)
 
 

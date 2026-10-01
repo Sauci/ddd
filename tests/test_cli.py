@@ -4193,6 +4193,46 @@ class TestToolFromElf:
         assert entry["scope"] == "input"
         assert {"init", "section"}.isdisjoint(entry["definition"])
 
+    def test_a_renamed_section_s_control_characters_are_escaped_in_the_finding(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        """A section's name comes from ``.shstrtab``, not DWARF, and reaches this finding by a
+        different path than the strings the fix wave already escaped: ``.calib`` renamed in
+        place to the same six bytes, ``.c\\x1b[2K``, with its ``sh_size`` shrunk so
+        ``Section_Calib``'s own two bytes run past it.
+
+        Shrinking rather than renaming alone is deliberate: DDD's own 'section' pattern
+        (letters, digits, '_', '.', '$') refuses the backslash any escaped control character
+        introduces, so a renamed-but-otherwise-ordinary section is rejected by that schema
+        before 'elf-section' or the output's 'section' key ever see it, whichever name caused
+        it. This finding is reported before a definition - and its 'section' key - exists.
+        """
+        import struct
+
+        from elftools.elf.elffile import ELFFile
+
+        data = bytearray(X86.read_bytes())
+        with X86.open("rb") as stream:
+            elf = ELFFile(stream)
+            index = elf.get_section_index(".calib")
+            calib = elf.get_section(index)
+            shstrtab = elf.get_section(elf.header["e_shstrndx"])
+            name_at = shstrtab["sh_offset"] + calib.header["sh_name"]
+            entry = elf.header["e_shoff"] + index * elf.header["e_shentsize"]
+        assert bytes(data[name_at : name_at + 6]) == b".calib"
+        data[name_at : name_at + 6] = b".c\x1b[2K"
+        struct.pack_into("<Q", data, entry + 32, 1)  # sh_size: too small for the uint16
+        renamed = tmp_path / "renamed.elf"
+        renamed.write_bytes(bytes(data))
+        code, out, err = from_elf(capsys, str(renamed), "Section_Calib")
+        line = fixture_line("main.c", "const uint16_t Section_Calib")
+        assert (code, out, err) == (
+            EXIT_FINDINGS,
+            "",
+            f"main.c:{line}: error[elf-init-unsupported]: 'Section_Calib' runs past the end "
+            f"of section '.c\\x1b[2K', so its initial value cannot be read\n1 error\n",
+        )
+
     def test_the_findings_go_to_stderr_as_json_and_the_declarations_stay_on_stdout(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

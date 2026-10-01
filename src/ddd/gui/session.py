@@ -4,12 +4,14 @@ The GUI holds no data of its own: the description files are the project, and a r
 analysis of them - the findings, the files it read with a fingerprint of each, and the
 dictionary it resolved to. A new revision is made after every edit and undo and whenever a file
 of the project changes on disk, by one analysis at a time on a thread of its own: an edit is
-written at once and analysed after - the api waiting for that analysis before it answers, until
-Task 6 - and the edits landing while one analysis runs are all analysed by the one after it. A
-change on disk is noticed by another thread, comparing each file's modification time and size
-once a second: the standard library has no file watcher, and re-checking a project of
-thousands of declarations takes well under a second. A file a wildcard include would match only
-once it exists is noticed when something else changes, which is a limit of the preview.
+written at once and answered as soon as it is, its analysis following, and the edits landing
+while one analysis runs are all analysed by the one after it. What the session says - the newest
+revision, whether an analysis is asked for or running, the undo entry - is read whole as a
+:class:`Snapshot`, numbered by a version that moves at every change of it, which is what a page
+waits past. A change on disk is noticed by another thread, comparing each file's modification
+time and size once a second: the standard library has no file watcher, and re-checking a project
+of thousands of declarations takes well under a second. A file a wildcard include would match
+only once it exists is noticed when something else changes, which is a limit of the preview.
 
 The analysis is the language server's, run the way ``ddd lsp`` runs it: under the severities of
 every build record naming the project, or under the defaults when none does.
@@ -190,8 +192,29 @@ class FileContent:
     error: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class Snapshot:
+    """What the session says at one moment, every part of it read at once: what
+    ``GET /api/state`` answers."""
+
+    version: int
+    """Counts up at every change of anything else here - an analysis asked for, one published
+    or failed, an edit or an undo written: what a long poll waits past."""
+
+    project: Path | None
+    revision: Revision | None
+    analysing: bool
+    """Whether an analysis is asked for or running: the findings may be about to change."""
+
+    undoable: Undoable | None
+
+
 class NoProjectError(RuntimeError):
     """Asked about the open project while none is open."""
+
+
+class NotAnalysedError(RuntimeError):
+    """Asked about the open project before any analysis of it has finished."""
 
 
 class NotInProjectError(LookupError):
@@ -236,9 +259,9 @@ class Session:
     nobody started - whatever asked makes the analysis itself before it answers, and a failure
     is raised to it.
 
-    One lock guards the project, its newest revision, the undo stack, the counters, the request
-    and the stamps, and every write is made holding it. An analysis runs without it, which is
-    what lets an edit be written while one runs.
+    One lock guards the project, its newest revision, the undo stack, the counters, the request,
+    the stamps and the files written since an analysis began, and every write is made holding
+    it. An analysis runs without it, which is what lets an edit be written while one runs.
     """
 
     def __init__(
@@ -252,8 +275,12 @@ class Session:
         self._project: Path | None = None
         self._revision: Revision | None = None
         self._numbered = 0
+        self._version = 0
         self._stack: list[Undoable] = []
         self._edits = 0
+        # Each edit and undo by its number, with the files it wrote: what no analysis has read
+        # yet, until a published revision's `edits` reaches that number.
+        self._written: list[tuple[int, frozenset[Path]]] = []
         self._signature: dict[Path, tuple[int, int] | None] = {}
         self._fresh: set[Path] = set()
         self._asked: Path | None = None
@@ -290,6 +317,7 @@ class Session:
             self._project = path
             self._revision = None
             self._stack = []
+            self._written = []
             self._signature = {}
             self._fresh = _named_by(path)
             self._request()
@@ -302,13 +330,34 @@ class Session:
             self._changed.wait_for(lambda: self._asked is None and not self._running, timeout)
             return self._revision
 
-    def wait(self, after: int, timeout: float) -> Revision | None:
-        """The newest revision as soon as it is newer than ``after``, or after ``timeout``."""
+    def snapshot(self) -> Snapshot:
+        """What the session says now, every part of it read at once."""
+        with self._lock:
+            return self._snapshot()
+
+    def wait(self, after: int, timeout: float) -> Snapshot:
+        """What the session says as soon as its version is past ``after``, or after
+        ``timeout``."""
         with self._changed:
-            self._changed.wait_for(
-                lambda: self._revision is not None and self._revision.number > after, timeout
-            )
-            return self._revision
+            self._changed.wait_for(lambda: self._version > after, timeout)
+            return self._snapshot()
+
+    def current(self) -> Revision:
+        """The open project's newest revision, refusing where there is none: no project open, or
+        no analysis of it finished yet."""
+        with self._lock:
+            return self._required()
+
+    def unanalysed(self, revision: Revision) -> frozenset[Path]:
+        """Every file an edit or an undo wrote after ``revision``'s analysis began: numbered past
+        its ``edits``. A revision older than the newest may miss some the newest already
+        includes; the engine's own fingerprint check still refuses a plan made against it."""
+        with self._lock:
+            waiting: set[Path] = set()
+            for number, paths in self._written:
+                if number > revision.edits:
+                    waiting |= paths
+            return frozenset(waiting)
 
     def poll(self) -> bool:
         """Ask for an analysis if a file of the open project changed on disk since its stamps
@@ -382,6 +431,7 @@ class Session:
             self._edits += 1
             self._stack.append(Undoable(self._edits, label, written))
             del self._stack[:-MAX_UNDO]
+            self._written.append((self._edits, frozenset(file.path for file in written)))
             # Stamped when its analysis begins, after this write, so that the poll does not take
             # the write for somebody else's. A file of the last revision is stamped again then
             # in any case; a file this edit created is not, having no stamp yet, but for this.
@@ -410,6 +460,7 @@ class Session:
             # was.
             self._stack.pop()
             self._edits += 1
+            self._written.append((self._edits, frozenset(file.path for file in top.files)))
             self._fresh |= {file.path for file in top.files}
             self._request()
             number = self._edits
@@ -435,9 +486,21 @@ class Session:
                 # says why: the one line is that reason, and the next poll tries again.
                 print(f"ddd gui: checking the project again failed: {error}", file=sys.stderr)
 
+    def _snapshot(self) -> Snapshot:
+        """What the session says, read holding the lock."""
+        return Snapshot(
+            self._version,
+            self._project,
+            self._revision,
+            self._asked is not None or self._running,
+            self._stack[-1] if self._stack else None,
+        )
+
     def _required(self) -> Revision:
-        if self._revision is None:
+        if self._project is None:
             raise NoProjectError("no project is open")
+        if self._revision is None:
+            raise NotAnalysedError("the open project has not been analysed yet")
         return self._revision
 
     def _analysed(self, project: Path) -> Revision:
@@ -475,8 +538,10 @@ class Session:
         )
 
     def _request(self) -> None:
-        """Ask for an analysis of the open project. Holding the lock, with a project open."""
+        """Ask for an analysis of the open project. Holding the lock, with a project open, once
+        whatever asked has changed what it changes: the version moves with it."""
         self._asked = self._project
+        self._version += 1
         self._changed.notify_all()
 
     def _analyse_here(self) -> None:
@@ -555,6 +620,10 @@ class Session:
         project was just opened, or a file the analysis found newly included - is stamped
         :data:`UNKNOWN`, which costs one analysis more and catches a save made to that file while
         this one ran.
+
+        A revision published lets go of the files every edit it includes wrote: none of them is
+        waiting for an analysis any more. Whatever it leaves, the version moves - an analysis
+        ended is a change of what the session says, ``analysing`` among it.
         """
         self._running = False
         if begun.project == self._project:
@@ -566,6 +635,12 @@ class Session:
                 self._signature = {
                     file.path: begun.stamps.get(file.path, UNKNOWN) for file in revision.files
                 }
+                waiting: list[tuple[int, frozenset[Path]]] = []
+                for number, paths in self._written:
+                    if number > begun.edits:
+                        waiting.append((number, paths))
+                self._written = waiting
+        self._version += 1
         self._changed.notify_all()
 
 

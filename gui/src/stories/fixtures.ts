@@ -917,6 +917,7 @@ export const DID_NOT_LOAD: Finding = {
  * `src/ddd/diagnostics.py`. The tab sorts them worst first. */
 export const PROJECT_FINDINGS: State = {
   revision: 7,
+  version: 14,
   project: DEMO,
   files: [
     {
@@ -954,6 +955,8 @@ export const PROJECT_FINDINGS: State = {
   ],
   findings: [UNKNOWN_RPM_FINDING, STORAGE_MISMATCH, DID_NOT_LOAD, MISSING_ID, UNKNOWN_RASTER],
   undoable: null,
+  analysing: false,
+  edits: 0,
 };
 
 /** A second rasters file the project includes, whose only raster - nothing sampled on it - was
@@ -1158,6 +1161,7 @@ export const KIND_MISMATCH: Finding = {
 /** A project with nothing to report. */
 export const NO_FINDINGS: State = {
   revision: 7,
+  version: 14,
   project: DEMO,
   files: [
     {
@@ -1179,6 +1183,8 @@ export const NO_FINDINGS: State = {
   ],
   findings: [],
   undoable: null,
+  analysing: false,
+  edits: 0,
 };
 
 /** What `GET /api/undo` answers for an adoption: the project description put back a line, and

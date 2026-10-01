@@ -25,7 +25,7 @@ from ddd.backends import (
 )
 from ddd.build_info import BUILD_INFO_FILENAME
 from ddd.diagnostics import DiagnosticBag, SeverityPolicy
-from ddd.gui.session import Revision, Session
+from ddd.gui.session import Revision, Session, Snapshot
 from ddd.ir import DataDictionary
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
@@ -300,9 +300,9 @@ class Gated(Session):
     """A session whose analyses are counted, announce that they have begun, and wait at a gate
     the test opens: what lets a test land an edit while an analysis runs without sleeping."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, build_directories: Sequence[Path] = ()) -> None:
         # Polling an hour apart: the poller start() starts never polls while a test runs.
-        super().__init__(root, poll_interval=3600)
+        super().__init__(root, build_directories, poll_interval=3600)
         self.begun = threading.Semaphore(0)
         self.gate = threading.Event()
         self.analyses = 0
@@ -319,30 +319,14 @@ def begun(session: Gated) -> None:
     assert session.begun.acquire(timeout=10), "no analysis began"
 
 
-class Awaited(Session):
-    """A session each of whose analyses waits until something waits for the session to settle:
-    an answer made without waiting for the analysis it asked for finds that analysis not in yet,
-    however the two threads happen to run."""
-
-    def __init__(self, root: Path, build_directories: Sequence[Path] = ()) -> None:
-        # Polling an hour apart, as a Gated session does.
-        super().__init__(root, build_directories, poll_interval=3600)
-        self.awaited = threading.Semaphore(0)
-
-    def settled(self, timeout: float | None) -> Revision | None:
-        self.awaited.release()
-        if timeout is not None:
-            return super().settled(timeout)
-        # Ten seconds where the caller would wait as long as it takes - the api and run both do -
-        # so that a session that never settles fails the test rather than hanging the suite.
-        revision = super().settled(10)
-        with self._lock:
-            assert self._asked is None and not self._running, "the session never settled"
-        return revision
-
-    def _analysed(self, project: Path) -> Revision:
-        assert self.awaited.acquire(timeout=10), "nothing waited for this analysis"
-        return super()._analysed(project)
+def landed(session: Session) -> Snapshot:
+    """What the session says once no analysis is asked for or running, failing the test where ten
+    seconds pass first: :meth:`~ddd.gui.session.Session.settled` answers the newest revision on a
+    timeout too, so a revision being there says nothing of whether the analysis landed."""
+    session.settled(timeout=10)
+    snapshot = session.snapshot()
+    assert not snapshot.analysing, "the analysis never landed"
+    return snapshot
 
 
 def stopped(session: Session) -> None:

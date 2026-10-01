@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from pathlib import Path
 
+import bench_gui
 import pytest
 from bench_gui import NAMES, main, measure
 from generate_project import generate
@@ -160,3 +162,59 @@ def test_the_edit_moves_to_the_next_unit_of_the_projects_own_sorted_order(
     assert len(edited) == 1
     operation = json.loads(edited[0])["changes"][0]["operations"][0]
     assert json.loads(operation["raw"]) == expected
+
+
+def test_open_the_analysis_and_the_edit_are_timed_until_their_analysis_has_landed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The session analyses on a thread of its own, so a measure ending where its request
+    returns times the request alone: ``open``, ``analysis`` and ``edit analysed`` each end once
+    the session has settled - its analysis landed - and ``edit answered`` ends before."""
+    made = generate(tmp_path / "p", 120, "many")
+    happened: list[str] = []
+
+    def recording(name: str, real):
+        def recorded(*arguments, **keywords):
+            answer = real(*arguments, **keywords)
+            happened.append(name)
+            return answer
+
+        return recorded
+
+    def posting(real):
+        def posted(self, method, path, query, body):
+            answer = real(self, method, path, query, body)
+            if method == "POST":
+                happened.append(path)
+            return answer
+
+        return posted
+
+    monkeypatch.setattr(Session, "open", recording("open", Session.open))
+    monkeypatch.setattr(Session, "poll", recording("poll", Session.poll))
+    monkeypatch.setattr(Session, "settled", recording("settled", Session.settled))
+    monkeypatch.setattr(Api, "handle", posting(Api.handle))
+    monkeypatch.setattr(bench_gui, "_elapsed", recording("timed", bench_gui._elapsed))
+    measure(made.project)
+    assert happened == [
+        *("open", "settled", "timed"),  # open
+        *["timed"] * 9,  # each endpoint, the two panels and the judged removal
+        *("poll", "settled", "timed"),  # analysis
+        *("/api/edit", "timed"),  # edit answered
+        *("settled", "timed"),  # edit analysed
+        "/api/undo",
+    ]
+
+
+def test_the_analyser_it_starts_has_ended_when_it_returns(tmp_path: Path) -> None:
+    """``measure`` runs once per project of a run, so the analyser and the poller it starts end
+    with it rather than outlive it, one pair a project."""
+
+    def running() -> list[str]:
+        names = ("ddd-gui-analyse", "ddd-gui-poll")
+        return sorted(thread.name for thread in threading.enumerate() if thread.name in names)
+
+    made = generate(tmp_path / "p", 120, "many")
+    before = running()
+    measure(made.project)
+    assert running() == before

@@ -58,9 +58,38 @@ async function started(
     }
   };
   try {
-    await use({ address: await served(child), directory, stop });
+    const address = await served(child);
+    if (named) await analysed(address);
+    await use({ address, directory, stop });
   } finally {
     await stop();
+  }
+}
+
+/**
+ * Resolves once `ddd gui` has analysed the project it was named, which is what a journey changing
+ * a file "from outside" means: a file the server has read. It prints its address before its first
+ * analysis lands, and a file written in that moment is read by the first analysis or by the one
+ * after, as it happens - the two drifts of one journey were once split between them, its arrow
+ * then naming one disagreement where the journey made two. Asked of the state the page itself
+ * follows, signed in with the address's own token, and never of anything a journey reads.
+ */
+async function analysed(address: string): Promise<void> {
+  const signedIn = await fetch(address, { redirect: "manual" });
+  const [cookie] = signedIn.headers.getSetCookie();
+  if (cookie === undefined) throw new Error("ddd gui set no cookie for the address it printed");
+  const headers = { cookie: cookie.split(";", 1)[0] ?? cookie };
+  let after: number | null = null;
+  for (;;) {
+    const asked = new URL(after === null ? "/api/state" : `/api/state?after=${after}`, address);
+    const response = await fetch(asked, { headers });
+    const state = (await response.json()) as {
+      version: number;
+      revision: number;
+      analysing: boolean;
+    };
+    if (state.revision > 0 && !state.analysing) return;
+    after = state.version;
   }
 }
 

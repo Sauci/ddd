@@ -11,12 +11,13 @@ export interface Follow {
 }
 
 /**
- * Keeps a page on the newest revision: asks for anything newer than the revision it has - which
- * the server answers when there is one, or after waiting - and asks again. A server that stops
- * answering is reported once and retried; when it answers again that is reported too. Any other
- * failure ends the follow with it.
+ * Keeps a page on the newest state of the open project: asks for anything newer than the version
+ * of the state it has - which the server answers as soon as there is something, or after waiting -
+ * and asks again. A state can be new with the same revision: an analysis beginning, an edit
+ * written, the undo entry it leaves. A server that stops answering is reported once and retried;
+ * when it answers again that is reported too. Any other failure ends the follow with it.
  */
-export async function followRevisions(follow: Follow): Promise<void> {
+export async function followStates(follow: Follow): Promise<void> {
   const { getState, onState, onStopped, signal } = follow;
   const retryMs = follow.retryMs ?? 2000;
   const sleep = follow.sleep ?? wait;
@@ -29,8 +30,8 @@ export async function followRevisions(follow: Follow): Promise<void> {
         stopped = false;
         onStopped(false);
       }
-      if (after === null || state.revision > after) onState(state);
-      after = state.revision;
+      if (after === null || state.version > after) onState(state);
+      after = state.version;
     } catch (error) {
       if (signal.aborted) return;
       if (!(error instanceof ServerUnreachable)) throw error;

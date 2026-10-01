@@ -17,7 +17,7 @@ from urllib.parse import quote
 import pytest
 
 import ddd
-from conftest import EXAMPLES, Awaited, component, declare, project, write_tree
+from conftest import EXAMPLES, Gated, begun, component, declare, project, stopped, write_tree
 from ddd.cli import EXIT_OK, EXIT_USAGE
 from ddd.editing import fingerprint
 from ddd.gui import api as api_module
@@ -60,8 +60,8 @@ def project_file(tmp_path: Path) -> Path:
 
 def bounded_run(*arguments: Any, **keywords: Any) -> int:
     """``run``, on a thread of its own joined with a timeout: where it starts the analyser, it
-    waits for the project's first analysis and stops by joining that thread, neither with a
-    timeout, and a session that never settles fails the test rather than hanging the suite."""
+    stops by joining that thread without one, and an analysis that never ends fails the test
+    rather than hanging the suite."""
     outcome: list[int | BaseException] = []
 
     def running() -> None:
@@ -135,6 +135,22 @@ class TestSigningIn:
         assert response.getheader("Set-Cookie") == (
             f"ddd-gui-{server.port}={server.token}; HttpOnly; SameSite=Strict; Path=/"
         )
+
+    def test_a_project_being_analysed_signs_in_to_its_own_page(
+        self, project_file: Path, pages: Path
+    ) -> None:
+        session = Gated(project_file.parent)
+        session.start()
+        try:
+            session.open(project_file)
+            begun(session)
+            for server in serving(Api(session, project_file), pages):
+                response, _ = ask(server, "GET", f"/open?token={server.token}", signed_in=False)
+                assert (response.status, response.getheader("Location")) == (303, "/project")
+                assert session.revision is None
+        finally:
+            session.gate.set()
+            stopped(session)
 
     def test_without_an_open_project_the_redirect_is_to_the_start_page(
         self, project_file, pages
@@ -535,8 +551,8 @@ class TestEveryEndpointOnTheDemo:
         assert {f["name"] for f in components} == self.COMPONENTS
         assert all(f["loaded"] and f["findings"]["error"] == 0 for f in components)
         assert not [f for f in body["findings"] if f["severity"] == "error"]
-        waited = answered(server, "GET", f"/api/state?after={body['revision']}")
-        assert waited["revision"] == body["revision"]
+        waited = answered(server, "GET", f"/api/state?after={body['version']}")
+        assert (waited["version"], waited["revision"]) == (body["version"], body["revision"])
 
     def test_a_component_is_read_with_its_fingerprint(self, demo) -> None:
         server, root = demo
@@ -587,7 +603,7 @@ class TestEveryEndpointOnTheDemo:
         after = controller.read_bytes()
         assert after == before.replace(b'"unit": "%"', b'"unit": "rpm"', 1)
         assert body == {
-            "revision": 2,
+            "edit": 1,
             "files": [{"path": controller.as_posix(), "fingerprint": fingerprint(after)}],
         }
         state = answered(server, "GET", "/api/state")
@@ -1041,21 +1057,25 @@ class TestRunning:
         assert bounded_run(project_file, [], 0, open_browser=False, static=pages) == EXIT_OK
         assert running() == before
 
-    def test_it_serves_once_the_projects_first_analysis_is_in(
+    def test_it_serves_while_the_projects_first_analysis_runs(
         self, project_file, pages, monkeypatch, capsys
     ) -> None:
         """The first analysis runs on the analyser's thread, and the address is printed and
-        served once it is in, as it was before the analyser. Task 6 serves at once."""
-        monkeypatch.setattr(module, "Session", Awaited)
-        served: list[Revision | None] = []
+        served at once: the project open, no revision of it yet, its analysis still running."""
+        monkeypatch.setattr(module, "Session", Gated)
+        served: list[tuple[Path | None, Revision | None, bool]] = []
 
         def serve(self, poll_interval=0.5):
-            served.append(self.api.session.revision)
+            session = self.api.session
+            begun(session)
+            served.append((session.project, session.revision, session.snapshot().analysing))
+            session.gate.set()
 
         monkeypatch.setattr(GuiServer, "serve_forever", serve)
         assert bounded_run(project_file, [], 0, open_browser=False, static=pages) == EXIT_OK
-        (revision,) = served
-        assert revision is not None and revision.project == project_file.resolve()
+        assert served == [(project_file.resolve(), None, True)]
+        (line,) = capsys.readouterr().out.splitlines()
+        assert line.startswith("ddd gui (preview) serving http://127.0.0.1:")
 
 
 def test_the_windows_server_does_not_share_a_port() -> None:

@@ -1,3 +1,4 @@
+import { type OwnEdits, ownEdits } from "../state/edits";
 import type {
   Changes,
   CompareReply,
@@ -94,6 +95,9 @@ export const getProjects = (fetchImpl: Fetch = fetch) =>
 export const openProject = (path: string, fetchImpl: Fetch = fetch) =>
   request<SessionInfo>("/api/open", post({ path }), fetchImpl);
 
+/** The open project's state: at once where `after` is `null`; else as soon as its version is past
+ * `after` - a version, which moves at every change the state can say, not a revision - or once
+ * the server has waited as long as it waits. */
 export const getState = (after: number | null, signal?: AbortSignal, fetchImpl: Fetch = fetch) =>
   request<State>(
     after === null ? "/api/state" : `/api/state?after=${after}`,
@@ -355,14 +359,31 @@ function declarationQuery(plan: DeclarationPlanRequest): string {
   return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
 }
 
-export const postEdit = (changes: Changes, fetchImpl: Fetch = fetch) =>
-  request<EditReply>("/api/edit", post(changes), fetchImpl);
+/** An edit, answered once written: its number is noted into `edits`, the page's own by default, as
+ * soon as the answer arrives - a refused edit notes nothing. */
+export const postEdit = async (
+  changes: Changes,
+  fetchImpl: Fetch = fetch,
+  edits: OwnEdits = ownEdits,
+): Promise<EditReply> => {
+  const reply = await request<EditReply>("/api/edit", post(changes), fetchImpl);
+  edits.wrote(reply.edit);
+  return reply;
+};
 
 export const getUndo = (fetchImpl: Fetch = fetch) =>
   request<UndoPreview>("/api/undo", {}, fetchImpl);
 
-export const postUndo = (at: number, fetchImpl: Fetch = fetch) =>
-  request<UndoReply>("/api/undo", post({ at }), fetchImpl);
+/** An undo, answered once the files are back: its number is noted into `edits` as an edit's is. */
+export const postUndo = async (
+  at: number,
+  fetchImpl: Fetch = fetch,
+  edits: OwnEdits = ownEdits,
+): Promise<UndoReply> => {
+  const reply = await request<UndoReply>("/api/undo", post({ at }), fetchImpl);
+  edits.wrote(reply.edit);
+  return reply;
+};
 
 export const getValues = (name: string, fetchImpl: Fetch = fetch) =>
   request<ValuesReply>(`/api/values?name=${encodeURIComponent(name)}`, {}, fetchImpl);

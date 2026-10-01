@@ -1,23 +1,26 @@
 import { expect, test, vi } from "vitest";
 import { ApiError, ServerUnreachable } from "../api/client";
 import type { State } from "../api/types";
-import { followRevisions, wait } from "./revisions";
+import { followStates, wait } from "./revisions";
 
-const state = (revision: number): State => ({
+const state = (version: number, revision = 1): State => ({
   revision,
+  version,
   project: "/p.ddd.json",
   files: [],
   findings: [],
   undoable: null,
+  analysing: false,
+  edits: 0,
 });
 const aborted = () => new DOMException("aborted", "AbortError");
 
-test("each newer revision is handed on once, and the next request asks for anything newer", async () => {
+test("each newer state is handed on once, and the next request asks for anything newer", async () => {
   const controller = new AbortController();
-  const answers = [state(1), state(1), state(2)];
+  const answers = [state(1), state(1), state(2, 2)];
   const asked: (number | null)[] = [];
   const seen: number[] = [];
-  await followRevisions({
+  await followStates({
     getState: async (after) => {
       asked.push(after);
       const next = answers.shift();
@@ -27,7 +30,7 @@ test("each newer revision is handed on once, and the next request asks for anyth
       }
       return next;
     },
-    onState: (current) => seen.push(current.revision),
+    onState: (current) => seen.push(current.version),
     onStopped: () => {
       throw new Error("the server never stopped");
     },
@@ -37,16 +40,41 @@ test("each newer revision is handed on once, and the next request asks for anyth
   expect(asked).toEqual([null, 1, 1, 2]);
 });
 
+test("a state whose version grew and whose revision did not is handed on", async () => {
+  // An analysis asked for, an edit written: what the page shows changes - the undo entry, the
+  // findings about to - while the revision stays what it was.
+  const controller = new AbortController();
+  const answers = [state(3, 1), state(4, 1)];
+  const seen: [number, number][] = [];
+  await followStates({
+    getState: async () => {
+      const next = answers.shift();
+      if (next === undefined) {
+        controller.abort();
+        throw aborted();
+      }
+      return next;
+    },
+    onState: (current) => seen.push([current.version, current.revision]),
+    onStopped: () => {},
+    signal: controller.signal,
+  });
+  expect(seen).toEqual([
+    [3, 1],
+    [4, 1],
+  ]);
+});
+
 test("a server that stops answering is reported once, retried, and reported back", async () => {
   const controller = new AbortController();
   const reports: boolean[] = [];
   const sleeps: number[] = [];
   let calls = 0;
-  await followRevisions({
+  await followStates({
     getState: async () => {
       calls += 1;
       if (calls <= 2) throw new ServerUnreachable(new TypeError("fetch failed"));
-      if (calls === 3) return state(4);
+      if (calls === 3) return state(4, 4);
       controller.abort();
       throw aborted();
     },
@@ -64,7 +92,7 @@ test("a server that stops answering is reported once, retried, and reported back
 
 test("by default the retry waits on the follow's own signal", async () => {
   const controller = new AbortController();
-  await followRevisions({
+  await followStates({
     getState: async () => {
       throw new ServerUnreachable(new TypeError("fetch failed"));
     },
@@ -76,7 +104,7 @@ test("by default the retry waits on the follow's own signal", async () => {
 });
 
 test("any other failure ends the follow with that failure", async () => {
-  const follow = followRevisions({
+  const follow = followStates({
     getState: async () => {
       throw new ApiError(409, "no-project", "no project is open");
     },
@@ -91,7 +119,7 @@ test("a follow aborted before it starts asks nothing", async () => {
   const controller = new AbortController();
   controller.abort();
   const getState = vi.fn();
-  await followRevisions({
+  await followStates({
     getState,
     onState: () => {},
     onStopped: () => {},

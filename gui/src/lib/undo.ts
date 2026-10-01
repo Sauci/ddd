@@ -172,3 +172,24 @@ export function undoAction(changes: readonly UndoneChange[]): string {
 function plural(count: number): string {
   return `${count} file${count === 1 ? "" : "s"}`;
 }
+
+/** The queries an undo leaves alone, by the first part of their key: the graph and a comparison
+ * against a baseline draw what an analysis made, and move with the revision; the session and the
+ * projects found are no file's. */
+const LEFT_TO_THE_ANALYSIS: ReadonlySet<unknown> = new Set([
+  "graph",
+  "compare",
+  "session",
+  "projects",
+]);
+
+/**
+ * Whether a query is asked for again once an undo has put its files back (spec §6: the change
+ * shows where it was made). An undo can put back any edit - an interface, a vocabulary's entry,
+ * the project's own includes - and is answered before its analysis, so the revision a screen
+ * keys its queries by moves only an analysis later: every query drawing a file as it stands, a
+ * tab's rows, an entry's panel or a plan whose fingerprints the undo spent is asked again now.
+ */
+export function askedAgainAfterUndo(queryKey: readonly unknown[]): boolean {
+  return !LEFT_TO_THE_ANALYSIS.has(queryKey[0]);
+}

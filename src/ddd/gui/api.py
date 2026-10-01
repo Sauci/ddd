@@ -68,11 +68,14 @@ from ddd.gui.session import KINDS as DESCRIPTION_KINDS
 from ddd.gui.session import (
     Filed,
     NoProjectError,
+    NotAnalysedError,
     NotInProjectError,
     Revision,
     Session,
+    Snapshot,
     SourceFile,
     Undoable,
+    _name_in,
     _read_json,
     _served,
     _source,
@@ -150,9 +153,14 @@ from ddd.variables import (
 )
 
 WAIT_SECONDS: Final = 25.0
-"""How long a request for a newer revision waits before answering with the current one."""
+"""How long a request for a newer state waits before answering with the current one."""
 
-REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED})
+ANALYSING: Final = "analysing"
+"""The refusal of a request the analysis has not caught up with: asked of the open project before
+its first analysis has landed, or a plan changing a file an edit wrote that no analysis has read
+yet. Answered 409, and answered differently once the analysis lands."""
+
+REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED, ANALYSING})
 """The edit refusals a page can act on, answered 409; anything else an edit raises is a 500."""
 
 UNIT_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
@@ -284,6 +292,9 @@ class Api:
         self._compare_cache: BaselineCache = {}
         self._derived: Derived | None = None
         self._memo: dict[tuple[object, ...], Reply] = {}
+        # The state's answer and the version it was made at: what `GET /api/state` answers again
+        # until the version moves, every request of a page's long poll asking for it.
+        self._state_kept: tuple[int, Reply] | None = None
 
     def handle(self, method: str, path: str, query: Query, body: bytes | None) -> Reply:
         route = _ROUTES.get(path)
@@ -296,6 +307,8 @@ class Api:
             return answer(self, query, body)
         except NoProjectError as error:
             return _error(409, "no-project", str(error))
+        except NotAnalysedError as error:
+            return _error(409, ANALYSING, str(error))
         except NotInProjectError as error:
             return _error(404, "not-found", str(error))
 
@@ -332,47 +345,78 @@ class Api:
             self.session.open(wanted)
         except ValueError as error:
             return _error(409, "not-a-project", str(error))
-        # Answered once the first analysis is in, as before the analyser: Task 6 takes this wait
-        # out, and the page follows the analysis from the state.
-        self.session.settled(None)
+        # Answered at once, the project named: the page follows its first analysis from the
+        # state, which says it is being analysed until it lands.
         return Reply(200, self._session_body())
 
     def _state(self, query: Query, body: bytes | None) -> Reply:
+        """What the session says: at once, or as soon as its version is past ``?after=``, or
+        once the wait runs out.
+
+        Made once a version and kept, every request of a page's long poll asking for it: the
+        version moves at every change of what the answer says. Not guarded, as :meth:`_derive`
+        is not: two requests of one version that both find nothing kept both make it, and one
+        made at an older version can be kept over a newer one's, which the newer version's next
+        request makes again. Each answer is the one its own version says; only work is
+        repeated."""
         after = _integer(query.get("after"))
         if after is None:
-            revision = self.session.revision
+            snapshot = self.session.snapshot()
         else:
-            revision = self.session.wait(after, self.wait_seconds)
-        if revision is None:
+            snapshot = self.session.wait(after, self.wait_seconds)
+        if snapshot.project is None:
             raise NoProjectError("no project is open")
-        top = self.session.undoable
-        derived = self._derive(revision)
-        cache: dict[Path, Document] = {}
+        kept = self._state_kept
+        if kept is not None and kept[0] == snapshot.version:
+            return kept[1]
+        reply = self._state_of(snapshot, snapshot.project)
+        self._state_kept = (snapshot.version, reply)
+        return reply
+
+    def _state_of(self, snapshot: Snapshot, project: Path) -> Reply:
+        """The state ``snapshot`` says of ``project``, the one open: revision ``0``, no files and
+        no findings before its first analysis."""
+        revision = snapshot.revision
+        number = 0
+        edits = 0
+        files: list[dict[str, Any]] = []
+        findings: list[dict[str, Any]] = []
+        if revision is not None:
+            number = revision.number
+            edits = revision.edits
+            derived = self._derive(revision)
+            cache: dict[Path, Document] = {}
+            files = [
+                {
+                    "path": file.path.as_posix(),
+                    "kind": file.kind,
+                    "name": file.name,
+                    "loaded": file.loaded,
+                    "fingerprint": file.fingerprint,
+                    "findings": {
+                        "error": file.errors,
+                        "warning": file.warnings,
+                        "info": file.infos,
+                    },
+                }
+                for file in revision.files
+            ]
+            findings = [
+                _finding(filed, source, cache)
+                for filed, source in zip(revision.findings, derived.sources, strict=True)
+            ]
+        top = snapshot.undoable
         return Reply(
             200,
             contract.State(
-                revision=revision.number,
-                project=revision.project.as_posix(),
-                files=[
-                    {
-                        "path": file.path.as_posix(),
-                        "kind": file.kind,
-                        "name": file.name,
-                        "loaded": file.loaded,
-                        "fingerprint": file.fingerprint,
-                        "findings": {
-                            "error": file.errors,
-                            "warning": file.warnings,
-                            "info": file.infos,
-                        },
-                    }
-                    for file in revision.files
-                ],
-                findings=[
-                    _finding(filed, source, cache)
-                    for filed, source in zip(revision.findings, derived.sources, strict=True)
-                ],
+                revision=number,
+                version=snapshot.version,
+                project=project.as_posix(),
+                files=files,
+                findings=findings,
                 undoable=None if top is None else {"at": top.at, "label": top.label},
+                analysing=snapshot.analysing,
+                edits=edits,
             ).model_dump(mode="json"),
         )
 
@@ -392,9 +436,7 @@ class Api:
         )
 
     def _dictionary(self, query: Query, body: bytes | None) -> Reply:
-        revision = self.session.revision
-        if revision is None:
-            raise NoProjectError("no project is open")
+        revision = self._opened()
         dictionary = revision.dictionary
         return Reply(
             200,
@@ -479,18 +521,17 @@ class Api:
         if isinstance(request, Reply):
             return request
         try:
-            _, written = self.session.edit(
+            at, written = self.session.edit(
                 [_file_change(c) for c in request.changes], request.label
             )
         except EditError as refusal:
             return _error(409 if refusal.code in REFUSALS else 500, refusal.code, str(refusal))
-        # Answered with the revision that includes the edit, as before the analyser: Task 6
-        # takes this wait out and answers the edit's own number instead.
-        self.session.settled(None)
+        # Answered once written, before its analysis: the edit's own number is what says when a
+        # revision includes it.
         return Reply(
             200,
             contract.EditReply(
-                revision=self._opened().number,
+                edit=at,
                 files=[
                     {"path": file.path.as_posix(), "fingerprint": file.fingerprint}
                     for file in written
@@ -517,20 +558,16 @@ class Api:
         )
 
     def _apply_undo(self, query: Query, body: bytes | None) -> Reply:
-        """Put that edit back, and answer the revision it produced."""
+        """Put that edit back, and answer the number the undo took, once the files are back -
+        before its analysis."""
         request = _validated(contract.UndoRequest, body)
         if isinstance(request, Reply):
             return request
         try:
-            self.session.undo(request.at)
+            number = self.session.undo(request.at)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        # Answered with the revision that includes the undo, as before the analyser: Task 6
-        # takes this wait out and answers the undo's own number instead.
-        self.session.settled(None)
-        return Reply(
-            200, contract.UndoReply(revision=self._opened().number).model_dump(mode="json")
-        )
+        return Reply(200, contract.UndoReply(edit=number).model_dump(mode="json"))
 
     def _variable(self, query: Query, body: bytes | None) -> Reply:
         revision = self._opened()
@@ -689,6 +726,7 @@ class Api:
             return _error(status, refused.code, refused.message)
         stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
         try:
+            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             planned = previewed(plan.edits, stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
@@ -811,6 +849,7 @@ class Api:
             return _error(status, refused.code, refused.message)
         stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
         try:
+            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             planned = previewed(plan.edits, stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
@@ -992,8 +1031,12 @@ class Api:
             )
         component = _single(query.get("component")) or None
         cache: dict[Path, Document] = {}
+
+        def refuse(paths: Iterable[Path]) -> None:
+            self._refuse_unanalysed(revision, paths)
+
         try:
-            plan = _files_plan_of(action, revision, given, component, cache)
+            plan = _files_plan_of(action, revision, given, component, cache, refuse)
         except FileRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
@@ -1086,6 +1129,7 @@ class Api:
             return _error(status, refused.code, refused.message)
         stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
         try:
+            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             made = previewed(plan.edits, stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
@@ -1126,6 +1170,7 @@ class Api:
             return _error(409, code, message)
         stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
         try:
+            self._refuse_unanalysed(revision, (change.site.path for change in settlement.changes))
             planned = preview(settlement, key, stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
@@ -1156,6 +1201,7 @@ class Api:
         offered = []
         for fix in fixes_for(check, source.path, pointer, cache, built):
             try:
+                self._refuse_unanalysed(revision, (edit.path for edit in fix.changes))
                 made = [planned(edit.path, edit.operations, stamps) for edit in fix.changes]
             except EditError as refused:
                 return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
@@ -1238,6 +1284,7 @@ class Api:
             return _error(status, refused.code, refused.message)
         stamps = {entry.path.resolve(): entry.fingerprint for entry in revision.files}
         try:
+            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             planned = previewed(plan.edits, stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
@@ -1321,6 +1368,7 @@ class Api:
             return _error(409, refused.code, refused.message)
         stamps = {entry.path.resolve(): entry.fingerprint for entry in revision.files}
         try:
+            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             planned = previewed(plan.edits, stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
@@ -1351,6 +1399,7 @@ class Api:
             return _error(409, refused.code, refused.message)
         stamps = {entry.path.resolve(): entry.fingerprint for entry in revision.files}
         try:
+            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             planned = previewed(plan.edits, stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
@@ -1404,10 +1453,29 @@ class Api:
         )
 
     def _opened(self) -> Revision:
-        revision = self.session.revision
-        if revision is None:
-            raise NoProjectError("no project is open")
-        return revision
+        """The open project's newest revision, or the refusal :meth:`handle` answers: no project
+        open, or none of its analyses landed yet."""
+        return self.session.current()
+
+    def _refuse_unanalysed(self, revision: Revision, paths: Iterable[Path]) -> None:
+        """Refuse a plan changing a file an edit wrote since ``revision``'s analysis began.
+
+        Computed all the same, it would carry the fingerprint the analysis read that file at, and
+        the edit engine would refuse its Apply as stale; and where it points into the file comes
+        from an index of bytes no longer on disk. A plan changing only files nobody wrote since is
+        made against ``revision`` at once, never waiting for the analysis (spec §5)."""
+        waiting = self.session.unanalysed(revision)
+        named: list[str] = []
+        for path in paths:
+            resolved = path.resolve()
+            if resolved in waiting and resolved.name not in named:
+                named.append(resolved.name)
+        if named:
+            raise EditError(
+                ANALYSING,
+                f"an edit that wrote {', '.join(named)} has not been analysed yet, "
+                "so this change can be planned once it has",
+            )
 
     def _derive(self, revision: Revision) -> Derived:
         """What the api derives from ``revision`` (:func:`ddd.gui.derived.derived`): the one kept
@@ -1442,11 +1510,9 @@ class Api:
         file appearing where a pattern matches starts no analysis.
 
         Keyed by the edits the session has written as well as by the revision: an edit is written
-        at once and analysed after, so an answer reading its files as they stand - a type's
-        description - changes before the revision does, which the count of edits covers, an
-        undo's as well, each taking a number of its own. Until Task 6 the api answers a write
-        only once its analysis has ended, which keeps that window from the request that wrote;
-        from Task 6 on it answers once written.
+        at once and answered then, its analysis following, so an answer reading its files as they
+        stand - a type's description - changes before the revision does, which the count of
+        edits covers, an undo's as well, each taking a number of its own.
 
         Not guarded: requests are answered on threads of their own. Two requests of one revision
         that both find nothing kept both make it, and an answer made for a revision a newer one
@@ -1464,11 +1530,17 @@ class Api:
         return kept
 
     def _session_body(self) -> dict[str, Any]:
-        revision = self.session.revision
+        """The session's answer: the project open named from its description as it stands, so
+        that a project being analysed is named at once; the builds its newest revision ran,
+        none before its first.
+
+        One snapshot for both, so that the project and the revision are read at one moment."""
+        snapshot = self.session.snapshot()
         project = None
-        if revision is not None:
-            name = next((f.name for f in revision.files if f.path == revision.project), None)
-            project = {"path": revision.project.as_posix(), "name": name}
+        if snapshot.project is not None:
+            name = _name_in(_read_json(snapshot.project), "project")
+            project = {"path": snapshot.project.as_posix(), "name": name}
+        revision = snapshot.revision
         return contract.SessionInfo(
             version=__version__,
             preview=True,
@@ -1941,17 +2013,25 @@ def _files_plan_of(
     given: Mapping[str, str],
     component: str | None,
     cache: dict[Path, Document],
+    refuse: Callable[[Iterable[Path]], None],
 ) -> _FilesPlanned:
     """The plan ``action`` names, over the parameters :data:`FILE_PLANS` says it takes. A row's
     key is passed on as it arrived: :func:`ddd.file_plans.remove_plan` resolves it to compare, as
     :func:`ddd.file_plans.included_entries` made it, and names it as it was sent. Resolved here
     instead, a key ending in a link would be named by what the link leads to, which may lie
-    outside what is served."""
+    outside what is served.
+
+    ``refuse`` is asked of the files each plan's edits change, once the plan's own refusals have
+    been asked and before anything is judged (:meth:`Api._refuse_unanalysed`): judged, a
+    description an edit wrote and no analysis has read yet would be refused ``stale`` instead,
+    for the very write the reader made."""
     if action == "create":
-        return _FilesPlanned(_creation(revision, given["kind"], given["name"], component, cache))
+        edits = _creation(revision, given["kind"], given["name"], component, cache)
+        refuse(edit.path for edit in edits)
+        return _FilesPlanned(edits)
     if action == "add":
-        return _addition(revision, given["path"], cache)
-    return _removal(revision, Path(given["path"]), cache)
+        return _addition(revision, given["path"], cache, refuse)
+    return _removal(revision, Path(given["path"]), cache, refuse)
 
 
 def _creation(
@@ -1994,7 +2074,12 @@ def _creation(
     )
 
 
-def _addition(revision: Revision, entry: str, cache: dict[Path, Document]) -> _FilesPlanned:
+def _addition(
+    revision: Revision,
+    entry: str,
+    cache: dict[Path, Document],
+    refuse: Callable[[Iterable[Path]], None],
+) -> _FilesPlanned:
     """An existing file appended to the includes, and the errors it is counted to bring -
     previewed, never refused for them.
 
@@ -2003,7 +2088,8 @@ def _addition(revision: Revision, entry: str, cache: dict[Path, Document]) -> _F
     then :func:`ddd.file_plans.add_plan`'s own, which the disk and the description answer;
     then a file :func:`ddd.gui.session.kind_of` - the rule ``State.files`` shows a kind by -
     finds no kind of description in: a python file, which a project names among its plugins,
-    or one the loader could not read as a description of any kind.
+    or one the loader could not read as a description of any kind; then by ``refuse``, a
+    description an edit wrote that no analysis has read yet.
 
     Judged where every run of the revision analysed the project, and otherwise answered with
     the sentence saying why it could not be, true of both ways a run stops short: its read
@@ -2041,6 +2127,7 @@ def _addition(revision: Revision, entry: str, cache: dict[Path, Document]) -> _F
             f"top level holds none of {', '.join(DESCRIPTION_KINDS[:-1])} and "
             f"{DESCRIPTION_KINDS[-1]}",
         )
+    refuse(edit.path for edit in plan.edits)
     if not revision.analysed:
         return _FilesPlanned(
             plan.edits,
@@ -2050,12 +2137,18 @@ def _addition(revision: Revision, entry: str, cache: dict[Path, Document]) -> _F
     return _FilesPlanned(plan.edits, brings=_judged(revision, plan.includes))
 
 
-def _removal(revision: Revision, path: Path, cache: dict[Path, Document]) -> _FilesPlanned:
+def _removal(
+    revision: Revision,
+    path: Path,
+    cache: dict[Path, Document],
+    refuse: Callable[[Iterable[Path]], None],
+) -> _FilesPlanned:
     """Every entry whose key ``path`` resolves to taken out, refused where the project without
     them would have an error more than it has now at its place.
 
-    :func:`ddd.file_plans.remove_plan`'s own refusals first. Then judged only where every run of
-    the revision analysed the project: a project any run of which stopped at its read, or at a
+    :func:`ddd.file_plans.remove_plan`'s own refusals first, then ``refuse``'s, a description an
+    edit wrote that no analysis has read yet. Then judged only where every run of the revision
+    analysed the project: a project any run of which stopped at its read, or at a
     plugin raising, has no complete "now" to compare with, and judged, removing the very file
     that stopped it would be refused for errors of an analysis the reader never saw. It is
     allowed then, with the sentence saying why it was not judged, true of both ways a run stops
@@ -2074,6 +2167,7 @@ def _removal(revision: Revision, path: Path, cache: dict[Path, Document]) -> _Fi
     link to a directory, a path no entry spells."""
     plan = remove_plan(revision.project, path, cache)
     removing = plan.removed[0]
+    refuse(edit.path for edit in plan.edits)
     if not revision.analysed:
         return _FilesPlanned(
             plan.edits,

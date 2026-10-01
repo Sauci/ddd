@@ -51,6 +51,7 @@ function fileRow(path: string, kind: string, loaded: boolean) {
 function state(findings: Finding[]): State {
   return {
     revision: 7,
+    version: 14,
     project: "C:/work/demo/demo.ddd.json",
     files: [
       {
@@ -72,6 +73,8 @@ function state(findings: Finding[]): State {
     ],
     findings,
     undoable: null,
+    analysing: false,
+    edits: 0,
   };
 }
 

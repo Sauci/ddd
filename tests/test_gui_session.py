@@ -10,6 +10,7 @@ import stat
 import sys
 import threading
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ from conftest import (
     component,
     declare,
     first_revision,
+    landed,
     project,
     stopped,
     write_tree,
@@ -42,9 +44,11 @@ from ddd.gui.session import (
     MAX_UNDO,
     Filed,
     NoProjectError,
+    NotAnalysedError,
     NotInProjectError,
     Revision,
     Session,
+    Snapshot,
     find_projects,
     findings_with,
 )
@@ -387,22 +391,22 @@ class TestFollowingTheDisk:
         assert session.poll() is True
         assert mismatches(session) == 2
 
-    def test_a_waiting_request_gets_the_newer_revision_as_soon_as_it_exists(
+    def test_a_waiting_request_gets_what_the_session_says_as_soon_as_it_changes(
         self, shared: Path
     ) -> None:
         session = Session(shared.parent)
         session.open(shared)
         threading.Timer(0.05, session.open, args=(shared,)).start()
-        revision = session.wait(1, timeout=5)
-        assert revision is not None and revision.number == 2
+        assert session.wait(2, timeout=5).version > 2
 
-    def test_a_waiting_request_gets_the_current_revision_when_nothing_changes(
+    def test_a_waiting_request_gets_what_the_session_says_when_nothing_changes(
         self, shared: Path
     ) -> None:
         session = Session(shared.parent)
         session.open(shared)
-        revision = session.wait(1, timeout=0.05)
-        assert revision is not None and revision.number == 1
+        snapshot = session.wait(2, timeout=0.05)
+        assert snapshot.version == 2
+        assert snapshot.revision is not None and snapshot.revision.number == 1
 
     def test_the_polling_thread_notices_a_change(self, shared: Path) -> None:
         session = opened_and_settled(shared, poll_interval=0.02)
@@ -410,7 +414,8 @@ class TestFollowingTheDisk:
         session.start_polling()  # a second start keeps the one thread
         try:
             (shared.parent / "a.ddd.json").write_text("{}", encoding="utf-8")
-            revision = session.wait(1, timeout=5)
+            assert session.wait(2, timeout=5).version > 2
+            revision = landed(session).revision
             assert revision is not None and revision.number == 2
         finally:
             session.stop()
@@ -570,8 +575,8 @@ class TestTheAnalyser:
         self, shared: Path
     ) -> None:
         """Until its own first analysis lands it has no revision, so that an edit of a file of
-        the project open before it is refused rather than written; and its stamps are its own,
-        so that a save of such a file is no change of the project open."""
+        the project open before it is refused as not analysed yet rather than written; and its
+        stamps are its own, so that a save of such a file is no change of the project open."""
         write_tree(shared.parent, {"q.ddd.json": project("Q", "a.ddd.json")})
         session = Gated(shared.parent)
         session.gate.set()
@@ -579,14 +584,14 @@ class TestTheAnalyser:
         try:
             session.open(shared)
             begun(session)
-            assert session.settled(timeout=10) is not None
+            landed(session)
             session.gate.clear()
             session.open(shared.parent / "q.ddd.json")
             begun(session)
             assert session.revision is None
             b = shared.parent / "b.ddd.json"
             before = b.read_bytes()
-            with pytest.raises(NoProjectError):
+            with pytest.raises(NotAnalysedError):
                 session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
             assert b.read_bytes() == before
             b.write_bytes(before + b" ")
@@ -844,6 +849,292 @@ class TestTheAnalyser:
             session.open(shared)
             begun(session)
             assert session.settled(timeout=0.01) is None
+        finally:
+            session.gate.set()
+            stopped(session)
+
+
+def unit_of_a(path: Path, unit: str) -> FileChange:
+    target = path.parent / "a.ddd.json"
+    pointer = "component.interface[0].definition.unit"
+    return FileChange(
+        target, fingerprint(target.read_bytes()), (Operation("set", pointer, f'"{unit}"'),)
+    )
+
+
+class TestWhatTheSessionSays:
+    """What one ``GET /api/state`` answers, read at once - the version, the project, the newest
+    revision, whether an analysis is asked for or running and the undo entry - and the files an
+    edit wrote that no analysis has read yet."""
+
+    def test_a_session_with_nothing_open_says_so_at_version_nought(self, tmp_path: Path) -> None:
+        assert Session(tmp_path).snapshot() == Snapshot(0, None, None, False, None)
+
+    def test_a_snapshot_reads_the_undo_entry_with_the_stack_empty_and_with_one(
+        self, shared: Path
+    ) -> None:
+        """``_snapshot`` reads the top of the stack in a conditional expression, which coverage
+        counts no branch in: this is what pins both of its arms."""
+        session = Session(shared.parent)
+        session.open(shared)
+        assert session.snapshot().undoable is None
+        session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+        top = session.snapshot().undoable
+        assert top is not None and top is session.undoable
+        assert (top.at, top.label) == (1, "the unit of Speed")
+
+    def test_the_version_counts_each_analysis_asked_for_and_each_one_ended(
+        self, shared: Path
+    ) -> None:
+        """Where no analyser runs, a call asks for its analysis and ends it before it answers: two
+        versions a call. A poll finding nothing changed asks for nothing, and moves nothing."""
+        session = Session(shared.parent)
+        session.open(shared)
+        assert session.snapshot().version == 2
+        at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+        assert session.snapshot().version == 4
+        session.undo(at)
+        assert session.snapshot().version == 6
+        assert session.poll() is False
+        assert session.snapshot().version == 6
+        (shared.parent / "a.ddd.json").write_text("{}", encoding="utf-8")
+        assert session.poll() is True
+        assert session.snapshot().version == 8
+
+    def test_an_analysis_that_failed_moves_the_version_as_one_published_does(
+        self, shared: Path
+    ) -> None:
+        class Failing(Session):
+            analyses = 0
+
+            def _analysed(self, project: Path) -> Revision:
+                self.analyses += 1
+                if self.analyses == 2:
+                    raise RuntimeError("boom")
+                return super()._analysed(project)
+
+        session = Failing(shared.parent)
+        session.open(shared)
+        with pytest.raises(RuntimeError, match=r"^boom$"):
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+        snapshot = session.snapshot()
+        assert (snapshot.version, snapshot.analysing) == (4, False)
+        assert snapshot.revision is not None and snapshot.revision.number == 1
+
+    def test_an_edit_written_says_analysing_until_its_analysis_lands(self, shared: Path) -> None:
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            first = landed(session)
+            assert first.revision is not None and first.revision.number == 1
+            session.gate.clear()
+            at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            during = session.snapshot()
+            assert (during.version, during.analysing) == (first.version + 1, True)
+            assert during.revision is first.revision
+            assert during.undoable is not None and during.undoable.at == at
+            session.gate.set()
+            after = landed(session)
+            assert after.version == during.version + 1
+            assert after.revision is not None
+            assert (after.revision.number, after.revision.edits) == (2, at)
+        finally:
+            session.gate.set()
+            stopped(session)
+
+    def test_a_wait_answers_as_soon_as_the_version_moves_past_it(self, shared: Path) -> None:
+        """An edit written while its analysis waits at the gate is answered at once, not when the
+        analysis lands; the analysis landing moves the version once more, and answers the next
+        wait."""
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            first = landed(session)
+            session.gate.clear()
+            answers: list[Snapshot] = []
+
+            def waiting(after: int) -> threading.Thread:
+                thread = threading.Thread(
+                    target=lambda: answers.append(session.wait(after, timeout=30)), daemon=True
+                )
+                thread.start()
+                return thread
+
+            written = waiting(first.version)
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            written.join(timeout=10)
+            assert not written.is_alive(), "the wait did not answer the edit written"
+            (seen,) = answers
+            assert (seen.version, seen.analysing) == (first.version + 1, True)
+            assert seen.revision is first.revision
+            answers.clear()
+            analysed = waiting(seen.version)
+            begun(session)
+            session.gate.set()
+            analysed.join(timeout=10)
+            assert not analysed.is_alive(), "the wait did not answer the analysis landing"
+            (seen,) = answers
+            assert (seen.version, seen.analysing) == (first.version + 2, False)
+            assert seen.revision is not None and seen.revision.number == 2
+        finally:
+            session.gate.set()
+            stopped(session)
+
+    def test_a_wait_answers_what_the_session_says_once_its_timeout_has_passed(
+        self, shared: Path
+    ) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        now = session.snapshot()
+        assert session.wait(now.version, timeout=0.01) == now
+
+    def test_the_newest_revision_is_refused_before_a_project_and_before_its_first_analysis(
+        self, shared: Path
+    ) -> None:
+        session = Gated(shared.parent)
+        with pytest.raises(NoProjectError) as nothing:
+            session.current()
+        assert str(nothing.value) == "no project is open"
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            snapshot = session.snapshot()
+            assert (snapshot.project, snapshot.revision, snapshot.analysing) == (
+                shared.resolve(),
+                None,
+                True,
+            )
+            with pytest.raises(NotAnalysedError) as waiting:
+                session.current()
+            assert str(waiting.value) == "the open project has not been analysed yet"
+            with pytest.raises(NotAnalysedError):
+                session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            session.gate.set()
+            landed(session)
+            assert session.current() is session.revision
+        finally:
+            session.gate.set()
+            stopped(session)
+
+    def test_another_project_opened_goes_on_counting_the_edits(self, shared: Path) -> None:
+        """A page compares the number its own last edit took with the edits a revision includes,
+        whatever project it shows: the numbers go on across projects, so that the first revision
+        of the next one includes every edit made before it."""
+        write_tree(shared.parent, {"q.ddd.json": project("Q", "a.ddd.json")})
+        session = Session(shared.parent)
+        session.open(shared)
+        at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+        session.open(shared.parent / "q.ddd.json")
+        revision = session.revision
+        assert revision is not None and revision.edits == at == 1
+
+    def test_the_files_an_edit_wrote_wait_for_the_analysis_including_them(
+        self, shared: Path
+    ) -> None:
+        """Until a revision includes an edit, the files it wrote are unanalysed by every revision
+        before it; once a revision includes it, it is let go - and so no longer named for an
+        older revision either, which a plan made against one cannot be helped by."""
+        session = Stepped(shared.parent)
+        opening, first, second = session.goes
+        opening.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            oldest = landed(session).revision
+            assert oldest is not None and session.unanalysed(oldest) == frozenset()
+            a = (shared.parent / "a.ddd.json").resolve()
+            b = (shared.parent / "b.ddd.json").resolve()
+            session.edit([unit_of_b(shared, "Hz")], "the unit of B's Speed")
+            begun(session)
+            assert session.unanalysed(oldest) == {b}
+            later, _ = session.edit([unit_of_a(shared, "Hz")], "the unit of A's Speed")
+            assert session.unanalysed(oldest) == {a, b}
+            first.set()
+            begun(session)  # the second edit's analysis, begun once the first edit's landed
+            middle = session.revision
+            assert middle is not None and (middle.number, middle.edits) == (2, 1)
+            assert session.unanalysed(middle) == {a}
+            assert session.unanalysed(oldest) == {a}
+            second.set()
+            newest = landed(session).revision
+            assert newest is not None and newest.edits == later
+            assert session.unanalysed(newest) == frozenset()
+        finally:
+            for go in session.goes:
+                go.set()
+            stopped(session)
+
+    def test_a_revision_including_an_edit_names_none_of_its_files(self, shared: Path) -> None:
+        """The files named are those numbered past the revision's own ``edits``, whatever else
+        lets them go. No revision this session publishes holds an edit still waiting - each
+        analysis landing lets go of what it includes - so the revision asked of here is the
+        newest one as an analysis including the edit would make it."""
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            oldest = landed(session).revision
+            assert oldest is not None
+            session.gate.clear()
+            at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            assert session.unanalysed(oldest) == {(shared.parent / "b.ddd.json").resolve()}
+            assert session.unanalysed(replace(oldest, edits=at)) == frozenset()
+        finally:
+            session.gate.set()
+            stopped(session)
+
+    def test_the_files_an_undo_put_back_wait_as_an_edits_do(self, shared: Path) -> None:
+        session = Stepped(shared.parent)
+        opening, first, second = session.goes
+        opening.set()
+        first.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+            at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            edited = landed(session).revision
+            assert edited is not None and session.unanalysed(edited) == frozenset()
+            session.undo(at)
+            begun(session)
+            assert session.unanalysed(edited) == {(shared.parent / "b.ddd.json").resolve()}
+            second.set()
+            undone = landed(session).revision
+            assert undone is not None and session.unanalysed(undone) == frozenset()
+        finally:
+            for go in session.goes:
+                go.set()
+            stopped(session)
+
+    def test_opening_forgets_the_files_written_before(self, shared: Path) -> None:
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            oldest = landed(session).revision
+            assert oldest is not None
+            session.gate.clear()
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            assert session.unanalysed(oldest) == {(shared.parent / "b.ddd.json").resolve()}
+            session.open(shared)
+            assert session.unanalysed(oldest) == frozenset()
         finally:
             session.gate.set()
             stopped(session)

@@ -1,10 +1,10 @@
-import { skipToken, useMutation, useQuery } from "@tanstack/react-query";
+import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, getUndo, postUndo } from "../api/client";
 import type { State } from "../api/types";
 import { UndoStripView } from "../components/UndoStripView";
 import { type Refused, shownRefusal } from "../lib/refusals";
-import { undoButton } from "../lib/undo";
+import { askedAgainAfterUndo, undoButton } from "../lib/undo";
 
 interface Props {
   state: State | null;
@@ -28,9 +28,11 @@ function refusalOf(error: Error): string {
  * revision, so that a file changing on disk - or another window undoing first - is noticed
  * without a request of its own. A refusal of the mutation is held to the revision it happened
  * at, as the panels hold theirs: sending the same entry again before the analysis has caught up
- * would be refused a second time.
+ * would be refused a second time. An undo answered, every query `askedAgainAfterUndo` names is
+ * asked for again at once: the files are back before the revision says so.
  */
 export function UndoStrip({ state, stopped }: Props) {
+  const queries = useQueryClient();
   const [open, setOpen] = useState(false);
   const [changesShown, setChangesShown] = useState(false);
   const [refused, setRefused] = useState<Refused | null>(null);
@@ -52,6 +54,10 @@ export function UndoStrip({ state, stopped }: Props) {
       setChangesShown(false);
     },
     onError: (error) => setRefused({ text: refusalOf(error), revision }),
+    // An undo is answered once its files are back, its analysis following: whatever on screen
+    // draws what it put back asks again now, rather than when the revision moves.
+    onSettled: () =>
+      queries.invalidateQueries({ predicate: (query) => askedAgainAfterUndo(query.queryKey) }),
   });
   const label = undoButton(state);
   if (label === null) return null;

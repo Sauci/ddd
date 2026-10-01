@@ -323,13 +323,20 @@ class UndoableEdit(_Frozen):
 
 
 class State(_Frozen):
-    """What ``GET /api/state`` answers: one revision of the open project."""
+    """What ``GET /api/state`` answers: the open project's newest revision, and whether an
+    analysis of it is asked for or running."""
 
     revision: int
-    """Counts up from 1 at every analysis; what a later ``?after=`` waits past."""
+    """Counts up from 1 at every analysis this session publishes; ``0`` before the open
+    project's first analysis, when ``files`` and ``findings`` are empty."""
+
+    version: int
+    """Counts up at every change of what this reply says - an analysis asked for, published or
+    failed, an edit or an undo written: what a later ``?after=`` waits past."""
 
     project: str
-    """Absolute, posix-separated path of the project description this revision analysed."""
+    """Absolute, posix-separated path of the open project's description: the one this revision
+    analysed, or the one its first analysis is reading while ``revision`` is ``0``."""
 
     files: tuple[SourceFile, ...]
     """Every file the analysis read, sorted by path."""
@@ -340,6 +347,13 @@ class State(_Frozen):
     undoable: UndoableEdit | None
     """The last edit the interface made and has not put back, or ``None`` when it has made
     none: what makes the Undo control appear without a request of its own."""
+
+    analysing: bool
+    """Whether an analysis is asked for or running: the findings may be about to change."""
+
+    edits: int
+    """The last edit or undo this revision's analysis includes - every one numbered up to it was
+    on disk when the analysis read the files - ``0`` where there is none."""
 
 
 # --- GET /api/file -------------------------------------------------------------------------
@@ -1496,9 +1510,12 @@ class UndoRequest(_Request):
 
 
 class UndoReply(_Frozen):
-    """What ``POST /api/undo`` answers: the revision the undo produced."""
+    """What ``POST /api/undo`` answers as soon as the files are put back, before any analysis of
+    them: the undo's own number."""
 
-    revision: int
+    edit: int
+    """The number the session gave this undo: a revision whose ``edits`` has reached it includes
+    it."""
 
 
 # --- GET /api/checks -----------------------------------------------------------------------
@@ -1610,10 +1627,12 @@ class EditedFile(_Frozen):
 
 
 class EditReply(_Frozen):
-    """What ``POST /api/edit`` answers: the new revision, and each file it wrote."""
+    """What ``POST /api/edit`` answers as soon as the edit is written, before any analysis of it:
+    its number, and each file it wrote."""
 
-    revision: int
-    """The revision the edit produced."""
+    edit: int
+    """The number the session gave this edit: a revision whose ``edits`` has reached it includes
+    it."""
 
     files: tuple[EditedFile, ...]
     """Every file the edit wrote."""

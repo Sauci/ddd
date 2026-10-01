@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from "vitest";
 import type { Finding, PlanReply, UndoneChange } from "../api/types";
 import {
+  askedAgainAfterUndo,
   constantLabel,
   declareLabel,
   filesLabel,
@@ -217,7 +218,15 @@ const CREATED: UndoneChange = {
   hunks: [{ line: 1, before: ["{", '  "units": []', "}"], after: [] }],
 };
 
-const STATE = { revision: 4, project: "C:/work/demo/demo.ddd.json", files: [], findings: [] };
+const STATE = {
+  revision: 4,
+  version: 8,
+  project: "C:/work/demo/demo.ddd.json",
+  files: [],
+  findings: [],
+  analysing: false,
+  edits: 3,
+};
 
 describe("the undo control", () => {
   it("says what it would undo", () => {
@@ -245,5 +254,42 @@ describe("the undo control", () => {
       { file: CHANGED.file, hunks: CHANGED.hunks, note: null },
       { file: CREATED.file, hunks: CREATED.hunks, note: "removed" },
     ]);
+  });
+});
+
+describe("what an undo asks again", () => {
+  // An undo is answered once its files are back, and the revision moves only once they are
+  // analysed: what is on screen and draws a file is asked for again at once.
+  it("asks again for whatever draws a file, a tab's rows, an entry's panel or a plan", () => {
+    const drawn = [
+      ["file", "C:/work/demo/components/controller.ddd.json", 7],
+      ["variable", "ValueA", 7],
+      ["units", 7],
+      ["unit", "rpm", 7],
+      ["types", 7],
+      ["type", "Sensor_t", 7],
+      ["shared", 7],
+      ["constant", "TREND_SAMPLES", 7],
+      ["section", ".calib", 7],
+      ["raster", "10ms", 7],
+      ["files", 7],
+      ["values", "CurveA", 7],
+      ["declarable", "C:/work/demo/components/controller.ddd.json", 7],
+      ["unit-plan", { action: "describe", unit: "rpm", description: "speed" }, 7],
+      ["settle", "ValueA", "unit", '"rpm"', 7],
+      ["fix", "C:/work/demo/components/controller.ddd.json", "", "missing-id", 7],
+      ["undo", 3, 7],
+    ];
+    expect(drawn.filter((key) => !askedAgainAfterUndo(key))).toEqual([]);
+  });
+
+  it("leaves to the analysis the graph and a comparison, and the session and the projects found", () => {
+    const left = [
+      ["graph", "C:/work/demo/demo.ddd.json", 7],
+      ["compare", "C:/b.json", 7],
+      ["session"],
+      ["projects"],
+    ];
+    expect(left.filter((key) => askedAgainAfterUndo(key))).toEqual([]);
   });
 });

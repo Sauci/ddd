@@ -11,13 +11,13 @@ here imports the generator.
 
 Every measure but ``open``, ``analysis`` and ``edit analysed`` answers a reply whose body is
 timed serialised exactly as the server would send it, ``json.dumps(reply.body, allow_nan=False)``
-inside the timed span, the size being those bytes. Before Task 5 of this part, ``Session.edit``
-still analyses inside the call it writes in, so ``edit answered`` and ``edit analysed`` time and
-measure the same span; later tasks give the second its own wait and update this module in the
-same commit, keeping every measure's name and meaning.
+inside the timed span, the size being those bytes. The session analyses on a thread of its own,
+as ``ddd gui``'s does: ``open`` and ``analysis`` are each timed until the analysis they ask for
+has landed, ``edit answered`` until the edit's reply - written, its analysis not begun - and
+``edit analysed`` from the same moment until that analysis has landed.
 
-Left running on the project it opened: ``measure`` undoes the one edit it made before it returns,
-so a second run measures the same bytes. Not part of the ``ddd`` package, like
+``measure`` undoes the one edit it made and stops the analyser it started before it returns, so a
+second run measures the same bytes. Not part of the ``ddd`` package, like
 ``generate_project.py`` beside it: a tool of the repository's own, run by hand - it is slow on a
 large project, and the machine's own (*Global Constraints*) - never in CI, and checked only by
 ``tests/test_bench_gui.py``'s smoke test on a small generated project.
@@ -63,6 +63,11 @@ _FORWARD_SECONDS: Final = 3_600
 """How far :func:`_analysis` moves a component file's modification time forward: past a
 filesystem's mtime resolution, so the next poll never misses it."""
 
+_POLL_SECONDS: Final = 3_600
+"""How often the session's own poller looks at the disk: never while a run lasts. ``analysis``
+polls for itself, and a poller noticing the moved file first would leave that poll nothing to
+notice."""
+
 
 @dataclass(frozen=True, slots=True)
 class Measure:
@@ -87,7 +92,16 @@ def measure(project: Path) -> list[Measure]:
     some other way (there is otherwise nothing for the edit to read as "current"). Every project
     ``tools/generate_project.py`` makes satisfies all three.
     """
-    session = Session(project.parent)
+    session = Session(project.parent, poll_interval=_POLL_SECONDS)
+    session.start()
+    try:
+        return _measured(session, project)
+    finally:
+        session.stop()
+
+
+def _measured(session: Session, project: Path) -> list[Measure]:
+    """:func:`measure`'s, over ``session``, whose analyser runs."""
     api = Api(session, project, wait_seconds=0.0)
     taken = [_opening(session, project)]
 
@@ -143,7 +157,7 @@ def measure(project: Path) -> list[Measure]:
 
     taken.append(_analysis(session, components[0]))
 
-    answered, analysed = _edit(api, declared[0], units, variable)
+    answered, analysed = _edit(api, session, declared[0], units, variable)
     taken.append(answered)
     taken.append(analysed)
 
@@ -152,19 +166,23 @@ def measure(project: Path) -> list[Measure]:
 
 
 def _opening(session: Session, project: Path) -> Measure:
+    """Opening ``project``, until its first analysis has landed."""
     start = time.perf_counter()
     session.open(project)
+    session.settled(None)
     return Measure("open", _elapsed(start), None)
 
 
 def _analysis(session: Session, target: Path) -> Measure:
-    """``target``'s modification time moved forward, then :meth:`Session.poll` until it has
-    analysed. ``target`` is the first, sorted, of the project's own component files - chosen by
-    :func:`measure`, which already confirmed there is at least one."""
+    """``target``'s modification time moved forward, then :meth:`Session.poll` until the
+    analysis it asks for has landed. ``target`` is the first, sorted, of the project's own
+    component files - chosen by :func:`measure`, which already confirmed there is at least
+    one."""
     forward = target.stat().st_mtime + _FORWARD_SECONDS
     os.utime(target, (forward, forward))
     start = time.perf_counter()
     changed = session.poll()
+    session.settled(None)
     elapsed = _elapsed(start)
     if not changed:
         raise RuntimeError(f"{target} was moved forward, but the poll after it saw no change")
@@ -172,11 +190,12 @@ def _analysis(session: Session, target: Path) -> Measure:
 
 
 def _edit(
-    api: Api, first: Declared, units: Sequence[str], variable: str
+    api: Api, session: Session, first: Declared, units: Sequence[str], variable: str
 ) -> tuple[Measure, Measure]:
     """``POST /api/edit`` of the unit of ``first``, the middle variable's first declaration, to
     the next unit of the project's own vocabulary after its current one, wrapping round - not
-    the generator's own units, so this reads any project without importing it."""
+    the generator's own units, so this reads any project without importing it. Answered once
+    written; analysed once ``session`` has settled."""
     current = json.loads(first.stated["unit"])
     new_unit = units[(units.index(current) + 1) % len(units)]
     edited = first.site.path.resolve()
@@ -201,14 +220,11 @@ def _edit(
     start = time.perf_counter()
     reply = api.handle("POST", "/api/edit", {}, body)
     serialised = json.dumps(reply.body, allow_nan=False)
-    elapsed = _elapsed(start)
+    answered = Measure("edit answered", _elapsed(start), len(serialised.encode("utf-8")))
     if reply.status != 200:
         raise RuntimeError(f"the benchmark's own edit was refused: {reply.body}")
-    answered = Measure("edit answered", elapsed, len(serialised.encode("utf-8")))
-    # Before Task 5, `Session.edit` analyses inside the call it writes in, so the revision it
-    # answers with already includes it: the same span is both figures, as the plan says.
-    analysed = Measure("edit analysed", elapsed, None)
-    return answered, analysed
+    session.settled(None)
+    return answered, Measure("edit analysed", _elapsed(start), None)
 
 
 def _undo(api: Api, session: Session) -> None:

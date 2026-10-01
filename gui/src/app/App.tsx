@@ -167,7 +167,11 @@ export function App() {
             onFollow: () => navigate(BARE_ROUTES[view]),
           }))}
         />
-        {route.view === "graph" ? (
+        {/* No tab asks the server anything before the project's first analysis has landed: each
+            would be refused, and the graph would be asked for once more with no revision. */}
+        {state === null ? (
+          <p className="quiet">Analysing the project…</p>
+        ) : route.view === "graph" ? (
           <GraphPage
             project={opened.path}
             state={state}
@@ -208,6 +212,17 @@ export function App() {
         ) : (
           <ProjectPage state={state} onComponent={openComponent} />
         )}
+      </section>
+    );
+  } else if (state === null) {
+    // A component's page, or its values, before the project's first analysis: named by the
+    // project, the one name known yet, and nothing of the file asked for until there is one.
+    page = (
+      <section>
+        <div className="heading">
+          <h1>{opened.name ?? opened.path}</h1>
+        </div>
+        <p className="quiet">Analysing the project…</p>
       </section>
     );
   } else if ("view" in route) {

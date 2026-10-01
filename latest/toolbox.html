@@ -327,8 +327,9 @@ was built without <code class="docutils literal notranslate"><span class="pre">-
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-symbol-ambiguous</span></code></p></td>
 <td><p>error</p></td>
-<td><p>several compilation units define the name at different addresses; <code class="docutils literal notranslate"><span class="pre">UNIT:NAME</span></code>
-takes one. A tentative definition two units share (<code class="docutils literal notranslate"><span class="pre">-fcommon</span></code>) is one variable</p></td>
+<td><p>several compilation units define the name, other than as one variable at one
+address; <code class="docutils literal notranslate"><span class="pre">UNIT:NAME</span></code> takes one. A tentative definition two units share
+(<code class="docutils literal notranslate"><span class="pre">-fcommon</span></code>) is one variable</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-no-storage</span></code></p></td>
 <td><p>error</p></td>
@@ -348,7 +349,8 @@ a <code class="docutils literal notranslate"><span class="pre">const</span></cod
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-init-unsupported</span></code></p></td>
 <td><p>error</p></td>
-<td><p>an initial value DDD has no spelling for, such as NaN</p></td>
+<td><p>an initial value DDD has no spelling for, such as NaN, or one whose bytes run past
+the end of the section holding it</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-init-dropped</span></code></p></td>
 <td><p>warning</p></td>

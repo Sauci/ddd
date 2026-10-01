@@ -107,16 +107,17 @@ Every argument must match something:
   units, whether an exact name or a glob reached it. `UNIT:` resolves it. One name at one
   address is one variable, however many units describe it: `-fcommon`, or the `common`
   attribute, makes a tentative definition in several units one variable, which the DWARF of
-  each unit describes, and it is taken from the first of them by name.
+  each unit describes, and it is described as the unit whose name sorts first describes it.
 - A name that is only declared, that the optimiser folded into a constant (a
   `DW_AT_const_value` in place of a location) or removed (no location at all), that is
   thread-local, whose location is not a fixed address, or that the linker discarded is
   `elf-no-storage`. A linker keeps the entry of a variable it discarded and resolves its address
-  to a tombstone: GNU ld and lld write 0, and lld all ones when told to (section 10). A variable
-  at 0, or at all ones at the image's address width, at which no object symbol of its name sits,
-  in any symbol table, global or local, is one the linker discarded. A `static` really placed at
-  0 reads as discarded too in an image linked without its local symbols (`-x`), which is the
-  price of reading no code as a variable.
+  to a tombstone: GNU ld and lld 19 write 0, and lld all ones when told to (section 10). A
+  variable at 0, or at all ones at the image's address width, at which no object symbol of its
+  name sits, in any symbol table, global or local, is one the linker discarded. A `static`
+  really placed at 0 is read there through its local symbol, and reads as discarded in an image
+  linked without its local symbols (`-x`), which is the price of reading no code as a variable
+  (section 10).
 
 Entries come out in the order of the arguments, a glob's matches sorted by name and then by
 unit. A variable matched by two arguments is printed once, where it was first matched.
@@ -822,7 +823,9 @@ What each source settles, so that a later reader knows which claims rest on what
   - `--gc-sections` discards a variable nothing references and keeps its entry: GNU ld (gcc
     14.2, gcc 15.2) and lld 19 resolve its `DW_OP_addr` to 0, and lld its `.debug_addr` entry at
     DWARF 5; lld writes all ones, at 32 and at 64 bits, when told to with
-    `-z dead-reloc-in-nonalloc`.
+    `-z dead-reloc-in-nonalloc`. A `static const` array placed at 0 by
+    `--section-start=.vectors=0x0` (gcc 15.2) is read at 0 through its local symbol, and as
+    discarded once `-Wl,-x` drops local symbols.
   - `-gz=zstd` (gcc 15.2) writes `SHF_COMPRESSED` sections of type 2, `ELFCOMPRESS_ZSTD`, which
     pyelftools 0.33 answers with "Unknown compression type: 0x2".
   - `extern const uint16_t Cal_Curve[];` completed by `const uint16_t Cal_Curve[4] = ...` gives

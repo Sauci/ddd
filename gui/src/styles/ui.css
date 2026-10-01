@@ -396,6 +396,46 @@ tr.changing td {
   padding-left: calc(10px + var(--space-4));
 }
 
+/* Every long table but the Findings one (part 17's task 9, design §6): wrapped in React Aria's
+   own Virtualizer and TableLayout, which positions each row and cell itself at ROW_HEIGHT
+   (lib/findingsWindow.ts) rather than leaving them to normal document flow - so, unlike a plain
+   table, this box has to say it scrolls, and a cell has to clip what overflows its one line,
+   since nothing else here wraps or clips an absolutely positioned element for it. A short table
+   stays no taller than its rows; `max-height` only bites once a long one's rows exceed it. */
+.react-aria-Table.long {
+  display: block;
+  max-height: 60vh;
+  overflow: auto;
+}
+.react-aria-Table.long .react-aria-Column,
+.react-aria-Table.long .react-aria-Cell {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* A row's own cells are positioned absolutely (`isVirtualized`'s own doing, react-aria-components'
+   Table.mjs) - out of flow, so a row given no height of its own draws at zero, its cells merely
+   painted over wherever the layout places them: invisible to anything that asks a row for its own
+   box rather than a cell's, which is what left this undiscovered until a journey tried to click
+   one by its row (`getByRole("row", ...).click()`, Playwright's own actionability check, measured
+   failing "element is not visible" against a row whose `getBoundingClientRect()` read `h: 0`) - a
+   screenshot alone never would have, since the cells painted exactly where they should regardless.
+   `[role="row"]`, not `.react-aria-Row`: the header's own row carries no class at all
+   (`useTableHeaderRow.mjs` sets `role: 'row'` and nothing else), so a selector naming only the
+   body's class would leave it at zero height too. */
+.react-aria-Table.long [role="row"] {
+  height: 33px;
+}
+/* The header row is `isSticky` in the layout TableLayout itself builds (`buildTableHeader`,
+   react-stately's own TableLayout.mjs) - pinned at the box's own top through a scroll, exactly
+   the way `.findings-window`'s hand-built one is kept, but a sticky element occludes nothing
+   behind it unless it is given a background of its own: without one, a row scrolled to the top
+   painted straight through the header's own words (measured, by hand, scrolling the Table tab's
+   3,333 rows - a screenshot never would have, since no story here is ever scrolled). */
+.react-aria-Table.long .react-aria-Column {
+  background: var(--surface);
+}
+
 /* The Units tab (docs/superpowers/specs/2026-09-19-gui-units-project-design.md, 5): the table's
    spelling in bold and its count to the right; a unit's panel - its sub-heading, each change it
    offers set apart, the Description field and the line under the rename; and the adoption

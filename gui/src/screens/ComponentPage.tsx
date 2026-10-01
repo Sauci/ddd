@@ -5,13 +5,23 @@ import { getFile, getFindings } from "../api/client";
 import type { State } from "../api/types";
 import { useUpdating } from "../app/updating";
 import { leadsElsewhere, routeHref, routeOf } from "../lib/findings";
+import { ROW_HEIGHT } from "../lib/findingsWindow";
 import type { ComponentFile } from "../lib/formats";
 import { pointerOf, valueAt, within } from "../lib/pointer";
 import { asList, asText } from "../lib/values";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
-import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
+import {
+  Cell,
+  Column,
+  Row,
+  Table,
+  TableBody,
+  TableHeader,
+  TableLayout,
+  Virtualizer,
+} from "../ui/Table";
 import { UpdatingNote, UpdatingStatus } from "../ui/UpdatingNote";
 import { DeclarePanel } from "./DeclarePanel";
 import { UndoStrip } from "./UndoStrip";
@@ -187,85 +197,93 @@ export function ComponentPage({
             {undeclared.name} is no longer declared in the open project.
           </Banner>
         )}
-        <Table
-          aria-label={`Declarations of ${name}`}
-          selectionMode="single"
-          selectedKeys={selected}
-          onSelectionChange={(keys) => {
-            const key = keys === "all" ? undefined : [...keys][0];
-            setFocusPicker(null);
-            setUndeclared(null);
-            setAdding(false);
-            onVariable(rows.find((row) => row.id === key)?.name);
-          }}
+        <Virtualizer
+          layout={TableLayout}
+          layoutOptions={{ rowHeight: ROW_HEIGHT, headingHeight: ROW_HEIGHT }}
         >
-          <TableHeader>
-            <Column>Scope</Column>
-            <Column isRowHeader>Name</Column>
-            <Column>Kind</Column>
-            <Column>Type</Column>
-            <Column>Shape</Column>
-            <Column>Unit</Column>
-            <Column>Findings</Column>
-          </TableHeader>
-          <TableBody items={rows}>
-            {(row) => (
-              <Row
-                id={row.id}
-                className={({ defaultClassName }) =>
-                  row.own.some((finding) => finding.severity === "error")
-                    ? `${defaultClassName} has-error`
-                    : (defaultClassName ?? "")
-                }
-              >
-                <Cell>{row.scope}</Cell>
-                <Cell>{row.name}</Cell>
-                <Cell>{row.kind}</Cell>
-                <Cell>{row.type}</Cell>
-                <Cell>
-                  {row.shape !== null &&
-                    (row.offered ? (
-                      <Button
-                        variant="link"
-                        aria-label={`Show the values of ${row.name}`}
-                        isDisabled={stopped}
-                        onPress={() => onValues(row.name)}
-                      >
-                        {row.shape}
-                      </Button>
-                    ) : (
-                      row.shape
-                    ))}
-                </Cell>
-                <Cell>
-                  <Button
-                    variant="link"
-                    aria-label={`Set the unit of ${row.name}`}
-                    isDisabled={stopped}
-                    onPress={() => {
-                      setFocusPicker((request) => (request ?? 0) + 1);
-                      setUndeclared(null);
-                      setAdding(false);
-                      onVariable(row.name);
-                    }}
-                  >
-                    {row.unit === "" ? <span className="quiet">none</span> : row.unit}
-                  </Button>
-                </Cell>
-                <Cell>
-                  {row.own.map((finding) => (
-                    <Chip
-                      key={finding.key}
-                      tone={finding.severity === "error" ? "error" : "warning"}
+          <Table
+            aria-label={`Declarations of ${name}`}
+            className={also("long")}
+            selectionMode="single"
+            selectedKeys={selected}
+            onSelectionChange={(keys) => {
+              const key = keys === "all" ? undefined : [...keys][0];
+              setFocusPicker(null);
+              setUndeclared(null);
+              setAdding(false);
+              onVariable(rows.find((row) => row.id === key)?.name);
+            }}
+          >
+            <TableHeader>
+              <Column width={90}>Scope</Column>
+              {/* Name is left to take the width the other six do not: nothing else in this row
+                  is more than a word or two, and Findings alone can hold more than one chip. */}
+              <Column isRowHeader>Name</Column>
+              <Column width={110}>Kind</Column>
+              <Column width={120}>Type</Column>
+              <Column width={90}>Shape</Column>
+              <Column width={90}>Unit</Column>
+              <Column width={240}>Findings</Column>
+            </TableHeader>
+            <TableBody items={rows}>
+              {(row) => (
+                <Row
+                  id={row.id}
+                  className={({ defaultClassName }) =>
+                    row.own.some((finding) => finding.severity === "error")
+                      ? `${defaultClassName} has-error`
+                      : (defaultClassName ?? "")
+                  }
+                >
+                  <Cell>{row.scope}</Cell>
+                  <Cell>{row.name}</Cell>
+                  <Cell>{row.kind}</Cell>
+                  <Cell>{row.type}</Cell>
+                  <Cell>
+                    {row.shape !== null &&
+                      (row.offered ? (
+                        <Button
+                          variant="link"
+                          aria-label={`Show the values of ${row.name}`}
+                          isDisabled={stopped}
+                          onPress={() => onValues(row.name)}
+                        >
+                          {row.shape}
+                        </Button>
+                      ) : (
+                        row.shape
+                      ))}
+                  </Cell>
+                  <Cell>
+                    <Button
+                      variant="link"
+                      aria-label={`Set the unit of ${row.name}`}
+                      isDisabled={stopped}
+                      onPress={() => {
+                        setFocusPicker((request) => (request ?? 0) + 1);
+                        setUndeclared(null);
+                        setAdding(false);
+                        onVariable(row.name);
+                      }}
                     >
-                      {finding.check}
-                    </Chip>
-                  ))}
-                </Cell>
-              </Row>
-            )}
-          </TableBody>
-        </Table>
+                      {row.unit === "" ? <span className="quiet">none</span> : row.unit}
+                    </Button>
+                  </Cell>
+                  <Cell>
+                    {row.own.map((finding) => (
+                      <Chip
+                        key={finding.key}
+                        tone={finding.severity === "error" ? "error" : "warning"}
+                      >
+                        {finding.check}
+                      </Chip>
+                    ))}
+                  </Cell>
+                </Row>
+              )}
+            </TableBody>
+          </Table>
+        </Virtualizer>
         <h2>Findings in this component</h2>
         {/* Said also while there are none: an edit may be about to bring the first. */}
         {updating && <UpdatingNote />}
@@ -340,4 +358,11 @@ export function ComponentPage({
       )}
     </section>
   );
+}
+
+/** React Aria's own class with this table's beside it, since ui.css selects on both: a string
+ * would replace React Aria's. */
+function also(name: string) {
+  return ({ defaultClassName }: { defaultClassName: string | undefined }) =>
+    `${defaultClassName ?? ""} ${name}`.trim();
 }

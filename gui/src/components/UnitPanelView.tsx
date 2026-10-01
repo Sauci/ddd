@@ -1,5 +1,6 @@
 import type { PlanReply, ProjectUnit, UnitReply, UnitsReply } from "../api/types";
 import { distinctFindings, keyedFindings } from "../lib/findings";
+import { ROW_HEIGHT } from "../lib/findingsWindow";
 import {
   offers,
   placeRole,
@@ -11,6 +12,16 @@ import { baseName, consequence, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
+import {
+  Cell,
+  Column,
+  Row,
+  Table,
+  TableBody,
+  TableHeader,
+  TableLayout,
+  Virtualizer,
+} from "../ui/Table";
 import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
 import { UnitPicker } from "./UnitPicker";
@@ -108,24 +119,32 @@ export function UnitPanelView(props: UnitPanelViewProps) {
       {reply.sites.length === 0 ? (
         <p className="quiet">Nothing in the project states {unit.unit}.</p>
       ) : (
-        <table className="panel-declarations">
-          <thead>
-            <tr>
-              <th scope="col">Where</th>
-              <th scope="col">File</th>
-              <th scope="col">What</th>
-            </tr>
-          </thead>
-          <tbody>
-            {reply.sites.map((site) => (
-              <tr key={`${site.path} ${site.pointer}`}>
-                <td>{site.name}</td>
-                <td className="quiet">{baseName(site.path)}</td>
-                <td>{placeRole(site)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <Virtualizer
+          layout={TableLayout}
+          layoutOptions={{ rowHeight: ROW_HEIGHT, headingHeight: ROW_HEIGHT }}
+        >
+          {/* Ruling T9-1: a unit stated 12,500 times over (100,000 declarations, one unit) makes
+              this table as long as the brief's own seven, so it is virtualised the same way -
+              Where is left to take the width File and What do not, since a declaration's or a
+              type's own name runs longer than a file's base name or the few words `placeRole`
+              answers. */}
+          <Table aria-label={`Where ${unit.unit} is stated`} className={also("long")}>
+            <TableHeader>
+              <Column isRowHeader>Where</Column>
+              <Column width={160}>File</Column>
+              <Column width={170}>What</Column>
+            </TableHeader>
+            <TableBody items={reply.sites}>
+              {(site) => (
+                <Row id={`${site.path} ${site.pointer}`}>
+                  <Cell>{site.name}</Cell>
+                  <Cell className={also("quiet")}>{baseName(site.path)}</Cell>
+                  <Cell>{placeRole(site)}</Cell>
+                </Row>
+              )}
+            </TableBody>
+          </Table>
+        </Virtualizer>
       )}
       {offered.describe && (
         <section className="panel-offer" aria-label="Description">
@@ -180,6 +199,13 @@ export function UnitPanelView(props: UnitPanelViewProps) {
       </section>
     </Panel>
   );
+}
+
+/** React Aria's own class with this table's beside it, since ui.css selects on both: a string
+ * would replace React Aria's. */
+function also(name: string) {
+  return ({ defaultClassName }: { defaultClassName: string | undefined }) =>
+    `${defaultClassName ?? ""} ${name}`.trim();
 }
 
 /**

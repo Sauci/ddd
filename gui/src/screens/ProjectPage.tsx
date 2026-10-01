@@ -1,7 +1,18 @@
 import type { State } from "../api/types";
 import { useUpdating } from "../app/updating";
 import { tableLine } from "../lib/findings";
+import { ROW_HEIGHT } from "../lib/findingsWindow";
 import { Button } from "../ui/Button";
+import {
+  Cell,
+  Column,
+  Row,
+  Table,
+  TableBody,
+  TableHeader,
+  TableLayout,
+  Virtualizer,
+} from "../ui/Table";
 
 interface Props {
   state: State;
@@ -19,30 +30,44 @@ export function ProjectPage({ state, onComponent }: Props) {
   return (
     <>
       <p className="summary">{tableLine(state.counts, updating)}</p>
-      <table className="components">
-        <thead>
-          <tr>
-            <th scope="col">Component</th>
-            <th scope="col">Errors</th>
-            <th scope="col">Warnings</th>
-            <th scope="col">File</th>
-          </tr>
-        </thead>
-        <tbody>
-          {components.map((file) => (
-            <tr key={file.path} className={file.findings.error > 0 ? "has-error" : undefined}>
-              <td>
-                <Button variant="link" onPress={() => onComponent(file.path)}>
-                  {file.name ?? file.path}
-                </Button>
-              </td>
-              <td>{file.findings.error}</td>
-              <td>{file.findings.warning}</td>
-              <td className="path">{file.path}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <Virtualizer
+        layout={TableLayout}
+        layoutOptions={{ rowHeight: ROW_HEIGHT, headingHeight: ROW_HEIGHT }}
+      >
+        <Table aria-label="Components" className={also("long")}>
+          <TableHeader>
+            <Column isRowHeader width={240}>
+              Component
+            </Column>
+            <Column width={90}>Errors</Column>
+            <Column width={100}>Warnings</Column>
+            {/* File is left to take the width the other three do not: a path runs far longer
+                than a component's own name or either of its counts. */}
+            <Column>File</Column>
+          </TableHeader>
+          <TableBody items={components}>
+            {(file) => (
+              <Row id={file.path} className={also(file.findings.error > 0 ? "has-error" : "")}>
+                <Cell>
+                  <Button variant="link" onPress={() => onComponent(file.path)}>
+                    {file.name ?? file.path}
+                  </Button>
+                </Cell>
+                <Cell>{file.findings.error}</Cell>
+                <Cell>{file.findings.warning}</Cell>
+                <Cell className={also("path")}>{file.path}</Cell>
+              </Row>
+            )}
+          </TableBody>
+        </Table>
+      </Virtualizer>
     </>
   );
+}
+
+/** React Aria's own class with this table's beside it, since ui.css selects on both: a string
+ * would replace React Aria's. */
+function also(name: string) {
+  return ({ defaultClassName }: { defaultClassName: string | undefined }) =>
+    `${defaultClassName ?? ""} ${name}`.trim();
 }

@@ -1,7 +1,17 @@
 import type { TypesReply } from "../api/types";
+import { ROW_HEIGHT } from "../lib/findingsWindow";
 import { typeRows, typesTitle } from "../lib/projectTypes";
 import { Banner } from "../ui/Banner";
-import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
+import {
+  Cell,
+  Column,
+  Row,
+  Table,
+  TableBody,
+  TableHeader,
+  TableLayout,
+  Virtualizer,
+} from "../ui/Table";
 
 export interface TypesTableViewProps {
   types: TypesReply;
@@ -45,34 +55,45 @@ export function TypesTableView({
       )}
       <p className="summary">{typesTitle(types)}</p>
       {rows.length > 0 && (
-        <Table
-          aria-label="Types"
-          selectionMode="single"
-          selectedKeys={selected === undefined ? [] : [selected]}
-          onSelectionChange={(keys) => {
-            const key = keys === "all" ? undefined : [...keys][0];
-            onSelect(typeof key === "string" ? key : undefined);
-          }}
+        <Virtualizer
+          layout={TableLayout}
+          layoutOptions={{ rowHeight: ROW_HEIGHT, headingHeight: ROW_HEIGHT }}
         >
-          <TableHeader>
-            <Column isRowHeader>Type</Column>
-            <Column>Kind</Column>
-            <Column>Description</Column>
-            <Column>Used by</Column>
-            <Column>Findings</Column>
-          </TableHeader>
-          <TableBody items={rows}>
-            {(row) => (
-              <Row id={row.name}>
-                <Cell>{row.name}</Cell>
-                <Cell>{row.kindWord}</Cell>
-                <Cell>{row.description}</Cell>
-                <Cell>{used(row.uses)}</Cell>
-                <Cell>{row.findings === 0 ? "" : String(row.findings)}</Cell>
-              </Row>
-            )}
-          </TableBody>
-        </Table>
+          <Table
+            aria-label="Types"
+            className={also("long")}
+            selectionMode="single"
+            selectedKeys={selected === undefined ? [] : [selected]}
+            onSelectionChange={(keys) => {
+              const key = keys === "all" ? undefined : [...keys][0];
+              onSelect(typeof key === "string" ? key : undefined);
+            }}
+          >
+            <TableHeader>
+              {/* Description is left to take the width the other four do not: a type's own
+                  sentence runs far longer than its name, its kind's word, how many places use
+                  it, or its one finding count. */}
+              <Column isRowHeader width={160}>
+                Type
+              </Column>
+              <Column width={90}>Kind</Column>
+              <Column>Description</Column>
+              <Column width={100}>Used by</Column>
+              <Column width={90}>Findings</Column>
+            </TableHeader>
+            <TableBody items={rows}>
+              {(row) => (
+                <Row id={row.name}>
+                  <Cell>{row.name}</Cell>
+                  <Cell>{row.kindWord}</Cell>
+                  <Cell>{row.description}</Cell>
+                  <Cell>{used(row.uses)}</Cell>
+                  <Cell>{row.findings === 0 ? "" : String(row.findings)}</Cell>
+                </Row>
+              )}
+            </TableBody>
+          </Table>
+        </Virtualizer>
       )}
     </>
   );
@@ -82,4 +103,11 @@ export function TypesTableView({
  * column a reader scans for the ones that are used. */
 function used(count: number): string {
   return count === 0 ? "" : `${count} place${count === 1 ? "" : "s"}`;
+}
+
+/** React Aria's own class with this table's beside it, since ui.css selects on both: a string
+ * would replace React Aria's. */
+function also(name: string) {
+  return ({ defaultClassName }: { defaultClassName: string | undefined }) =>
+    `${defaultClassName ?? ""} ${name}`.trim();
 }

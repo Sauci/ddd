@@ -2821,6 +2821,40 @@ export const FILES_SHARED_KEY: FilesReply = {
  * is not an error. */
 export const NOTHING_AT_THAT_PATH = "C:/work/demo/subsystem/nested.ddd.json";
 
+// A long table (part 17's task 9, brief step 3): "components/*.ddd.json" - spelled exactly as
+// tools/generate_project.py writes it - matching 3,000 files, a round number standing for the
+// "many" shape's own component count at 100,000 declarations (30 declarations a component, so
+// 100,000 / 30 is 3,333 or 3,334, measured). The same imagined project `longFindings` above
+// draws its own long table from, its components numbered and spelled the same way, each one as
+// clean as `PROJECT_FILES`' own five - a table this long is the story, not a finding on it.
+
+const LONG_PATTERN_COUNT = 3000;
+
+const LONG_PATTERN_FILES: string[] = Array.from({ length: LONG_PATTERN_COUNT }, (_, at) => {
+  const name = `C${String(at).padStart(5, "0")}`;
+  return `C:/work/heavy/components/${name.toLowerCase()}.ddd.json`;
+});
+
+const LONG_PATTERN: IncludedEntryReply = {
+  index: 0,
+  entry: "components/*.ddd.json",
+  names: false,
+  key: "C:/work/heavy/components/*.ddd.json",
+  files: LONG_PATTERN_FILES,
+  findings: 0,
+};
+
+export const FILES_LONG: FilesReply = {
+  revision: 1,
+  project: "C:/work/heavy/project.ddd.json",
+  entries: [LONG_PATTERN],
+  creatable: FILES_CREATABLE,
+};
+
+export const FILES_LONG_SOURCES: readonly SourceFile[] = LONG_PATTERN_FILES.map((path, at) =>
+  cleanFile(path, "component", `C${String(at).padStart(5, "0")}`, String(at)),
+);
+
 // --- FileActionsView (part 16, design §3) ------------------------------------------------------
 //
 // What the running api answered, over the tree the test it names in tests/test_gui_api.py builds or

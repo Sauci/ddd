@@ -101,6 +101,59 @@ export async function openPanel(
   return page.getByRole("complementary", { name: variable });
 }
 
+/** Opens a variable's values grid from its component's table, the way a reader reaches it: the
+ * Shape cell's own button - CurveA's and MapA's own among Controller's fourteen declarations,
+ * past the box's edge at this viewport (part 17's task 9: the declarations table is virtualised).
+ * Wheeled into view first, the mouse over the table, rather than left to the click's own
+ * auto-scroll: a virtualised row can be recycled to another one mid-scroll, and a click already
+ * under way then lands wherever the scroll leaves that same spot, not on the row it was sent to
+ * (measured: `Show the values of CurveA` clicked at the box's own reported, visible position
+ * still opened nothing, the page left on Controller's own heading - and the same click, the box
+ * already wheeled to rest first, opened CurveA's grid every time). Never enlarges the box: this
+ * is the wheel a reader's own hand would turn over it. */
+export async function openValues(
+  page: Page,
+  address: string,
+  variable: string,
+  component = "Controller",
+): Promise<void> {
+  await page.goto(address);
+  await page.getByRole("button", { name: component, exact: true }).click();
+  const button = page.getByRole("button", { name: `Show the values of ${variable}` });
+  await scrolledIntoView(page, `Declarations of ${component}`, button);
+  await button.click();
+}
+
+/** Wheels a long table's own box, the mouse over its middle, until `target` sits inside the
+ * box's own bounds top to bottom - stopping as soon as it does, so a row already in view is
+ * never scrolled past. Not `target.isVisible()`: that reads true for a row the box has scrolled
+ * well past, since nothing about a virtualised row's own CSS says it is clipped by the box's
+ * scroll position - visible and displayed is all that check ever meant, on a row a reader could
+ * not actually see (measured: true before any wheel at all, for a row two past the box's last
+ * drawn one). Bounded at forty steps: a target that never comes within the box's own bounds
+ * fails here, in words that say why, rather than at whatever assertion happens to be next. */
+export async function scrolledIntoView(page: Page, label: string, target: Locator): Promise<void> {
+  const box = page.getByRole("grid", { name: label });
+  const container = await box.boundingBox();
+  if (container === null) throw new Error(`no table labelled "${label}" to scroll`);
+  const withinBox = async () => {
+    const rect = await target.boundingBox();
+    return (
+      rect !== null &&
+      rect.y >= container.y &&
+      rect.y + rect.height <= container.y + container.height
+    );
+  };
+  await page.mouse.move(container.x + container.width / 2, container.y + container.height / 2);
+  for (let step = 0; step < 40 && !(await withinBox()); step += 1) {
+    await page.mouse.wheel(0, 200);
+    await page.waitForTimeout(50);
+  }
+  if (!(await withinBox())) {
+    throw new Error(`scrolling "${label}" never brought its target row within the box`);
+  }
+}
+
 /** A table pasted into the grid the way a browser delivers one: a `DataTransfer` built in the
  * page and dispatched as a `paste` event, because Playwright cannot put a table on the system
  * clipboard. Dispatched on the grid's own `<section>` - the one `ValuesGridView` binds `onPaste`

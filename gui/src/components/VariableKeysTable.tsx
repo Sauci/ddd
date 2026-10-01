@@ -1,7 +1,17 @@
 import { Fragment, type MouseEvent } from "react";
 import type { SettleReply, VariableReply } from "../api/types";
+import { ROW_HEIGHT } from "../lib/findingsWindow";
 import { keyColumns, keyRows } from "../lib/variableKeys";
-import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
+import {
+  Cell,
+  Column,
+  Row,
+  Table,
+  TableBody,
+  TableHeader,
+  TableLayout,
+  Virtualizer,
+} from "../ui/Table";
 
 export interface VariableKeysTableProps {
   variable: VariableReply;
@@ -45,107 +55,124 @@ export function VariableKeysTable({
     })),
   ];
   return (
-    <Table
-      aria-label={`Keys of ${variable.name}`}
-      selectionMode="single"
-      selectedKeys={new Set(selected === undefined ? [] : [selected])}
-      onSelectionChange={(keys) => {
-        const key = keys === "all" ? undefined : [...keys][0];
-        const row = rows.find((entry) => entry.key === key);
-        // `kind` decides which other keys a declaration may carry at all, so it is shown and
-        // never settled (spec 2): selecting it opens nothing and lets the open one go.
-        onSelect(row?.settleable === true ? row.key : undefined);
-      }}
+    <Virtualizer
+      layout={TableLayout}
+      layoutOptions={{ rowHeight: ROW_HEIGHT, headingHeight: ROW_HEIGHT }}
     >
-      <TableHeader columns={columns}>
-        {(column) => <Column isRowHeader={column.id === "key"}>{column.name}</Column>}
-      </TableHeader>
-      <TableBody items={rows}>
-        {(row) => (
-          <Row id={row.key} columns={columns} className={also(row.disagrees ? "has-error" : "")}>
-            {(column) => {
-              if (column.at < 0) return <Cell className={also("key")}>{row.key}</Cell>;
-              const cell = row.cells[column.at];
-              // `columns` beyond the key column and `row.cells` are both built from
-              // `keyColumns(variable)`, in that one order, so the two are always the same
-              // length; this is only what tells the type checker so under
-              // `noUncheckedIndexedAccess`.
-              if (cell === undefined) return <Cell />;
-              // `from` and `href` are `null` together (`KeyCell`'s own doc), so narrowing one
-              // through a local, rather than `cell.from`/`cell.href` again inside the handler,
-              // is what keeps the closure below narrowed too.
-              const type = cell.from;
-              const href = cell.href;
-              return (
-                <Cell className={also(cell.quiet ? "quiet" : "")}>
-                  {cell.parts === null
-                    ? cell.text
-                    : cell.parts.map((part, index) => {
-                        // `constant` and `href` are `null` together (`DimensionEntry`'s own doc),
-                        // narrowed through locals for the same reason `type`/`href` are above.
-                        const constant = part.constant;
-                        const opens = part.href;
-                        return (
-                          // The index is the identity here, as `DimensionsField`'s own row is: a
-                          // dimension has no name, and two of the same size are two different
-                          // dimensions of one shape.
-                          // biome-ignore lint/suspicious/noArrayIndexKey: a dimension is its position
-                          <Fragment key={index}>
-                            {index > 0 && " × "}
-                            {constant === null || opens === null ? (
-                              part.text
-                            ) : (
-                              <a
-                                className="button link"
-                                href={opens}
-                                onClick={(event: MouseEvent<HTMLAnchorElement>) => {
-                                  const modified =
-                                    event.ctrlKey ||
-                                    event.metaKey ||
-                                    event.shiftKey ||
-                                    event.altKey;
-                                  if (modified || event.button !== 0) return;
-                                  event.preventDefault();
-                                  onOpenConstant(constant);
-                                }}
-                              >
-                                {part.text}
-                              </a>
-                            )}
-                          </Fragment>
-                        );
-                      })}
-                  {type !== null && href !== null && (
-                    <>
-                      {/* Coloured and sized to match the link right after it - `.button.link`'s
-                          own rule - so a screen reader announces the type's name alone, not the
-                          punctuation introducing it, without moving a single rendered pixel. */}
-                      <span className="cell-from">{", from "}</span>
-                      <a
-                        className="button link"
-                        href={href}
-                        onClick={(event: MouseEvent<HTMLAnchorElement>) => {
-                          // A modified or secondary click asks the browser for a new tab or
-                          // window.
-                          const modified =
-                            event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
-                          if (modified || event.button !== 0) return;
-                          event.preventDefault();
-                          onOpenType(type);
-                        }}
-                      >
-                        {type}
-                      </a>
-                    </>
-                  )}
-                  {cell.changing && <span className="tag">will change</span>}
-                </Cell>
-              );
-            }}
-          </Row>
-        )}
-      </TableBody>
-    </Table>
+      <Table
+        aria-label={`Keys of ${variable.name}`}
+        className={also("long")}
+        selectionMode="single"
+        selectedKeys={new Set(selected === undefined ? [] : [selected])}
+        onSelectionChange={(keys) => {
+          const key = keys === "all" ? undefined : [...keys][0];
+          const row = rows.find((entry) => entry.key === key);
+          // `kind` decides which other keys a declaration may carry at all, so it is shown and
+          // never settled (spec 2): selecting it opens nothing and lets the open one go.
+          onSelect(row?.settleable === true ? row.key : undefined);
+        }}
+      >
+        <TableHeader columns={columns}>
+          {(column) => {
+            const isKey = column.id === "key";
+            // The key column alone is given a width: a declaration's grows in columns, one per
+            // component, so a fixed width could not fit them all - left unset (never `width={
+            // undefined}`, which `exactOptionalPropertyTypes` tells apart from unset), each takes
+            // the equal share `TableLayout` gives a column without one (spec §6, task 9 brief).
+            return (
+              <Column isRowHeader={isKey} {...(isKey ? { width: 140 } : {})}>
+                {column.name}
+              </Column>
+            );
+          }}
+        </TableHeader>
+        <TableBody items={rows}>
+          {(row) => (
+            <Row id={row.key} columns={columns} className={also(row.disagrees ? "has-error" : "")}>
+              {(column) => {
+                if (column.at < 0) return <Cell className={also("key")}>{row.key}</Cell>;
+                const cell = row.cells[column.at];
+                // `columns` beyond the key column and `row.cells` are both built from
+                // `keyColumns(variable)`, in that one order, so the two are always the same
+                // length; this is only what tells the type checker so under
+                // `noUncheckedIndexedAccess`.
+                if (cell === undefined) return <Cell />;
+                // `from` and `href` are `null` together (`KeyCell`'s own doc), so narrowing one
+                // through a local, rather than `cell.from`/`cell.href` again inside the handler,
+                // is what keeps the closure below narrowed too.
+                const type = cell.from;
+                const href = cell.href;
+                return (
+                  <Cell className={also(cell.quiet ? "quiet" : "")}>
+                    {cell.parts === null
+                      ? cell.text
+                      : cell.parts.map((part, index) => {
+                          // `constant` and `href` are `null` together (`DimensionEntry`'s own doc),
+                          // narrowed through locals for the same reason `type`/`href` are above.
+                          const constant = part.constant;
+                          const opens = part.href;
+                          return (
+                            // The index is the identity here, as `DimensionsField`'s own row is: a
+                            // dimension has no name, and two of the same size are two different
+                            // dimensions of one shape.
+                            // biome-ignore lint/suspicious/noArrayIndexKey: a dimension is its position
+                            <Fragment key={index}>
+                              {index > 0 && " × "}
+                              {constant === null || opens === null ? (
+                                part.text
+                              ) : (
+                                <a
+                                  className="button link"
+                                  href={opens}
+                                  onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+                                    const modified =
+                                      event.ctrlKey ||
+                                      event.metaKey ||
+                                      event.shiftKey ||
+                                      event.altKey;
+                                    if (modified || event.button !== 0) return;
+                                    event.preventDefault();
+                                    onOpenConstant(constant);
+                                  }}
+                                >
+                                  {part.text}
+                                </a>
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                    {type !== null && href !== null && (
+                      <>
+                        {/* Coloured and sized to match the link right after it - `.button.link`'s
+                            own rule - so a screen reader announces the type's name alone, not the
+                            punctuation introducing it, without moving a single rendered pixel. */}
+                        <span className="cell-from">{", from "}</span>
+                        <a
+                          className="button link"
+                          href={href}
+                          onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+                            // A modified or secondary click asks the browser for a new tab or
+                            // window.
+                            const modified =
+                              event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
+                            if (modified || event.button !== 0) return;
+                            event.preventDefault();
+                            onOpenType(type);
+                          }}
+                        >
+                          {type}
+                        </a>
+                      </>
+                    )}
+                    {cell.changing && <span className="tag">will change</span>}
+                  </Cell>
+                );
+              }}
+            </Row>
+          )}
+        </TableBody>
+      </Table>
+    </Virtualizer>
   );
 }
 

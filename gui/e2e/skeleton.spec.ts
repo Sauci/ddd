@@ -6,7 +6,10 @@ import { expect, test } from "./fixtures";
 
 const COMPONENTS = ["Controller", "SensorHub", "UserInterface", "EventLogger"];
 
-/** The project page's row for one component, to read its Errors and Warnings cells from. */
+/** The project page's row for one component, to read its Errors and Warnings cells from - its
+ * own Component column is a row header (part 17's task 9: the table is React Aria's), so it
+ * answers `role="rowheader"` rather than joining these `gridcell`s; Errors leads them, then
+ * Warnings, then File. */
 const componentRow = (page: Page, name: string) =>
   page.getByRole("row").filter({ has: page.getByRole("button", { name, exact: true }) });
 
@@ -18,9 +21,9 @@ test("the demo opens on its project page, with every component", async ({ page, 
   await expect(page.getByRole("heading", { name: "DemoDevice" })).toBeVisible();
   for (const name of COMPONENTS) {
     await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
-    const cells = componentRow(page, name).getByRole("cell");
+    const cells = componentRow(page, name).getByRole("gridcell");
+    await expect(cells.nth(0)).toHaveText("0");
     await expect(cells.nth(1)).toHaveText("0");
-    await expect(cells.nth(2)).toHaveText("0");
   }
 });
 
@@ -194,11 +197,11 @@ test("clicking a module opens its component page, and the back button returns to
 test("the table is one tab away", async ({ page, gui }) => {
   await page.goto(gui.address);
   await page.getByRole("link", { name: "Table" }).click();
-  await expect(componentRow(page, "Controller").getByRole("cell").nth(1)).toHaveText("0");
+  await expect(componentRow(page, "Controller").getByRole("gridcell").nth(0)).toHaveText("0");
   await expect(page).toHaveURL(/\?view=table$/);
 
   await page.reload();
-  await expect(componentRow(page, "Controller").getByRole("cell").nth(1)).toHaveText("0");
+  await expect(componentRow(page, "Controller").getByRole("gridcell").nth(0)).toHaveText("0");
   await expect(page).toHaveURL(/\?view=table$/);
 });
 

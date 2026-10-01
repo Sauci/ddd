@@ -1,6 +1,16 @@
 import type { FilesReply, SourceFile } from "../api/types";
 import { cellsOf, rowsOf, selectedIndices } from "../lib/files";
-import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
+import { ROW_HEIGHT } from "../lib/findingsWindow";
+import {
+  Cell,
+  Column,
+  Row,
+  Table,
+  TableBody,
+  TableHeader,
+  TableLayout,
+  Virtualizer,
+} from "../ui/Table";
 
 export interface FilesTableViewProps {
   reply: FilesReply;
@@ -29,37 +39,46 @@ export function FilesTableView({ reply, files, selected, onSelect }: FilesTableV
   const rows = rowsOf(reply, files);
   return (
     rows.length > 0 && (
-      <Table
-        aria-label="Files"
-        selectionMode="single"
-        selectedKeys={selected === undefined ? [] : selectedIndices(rows, selected)}
-        onSelectionChange={(keys) => {
-          const key = keys === "all" ? undefined : [...keys][0];
-          const index = typeof key === "number" ? key : undefined;
-          onSelect(index === undefined ? undefined : rows[index]?.key);
-        }}
+      <Virtualizer
+        layout={TableLayout}
+        layoutOptions={{ rowHeight: ROW_HEIGHT, headingHeight: ROW_HEIGHT }}
       >
-        <TableHeader>
-          <Column isRowHeader>Entry</Column>
-          <Column>Kind</Column>
-          <Column>State</Column>
-          <Column>Findings</Column>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row, index) => {
-            const cells = cellsOf(row, reply.project);
-            return (
-              // biome-ignore lint/suspicious/noArrayIndexKey: a row is its own position in rowsOf's list - two rows may share one `key`
-              <Row key={index} id={index} className={also(row.child ? "child" : "")}>
-                <Cell>{cells.entry}</Cell>
-                <Cell>{cells.kind}</Cell>
-                <Cell>{cells.state}</Cell>
-                <Cell>{cells.findings}</Cell>
-              </Row>
-            );
-          })}
-        </TableBody>
-      </Table>
+        <Table
+          aria-label="Files"
+          className={also("long")}
+          selectionMode="single"
+          selectedKeys={selected === undefined ? [] : selectedIndices(rows, selected)}
+          onSelectionChange={(keys) => {
+            const key = keys === "all" ? undefined : [...keys][0];
+            const index = typeof key === "number" ? key : undefined;
+            onSelect(index === undefined ? undefined : rows[index]?.key);
+          }}
+        >
+          <TableHeader>
+            {/* Entry is left to take the width the other three do not: a path or a pattern runs
+                far longer than its own Kind, the longest State sentence ("not read by the last
+                analysis"), or a Findings count. */}
+            <Column isRowHeader>Entry</Column>
+            <Column width={110}>Kind</Column>
+            <Column width={220}>State</Column>
+            <Column width={90}>Findings</Column>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row, index) => {
+              const cells = cellsOf(row, reply.project);
+              return (
+                // biome-ignore lint/suspicious/noArrayIndexKey: a row is its own position in rowsOf's list - two rows may share one `key`
+                <Row key={index} id={index} className={also(row.child ? "child" : "")}>
+                  <Cell>{cells.entry}</Cell>
+                  <Cell>{cells.kind}</Cell>
+                  <Cell>{cells.state}</Cell>
+                  <Cell>{cells.findings}</Cell>
+                </Row>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </Virtualizer>
     )
   );
 }

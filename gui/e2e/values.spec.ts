@@ -5,8 +5,10 @@ import {
   CONTROLLER,
   type Frame,
   framesWatched,
+  openValues,
   paste,
   SENSOR_HUB,
+  scrolledIntoView,
   typeCurveA,
   watchFrames,
   widenBlockA,
@@ -33,9 +35,7 @@ async function expectRow(grid: Locator, values: readonly string[]): Promise<void
 }
 
 test("a curve is read against its axis, raw and physical", async ({ page, gui }) => {
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   const grid = page.getByRole("grid", { name: "Values of CurveA" });
   // Spec 5.2's own sketch, labels and all: `AxisA (Hz)` over the breakpoints, `CurveA (ms)`
@@ -73,9 +73,7 @@ test("a curve is read against its axis, raw and physical", async ({ page, gui })
 // renders it, but neither drives a served reply through a browser - so neither can tell a
 // `<polyline>` built from `reply.rows` apart from one that only looks like it was.
 test("a curve is drawn from the numbers it holds", async ({ page, gui }) => {
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   // `role="img"`'s own name drops "(Hz)" and "(ms)" in Raw the way the grid's own headers do
   // (spec 5.2, `ValuesPlotView.tsx`), so matching the fragment both keep - "plotted against
@@ -129,9 +127,7 @@ test("a curve is drawn from the numbers it holds", async ({ page, gui }) => {
 });
 
 test("a cell changed is written to the producer's file", async ({ page, gui }) => {
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   await page.getByRole("textbox", { name: "element 3" }).fill("7.5");
   await expect(page.getByText("Sets element 3 of CurveA to 7.5 ms")).toBeVisible();
@@ -170,9 +166,7 @@ test("a value applied in the grid shows at once, and stays while its findings up
   page,
   gui,
 }) => {
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
   const cell = page.getByRole("textbox", { name: "element 3" });
   await expect(cell).toHaveValue("8");
   await cell.fill("7.5");
@@ -190,9 +184,7 @@ test("a reader's page names the producer's file, not its own", async ({ page, gu
   // and the preview names sensor_hub.ddd.json. Nothing is applied here - the sentence before
   // Apply is the whole subject.
   const before = readFileSync(join(gui.directory, SENSOR_HUB));
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of ValueB" }).click();
+  await openValues(page, gui.address, "ValueB");
 
   await page.getByRole("textbox", { name: "element 1" }).fill("1");
   await expect(page.getByText("Sets element 1 of ValueB to 1 V")).toBeVisible();
@@ -201,9 +193,7 @@ test("a reader's page names the producer's file, not its own", async ({ page, gu
 });
 
 test("a map's cell names its row and its column", async ({ page, gui }) => {
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of MapA" }).click();
+  await openValues(page, gui.address, "MapA");
 
   const grid = page.getByRole("grid", { name: "Values of MapA" });
   await expect(grid.getByRole("rowheader")).toHaveText(["0", "30", "70", "100"]);
@@ -222,9 +212,7 @@ test("a map's cell names its row and its column", async ({ page, gui }) => {
 });
 
 test("a physical value no raw count represents shows what was stored", async ({ page, gui }) => {
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   await page.getByRole("textbox", { name: "element 1" }).fill("12.004");
   await expect(page.getByText("Sets element 1 of CurveA to 12 ms")).toBeVisible();
@@ -239,9 +227,7 @@ test("a value the datatype cannot hold is refused, and nothing is written", asyn
   gui,
 }) => {
   const before = readFileSync(join(gui.directory, CONTROLLER));
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
   await page.getByRole("button", { name: "Raw" }).click();
 
   // Not a number at all first: a decimal comma is what half the world types, and reading the
@@ -264,9 +250,7 @@ test("Enter settles what was typed and writes nothing", async ({ page, gui }) =>
   // ever pressing Apply. The preview still standing afterwards is itself the evidence: an
   // apply clears the cell being edited, and the offer with it.
   const before = readFileSync(join(gui.directory, CONTROLLER));
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   const cell = page.getByRole("textbox", { name: "element 3" });
   await cell.fill("7.5");
@@ -285,9 +269,7 @@ test("Enter settles what was typed and writes nothing", async ({ page, gui }) =>
 
 test("a cell changed is put back", async ({ page, gui }) => {
   const before = readFileSync(join(gui.directory, CONTROLLER));
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   await page.getByRole("textbox", { name: "element 3" }).fill("7.5");
   await page.getByRole("button", { name: "Apply to 1 file" }).click();
@@ -343,9 +325,7 @@ const MAP_A_OVER_RANGE = [
 // only way left is a mechanism of its own (an unwritable file, say), which is not reusing this
 // one - left untried rather than invented.
 test("a pasted curve replaces every value in one edit", async ({ page, gui }) => {
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   await paste(page, "12.004\t9.5\t8.5\t8\t7.5\t7");
   await expect(page.getByText("Replaces every value of CurveA")).toBeVisible();
@@ -363,9 +343,7 @@ test("a pasted curve replaces every value in one edit", async ({ page, gui }) =>
 });
 
 test("a pasted map takes its header row and column", async ({ page, gui }) => {
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of MapA" }).click();
+  await openValues(page, gui.address, "MapA");
   await page.getByRole("button", { name: "Raw" }).click();
 
   await paste(page, MAP_A_PASTE);
@@ -379,9 +357,7 @@ test("a pasted map takes its header row and column", async ({ page, gui }) => {
 
 test("a block of the wrong shape is refused and nothing is written", async ({ page, gui }) => {
   const before = readFileSync(join(gui.directory, CONTROLLER));
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   await paste(page, ["1\t2\t3\t4\t5\t6", "7\t8\t9\t10\t11\t12"].join("\n"));
   await expect(
@@ -394,9 +370,7 @@ test("a block of the wrong shape is refused and nothing is written", async ({ pa
 
 test("a value the datatype cannot hold names every offender", async ({ page, gui }) => {
   const before = readFileSync(join(gui.directory, CONTROLLER));
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of MapA" }).click();
+  await openValues(page, gui.address, "MapA");
   await page.getByRole("button", { name: "Raw" }).click();
 
   await paste(page, MAP_A_OVER_RANGE);
@@ -415,9 +389,7 @@ test("a value the datatype cannot hold names every offender", async ({ page, gui
 
 test("a pasted table is put back", async ({ page, gui }) => {
   const before = readFileSync(join(gui.directory, CONTROLLER));
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   await paste(page, "13\t9.5\t8.5\t8\t7.5\t7");
   await page.getByRole("button", { name: "Apply to 1 file" }).click();
@@ -499,7 +471,9 @@ test("a curve naming a scalar type keeps its button, and its grid", async ({ pag
 
   // The Type cell reads the type, since there is no datatype of its own to read.
   await expect(page.getByRole("gridcell", { name: "Millis_t" })).toBeVisible();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  const button = page.getByRole("button", { name: "Show the values of CurveA" });
+  await scrolledIntoView(page, "Declarations of Controller", button);
+  await button.click();
 
   const grid = page.getByRole("grid", { name: "Values of CurveA" });
   await expect(grid.getByRole("rowheader")).toHaveText(["CurveA (ms)"]);

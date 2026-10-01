@@ -17,6 +17,7 @@ every build record naming the project, or under the defaults when none does.
 
 from __future__ import annotations
 
+import contextlib
 import sys
 import threading
 from collections.abc import Iterable, Mapping, Sequence
@@ -491,7 +492,12 @@ class Session:
         while not self._stopping.is_set():
             begun = self._next(wait=True)
             if begun is not None:
-                self._run(begun, raising=False)
+                # Nothing raised outside the analysis may end this thread, which would leave
+                # every page waiting for an analysis that never comes. `_run` publishes and prints
+                # a failure of the analysis itself; what can still raise is that print, on a
+                # stderr nothing can be written to, and the line is lost with it.
+                with contextlib.suppress(Exception):
+                    self._run(begun, raising=False)
 
     def _next(self, *, wait: bool) -> _Begun | None:
         """The analysis to make next, begun - its stamps taken before it reads a file - or
@@ -509,6 +515,8 @@ class Session:
                 return None
             self._asked = None
             self._running = True
+            # Raising nothing: `stamped` stamps a path the system refuses even to look at as one
+            # that is not there, and an exception here would leave `_running` set for good.
             stamps = stamped(set(self._signature) | self._fresh)
             self._fresh = set()
             # Standing in for the last revision's while this one runs, so that the poll does not
@@ -543,9 +551,10 @@ class Session:
 
         Before, never after: stamped after the analysis, a save landing while it ran was already
         in the stamps, so no poll ever saw it and the page kept the findings of bytes no longer
-        on disk. A file with no stamp from before - a sub-project's file, when the project was
-        just opened, or a file the analysis found newly included - is stamped :data:`UNKNOWN`,
-        which costs one analysis more and catches a save made to that file while this one ran.
+        on disk. A file with no stamp from before - a sub-project's file or a plugin, when the
+        project was just opened, or a file the analysis found newly included - is stamped
+        :data:`UNKNOWN`, which costs one analysis more and catches a save made to that file while
+        this one ran.
         """
         self._running = False
         if begun.project == self._project:
@@ -774,9 +783,10 @@ def _is_project(path: Path) -> bool:
 
 def _named_by(project: Path) -> set[Path]:
     """The project description and every file its own ``includes`` name now, by the loader's own
-    rule: what the first analysis of a project is about to read, stamped before it reads them so
-    that opening a project analyses it once. A sub-project's ``includes`` are not read; its
-    files have no stamp from before, and cost the one analysis more opening always cost.
+    rule: the descriptions the first analysis of a project is about to read, stamped before it
+    reads them so that opening a flat project analyses it once. Neither a sub-project's
+    ``includes`` nor the project's ``plugins`` are read: those files have no stamp from before,
+    and cost opening the one analysis more it always cost.
 
     Read again after :func:`_is_project` judged the file, so the two conditional expressions
     guard a description changed in between; an ``includes`` that is not a list names nothing,
@@ -799,7 +809,9 @@ def _name_in(data: Any, kind: str) -> str | None:
 
 
 def stamped(paths: Iterable[Path]) -> dict[Path, tuple[int, int] | None]:
-    """The modification time and size of each path, ``None`` for one that is not there.
+    """The modification time and size of each path, ``None`` for one that is not there - or that
+    the system refuses even to look at, one holding a NUL byte or a lone surrogate, which no
+    analysis can read either.
 
     How this session decides a file has changed, without a file watcher the standard library
     does not have: taken again and compared with what was taken before. Shared with
@@ -812,7 +824,7 @@ def stamped(paths: Iterable[Path]) -> dict[Path, tuple[int, int] | None]:
     for path in paths:
         try:
             status = path.stat()
-        except OSError:
+        except (OSError, ValueError):
             signature[path] = None
         else:
             signature[path] = (status.st_mtime_ns, status.st_size)

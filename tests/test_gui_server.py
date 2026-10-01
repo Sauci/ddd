@@ -58,6 +58,28 @@ def project_file(tmp_path: Path) -> Path:
     return tmp_path / "project" / "p.ddd.json"
 
 
+def bounded_run(*arguments: Any, **keywords: Any) -> int:
+    """``run``, on a thread of its own joined with a timeout: where it starts the analyser, it
+    waits for the project's first analysis and stops by joining that thread, neither with a
+    timeout, and a session that never settles fails the test rather than hanging the suite."""
+    outcome: list[int | BaseException] = []
+
+    def running() -> None:
+        try:
+            outcome.append(run(*arguments, **keywords))
+        except BaseException as error:  # handed to the test's own thread, which raises it
+            outcome.append(error)
+
+    thread = threading.Thread(target=running, name="run", daemon=True)
+    thread.start()
+    thread.join(timeout=10)
+    assert not thread.is_alive(), "run did not return"
+    (answer,) = outcome
+    if isinstance(answer, BaseException):
+        raise answer
+    return answer
+
+
 def serving(api: Api, static: Path) -> Iterator[GuiServer]:
     server = GuiServer(api, static)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -842,6 +864,7 @@ class TestRunning:
             created.append(self)
 
         monkeypatch.setattr(GuiServer, "__init__", binds_loopback_but_reports_beyond_it)
+        monkeypatch.setattr(Session, "start", lambda self: None)
         monkeypatch.setattr(Session, "start_polling", lambda self: None)
         monkeypatch.setattr(Session, "stop", lambda self: None)
         monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
@@ -878,6 +901,7 @@ class TestRunning:
             return [(family, kind, 0, "", ("127.0.0.1", port))]
 
         monkeypatch.setattr(module.socket, "getaddrinfo", getaddrinfo)
+        monkeypatch.setattr(Session, "start", lambda self: None)
         monkeypatch.setattr(Session, "start_polling", lambda self: None)
         monkeypatch.setattr(Session, "stop", lambda self: None)
         monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
@@ -947,6 +971,7 @@ class TestRunning:
 
         monkeypatch.setattr(module.socket, "getaddrinfo", getaddrinfo)
         monkeypatch.setattr(GuiServer, "__init__", binds_loopback_for_real)
+        monkeypatch.setattr(Session, "start", lambda self: None)
         monkeypatch.setattr(Session, "start_polling", lambda self: None)
         monkeypatch.setattr(Session, "stop", lambda self: None)
         monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
@@ -967,6 +992,7 @@ class TestRunning:
         opened: list[str] = []
         stopped: list[bool] = []
         monkeypatch.setattr(module.webbrowser, "open", opened.append)
+        monkeypatch.setattr(Session, "start", lambda self: None)
         monkeypatch.setattr(Session, "start_polling", lambda self: None)
         monkeypatch.setattr(Session, "stop", lambda self: stopped.append(True))
 
@@ -998,7 +1024,7 @@ class TestRunning:
 
         before = running()
         not_a_project = project_file.parent / "a.ddd.json"
-        assert run(not_a_project, [], 0, open_browser=False, static=pages) == EXIT_USAGE
+        assert bounded_run(not_a_project, [], 0, open_browser=False, static=pages) == EXIT_USAGE
         assert running() == before
 
         def refuses_the_address(self, api, static, port=0, host="127.0.0.1"):
@@ -1006,11 +1032,13 @@ class TestRunning:
 
         with monkeypatch.context() as refusing:
             refusing.setattr(GuiServer, "__init__", refuses_the_address)
-            assert run(project_file, [], 8123, open_browser=False, static=pages) == EXIT_USAGE
+            assert bounded_run(project_file, [], 8123, open_browser=False, static=pages) == (
+                EXIT_USAGE
+            )
         assert running() == before
 
         monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
-        assert run(project_file, [], 0, open_browser=False, static=pages) == EXIT_OK
+        assert bounded_run(project_file, [], 0, open_browser=False, static=pages) == EXIT_OK
         assert running() == before
 
     def test_it_serves_once_the_projects_first_analysis_is_in(
@@ -1025,7 +1053,7 @@ class TestRunning:
             served.append(self.api.session.revision)
 
         monkeypatch.setattr(GuiServer, "serve_forever", serve)
-        assert run(project_file, [], 0, open_browser=False, static=pages) == EXIT_OK
+        assert bounded_run(project_file, [], 0, open_browser=False, static=pages) == EXIT_OK
         (revision,) = served
         assert revision is not None and revision.project == project_file.resolve()
 

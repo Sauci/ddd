@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import io
 import json
 import re
 import shutil
 import stat
+import sys
 import threading
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -142,6 +144,31 @@ def saving_while_analysing(file: Path, unit: bytes) -> Callable[..., Run]:
         return answer
 
     return run
+
+
+NAMES_NO_PATH: tuple[str, ...] = ("b\u0000.ddd.json", "\ud800.ddd.json")
+"""Include entries naming a path the system refuses even to look at: one holding a NUL byte, and
+one holding a lone surrogate, which no file name encodes."""
+
+
+def unreachable(base: Path, entry: str) -> Path:
+    """A project including a component and ``entry``; returns the project file."""
+    write_tree(
+        base,
+        {
+            "p.ddd.json": project("P", "a.ddd.json", entry),
+            "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+        },
+    )
+    return base / "p.ddd.json"
+
+
+def refusal_of(project_file: Path, entry: str) -> str:
+    """What reading the file ``entry`` names raises, by Python's own rule rather than the
+    session's: the reason an analysis reading it gives."""
+    with pytest.raises(ValueError) as refused:
+        (project_file.resolve().parent / entry).read_bytes()
+    return str(refused.value)
 
 
 class TestFindingProjects:
@@ -426,6 +453,16 @@ class Stepped(Session):
         return super()._analysed(project)
 
 
+class SecondFails(Gated):
+    """A gated session whose second analysis raises ``boom``."""
+
+    def _analysed(self, project: Path) -> Revision:
+        revision = super()._analysed(project)
+        if self.analyses == 2:
+            raise RuntimeError("boom")
+        return revision
+
+
 class TestTheAnalyser:
     def test_an_edit_answers_before_its_analysis_and_the_next_revision_includes_it(
         self, shared: Path
@@ -529,7 +566,8 @@ class TestTheAnalyser:
         self, shared: Path
     ) -> None:
         """Until its own first analysis lands it has no revision, so that an edit of a file of
-        the project open before it is refused rather than written."""
+        the project open before it is refused rather than written; and its stamps are its own,
+        so that a save of such a file is no change of the project open."""
         write_tree(shared.parent, {"q.ddd.json": project("Q", "a.ddd.json")})
         session = Gated(shared.parent)
         session.gate.set()
@@ -547,6 +585,8 @@ class TestTheAnalyser:
             with pytest.raises(NoProjectError):
                 session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
             assert b.read_bytes() == before
+            b.write_bytes(before + b" ")
+            assert session.poll() is False
         finally:
             session.gate.set()
             stopped(session)
@@ -634,6 +674,136 @@ class TestTheAnalyser:
         finally:
             stopped(session)
 
+    def test_a_failure_on_the_thread_is_printed_before_it_is_published(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """While the analysis that failed still runs, so that whatever waits for the failure to
+        be published finds its line already written."""
+
+        class Recording(io.StringIO):
+            def __init__(self) -> None:
+                super().__init__()
+                self.running: list[bool] = []
+
+            def write(self, text: str) -> int:
+                if text.strip():
+                    self.running.append(session._running)
+                return super().write(text)
+
+        session = SecondFails(shared.parent)
+        recording = Recording()
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            assert session.settled(timeout=10) is not None
+            monkeypatch.setattr(sys, "stderr", recording)
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            assert session.settled(timeout=10) is not None
+        finally:
+            stopped(session)
+        assert recording.running == [True]
+        assert recording.getvalue() == "ddd gui: analysing the project failed: boom\n"
+
+    def test_a_failure_the_analyser_cannot_print_ends_nothing(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Nothing raised outside the analysis ends the analyser - the line it could not print
+        included: the next poll's analysis is made all the same."""
+
+        class Unwritable(io.StringIO):
+            def write(self, text: str) -> int:
+                raise OSError("standard error is closed")
+
+        session = SecondFails(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            first = session.settled(timeout=10)
+            monkeypatch.setattr(sys, "stderr", Unwritable())
+            at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            assert session.settled(timeout=10) is first
+            monkeypatch.undo()
+            assert session.poll() is True
+            begun(session)
+            settled = session.settled(timeout=10)
+            assert settled is not None and settled.edits == at and mismatches(session) == 2
+        finally:
+            stopped(session)
+
+    @pytest.mark.parametrize("entry", NAMES_NO_PATH)
+    def test_an_include_naming_no_path_fails_its_analysis_and_the_analyser_lives_on(
+        self, tmp_path: Path, entry: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A path the system refuses to look at is stamped as a file that is not there, and the
+        analysis reading it fails as any failure on the thread does: printed, and asked for
+        again at the next poll, by an analyser still there to make it."""
+        project_file = unreachable(tmp_path, entry)
+        session = Gated(tmp_path)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(project_file)
+            begun(session)
+            assert session.settled(timeout=10) is None
+            assert session.poll() is True
+            begun(session)
+            assert session.settled(timeout=10) is None
+            assert session._analyser is not None and session._analyser.is_alive()
+        finally:
+            stopped(session)
+        failure = f"ddd gui: analysing the project failed: {refusal_of(project_file, entry)}"
+        assert capsys.readouterr().err.splitlines() == [failure, failure]
+
+    @pytest.mark.parametrize("entry", NAMES_NO_PATH)
+    def test_where_no_analyser_runs_an_include_naming_no_path_fails_each_call_that_asks(
+        self, tmp_path: Path, entry: str
+    ) -> None:
+        """Opening, then the poll after it, each make the analysis and each are told why it
+        failed: nothing is left running in between."""
+        project_file = unreachable(tmp_path, entry)
+        session = Session(tmp_path)
+        with pytest.raises(ValueError) as opening:
+            session.open(project_file)
+        with pytest.raises(ValueError) as polling:
+            session.poll()
+        assert str(opening.value) == str(polling.value) == refusal_of(project_file, entry)
+
+    def test_a_file_named_for_one_analysis_is_not_watched_by_the_ones_after(
+        self, shared: Path
+    ) -> None:
+        """What an edit or an undo wrote is stamped by the analysis after it and by no other:
+        the units file an undone adoption took away, written again while a later edit's analysis
+        runs, is no file of the project, and asks for nothing."""
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            assert session.settled(timeout=10) is not None
+            at, _ = session.edit(adoption(shared), "the vocabulary adopted")
+            begun(session)
+            assert session.settled(timeout=10) is not None
+            session.undo(at)
+            begun(session)
+            assert session.settled(timeout=10) is not None
+            units = shared.parent / "units.ddd.json"
+            assert not units.exists()
+            session.gate.clear()
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            units.write_text('{"units": []}', encoding="utf-8")
+            assert session.poll() is False
+        finally:
+            session.gate.set()
+            stopped(session)
+
     def test_stopping_ends_the_analyser_and_the_poller(self, shared: Path) -> None:
         session = Gated(shared.parent)
         session.gate.set()
@@ -700,6 +870,33 @@ class TestStamps:
         session.open(shared)
         session.edit(adoption(shared), "the vocabulary")
         assert session.poll() is False
+
+    def test_an_undo_bringing_back_a_file_its_edit_wrote_and_left_out_costs_no_second_analysis(
+        self, shared: Path
+    ) -> None:
+        """A file an edit both wrote and left out of the project left the stamps with it; the
+        undo that brings it back is what stamps it again, before its analysis reads it."""
+        session = Session(shared.parent)
+        session.open(shared)
+        left_out = FileChange(
+            shared,
+            fingerprint(shared.read_bytes()),
+            (Operation("set", "project.includes", '["a.ddd.json"]'),),
+        )
+        at, _ = session.edit([left_out, unit_of_b(shared, "Hz")], "b changed and left out")
+        revision = session.revision
+        assert revision is not None and "b.ddd.json" not in {f.path.name for f in revision.files}
+        session.undo(at)
+        revision = session.revision
+        assert revision is not None and "b.ddd.json" in {f.path.name for f in revision.files}
+        assert session.poll() is False
+
+    @pytest.mark.parametrize("entry", NAMES_NO_PATH)
+    def test_a_path_the_system_refuses_to_look_at_is_stamped_as_not_there(
+        self, tmp_path: Path, entry: str
+    ) -> None:
+        path = tmp_path / entry
+        assert module.stamped([path]) == {path: None}
 
     def test_an_undo_takes_a_number_of_its_own_and_the_revision_includes_it(
         self, shared: Path

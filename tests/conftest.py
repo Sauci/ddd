@@ -331,7 +331,14 @@ class Awaited(Session):
 
     def settled(self, timeout: float | None) -> Revision | None:
         self.awaited.release()
-        return super().settled(timeout)
+        if timeout is not None:
+            return super().settled(timeout)
+        # Ten seconds where the caller would wait as long as it takes - the api and run both do -
+        # so that a session that never settles fails the test rather than hanging the suite.
+        revision = super().settled(10)
+        with self._lock:
+            assert self._asked is None and not self._running, "the session never settled"
+        return revision
 
     def _analysed(self, project: Path) -> Revision:
         assert self.awaited.acquire(timeout=10), "nothing waited for this analysis"

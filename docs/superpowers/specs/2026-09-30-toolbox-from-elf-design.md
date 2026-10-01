@@ -46,12 +46,13 @@ rather than a step of the build.
 - **Separate debug files** (`.gnu_debuglink`, `.dwo`, `.dwp`): the DWARF has to be in the image.
 - **DWARF type units** (`-fdebug-types-section`). gcc then moves structures and enums into units
   of their own - a `.debug_types` section at DWARF 4, `DW_UT_type` units of `.debug_info` at
-  DWARF 5 - whose entries count their offsets from the unit's own start, where types are
-  memoised by offset (section 5.1), and pyelftools resolves no DWARF 5 signature at all. Read as
-  the rest is, the DWARF 4 build described a `sint8` parameter as a structure and exited `0`,
-  and the DWARF 5 build ended in a traceback (section 10). Firmware builds rarely ask for type
-  units, and a refusal is honest where a wrong type is not: such an image is refused (exit
-  `2`), with a message naming the option.
+  DWARF 5. A DWARF 4 unit's entries count their offsets from `.debug_types`'s own start, which
+  collides with `.debug_info`'s offsets in a memo keyed by offset alone (section 5.1); a DWARF 5
+  one sits in `.debug_info` with ordinary offsets, where pyelftools resolves no signature at
+  all. Read as the rest is, the DWARF 4 build described a `sint8` parameter as a structure and
+  exited `0`, and the DWARF 5 build ended in a traceback (section 10). Firmware builds rarely
+  ask for type units, and a refusal is honest where a wrong type is not: such an image is
+  refused (exit `2`), with a message naming the option.
 - **gcc's link-time optimisation** (`-flto`). gcc then names each variable in the unit of its
   source, without a location, and locates it in an `<artificial>` unit that `GNU GIMPLE`
   produces, without a name, through `DW_AT_abstract_origin`. Read as the rest is, every
@@ -433,8 +434,10 @@ hand-built C model.
   the exact place where it occurs, so the translator can name the path and go on with the other
   variables. A pointer is an `Unsupported` leaf whose pointee is never followed, so a structure
   pointing at itself stays finite. Types are memoised by DIE offset, so a type reached twice is
-  built once; an offset names one entry within `.debug_info`, which is why type units, whose
-  offsets restart, are refused rather than read (section 2).
+  built once; an offset names one entry within `.debug_info`, which is why type units are
+  refused rather than read: a DWARF 4 one's offsets count from `.debug_types`'s own start
+  instead, colliding with `.debug_info`'s, and pyelftools cannot resolve a DWARF 5 one by
+  signature at all (section 2).
 - **Every DWARF variation stops here.** The translator never sees one. These are:
   - a definition completing a declaration (`DW_AT_specification`), with the declaration's type
     or, where it states one of its own, its own: gcc states the completed type on the

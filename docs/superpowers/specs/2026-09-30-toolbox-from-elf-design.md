@@ -104,11 +104,12 @@ Every argument must match something:
 - An argument that matches no candidate, exact name or glob, is `elf-symbol-missing`. When the
   name is in the ELF symbol table and no unit's DWARF holds it, the message adds that the unit
   defining it carries no debug information.
-- A name several units define at different addresses is `elf-symbol-ambiguous`, listing the
-  units, whether an exact name or a glob reached it. `UNIT:` resolves it. One name at one
-  address is one variable, however many units describe it: `-fcommon`, or the `common`
-  attribute, makes a tentative definition in several units one variable, which the DWARF of
-  each unit describes, and it is described as the unit whose name sorts first describes it.
+- A name several units define, other than as one variable at one address, is
+  `elf-symbol-ambiguous`, listing the units, whether an exact name or a glob reached it.
+  `UNIT:` resolves it. One name at one address is one variable, however many units
+  describe it: `-fcommon`, or the `common` attribute, makes a tentative definition in
+  several units one variable, which the DWARF of each unit describes, and it is described
+  as the unit whose name sorts first describes it.
 - A name that is only declared, that the optimiser folded into a constant (a
   `DW_AT_const_value` in place of a location) or removed (no location at all), that is
   thread-local, whose location is not a fixed address, or that the linker discarded is

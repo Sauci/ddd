@@ -213,8 +213,9 @@ under DDD's identifiers.
        was built without ``-g``
    * - ``elf-symbol-ambiguous``
      - error
-     - several compilation units define the name at different addresses; ``UNIT:NAME``
-       takes one. A tentative definition two units share (``-fcommon``) is one variable
+     - several compilation units define the name, other than as one variable at one
+       address; ``UNIT:NAME`` takes one. A tentative definition two units share
+       (``-fcommon``) is one variable
    * - ``elf-no-storage``
      - error
      - the variable has no address: only declared, folded into a constant or removed by the

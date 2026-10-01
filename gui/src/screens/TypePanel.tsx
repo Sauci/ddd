@@ -8,15 +8,17 @@ import {
   postEdit,
   type TypePlanRequest,
 } from "../api/client";
+import { useUpdating } from "../app/updating";
 import { TypePanelView } from "../components/TypePanelView";
 import { planEdit } from "../lib/projectUnits";
-import { type Refused, shownRefusal } from "../lib/refusals";
+import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { typeLabel } from "../lib/undo";
 import { textOf, unitLabel } from "../lib/units";
 import { limitsNote, limitsOf, limitsRaw, shortValue } from "../lib/variableKeys";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
+import { UpdatingNote } from "../ui/UpdatingNote";
 
 interface Props {
   name: string;
@@ -78,6 +80,7 @@ function fieldLabel(editor: string | undefined, key: string, raw: string | null)
  * to (spec 5.2). */
 export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, onOpen }: Props) {
   const queries = useQueryClient();
+  const updating = useUpdating();
   const reply = useQuery({
     queryKey: ["type", name, revision],
     queryFn: () => getType(name),
@@ -125,7 +128,10 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
   // keeps it shown until a later revision arrives.
   const [stale, setStale] = useState<({ kind: Kind } & Refused) | null>(null);
 
-  const type = reply.data;
+  // What the panel shows of that answer (`panelShows`): a type just renamed to this spelling is
+  // refused until the rename is analysed, and the panel says the findings are updating meanwhile.
+  const answer = panelShows(reply, (shown) => shown.name, name, updating);
+  const type = answer.shown === "reply" ? answer.reply : undefined;
   const offer = type?.keys.find((entry) => entry.key === selected);
   const starting = offer?.values[0]?.raw ?? null;
   // Two empty fields are "state nothing", which removes the key; anything else that is not a
@@ -230,10 +236,17 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
   });
 
   if (gone) return null;
-  if (reply.isError) {
+  if (answer.shown === "refusal") {
     return (
       <Panel title={name} onClose={onClose}>
-        <Banner tone="error">{reply.error.message}</Banner>
+        <Banner tone="error">{answer.refusal}</Banner>
+      </Panel>
+    );
+  }
+  if (answer.shown === "updating") {
+    return (
+      <Panel title={name} onClose={onClose}>
+        <UpdatingNote />
       </Panel>
     );
   }
@@ -247,6 +260,7 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
   return (
     <TypePanelView
       type={type}
+      updating={updating}
       units={units.data}
       selected={selected}
       onSelect={(key) => {

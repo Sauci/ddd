@@ -1,4 +1,6 @@
 import type { State } from "../api/types";
+import { useUpdating } from "../app/updating";
+import { tableLine } from "../lib/findings";
 import { Button } from "../ui/Button";
 
 interface Props {
@@ -8,15 +10,15 @@ interface Props {
 
 /**
  * The open project's `Table` tab: its components and how many findings each has. The project's
- * name is the heading above the tabs, so this screen and the canvas share it.
+ * name is the heading above the tabs, so this screen and the canvas share it. A row's counts are
+ * not marked while the findings update: the line above them is, and the heading says so.
  */
 export function ProjectPage({ state, onComponent }: Props) {
+  const updating = useUpdating();
   const components = state.files.filter((file) => file.kind === "component");
   return (
     <>
-      <p className="summary">
-        {state.counts.error} errors, {state.counts.warning} warnings
-      </p>
+      <p className="summary">{tableLine(state.counts, updating)}</p>
       <table className="components">
         <thead>
           <tr>

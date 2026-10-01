@@ -3,6 +3,7 @@ import type { MouseEvent } from "react";
 import { useState } from "react";
 import { getFile, getFindings } from "../api/client";
 import type { State } from "../api/types";
+import { useUpdating } from "../app/updating";
 import { leadsElsewhere, routeHref, routeOf } from "../lib/findings";
 import type { ComponentFile } from "../lib/formats";
 import { pointerOf, valueAt, within } from "../lib/pointer";
@@ -11,6 +12,7 @@ import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
+import { UpdatingNote } from "../ui/UpdatingNote";
 import { DeclarePanel } from "./DeclarePanel";
 import { UndoStrip } from "./UndoStrip";
 import { VariablePanel } from "./VariablePanel";
@@ -67,6 +69,7 @@ export function ComponentPage({
   onOpenType,
   onOpenConstant,
 }: Props) {
+  const updating = useUpdating();
   // A new number on every unit cell press, even a second press of the same cell, so the
   // picker's focus request always changes; null when a row selects its variable without one.
   const [focusPicker, setFocusPicker] = useState<number | null>(null);
@@ -176,6 +179,8 @@ export function ComponentPage({
           >
             Add a declaration
           </Button>
+          {/* Last in the row: coming and going, it moves none of the controls before it. */}
+          {updating && <UpdatingNote />}
         </div>
         {undeclared !== null && (
           <Banner tone="warning">
@@ -262,6 +267,8 @@ export function ComponentPage({
           </TableBody>
         </Table>
         <h2>Findings in this component</h2>
+        {/* Said also while there are none: an edit may be about to bring the first. */}
+        {updating && <UpdatingNote />}
         {listed.isError && <Banner tone="error">{listed.error.message}</Banner>}
         {listed.isPending && <p className="quiet">Reading the findings…</p>}
         {listed.isSuccess && findings.length === 0 && <p className="quiet">None.</p>}

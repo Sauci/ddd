@@ -12,8 +12,6 @@ export interface FindingsTableViewProps {
   above: number;
   /** How tall the space below them stands: every row after them. */
   below: number;
-  /** How many rows the table has in all, drawn or not. */
-  total: number;
   /** The key of the finding whose panel is open, or `undefined`. */
   selected: string | undefined;
   onSelect: (finding: ListedFinding | undefined) => void;
@@ -27,7 +25,7 @@ export interface FindingsTableViewProps {
  * of its own that the table scrolls in, its header kept at the top. A picture of its props: which
  * rows those are is `lib/findingsWindow`'s to say. */
 export function FindingsTableView(props: FindingsTableViewProps) {
-  const { rows, total, selected, onSelect, onScroll } = props;
+  const { rows, selected, onSelect, onScroll } = props;
   const box = useRef<HTMLDivElement>(null);
   // The box's own height, said once it is drawn and again whenever it changes - a short table's
   // box grows with its rows until it is full - which a box that only scrolled would never say.
@@ -48,12 +46,13 @@ export function FindingsTableView(props: FindingsTableViewProps) {
         const scrolled = event.currentTarget;
         // The row the keyboard is on gives the focus up to the box before a scroll takes the
         // window past it (`keeps` says when): React Aria would otherwise move the focus to the
-        // row standing at its place and scroll the box back to that one.
+        // row standing at its place - and, while the reader is on the keyboard, scroll the box
+        // back to that one.
         const held = document.activeElement?.closest("[data-index]");
         if (
           held instanceof HTMLElement &&
           scrolled.contains(held) &&
-          !keeps(Number(held.dataset.index), scrolled.scrollTop, scrolled.clientHeight, total)
+          !keeps(Number(held.dataset.index), scrolled.scrollTop, scrolled.clientHeight)
         ) {
           scrolled.focus({ preventScroll: true });
         }

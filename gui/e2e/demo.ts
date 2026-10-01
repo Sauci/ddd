@@ -277,3 +277,32 @@ export function dump(directory: string, project: string, output: string): void {
     );
   }
 }
+
+/** One frame as a reader saw it: what a field read, and whether the page said "Updating the
+ * findings…" anywhere. */
+export type Frame = readonly [value: string | null, updating: boolean];
+
+/** Records, from now on and at every frame the page paints, what the field named `label` reads
+ * and whether the page says its findings are updating - what a reader sees at each paint, which
+ * a wait on any one moment can step over: on examples/demo an analysis lands within a few frames.
+ * Read back with `framesWatched`. */
+export async function watchFrames(page: Page, label: string): Promise<void> {
+  await page.evaluate((name) => {
+    const frames: [string | null, boolean][] = [];
+    (window as unknown as { watched: typeof frames }).watched = frames;
+    const each = () => {
+      const field = document.querySelector<HTMLInputElement>(`input[aria-label="${name}"]`);
+      const said = [...document.querySelectorAll('[role="status"]')].some(
+        (status) => status.textContent === "Updating the findings…",
+      );
+      frames.push([field?.value ?? null, said]);
+      requestAnimationFrame(each);
+    };
+    requestAnimationFrame(each);
+  }, label);
+}
+
+/** Every frame `watchFrames` has recorded so far, in order. */
+export function framesWatched(page: Page): Promise<Frame[]> {
+  return page.evaluate(() => (window as unknown as { watched: Frame[] }).watched);
+}

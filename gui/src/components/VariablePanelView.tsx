@@ -6,6 +6,7 @@ import { describeVariable, offerOf } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
+import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
 import { KeyChooser, type KeyChooserProps } from "./KeyChooser";
 import type { Offer } from "./UnitPanelView";
@@ -43,6 +44,9 @@ export interface VariablePanelViewProps
       }
     | undefined;
   onClose: () => void;
+  /** Whether the findings may be about to change (spec 6): the panel says so where it lists them,
+   * also while it lists none - an edit may be about to bring the first. */
+  updating?: boolean;
 }
 
 /** One variable's panel, drawn from what the api answered: a picture of its props. */
@@ -60,6 +64,7 @@ export function VariablePanelView(props: VariablePanelViewProps) {
         onOpenType={props.onOpenType}
         onOpenConstant={props.onOpenConstant}
       />
+      {props.updating && <UpdatingNote />}
       {variable.findings.length > 0 && (
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(variable.findings)).map(([finding, key]) => {

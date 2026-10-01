@@ -401,14 +401,15 @@ export const postEdit = async (
 export const getUndo = (fetchImpl: Fetch = fetch) =>
   request<UndoPreview>("/api/undo", {}, fetchImpl);
 
-/** An undo, answered once the files are back: its number is noted into `edits` as an edit's is. */
+/** An undo of the edit numbered `at`, answered once the files are back: its number is noted into
+ * `edits` as an edit's is, with the edit it put back. */
 export const postUndo = async (
   at: number,
   fetchImpl: Fetch = fetch,
   edits: OwnEdits = ownEdits,
 ): Promise<UndoReply> => {
   const reply = await request<UndoReply>("/api/undo", post({ at }), fetchImpl);
-  edits.wrote(reply.edit);
+  edits.undid(at, reply.edit);
   return reply;
 };
 

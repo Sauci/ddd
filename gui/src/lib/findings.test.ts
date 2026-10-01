@@ -14,6 +14,7 @@ import {
   routeLabel,
   routeOf,
   selectedNow,
+  tableLine,
   unreadable,
 } from "./findings";
 import { SHARED_KINDS } from "./shared";
@@ -134,9 +135,16 @@ describe("what the tab says about how many there are", () => {
     expect(findingCounts(counts, false)).toBe(says);
   });
 
-  test("whether they are about to change does not change the words yet", () => {
-    const counts = { error: 1, warning: 2, info: 3 };
-    expect(findingCounts(counts, true)).toBe(findingCounts(counts, false));
+  // Spec 6: while an edit waits for its analysis, or one runs, the counts may be about to change,
+  // and the line ends by saying so.
+  test.each([
+    [{ error: 0, warning: 0, info: 0 }, "Nothing to report · updating"],
+    [{ error: 1, warning: 0, info: 0 }, "1 finding · 1 error · updating"],
+    [{ error: 0, warning: 0, info: 1 }, "1 finding · 1 note · updating"],
+    [{ error: 2, warning: 3, info: 0 }, "5 findings · 2 errors, 3 warnings · updating"],
+    [{ error: 1, warning: 1, info: 2 }, "4 findings · 1 error, 1 warning, 2 notes · updating"],
+  ])("%#: about to change, it says so at its end", (counts, says) => {
+    expect(findingCounts(counts, true)).toBe(says);
   });
 
   test("every severity counted together is how many there are in all", () => {
@@ -156,6 +164,25 @@ describe("what the tab says about how many there are", () => {
     [[finding(), finding()], "2 findings · 2 errors"],
   ])("%#: from a list of its own", (findings, says) => {
     expect(findingCounts(countsOf(findings), false)).toBe(says);
+  });
+
+  // The Table tab's line: errors and warnings, each counted even at none, as the table's own two
+  // columns count them - a note has no column, and the line says nothing of notes.
+  test.each([
+    [{ error: 0, warning: 0, info: 0 }, "0 errors, 0 warnings"],
+    [{ error: 1, warning: 1, info: 0 }, "1 error, 1 warning"],
+    [{ error: 2, warning: 3, info: 4 }, "2 errors, 3 warnings"],
+    [{ error: 1, warning: 12, info: 1 }, "1 error, 12 warnings"],
+  ])("%#: the Table tab's line, current", (counts, says) => {
+    expect(tableLine(counts, false)).toBe(says);
+  });
+
+  test.each([
+    [{ error: 0, warning: 0, info: 0 }, "0 errors, 0 warnings · updating"],
+    [{ error: 1, warning: 1, info: 0 }, "1 error, 1 warning · updating"],
+    [{ error: 3, warning: 1, info: 7 }, "3 errors, 1 warning · updating"],
+  ])("%#: the Table tab's line, about to change", (counts, says) => {
+    expect(tableLine(counts, true)).toBe(says);
   });
 
   test("a list is counted by severity, and a finding nobody reports under none", () => {

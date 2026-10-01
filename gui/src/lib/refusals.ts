@@ -48,3 +48,51 @@ export function refusalShown(
 ): string | null {
   return shownRefusal(stale, revision) ?? refused ?? asked?.message ?? null;
 }
+
+/** What a panel about one entity shows of the server's answer about it: the answer, a refusal in
+ * its place, "Updating the findings…" alone, or that it is reading. */
+export type PanelShows<T> =
+  | { shown: "reply"; reply: T }
+  | { shown: "refusal"; refusal: string }
+  | { shown: "updating" }
+  | { shown: "reading" };
+
+/** Whether an answer was refused because a file it is built from did not load, or changed since
+ * the analysis read it - the server's own code, `ddd.editing.UNREADABLE`. */
+function isUnreadable(error: Error): boolean {
+  return error instanceof ApiError && error.code === "unreadable";
+}
+
+/**
+ * What the panel open on one entity - a variable, a unit, a type, a constant, a section or a
+ * raster, which `about` names an answer by - shows of the answer about it, while the findings are
+ * `updating` or not.
+ *
+ * An edit is answered once its files are written and analysed after (spec 5), and these answers
+ * are built from what the last analysis indexed: an entity an edit renamed or added, or whose
+ * declaration it moved within its file, is refused `unreadable` until the analysis reading that
+ * file lands - "'RPM' is not declared in any file that has not changed since, and pump.ddd.json,
+ * units.ddd.json changed since it was read". While the findings are updating, that refusal is not
+ * shown: the panel says "Updating the findings…" in its place, over what it already showed of its
+ * own entity, and alone where it showed nothing of it yet - a renamed or an added entity's panel.
+ * It never shows another entity's answer under this one's name, which a query carries from one
+ * key to the next (`placeholderData`) and could carry from a name before. Every other refusal,
+ * and an `unreadable` one once nothing is updating, is shown as it always was.
+ *
+ * The moment the analysis lands asks nothing of its own: the state's revision moves before the
+ * panel's next answer comes, and the panel's query, keyed by that revision, starts again with no
+ * refusal - the panel shows the answer it kept meanwhile, or that it is reading.
+ */
+export function panelShows<T>(
+  answer: { data: T | undefined; error: Error | null },
+  about: (reply: T) => string,
+  name: string,
+  updating: boolean,
+): PanelShows<T> {
+  const own = answer.data !== undefined && about(answer.data) === name ? answer.data : undefined;
+  if (answer.error !== null && !(updating && isUnreadable(answer.error))) {
+    return { shown: "refusal", refusal: answer.error.message };
+  }
+  if (own !== undefined) return { shown: "reply", reply: own };
+  return answer.error === null ? { shown: "reading" } : { shown: "updating" };
+}

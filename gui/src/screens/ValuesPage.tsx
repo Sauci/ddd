@@ -1,12 +1,15 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { ApiError, getValuePlan, getValues, getValuesPlan, postEdit } from "../api/client";
-import type { State } from "../api/types";
+import type { State, ValuesReply } from "../api/types";
+import { useUpdating } from "../app/updating";
 import { ValuesGridView } from "../components/ValuesGridView";
 import { cellAt, drawable, pasted, rawOf, typedNumber } from "../lib/objectValues";
 import { planEdit } from "../lib/projectUnits";
 import { type Refused, shownRefusal as staleRefusal } from "../lib/refusals";
 import { pasteLabel, valueLabel } from "../lib/undo";
+import { holdOf, type ValuesHold, valuesShown, type Written, writtenBy } from "../lib/valuesHold";
+import { ownEdits } from "../state/edits";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { UndoStrip } from "./UndoStrip";
@@ -18,7 +21,7 @@ interface Props {
   /** The file the route was opened from - the route's own `file`, not necessarily the object's
    * own producer (spec 5.4): what names and is returned to by "Back to". */
   file: string;
-  state: State | null;
+  state: State;
   stopped: boolean;
   onBack: () => void;
 }
@@ -43,15 +46,21 @@ type Editing = { row: number; column: number; typed: string } | null;
  * paste is a second way to reach `init`"), so only one owns the preview, the sentence and Apply
  * at a time: `pastedRows` and `editing` are cleared by each other's own action, and `shownPlan`/
  * `shownSentence`/`label` below choose between the two once, rather than at each prop.
+ *
+ * What an Apply wrote shows at once (spec 6): `GET /api/values` answers what the last analysis
+ * read, so the grid holds the values its own Apply wrote - and, once the Undo strip puts that
+ * Apply back, the values from before it - until a revision including the edit has answered
+ * (`valuesShown`).
  */
 export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   const queries = useQueryClient();
-  const revision = state?.revision;
+  const updating = useUpdating();
+  const revision = state.revision;
   // The component named by the file the route carries - "Back to" both says and returns to the
   // same place, which the object's own owner cannot always promise (spec 5.4). Resolved once,
   // for every branch below to share, from `State.files`' own `name` - the answer to `GET
   // /api/state` already carries it, so this asks the server for nothing new.
-  const backTo = state?.files.find((entry) => entry.path === file)?.name ?? "component";
+  const backTo = state.files.find((entry) => entry.path === file)?.name ?? "component";
   const values = useQuery({
     queryKey: ["values", name, revision],
     queryFn: () => getValues(name),
@@ -59,6 +68,12 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
     // the table stays up while the next revision's answer is read.
     placeholderData: (previous) => previous,
   });
+  // What this grid's last Apply wrote, held until a revision including it has answered, and the
+  // edits the page's undos put back - the Undo strip's, which tell the grid its Apply was undone.
+  const [hold, setHold] = useState<ValuesHold | null>(null);
+  const undone = useSyncExternalStore(ownEdits.subscribe, ownEdits.undone);
+  const shown =
+    values.data === undefined ? undefined : valuesShown(hold, undone, state, values.data);
 
   const [physical, setPhysical] = useState(true);
   const [editing, setEditing] = useState<Editing>(null);
@@ -79,9 +94,9 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   const [pastedRows, setPastedRows] = useState<number[][] | null>(null);
   const [pasteRefusal, setPasteRefusal] = useState<string | null>(null);
 
-  // Every use below tolerates `values.data` not having arrived yet, which is what keeps `at` and
-  // `raw` `null` and the plan query skipped until it has.
-  const shape = values.data?.shape;
+  // Every use below tolerates `shown` not having arrived yet, which is what keeps `at` and `raw`
+  // `null` and the plan query skipped until it has.
+  const shape = shown?.shape;
   const at =
     editing !== null && shape !== undefined ? cellAt(editing.row, editing.column, shape) : null;
   // What `editing.typed` would write, as a raw count: `null` while nothing is being edited or
@@ -89,10 +104,10 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // on, so the two either agree or the plan below is still not asked for.
   const typed = editing === null ? Number.NaN : typedNumber(editing.typed);
   const raw =
-    values.data === undefined || Number.isNaN(typed)
+    shown === undefined || Number.isNaN(typed)
       ? null
       : physical
-        ? rawOf(typed, values.data.conversion, values.data.datatype)
+        ? rawOf(typed, shown.conversion, shown.datatype)
         : typed;
   const plan = useQuery({
     queryKey: ["value-plan", name, at, raw, revision],
@@ -133,12 +148,14 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // the one element for a cell - `pasteLabel`'s and `valueLabel`'s own difference.
   const label = pasting
     ? pasteLabel(name)
-    : values.data === undefined || editing === null
+    : shown === undefined || editing === null
       ? null
-      : valueLabel(values.data.name, editing.row, editing.column, values.data.shape);
+      : valueLabel(shown.name, editing.row, editing.column, shown.shape);
+  // What Apply would write, held once it is written.
+  const written = writtenBy(pastedRows, editing, raw);
 
   const apply = useMutation({
-    mutationFn: () => {
+    mutationFn: (_applied: { before: ValuesReply; written: Written }) => {
       const edit = shownPlan === null || label === null ? null : planEdit(shownPlan, label);
       if (edit === null) throw new Error("there is nothing to change");
       return postEdit(edit);
@@ -147,8 +164,10 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
     // Applying clears the cell being edited or the table being pasted and, with them, the plan
     // and the refusal either may have shown; the values this grid reads, the file's own content
     // and every value-plan preview - one cell's and a whole table's - are asked for again, since
-    // the edit just spent the fingerprints they were made from.
-    onSuccess: () => {
+    // the edit just spent the fingerprints they were made from. What it wrote is held, over the
+    // values the grid showed when it was made, until a revision including it answers.
+    onSuccess: (reply, applied) => {
+      setHold(holdOf(reply.edit, applied.before, applied.written));
       setStaleFailed(null);
       setEditing(null);
       setPastedRows(null);
@@ -191,7 +210,8 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
       </section>
     );
   }
-  const reply = values.data;
+  // Past both branches above the query has an answer, and `shown` is made from it.
+  const reply = shown ?? values.data;
   if (!drawable(reply) && reply.stated !== "text") {
     // A scalar's own init: no cell for a value to sit in, the same words `object_values.py`'s
     // own `set_cell` refuses one with - reached by a finding on it or a typed address, never by
@@ -211,6 +231,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   return (
     <ValuesGridView
       reply={reply}
+      updating={updating}
       backTo={backTo}
       undoStrip={<UndoStrip state={state} stopped={stopped} />}
       physical={physical}
@@ -227,7 +248,10 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
         setPasteRefusal(null);
       }}
       onChangesShown={setChangesShown}
-      onApply={() => apply.mutate()}
+      // Offered only once a plan of what is written has come, so there is always something here.
+      onApply={() => {
+        if (written !== null) apply.mutate({ before: reply, written });
+      }}
       onBack={onBack}
       onPaste={(text) => {
         const block = pasted(text, reply, physical);

@@ -7,13 +7,15 @@ import {
   postEdit,
   type RasterPlanRequest,
 } from "../api/client";
+import { useUpdating } from "../app/updating";
 import { type Offer, type RasterAction, RasterPanelView } from "../components/RasterPanelView";
-import { type Refused, shownRefusal } from "../lib/refusals";
+import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planEdit, rasterRemovable, rasterSet } from "../lib/shared";
 import { rasterLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
+import { UpdatingNote } from "../ui/UpdatingNote";
 import { refusalOf } from "./UnitPanel";
 
 interface Props {
@@ -62,6 +64,7 @@ export function useRasterPlan(
  * its findings, and a spelling to rename it to (spec 5.2). */
 export function RasterPanel({ name, revision, stopped, onClose, onGone, onMoved, onOpen }: Props) {
   const queries = useQueryClient();
+  const updating = useUpdating();
   const reply = useQuery({
     queryKey: ["raster", name, revision],
     queryFn: () => getRaster(name),
@@ -94,7 +97,10 @@ export function RasterPanel({ name, revision, stopped, onClose, onGone, onMoved,
   // until a later revision arrives, exactly as `SectionPanel`'s own `staleFailed`.
   const [staleFailed, setStaleFailed] = useState<({ action: RasterAction } & Refused) | null>(null);
 
-  const entry = reply.data;
+  // What the panel shows of that answer (`panelShows`): a raster just added or renamed is refused
+  // until its file is analysed again, and the panel says the findings are updating meanwhile.
+  const answer = panelShows(reply, (shown) => shown.name, name, updating);
+  const entry = answer.shown === "reply" ? answer.reply : undefined;
   const draftEvent = event !== undefined && event !== entry?.event ? event : null;
   const draftCycle = cycle !== undefined && cycle !== entry?.cycle ? cycle : null;
   const draftDescription =
@@ -200,10 +206,17 @@ export function RasterPanel({ name, revision, stopped, onClose, onGone, onMoved,
   });
 
   if (gone) return null;
-  if (reply.isError) {
+  if (answer.shown === "refusal") {
     return (
       <Panel title={name} onClose={onClose}>
-        <Banner tone="error">{reply.error.message}</Banner>
+        <Banner tone="error">{answer.refusal}</Banner>
+      </Panel>
+    );
+  }
+  if (answer.shown === "updating") {
+    return (
+      <Panel title={name} onClose={onClose}>
+        <UpdatingNote />
       </Panel>
     );
   }
@@ -217,6 +230,7 @@ export function RasterPanel({ name, revision, stopped, onClose, onGone, onMoved,
   return (
     <RasterPanelView
       reply={entry}
+      updating={updating}
       event={event ?? entry.event}
       onEvent={(text) => {
         setEvent(text);

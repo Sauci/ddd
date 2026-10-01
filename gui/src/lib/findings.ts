@@ -58,7 +58,8 @@ export function distinctFindings(findings: readonly Finding[]): Finding[] {
 }
 
 /** One row of a table of findings drawn whole, as the Compare tab draws its own: a finding, a key
- * stable in the list, and the file's own name. */
+ * stable in the list, and what its File column says - the file's own name, or for a finding the
+ * baseline itself reports, "the baseline's" before it (`compareRows`). */
 export interface FindingRow {
   finding: Finding;
   key: string;
@@ -88,23 +89,47 @@ export function countsOf(findings: readonly Finding[]): FindingCounts {
   return counts;
 }
 
+/** How a line counting findings ends while they may be about to change (spec 6): an edit is
+ * waiting for its analysis, or an analysis runs. */
+const UPDATING = " · updating";
+
+/** A count and its noun, singular for one and plural otherwise - none included. */
+function counted(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
 /** The line above a table of findings, from how many there are of each severity: the Findings
- * tab's from the state's counts, the Compare tab's from its own list's. `_updating` - whether the
- * counts are about to change - is taken, and not said yet: the line reads the same either way. */
-export function findingCounts(counts: FindingCounts, _updating: boolean): string {
+ * tab's from the state's counts, the Compare tab's from its own list's. Where `updating` - the
+ * counts may be about to change - it ends by saying so; the Compare tab's, counting a reply of its
+ * own rather than the revision, never does. */
+export function findingCounts(counts: FindingCounts, updating: boolean): string {
   const total = findingsTotal(counts);
-  if (total === 0) return "Nothing to report";
-  const parts = COUNTED.filter(([severity]) => counts[severity] > 0).map(
-    ([severity, one, many]) => `${counts[severity]} ${counts[severity] === 1 ? one : many}`,
+  const parts = COUNTED.filter(([severity]) => counts[severity] > 0).map(([severity, one, many]) =>
+    counted(counts[severity], one, many),
   );
-  return `${total} finding${total === 1 ? "" : "s"} · ${parts.join(", ")}`;
+  const line =
+    total === 0
+      ? "Nothing to report"
+      : `${counted(total, "finding", "findings")} · ${parts.join(", ")}`;
+  return updating ? `${line}${UPDATING}` : line;
+}
+
+/** The Table tab's line above its components: the project's errors and its warnings, each counted
+ * even at none, as the table's own two columns count them; and, where `updating`, the same ending
+ * as `findingCounts`'. */
+export function tableLine(counts: FindingCounts, updating: boolean): string {
+  const errors = counted(counts.error, "error", "errors");
+  const warnings = counted(counts.warning, "warning", "warnings");
+  return updating ? `${errors}, ${warnings}${UPDATING}` : `${errors}, ${warnings}`;
 }
 
 /** What the panel of a selected finding shows once `reply` - the findings of its file and its
  * check, asked of the newest revision - has come: the finding of the same key as the reply reports
  * it, so that its notes and its route are that revision's, or `null` where the reply no longer
- * reports that key, when the panel closes; until the reply comes, the finding as it was selected.
- * Its key is the one thing a page of findings and a selection hold in common. */
+ * reports that key, when the panel closes; until the reply comes, `selected` itself - which the
+ * page keeps as the newest report it had, so that between two revisions' replies the panel never
+ * goes back to the finding as it was first selected. Its key is the one thing a page of findings
+ * and a selection hold in common. */
 export function selectedNow(
   selected: ListedFinding,
   reply: FindingsReply | undefined,

@@ -58,3 +58,54 @@ test("the page's own is one, and has written nothing when it loads", () => {
   expect(ownEdits).toBeInstanceOf(OwnEdits);
   expect(ownEdits.newest()).toBe(0);
 });
+
+test("an undo noted keeps which edit it put back, by the number the undo took", () => {
+  const edits = new OwnEdits();
+  edits.wrote(3);
+  edits.undid(3, 5);
+  expect(edits.undone()).toEqual(new Map([[3, 5]]));
+  // An undo is an edit of its own: the newest, until another is written.
+  expect(edits.newest()).toBe(5);
+  edits.wrote(6);
+  edits.undid(2, 7);
+  expect(edits.undone()).toEqual(
+    new Map([
+      [3, 5],
+      [2, 7],
+    ]),
+  );
+  expect(edits.newest()).toBe(7);
+});
+
+test("every listener hears of an undo, even one answered after a newer edit", () => {
+  // Answers can arrive out of order: what the undo put back is news all the same.
+  const edits = new OwnEdits();
+  let heard = 0;
+  edits.subscribe(() => {
+    heard += 1;
+  });
+  edits.wrote(9);
+  edits.undid(4, 8);
+  expect(heard).toBe(2);
+  expect(edits.newest()).toBe(9);
+  expect(edits.undone()).toEqual(new Map([[4, 8]]));
+});
+
+test("what was undone is one answer until another undo is noted, as useSyncExternalStore needs", () => {
+  const edits = new OwnEdits();
+  const { undone, undid } = edits;
+  const first = undone();
+  expect(undone()).toBe(first);
+  edits.wrote(4);
+  expect(undone()).toBe(first);
+  undid(4, 5);
+  const second = undone();
+  expect(second).not.toBe(first);
+  expect(undone()).toBe(second);
+  // The answer given before is left as it was.
+  expect(first).toEqual(new Map());
+});
+
+test("the page's own has undone nothing when it loads", () => {
+  expect(ownEdits.undone()).toEqual(new Map());
+});

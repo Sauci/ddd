@@ -7,13 +7,15 @@ import {
   postEdit,
   type SectionPlanRequest,
 } from "../api/client";
+import { useUpdating } from "../app/updating";
 import { type Offer, type SectionAction, SectionPanelView } from "../components/SectionPanelView";
-import { type Refused, shownRefusal } from "../lib/refusals";
+import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planEdit, sectionSet } from "../lib/shared";
 import { sectionLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
+import { UpdatingNote } from "../ui/UpdatingNote";
 import { refusalOf } from "./UnitPanel";
 
 interface Props {
@@ -59,6 +61,7 @@ export function useSectionPlan(
  * definition placing data in it, its findings, and a spelling to rename it to (spec 5.2). */
 export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved, onOpen }: Props) {
   const queries = useQueryClient();
+  const updating = useUpdating();
   const reply = useQuery({
     queryKey: ["section", name, revision],
     queryFn: () => getSection(name),
@@ -93,7 +96,10 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
     null,
   );
 
-  const entry = reply.data;
+  // What the panel shows of that answer (`panelShows`): a section just added or renamed is refused
+  // until its file is analysed again, and the panel says the findings are updating meanwhile.
+  const answer = panelShows(reply, (shown) => shown.name, name, updating);
+  const entry = answer.shown === "reply" ? answer.reply : undefined;
   const draftAccess = access !== undefined && access !== entry?.access ? access : null;
   const draftAlignment =
     alignment !== undefined && alignment !== entry?.alignment ? alignment : null;
@@ -201,10 +207,17 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
   });
 
   if (gone) return null;
-  if (reply.isError) {
+  if (answer.shown === "refusal") {
     return (
       <Panel title={name} onClose={onClose}>
-        <Banner tone="error">{reply.error.message}</Banner>
+        <Banner tone="error">{answer.refusal}</Banner>
+      </Panel>
+    );
+  }
+  if (answer.shown === "updating") {
+    return (
+      <Panel title={name} onClose={onClose}>
+        <UpdatingNote />
       </Panel>
     );
   }
@@ -218,6 +231,7 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
   return (
     <SectionPanelView
       reply={entry}
+      updating={updating}
       access={access ?? entry.access}
       onAccess={(text) => {
         setAccess(text);

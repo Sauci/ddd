@@ -8,6 +8,7 @@ import {
 import { useCallback, useState } from "react";
 import { ApiError, getFindings, getFix, postEdit } from "../api/client";
 import type { ListedFinding, State } from "../api/types";
+import { useUpdating } from "../app/updating";
 import { FindingPanelView } from "../components/FindingPanelView";
 import { FindingsTableView } from "../components/FindingsTableView";
 import {
@@ -23,6 +24,9 @@ import {
 import {
   arrivedPages,
   BOX_HEIGHT,
+  drawnWindow,
+  type KeptWindow,
+  keptAfter,
   pageQuery,
   pagesOf,
   spacersOf,
@@ -48,9 +52,12 @@ const STALE =
 /** The open project's Findings tab (spec 5.1): every finding, worst first, and the panel of the
  * one selected - its route, its notes, and the one fix the tab offers where it carries one
  * (spec 5.2). The table is a window: the rows in view and a margin, each page of them asked for
- * as the box scrolls to it (spec 6), how many there are in all being the state's own count. */
+ * as the box scrolls to it (spec 6), how many there are in all being the state's own count. When
+ * an analysis lands, the window keeps drawing the revision it drew whole until the new one's pages
+ * for its rows have all come (`drawnWindow`). */
 export function FindingsPage({ state, stopped, onOpen }: Props) {
   const queries = useQueryClient();
+  const updating = useUpdating();
   const revision = state.revision;
   const total = findingsTotal(state.counts);
   // Where the box is scrolled to and how tall it is: at the top and one box high, until the box
@@ -68,17 +75,49 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
       staleTime: Number.POSITIVE_INFINITY,
     })),
   });
-  const rows = windowRows(
-    span,
-    arrivedPages(
-      pages,
-      asked.map((page) => page.data),
+  // The revision last drawn whole, and its own pages of the rows in the box, as they came: read
+  // where they are, never asked for again - the server answers the newest revision alone. While it
+  // is the newest, these are the very queries above, so they carry the same function: each
+  // observer's options become its query's, and a refetch - after an undo - runs the last set.
+  const [kept, setKept] = useState<KeptWindow | null>(null);
+  const keptSpan = spanOf(view.top, view.height, kept?.total ?? 0);
+  const keptPages = kept === null ? [] : pagesOf(keptSpan);
+  const held = useQueries({
+    queries: keptPages.map((page) => ({
+      queryKey: ["findings", kept?.revision, page],
+      queryFn: () => getFindings(pageQuery(page)),
+      enabled: false,
+    })),
+  });
+  const drawn = drawnWindow(
+    {
       revision,
-    ),
+      total,
+      span,
+      pages: arrivedPages(
+        pages,
+        asked.map((page) => page.data),
+        revision,
+      ),
+    },
+    kept === null
+      ? null
+      : {
+          ...kept,
+          span: keptSpan,
+          pages: arrivedPages(
+            keptPages,
+            held.map((page) => page.data),
+            kept.revision,
+          ),
+        },
   );
+  const keeping = keptAfter(drawn, kept);
+  if (keeping !== kept) setKept(keeping);
+  const rows = windowRows(drawn.span, drawn.pages);
   const unasked = asked.find((page) => page.isError)?.error ?? null;
-  // The finding whose panel is open, kept whole as it was selected: the window may have scrolled
-  // its row away.
+  // The finding whose panel is open, kept whole - as it was selected, then as the newest reply
+  // about it reported it: the window may have scrolled its row away.
   const [selected, setSelected] = useState<ListedFinding | undefined>(undefined);
   const [chosen, setChosen] = useState<string | undefined>(undefined);
   const [changesShown, setChangesShown] = useState(false);
@@ -109,11 +148,15 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
         : () => getFindings({ file: selected.file, check: selected.check }),
   });
   // The open panel's finding as that reply reports it - its notes and its route the newest
-  // revision's - or `null` once the reply no longer reports it, when the panel closes.
+  // revision's - or `null` once the reply no longer reports it, when the panel closes. Kept as the
+  // selection once reported, so that while the next revision's reply is asked for the panel goes
+  // on showing the newest report of it, not the finding as it was first selected.
   const shown = selected === undefined ? undefined : selectedNow(selected, reported.data);
   if (shown === null) {
     setSelected(undefined);
     setGone(true);
+  } else if (shown !== selected) {
+    setSelected(shown);
   }
   const finding = shown ?? undefined;
 
@@ -177,15 +220,14 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
 
   return (
     <>
-      <p className="summary">{findingCounts(state.counts, false)}</p>
+      <p className="summary">{findingCounts(state.counts, updating)}</p>
       {gone && <Banner tone="warning">This finding is no longer reported.</Banner>}
       {unasked !== null && <Banner tone="error">{unasked.message}</Banner>}
       <div className={finding !== undefined ? "with-panel" : undefined}>
         <div>
           <FindingsTableView
             rows={rows}
-            {...spacersOf(span, total)}
-            total={total}
+            {...spacersOf(drawn.span, drawn.total)}
             selected={finding?.key}
             onSelect={select}
             onScroll={onScroll}

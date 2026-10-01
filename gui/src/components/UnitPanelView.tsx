@@ -11,6 +11,7 @@ import { baseName, consequence, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
+import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
 import { UnitPicker } from "./UnitPicker";
 
@@ -61,6 +62,9 @@ export interface UnitPanelViewProps {
   /** Applying, or the server stopped: nothing can be changed or applied. */
   busy: boolean;
   onClose: () => void;
+  /** Whether the findings may be about to change (spec 6): the panel says so where it lists them,
+   * also while it lists none - an edit may be about to bring the first. */
+  updating?: boolean;
 }
 
 /** One unit's panel (spec 5.2), drawn from what the api answered: a picture of its props. */
@@ -89,6 +93,7 @@ export function UnitPanelView(props: UnitPanelViewProps) {
   const files = (plan: PlanReply) => consequence(plan.changes);
   return (
     <Panel title={unit.unit} meta={unitMeta(unit, reply, hasVocabulary)} onClose={props.onClose}>
+      {props.updating && <UpdatingNote />}
       {reply.findings.length > 0 && (
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(reply.findings)).map(([finding, key]) => (

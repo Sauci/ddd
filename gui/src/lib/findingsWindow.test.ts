@@ -4,12 +4,15 @@ import type { FindingsReply, ListedFinding } from "../api/types";
 import {
   arrivedPages,
   BOX_HEIGHT,
+  drawnWindow,
   keeps,
+  keptAfter,
   MARGIN,
   PAGE_SIZE,
   pageQuery,
   pagesOf,
   pendingKeys,
+  type RevisionWindow,
   ROW_HEIGHT,
   spacersOf,
   spanOf,
@@ -185,22 +188,77 @@ describe("the rows nobody can select", () => {
 
 describe("whether a scroll keeps the row the keyboard is on", () => {
   // A row that leaves the window while it holds the focus is one React Aria moves the focus off,
-  // to whichever row then stands at its place, and scrolls the box back to: it gives the focus up
-  // first.
+  // to whichever row then stands at its place - and, while the reader is on the keyboard, scrolls
+  // the box back to that row: it gives the focus up first.
   test("yes, while the rows drawn after the scroll still include it", () => {
-    expect(keeps(3, 0, BOX_HEIGHT, 1000)).toBe(true);
-    expect(keeps(3, 23 * ROW_HEIGHT, BOX_HEIGHT, 1000)).toBe(true);
-    expect(keeps(57, 23 * ROW_HEIGHT, BOX_HEIGHT, 1000)).toBe(true);
+    expect(keeps(3, 0, BOX_HEIGHT)).toBe(true);
+    expect(keeps(3, 23 * ROW_HEIGHT, BOX_HEIGHT)).toBe(true);
+    expect(keeps(57, 23 * ROW_HEIGHT, BOX_HEIGHT)).toBe(true);
   });
 
   test("no, once a scroll takes the window past it, either way", () => {
-    expect(keeps(3, 24 * ROW_HEIGHT, BOX_HEIGHT, 1000)).toBe(false);
-    expect(keeps(58, 23 * ROW_HEIGHT, BOX_HEIGHT, 1000)).toBe(false);
-    expect(keeps(3, 1200, BOX_HEIGHT, 1000)).toBe(false);
+    expect(keeps(3, 24 * ROW_HEIGHT, BOX_HEIGHT)).toBe(false);
+    expect(keeps(58, 23 * ROW_HEIGHT, BOX_HEIGHT)).toBe(false);
+    expect(keeps(3, 1200, BOX_HEIGHT)).toBe(false);
+  });
+});
+
+describe("which revision's rows the window draws", () => {
+  /** A revision's window at the top of the box, of `total` findings, with these pages arrived. */
+  function windowOf(revision: number, total: number, arrived: number[]): RevisionWindow {
+    const span = spanOf(0, BOX_HEIGHT, total);
+    const pages = new Map(arrived.map((number) => [number, { ...page(number, total), revision }]));
+    return { revision, total, span, pages };
+  }
+  /** Revision 7, drawn whole at the top of the box: its one page there has arrived. */
+  const last = windowOf(7, 1000, [0]);
+
+  test("the newest revision's, once every page of its span has arrived", () => {
+    const newest = windowOf(8, 990, [0]);
+    expect(drawnWindow(newest, last)).toBe(newest);
+    expect(drawnWindow(newest, null)).toBe(newest);
   });
 
-  test("no, for a row past the end of a table that has grown shorter", () => {
-    expect(keeps(150, 0, BOX_HEIGHT, 150)).toBe(false);
+  test("the last revision drawn whole, until then: no row turns to a placeholder and back", () => {
+    // Its rows are its own findings, keyed as they were, so React Aria keeps its focus on the one
+    // it was on: a finding that stays keeps its key into the next revision.
+    const newest = windowOf(8, 990, []);
+    expect(drawnWindow(newest, last)).toBe(last);
+    expect(pendingKeys(windowRows(last.span, last.pages))).toEqual([]);
+  });
+
+  test("the newest, placeholders and all, where the last's pages for the span are not all there", () => {
+    // Scrolled while the newest was asked for, to rows the last revision never had asked.
+    const scrolled = { ...last, span: { first: 80, last: 130 } };
+    expect(drawnWindow(windowOf(8, 990, []), scrolled)).toEqual(windowOf(8, 990, []));
+    // And before any revision was drawn whole.
+    expect(drawnWindow(windowOf(8, 990, []), null)).toEqual(windowOf(8, 990, []));
+  });
+
+  test("a revision with no finding is whole at once, and drawn as soon as it lands", () => {
+    const none = windowOf(8, 0, []);
+    expect(drawnWindow(none, last)).toBe(none);
+  });
+
+  test("its total switches with it: the window draws the revision's own", () => {
+    expect(drawnWindow(windowOf(8, 990, []), last).total).toBe(1000);
+    expect(drawnWindow(windowOf(8, 990, [0]), last).total).toBe(990);
+  });
+
+  test("the one to keep drawing through the next landing: the window drawn, once it is whole", () => {
+    expect(keptAfter(windowOf(8, 990, [0]), null)).toEqual({ revision: 8, total: 990 });
+    expect(keptAfter(windowOf(8, 990, [0]), { revision: 7, total: 1000 })).toEqual({
+      revision: 8,
+      total: 990,
+    });
+  });
+
+  test("the one kept before, while the window drawn is not whole, or is that very revision", () => {
+    const kept = { revision: 7, total: 1000 };
+    expect(keptAfter(windowOf(8, 990, []), kept)).toBe(kept);
+    expect(keptAfter(windowOf(8, 990, []), null)).toBeNull();
+    // The very same answer, so that the page can tell nothing changed.
+    expect(keptAfter(last, kept)).toBe(kept);
   });
 });
 

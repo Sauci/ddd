@@ -172,6 +172,13 @@ tr.changing td {
   padding: 0;
   list-style: none;
 }
+/* "Updating the findings…" (spec 6), said quietly: last in a heading's row, where a panel lists
+   its findings, and above a component's. */
+.updating-note {
+  margin: var(--space-2) 0 0;
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
 .panel-refusal {
   margin: var(--space-2) 0 0;
   color: var(--warning);

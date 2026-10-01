@@ -8,12 +8,14 @@ import {
   postEdit,
   type UnitPlanRequest,
 } from "../api/client";
+import { useUpdating } from "../app/updating";
 import { type Offer, type UnitAction, UnitPanelView } from "../components/UnitPanelView";
 import { offers, planEdit } from "../lib/projectUnits";
-import { type Refused, shownRefusal } from "../lib/refusals";
+import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
 import { unitLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
+import { UpdatingNote } from "../ui/UpdatingNote";
 
 interface Props {
   name: string;
@@ -57,11 +59,16 @@ export function usePlan(
 /** One unit's panel: where it is stated, its vocabulary entry, and a spelling to rename it to. */
 export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }: Props) {
   const queries = useQueryClient();
+  const updating = useUpdating();
   const reply = useQuery({
     queryKey: ["unit", name, revision],
     queryFn: () => getUnit(name),
     placeholderData: (previous) => previous,
   });
+  // What the panel shows of that answer (`panelShows`): a unit just renamed to this spelling is
+  // refused until the rename is analysed, and the panel says the findings are updating meanwhile.
+  const answer = panelShows(reply, (shown) => shown.unit, name, updating);
+  const shownReply = answer.shown === "reply" ? answer.reply : undefined;
   const units = useQuery({
     queryKey: ["units", revision],
     queryFn: () => getUnits(),
@@ -184,14 +191,21 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
   });
 
   if (gone) return null;
-  if (reply.isError) {
+  if (answer.shown === "refusal") {
     return (
       <Panel title={name} onClose={onClose}>
-        <Banner tone="error">{reply.error.message}</Banner>
+        <Banner tone="error">{answer.refusal}</Banner>
       </Panel>
     );
   }
-  if (reply.data === undefined || units.data === undefined || row === undefined) {
+  if (answer.shown === "updating") {
+    return (
+      <Panel title={name} onClose={onClose}>
+        <UpdatingNote />
+      </Panel>
+    );
+  }
+  if (shownReply === undefined || units.data === undefined || row === undefined) {
     return (
       <Panel title={name} onClose={onClose}>
         <p className="quiet">Reading {name}…</p>
@@ -201,8 +215,9 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
   return (
     <UnitPanelView
       unit={row}
-      reply={reply.data}
+      reply={shownReply}
       units={units.data}
+      updating={updating}
       description={description ?? row.description ?? ""}
       onDescription={(text) => {
         setDescription(text);

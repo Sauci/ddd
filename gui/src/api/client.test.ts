@@ -409,10 +409,11 @@ describe("the page's own edits", () => {
     expect(edits.newest()).toBe(4);
   });
 
-  test("an undo answered notes the number the server gave it", async () => {
+  test("an undo answered notes the number the server gave it, and the edit it put back", async () => {
     const edits = new OwnEdits();
     await postUndo(3, answering(200, '{"edit": 5}'), edits);
     expect(edits.newest()).toBe(5);
+    expect(edits.undone()).toEqual(new Map([[3, 5]]));
   });
 
   test("an edit or an undo refused notes nothing", async () => {
@@ -422,6 +423,7 @@ describe("the page's own edits", () => {
     );
     await expect(postUndo(3, answering(409, REFUSED), edits)).rejects.toBeInstanceOf(ApiError);
     expect(edits.newest()).toBe(0);
+    expect(edits.undone()).toEqual(new Map());
   });
 
   test("by default each is noted into the page's own", async () => {

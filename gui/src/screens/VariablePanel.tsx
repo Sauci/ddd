@@ -8,10 +8,11 @@ import {
   getVariable,
   postEdit,
 } from "../api/client";
+import { useUpdating } from "../app/updating";
 import type { Offer } from "../components/UnitPanelView";
 import { VariablePanelView } from "../components/VariablePanelView";
 import { planEdit } from "../lib/projectUnits";
-import { type Refused, shownRefusal } from "../lib/refusals";
+import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
 import { removeLabel, settleLabel } from "../lib/undo";
 import { editOf, outsideVocabulary, textOf } from "../lib/units";
 import {
@@ -24,6 +25,7 @@ import {
 } from "../lib/variableKeys";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
+import { UpdatingNote } from "../ui/UpdatingNote";
 
 interface Props {
   name: string;
@@ -62,11 +64,17 @@ export function VariablePanel({
   onOpenConstant,
 }: Props) {
   const queries = useQueryClient();
+  const updating = useUpdating();
   const variable = useQuery({
     queryKey: ["variable", name, revision],
     queryFn: () => getVariable(name),
     placeholderData: (previous) => previous,
   });
+  // What the panel shows of that answer (`panelShows`): refused because a file an edit wrote has
+  // not been analysed yet, it says the findings are updating rather than the refusal, over the
+  // variable as it showed it, and never another variable's answer under this name.
+  const answer = panelShows(variable, (shown) => shown.name, name, updating);
+  const reply = answer.shown === "reply" ? answer.reply : undefined;
   // Spec 5.5: a variable renamed or removed on disk - or named by an address no file declares,
   // such as an old bookmark - is not declared any longer, and its panel closes. It says why on
   // the page it was beside rather than in a panel of its own, which is about to go. While a file
@@ -93,7 +101,7 @@ export function VariablePanel({
   // the variable's declarations - for the offer's sentence and the label its undo would carry.
   // `undefined` before the variable has loaded, or on the project screen, where `file` matches
   // none of them because there is none to match.
-  const from = variable.data?.declarations.find((entry) => entry.path === file)?.component;
+  const from = reply?.declarations.find((entry) => entry.path === file)?.component;
   // The reader's own choice of key, kept as a tri-state the way `chosen` below is: `undefined`
   // until they choose, `null` once they let a row go, a string for the key they picked.
   const [picked, setPicked] = useState<string | null | undefined>(undefined);
@@ -128,8 +136,7 @@ export function VariablePanel({
   const [removalStale, setRemovalStale] = useState<Refused | null>(null);
   // What the table actually offers to settle (`kind` aside): what a key remembered from a
   // previous variable, or forced by `focusPicker`, has to be checked against before it is shown.
-  const rows =
-    variable.data === undefined ? [] : keyRows(variable.data, null).filter((row) => row.settleable);
+  const rows = reply === undefined ? [] : keyRows(reply, null).filter((row) => row.settleable);
   // The key actually shown: the reader's own choice, once made and still one the table lists;
   // else the first row that disagrees - spec 5.1's own order, and what a red arrow on the canvas
   // is about, since it opens this panel because something disagrees and a reader could settle it
@@ -147,22 +154,22 @@ export function VariablePanel({
   // the chooser says so instead of previewing something the reader did not ask for.
   const range =
     edited ??
-    (selected === undefined || variable.data === undefined
+    (selected === undefined || reply === undefined
       ? { min: "", max: "" }
-      : limitsOf(startingRaw(variable.data, selected)));
+      : limitsOf(startingRaw(reply, selected)));
   const broken = selected === "limits" ? limitsNote(range.min, range.max) : null;
   const target =
-    selected === undefined || variable.data === undefined || broken !== null
+    selected === undefined || reply === undefined || broken !== null
       ? null
       : selected === "limits"
         ? limitsRaw(range.min, range.max)
         : chosen === undefined
-          ? startingRaw(variable.data, selected)
+          ? startingRaw(reply, selected)
           : chosen;
   const preview = useQuery({
     queryKey: ["settle", name, selected, target, revision],
     queryFn: () => getSettle(name, selected as string, target),
-    enabled: variable.data !== undefined && selected !== undefined && broken === null,
+    enabled: reply !== undefined && selected !== undefined && broken === null,
   });
   // Selecting a row starts that key afresh - what was chosen for the last one means nothing for
   // this one. Letting a row go is a choice too, not a blank: it must show the table alone even
@@ -297,14 +304,21 @@ export function VariablePanel({
   };
 
   if (undeclared) return null;
-  if (variable.isError) {
+  if (answer.shown === "refusal") {
     return (
       <Panel title={name} onClose={onClose}>
-        <Banner tone="error">{variable.error.message}</Banner>
+        <Banner tone="error">{answer.refusal}</Banner>
       </Panel>
     );
   }
-  if (variable.data === undefined || units.data === undefined) {
+  if (answer.shown === "updating") {
+    return (
+      <Panel title={name} onClose={onClose}>
+        <UpdatingNote />
+      </Panel>
+    );
+  }
+  if (reply === undefined || units.data === undefined) {
     return (
       <Panel title={name} onClose={onClose}>
         <p className="quiet">Reading {name}…</p>
@@ -313,8 +327,9 @@ export function VariablePanel({
   }
   return (
     <VariablePanelView
-      variable={variable.data}
+      variable={reply}
       units={units.data}
+      updating={updating}
       selected={selected}
       onSelect={select}
       onOpenType={onOpenType}
@@ -323,9 +338,7 @@ export function VariablePanel({
       // the note says why, rather than naming a value nothing would be settled on.
       typed={
         typed ??
-        (selected === undefined || broken !== null
-          ? ""
-          : labelOfRaw(variable.data, selected, target))
+        (selected === undefined || broken !== null ? "" : labelOfRaw(reply, selected, target))
       }
       // Never the target: opening the list on the producer's value must still list everything,
       // not just the entries that happen to contain it (spec 5.3, and part 1's own journey).

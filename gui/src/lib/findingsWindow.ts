@@ -98,13 +98,60 @@ export function pendingKeys(rows: readonly WindowRow[]): string[] {
   return rows.filter((row) => row.finding === null).map((row) => row.key);
 }
 
-/** Whether a box scrolled to `scrollTop`, `height` high, still draws the row at `index` of a table
- * of `total`. Where it does not and that row holds the keyboard's focus, the focus is given up
- * before the window lets the row go: React Aria would otherwise move it to whichever row then
- * stands at the same place, and scroll the box back to that one. */
-export function keeps(index: number, scrollTop: number, height: number, total: number): boolean {
-  const span = spanOf(scrollTop, height, total);
+/** Whether a box scrolled to `scrollTop`, `height` high, still draws the row at `index` - a row
+ * drawn, which is always within the table it was drawn from, so no total bounds it. Where it does
+ * not and that row holds the keyboard's focus, the focus is given up before the window lets the
+ * row go: React Aria would otherwise move it to whichever row then stands at the same place, and,
+ * while the reader is on the keyboard rather than the pointer, scroll the box back to that one. */
+export function keeps(index: number, scrollTop: number, height: number): boolean {
+  const span = spanOf(scrollTop, height, Number.POSITIVE_INFINITY);
   return span.first <= index && index < span.last;
+}
+
+/** One revision's window: which revision it is, how many findings it has in all, the rows the box
+ * covers of them, and the pages of those rows that have arrived. */
+export interface RevisionWindow {
+  revision: number;
+  total: number;
+  span: Span;
+  pages: ReadonlyMap<number, FindingsReply>;
+}
+
+/** Whether every page a window's rows fall in has arrived. */
+function whole(window: RevisionWindow): boolean {
+  return pagesOf(window.span).every((page) => window.pages.has(page));
+}
+
+/**
+ * Which revision's rows the window draws: the newest's, once every page of its rows has arrived;
+ * until then the last one drawn whole, while every page of its rows is still there; and the
+ * newest's, placeholders and all, when neither is whole.
+ *
+ * A revision's pages are asked for under it, and none of another revision is drawn among them
+ * (`arrivedPages`): drawing the newest at once, an analysis landing turned every row into a
+ * placeholder and back for one round trip, and every row's key changed twice - React Aria then
+ * moved the focus to the row standing at its place, and under the keyboard scrolled the box back
+ * to it. Kept until the newest is whole and then switched at once, total included, a finding that
+ * stays keeps its key across the two revisions, and React Aria its focus on it.
+ */
+export function drawnWindow(newest: RevisionWindow, last: RevisionWindow | null): RevisionWindow {
+  if (whole(newest) || last === null || !whole(last)) return newest;
+  return last;
+}
+
+/** Which revision the window draws through the next analysis landing, and how many findings it
+ * has in all. */
+export interface KeptWindow {
+  revision: number;
+  total: number;
+}
+
+/** The revision to keep drawing through the next analysis landing: the one `drawn` now, once its
+ * rows' pages have all arrived; else `kept`, the one kept before - the very same answer where
+ * nothing changed, so that the page can tell. */
+export function keptAfter(drawn: RevisionWindow, kept: KeptWindow | null): KeptWindow | null {
+  if (!whole(drawn) || drawn.revision === kept?.revision) return kept;
+  return { revision: drawn.revision, total: drawn.total };
 }
 
 /** How tall, in pixels, the space above the rows drawn and the space below them stand: each row

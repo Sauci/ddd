@@ -1,7 +1,17 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator } from "@playwright/test";
-import { CONTROLLER, paste, SENSOR_HUB, typeCurveA, widenBlockA, writeBlockAInit } from "./demo";
+import {
+  CONTROLLER,
+  type Frame,
+  framesWatched,
+  paste,
+  SENSOR_HUB,
+  typeCurveA,
+  watchFrames,
+  widenBlockA,
+  writeBlockAInit,
+} from "./demo";
 import { expect, test } from "./fixtures";
 
 /** A declaration's own definition, read back from a file of the copy - the same untyped shape
@@ -136,6 +146,42 @@ test("a cell changed is written to the producer's file", async ({ page, gui }) =
   await expect
     .poll(() => readFileSync(join(gui.directory, CONTROLLER), "utf8"))
     .toContain('"init": [1200, 900, 750, 750, 700, 650]');
+});
+
+/** Whether the frames watched saw the page say its findings were updating, and have since seen
+ * thirty frames - half a second - without it: the analysis landed, and the answers after it came. */
+function updatedAndSettled(frames: readonly Frame[]): boolean {
+  const last = frames.slice(-30);
+  return (
+    frames.some(([, updating]) => updating) &&
+    last.length === 30 &&
+    last.every(([, updating]) => !updating)
+  );
+}
+
+// Spec 6: an edit is answered once written and analysed after, and `GET /api/values` answers what
+// the last analysis read - for one analysis after an Apply it still answers the value from before,
+// as though the Apply had failed. The grid holds what it wrote meanwhile. Waited on as a reader
+// sees it, frame by frame: element 3 reads 7.5 from Apply on - while the grid says its findings are
+// updating, and after - and never the 8 it was. With the hold taken out, on the Linux development
+// PC in headless Chrome, two runs: the note stood four frames, and element 3 read 8 in three.
+test("a value applied in the grid shows at once, and stays while its findings update", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  const cell = page.getByRole("textbox", { name: "element 3" });
+  await expect(cell).toHaveValue("8");
+  await cell.fill("7.5");
+  await expect(page.getByText("Sets element 3 of CurveA to 7.5 ms")).toBeVisible();
+
+  await watchFrames(page, "element 3");
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect.poll(async () => updatedAndSettled(await framesWatched(page))).toBe(true);
+  const read = new Set((await framesWatched(page)).map(([value]) => value));
+  expect(read).toEqual(new Set(["7.5"]));
 });
 
 test("a reader's page names the producer's file, not its own", async ({ page, gui }) => {

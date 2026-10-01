@@ -7,6 +7,7 @@ import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { ComboBox } from "../ui/ComboBox";
 import { Panel } from "../ui/Panel";
+import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
 
 /** A change this panel applies: one of the section's three keys, a rename, or its removal - the
@@ -67,6 +68,9 @@ export interface SectionPanelViewProps {
   /** Applying, or the server stopped: nothing can be changed or applied. */
   busy: boolean;
   onClose: () => void;
+  /** Whether the findings may be about to change (spec 6): the panel says so where it lists them,
+   * also while it lists none - an edit may be about to bring the first. */
+  updating?: boolean;
 }
 
 /** One section's panel (spec 5.2 as part 14 extends it), drawn from what the api answered: a
@@ -177,6 +181,7 @@ export function SectionPanelView(props: SectionPanelViewProps) {
           </tbody>
         </table>
       )}
+      {props.updating && <UpdatingNote />}
       {reply.findings.length > 0 && (
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(reply.findings)).map(([finding, key]) => (

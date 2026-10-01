@@ -18,6 +18,8 @@ import { ValuesPage } from "../screens/ValuesPage";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { LinkTabs } from "../ui/LinkTabs";
+import { UpdatingNote } from "../ui/UpdatingNote";
+import { UpdatingContext } from "./updating";
 import { useProjectState } from "./useProjectState";
 import { useRoute } from "./useRoute";
 
@@ -62,7 +64,7 @@ export function App() {
   const [route, navigate] = useRoute();
   const session = useQuery({ queryKey: ["session"], queryFn: () => getSession() });
   const opened = session.data?.project ?? null;
-  const { state, stopped, failure } = useProjectState(opened !== null);
+  const { state, updating, stopped, failure } = useProjectState(opened !== null);
   // One identity for the whole life of the page: the canvas hands this to every module it draws,
   // and a new function each render would lay the canvas out again each render.
   const openComponent = useCallback(
@@ -157,6 +159,8 @@ export function App() {
         <div className="heading">
           <h1>{opened.name ?? opened.path}</h1>
           <UndoStrip state={state} stopped={stopped} />
+          {/* Last in the row: coming and going, it moves none of the controls before it. */}
+          {updating && <UpdatingNote />}
         </div>
         <LinkTabs
           label="Project views"
@@ -221,6 +225,7 @@ export function App() {
       <section>
         <div className="heading">
           <h1>{opened.name ?? opened.path}</h1>
+          {updating && <UpdatingNote />}
         </div>
         <p className="quiet">Analysing the project…</p>
       </section>
@@ -286,7 +291,11 @@ export function App() {
         </Banner>
       )}
       {failure !== null && <Banner tone="error">{failure}</Banner>}
-      <main>{page}</main>
+      {/* Every screen reads whether the findings may be about to change from here, and says so
+          where its findings are (spec 6). */}
+      <UpdatingContext value={updating}>
+        <main>{page}</main>
+      </UpdatingContext>
     </div>
   );
 }

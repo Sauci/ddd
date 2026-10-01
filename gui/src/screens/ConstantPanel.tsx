@@ -7,17 +7,19 @@ import {
   getConstantPlan,
   postEdit,
 } from "../api/client";
+import { useUpdating } from "../app/updating";
 import {
   type ConstantAction,
   ConstantPanelView,
   type Offer,
 } from "../components/ConstantPanelView";
-import { type Refused, shownRefusal } from "../lib/refusals";
+import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planEdit } from "../lib/shared";
 import { constantLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
+import { UpdatingNote } from "../ui/UpdatingNote";
 import { refusalOf } from "./UnitPanel";
 
 interface Props {
@@ -71,6 +73,7 @@ export function ConstantPanel({
   onOpen,
 }: Props) {
   const queries = useQueryClient();
+  const updating = useUpdating();
   const reply = useQuery({
     queryKey: ["constant", name, revision],
     queryFn: () => getConstant(name),
@@ -104,7 +107,10 @@ export function ConstantPanel({
     null,
   );
 
-  const entry = reply.data;
+  // What the panel shows of that answer (`panelShows`): a constant just added or renamed is refused
+  // until its file is analysed again, and the panel says the findings are updating meanwhile.
+  const answer = panelShows(reply, (shown) => shown.name, name, updating);
+  const entry = answer.shown === "reply" ? answer.reply : undefined;
   const draftValue = value !== undefined && value !== entry?.value ? value : null;
   const draftDescription =
     description !== undefined && description !== entry?.description ? description : null;
@@ -210,10 +216,17 @@ export function ConstantPanel({
   });
 
   if (gone) return null;
-  if (reply.isError) {
+  if (answer.shown === "refusal") {
     return (
       <Panel title={name} onClose={onClose}>
-        <Banner tone="error">{reply.error.message}</Banner>
+        <Banner tone="error">{answer.refusal}</Banner>
+      </Panel>
+    );
+  }
+  if (answer.shown === "updating") {
+    return (
+      <Panel title={name} onClose={onClose}>
+        <UpdatingNote />
       </Panel>
     );
   }
@@ -227,6 +240,7 @@ export function ConstantPanel({
   return (
     <ConstantPanelView
       reply={entry}
+      updating={updating}
       value={value ?? entry.value}
       onValue={(text) => {
         setValue(text);

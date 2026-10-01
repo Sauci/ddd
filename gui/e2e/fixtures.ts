@@ -83,6 +83,13 @@ async function analysed(address: string): Promise<void> {
   for (;;) {
     const asked = new URL(after === null ? "/api/state" : `/api/state?after=${after}`, address);
     const response = await fetch(asked, { headers });
+    // Refused - signed out, or no project open - it would be refused again at every ask, and the
+    // journey would wait out its own timeout saying nothing of why.
+    if (response.status !== 200) {
+      throw new Error(
+        `ddd gui answered ${response.status} to ${asked.pathname}: ${await response.text()}`,
+      );
+    }
     const state = (await response.json()) as {
       version: number;
       revision: number;

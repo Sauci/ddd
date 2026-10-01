@@ -13,8 +13,8 @@ Every measure but ``open``, ``analysis`` and ``edit analysed`` answers a reply w
 timed serialised exactly as the server would send it, ``json.dumps(reply.body, allow_nan=False)``
 inside the timed span, the size being those bytes. The session analyses on a thread of its own,
 as ``ddd gui``'s does: ``open`` and ``analysis`` are each timed until the analysis they ask for
-has landed, ``edit answered`` until the edit's reply - written, its analysis not begun - and
-``edit analysed`` from the same moment until that analysis has landed.
+has landed, ``edit answered`` until the edit's reply - written, before its analysis has
+landed - and ``edit analysed`` from the same moment until that analysis has landed.
 
 ``measure`` undoes the one edit it made and stops the analyser it started before it returns, so a
 second run measures the same bytes. Not part of the ``ddd`` package, like

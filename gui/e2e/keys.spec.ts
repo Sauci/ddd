@@ -30,13 +30,15 @@ test("a conversion drifted from outside is carried back from the producer", asyn
   // The server checks the disk for a change once a second (Session.poll_interval); the row
   // below already disagrees, since the panel reads it live from disk regardless, but a plan's
   // own fingerprint only carries the drifted bytes once the server has reanalysed - the same
-  // hazard project-units.spec.ts's "an apply made from a panel that is out of date" names, and
-  // this waits for it the same way, so the Apply below lands on a fingerprint it can act on.
-  const reanalysed = page.waitForResponse((response) =>
-    response.url().includes("/api/state?after="),
-  );
+  // hazard project-units.spec.ts's "an apply made from a panel that is out of date" names. The
+  // panel says when it has: the disagreement is then among its findings, which it lists from the
+  // revision it holds, and every plan it asks for after carries that revision's fingerprints,
+  // so the Apply below lands on one it can act on - whether that analysis landed before the page
+  // opened or after.
   const panel = await openPanel(page, gui.address, "ValueA");
-  await reanalysed;
+  await expect(
+    panel.getByRole("listitem").filter({ hasText: "definition-mismatch" }),
+  ).toBeVisible();
   await panel.getByRole("row", { name: /^conversion/ }).click();
   const field = panel.getByRole("combobox", { name: "Conversion of ValueA" });
   await expect(field).toHaveValue("linear ×0.5");
@@ -76,15 +78,15 @@ test("a limits row the panel opens by itself settles on the producer's range", a
   // table and the canvas both take, where no chooser is asked for by name.
   driftMax(gui.directory, CONTROLLER, "ValueA", 50);
   // As in the conversion journey: an Apply carries the fingerprint the analysis read the file
-  // at, so wait for the server to have reanalysed the drift before pressing it.
-  const reanalysed = page.waitForResponse((response) =>
-    response.url().includes("/api/state?after="),
-  );
+  // at, so wait until the panel lists the disagreement the drift brought - the revision it holds
+  // has read the drifted bytes then - before pressing it.
   await page.goto(gui.address);
   await page.getByRole("button", { name: "Controller", exact: true }).click();
   await page.getByRole("rowheader", { name: "ValueA" }).click();
-  await reanalysed;
   const panel = page.getByRole("complementary", { name: "ValueA" });
+  await expect(
+    panel.getByRole("listitem").filter({ hasText: "definition-mismatch" }),
+  ).toBeVisible();
 
   // The producer's own range, in the field and in the two fields under it - not the removal
   // two empty fields would ask for.

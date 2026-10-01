@@ -13,7 +13,7 @@ export interface Follow {
 /**
  * Keeps a page on the newest state of the open project: asks for anything newer than the version
  * of the state it has - which the server answers as soon as there is something, or after waiting -
- * and asks again. A state can be new with the same revision: an analysis beginning, an edit
+ * and asks again. A state can be new with the same revision: an analysis asked for, an edit
  * written, the undo entry it leaves. A server that stops answering is reported once and retried;
  * when it answers again that is reported too. Any other failure ends the follow with it.
  */

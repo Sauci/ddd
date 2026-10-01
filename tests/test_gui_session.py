@@ -482,7 +482,7 @@ class TestTheAnalyser:
         try:
             session.open(shared)
             begun(session)
-            assert session.settled(timeout=10) is not None
+            landed(session)
             session.gate.clear()
             at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
             begun(session)
@@ -532,7 +532,7 @@ class TestTheAnalyser:
         try:
             session.open(shared)
             begun(session)
-            assert session.settled(timeout=10) is not None
+            landed(session)
             at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
             begun(session)
             later, _ = session.edit([unit_of_b(shared, "kPa")], "the unit of Speed")
@@ -559,13 +559,13 @@ class TestTheAnalyser:
         try:
             session.open(shared)
             begun(session)
-            assert session.settled(timeout=10) is not None
+            landed(session)
             session.gate.clear()
             session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
             begun(session)
             assert session.poll() is False
             session.gate.set()
-            assert session.settled(timeout=10) is not None
+            landed(session)
             assert session.analyses == 2
         finally:
             session.gate.set()
@@ -706,11 +706,11 @@ class TestTheAnalyser:
         try:
             session.open(shared)
             begun(session)
-            assert session.settled(timeout=10) is not None
+            landed(session)
             monkeypatch.setattr(sys, "stderr", recording)
             session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
             begun(session)
-            assert session.settled(timeout=10) is not None
+            landed(session)
         finally:
             stopped(session)
         assert recording.running == [True]
@@ -802,13 +802,13 @@ class TestTheAnalyser:
         try:
             session.open(shared)
             begun(session)
-            assert session.settled(timeout=10) is not None
+            landed(session)
             at, _ = session.edit(adoption(shared), "the vocabulary adopted")
             begun(session)
-            assert session.settled(timeout=10) is not None
+            landed(session)
             session.undo(at)
             begun(session)
-            assert session.settled(timeout=10) is not None
+            landed(session)
             units = shared.parent / "units.ddd.json"
             assert not units.exists()
             session.gate.clear()
@@ -945,6 +945,24 @@ class TestWhatTheSessionSays:
         finally:
             session.gate.set()
             stopped(session)
+
+    def test_an_analysis_asked_for_is_analysing_before_any_runs(self, shared: Path) -> None:
+        """Asked for counts as running does: the version moves when an edit asks, not when the
+        analyser takes the request up, so a second window hearing of the edit has to hear
+        ``analysing`` then. With the analyser stopped, nothing takes the request up and nothing
+        runs - only the request says so."""
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+        finally:
+            stopped(session)
+        session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+        snapshot = session.snapshot()
+        assert (snapshot.analysing, session.analyses) == (True, 1)
 
     def test_a_wait_answers_as_soon_as_the_version_moves_past_it(self, shared: Path) -> None:
         """An edit written while its analysis waits at the gate is answered at once, not when the

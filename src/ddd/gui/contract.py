@@ -169,7 +169,8 @@ class SessionInfo(_Frozen):
     """The open project, or ``None`` while none is."""
 
     builds: tuple[BuildSummary, ...]
-    """The build records analysing the open project; empty while none names it or none is open."""
+    """The build records analysing the open project; empty while none names it, none is open, or
+    before its first analysis."""
 
 
 # --- GET /api/projects -------------------------------------------------------------------------

@@ -612,8 +612,9 @@ test("findings current", async ({ page }) => {
     return body.revision;
   });
   const ms = await elapsedCapped(async () => {
-    // A benchmark may wait on a response directly; a journey may not (brief). The long poll
-    // already in flight when Apply is pressed is what this edit's own analysis unblocks.
+    // A benchmark may wait on a response directly; a journey may not (brief). The long poll in
+    // flight when Apply is pressed answers the edit's write, its revision unchanged; the page's
+    // next one answers when the edit's analysis lands, with the newer revision this waits for.
     const newer = page.waitForResponse(async (response) => {
       if (new URL(response.url()).pathname !== "/api/state") return false;
       try {

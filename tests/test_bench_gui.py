@@ -218,3 +218,21 @@ def test_the_analyser_it_starts_has_ended_when_it_returns(tmp_path: Path) -> Non
     before = running()
     measure(made.project)
     assert running() == before
+
+
+def test_the_session_it_measures_polls_an_hour_apart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Its own poller never polls while a run lasts: ``analysis`` polls for itself, and a poller
+    noticing the moved file first would leave that poll nothing to notice."""
+    made = generate(tmp_path / "p", 120, "many")
+    intervals: list[float] = []
+    real = Session.start
+
+    def starting(self: Session) -> None:
+        intervals.append(self.poll_interval)
+        real(self)
+
+    monkeypatch.setattr(Session, "start", starting)
+    measure(made.project)
+    assert intervals == [3600]

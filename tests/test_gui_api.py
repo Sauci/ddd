@@ -1502,7 +1502,7 @@ class TestBeforeTheFirstAnalysis:
             ("GET", "/api/compare", {"baseline": "p.ddd.json"}),
         ],
     )
-    def test_every_answer_needing_a_revision_waits_for_the_first(
+    def test_every_answer_needing_a_revision_is_refused_until_the_first_lands(
         self, opening: Api, root: Path, method: str, path: str, query: dict[str, str]
     ) -> None:
         asked = {

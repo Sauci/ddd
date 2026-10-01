@@ -200,35 +200,40 @@ export function ComponentPage({
           }}
         >
           <TableHeader>
-            {/* `minWidth` repeats `width` below on every one of these: React Aria floors a
-                column with none of its own at 75px regardless of its `width`
-                (`getDefaultMinWidth`, react-stately's own TableColumnLayout.mjs) - measured, a
-                plain `width={65}` here still rendered at 75px, which is what pushed Findings off
-                the box's own right edge beside a panel (fix round 1, Important 3). */}
-            <Column width={55} minWidth={55}>
+            {/* Every column is a share of the box's own width (`fr`), not a fixed pixel count
+                (fix round 2, New Important 2): a fixed column never grows, so at full width -
+                plenty of room - "measurement" clipped to "measureme" under a fixed Kind width, a
+                type's own name to "SensorDi", and a single Findings chip to less than its own
+                88px under a fixed Findings width, all three sized only for beside a panel. Seven
+                columns is the most of any table here, so `minWidth` - each column's own floor -
+                is the tightest sum of any of them too, at 525px of the 535px a panel beside this
+                table leaves once a headed browser's own vertical scrollbar is taken from the
+                552px box (a headless one, Docker's own screenshot gate among them, draws none).
+                Below about a 1077px viewport, even full width does not leave every column its own
+                floor; `.long`'s own horizontal scroll is the accepted floor there (fix round 2,
+                New Important 2d). */}
+            <Column width="1fr" minWidth={55}>
               Scope
             </Column>
-            {/* Name is left to take the width the other six do not, with a floor under it so a
-                panel beside this table cannot push it to React Aria's own default (fix round 1,
-                Important 3): nothing else in this row is more than a word or two, and Findings
-                alone can hold more than one chip - which, with Name's own floor, is why every one
-                of the other six is narrower now than before. */}
-            <Column isRowHeader minWidth={140}>
+            {/* Name is left to take the width the other six do not: nothing else in this row is
+                more than a word or two, and Findings alone can hold more than one chip - which is
+                why Name's own share and floor are each the largest of the seven. */}
+            <Column isRowHeader width="4fr" minWidth={145}>
               Name
             </Column>
-            <Column width={85} minWidth={85}>
+            <Column width="2fr" minWidth={75}>
               Kind
             </Column>
-            <Column width={65} minWidth={65}>
+            <Column width="2.5fr" minWidth={75}>
               Type
             </Column>
-            <Column width={55} minWidth={55}>
+            <Column width="1fr" minWidth={50}>
               Shape
             </Column>
-            <Column width={55} minWidth={55}>
+            <Column width="1fr" minWidth={50}>
               Unit
             </Column>
-            <Column width={85} minWidth={85}>
+            <Column width="2.5fr" minWidth={75}>
               Findings
             </Column>
           </TableHeader>

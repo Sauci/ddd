@@ -55,22 +55,28 @@ export function TypesTableView({
           }}
         >
           <TableHeader>
-            {/* Description is left to take the width the other four do not, with a floor under
-                it so a panel beside this table cannot push it below a sentence's worth (fix
-                round 1, Important 3): a type's own sentence runs far longer than its name, its
-                kind's word, how many places use it, or its one finding count - which, with
-                Description's own floor, is why those are narrower now than before. */}
-            <Column isRowHeader width={160}>
+            {/* Every column is a share of the box's own width (`fr`), not a fixed pixel count
+                (fix round 2, New Important 2): a fixed column never grows, so at full width -
+                plenty of room - a type's own sentence clipped under a fixed Description width
+                sized only for beside a panel. `minWidth` is each column's own floor instead,
+                sized so the five sum to at most 535px, what a panel beside this table leaves once
+                a headed browser's own vertical scrollbar is taken from the 552px box (a headless
+                one, Docker's own screenshot gate among them, draws none). Below about a 1077px
+                viewport, even full width does not leave every column its own floor; `.long`'s own
+                horizontal scroll is the accepted floor there (fix round 2, New Important 2d). */}
+            <Column isRowHeader width="2fr" minWidth={150}>
               Type
             </Column>
-            <Column width={80}>Kind</Column>
-            <Column minWidth={150}>Description</Column>
-            <Column width={80}>Used by</Column>
-            {/* `minWidth` repeats `width`: React Aria floors a column with none of its own at
-                75px regardless of its `width` (`getDefaultMinWidth`, react-stately's own
-                TableColumnLayout.mjs) - measured, a plain `width={65}` here still rendered at
-                75px. */}
-            <Column width={65} minWidth={65}>
+            <Column width="1fr" minWidth={70}>
+              Kind
+            </Column>
+            <Column width="4fr" minWidth={140}>
+              Description
+            </Column>
+            <Column width="1fr" minWidth={70}>
+              Used by
+            </Column>
+            <Column width="1fr" minWidth={70}>
               Findings
             </Column>
           </TableHeader>

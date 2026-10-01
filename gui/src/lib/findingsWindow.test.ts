@@ -67,6 +67,22 @@ describe("the window's measures", () => {
     const rows = css.match(/\.findings-window \.react-aria-Row[^{]*\{[^}]*\}/g) ?? [];
     expect(rows.some((rule) => rule.includes(`height: ${ROW_HEIGHT}px;`))).toBe(true);
   });
+
+  test("ui.css keeps a long table's own row from under its sticky header, by the same ROW_HEIGHT", () => {
+    // `.long`'s own `scroll-padding-top` is what stops a row the keyboard walks up to from
+    // landing under the sticky header instead of below it (fix round 1, Important 4) - pinned
+    // here the way the row height above is, since the window's own ROW_HEIGHT is the one number
+    // both this and `.findings-window`'s own scroll-padding-top answer to (fix round 2, New Minor
+    // 4). A long table's own row takes its height from the wrapper React Aria's `Virtualizer`
+    // sizes to the layout's own `rowHeight` instead of a CSS literal (fix round 1, Important 1) -
+    // pinned on `ui/Table.tsx`'s own source text instead, the one place every long table's
+    // `layoutOptions` are written (fix round 1, Minor 3).
+    const css = readFileSync(new URL("../styles/ui.css", import.meta.url), "utf8");
+    const long = css.match(/\.react-aria-Table\.long\s*\{[^}]*\}/g) ?? [];
+    expect(long.some((rule) => rule.includes(`scroll-padding-top: ${ROW_HEIGHT}px;`))).toBe(true);
+    const table = readFileSync(new URL("../ui/Table.tsx", import.meta.url), "utf8");
+    expect(table).toMatch(/rowHeight:\s*ROW_HEIGHT/);
+  });
 });
 
 describe("the rows in view, and a margin", () => {

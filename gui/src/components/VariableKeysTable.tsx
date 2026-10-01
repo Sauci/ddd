@@ -60,13 +60,13 @@ export function VariableKeysTable({
       <TableHeader columns={columns}>
         {(column) => {
           const isKey = column.id === "key";
-          // The key column alone is given a width: a declaration's own columns grow with the
-          // component count, so a fixed width could not fit them all - left unset (never
-          // `width={undefined}`, which `exactOptionalPropertyTypes` tells apart from unset), each
-          // takes the equal share of what the key column leaves that `TableColumnLayout` gives a
-          // column without one, down to the 75px floor it gives one with neither a width nor a
-          // `minWidth` of its own (react-stately's own TableColumnLayout.mjs; spec §6, task 9
-          // brief).
+          // The key column alone is given a width: the table has one column per declaration, so
+          // their count grows with however many components declare this variable, and a fixed
+          // width could not fit them all - left unset (never `width={undefined}`, which
+          // `exactOptionalPropertyTypes` tells apart from unset), each takes the equal share of
+          // what the key column leaves that `TableColumnLayout` gives a column without one, down
+          // to the 75px floor it gives one with neither a width nor a `minWidth` of its own
+          // (react-stately's own TableColumnLayout.mjs; spec §6, task 9 brief).
           return (
             <Column isRowHeader={isKey} {...(isKey ? { width: 140 } : {})}>
               {column.name}

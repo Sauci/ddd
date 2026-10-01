@@ -40,21 +40,32 @@ export function FilesTableView({ reply, files, selected, onSelect }: FilesTableV
         }}
       >
         <TableHeader>
-          {/* Entry is left to take the width the other three do not, with a floor under it so a
-              panel beside this table cannot push it below a whole path's worth (fix round 1,
-              Important 3): a path or a pattern runs far longer than its own Kind, the longest
-              State sentence ("not read by the last analysis"), or a Findings count - which, with
-              Entry's own floor, is why those three are narrower now than before. */}
-          <Column isRowHeader minWidth={200}>
+          {/* Every column is a share of the box's own width (`fr`, the same unit CSS Grid and
+              Flexbox use), not a fixed pixel count (fix round 2, New Important 2): a fixed column
+              never grows, so at full width - plenty of room - Kind, State and Findings stayed
+              exactly as narrow as the floor below needs them to be beside a panel, clipping their
+              own longest word even where nothing crowded them (measured: State's own longest
+              sentence, "not read by the last analysis", FilesTableView.tsx:45 below, clipped at
+              1280px wide under the fixed 150px fix round 1 gave it). `minWidth` is each column's
+              own floor instead, sized so the four sum to at most 535px - what a panel beside this
+              table leaves once a headed browser's own vertical scrollbar (15-17px of the 552px
+              box; a headless one, Docker's own screenshot gate among them, draws none) is taken
+              from it. Below about a 1077px viewport, even full width does not leave every column
+              its own floor; `.long`'s own horizontal scroll is the accepted floor there, not
+              fixed by this table's own widths (fix round 2, New Important 2d). */}
+          <Column isRowHeader width="5fr" minWidth={220}>
             Entry
           </Column>
-          <Column width={90}>Kind</Column>
-          <Column width={150}>State</Column>
-          {/* `minWidth` repeats `width`: React Aria floors a column with none of its own at 75px
-              regardless of its `width` (`getDefaultMinWidth`, react-stately's own
-              TableColumnLayout.mjs) - measured, a plain `width={70}` here still rendered at
-              75px. */}
-          <Column width={70} minWidth={70}>
+          <Column width="1fr" minWidth={70}>
+            Kind
+          </Column>
+          {/* State's own longest sentence, "not read by the last analysis" (lib/files.ts's own
+              `stateOf`): the one other column besides Entry given more than a 1fr share, so it
+              has room to read whole at full width instead of only beside a panel. */}
+          <Column width="4fr" minWidth={150}>
+            State
+          </Column>
+          <Column width="1fr" minWidth={70}>
             Findings
           </Column>
         </TableHeader>

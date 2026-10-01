@@ -81,16 +81,23 @@ export function SharedTableView({
           }}
         >
           <TableHeader>
-            {/* Name is left to take the width the other four do not (part 17's task 9), with a
-                floor under it so a panel beside this table cannot push it below a declared name's
-                worth (fix round 1, Important 3): this table has no Description column to give it
-                instead (the doc below says why), and a declared name can run far longer than a
-                vocabulary's word, a States cell, a places count or a finding count - which, with
-                Name's own floor, is why those four are narrower now than before. */}
-            <Column isRowHeader minWidth={140}>
+            {/* Every column is a share of the box's own width (`fr`), not a fixed pixel count
+                (fix round 2, New Important 2): a fixed column never grows, so at full width -
+                plenty of room - a declared name clipped under a fixed Name width sized only for
+                beside a panel. `minWidth` is each column's own floor instead, sized so the five
+                sum to at most 535px, what a panel beside this table leaves once a headed
+                browser's own vertical scrollbar is taken from the 552px box (a headless one,
+                Docker's own screenshot gate among them, draws none). Below about a 1077px
+                viewport, even full width does not leave every column its own floor; `.long`'s own
+                horizontal scroll is the accepted floor there (fix round 2, New Important 2d). This
+                table has no Description column, unlike TypesTableView (the next comment says why),
+                so Name is the one column given more than a 1fr share. */}
+            <Column isRowHeader width="4fr" minWidth={160}>
               Name
             </Column>
-            <Column width={90}>Vocabulary</Column>
+            <Column width="1fr" minWidth={70}>
+              Vocabulary
+            </Column>
             {/* No Description column, unlike TypesTableView: an entry's description is a full
                 sentence - the shipped example's is "sample slots of a pressure trend buffer, a
                 device wide size no single component owns" - which would dominate every row, where
@@ -99,14 +106,15 @@ export function SharedTableView({
             {/* States, not Value: the word has to fit a constant's own state ("16") as well as a
                 section's ("read-only, align 4"), which Value does not - the same call as the
                 Vocabulary rename above, from PR #68: cheap before a second vocabulary ships into
-                the word, expensive after. */}
-            <Column width={160}>States</Column>
-            <Column width={80}>Used by</Column>
-            {/* `minWidth` repeats `width`: React Aria floors a column with none of its own at
-                75px regardless of its `width` (`getDefaultMinWidth`, react-stately's own
-                TableColumnLayout.mjs) - measured, a plain `width={70}` here still rendered at
-                75px. */}
-            <Column width={70} minWidth={70}>
+                the word, expensive after. Given its own fr share too, since it is the longer of
+                the two. */}
+            <Column width="2fr" minWidth={130}>
+              States
+            </Column>
+            <Column width="1fr" minWidth={70}>
+              Used by
+            </Column>
+            <Column width="1fr" minWidth={70}>
               Findings
             </Column>
           </TableHeader>

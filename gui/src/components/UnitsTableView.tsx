@@ -26,20 +26,32 @@ export function UnitsTableView({ units, selected, onSelect }: UnitsTableViewProp
       }}
     >
       <TableHeader>
-        {/* Description is the one column left to take the width the other three do not, with a
-            floor under it so a panel beside this table cannot push it below a sentence's worth
-            (fix round 1, Important 3): a vocabulary's sentence runs far longer than a unit's own
-            spelling, how it is stated, or the one check its findings can ever be
-            (`findingCheck`) - which, with Description's own floor, is why Stated by and Findings
-            are narrower now than before. */}
-        <Column isRowHeader width={96}>
+        {/* Unit alone keeps a fixed width: its own vocabulary is short and bounded (%, Hz, RPM,
+            degC, …), so it never benefits from more room, at full width or beside a panel. The
+            other three are shares of the box's own width (`fr`) instead of fixed pixels (fix
+            round 2, New Important 2): a fixed column never grows, so at full width - plenty of
+            room - a vocabulary's own sentence clipped under a fixed Description width sized only
+            for beside a panel. `minWidth` is each column's own floor, sized so Unit's own fixed
+            96px plus the other three's floors sum to at most 535px, what a panel beside this
+            table leaves once a headed browser's own vertical scrollbar is taken from the 552px
+            box (a headless one, Docker's own screenshot gate among them, draws none). Below about
+            a 1077px viewport, even full width does not leave every column its own floor; `.long`'s
+            own horizontal scroll is the accepted floor there (fix round 2, New Important 2d). */}
+        <Column isRowHeader width={96} minWidth={96}>
           Unit
         </Column>
-        <Column minWidth={180}>Description</Column>
-        <Column className={also("stated")} width={140}>
+        <Column width="4fr" minWidth={180}>
+          Description
+        </Column>
+        {/* `2fr`, not `1fr`: measured, "1 variable, 1 type" (`statedBy`, lib/projectUnits.ts) still
+            clipped at full width under a `1fr` share, Description's own `4fr` leaving it only
+            121px of the 972px the two share there with Findings. */}
+        <Column className={also("stated")} width="2fr" minWidth={110}>
           Stated by
         </Column>
-        <Column width={120}>Findings</Column>
+        <Column width="1fr" minWidth={90}>
+          Findings
+        </Column>
       </TableHeader>
       <TableBody items={rows}>
         {(row) => {

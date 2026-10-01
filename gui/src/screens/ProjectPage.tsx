@@ -22,10 +22,15 @@ export function ProjectPage({ state, onComponent }: Props) {
       <p className="summary">{tableLine(state.counts, updating)}</p>
       <LongTable
         aria-label="Components"
-        // A row opens the component on Enter too, not only a click on its own Name button (fix
-        // round 1, Minor 4): React Aria does not fire this for a click inside a focusable
-        // descendant - the Name button's own `onPress` - only for one elsewhere in the row, so
-        // the two never fire together over the one click.
+        // A row opens its component on a press anywhere in it, not only on the Name button, and
+        // on Enter too (fix round 1, Minor 4). Accepted as it reaches every press rather than only
+        // the button's own (fix round 2, New Minor 5): it also keeps a mouse from selecting a
+        // path's own text in the row that names it - a reader wanting to copy one does it from the
+        // Files tab, where no row press opens anything. The Name button's own `onPress` does not
+        // also fire the row's: React Aria's own `usePress` stops a press event from propagating
+        // past whichever element handles it first, by default, and a `Button` never opts out of
+        // that (`usePress.mjs`'s own `shouldStopPropagation`) - so the two never fire together over
+        // one click.
         onRowAction={(key) => onComponent(String(key))}
       >
         <TableHeader>

@@ -469,8 +469,11 @@ test("a curve naming a scalar type keeps its button, and its grid", async ({ pag
   await page.goto(gui.address);
   await page.getByRole("button", { name: "Controller", exact: true }).click();
 
-  // CurveA is the thirteenth of Controller's fourteen declarations, past the box's own bottom at
-  // this viewport and in the DOM only through overscan (fix round 1, Important 5) - scrolled to
+  // CurveA is the thirteenth of Controller's fourteen declarations: its own row is inside the
+  // box's own visible rect at this viewport (measured, its own top 3px above the box's own
+  // bottom), but the Shape button inside it is not - clipped by the box's own overflow a few
+  // pixels further down the row than its own top is (fix round 1, Important 5; fix round 2
+  // corrected this - the row is not drawn "only through overscan", whole or at all). Scrolled to
   // before either cell of its row is asked for, not after.
   const button = page.getByRole("button", { name: "Show the values of CurveA" });
   await scrolledIntoView(page, "Declarations of Controller", button);
@@ -481,4 +484,42 @@ test("a curve naming a scalar type keeps its button, and its grid", async ({ pag
   const grid = page.getByRole("grid", { name: "Values of CurveA" });
   await expect(grid.getByRole("rowheader")).toHaveText(["CurveA (ms)"]);
   await expectRow(grid, ["12", "9", "8", "7.5", "7", "6.5"]);
+});
+
+// `scroll-padding-top` pinned a second way (fix round 2, New Minor 4): the stylesheet test beside
+// `.findings-window`'s own (findingsWindow.test.ts) checks the rule is written; this walks it with
+// the keyboard, on Controller's own fourteen rows - past the 432px box at this viewport, the same
+// one `openValues`'s own doc measures CurveA against. Twelve ArrowUps from the fourteenth
+// (MapA), not three: measured, a row still inside the box's own current scroll - the eleventh,
+// three up, still was - does not move at all, keeping whatever position it already had rather
+// than answering `scroll-padding-top`; only a row the walk scrolls past the box's own current top
+// edge for, landing it there fresh, does. Not Control+End then Control+Home either: measured, the
+// row at index 0 lands correctly regardless - the layout reserves the header's own space there,
+// not `scroll-padding-top`. The second row, ValueB, is both: past the current scroll and short of
+// index 0.
+test("a row walked back up near the top stops below the sticky header, not under it", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const grid = page.getByRole("grid", { name: "Declarations of Controller" });
+  const header = grid.getByRole("columnheader").first();
+  const lastRow = grid.getByRole("row").last();
+  const walkedRow = page.getByRole("row", { name: /ValueB/ });
+  // Focused, not clicked: a click would also select the row, opening its own panel, which
+  // narrows the table and races the walk below over the same frame.
+  await lastRow.evaluate((node) => (node as HTMLElement).focus());
+  await page.keyboard.press("Control+End");
+  await expect.poll(() => lastRow.isVisible()).toBe(true);
+  for (let step = 0; step < 12; step += 1) await page.keyboard.press("ArrowUp");
+  // Settled on, not read once: the row the keyboard walks to still catches up to
+  // `scroll-padding-top`'s own stop for a frame or two after the last ArrowUp itself returns.
+  await expect
+    .poll(async () => {
+      const headerBottom = await header.evaluate((node) => node.getBoundingClientRect().bottom);
+      const rowTop = await walkedRow.evaluate((node) => node.getBoundingClientRect().top);
+      return rowTop - headerBottom;
+    })
+    .toBeGreaterThanOrEqual(-1);
 });

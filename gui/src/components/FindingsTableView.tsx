@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import type { ListedFinding } from "../api/types";
 import { keeps, pendingKeys, type WindowRow } from "../lib/findingsWindow";
 import { Chip } from "../ui/Chip";
-import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
+import { also, Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
 
 export interface FindingsTableViewProps {
   /** The rows the window draws, in order: each a finding, or a placeholder for one whose page has
@@ -110,10 +110,4 @@ export function FindingsTableView(props: FindingsTableViewProps) {
 /** The chip's tone for a severity; `info` is the quiet one the design system calls neutral. */
 function toneOf(severity: ListedFinding["severity"]) {
   return severity === "error" ? "error" : severity === "warning" ? "warning" : "neutral";
-}
-
-/** React Aria's own class with this table's beside it, since ui.css selects on both. */
-function also(name: string) {
-  return ({ defaultClassName }: { defaultClassName: string | undefined }) =>
-    `${defaultClassName ?? ""} ${name}`.trim();
 }

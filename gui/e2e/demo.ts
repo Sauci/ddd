@@ -129,14 +129,16 @@ export async function openValues(
 
 /** Wheels a long table's own box, the mouse over its middle, until `target` sits inside the
  * box's own bounds top to bottom - stopping as soon as it does, so a row already in view is
- * never scrolled past. Not `target.isVisible()`: that reads true for a row already drawn past
- * the box's own visible bottom, through the overscan a virtualised layout keeps there as well as
- * above what is visible - nothing about a drawn row's own CSS says the box's own scroll position
- * clips it; visible and displayed is all that check ever meant, on a row a reader could not
- * actually see (measured: true before any wheel at all, for a row the overscan had already drawn
- * past the box's own last visible one). Bounded at forty steps: a target that never comes within
- * the box's own bounds fails here, in words that say why, rather than at whatever assertion
- * happens to be next. */
+ * never scrolled past. Not `target.isVisible()`: that reads true for a row the virtualiser has
+ * already drawn past the box's own visible bottom - idle or scrolling down, its own overscan
+ * extends a third of the box's own visible height below what is on screen, and the same third
+ * above it only while actively scrolling up (`private/virtualizer/OverscanManager.mjs`'s own
+ * `getOverscannedRect`, read by its own velocity) - and nothing about a drawn row's own CSS says
+ * the box's own scroll position clips it; visible and displayed is all that check ever meant, on
+ * a row a reader could not actually see (measured: true before any wheel at all, for a row the
+ * overscan had already drawn past the box's own last visible one). Bounded at forty steps: a
+ * target that never comes within the box's own bounds fails here, in words that say why, rather
+ * than at whatever assertion happens to be next. */
 export async function scrolledIntoView(page: Page, label: string, target: Locator): Promise<void> {
   const box = page.getByRole("grid", { name: label });
   const container = await box.boundingBox();

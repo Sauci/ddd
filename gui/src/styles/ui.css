@@ -396,14 +396,15 @@ tr.changing td {
   padding-left: calc(10px + var(--space-4));
 }
 
-/* Every long table but the Findings one (part 17's task 9, design §6; fix round 1 corrected the
-   prose below): wrapped in React Aria's own Virtualizer and TableLayout, which positions each row
-   and cell itself at ROW_HEIGHT (lib/findingsWindow.ts) rather than leaving them to normal
+/* Every long table but the Findings one (part 17's task 9, design §6; fix rounds 1 and 2 corrected
+   the prose below): wrapped in React Aria's own Virtualizer and TableLayout, which positions each
+   row and cell itself at ROW_HEIGHT (lib/findingsWindow.ts) rather than leaving them to normal
    document flow - so, unlike a plain table, this box has to say it scrolls, and a cell has to
-   clip what overflows its one line. A short table stays no taller than its rows; `max-height`
-   only bites once a long one's rows exceed it. A row the keyboard brings up from below stops
-   below the sticky header rather than under it, the same `scroll-padding-top` as
-   `.findings-window` (about :530 below), one row tall. */
+   clip what overflows its one line (the next rule but one's own doc says what actually clips it).
+   A short table stays no taller than its rows; `max-height` only bites once a long one's rows
+   exceed it. A row brought into view from above - the keyboard walking up past the box's own top -
+   used to stop exactly under the sticky header, hidden behind it rather than below it; the same
+   `scroll-padding-top` as `.findings-window` (:574 below), one row tall, now keeps it clear. */
 .react-aria-Table.long {
   display: block;
   max-height: 60vh;
@@ -413,27 +414,40 @@ tr.changing td {
 /* `isVirtualized` (react-aria-components' Table.mjs) draws a `div` for every row, column and cell
    here rather than a `tr`/`td`/`th` - position and sizing are not this table's own doing but each
    div's own wrapper's (the next rule's own doc) - so centring a line the way `.findings-window`
-   does, with `vertical-align` on a real table cell, has nothing to act on; flex centres it
-   instead. `height: 100%` of the wrapper's own, fixed by the layout, is what makes a cell as
-   tall as its row rather than only as tall as the one line inside it - without it, a cell's own
-   rule sits under its text rather than at the row's own foot, and the selected tint stops short
-   of the row's own edge (fix round 1, Important 1 - filestableview--a-pattern-with-its-matched-
-   files, typestableview--selected and others each showed it). */
+   does, with `vertical-align` on a real table cell, has nothing to act on. `height: 100%` of the
+   wrapper's own, fixed by the layout, is what makes a cell as tall as its row rather than only as
+   tall as the one line inside it - without it, a cell's own rule sits under its text rather than
+   at the row's own foot, and the selected tint stops short of the row's own edge (fix round 1,
+   Important 1 - filestableview--a-pattern-with-its-matched-files, typestableview--selected and
+   others each showed it). `display: block; align-content: center` centres that one line instead
+   of `display: flex` (fix round 2, Important 1): a flex container puts its text in an anonymous
+   flex item, which neither shrinks nor takes `text-overflow`, so a cell's own ellipsis became a
+   hard clip, `.stated`'s own `text-align: right` (below) stopped applying, and the space in a
+   `<span>` beside a link - "rpm, from Speed_t" - was dropped between flex items ("rpm,
+   fromSpeed_t"). `align-content` centres a block container's own content along the block axis in
+   Chromium 123+ (probed headless, kept the centring and all three of the above) - every browser
+   this page's own gates run under, Chromium or a channel of it (`gui/playwright.config.ts`). */
 .react-aria-Table.long .react-aria-Column,
 .react-aria-Table.long .react-aria-Cell {
   height: 100%;
   padding-block: 0;
-  display: flex;
-  align-items: center;
+  display: block;
+  align-content: center;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* Each row and each cell is wrapped by React Aria's own VirtualizerItem in a div of its own,
-   positioned absolutely (or sticky for the header) and sized to the layout's rect, clipping
-   anything that overflows it - that wrapper, not `Table.mjs` and not the row or cell inside it, is
-   what is positioned out of flow and what clips here (react-aria's own
-   private/virtualizer/VirtualizerItem.mjs). A row given no height of its own still draws at zero
+/* Each row and each cell is wrapped by React Aria's own VirtualizerItem in a div of its own
+   (react-aria's own private/virtualizer/VirtualizerItem.mjs), positioned absolutely (or sticky for
+   the header) and sized to the layout's rect - that wrapper, not `Table.mjs`, is what is
+   positioned out of flow here; `isVirtualized` only decides there that a `div` is drawn rather
+   than a `tr`/`td`. The wrapper does not clip, though: `TableLayout` builds every row and cell
+   through `ListLayout`'s own `buildChild` (react-stately's own private/layout/ListLayout.mjs),
+   which sets `allowOverflow = true` on each one regardless, and `VirtualizerItem` reads that into
+   `overflow: visible` on the wrapper. What clips a cell's own text to its one line is the cell's
+   own `overflow: hidden`, two rules up (fix round 2, Important 6b) - only the header group's and
+   the body rowgroup's own wrappers clip, built directly rather than through `buildChild`, so
+   `allowOverflow` is never set on them. A row given no height of its own still draws at zero
    height itself, since an absolutely positioned child - every cell's own wrapper - does not count
    toward it: invisible to anything that asks the row for its own box rather than a cell's, which
    is what left this undiscovered until a journey tried to click one by its row
@@ -447,12 +461,13 @@ tr.changing td {
 .react-aria-Table.long [role="row"] {
   height: 100%;
 }
-/* The header row is `isSticky` in the layout TableLayout itself builds (`buildTableHeader`,
-   react-stately's own TableLayout.mjs) - pinned at the box's own top through a scroll, exactly
-   the way `.findings-window`'s hand-built one is kept, but a sticky element occludes nothing
-   behind it unless it is given a background of its own: without one, a row scrolled to the top
-   painted straight through the header's own words (measured, by hand, scrolling the Table tab's
-   3,333 rows - a screenshot never would have, since no story here is ever scrolled). */
+/* The header group - not the header row itself - is `isSticky` in the layout TableLayout itself
+   builds (`buildTableHeader`, react-stately's own TableLayout.mjs: the `'header'` node, one per
+   table, not the `'headerrow'` nodes under it) - pinned at the box's own top through a scroll,
+   exactly the way `.findings-window`'s hand-built one is kept, but a sticky element occludes
+   nothing behind it unless it is given a background of its own: without one, a row scrolled to the
+   top painted straight through the header's own words (measured, by hand, scrolling the Table
+   tab's 3,333 rows - a screenshot never would have, since no story here is ever scrolled). */
 .react-aria-Table.long .react-aria-Column {
   background: var(--surface);
 }
@@ -471,11 +486,15 @@ tr.changing td {
 .react-aria-Table.long .react-aria-Row.child .react-aria-Cell[aria-colindex="1"] {
   padding-left: calc(10px + var(--space-4));
 }
-/* The unit panel's own places table draws through `LongTable` now (fix round 1, Important 3's
-   table, Minor 5), `.panel-declarations` merged onto `.long` for this margin above and this look -
-   but `.react-aria-Column` is a div, never a `th`, so `.panel-declarations th`'s own rule above
-   never reaches its text; put back here, at the body's own size rather than `.react-aria-Column`'s
-   smaller default, the one place `.panel-declarations` still draws a header of its own size. */
+/* The unit panel's own places table draws through `LongTable` now (fix round 1, Minor 5),
+   `.panel-declarations` merged onto `.long` for this margin above and this look - but
+   `.react-aria-Column` is a div, never a `th`, so `.panel-declarations th`'s own rule above never
+   reaches its text; put back here, at the body's own size rather than `.react-aria-Column`'s
+   smaller default. Five other tables (SectionPanelView, ConstantPanelView, TypePanelView,
+   RasterPanelView, CompareView) still draw `.panel-declarations` on a plain, unvirtualised
+   `<table>` of their own, where `.panel-declarations th`'s own rule already reaches a real `<th>`
+   and still draws its header at this same size - this rule is only for a `.react-aria-Column`
+   `.panel-declarations` was never written for. */
 .long.panel-declarations .react-aria-Column {
   font-size: var(--text-body);
 }

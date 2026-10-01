@@ -1,6 +1,6 @@
 import type { FindingRow } from "../lib/findings";
 import { Chip } from "../ui/Chip";
-import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
+import { also, Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
 
 export interface CompareTableViewProps {
   rows: readonly FindingRow[];
@@ -46,10 +46,4 @@ export function CompareTableView({ rows, selected, onSelect }: CompareTableViewP
 /** The chip's tone for a severity; `info` is the quiet one the design system calls neutral. */
 function toneOf(severity: FindingRow["finding"]["severity"]) {
   return severity === "error" ? "error" : severity === "warning" ? "warning" : "neutral";
-}
-
-/** React Aria's own class with this table's beside it, since ui.css selects on both. */
-function also(name: string) {
-  return ({ defaultClassName }: { defaultClassName: string | undefined }) =>
-    `${defaultClassName ?? ""} ${name}`.trim();
 }

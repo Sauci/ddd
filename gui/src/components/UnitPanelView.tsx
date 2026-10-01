@@ -110,22 +110,29 @@ export function UnitPanelView(props: UnitPanelViewProps) {
         <p className="quiet">Nothing in the project states {unit.unit}.</p>
       ) : (
         // Ruling T9-1: a unit stated 12,500 times over (100,000 declarations, one unit) makes
-        // this table as long as the brief's own seven, so it is virtualised the same way - Where
-        // is left to take the width File and What do not, since a declaration's or a type's own
-        // name runs longer than a file's base name or the few words `placeRole` answers. Unlike
-        // the five of the brief's own seven a panel can also sit beside, Where is given no
-        // `minWidth` of its own (fix round 1, Important 3 touched those, not this one): it keeps
-        // only the 75px floor `TableColumnLayout` gives any column with neither a width nor a
-        // `minWidth` (react-stately's own TableColumnLayout.mjs). `.panel-declarations` beside
-        // `.long`, for this table alone: it draws in a panel already, the one place a plain
-        // `<table>` of the same class once stood, and keeps that look - its header's own size,
-        // the rule above the table - rather than `.long`'s own, smaller one (fix round 1, Minor
-        // 5).
+        // this table as long as the brief's own seven, so it is virtualised the same way. Where
+        // is its own identifying column, as every other table's own is - a declaration's or a
+        // type's own name, which can run as long as any of them, or as short as a one-letter
+        // state - so, as every other table's own does, it is given the largest share of the
+        // box's own width (`fr`) and the highest floor (`minWidth`) once this panel narrows it
+        // (fix round 2, New Important 2): File and What are each given a smaller share and floor
+        // of their own instead of a fixed width, so a file's own base name or the few words
+        // `placeRole` answers can still grow at this panel's own full width rather than clip
+        // under a width sized only for its narrowest. `.panel-declarations` beside `.long`, for
+        // this table alone: it draws in a panel already, the one place a plain `<table>` of the
+        // same class once stood, and keeps that look - its header's own size, the margin above
+        // the table - rather than `.long`'s own, smaller, unmargined one (fix round 1, Minor 5).
         <LongTable aria-label={`Where ${unit.unit} is stated`} className="panel-declarations">
           <TableHeader>
-            <Column isRowHeader>Where</Column>
-            <Column width={160}>File</Column>
-            <Column width={170}>What</Column>
+            <Column isRowHeader width="3fr" minWidth={140}>
+              Where
+            </Column>
+            <Column width="2fr" minWidth={110}>
+              File
+            </Column>
+            <Column width="2fr" minWidth={110}>
+              What
+            </Column>
           </TableHeader>
           <TableBody items={reply.sites}>
             {(site) => (

@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import type { MouseEvent } from "react";
 import { useState } from "react";
-import { getFile } from "../api/client";
+import { getFile, getFindings } from "../api/client";
 import type { State } from "../api/types";
-import { keyedFindings, leadsElsewhere, routeHref, routeOf } from "../lib/findings";
+import { leadsElsewhere, routeHref, routeOf } from "../lib/findings";
 import type { ComponentFile } from "../lib/formats";
 import { pointerOf, valueAt, within } from "../lib/pointer";
 import { asList, asText } from "../lib/values";
@@ -18,7 +18,7 @@ import { VariablePanel } from "./VariablePanel";
 interface Props {
   file: string;
   variable: string | undefined;
-  state: State | null;
+  state: State;
   stopped: boolean;
   onVariable: (variable: string | undefined) => void;
   /** Opening the values grid of a shaped declaration - its own page, not a panel this screen
@@ -44,8 +44,8 @@ function shapedByKind(kind: string | undefined): kind is string {
 }
 
 /** The Shape column's text for one declaration, read from the file already open rather than
- * asked of the server: `State` carries no dictionary, only `revision`, `project`, `files`,
- * `findings` and `undoable`, so there is no second source and no request per row.
+ * asked of the server: `State` carries no dictionary - the revision, the project, its files and
+ * how many findings there are - so there is no second source and no request per row.
  *
  * A `dimensions` on the definition is spelled the way the file spells each entry - `16`, or
  * `4 × 2` for more than one - exactly as a type member's own dimensions are (`projectTypes.ts`).
@@ -80,7 +80,7 @@ export function ComponentPage({
   const [adding, setAdding] = useState(false);
   if (undeclared !== null && undeclared.file !== file) setUndeclared(null);
   const content = useQuery({
-    queryKey: ["file", file, state?.revision],
+    queryKey: ["file", file, state.revision],
     queryFn: () => getFile(file),
     // The table stays up while this file is read again for a newer revision: swapped for
     // "Reading the file…", it lost the open panel's own draft and the scroll position on every
@@ -89,6 +89,14 @@ export function ComponentPage({
     // at, which the server refuses as stale if the file has moved on.
     placeholderData: (previous, previousQuery) =>
       previousQuery?.queryKey[1] === file ? previous : undefined,
+  });
+  // Every finding of this file, worst first - each declaration's chips and the list below - asked
+  // again for every revision, the last revision's kept up meanwhile as the file's own is.
+  const listed = useQuery({
+    queryKey: ["findings", state.revision, "file", file],
+    queryFn: () => getFindings({ file }),
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[3] === file ? previous : undefined,
   });
 
   if (content.isPending) return <p className="quiet">Reading the file…</p>;
@@ -115,7 +123,7 @@ export function ComponentPage({
   // The file parsed but is only checked against the schema here: it need not match
   // ComponentFile (spec 6.10), so `component` may be absent on disk though the type requires it.
   const name = (data as ComponentFile).component?.name ?? "Unnamed component";
-  const findings = (state?.findings ?? []).filter((finding) => finding.file === file);
+  const findings = listed.data?.findings ?? [];
   const rows = asList(valueAt(data, "component.interface")).map((_, index) => {
     const at = pointerOf(["component", "interface", index]);
     const text = (pointer: string) => asText(valueAt(data, `${at}.${pointer}`));
@@ -240,8 +248,11 @@ export function ComponentPage({
                   </Button>
                 </Cell>
                 <Cell>
-                  {keyedFindings(row.own).map(([finding, key]) => (
-                    <Chip key={key} tone={finding.severity === "error" ? "error" : "warning"}>
+                  {row.own.map((finding) => (
+                    <Chip
+                      key={finding.key}
+                      tone={finding.severity === "error" ? "error" : "warning"}
+                    >
                       {finding.check}
                     </Chip>
                   ))}
@@ -251,11 +262,12 @@ export function ComponentPage({
           </TableBody>
         </Table>
         <h2>Findings in this component</h2>
-        {findings.length === 0 ? (
-          <p className="quiet">None.</p>
-        ) : (
+        {listed.isError && <Banner tone="error">{listed.error.message}</Banner>}
+        {listed.isPending && <p className="quiet">Reading the findings…</p>}
+        {listed.isSuccess && findings.length === 0 && <p className="quiet">None.</p>}
+        {findings.length > 0 && (
           <ul className="findings">
-            {keyedFindings(findings).map(([finding, key]) => {
+            {findings.map((finding) => {
               const href = leadsElsewhere(finding, file) ? routeHref(finding) : null;
               const route = href === null ? null : routeOf(finding);
               // A variable named by this very file's own route opens in place via
@@ -273,7 +285,7 @@ export function ComponentPage({
                   : null;
               const onClick = inThisFile === null ? undefined : followVariable(inThisFile);
               return (
-                <li key={key} className={finding.severity}>
+                <li key={finding.key} className={finding.severity}>
                   <span className="check">{finding.check}</span>{" "}
                   {href === null ? (
                     <span className="message">{finding.message}</span>
@@ -293,7 +305,7 @@ export function ComponentPage({
           key={variable}
           name={variable}
           file={file}
-          revision={state?.revision}
+          revision={state.revision}
           stopped={stopped}
           focusPicker={focusPicker}
           onClose={() => onVariable(undefined)}
@@ -309,7 +321,7 @@ export function ComponentPage({
         <DeclarePanel
           file={file}
           component={name}
-          revision={state?.revision}
+          revision={state.revision}
           stopped={stopped}
           onClose={() => setAdding(false)}
           onDeclared={(declared) => {

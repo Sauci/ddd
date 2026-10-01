@@ -550,7 +550,9 @@ class TestEveryEndpointOnTheDemo:
         components = [f for f in body["files"] if f["kind"] == "component"]
         assert {f["name"] for f in components} == self.COMPONENTS
         assert all(f["loaded"] and f["findings"]["error"] == 0 for f in components)
-        assert not [f for f in body["findings"] if f["severity"] == "error"]
+        assert body["counts"]["error"] == 0
+        findings = answered(server, "GET", "/api/findings")["findings"]
+        assert not [f for f in findings if f["severity"] == "error"]
         waited = answered(server, "GET", f"/api/state?after={body['version']}")
         assert (waited["version"], waited["revision"]) == (body["version"], body["revision"])
 
@@ -606,9 +608,9 @@ class TestEveryEndpointOnTheDemo:
             "edit": 1,
             "files": [{"path": controller.as_posix(), "fingerprint": fingerprint(after)}],
         }
-        state = answered(server, "GET", "/api/state")
+        findings = answered(server, "GET", "/api/findings")["findings"]
         disagreeing = {
-            Path(f["file"]).name for f in state["findings"] if f["check"] == "definition-mismatch"
+            Path(f["file"]).name for f in findings if f["check"] == "definition-mismatch"
         }
         assert disagreeing == {"controller.ddd.json", "sensor_hub.ddd.json"}
 
@@ -731,8 +733,22 @@ class TestAProjectWithAFileThatDoesNotParse:
         files = {Path(f["path"]).name: f for f in body["files"]}
         assert (files["a.ddd.json"]["loaded"], files["b.ddd.json"]["loaded"]) == (True, False)
         assert files["b.ddd.json"]["findings"]["error"] == 1
-        why = [f for f in body["findings"] if f["file"] == (root / "b.ddd.json").as_posix()]
+        findings = answered(server, "GET", "/api/findings")["findings"]
+        why = [f for f in findings if f["file"] == (root / "b.ddd.json").as_posix()]
         assert [f["check"] for f in why] == ["json-syntax"]
+
+    def test_its_findings_are_asked_a_page_at_a_time_through_the_address(self, broken) -> None:
+        """The query read off the request line - a file's path encoded as the page encodes it -
+        and a query the endpoint refuses, refused in its own sentence."""
+        server, root = broken
+        b = quote((root / "b.ddd.json").as_posix(), safe="")
+        page = answered(server, "GET", f"/api/findings?offset=0&limit=1&file={b}")
+        assert (page["total"], [f["check"] for f in page["findings"]]) == (1, ["json-syntax"])
+        refused = answered(server, "GET", "/api/findings?limit=0", status=400)
+        assert refused == {
+            "error": "bad-request",
+            "message": "findings takes ?limit= as a whole number from 1",
+        }
 
     def test_the_file_is_answered_as_the_reason_it_does_not_parse(self, broken) -> None:
         server, root = broken

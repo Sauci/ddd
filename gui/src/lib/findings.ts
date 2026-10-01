@@ -1,4 +1,4 @@
-import type { Changes, Finding, FixReply, State } from "../api/types";
+import type { Changes, Finding, FindingCounts, FindingsReply, FixReply, State } from "../api/types";
 import { hrefOf, type Route } from "./route";
 import { baseName } from "./units";
 
@@ -56,13 +56,12 @@ export interface FindingRow {
   file: string;
 }
 
-/** Worst first, and within a severity in the order they were filed - which groups them by file
- * for a revision's own (`GET /api/state` answers in that order), and by file for a comparison's
- * own too (`GET /api/compare` sorts its own the same way). A stable sort is what keeps the second
- * half of that sentence true. `ignore` never reaches this list - that severity means a finding is
- * not reported at all - but `Record` still needs it named to index by severity. Takes the list
- * itself rather than a `State`, so a comparison's `CompareReply.findings` - which is not one -
- * files into the very same rows the Findings tab does. */
+/** Worst first, and within a severity in the order they were given: the Findings tab's own order,
+ * which `GET /api/findings` answers a revision's findings in itself, its page at a time. A stable
+ * sort is what keeps the second half of that sentence true. `ignore` never reaches this list -
+ * that severity means a finding is not reported at all - but `Record` still needs it named to
+ * index by severity. Takes a list of its own, for findings that come in one reply rather than a
+ * page at a time. */
 export function findingRows(findings: readonly Finding[]): FindingRow[] {
   const rank: Record<Finding["severity"], number> = { error: 0, warning: 1, info: 2, ignore: 3 };
   return keyedFindings(findings)
@@ -75,18 +74,41 @@ const COUNTED = [
   ["error", "error", "errors"],
   ["warning", "warning", "warnings"],
   ["info", "note", "notes"],
-] as const satisfies readonly [Finding["severity"], string, string][];
+] as const satisfies readonly [keyof FindingCounts, string, string][];
 
-/** The tab's line above the table. */
-export function findingCounts(findings: readonly Finding[]): string {
-  if (findings.length === 0) return "Nothing to report";
-  const of = (severity: Finding["severity"]) =>
-    findings.filter((finding) => finding.severity === severity).length;
-  const parts = COUNTED.map(([severity, one, many]) => [of(severity), one, many] as const)
-    .filter(([count]) => count > 0)
-    .map(([count, one, many]) => `${count} ${count === 1 ? one : many}`);
-  const total = `${findings.length} finding${findings.length === 1 ? "" : "s"}`;
-  return `${total} · ${parts.join(", ")}`;
+/** How many findings the counts count, of every severity together. */
+export function findingsTotal(counts: FindingCounts): number {
+  return counts.error + counts.warning + counts.info;
+}
+
+/** How many findings of a list there are of each severity: what the Compare tab counts its own
+ * reply's list by, as the state counts a revision's. One at `ignore` - which the server never
+ * reports - is counted under none. */
+export function countsOf(findings: readonly Finding[]): FindingCounts {
+  const counts = { error: 0, warning: 0, info: 0 };
+  for (const finding of findings) {
+    if (finding.severity !== "ignore") counts[finding.severity] += 1;
+  }
+  return counts;
+}
+
+/** The line above a table of findings, from how many there are of each severity: the Findings
+ * tab's from the state's counts, the Compare tab's from its own list's. `_updating` - whether the
+ * counts are about to change - is taken, and not said yet: the line reads the same either way. */
+export function findingCounts(counts: FindingCounts, _updating: boolean): string {
+  const total = findingsTotal(counts);
+  if (total === 0) return "Nothing to report";
+  const parts = COUNTED.filter(([severity]) => counts[severity] > 0).map(
+    ([severity, one, many]) => `${counts[severity]} ${counts[severity] === 1 ? one : many}`,
+  );
+  return `${total} finding${total === 1 ? "" : "s"} · ${parts.join(", ")}`;
+}
+
+/** Whether a reply carries the finding of this key: what a selected finding's panel stays open
+ * on when a new revision comes, its key being the one thing a page of findings and a selection
+ * hold in common. */
+export function stillReported(key: string, reply: FindingsReply): boolean {
+  return reply.findings.some((finding) => finding.key === key);
 }
 
 /** What the button that follows a finding says, or `null` when it leads nowhere. */

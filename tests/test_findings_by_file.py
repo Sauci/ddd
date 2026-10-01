@@ -38,3 +38,19 @@ def test_each_file_is_resolved_once(tmp_path: Path, monkeypatch) -> None:
     )
     FindingsByFile([(a, found(a, str(n))) for n in range(5)])
     assert resolved == [a]
+
+
+def test_where_a_file_s_findings_stand_however_it_is_spelled(tmp_path: Path) -> None:
+    """In the order given: the positions a page of one file's findings is read from."""
+    (tmp_path / "sub").mkdir()
+    a, b = tmp_path / "a.ddd.json", tmp_path / "b.ddd.json"
+    pairs = [
+        (a, found(a, "1")),
+        (b, found(b, "2")),
+        (tmp_path / "sub" / ".." / "a.ddd.json", found(a, "3")),
+    ]
+    grouped = FindingsByFile(pairs)
+    assert grouped.positions(tmp_path / "sub" / ".." / "a.ddd.json") == (0, 2)
+    assert grouped.positions(a) == (0, 2)
+    assert grouped.positions(b) == (1,)
+    assert grouped.positions(tmp_path / "c.ddd.json") == ()

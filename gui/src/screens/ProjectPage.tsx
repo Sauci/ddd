@@ -2,7 +2,7 @@ import type { State } from "../api/types";
 import { Button } from "../ui/Button";
 
 interface Props {
-  state: State | null;
+  state: State;
   onComponent: (file: string) => void;
 }
 
@@ -11,14 +11,11 @@ interface Props {
  * name is the heading above the tabs, so this screen and the canvas share it.
  */
 export function ProjectPage({ state, onComponent }: Props) {
-  if (state === null) return <p className="quiet">Checking the project…</p>;
   const components = state.files.filter((file) => file.kind === "component");
-  const total = (severity: "error" | "warning") =>
-    state.findings.filter((finding) => finding.severity === severity).length;
   return (
     <>
       <p className="summary">
-        {total("error")} errors, {total("warning")} warnings
+        {state.counts.error} errors, {state.counts.warning} warnings
       </p>
       <table className="components">
         <thead>

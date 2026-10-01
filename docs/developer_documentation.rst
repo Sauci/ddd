@@ -897,7 +897,7 @@ check, file and pointer, together with the file's own kind and whether it loaded
 variable a declaration is about, the unit a check such as ``unknown-unit`` names, the type
 an entry declares, or the component the finding is filed on - and nothing for a finding
 with nowhere to go, a file that did not load or one of a kind the page has no screen for
-among them. ``GET /api/state``, ``GET /api/variable``, ``GET /api/unit`` and ``GET
+among them. ``GET /api/findings``, ``GET /api/variable``, ``GET /api/unit`` and ``GET
 /api/type`` all carry that answer on every finding they list. ``ddd.finding_fixes`` plans
 the one fix a finding has nowhere else to offer: a ``missing-id`` finding's identity, from
 the same walk ``ddd.identity.unstamped`` gives ``ddd id`` and the language server's own

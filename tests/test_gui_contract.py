@@ -114,7 +114,7 @@ class TestThePageFollowsTheAnalyser:
             "version",
             "project",
             "files",
-            "findings",
+            "counts",
             "undoable",
             "analysing",
             "edits",
@@ -141,7 +141,7 @@ class TestThePageFollowsTheAnalyser:
         described = _described("State")
         assert described["revision"] == (
             "Counts up from 1 at every analysis this session publishes; ``0`` before the open "
-            "project's first analysis, when ``files`` and ``findings`` are empty."
+            "project's first analysis, when ``files`` is empty and every count ``0``."
         )
         assert described["project"] == (
             "Absolute, posix-separated path of the open project's description: the one this "
@@ -163,3 +163,54 @@ class TestThePageFollowsTheAnalyser:
             f"The number the session gave this {taken}: a revision whose ``edits`` has reached "
             "it includes it."
         )
+
+
+class TestFindingsComeAPageAtATime:
+    """What the page reads of a revision's findings now that ``GET /api/state`` counts them and
+    ``GET /api/findings`` answers them a page at a time, each with a key of its own."""
+
+    def test_the_state_counts_the_findings_of_each_severity_and_carries_none(self) -> None:
+        state = contract.api_schema()["$defs"]["State"]
+        assert "findings" not in state["properties"]
+        assert _described("State")["counts"] == (
+            "How many findings of each severity the revision has, in all."
+        )
+        assert contract.State.model_fields["counts"].annotation is contract.FindingCounts
+
+    def test_a_count_says_nothing_of_a_file_it_may_not_be_about(self) -> None:
+        """One model counts a file's findings, a module's and a whole revision's: its words are
+        true of each, and the field holding it says which."""
+        schema = contract.api_schema()["$defs"]["FindingCounts"]
+        assert " ".join(schema["description"].split()) == (
+            "How many findings of each severity there are - on a file, a module or a whole "
+            "revision: the field holding the counts says which."
+        )
+        assert _described("FindingCounts") == {
+            "error": "How many are errors.",
+            "warning": "How many are warnings.",
+            "info": "How many are informational.",
+        }
+
+    def test_a_listed_finding_is_a_finding_with_a_key(self) -> None:
+        defs = contract.api_schema()["$defs"]
+        assert list(defs["ListedFinding"]["properties"]) == [*defs["Finding"]["properties"], "key"]
+        assert defs["ListedFinding"]["required"] == list(defs["ListedFinding"]["properties"])
+        assert _described("ListedFinding")["key"] == (
+            "Its file, severity, check, place and words, and which repeat of those it is, "
+            "counted over the whole revision in the Findings tab's order: a finding keeps its "
+            "key on every page, under every filter, and into the next revision where it stays."
+        )
+
+    def test_a_page_says_its_revision_how_many_the_filters_leave_and_where_it_starts(
+        self,
+    ) -> None:
+        reply = contract.api_schema()["$defs"]["FindingsReply"]
+        assert list(reply["properties"]) == ["revision", "total", "offset", "findings"]
+        assert reply["required"] == list(reply["properties"])
+        assert reply["properties"]["findings"]["items"] == {"$ref": "#/$defs/ListedFinding"}
+        assert _described("FindingsReply")["total"] == (
+            "How many findings the filters leave, in all."
+        )
+
+    def test_both_are_published_beside_every_other_model(self) -> None:
+        assert {"FindingsReply", "ListedFinding"} <= set(contract.__all__)

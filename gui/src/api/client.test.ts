@@ -10,6 +10,7 @@ import {
   getFile,
   getFiles,
   getFilesPlan,
+  getFindings,
   getFix,
   getGraph,
   getProjects,
@@ -340,6 +341,30 @@ describe("requests to the server", () => {
       ],
       ["/api/values?name=CurveA", { credentials: "same-origin" }],
       ["/api/value-plan?name=CurveA&at=%5B2%5D&raw=750", { credentials: "same-origin" }],
+    ]);
+  });
+
+  test("getFindings asks for a page, each of its parameters encoded and none it was not given", async () => {
+    const calls = recorded();
+    await getFindings({}, calls.fetch);
+    await getFindings({ offset: 0, limit: 100 }, calls.fetch);
+    await getFindings({ offset: 300 }, calls.fetch);
+    await getFindings({ file: "C:/p/sensors/a b.ddd.json" }, calls.fetch);
+    await getFindings({ file: "C:/p/a.ddd.json", check: "missing-id" }, calls.fetch);
+    await getFindings(
+      { offset: 100, limit: 100, severity: "error", file: "/p/a&b.ddd.json", check: "a/b" },
+      calls.fetch,
+    );
+    expect(calls.urls).toEqual([
+      ["/api/findings", { credentials: "same-origin" }],
+      ["/api/findings?offset=0&limit=100", { credentials: "same-origin" }],
+      ["/api/findings?offset=300", { credentials: "same-origin" }],
+      ["/api/findings?file=C%3A%2Fp%2Fsensors%2Fa%20b.ddd.json", { credentials: "same-origin" }],
+      ["/api/findings?file=C%3A%2Fp%2Fa.ddd.json&check=missing-id", { credentials: "same-origin" }],
+      [
+        "/api/findings?offset=100&limit=100&severity=error&file=%2Fp%2Fa%26b.ddd.json&check=a%2Fb",
+        { credentials: "same-origin" },
+      ],
     ]);
   });
 

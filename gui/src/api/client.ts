@@ -8,6 +8,7 @@ import type {
   FileContent,
   FilesPlanReply,
   FilesReply,
+  FindingsReply,
   FixReply,
   Found,
   GraphReply,
@@ -104,6 +105,32 @@ export const getState = (after: number | null, signal?: AbortSignal, fetchImpl: 
     signal === undefined ? {} : { signal },
     fetchImpl,
   );
+
+/** Which of the newest revision's findings `GET /api/findings` answers: from `offset` - the first
+ * when left out - at most `limit` of them, or every one from it when left out, of those
+ * `severity`, `file` and `check` leave. */
+export interface FindingsQuery {
+  offset?: number;
+  limit?: number;
+  severity?: string;
+  file?: string;
+  check?: string;
+}
+
+export const getFindings = (query: FindingsQuery, fetchImpl: Fetch = fetch) =>
+  request<FindingsReply>(`/api/findings${findingsQuery(query)}`, {}, fetchImpl);
+
+/** A page's query: each parameter given, encoded, in a fixed order; nothing for one left out. */
+function findingsQuery(query: FindingsQuery): string {
+  const parts: [string, string][] = [];
+  if (query.offset !== undefined) parts.push(["offset", String(query.offset)]);
+  if (query.limit !== undefined) parts.push(["limit", String(query.limit)]);
+  if (query.severity !== undefined) parts.push(["severity", query.severity]);
+  if (query.file !== undefined) parts.push(["file", query.file]);
+  if (query.check !== undefined) parts.push(["check", query.check]);
+  if (parts.length === 0) return "";
+  return `?${parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&")}`;
+}
 
 export const getFile = (path: string, fetchImpl: Fetch = fetch) =>
   request<FileContent>(`/api/file?path=${encodeURIComponent(path)}`, {}, fetchImpl);

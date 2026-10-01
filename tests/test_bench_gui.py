@@ -43,6 +43,8 @@ def test_every_measure_is_taken_in_order_with_its_size(tmp_path: Path) -> None:
         "types",
         "shared",
         "files",
+        "findings page",
+        "findings of a file",
         "variable",
         "unit",
         "remove judged",
@@ -133,6 +135,32 @@ def test_remove_judged_asks_to_remove_the_roots_first_entry(
     ]
 
 
+def test_the_findings_are_asked_a_page_from_the_first_and_the_first_component_s_whole(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``findings page`` asks the Findings tab's first page - a hundred from the first - and
+    ``findings of a file`` every finding of the first component's file, sorted, as its page asks
+    them: no limit."""
+    made = generate(tmp_path / "p", 120, "many", missing_ids=0.5, unread=0.5)
+    asked = []
+    original = Api.handle
+
+    def spying(self, method, path, query, body):
+        if path == "/api/findings":
+            asked.append(dict(query))
+        return original(self, method, path, query, body)
+
+    monkeypatch.setattr(Api, "handle", spying)
+    taken = {each.name: each for each in measure(made.project)}
+    first = sorted((made.project.parent / "components").glob("*.ddd.json"))[0]
+    assert asked == [
+        {"offset": ["0"], "limit": ["100"]},
+        {"file": [first.resolve().as_posix()]},
+    ]
+    assert taken["findings page"].size is not None
+    assert taken["findings of a file"].size is not None
+
+
 def test_the_edit_moves_to_the_next_unit_of_the_projects_own_sorted_order(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -198,7 +226,7 @@ def test_open_the_analysis_and_the_edit_are_timed_until_their_analysis_has_lande
     measure(made.project)
     assert happened == [
         *("open", "settled", "timed"),  # open
-        *["timed"] * 9,  # each endpoint, the two panels and the judged removal
+        *["timed"] * 11,  # each endpoint, the two of findings, the two panels, the judged removal
         *("poll", "settled", "timed"),  # analysis
         *("/api/edit", "timed"),  # edit answered
         *("settled", "timed"),  # edit analysed

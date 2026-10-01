@@ -47,6 +47,11 @@ class FindingsByFile:
         """The findings shown on ``path``, however it is spelled, in the order given."""
         return tuple(self._pairs[index] for index in self._grouped.get(path.resolve(), ()))
 
+    def positions(self, path: Path) -> tuple[int, ...]:
+        """Where in the order given the findings shown on ``path`` stand, however it is spelled:
+        what a page of one file's findings is read from."""
+        return self._grouped.get(path.resolve(), ())
+
     def on_any(self, paths: Iterable[Path]) -> list[Pair]:
         """The findings shown on any of ``paths``, each once, in the order given - never in the
         order the paths are named, which would reorder a panel's list by its declarations."""

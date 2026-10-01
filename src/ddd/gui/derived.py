@@ -2,21 +2,25 @@
 
 A revision is immutable, so anything computed from it alone holds for as long as it is the newest:
 each file's description by resolved path, each finding's own file's, the findings grouped by file,
-and how many findings each root entry carries. ``GET /api/state`` resolved every finding's file
-to find its description; ``GET /api/files`` counted every finding once per entry.
+how many findings each root entry carries, and the order the Findings tab lists them in, with how
+many there are of each severity. ``GET /api/state`` resolved every finding's file to find its
+description; ``GET /api/files`` counted every finding once per entry; and every page of the
+Findings tab would sort the whole revision again to find its own findings.
 """
 
 from __future__ import annotations
 
+import json
 import re
-from collections.abc import Mapping
+from collections import Counter
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from ddd.diagnostics import Location
+from ddd.diagnostics import Location, Severity
 from ddd.findings_by_file import FindingsByFile
-from ddd.gui.session import Revision, SourceFile
+from ddd.gui.session import Filed, Revision, SourceFile
 
 _ENTRY: Final = re.compile(r"project\.includes\[(0|[1-9][0-9]*)\]")
 """The pointer of one entry of a project description's ``includes``, matched whole: its index in
@@ -45,6 +49,21 @@ class Derived:
     ``i``, compared as the Files tab has always compared them: a whole location, the
     description's own path and the entry's pointer."""
 
+    ranked: tuple[int, ...]
+    """The findings' positions in the Findings tab's order: worst first, and within a severity
+    in the revision's own order - a stable sort by :attr:`~ddd.diagnostics.Severity.rank`, the
+    order the page sorted ``GET /api/state``'s list into before findings came a page at a
+    time."""
+
+    repeats: tuple[int, ...]
+    """By position, which repeat each finding is among those of equal file, severity, check,
+    place and words - ``0`` for the first, ``1`` for the next - counted along :attr:`ranked`,
+    which keeps findings of one severity, and so any of equal content, in the revision's order:
+    what tells two findings of equal content apart in their keys (:func:`key_of`)."""
+
+    counts: tuple[int, int, int]
+    """How many errors, warnings and informational findings the revision has."""
+
 
 def derived(revision: Revision) -> Derived:
     """Everything :class:`Derived` holds of ``revision``: each finding's description and entry
@@ -61,13 +80,57 @@ def derived(revision: Revision) -> Derived:
         entry = _entry_of(revision.project, filed.diagnostic.location)
         if entry is not None:
             at_entry[entry] = at_entry.get(entry, 0) + 1
+    ranked = _ranked(revision.findings)
     return Derived(
         number=revision.number,
         files=files,
         sources=tuple(sources),
         findings=FindingsByFile((filed.file, filed.diagnostic) for filed in revision.findings),
         at_entry=at_entry,
+        ranked=ranked,
+        repeats=_repeats(revision.findings, ranked),
+        counts=_counts(revision.findings),
     )
+
+
+def content_of(filed: Filed) -> tuple[str, str, str, str, str]:
+    """What a finding's key is made of, its repeat aside: the file it is shown on, its severity,
+    its check, its place and its words, each as ``GET /api/findings`` answers it."""
+    found = filed.diagnostic
+    pointer = "" if found.location is None else found.location.pointer
+    return (filed.file.as_posix(), found.severity.value, found.check, pointer, found.message)
+
+
+def key_of(filed: Filed, repeat: int) -> str:
+    """A finding's key: its :func:`content_of` and its repeat, as a compact json array - so that no
+    two different findings share one, whatever their words hold. The page reads it as opaque."""
+    return json.dumps([*content_of(filed), repeat], separators=(",", ":"))
+
+
+def _ranked(findings: Sequence[Filed]) -> tuple[int, ...]:
+    """:attr:`Derived.ranked` of ``findings``."""
+    return tuple(
+        sorted(
+            range(len(findings)), key=lambda position: findings[position].diagnostic.severity.rank
+        )
+    )
+
+
+def _repeats(findings: Sequence[Filed], ranked: Sequence[int]) -> tuple[int, ...]:
+    """:attr:`Derived.repeats` of ``findings``, counted along ``ranked``."""
+    seen: dict[tuple[str, str, str, str, str], int] = {}
+    repeats = [0] * len(findings)
+    for position in ranked:
+        content = content_of(findings[position])
+        repeats[position] = seen.get(content, 0)
+        seen[content] = repeats[position] + 1
+    return tuple(repeats)
+
+
+def _counts(findings: Iterable[Filed]) -> tuple[int, int, int]:
+    """:attr:`Derived.counts` of ``findings``."""
+    counted = Counter(filed.diagnostic.severity for filed in findings)
+    return (counted[Severity.ERROR], counted[Severity.WARNING], counted[Severity.INFO])
 
 
 def _entry_of(project: Path, location: Location | None) -> int | None:

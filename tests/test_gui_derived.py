@@ -142,3 +142,106 @@ class TestTheFindingsAtEachEntry:
         )
         made = derived(revision_of(project, (described(project, "project"),), findings))
         assert made.at_entry == {}
+
+
+def found(
+    file: Path,
+    severity: Severity,
+    pointer: str = "component.interface[0]",
+    check: str = "unused-output",
+    message: str = "read by nobody",
+) -> Filed:
+    """A finding on ``file`` at ``pointer``, as the analysis files one."""
+    return Filed(file, Diagnostic(check, severity, message, Location(file, pointer)))
+
+
+class TestTheFindingsTabsOrder:
+    """What every page of the Findings tab is read from: the revision's findings worst first,
+    each with its repeat among findings of equal content, and how many there are of each
+    severity - derived once, however many pages are asked for."""
+
+    def test_the_worst_come_first_and_within_a_severity_in_the_revision_s_order(
+        self, tmp_path: Path
+    ) -> None:
+        project, a, b = tmp_path / "p.ddd.json", tmp_path / "a.ddd.json", tmp_path / "b.ddd.json"
+        findings = (
+            found(a, Severity.INFO, "component.interface[0]"),
+            found(a, Severity.ERROR, "component.interface[1]"),
+            found(a, Severity.WARNING, "component.interface[2]"),
+            found(b, Severity.INFO, "component.interface[0]"),
+            found(b, Severity.ERROR, "component.interface[1]"),
+            found(b, Severity.WARNING, "component.interface[2]"),
+        )
+        made = derived(revision_of(project, (described(project, "project"),), findings))
+        assert made.ranked == (1, 4, 2, 5, 0, 3)
+
+    def test_two_findings_of_equal_content_on_one_file_are_told_apart_by_their_repeat(
+        self, tmp_path: Path
+    ) -> None:
+        """Equal file, severity, check, place and words: the second is repeat 1, and a finding
+        between them in the revision's order changes neither."""
+        project, a = tmp_path / "p.ddd.json", tmp_path / "a.ddd.json"
+        twice = found(a, Severity.ERROR, check="definition-mismatch", message="disagrees")
+        findings = (twice, found(a, Severity.INFO), twice, found(a, Severity.ERROR))
+        made = derived(revision_of(project, (described(project, "project"),), findings))
+        assert made.repeats == (0, 0, 1, 0)
+
+    @pytest.mark.parametrize(
+        "other",
+        [
+            {"file": "b.ddd.json"},
+            {"severity": Severity.ERROR},
+            {"check": "missing-id"},
+            {"pointer": "component.interface[1]"},
+            {"message": "read by everybody"},
+        ],
+        ids=["file", "severity", "check", "place", "words"],
+    )
+    def test_a_finding_differing_in_any_of_the_five_is_no_repeat(
+        self, tmp_path: Path, other: dict[str, object]
+    ) -> None:
+        project = tmp_path / "p.ddd.json"
+        fields: dict[str, object] = {
+            "file": "a.ddd.json",
+            "severity": Severity.WARNING,
+            "pointer": "component.interface[0]",
+            "check": "unused-output",
+            "message": "read by nobody",
+        }
+
+        def made_of(given: dict[str, object]) -> Filed:
+            file = tmp_path / str(given["file"])
+            diagnostic = Diagnostic(
+                str(given["check"]),
+                Severity(given["severity"]),
+                str(given["message"]),
+                Location(file, str(given["pointer"])),
+            )
+            return Filed(file, diagnostic)
+
+        findings = (made_of(fields), made_of({**fields, **other}), made_of(fields))
+        made = derived(revision_of(project, (described(project, "project"),), findings))
+        assert made.repeats == (0, 0, 1)
+
+    def test_a_finding_placed_nowhere_repeats_another_placed_nowhere(self, tmp_path: Path) -> None:
+        project = tmp_path / "p.ddd.json"
+        nowhere = Filed(project, Diagnostic("schema", Severity.ERROR, "unreadable", None))
+        made = derived(revision_of(project, (described(project, "project"),), (nowhere, nowhere)))
+        assert made.repeats == (0, 1)
+
+    def test_each_severity_is_counted(self, tmp_path: Path) -> None:
+        project, a = tmp_path / "p.ddd.json", tmp_path / "a.ddd.json"
+        findings = (
+            found(a, Severity.WARNING),
+            found(a, Severity.INFO),
+            found(a, Severity.ERROR),
+            found(a, Severity.INFO),
+            found(a, Severity.INFO, "component.interface[3]"),
+        )
+        made = derived(revision_of(project, (described(project, "project"),), findings))
+        assert made.counts == (1, 1, 3)
+
+    def test_a_revision_without_findings_has_none_of_each(self, tmp_path: Path) -> None:
+        project = tmp_path / "p.ddd.json"
+        made = derived(revision_of(project, (described(project, "project"),), ()))
+        assert (made.ranked, made.repeats, made.counts) == ((), (), (0, 0, 0))

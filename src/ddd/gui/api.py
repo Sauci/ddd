@@ -15,6 +15,7 @@ never a hand-assembled ``dict`` - so the shape answered here and the shape
 from __future__ import annotations
 
 import json
+from collections import OrderedDict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
@@ -35,7 +36,7 @@ from ddd.declaration_plans import (
     remove_declaration,
     scopes_for,
 )
-from ddd.diagnostics import CHECKS
+from ddd.diagnostics import CHECKS, Severity
 from ddd.editing import (
     INVALID,
     STALE,
@@ -63,7 +64,7 @@ from ddd.findings_by_file import Pair
 from ddd.graph import Module, graph_of
 from ddd.gui import contract
 from ddd.gui.compare import BaselineCache, BaselineRefusedError, compared
-from ddd.gui.derived import Derived, derived
+from ddd.gui.derived import Derived, derived, key_of
 from ddd.gui.session import KINDS as DESCRIPTION_KINDS
 from ddd.gui.session import (
     Filed,
@@ -154,6 +155,16 @@ from ddd.variables import (
 
 WAIT_SECONDS: Final = 25.0
 """How long a request for a newer state waits before answering with the current one."""
+
+MEMO: Final = 256
+"""How many answers the api keeps for the newest revision: every tab's rows, the graph, and the
+pages of findings a reader scrolls back to. A bound, the oldest dropped first: without one, every
+page of a findings-heavy project a reader scrolled through would be kept until its next
+analysis."""
+
+LISTED: Final = (Severity.ERROR, Severity.WARNING, Severity.INFO)
+"""The severities a finding is reported at, and so the ones ``GET /api/findings`` filters by:
+``ignore`` means a finding is not reported at all."""
 
 ANALYSING: Final = "analysing"
 """The refusal of a request the analysis has not caught up with: asked of the open project before
@@ -291,7 +302,7 @@ class Api:
         self.wait_seconds = wait_seconds
         self._compare_cache: BaselineCache = {}
         self._derived: Derived | None = None
-        self._memo: dict[tuple[object, ...], Reply] = {}
+        self._memo: OrderedDict[tuple[object, ...], Reply] = OrderedDict()
         # The state's answer and the version it was made at: what `GET /api/state` answers again
         # until the version moves, every request of a page's long poll asking for it.
         self._state_kept: tuple[int, Reply] | None = None
@@ -375,17 +386,17 @@ class Api:
 
     def _state_of(self, snapshot: Snapshot, project: Path) -> Reply:
         """The state ``snapshot`` says of ``project``, the one open: revision ``0``, no files and
-        no findings before its first analysis."""
+        every count ``0`` before its first analysis. The findings themselves are
+        ``GET /api/findings``'s, a page at a time; this counts them."""
         revision = snapshot.revision
         number = 0
         edits = 0
         files: list[dict[str, Any]] = []
-        findings: list[dict[str, Any]] = []
+        counts = (0, 0, 0)
         if revision is not None:
             number = revision.number
             edits = revision.edits
-            derived = self._derive(revision)
-            cache: dict[Path, Document] = {}
+            counts = self._derive(revision).counts
             files = [
                 {
                     "path": file.path.as_posix(),
@@ -401,10 +412,6 @@ class Api:
                 }
                 for file in revision.files
             ]
-            findings = [
-                _finding(filed, source, cache)
-                for filed, source in zip(revision.findings, derived.sources, strict=True)
-            ]
         top = snapshot.undoable
         return Reply(
             200,
@@ -413,10 +420,87 @@ class Api:
                 version=snapshot.version,
                 project=project.as_posix(),
                 files=files,
-                findings=findings,
+                counts={"error": counts[0], "warning": counts[1], "info": counts[2]},
                 undoable=None if top is None else {"at": top.at, "label": top.label},
                 analysing=snapshot.analysing,
                 edits=edits,
+            ).model_dump(mode="json"),
+        )
+
+    def _findings(self, query: Query, body: bytes | None) -> Reply:
+        """A page of the newest revision's findings: from ``?offset=`` - ``0`` when none is given -
+        at most ``?limit=`` of them, or every one from the offset on when no limit is given, of
+        those ``?severity=``, ``?file=`` (a file's path, however spelled) and ``?check=`` leave,
+        in the Findings tab's order, each with its key.
+
+        Kept for the revision (:meth:`_memoised`), one answer per page and filters: a reader
+        scrolling back to a page finds it made already."""
+        revision = self._opened()
+        offset: int | None = 0
+        given = query.get("offset")
+        if given is not None:
+            offset = _integer(given)
+        if offset is None:
+            return _error(400, "bad-request", "findings takes ?offset= as a whole number from 0")
+        limit: int | None = None
+        given = query.get("limit")
+        if given is not None:
+            limit = _integer(given)
+            if limit is None or limit < 1:
+                return _error(400, "bad-request", "findings takes ?limit= as a whole number from 1")
+        severity = _single(query.get("severity"))
+        if severity is not None and severity not in LISTED:
+            return _error(400, "bad-request", "findings takes ?severity= as error, warning or info")
+        file = _single(query.get("file"))
+        check = _single(query.get("check"))
+        return self._memoised(
+            revision,
+            ("findings", offset, limit, severity, file, check),
+            lambda: self._findings_of(revision, offset, limit, severity, file, check),
+        )
+
+    def _findings_of(
+        self,
+        revision: Revision,
+        offset: int,
+        limit: int | None,
+        severity: str | None,
+        file: str | None,
+        check: str | None,
+    ) -> Reply:
+        """:meth:`_findings`' answer: the positions the filters leave, in the tab's order - a
+        file's read from where its own findings stand, sorted by severity as stably as the whole
+        revision's were - and of them the page asked for, each finding listed with where it
+        leads, as a panel lists one, and with its key."""
+        derived = self._derive(revision)
+        findings = revision.findings
+        order: Sequence[int] = derived.ranked
+        if file is not None:
+            order = sorted(
+                derived.findings.positions(Path(file)),
+                key=lambda position: findings[position].diagnostic.severity.rank,
+            )
+        if severity is not None:
+            order = [at for at in order if findings[at].diagnostic.severity == severity]
+        if check is not None:
+            order = [at for at in order if findings[at].diagnostic.check == check]
+        page = order[offset:]
+        if limit is not None:
+            page = page[:limit]
+        cache: dict[Path, Document] = {}
+        return Reply(
+            200,
+            contract.FindingsReply(
+                revision=revision.number,
+                total=len(order),
+                offset=offset,
+                findings=[
+                    {
+                        **_finding(findings[at], derived.sources[at], cache),
+                        "key": key_of(findings[at], derived.repeats[at]),
+                    }
+                    for at in page
+                ],
             ).model_dump(mode="json"),
         )
 
@@ -1493,7 +1577,7 @@ class Api:
             return kept
         made = derived(revision)
         self._derived = made
-        self._memo = {}
+        self._memo = OrderedDict()
         return made
 
     def _memoised(
@@ -1514,19 +1598,28 @@ class Api:
         stand - a type's description - changes before the revision does, which the count of
         edits covers, an undo's as well, each taking a number of its own.
 
+        At most :data:`MEMO` answers are kept, the one kept longest dropped first: a reader of a
+        findings-heavy project scrolling through its Findings tab asks a page per hundred
+        findings, every one of them a new answer.
+
         Not guarded: requests are answered on threads of their own. Two requests of one revision
         that both find nothing kept both make it, and an answer made for a revision a newer one
         has since replaced can be kept beside the newer revision's - under its own revision's
         number, so it answers for no other, and goes at the next derivation. Each answer stays
         what it would be; only work is repeated, where a lock around the making would hold every
-        other request for a kept answer behind the one being made.
+        other request for a kept answer behind the one being made. Dropping is one call no other
+        thread interrupts, :meth:`collections.OrderedDict.popitem`: requests dropping at once can
+        leave fewer answers kept than the bound, and never fail.
         """
         self._derive(revision)
         keyed = (key, revision.number, self.session.edits)
         kept = self._memo.get(keyed)
         if kept is None:
             kept = make()
-            self._memo[keyed] = kept
+            memo = self._memo
+            memo[keyed] = kept
+            while len(memo) > MEMO:
+                memo.popitem(last=False)
         return kept
 
     def _session_body(self) -> dict[str, Any]:
@@ -1562,6 +1655,7 @@ _ROUTES: Final[dict[str, dict[str, Answer]]] = {
     "/api/projects": {"GET": Api._projects},
     "/api/open": {"POST": Api._open},
     "/api/state": {"GET": Api._state},
+    "/api/findings": {"GET": Api._findings},
     "/api/file": {"GET": Api._file},
     "/api/dictionary": {"GET": Api._dictionary},
     "/api/graph": {"GET": Api._graph},

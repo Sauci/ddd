@@ -1,13 +1,14 @@
 """The server half of the benchmark of ``ddd gui`` on a large project.
 
 Times, in order, opening a project, one analysis, each of ``GET /api/state``, ``/graph``,
-``/units``, ``/types``, ``/shared`` and ``/files``, a variable's panel, a unit's panel, judging a
-removal on the Files tab, and an edit's round trip - the server driven in process, over one
+``/units``, ``/types``, ``/shared`` and ``/files``, the Findings tab's first page of findings and
+every finding of one component's file, a variable's panel, a unit's panel, judging a removal on
+the Files tab, and an edit's round trip - the server driven in process, over one
 :class:`~ddd.gui.session.Session` and one :class:`~ddd.gui.api.Api`
 (``docs/superpowers/specs/2026-09-30-gui-large-projects-design.md`` §4). Everything a measure
-needs to choose - the variable, the unit, the entry to remove - is read off the project's own
-analysed revision, sorted, so the same project measures the same things on every run; nothing
-here imports the generator.
+needs to choose - the file, the variable, the unit, the entry to remove - is read off the
+project's own analysed revision, sorted, so the same project measures the same things on every
+run; nothing here imports the generator.
 
 Every measure but ``open``, ``analysis`` and ``edit analysed`` answers a reply whose body is
 timed serialised exactly as the server would send it, ``json.dumps(reply.body, allow_nan=False)``
@@ -47,6 +48,8 @@ NAMES: Final[tuple[str, ...]] = (
     "types",
     "shared",
     "files",
+    "findings page",
+    "findings of a file",
     "variable",
     "unit",
     "remove judged",
@@ -58,6 +61,10 @@ NAMES: Final[tuple[str, ...]] = (
 
 _ENDPOINTS: Final[tuple[str, ...]] = ("state", "graph", "units", "types", "shared", "files")
 """The plain ``GET /api/<name>`` measures, asked for with no query."""
+
+_PAGE: Final = {"offset": ["0"], "limit": ["100"]}
+"""What ``findings page`` asks of ``GET /api/findings``: the Findings tab's first page, as the
+page asks it (``PAGE_SIZE`` in ``gui/src/lib/findingsWindow.ts``)."""
 
 _FORWARD_SECONDS: Final = 3_600
 """How far :func:`_analysis` moves a component file's modification time forward: past a
@@ -140,6 +147,13 @@ def _measured(session: Session, project: Path) -> list[Measure]:
         taken.append(Measure(name, elapsed, size))
         if name == "files":
             entries = reply.body["entries"]
+
+    elapsed, _, size = _get(api, "/api/findings", _PAGE)
+    taken.append(Measure("findings page", elapsed, size))
+
+    # Every finding of one file, as a component's page asks for its own: no limit.
+    elapsed, _, size = _get(api, "/api/findings", {"file": [components[0].as_posix()]})
+    taken.append(Measure("findings of a file", elapsed, size))
 
     elapsed, _, size = _get(api, "/api/variable", {"name": [variable]})
     taken.append(Measure("variable", elapsed, size))

@@ -223,7 +223,7 @@ const STATE = {
   version: 8,
   project: "C:/work/demo/demo.ddd.json",
   files: [],
-  findings: [],
+  counts: { error: 0, warning: 0, info: 0 },
   analysing: false,
   edits: 3,
 };

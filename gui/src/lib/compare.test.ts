@@ -45,7 +45,7 @@ const STATE: State = {
       findings: { error: 0, warning: 0, info: 0 },
     },
   ],
-  findings: [],
+  counts: { error: 0, warning: 0, info: 0 },
   undoable: null,
   analysing: false,
   edits: 0,

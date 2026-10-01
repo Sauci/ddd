@@ -361,16 +361,22 @@ async function openFirstVariablePicker(page: Page): Promise<string> {
   return variable;
 }
 
-/** Clicks the Findings tab and waits for whichever it shows: a first row on a findings-heavy
+/** Clicks the Findings tab and waits for whichever it shows: a first finding on a findings-heavy
  * project, or `findingCounts`'s own "Nothing to report" on a clean one (`gui/src/lib/
  * findings.ts`) - a generated project never shows anything else there, unlike Types and Shared
  * files, whose own generator never gives either tab a row to declare (resolution #1: those two
- * always show their sentence for none, read directly in their own tests below). */
+ * always show their sentence for none, read directly in their own tests below). A finding's row,
+ * not merely a first row: the table draws a placeholder for each row whose page of findings has
+ * not arrived yet, and a placeholder carries no check's chip. */
 async function openFindingsTab(page: Page): Promise<void> {
   await page.getByRole("link", { name: "Findings", exact: true }).click();
-  await expect(firstRow(page).or(page.getByText("Nothing to report", { exact: true }))).toBeVisible(
-    { timeout: LONG_TIMEOUT },
-  );
+  const finding = page
+    .getByRole("row")
+    .filter({ has: page.locator(".chip") })
+    .first();
+  await expect(finding.or(page.getByText("Nothing to report", { exact: true }))).toBeVisible({
+    timeout: LONG_TIMEOUT,
+  });
 }
 
 /** How long `undoLastEditIfAny` waits for the Undo button before deciding there is truly nothing
@@ -544,14 +550,15 @@ test("scrolling", async ({ page }) => {
     record("scrolling", formatMs(opened));
     return;
   }
-  const table = page.getByRole("grid", { name: "Findings", exact: true });
-  const box = await table.boundingBox();
-  if (box === null) throw new Error("the Findings table has no bounding box to scroll over");
+  // The table scrolls inside a box of its own (`.findings-window`, `gui/src/styles/ui.css`), not
+  // with the page: the wheel is turned over that box.
+  const box = await page.locator(".findings-window").boundingBox();
+  if (box === null) throw new Error("the Findings table has no scroll box to scroll over");
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await resetLongTasks(page);
   const result = await capped(async () => {
-    // Forty wheel steps of 600 px, 50 ms apart, the mouse over the table itself (resolution #2):
-    // the same code scrolls the page today and the table's own box once Task 7 gives it one.
+    // Forty wheel steps of 600 px, 50 ms apart, the mouse over the table's own box (resolution
+    // #2), each step a page of rows the window draws anew and may ask the server for.
     for (let step = 0; step < 40; step += 1) {
       await page.mouse.wheel(0, 600);
       await page.waitForTimeout(50);
@@ -602,10 +609,10 @@ test("findings current", async ({ page }) => {
   await expect(apply).toBeVisible({ timeout: LONG_TIMEOUT });
   // One targeted read of the revision right before the press, not a listener kept running from
   // the start of the test: that would re-parse every long-poll answer for as long as the test
-  // runs, and at 100,000 declarations findings-heavy that answer is upward of 50 MB (design doc
-  // §2) - a needless cost this avoids regardless of whether it was ever actually what slowed an
-  // earlier, listener-based version of this test; never confirmed as a cause the way
-  // `isPageCrash`'s own finding was.
+  // runs, and at 100,000 declarations findings-heavy that answer was upward of 50 MB before the
+  // state stopped carrying every finding (design doc §2) - a needless cost this avoids regardless
+  // of whether it was ever actually what slowed an earlier, listener-based version of this test;
+  // never confirmed as a cause the way `isPageCrash`'s own finding was.
   const before = await page.evaluate<number>(async () => {
     const response = await fetch("/api/state");
     const body = (await response.json()) as { revision: number };

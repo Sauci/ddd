@@ -437,13 +437,56 @@ tr.changing td {
   margin: var(--space-2) 0 0;
 }
 
-/* The Findings tab (spec 5.1, 5.2): the table has no fixed column widths, so pinning the file
-   column - quiet already - to one line, beside the chip's own rule above, leaves the message
-   column the only one that can still shrink; that is what makes it take the width the other two
-   leave and wrap there instead of overflowing. A note in a finding's panel indents under the
-   message it is about. */
+/* The Compare tab's table of findings (CompareTableView): it has no fixed column widths, so
+   pinning the file column - quiet already - to one line, beside the chip's own rule above, leaves
+   the message column the only one that can still shrink; that is what makes it take the width
+   the other two leave and wrap there instead of overflowing. A note in a finding's panel indents
+   under the message it is about. */
 .react-aria-Table[aria-label="Findings"] .react-aria-Cell.quiet {
   white-space: nowrap;
+}
+/* The Findings tab's table (spec 5.1; part 17's ruling 1): a window of its rows in a box of its
+   own, which the page's arithmetic places by ROW_HEIGHT and reckons at BOX_HEIGHT
+   (lib/findingsWindow.ts, whose test reads these two numbers here) - so every row is one line of
+   exactly that height, at a width set per column, its words cut short with an ellipsis where they
+   run over, since the panel shows a finding in full. The header stays at the top of the box, and
+   a row the keyboard brings into view stops below it rather than under it. The box does not
+   anchor its scrolling to a row: the rows drawn change as it scrolls, and the space above them
+   already stands for every row before them. */
+.findings-window {
+  max-height: 495px;
+  overflow-y: auto;
+  overflow-anchor: none;
+  scroll-padding-top: 33px;
+}
+.findings-window .react-aria-Table {
+  table-layout: fixed;
+}
+.findings-window .react-aria-TableHeader {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.findings-window .react-aria-Row,
+.findings-window .react-aria-TableHeader tr {
+  height: 33px;
+}
+.findings-window .react-aria-TableHeader .react-aria-Column,
+.findings-window .react-aria-Row .react-aria-Cell {
+  padding-block: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+.findings-window .react-aria-TableHeader .react-aria-Column {
+  background: var(--surface);
+}
+.findings-window .react-aria-Column.check {
+  width: 10.5rem;
+}
+.findings-window .react-aria-Column.file {
+  width: 11rem;
 }
 .panel-notes {
   display: flex;

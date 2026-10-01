@@ -7,10 +7,12 @@ import type {
   FilesPlanReply,
   FilesReply,
   Finding,
+  FindingsReply,
   FixReply,
   GridAxis,
   IncludedEntryReply,
   KindForm,
+  ListedFinding,
   PlannedChange,
   PlanReply,
   ProjectUnit,
@@ -910,11 +912,11 @@ export const DID_NOT_LOAD: Finding = {
 };
 
 /** The project of spec 6's screenshots: every severity, every route a finding can lead to, and
- * one whose file did not load - pump.ddd.json, still listed as the analysis last read it. In the
- * order `GET /api/state` answers, which is by file: controller's `unknown-unit` (error) and
- * `storage-mismatch` (warning), pump's `schema` (error), sensor_hub's `missing-id` (info), and
- * user_interface's `unknown-raster` (error) - each check's own default severity,
- * `src/ddd/diagnostics.py`. The tab sorts them worst first. */
+ * one whose file did not load - pump.ddd.json, still listed as the analysis last read it. Its
+ * findings, in the revision's own order, which is by file: controller's `unknown-unit` (error)
+ * and `storage-mismatch` (warning), pump's `schema` (error), sensor_hub's `missing-id` (info),
+ * and user_interface's `unknown-raster` (error) - each check's own default severity,
+ * `src/ddd/diagnostics.py`. The state counts them; `PROJECT_FINDINGS_PAGE` lists them. */
 export const PROJECT_FINDINGS: State = {
   revision: 7,
   version: 14,
@@ -953,10 +955,30 @@ export const PROJECT_FINDINGS: State = {
       findings: { error: 1, warning: 0, info: 0 },
     },
   ],
-  findings: [UNKNOWN_RPM_FINDING, STORAGE_MISMATCH, DID_NOT_LOAD, MISSING_ID, UNKNOWN_RASTER],
+  counts: { error: 3, warning: 1, info: 1 },
   undoable: null,
   analysing: false,
   edits: 0,
+};
+
+/** A finding as `GET /api/findings` lists it, its key made as the server makes one: its file,
+ * severity, check, place and words, and which repeat of those it is, as a compact json array
+ * (`ddd.gui.derived.key_of`). */
+function listed(finding: Finding, repeat = 0): ListedFinding {
+  const { file, severity, check, pointer, message } = finding;
+  return { ...finding, key: JSON.stringify([file, severity, check, pointer, message, repeat]) };
+}
+
+/** PROJECT_FINDINGS' findings as `GET /api/findings` answers them, all on one page: worst first,
+ * and within a severity in the revision's order - the three errors by file, then the warning,
+ * then the note. */
+export const PROJECT_FINDINGS_PAGE: FindingsReply = {
+  revision: 7,
+  total: 5,
+  offset: 0,
+  findings: [UNKNOWN_RPM_FINDING, DID_NOT_LOAD, UNKNOWN_RASTER, STORAGE_MISMATCH, MISSING_ID].map(
+    (finding) => listed(finding),
+  ),
 };
 
 /** A second rasters file the project includes, whose only raster - nothing sampled on it - was
@@ -979,7 +1001,8 @@ export const EMPTY_RASTERS: Finding = {
 };
 
 /** PROJECT_FINDINGS with bench.ddd.json among its files - a rasters file that loaded, with one
- * info - and its finding among the rest, both first, since `GET /api/state` answers by file. */
+ * info - first, since `GET /api/state` sorts its files by path, and that info counted with the
+ * rest. */
 export const EMPTIED_FINDINGS: State = {
   ...PROJECT_FINDINGS,
   files: [
@@ -993,7 +1016,7 @@ export const EMPTIED_FINDINGS: State = {
     },
     ...PROJECT_FINDINGS.files,
   ],
-  findings: [EMPTY_RASTERS, ...PROJECT_FINDINGS.findings],
+  counts: { error: 3, warning: 1, info: 2 },
 };
 
 /** The one fix the tab offers: `missing-id`, previewed onto SensorHub's ValueA. */
@@ -1181,10 +1204,37 @@ export const NO_FINDINGS: State = {
       findings: { error: 0, warning: 0, info: 0 },
     },
   ],
-  findings: [],
+  counts: { error: 0, warning: 0, info: 0 },
   undoable: null,
   analysing: false,
   edits: 0,
+};
+
+/** How many findings a long table has: a findings-heavy project's, constructed below. */
+export const LONG_TOTAL = 2000;
+
+/** The first page of a long table's findings - constructed, not read from an example: what
+ * `tools/generate_project.py` files on a project of its many shape with every output unread, the
+ * first hundred of its warnings, fifteen to a component, as `GET /api/findings` answers them. The
+ * table has `LONG_TOTAL` findings in all. */
+export const LONG_FIRST_PAGE: FindingsReply = {
+  revision: 3,
+  total: LONG_TOTAL,
+  offset: 0,
+  findings: Array.from({ length: 100 }, (_, index) => {
+    const component = `C${String(Math.floor(index / 15)).padStart(5, "0")}`;
+    const at = (index % 15) * 2;
+    const output = `${component}_O${String(at).padStart(4, "0")}`;
+    return listed({
+      file: `C:/work/heavy/components/${component.toLowerCase()}.ddd.json`,
+      check: "unused-output",
+      severity: "warning",
+      message: `'${output}' is written by component '${component}' but read by nobody`,
+      pointer: `component.interface[${at}]`,
+      notes: [],
+      route: { kind: "variable", name: output },
+    });
+  }),
 };
 
 /** What `GET /api/undo` answers for an adoption: the project description put back a line, and

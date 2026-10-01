@@ -55,6 +55,7 @@ __all__ = [
     "Finding",
     "FindingCounts",
     "FindingRoute",
+    "FindingsReply",
     "FixOffered",
     "FixReply",
     "Found",
@@ -67,6 +68,7 @@ __all__ = [
     "Hunk",
     "IncludedEntryReply",
     "KindForm",
+    "ListedFinding",
     "Note",
     "OpenProject",
     "OpenRequest",
@@ -216,16 +218,17 @@ class Found(_Frozen):
 
 
 class FindingCounts(_Frozen):
-    """How many findings of each severity a file has."""
+    """How many findings of each severity there are - on a file, a module or a whole revision:
+    the field holding the counts says which."""
 
     error: int
-    """How many errors are filed on the file."""
+    """How many are errors."""
 
     warning: int
-    """How many warnings are filed on the file."""
+    """How many are warnings."""
 
     info: int
-    """How many informational findings are filed on the file."""
+    """How many are informational."""
 
 
 class SourceFile(_Frozen):
@@ -329,7 +332,7 @@ class State(_Frozen):
 
     revision: int
     """Counts up from 1 at every analysis this session publishes; ``0`` before the open
-    project's first analysis, when ``files`` and ``findings`` are empty."""
+    project's first analysis, when ``files`` is empty and every count ``0``."""
 
     version: int
     """Counts up at every change of what this reply says - an analysis asked for, published or
@@ -342,8 +345,8 @@ class State(_Frozen):
     files: tuple[SourceFile, ...]
     """Every file the analysis read, sorted by path."""
 
-    findings: tuple[Finding, ...]
-    """Every finding of the analysis, grouped by the file it is filed on."""
+    counts: FindingCounts
+    """How many findings of each severity the revision has, in all."""
 
     undoable: UndoableEdit | None
     """The last edit the interface made and has not put back, or ``None`` when it has made
@@ -355,6 +358,38 @@ class State(_Frozen):
     edits: int
     """The last edit or undo this revision's analysis includes - every one numbered up to it was
     on disk when the analysis read the files - ``0`` where there is none."""
+
+
+# --- GET /api/findings ---------------------------------------------------------------------
+
+
+class ListedFinding(Finding):
+    """A finding as ``GET /api/findings`` lists it: a page of a revision's findings comes
+    without the rest, so each says which it is."""
+
+    key: str
+    """Its file, severity, check, place and words, and which repeat of those it is, counted over
+    the whole revision in the Findings tab's order: a finding keeps its key on every page, under
+    every filter, and into the next revision where it stays."""
+
+
+class FindingsReply(_Frozen):
+    """What ``GET /api/findings`` answers: a page of the newest revision's findings, those the
+    filters leave, in the Findings tab's order - worst first, and within a severity in the
+    revision's own order."""
+
+    revision: int
+    """The revision these findings are of."""
+
+    total: int
+    """How many findings the filters leave, in all."""
+
+    offset: int
+    """Where among those this page starts: ``?offset=``, ``0`` when none was given."""
+
+    findings: tuple[ListedFinding, ...]
+    """The page: at most ``?limit=`` findings from ``offset`` on, or every one from it when no
+    limit was given - none where ``offset`` is past the last."""
 
 
 # --- GET /api/file -------------------------------------------------------------------------
@@ -1663,6 +1698,7 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (Found, "serialization"),
     (OpenRequest, "validation"),
     (State, "serialization"),
+    (FindingsReply, "serialization"),
     (FileContent, "serialization"),
     (DictionaryReply, "serialization"),
     (GraphReply, "serialization"),

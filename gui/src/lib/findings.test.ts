@@ -1,9 +1,11 @@
 import { describe, expect, test } from "vitest";
-import type { Finding, FixReply, State } from "../api/types";
+import type { Finding, FindingsReply, FixReply, ListedFinding, State } from "../api/types";
 import {
+  countsOf,
   distinctFindings,
   findingCounts,
   findingRows,
+  findingsTotal,
   fixEdit,
   keyedFindings,
   leadsElsewhere,
@@ -12,6 +14,7 @@ import {
   routeHref,
   routeLabel,
   routeOf,
+  stillReported,
   unreadable,
 } from "./findings";
 import { SHARED_KINDS } from "./shared";
@@ -48,6 +51,7 @@ function fileRow(path: string, kind: string, loaded: boolean) {
   };
 }
 
+/** A state whose findings are these: counted, as `GET /api/state` counts a revision's. */
 function state(findings: Finding[]): State {
   return {
     revision: 7,
@@ -71,7 +75,7 @@ function state(findings: Finding[]): State {
         findings: { error: 1, warning: 0, info: 0 },
       },
     ],
-    findings,
+    counts: countsOf(findings),
     undoable: null,
     analysing: false,
     edits: 0,
@@ -144,6 +148,30 @@ describe("the rows of the findings tab", () => {
 
 describe("what the tab says about how many there are", () => {
   test.each([
+    [{ error: 0, warning: 0, info: 0 }, "Nothing to report"],
+    [{ error: 1, warning: 0, info: 0 }, "1 finding · 1 error"],
+    [{ error: 1, warning: 1, info: 1 }, "3 findings · 1 error, 1 warning, 1 note"],
+    [{ error: 2, warning: 0, info: 0 }, "2 findings · 2 errors"],
+    [{ error: 0, warning: 0, info: 2 }, "2 findings · 2 notes"],
+    [{ error: 0, warning: 1, info: 0 }, "1 finding · 1 warning"],
+    [{ error: 3, warning: 0, info: 1 }, "4 findings · 3 errors, 1 note"],
+  ])("%#: from the state's counts", (counts, says) => {
+    expect(findingCounts(counts, false)).toBe(says);
+  });
+
+  test("whether they are about to change does not change the words yet", () => {
+    const counts = { error: 1, warning: 2, info: 3 };
+    expect(findingCounts(counts, true)).toBe(findingCounts(counts, false));
+  });
+
+  test("every severity counted together is how many there are in all", () => {
+    expect(findingsTotal({ error: 1, warning: 2, info: 3 })).toBe(6);
+    expect(findingsTotal({ error: 0, warning: 0, info: 0 })).toBe(0);
+  });
+
+  // The Compare tab's line: its findings come in one reply, which it counts itself, and the words
+  // are the ones it said before the Findings tab's came from the state's counts.
+  test.each([
     [[], "Nothing to report"],
     [[finding()], "1 finding · 1 error"],
     [
@@ -151,8 +179,39 @@ describe("what the tab says about how many there are", () => {
       "3 findings · 1 error, 1 warning, 1 note",
     ],
     [[finding(), finding()], "2 findings · 2 errors"],
-  ])("%#", (findings, says) => {
-    expect(findingCounts(findings)).toBe(says);
+  ])("%#: from a list of its own", (findings, says) => {
+    expect(findingCounts(countsOf(findings), false)).toBe(says);
+  });
+
+  test("a list is counted by severity, and a finding nobody reports under none", () => {
+    expect(
+      countsOf([
+        finding({ severity: "info" }),
+        finding({ severity: "error" }),
+        finding({ severity: "info" }),
+        finding({ severity: "warning" }),
+        finding({ severity: "ignore" }),
+      ]),
+    ).toEqual({ error: 1, warning: 1, info: 2 });
+  });
+});
+
+describe("whether a selected finding is still reported", () => {
+  const listed = (key: string): ListedFinding => ({ ...finding(), key });
+  const reply = (...keys: string[]): FindingsReply => ({
+    revision: 8,
+    total: keys.length,
+    offset: 0,
+    findings: keys.map(listed),
+  });
+
+  test("yes, where the reply carries its key", () => {
+    expect(stillReported("b", reply("a", "b"))).toBe(true);
+  });
+
+  test("no, where it does not - however alike another finding reads", () => {
+    expect(stillReported("c", reply("a", "b"))).toBe(false);
+    expect(stillReported("a", reply())).toBe(false);
   });
 });
 

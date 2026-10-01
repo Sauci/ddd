@@ -1,25 +1,41 @@
-import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { ApiError, getFix, postEdit } from "../api/client";
-import type { State } from "../api/types";
+import {
+  skipToken,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { useCallback, useState } from "react";
+import { ApiError, getFindings, getFix, postEdit } from "../api/client";
+import type { ListedFinding, State } from "../api/types";
 import { FindingPanelView } from "../components/FindingPanelView";
 import { FindingsTableView } from "../components/FindingsTableView";
 import {
   findingCounts,
-  findingRows,
+  findingsTotal,
   fixEdit,
   noRouteReason,
   routeHref,
   routeLabel,
   routeOf,
+  stillReported,
 } from "../lib/findings";
+import {
+  arrivedPages,
+  BOX_HEIGHT,
+  pageQuery,
+  pagesOf,
+  spacersOf,
+  spanOf,
+  windowRows,
+} from "../lib/findingsWindow";
 import { type Refused, shownRefusal } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { fixLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 
 interface Props {
-  state: State | null;
+  state: State;
   stopped: boolean;
   /** Following a finding: the route it leads to, which the app navigates to. `routeOf` says
    * what that route is, and `routeHref` writes the address the link carries. */
@@ -31,12 +47,37 @@ const STALE =
 
 /** The open project's Findings tab (spec 5.1): every finding, worst first, and the panel of the
  * one selected - its route, its notes, and the one fix the tab offers where it carries one
- * (spec 5.2). */
+ * (spec 5.2). The table is a window: the rows in view and a margin, each page of them asked for
+ * as the box scrolls to it (spec 6), how many there are in all being the state's own count. */
 export function FindingsPage({ state, stopped, onOpen }: Props) {
   const queries = useQueryClient();
-  const revision = state?.revision;
-  const rows = state === null ? [] : findingRows(state.findings);
-  const [selected, setSelected] = useState<string | undefined>(undefined);
+  const revision = state.revision;
+  const total = findingsTotal(state.counts);
+  // Where the box is scrolled to and how tall it is: at the top and one box high, until the box
+  // says otherwise.
+  const [view, setView] = useState({ top: 0, height: BOX_HEIGHT });
+  const onScroll = useCallback((top: number, height: number) => setView({ top, height }), []);
+  const span = spanOf(view.top, view.height, total);
+  const pages = pagesOf(span);
+  const asked = useQueries({
+    queries: pages.map((page) => ({
+      queryKey: ["findings", revision, page],
+      queryFn: () => getFindings(pageQuery(page)),
+      // A page of one revision is the same page however often it is asked: one scrolled back
+      // to is drawn from what came, not asked again.
+      staleTime: Number.POSITIVE_INFINITY,
+    })),
+  });
+  const rows = windowRows(
+    span,
+    arrivedPages(
+      pages,
+      asked.map((page) => page.data),
+    ),
+  );
+  const unasked = asked.find((page) => page.isError)?.error ?? null;
+  // The finding whose panel is open, kept whole: the window may have scrolled its row away.
+  const [selected, setSelected] = useState<ListedFinding | undefined>(undefined);
   const [chosen, setChosen] = useState<string | undefined>(undefined);
   const [changesShown, setChangesShown] = useState(false);
   // A refused apply for a reason other than staleness, if any: cleared whenever the reader
@@ -50,32 +91,43 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
   // refused, so another finding selected in the meantime must not be given its sentence - the
   // file it names need not even be one that finding is about.
   const [stale, setStale] = useState<({ key: string | undefined } & Refused) | null>(null);
-  // The finding whose panel closed because it is no longer among the next revision's rows - the
+  // The finding whose panel closed because the next revision no longer reports it - the
   // analysis moved on, or somebody else fixed it (spec 5.3) - named above the table until
   // another finding is selected or the reader leaves the tab. `UnitsPage`'s `gone` is the same
   // pattern; a finding has no name of its own to say instead.
   const [gone, setGone] = useState(false);
 
-  const row = rows.find((entry) => entry.key === selected);
-  if (selected !== undefined && row === undefined) {
+  // Asked again of every revision while a panel is open: the findings of its file and its check,
+  // among which it is still reported or is not.
+  const reported = useQuery({
+    queryKey: ["findings", revision, "reported", selected?.file, selected?.check],
+    queryFn:
+      selected === undefined
+        ? skipToken
+        : () => getFindings({ file: selected.file, check: selected.check }),
+  });
+  if (
+    selected !== undefined &&
+    reported.data !== undefined &&
+    !stillReported(selected.key, reported.data)
+  ) {
     setSelected(undefined);
     setGone(true);
   }
-  const finding = row?.finding;
 
   const fixes = useQuery({
-    queryKey: ["fix", finding?.file, finding?.pointer, finding?.check, revision],
+    queryKey: ["fix", selected?.file, selected?.pointer, selected?.check, revision],
     queryFn:
-      finding === undefined
+      selected === undefined
         ? skipToken
-        : () => getFix(finding.file, finding.pointer, finding.check),
+        : () => getFix(selected.file, selected.pointer, selected.check),
   });
   const apply = useMutation({
     mutationFn: () => {
       const edit =
-        fixes.data === undefined || chosen === undefined || finding === undefined
+        fixes.data === undefined || chosen === undefined || selected === undefined
           ? null
-          : fixEdit(fixes.data, chosen, fixLabel(finding, chosen));
+          : fixEdit(fixes.data, chosen, fixLabel(selected, chosen));
       if (edit === null) throw new Error("there is nothing to apply");
       return postEdit(edit);
     },
@@ -84,8 +136,8 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
     // is about to be gone from the next revision's rows, but that is the reader's own doing
     // (spec 5.3 reserves the "somebody else fixed it" warning for a finding gone some other
     // way), and clearing `selected` here, before that revision even arrives, is what keeps the
-    // render-phase check below from mistaking this for one. A success is a definite answer, so
-    // it also clears a stale wait left over from an earlier attempt.
+    // render-phase check of whether it is still reported from mistaking this for one. A success
+    // is a definite answer, so it also clears a stale wait left over from an earlier attempt.
     onSuccess: () => {
       setChangesShown(false);
       setSelected(undefined);
@@ -95,7 +147,7 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
     // kind clears the other, so the panel never shows two different answers to the same apply.
     onError: (error) => {
       if (error instanceof ApiError && error.code === "stale") {
-        setStale({ key: selected, text: STALE, revision });
+        setStale({ key: selected?.key, text: STALE, revision });
         setRefused(null);
       } else {
         setRefused(`The change was refused: ${error.message}`);
@@ -113,36 +165,42 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
       ]),
   });
 
-  const select = (key: string | undefined) => {
+  const select = (finding: ListedFinding | undefined) => {
     setGone(false);
-    setSelected(key);
+    setSelected(finding);
     setChosen(undefined);
     setChangesShown(false);
     setRefused(null);
   };
 
-  if (state === null) return <p className="quiet">Reading the project's findings…</p>;
   return (
     <>
-      <p className="summary">{findingCounts(state.findings)}</p>
+      <p className="summary">{findingCounts(state.counts, false)}</p>
       {gone && <Banner tone="warning">This finding is no longer reported.</Banner>}
-      <div className={finding !== undefined ? "with-panel" : undefined}>
+      {unasked !== null && <Banner tone="error">{unasked.message}</Banner>}
+      <div className={selected !== undefined ? "with-panel" : undefined}>
         <div>
-          <FindingsTableView rows={rows} selected={selected} onSelect={select} />
+          <FindingsTableView
+            rows={rows}
+            {...spacersOf(span, total)}
+            selected={selected?.key}
+            onSelect={select}
+            onScroll={onScroll}
+          />
         </div>
-        {finding !== undefined && (
-          <div key={selected}>
+        {selected !== undefined && (
+          <div key={selected.key}>
             {/* The fix a finding carries could not even be asked for - a refusal from the
              * engine itself (e.g. a stale fingerprint), not one the reader's own choice
              * provoked - so it is said here rather than under a fix nothing offered. */}
             {fixes.isError && <Banner tone="error">{fixes.error.message}</Banner>}
             <FindingPanelView
-              finding={finding}
-              label={routeLabel(finding, state)}
-              href={routeHref(finding)}
-              reason={noRouteReason(finding, state)}
+              finding={selected}
+              label={routeLabel(selected, state)}
+              href={routeHref(selected)}
+              reason={noRouteReason(selected, state)}
               onOpen={() => {
-                const route = routeOf(finding);
+                const route = routeOf(selected);
                 if (route !== null) onOpen(route);
               }}
               fixes={fixes.data ?? null}
@@ -152,8 +210,9 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
               onChangesShown={setChangesShown}
               onApply={() => apply.mutate()}
               refusal={
-                (stale !== null && stale.key === selected ? shownRefusal(stale, revision) : null) ??
-                refused
+                (stale !== null && stale.key === selected.key
+                  ? shownRefusal(stale, revision)
+                  : null) ?? refused
               }
               busy={stopped || apply.isPending}
               onClose={() => select(undefined)}

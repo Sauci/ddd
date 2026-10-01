@@ -4407,7 +4407,8 @@ class TestToolFromElf:
 
         PYTHON_COLORS=0 keeps this independent of the environment's own colour settings:
         Python 3.14's argparse colours its usage text, which 'can_colorize' decides from
-        PYTHON_COLORS before it even looks at FORCE_COLOR, and earlier versions ignore."""
+        PYTHON_COLORS before it even looks at FORCE_COLOR. 3.13's can_colorize already reads
+        both variables; it is argparse itself that does not colour its output before 3.14."""
         monkeypatch.setenv("PYTHON_COLORS", "0")
         with pytest.raises(SystemExit) as exited:
             main(["tool"])

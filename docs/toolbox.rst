@@ -231,7 +231,8 @@ under DDD's identifiers.
      - one name stands for two different structures or enums
    * - ``elf-init-unsupported``
      - error
-     - an initial value DDD has no spelling for, such as NaN
+     - an initial value DDD has no spelling for, such as NaN, or one whose bytes run past
+       the end of the section holding it
    * - ``elf-init-dropped``
      - warning
      - a structured object whose values the image holds

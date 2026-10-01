@@ -547,11 +547,21 @@ class TestNormalized:
     def test_the_root_is_replaced_only_where_it_stands_as_a_path(self, tmp_path: Path) -> None:
         """Measured in the Docker test image, where the checkout is mounted at ``/work``:
         ``/work`` is also a substring of the committed ``examples/pressure/work/``, whose
-        ``work`` must survive untouched."""
-        text = "examples/pressure/work/x.json\n/work/examples/x.json\n"
+        ``work`` must survive untouched. ``/workspace/x.json`` pins the lookahead - without it,
+        ``/work`` matches as a prefix of ``/workspace`` too, becoming ``/home/you/dddspace/x``.
+        ``../work/x.json`` pins the lookbehind's non-``\\w`` characters - narrowed to ``\\w``
+        alone, a ``.`` no longer blocks a match starting right after ``..``."""
+        text = (
+            "examples/pressure/work/x.json\n"
+            "/work/examples/x.json\n"
+            "/workspace/x.json\n"
+            "../work/x.json\n"
+        )
         assert normalized(text, tmp_path, root=Path("/work")) == [
             "examples/pressure/work/x.json",
             f"{CHECKOUT}/examples/x.json",
+            "/workspace/x.json",
+            "../work/x.json",
         ]
 
 

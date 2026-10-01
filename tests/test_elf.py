@@ -1291,8 +1291,9 @@ class TestRefusals:
         self, name: str
     ) -> None:
         """At DWARF 4 in a .debug_types section of their own, at 5 as DW_UT_type units of
-        .debug_info: a type unit's entries restart their offsets, and pyelftools cannot resolve a
-        DWARF 5 signature at all (measured with gcc 15.2: wrong types at 4, a KeyError at 5)."""
+        .debug_info: a DWARF 4 unit's offsets count from .debug_types's own start, colliding
+        with .debug_info's, and pyelftools resolves no DWARF 5 signature at all (measured with
+        gcc 15.2: wrong types at 4, a KeyError at 5)."""
         path = FIXTURES / f"{name}.elf"
         assert refusal(path) == (
             f"'{path.as_posix()}' is not an ELF image this tool can read: its DWARF holds type "

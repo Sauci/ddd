@@ -180,7 +180,7 @@ they judge an image, not a description.
 | `elf-no-storage` | error | declared only, folded or removed by the compiler, thread-local, at no fixed address, discarded by the linker, or at an address no section holds |
 | `elf-type-unsupported` | error | a type DDD cannot state, at the path where it occurs (section 4) |
 | `elf-type-conflict` | error | two different structures or enums under one name, or a synthesised name that is taken |
-| `elf-init-unsupported` | error | an initial value DDD cannot state: NaN, an infinity, a boolean byte other than 0 and 1 |
+| `elf-init-unsupported` | error | an initial value DDD cannot state: NaN, an infinity, a boolean byte other than 0 and 1, or one whose bytes run past the end of its section |
 | `elf-init-dropped` | warning | a structured object whose bytes in the image are not all zero (section 4.6) |
 | `elf-bitfield-gap` | warning | bits skipped where the next bitfield would have fitted (section 4.5) |
 | `elf-alignment` | warning | an alignment the source states explicitly (section 4.5) |
@@ -453,8 +453,9 @@ hand-built C model.
   - thread-local locations, and a thread-local variable given no location at all, as aarch64's
     gcc and clang give one; the image's `STT_TLS` symbol then says what it is
   - enumerator values in any form
-  - strings in `.debug_str` or through `.debug_str_offsets`, their control characters written
-    out as `\xNN`: an image is untrusted, and its names and paths reach standard error
+  - strings in `.debug_str` or through `.debug_str_offsets`, and a section's name from
+    `.shstrtab`, their control characters written out as `\xNN`: an image is untrusted, and
+    its names and paths reach standard error
   - compressed debug sections, zlib's; zstd's are refused, naming `-gz=zlib`
   - a variable the linker discarded, whose address is a tombstone (section 3.1)
   - type units and gcc's link-time optimisation, both refused at open (section 2), and any

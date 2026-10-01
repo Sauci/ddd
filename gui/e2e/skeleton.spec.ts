@@ -43,6 +43,14 @@ test("a unit set from the panel is written as one value in every file declaring 
     const expected = withUnitOfValueA(before[index] as Buffer, "rpm");
     await expect.poll(() => readFileSync(file).equals(expected)).toBe(true);
   }
+  // Written is not finished. An edit is answered as soon as its files are written, and the panel
+  // stays busy - its unit field disabled - until what the edit changed has been asked for again:
+  // typed into in that moment, the field can turn disabled under the typing, and the text never
+  // goes in. A reader sees the Apply finish as the panel saying there is nothing left to change,
+  // and the field taking typing again.
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  await expect(panel.getByText("Nothing to change")).toBeVisible();
+  await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toBeEnabled();
 
   await chooseUnit(page, "%");
   await page.getByRole("button", { name: "Apply to 2 files" }).click();

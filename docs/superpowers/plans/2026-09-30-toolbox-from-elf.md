@@ -185,6 +185,17 @@ def document_text(description: Description, component: str | None) -> str: ...
 # Task 8 — ddd.cli
 def _command_tool_from_elf(args: argparse.Namespace) -> int: ...
 def _write_output(path: Path, text: Callable[[], str], bag, output_format: str, *sources: Path) -> None: ...
+
+# The final review's fix wave — ddd.elf, where Task 2's signature grew
+DISCARDED: Final[str]  # an address the linker wrote for a discarded variable, no symbol there
+def read_variables(
+    units: Iterable[Unit],
+    *,
+    big_endian: bool,
+    thread_local: frozenset[str] = frozenset(),
+    objects: frozenset[tuple[str, int]] = frozenset(),  # (name, address) of every object symbol
+    address_size: int = 4,
+) -> tuple[Variable, ...]: ...
 ```
 
 ---
@@ -6399,15 +6410,17 @@ And by hand, over `examples/firmware/firmware.elf` and the `powerpc` row: print 
 
 | Task | Commits | Review | Notes |
 | --- | --- | --- | --- |
-| 1 the fixture matrix | | | |
-| 2 the reader over protocols | | | |
-| 3 pyelftools and the matrix | | | |
-| 4 findings and selection | | | |
-| 5 the mapping | | | |
-| 6 initial values | | | |
-| 7 DDD's check, `describe` | | | |
-| 8 the command line | | | |
-| 9 the documentation | | | |
+| 1 the fixture matrix | `9bc64d2`, `65d00f1` | Approved; one fix round | The service hands what it writes to the checkout's owner and `stripped.elf` is 0644 (ruling 12); `Nested_Frame` joined the matrix (ruling 11) |
+| 2 the reader over protocols | `b3603e4`, `6b4040e` | One fix round | Every `DW_FORM_dataN` width and the enumerator filter pinned by a named test |
+| 3 pyelftools and the matrix | `40eab2c`, `4f2bf6f` | One fix round | `SHF_ALLOC` and `_symbols`' exclusion pinned; the floor re-measured: 0.32 reads the matrix, 0.31 refuses `strict` |
+| 4 findings and selection | `977cde2` | Approved | From this task on, each implementer audited the hidden branches and data values its code added (ruling 13) |
+| 5 the mapping | `a0dbbce`, `3195b21` | Approved | The audit pinned `_FAMILIES`, `_DATATYPES` and `_ENCODED_AS` rows no planned test reached |
+| 6 initial values | `4c36b39` | Approved | Every `_FORMATS` row pinned; the test file's `json` import moved to Task 7 (ruling 14) |
+| 7 DDD's check, `describe` | `fc0f839`, `e15ecea`, `99616f7` | One fix round | An image whose section runs past the end of its file is refused at open (ruling 15) |
+| 8 the command line | `dffd214` | Approved | `--format`'s choices pinned |
+| 9 the documentation | `36b7f47`, `800b5bb` | One fix round | The guide's commands name `examples/firmware/firmware.elf`, where the transcripts run; its severities are held to `FINDINGS` (ruling 13) |
+| Milestone gate | at `800b5bb` | Every gate 0 but `PY312`, whose one failure is master's own (see below) | The fixture rebuild reproduced every file; `ddd:dev` never touched |
+| The final review's fix wave | `817d498` to `f246363`, eleven commits | Re-reviewed: every finding addressed | Type units and gcc LTO refused, a discarded variable read as discarded, any exception reading an image refused at open, selection linear, and the minors (ruling 16) |
 
 ## What was left open
 
@@ -6415,7 +6428,12 @@ Filled in as the work goes. Each entry says what was not done and what it costs.
 
 - **Packing is not detected** (spec section 4.5). A packed structure is described member for member, and DDD's generated structure is not packed. The user guide says so; comparing offsets against a layout the image's own toolchain computes is its own piece of work (spec section 11).
 - **No custom section without contents and no `_Atomic` variable in the fixtures** (ruling 2): both reached through hand-built models and doubles only.
-- **A glob over a large image is checked by DDD in one component**, every pass writing and loading it again. Nothing was measured on a large image; a run describing thousands of variables with many refusals would repeat the analysis once per pass.
+- **A glob over a large image is checked by DDD in one component**, every pass writing and loading it again. Measured by the final review on a synthetic image of 40,000 variables: `describe(['*'])` takes 3.3 s once selection groups its matches in one pass (21.9 s before). The review found the passes bounded: load errors surface in the first and analysis errors in the second.
+- **gcc's link-time optimisation is refused, not read** (ruling 16). Reading it means following `DW_AT_abstract_origin` from the `<artificial>` unit to each variable's early-debug entry in another unit, without reading that entry a second time as removed; it wants LTO rows in the matrix. clang's `-flto` reads as the plain build does.
+- **DWARF type units are refused, not read** (ruling 16). pyelftools cannot resolve a DWARF 5 type signature, and the reader's type memo would need the section beside the offset.
+- **One test fails in the Docker test service on Python 3.12, exactly as on master**: `tests/test_transcripts.py`'s `normalized()` replaces the container root `/work` as a substring, which also rewrites `examples/pressure/work/`, so `docs/comparing_deliveries.rst`'s transcripts fail there. Measured at `06d8737` in the same image; not this branch's to fix.
+- **Four small findings of the fix wave's re-review are left to the maintainer** (ruling 16): the `ddd tool` usage test compares argparse's text whole, which `FORCE_COLOR=1` colours on Python 3.14; the design spec and a comment in `ddd.elf` explain the type-unit failure inexactly (at DWARF 4 a type unit's offsets count from the start of `.debug_types`; at DWARF 5 only the signature lookup fails); the design spec and the guide word ambiguity as "define at different addresses", which leaves out the units whose variable has no address, still reported as ambiguous; and an ELF section's name, unlike a DWARF string, reaches stderr unescaped in two refusals of a crafted image.
+- **Two deferred minors stay as they are**: `initial_value` given an empty or short `raw` raises a bare exception, which `describe` cannot reach (zero-length arrays and odd sizes are refused before, and every section with contents lies within its file); and the `or ""` of the `ModuleNotFoundError` check is held by mypy only, the import system always naming the module.
 
 ## Rulings taken
 
@@ -6432,3 +6450,8 @@ Filled in as the work goes. Each entry says what was not done and what it costs.
 | 9 | **The x86_64 row is a static PIE** | It gives `ET_DYN` a real image, the spec accepting both kinds | None |
 | 10 | **Spec corrections made while planning** (commit `aa2984b` and the plan's own commit): `note` is `info`; the check adds `missing-id=ignore`; the typedef closest to a type names it; a section without contents states no `init` rather than `init: null`; strict DWARF 2 and a unit without `-g` join the matrix | Each measured or read off DDD's code while this plan was written | Recorded in the spec's evidence section |
 | 11 | **The fixture gains an array of structures inside a structure, a two dimensional array member and signed bitfields** (`Sample_t`, `Frame_t`, `Nested_Frame`), appended after `fixture_entry` - asked for by the maintainer after Task 1's first commit | The fixture had one-dimensional arrays and unsigned bitfields in structures only; these shapes were reached by hand-built models alone. Appended at the end so no line an earlier case or a transcript cites moves; Task 3 and Task 8 hold every row to them | A row laying them out differently fails Task 3's new test, which is what it is there to find |
+| 12 | **The fixture service chowns what it writes to the owner of the checkout (`.`), and makes `stripped.elf` 0644** (`66d2b00`, Task 1's review) | A directory the run itself may create as root is no witness of who owns the checkout; `strip` marks what it writes executable | None |
+| 13 | **What the gates cannot see is audited by each implementer from Task 4 on, and `FINDINGS`' severities are held to the guide** (`d2ff071`) | Tasks 2 and 3 each needed a fix round for a branch or a data value the plan's own tests left unpinned; Task 4's severity test is parametrized over the table itself | A few tests beyond the plan's text, each named in its task's commit |
+| 14 | **Each task's test-file imports are the ones its own tests use** (`10c1ae5`): `json` moved from Task 6 to Task 7 | The plan's code was pre-run with Tasks 4 to 7 together, which hid an import Task 6 alone leaves unused | None |
+| 15 | **An image whose section with contents runs past the end of its file is refused at open** (Task 7's review) | A lying section header let a read come back short, and `describe` raised a bare `IndexError` | One refusal sentence |
+| 16 | **The final review's fix wave**: an image carrying DWARF type units, or built with gcc's link-time optimisation, is refused at open with a sentence naming the flag; a variable whose address is the linker's tombstone (0, or all ones) with no object symbol of its name there reads "the linker discarded its storage"; any exception reading an image is a refusal, exit 2; a definition's own type completes an array of no size; one name at one address is one variable; the command line is judged before the image is read; DWARF strings' control characters are written out; and the minors and four parked findings listed under *What was left open* | Each measured by the final review on real gcc 15.2 and lld builds the spec never listed (`-fdebug-types-section`, `--gc-sections` with flash at 0, `-flto`, `extern T x[]`, `-fcommon`, damaged images), and re-measured after the fix; the design spec records each | Type-unit and gcc LTO images refused until they are read; a static really at address 0 in an image stripped of its local symbols reads as discarded |

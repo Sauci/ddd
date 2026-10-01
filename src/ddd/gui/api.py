@@ -108,6 +108,7 @@ from ddd.project_shared import (
     SECTIONS,
     Vocabulary,
     entry_findings,
+    entry_in_place,
     shared_rows,
     shown,
 )
@@ -118,12 +119,14 @@ from ddd.project_types import (
     members_of,
     row_of,
     type_findings,
+    type_in_place,
     type_rows,
     uses_of,
 )
 from ddd.project_units import (
     adoptable,
     description_of,
+    listed_in_place,
     places_of,
     previewed,
     unit_findings,
@@ -752,6 +755,10 @@ class Api:
         if built is None or (unit not in built.units and unit not in built.vocabulary):
             return _undeclared(revision, unit)
         cache: dict[Path, Document] = {}
+        # Its description is read where the index recorded it listed: no neighbour's (`listed_in_
+        # place`), answered as a unit no unchanged file declares until the analysis reads it again.
+        if not listed_in_place(built, unit, cache):
+            return _undeclared(revision, unit)
         derived = self._derive(revision)
         return Reply(
             200,
@@ -855,6 +862,11 @@ class Api:
         if built is None or name not in built.types:
             return _undeclared(revision, name)
         cache: dict[Path, Document] = {}
+        # Every key below is read where the index recorded the type: none of a neighbour's
+        # (`type_in_place`), answered as a type no unchanged file declares until the analysis
+        # reads its file again.
+        if not type_in_place(built, name, cache):
+            return _undeclared(revision, name)
         site = built.types[name]
         derived = self._derive(revision)
         row = row_of(built, name, derived.findings, cache)
@@ -978,6 +990,11 @@ class Api:
         if built is None or name not in built.constants:
             return _undeclared(revision, name)
         cache: dict[Path, Document] = {}
+        # Its keys are read where the index recorded the entry: none of a neighbour's
+        # (`entry_in_place`), answered as an entry no unchanged file declares until the analysis
+        # reads its file again.
+        if not entry_in_place(CONSTANTS, built, name, cache):
+            return _undeclared(revision, name)
         site = built.constants[name]
         # The whole entry's display texts in one read, through the descriptor: `value` as the json
         # text its file spells and `description` as the string it holds, which is what
@@ -1007,6 +1024,9 @@ class Api:
         if built is None or name not in built.sections:
             return _undeclared(revision, name)
         cache: dict[Path, Document] = {}
+        # As a constant's: none of a neighbour's keys under this entry's name.
+        if not entry_in_place(SECTIONS, built, name, cache):
+            return _undeclared(revision, name)
         site = built.sections[name]
         texts = shown(SECTIONS, built, name, cache)
         return Reply(
@@ -1033,6 +1053,9 @@ class Api:
         if built is None or name not in built.rasters:
             return _undeclared(revision, name)
         cache: dict[Path, Document] = {}
+        # As a constant's: none of a neighbour's keys under this entry's name.
+        if not entry_in_place(RASTERS, built, name, cache):
+            return _undeclared(revision, name)
         site = built.rasters[name]
         texts = shown(RASTERS, built, name, cache)
         return Reply(

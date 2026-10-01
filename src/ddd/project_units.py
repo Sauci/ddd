@@ -83,15 +83,43 @@ def unit_rows(
     )
 
 
+def _lists(document: Document, site: Site, unit: str) -> bool:
+    """Whether the place ``site`` names in ``document`` still lists ``unit``: a spelling alone, or
+    an entry whose ``unit`` it is."""
+    listed: object = document.value_at(site.pointer)
+    if isinstance(listed, dict):
+        spelled: object = listed.get("unit")
+        return spelled == unit
+    return listed == unit
+
+
+def listed_in_place(built: Index, unit: str, cache: dict[Path, Document]) -> bool:
+    """Whether some entry the index recorded listing ``unit`` still lists it where it was
+    recorded, its file read as it now stands - or the vocabulary does not list it at all, and no
+    entry is read for it.
+
+    An entry above taken out of a units file's list, or put back by an undo, moves every entry
+    after it, and until the analysis reads the file again, the place recorded holds another unit,
+    or none. Asked by the unit's panel before it reads a description, as
+    :func:`ddd.variables.declarations_of` checks a declaration's name.
+    """
+    sites = built.vocabulary.get(unit, ())
+    if not sites:
+        return True
+    return any(_lists(read(site.path, cache), site, unit) for site in sites)
+
+
 def description_of(built: Index, unit: str, cache: dict[Path, Document]) -> str | None:
     """What the vocabulary says ``unit`` means: the description of the first entry listing it,
-    read from its file; ``None`` outside the vocabulary and for an entry that is a spelling
-    alone."""
-    first = next(iter(built.vocabulary.get(unit, ())), None)
-    if first is None:
-        return None
-    described = read(first.path, cache).value_at(f"{first.pointer}.description")
-    return described if isinstance(described, str) else None
+    read from its file; ``None`` outside the vocabulary, for an entry that is a spelling alone,
+    and where no entry recorded listing it still lists it there - an entry above moved since the
+    analysis read the file, and the place holds another unit's description, or none."""
+    for site in built.vocabulary.get(unit, ()):
+        document = read(site.path, cache)
+        if _lists(document, site, unit):
+            described = document.value_at(f"{site.pointer}.description")
+            return described if isinstance(described, str) else None
+    return None
 
 
 def places_of(

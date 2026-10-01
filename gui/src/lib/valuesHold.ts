@@ -67,10 +67,12 @@ export function holdAfter(
 }
 
 /** Whether an Apply may be planned over `shown`, the values the grid shows: only once they are the
- * answer of the revision the page holds, or of a newer one. Not over an older revision's answer,
- * kept on screen while the page's own is asked for, nor over what the grid holds of an Apply the
- * page's revision does not include yet: an Apply planned over either would hold those values as
- * its values from before. */
+ * answer of the revision the page holds, or of a newer one - not over an older revision's answer,
+ * kept on screen while the page's own is asked for, which an Apply's hold would then keep as its
+ * values from before. What the grid holds of its own Apply carries the revision the Apply was
+ * made over, and passes this while the page's revision is that one: a plan over it is asked for,
+ * and the server refuses it `analysing` - the file the Apply wrote is not analysed yet - until the
+ * analysis lands. */
 export function appliesOver(shown: ValuesReply, state: Pick<State, "revision">): boolean {
   return shown.revision >= state.revision;
 }

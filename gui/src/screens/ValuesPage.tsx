@@ -57,11 +57,14 @@ type Editing = { row: number; column: number; typed: string } | null;
  * `shownSentence`/`label` below choose between the two once, rather than at each prop.
  *
  * What an Apply wrote shows at once (spec 6): `GET /api/values` answers what the last analysis
- * read, so the grid holds the values its own Apply wrote - and, once the Undo strip puts that
- * Apply back, the values from before it - until an answer of a revision including that edit has
- * come, when the hold ends (`valuesShown`, stamped by `holdAfter`). No Apply is planned over values
- * that are not the page's revision's own answer (`appliesOver`), so that the values a hold keeps
- * from before its Apply are always that revision's.
+ * read, so while the grid stays open it holds the values its own Apply wrote - and, once the Undo
+ * strip puts that Apply back, the values from before it - until an answer of a revision including
+ * that edit has come, when the hold ends (`valuesShown`, stamped by `holdAfter`). The hold is the
+ * open grid's own: a grid left and opened again within the analysis shows the server's answer,
+ * under the note, until the analysis lands. No Apply is planned over an older revision's answer
+ * kept on screen (`appliesOver`), so the values a hold keeps from before its Apply are the page's
+ * revision's own; over what the grid holds of its own Apply, the server refuses a plan
+ * `analysing` until that Apply is analysed.
  */
 export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   const queries = useQueryClient();
@@ -88,7 +91,8 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   if (holding !== hold) setHold(holding);
   const shown =
     values.data === undefined ? undefined : valuesShown(holding, undone, state, values.data);
-  // Whether an Apply may be planned over the values shown: only over the page's revision's own.
+  // Whether an Apply may be planned over the values shown: not over an older revision's answer
+  // kept on screen (`appliesOver`).
   const current = shown !== undefined && appliesOver(shown, state);
 
   const [physical, setPhysical] = useState(true);

@@ -204,6 +204,16 @@ def kind_of(built: Index, name: str, cache: dict[Path, Document]) -> str:
     return _string(built, name, "type", cache) if name in built.types else ""
 
 
+def type_in_place(built: Index, name: str, cache: dict[Path, Document]) -> bool:
+    """Whether the entry the index recorded for ``name`` still names it, its file read as it now
+    stands: an entry above taken out of the file's list, or put back by an undo, leaves another
+    type at that place, or none, until the analysis reads the file again - and every key the panel
+    shows is read there. Asked by the type's panel before it reads the entry, as
+    :func:`ddd.variables.declarations_of` checks a declaration's name. Trusts ``name`` is one of
+    ``built.types``, as the route checks before it asks."""
+    return _string(built, name, "name", cache) == name
+
+
 def fixed_by(built: Index, name: str, cache: dict[Path, Document]) -> dict[str, str]:
     """What the type states, as the json text it is written as, per key."""
     site = built.types.get(name)

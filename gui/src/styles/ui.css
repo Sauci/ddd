@@ -179,21 +179,28 @@ tr.changing td {
   color: var(--ink-quiet);
   font-size: var(--text-small);
 }
-/* The heading's own (`UpdatingStatus`), last in the heading's row: it takes only the room the row
-   has left - its basis and its least width are nothing, so its words never decide where the row
-   breaks - and is cut short rather than wrapped, one line high whether or not it says anything:
-   its words coming and going never change the heading's height or move what is below it. */
-.updating-status {
+/* The heading's own (`UpdatingStatus`), last in the heading's row. It needs no room on its line:
+   its basis and its least width are nothing, and a margin gives back the row's gap before it, its
+   words indented by as much - so it never starts a line of its own, empty or not, beside the open
+   Undo strip's own line too, or after a line its items filled. It takes what room its line has
+   left, cut short rather than wrapped, and always holds a line - a space of no width before its
+   words - so it sits on the baseline the same way empty as with them: their coming and going
+   never change the heading's height, or move what is below it. */
+.heading > .updating-status {
   flex: 1 1 0;
   min-width: 0;
   height: 1.5em;
-  margin: 0;
+  margin: 0 0 0 calc(-1 * var(--space-3));
   overflow: hidden;
+  text-indent: var(--space-3);
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--ink-quiet);
   font-size: var(--text-small);
   line-height: 1.5;
+}
+.heading > .updating-status::before {
+  content: "\200b";
 }
 .panel-refusal {
   margin: var(--space-2) 0 0;

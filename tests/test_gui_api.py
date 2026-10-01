@@ -5389,6 +5389,151 @@ class TestRaster:
         assert (reply.status, reply.body["error"]) == (409, "no-project")
 
 
+class TestAnEntryMovedSinceTheAnalysis:
+    """An entry's panel asked after its file changed and before the analysis reading it again.
+
+    The index recorded each entry where its file's list held it, and an entry above it taken out -
+    or put back by an undo, which asks every open panel again at once - leaves another entry, or
+    none, at that place. Each panel's route first checks that the entry there still names the one
+    asked for, as :func:`ddd.variables.declarations_of` checks a variable's declaration, and where
+    it does not, answers what it answers for an entry no unchanged file declares: never a
+    neighbour's fields under this entry's name. Over copies of examples/vocabulary and, for types,
+    examples/structures, on a session never started, so a file written after the analysis stays
+    unread by it.
+    """
+
+    @staticmethod
+    def opened(root: Path, project_file: str) -> Api:
+        session = Session(root)
+        session.open(root / project_file)
+        return Api(session, root / project_file)
+
+    @staticmethod
+    def listed(root: Path, file: str, key: str, entries: list[Any]) -> None:
+        """``file`` of the copy, its list under ``key`` replaced by ``entries``."""
+        path = root / file
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data[key] = entries
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    @staticmethod
+    def refused(name: str, file: str) -> dict[str, str]:
+        return {
+            "error": "unreadable",
+            "message": (
+                f"'{name}' is not declared in any file that has not changed since, "
+                f"and {file} changed since it was read"
+            ),
+        }
+
+    def test_a_constant(self, tmp_path: Path) -> None:
+        root = copied_example(tmp_path, "vocabulary")
+        trend = json.loads((root / "constants.ddd.json").read_text(encoding="utf-8"))["constants"]
+        kept = {"name": "KEPT", "value": 2, "description": "stays where it is"}
+        spare = {"name": "SPARE", "value": 3, "description": "taken out after the analysis"}
+        last = {"name": "LAST", "value": 4, "description": "comes up into the place above"}
+        self.listed(root, "constants.ddd.json", "constants", [kept, spare, *trend, last])
+        api = self.opened(root, "project.ddd.json")
+        assert get(api, "/api/constant", name="TREND_SAMPLES").body["value"] == "16"
+        self.listed(root, "constants.ddd.json", "constants", [kept, *trend, last])
+        # Where the index recorded TREND_SAMPLES, the file now holds LAST.
+        reply = get(api, "/api/constant", name="TREND_SAMPLES")
+        assert (reply.status, reply.body) == (
+            409,
+            self.refused("TREND_SAMPLES", "constants.ddd.json"),
+        )
+        still = get(api, "/api/constant", name="KEPT")
+        assert (still.status, still.body["value"], still.body["description"]) == (
+            200,
+            "2",
+            "stays where it is",
+        )
+
+    def test_a_section(self, tmp_path: Path) -> None:
+        root = copied_example(tmp_path, "vocabulary")
+        fast, calib = json.loads((root / "sections.ddd.json").read_text(encoding="utf-8"))[
+            "sections"
+        ]
+        spare = {"section": ".spare", "access": "read-write", "alignment": 8}
+        last = {"section": ".last", "access": "read-only", "alignment": 2}
+        self.listed(root, "sections.ddd.json", "sections", [fast, spare, calib, last])
+        api = self.opened(root, "project.ddd.json")
+        assert get(api, "/api/section", name=".calib").body["access"] == "read-only"
+        self.listed(root, "sections.ddd.json", "sections", [fast, calib, last])
+        reply = get(api, "/api/section", name=".calib")
+        assert (reply.status, reply.body) == (409, self.refused(".calib", "sections.ddd.json"))
+        still = get(api, "/api/section", name=".fast_ram")
+        assert (still.status, still.body["access"], still.body["alignment"]) == (
+            200,
+            "read-write",
+            "4",
+        )
+
+    def test_a_raster(self, tmp_path: Path) -> None:
+        root = copied_example(tmp_path, "vocabulary")
+        shipped = json.loads((root / "rasters.ddd.json").read_text(encoding="utf-8"))["rasters"]
+        fast, control, diagnostic = shipped
+        last = {"raster": "1000ms", "event": 3, "cycle": "1000ms"}
+        self.listed(root, "rasters.ddd.json", "rasters", [fast, control, diagnostic, last])
+        api = self.opened(root, "project.ddd.json")
+        assert get(api, "/api/raster", name="100ms").body["event"] == "2"
+        self.listed(root, "rasters.ddd.json", "rasters", [fast, diagnostic, last])
+        reply = get(api, "/api/raster", name="100ms")
+        assert (reply.status, reply.body) == (409, self.refused("100ms", "rasters.ddd.json"))
+        still = get(api, "/api/raster", name="1ms")
+        assert (still.status, still.body["event"], still.body["description"]) == (
+            200,
+            "0",
+            "fast control task",
+        )
+
+    def test_a_unit(self, tmp_path: Path) -> None:
+        # Every shape the place can hold: the same spelling, the same entry, another spelling,
+        # another entry, and nothing - past the list's new end.
+        root = copied_example(tmp_path, "vocabulary")
+        rpm = {"unit": "rpm", "description": "rotational speed, revolutions per minute"}
+        hpa = {"unit": "hPa", "description": "taken out after the analysis"}
+        degc = {"unit": "degC", "description": "temperature"}
+        self.listed(root, "units.ddd.json", "units", ["Nm", rpm, hpa, "kPa", "bar", degc])
+        api = self.opened(root, "project.ddd.json")
+        assert get(api, "/api/unit", name="degC").body["description"] == "temperature"
+        self.listed(root, "units.ddd.json", "units", ["Nm", rpm, "kPa", "bar", degc])
+        for moved in ("kPa", "bar", "degC"):
+            reply = get(api, "/api/unit", name=moved)
+            assert (reply.status, reply.body) == (409, self.refused(moved, "units.ddd.json"))
+        spelled = get(api, "/api/unit", name="Nm")
+        assert (spelled.status, spelled.body["description"]) == (200, None)
+        described = get(api, "/api/unit", name="rpm")
+        assert (described.status, described.body["description"]) == (
+            200,
+            "rotational speed, revolutions per minute",
+        )
+        # The Units tab reads each description the same way: a moved entry's is none of its
+        # neighbour's - bar's place now holds degC's entry, and its description.
+        rows = {row["unit"]: row["description"] for row in get(api, "/api/units").body["units"]}
+        assert (rows["rpm"], rows["bar"], rows["degC"]) == (
+            "rotational speed, revolutions per minute",
+            None,
+            None,
+        )
+
+    def test_a_type(self, tmp_path: Path) -> None:
+        root = copied_example(tmp_path, "structures")
+        types = json.loads((root / "types.ddd.json").read_text(encoding="utf-8"))["types"]
+        api = self.opened(root, "project.ddd.json")
+        assert get(api, "/api/type", name="Sample_t").body["kind"] == "struct"
+        # DriverStatus_t taken out: where the index recorded Sample_t, the file now holds Status_t.
+        self.listed(root, "types.ddd.json", "types", [types[0], *types[2:]])
+        reply = get(api, "/api/type", name="Sample_t")
+        assert (reply.status, reply.body) == (409, self.refused("Sample_t", "types.ddd.json"))
+        still = get(api, "/api/type", name="Temperature_t")
+        assert (still.status, still.body["kind"], still.body["description"]) == (
+            200,
+            "scalar",
+            "A temperature as every component of this project agrees to see it",
+        )
+
+
 class TestWhatAComponentMayAdd:
     @pytest.fixture
     def demo(self, tmp_path: Path) -> tuple[Api, Path]:

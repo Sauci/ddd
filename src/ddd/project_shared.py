@@ -414,6 +414,24 @@ def shown(
     return display
 
 
+def entry_in_place(
+    vocabulary: Vocabulary, built: Index, name: str, cache: dict[Path, Document]
+) -> bool:
+    """Whether the entry the index recorded for ``name`` still names it, its file read as it now
+    stands.
+
+    The index recorded each entry where its file's list held it. Taken out of a list - or put back
+    into it by an undo - an entry above moves every entry after it, and until the analysis reads
+    the file again, the place recorded holds another entry, or none: its keys are not this one's to
+    show. Asked by an entry's panel before it reads the entry there, as
+    :func:`ddd.variables.declarations_of` checks a declaration's name before it reads one. Trusts
+    ``name`` is one of the vocabulary's entries, as the panel's route checks before it asks.
+    """
+    entry = vocabulary.entries(built)[name]
+    named: object = read(entry.path, cache).value_at(f"{entry.pointer}.{vocabulary.name_key}")
+    return named == name
+
+
 def text_of(
     vocabulary: Vocabulary, built: Index, name: str, key: str, cache: dict[Path, Document]
 ) -> str:

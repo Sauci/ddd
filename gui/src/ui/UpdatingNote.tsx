@@ -9,12 +9,13 @@ export function UpdatingNote() {
 }
 
 /**
- * The heading's "Updating the findings…" (spec 6): the screen's one status region, in the
- * project's heading, a component's and the values grid's. It stays in the heading whether or not
- * anything updates, empty while nothing does, and its words arrive when an update starts - the
- * change a screen reader announces. Last in the heading's row, in whatever room the row has left:
- * cut short rather than wrapped, and one line high either way, its words coming and going never
- * change the heading's height (`ui.css`).
+ * The heading's "Updating the findings…" (spec 6): of a screen's status regions, the one that
+ * says its findings are updating - in the project's heading, a component's and the values grid's.
+ * It stays in the heading whether or not anything updates, empty while nothing does, and its words
+ * arrive when an update starts - the change a screen reader announces. Last in the heading's row,
+ * it needs no room of its own and takes what its line has left, cut short rather than wrapped:
+ * where none is left - beside the open Undo strip's own line - it shows nothing, and is still
+ * heard. Its words coming and going never change the heading's height (`ui.css`).
  */
 export function UpdatingStatus({ updating }: { updating: boolean }) {
   return (

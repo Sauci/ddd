@@ -263,7 +263,8 @@ class SharedRow:
     """What the entry states, built by its vocabulary's own :attr:`Vocabulary.states` rule from the
     display text of its keys - a constant's value as the json text its file spells (``16``,
     ``2.0``), a section's access and alignment in one cell (``read-only, align 4``), a raster's
-    event and cycle in one too (``event 1, 10ms``)."""
+    event and cycle in one too (``event 1, 10ms``). ``""`` where the place the index recorded no
+    longer names the entry (:func:`entry_in_place`), until the analysis reads its file again."""
 
     uses: int
     """How many shapes name it."""
@@ -354,7 +355,10 @@ def shared_rows(
     built: Index, findings: FindingsByFile, cache: dict[Path, Document]
 ) -> tuple[SharedRow, ...]:
     """Every entry the tab lists, sorted by kind then name: every vocabulary in :data:`HELD`, from
-    every home each declares its entries at."""
+    every home each declares its entries at.
+
+    The rows are the index's, an entry taken out of its file since the analysis among them until
+    the next one lands; what each states is read where the index recorded it (:func:`_states`)."""
     rows = [
         row_of(vocabulary, built, name, findings, cache)
         for vocabulary in HELD
@@ -371,15 +375,28 @@ def row_of(
     cache: dict[Path, Document],
 ) -> SharedRow:
     """One entry's own row: what :func:`shared_rows` would answer for ``name`` of ``vocabulary``
-    alone, without building every other row alongside it - what ``GET /api/constant`` needs one
-    of."""
+    alone, without building every other row alongside it."""
     return SharedRow(
         kind=vocabulary.kind,
         name=name,
-        states=vocabulary.states(shown(vocabulary, built, name, cache)),
+        states=_states(vocabulary, built, name, cache),
         uses=len(vocabulary.used(built).get(name, ())),
         findings=len(entry_findings(vocabulary, built, name, findings)),
     )
+
+
+def _states(vocabulary: Vocabulary, built: Index, name: str, cache: dict[Path, Document]) -> str:
+    """A row's ``States`` cell: what the entry states, by its vocabulary's own rule - or ``""``
+    where the place the index recorded no longer names it (:func:`entry_in_place`).
+
+    An entry above taken out of the file's list, or put back by an undo, leaves another entry at
+    that place, or none, until the analysis reads the file again: the row keeps its name and states
+    none of another entry's keys. Trusts ``name`` is one of the vocabulary's entries, as
+    :func:`entry_in_place` does: :func:`shared_rows` names no other.
+    """
+    if not entry_in_place(vocabulary, built, name, cache):
+        return ""
+    return vocabulary.states(shown(vocabulary, built, name, cache))
 
 
 def entry_findings(

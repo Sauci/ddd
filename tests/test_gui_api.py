@@ -5390,7 +5390,8 @@ class TestRaster:
 
 
 class TestAnEntryMovedSinceTheAnalysis:
-    """An entry's panel asked after its file changed and before the analysis reading it again.
+    """An entry's panel, and a tab's rows, asked after its file changed and before the analysis
+    reading it again.
 
     The index recorded each entry where its file's list held it, and an entry above it taken out -
     or put back by an undo, which asks every open panel again at once - leaves another entry, or
@@ -5400,6 +5401,14 @@ class TestAnEntryMovedSinceTheAnalysis:
     neighbour's fields under this entry's name. Over copies of examples/vocabulary and, for types,
     examples/structures, on a session never started, so a file written after the analysis stays
     unread by it.
+
+    A tab lists every entry the index recorded - the one taken out too, until the analysis lands -
+    with the uses and the findings the analysis counted, and reads what each entry says of itself
+    where the index recorded it. A row whose place no longer names its entry keeps its name and
+    shows none of its file's fields, empty, until the analysis lands. The Shared files and the
+    Units tabs are asked around the page's own Remove, over a gated session, so between the edit
+    and its analysis; no edit takes a type out, so the Types tab's file is saved from outside, and
+    the tab asked before the poll notices.
     """
 
     @staticmethod
@@ -5532,6 +5541,193 @@ class TestAnEntryMovedSinceTheAnalysis:
             "scalar",
             "A temperature as every component of this project agrees to see it",
         )
+
+    @staticmethod
+    def removing(api: Api, plan: str, **asked: str) -> dict[str, Any]:
+        """The edit the page posts for a Remove ``plan`` previews: each change without its hunks,
+        as :func:`applied` posts one."""
+        preview = get(api, plan, action="remove", **asked)
+        assert preview.status == 200, preview.body
+        changes = [
+            {key: change[key] for key in ("file", "fingerprint", "operations")}
+            for change in preview.body["changes"]
+        ]
+        return {"changes": changes, "label": "the entry removed"}
+
+    # Per vocabulary of the Shared files tab: its file and list, the list written before the
+    # analysis - an entry that keeps its place, the one taken out after the analysis, and those
+    # below it, each of which moves up a place - the entry taken out, and each row's States as
+    # analysed, between the Remove and its analysis, and once the analysis has landed.
+    SHARED_TAB: Final[dict[str, tuple[Any, ...]]] = {
+        "constant": (
+            "constants.ddd.json",
+            "constants",
+            lambda shipped: [
+                {"name": "KEPT", "value": 2, "description": "stays where it is"},
+                {"name": "SPARE", "value": 3, "description": "taken out after the analysis"},
+                *shipped,
+                {"name": "LAST", "value": 4, "description": "comes up into the place above"},
+            ],
+            "SPARE",
+            {"KEPT": "2", "SPARE": "3", "TREND_SAMPLES": "16", "LAST": "4", "PRESSURE_CELLS": "8"},
+            {"KEPT": "2", "SPARE": "", "TREND_SAMPLES": "", "LAST": "", "PRESSURE_CELLS": "8"},
+            {"KEPT": "2", "TREND_SAMPLES": "16", "LAST": "4", "PRESSURE_CELLS": "8"},
+        ),
+        "section": (
+            "sections.ddd.json",
+            "sections",
+            lambda shipped: [
+                shipped[0],
+                {"section": ".spare", "access": "read-write", "alignment": 8},
+                *shipped[1:],
+                {"section": ".last", "access": "read-only", "alignment": 2},
+            ],
+            ".spare",
+            {
+                ".fast_ram": "read-write, align 4",
+                ".spare": "read-write, align 8",
+                ".calib": "read-only, align 4",
+                ".last": "read-only, align 2",
+            },
+            {".fast_ram": "read-write, align 4", ".spare": "", ".calib": "", ".last": ""},
+            {
+                ".fast_ram": "read-write, align 4",
+                ".calib": "read-only, align 4",
+                ".last": "read-only, align 2",
+            },
+        ),
+        "raster": (
+            "rasters.ddd.json",
+            "rasters",
+            lambda shipped: [
+                shipped[0],
+                {"raster": "1000ms", "event": 3, "cycle": "1000ms"},
+                *shipped[1:],
+            ],
+            "1000ms",
+            {
+                "1ms": "event 0, 1ms",
+                "1000ms": "event 3, 1000ms",
+                "10ms": "event 1, 10ms",
+                "100ms": "event 2, 100ms",
+            },
+            {"1ms": "event 0, 1ms", "1000ms": "", "10ms": "", "100ms": ""},
+            {"1ms": "event 0, 1ms", "10ms": "event 1, 10ms", "100ms": "event 2, 100ms"},
+        ),
+    }
+
+    @pytest.mark.parametrize("kind", list(SHARED_TAB))
+    def test_the_shared_files_tab(
+        self, gated: Callable[[Path], Api], tmp_path: Path, kind: str
+    ) -> None:
+        file, key, written, removed, analysed, between, landed_rows = self.SHARED_TAB[kind]
+        root = copied_example(tmp_path, "vocabulary")
+        shipped = json.loads((root / file).read_text(encoding="utf-8"))[key]
+        self.listed(root, file, key, written(shipped))
+        api = gated(root / "project.ddd.json")
+
+        def rows() -> tuple[int, dict[str, dict[str, Any]]]:
+            body = get(api, "/api/shared").body
+            return body["revision"], {e["name"]: e for e in body["entries"] if e["kind"] == kind}
+
+        def states(asked: tuple[int, dict[str, dict[str, Any]]]) -> tuple[int, dict[str, str]]:
+            return asked[0], {name: row["states"] for name, row in asked[1].items()}
+
+        # Asked before the Remove, so that what it is asked after is made anew - kept by the edits
+        # the session has written - rather than this answer kept.
+        assert states(rows()) == (1, analysed)
+        left_waiting(api, self.removing(api, f"/api/{kind}-plan", name=removed))
+        between_rows = rows()
+        assert states(between_rows) == (1, between)
+        # The entry taken out is still the index's, until the analysis lands: listed, its place
+        # holding the entry that was below it, with the uses and the findings it was analysed with.
+        assert between_rows[1][removed] == {
+            "kind": kind,
+            "name": removed,
+            "states": "",
+            "uses": 0,
+            "findings": 0,
+        }
+        api.session.gate.set()
+        landed(api.session)
+        assert states(rows()) == (2, landed_rows)
+
+    def test_the_types_tab(self, tmp_path: Path) -> None:
+        root = copied_example(tmp_path, "structures")
+        types = json.loads((root / "types.ddd.json").read_text(encoding="utf-8"))["types"]
+        api = self.opened(root, "project.ddd.json")
+        # DriverStatus_t taken out from outside: its place and each one below it hold the type
+        # that was below, and the last one holds nothing.
+        self.listed(root, "types.ddd.json", "types", [types[0], *types[2:]])
+        body = get(api, "/api/types").body
+        said = {row["name"]: (row["kind"], row["description"]) for row in body["types"]}
+        assert (body["revision"], said) == (
+            1,
+            {
+                "Temperature_t": ("scalar", types[0]["description"]),
+                **{entry["name"]: ("", "") for entry in types[1:]},
+            },
+        )
+        removed = next(row for row in body["types"] if row["name"] == "DriverStatus_t")
+        assert removed == {
+            "name": "DriverStatus_t",
+            "kind": "",
+            "description": "",
+            "uses": 1,
+            "findings": 0,
+        }
+        assert api.session.poll()
+        after = get(api, "/api/types").body
+        assert (
+            after["revision"],
+            {row["name"]: (row["kind"], row["description"]) for row in after["types"]},
+        ) == (
+            2,
+            {
+                entry["name"]: (entry["type"], entry["description"])
+                for entry in [types[0], *types[2:]]
+            },
+        )
+
+    def test_the_units_tab(self, gated: Callable[[Path], Api], tmp_path: Path) -> None:
+        root = copied_example(tmp_path, "vocabulary")
+        rpm = {"unit": "rpm", "description": "rotational speed, revolutions per minute"}
+        hpa = {"unit": "hPa", "description": "taken out after the analysis"}
+        degc = {"unit": "degC", "description": "temperature"}
+        self.listed(root, "units.ddd.json", "units", ["Nm", rpm, hpa, "kPa", "bar", degc])
+        api = gated(root / "project.ddd.json")
+
+        def rows() -> tuple[int, dict[str, dict[str, Any]]]:
+            body = get(api, "/api/units").body
+            return body["revision"], {row["unit"]: row for row in body["units"]}
+
+        def described(asked: tuple[int, dict[str, dict[str, Any]]]) -> tuple[int, dict[str, Any]]:
+            return asked[0], {unit: row["description"] for unit, row in asked[1].items()}
+
+        listed = {
+            "Nm": None,
+            "rpm": rpm["description"],
+            "kPa": None,
+            "bar": None,
+            "degC": "temperature",
+        }
+        assert described(rows()) == (1, {**listed, "hPa": hpa["description"]})
+        left_waiting(api, self.removing(api, "/api/unit-plan", unit="hPa"))
+        # hPa's place now holds "kPa", kPa's "bar", bar's degC's entry, and degC's nothing.
+        between = rows()
+        assert described(between) == (1, {**listed, "hPa": None, "degC": None})
+        assert between[1]["hPa"] == {
+            "unit": "hPa",
+            "description": None,
+            "files": [posix(root, "units.ddd.json")],
+            "variables": 0,
+            "types": 0,
+            "members": 0,
+            "findings": 0,
+        }
+        api.session.gate.set()
+        landed(api.session)
+        assert described(rows()) == (2, listed)
 
 
 class TestWhatAComponentMayAdd:

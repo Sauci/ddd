@@ -31,7 +31,10 @@ class UnitRow:
 
     unit: str
     description: str | None
-    """What the vocabulary says it means, or ``None`` outside it or for a spelling alone."""
+    """What the vocabulary says it means, or ``None`` outside it, for a spelling alone, and where no
+    entry the index recorded listing it still lists it there (:func:`description_of`) - an entry
+    above taken out or put back since the analysis read the file - until the analysis reads it
+    again."""
 
     files: tuple[Path, ...]
     """The units files listing it, each once, in the index's order; empty outside the

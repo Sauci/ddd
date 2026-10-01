@@ -654,8 +654,10 @@ class ProjectUnit(_Frozen):
     """The spelling, exactly: ``rpm`` and ``RPM`` are two units."""
 
     description: str | None
-    """What the vocabulary says it means, or ``None`` outside the vocabulary, without one, or
-    for an entry that is a spelling alone."""
+    """What the vocabulary says it means, or ``None`` outside the vocabulary, without one, for an
+    entry that is a spelling alone, and where no entry the analysis recorded listing it still lists
+    it there - an entry above taken out or put back since - until the analysis reads the file
+    again."""
 
     files: tuple[str, ...]
     """Absolute, posix-separated paths of the units files listing it; empty outside the
@@ -863,10 +865,14 @@ class ProjectType(_Frozen):
     """The type's name, as its entry spells it."""
 
     kind: str
-    """``scalar``, ``external`` or ``struct``; ``""`` for an entry whose file has drifted."""
+    """``scalar``, ``external`` or ``struct``; ``""`` for an entry whose file has drifted since the
+    analysis read it: one that no longer says its kind, and one whose place the analysis recorded
+    no longer names it - an entry above taken out or put back since - until the analysis reads the
+    file again."""
 
     description: str
-    """What the entry says it is; ``""`` where it says nothing."""
+    """What the entry says it is; ``""`` where it says nothing, and where its place no longer names
+    it, as for ``kind``."""
 
     uses: int
     """How many declarations and structure members name it."""
@@ -977,7 +983,10 @@ class SharedEntry(_Frozen):
     Composed per vocabulary on the server, by
     :attr:`ddd.project_shared.Vocabulary.states`, so the table learns nothing about what any one
     kind holds. ``value`` was the name while constants were alone in the tab and described a
-    section's cell wrongly on both counts - it is neither one value nor json text."""
+    section's cell wrongly on both counts - it is neither one value nor json text.
+
+    ``""`` where the place the analysis recorded no longer names the entry - an entry above taken
+    out or put back since - until the analysis reads its file again."""
 
     uses: int
     """How many shapes name it."""

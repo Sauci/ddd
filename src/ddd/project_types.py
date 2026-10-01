@@ -51,9 +51,13 @@ class TypeRow:
     name: str
     kind: str
     """``scalar``, ``external`` or ``struct``; ``""`` for an entry whose file has drifted since
-    the analysis read it, which the next revision lists as it now stands."""
+    the analysis read it, which the next revision lists as it now stands: one that no longer says
+    its kind, and one whose place the index recorded no longer names it (:func:`type_in_place`)."""
 
     description: str
+    """What its entry says it is; ``""`` where it says nothing, and where its place no longer names
+    it, as for :attr:`kind`."""
+
     uses: int
     """How many declarations and structure members name it."""
 
@@ -88,15 +92,19 @@ def type_rows(
     resolved once per file rather than once per (type, finding) pair: the same answer as
     :func:`located_in_type` asked of every finding, at O(types + files) resolves instead of
     O(types x findings) with two each.
+
+    The rows are the index's, a type taken out of its file since the analysis among them until the
+    next one lands; what each says of itself is read where the index recorded it (:func:`_said`).
     """
     rows = []
     for name in sorted(built.types):
         site = built.types[name]
+        kind, description = _said(built, name, cache)
         rows.append(
             TypeRow(
                 name=name,
-                kind=kind_of(built, name, cache),
-                description=_string(built, name, "description", cache),
+                kind=kind,
+                description=description,
                 uses=len(built.type_uses.get(name, ())),
                 findings=sum(
                     1 for _, found in findings.on(site.path) if _within_entry(found, site)
@@ -116,13 +124,28 @@ def row_of(
     building every other type's row alongside it - what ``GET /api/type`` pulls one of from its
     whole table today. Trusts ``name`` is one of ``built.types``, as the api checks before it
     asks, the way :func:`type_rows`' own comprehension does by never naming one it did not."""
+    kind, description = _said(built, name, cache)
     return TypeRow(
         name=name,
-        kind=kind_of(built, name, cache),
-        description=_string(built, name, "description", cache),
+        kind=kind,
+        description=description,
         uses=len(built.type_uses.get(name, ())),
         findings=len(type_findings(built, name, findings)),
     )
+
+
+def _said(built: Index, name: str, cache: dict[Path, Document]) -> tuple[str, str]:
+    """What a type's row reads of its own entry, its kind and its description - two empty strings
+    where the place the index recorded no longer names it (:func:`type_in_place`).
+
+    An entry above taken out of the file's list, or put back by an undo, leaves another type at
+    that place, or none, until the analysis reads the file again: the row keeps its name and shows
+    none of another type's keys. Trusts ``name`` is one of ``built.types``, as :func:`type_rows`
+    and :func:`row_of` do.
+    """
+    if not type_in_place(built, name, cache):
+        return "", ""
+    return kind_of(built, name, cache), _string(built, name, "description", cache)
 
 
 def type_findings(built: Index, name: str, findings: FindingsByFile) -> list[Pair]:

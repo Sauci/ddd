@@ -20,6 +20,7 @@ branches no C compiler produces are reached that way.
 from __future__ import annotations
 
 import io
+import re
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -39,7 +40,7 @@ DW_ATE_SIGNED_CHAR: Final = 0x06
 DW_ATE_UNSIGNED: Final = 0x07
 DW_ATE_UNSIGNED_CHAR: Final = 0x08
 
-SIGNED_ENCODINGS: Final = frozenset({DW_ATE_SIGNED, DW_ATE_SIGNED_CHAR})
+_SIGNED_ENCODINGS: Final = frozenset({DW_ATE_SIGNED, DW_ATE_SIGNED_CHAR})
 
 DECLARED_ONLY: Final = "it is only declared here, and defined nowhere in the image"
 FOLDED: Final = "the compiler replaced it by its value, and gave it no storage"
@@ -49,6 +50,8 @@ NOT_AN_ADDRESS: Final = "its location is not a fixed address"
 DISCARDED: Final = "the linker discarded its storage"
 
 _DW_OP_PLUS_UCONST: Final = 0x23
+_CONTROL: Final = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+"""The control characters, C0, DEL and C1."""
 _ELFCOMPRESS_ZSTD: Final = 2
 _LTO_PRODUCER: Final = "GNU GIMPLE"
 """The producer gcc names in the units its link-time optimisation writes, as ``GNU GIMPLE
@@ -691,10 +694,10 @@ class _Types:
         if "DW_AT_type" in entry.attributes:
             underlying = _core(self.inner(entry, unit))
             if isinstance(underlying, Base):
-                return underlying.encoding in SIGNED_ENCODINGS
+                return underlying.encoding in _SIGNED_ENCODINGS
         encoding = _value(entry, "DW_AT_encoding")
         if isinstance(encoding, int):
-            return encoding in SIGNED_ENCODINGS
+            return encoding in _SIGNED_ENCODINGS
         for child in children:
             attribute = child.attributes["DW_AT_const_value"]
             if attribute.form == "DW_FORM_sdata" and attribute.value < 0:
@@ -823,6 +826,8 @@ def _text(attribute: Any) -> str | None:
 
 
 def _decoded(value: Any) -> str:
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
-    return str(value)
+    """A string of the image's as text a terminal can show: an image is untrusted, and its
+    names and paths reach standard error, so every control character - the escape that opens
+    a terminal sequence among them - is written out as ``\\xNN``."""
+    text = value.decode("utf-8", errors="replace") if isinstance(value, bytes) else str(value)
+    return _CONTROL.sub(lambda control: f"\\x{ord(control.group()):02x}", text)

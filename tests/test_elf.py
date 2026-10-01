@@ -9,6 +9,7 @@ import struct
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -702,6 +703,33 @@ class TestVariables:
     def test_a_name_may_arrive_as_text(self) -> None:
         (found,) = read(variable("Text"))
         assert found.name == "Text"
+
+
+class TestUntrustedText:
+    """An image's strings reach standard error - a name in every finding, a path in its
+    location - and an image is untrusted: a crafted name or path must not drive the terminal
+    that shows it."""
+
+    def test_an_escape_sequence_in_a_name_is_written_out(self) -> None:
+        (found,) = read(variable(b"Evil\x1b]0;title\x07\x1b[2K"))
+        assert found.name == "Evil\\x1b]0;title\\x07\\x1b[2K"
+
+    def test_delete_and_the_c1_controls_are_written_out_too(self) -> None:
+        """U+009B is the one-character CSI of the C1 set: in text, it opens a sequence alone."""
+        (found,) = read(variable("A\x7fB\x9bC\x1fD\x80E"))
+        assert found.name == "A\\x7fB\\x9bC\\x1fD\\x80E"
+
+    def test_printable_text_is_left_as_it_is(self) -> None:
+        (found,) = read(variable("Température_°C ü ~ \xa0 \x20".encode()))
+        assert found.name == "Température_°C ü ~ \xa0  "
+
+    def test_a_file_table_s_names_and_directories_are_written_out(self) -> None:
+        program = {
+            "version": 5,
+            "file_entry": [SimpleNamespace(name=b"ma\x1bin.c", dir_index=0)],
+            "include_directory": [b"/w\x07ork"],
+        }
+        assert file_table(program, ".") == FileTable(5, (("ma\\x1bin.c", 0),), ("/w\\x07ork",), ".")
 
 
 class TestFileTable:

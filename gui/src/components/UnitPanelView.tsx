@@ -1,6 +1,5 @@
 import type { PlanReply, ProjectUnit, UnitReply, UnitsReply } from "../api/types";
 import { distinctFindings, keyedFindings } from "../lib/findings";
-import { ROW_HEIGHT } from "../lib/findingsWindow";
 import {
   offers,
   placeRole,
@@ -12,16 +11,7 @@ import { baseName, consequence, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
-import {
-  Cell,
-  Column,
-  Row,
-  Table,
-  TableBody,
-  TableHeader,
-  TableLayout,
-  Virtualizer,
-} from "../ui/Table";
+import { also, Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
 import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
 import { UnitPicker } from "./UnitPicker";
@@ -119,32 +109,34 @@ export function UnitPanelView(props: UnitPanelViewProps) {
       {reply.sites.length === 0 ? (
         <p className="quiet">Nothing in the project states {unit.unit}.</p>
       ) : (
-        <Virtualizer
-          layout={TableLayout}
-          layoutOptions={{ rowHeight: ROW_HEIGHT, headingHeight: ROW_HEIGHT }}
-        >
-          {/* Ruling T9-1: a unit stated 12,500 times over (100,000 declarations, one unit) makes
-              this table as long as the brief's own seven, so it is virtualised the same way -
-              Where is left to take the width File and What do not, since a declaration's or a
-              type's own name runs longer than a file's base name or the few words `placeRole`
-              answers. */}
-          <Table aria-label={`Where ${unit.unit} is stated`} className={also("long")}>
-            <TableHeader>
-              <Column isRowHeader>Where</Column>
-              <Column width={160}>File</Column>
-              <Column width={170}>What</Column>
-            </TableHeader>
-            <TableBody items={reply.sites}>
-              {(site) => (
-                <Row id={`${site.path} ${site.pointer}`}>
-                  <Cell>{site.name}</Cell>
-                  <Cell className={also("quiet")}>{baseName(site.path)}</Cell>
-                  <Cell>{placeRole(site)}</Cell>
-                </Row>
-              )}
-            </TableBody>
-          </Table>
-        </Virtualizer>
+        // Ruling T9-1: a unit stated 12,500 times over (100,000 declarations, one unit) makes
+        // this table as long as the brief's own seven, so it is virtualised the same way - Where
+        // is left to take the width File and What do not, since a declaration's or a type's own
+        // name runs longer than a file's base name or the few words `placeRole` answers. Unlike
+        // the five of the brief's own seven a panel can also sit beside, Where is given no
+        // `minWidth` of its own (fix round 1, Important 3 touched those, not this one): it keeps
+        // only the 75px floor `TableColumnLayout` gives any column with neither a width nor a
+        // `minWidth` (react-stately's own TableColumnLayout.mjs). `.panel-declarations` beside
+        // `.long`, for this table alone: it draws in a panel already, the one place a plain
+        // `<table>` of the same class once stood, and keeps that look - its header's own size,
+        // the rule above the table - rather than `.long`'s own, smaller one (fix round 1, Minor
+        // 5).
+        <LongTable aria-label={`Where ${unit.unit} is stated`} className="panel-declarations">
+          <TableHeader>
+            <Column isRowHeader>Where</Column>
+            <Column width={160}>File</Column>
+            <Column width={170}>What</Column>
+          </TableHeader>
+          <TableBody items={reply.sites}>
+            {(site) => (
+              <Row id={`${site.path} ${site.pointer}`}>
+                <Cell>{site.name}</Cell>
+                <Cell className={also("quiet")}>{baseName(site.path)}</Cell>
+                <Cell>{placeRole(site)}</Cell>
+              </Row>
+            )}
+          </TableBody>
+        </LongTable>
       )}
       {offered.describe && (
         <section className="panel-offer" aria-label="Description">
@@ -199,13 +191,6 @@ export function UnitPanelView(props: UnitPanelViewProps) {
       </section>
     </Panel>
   );
-}
-
-/** React Aria's own class with this table's beside it, since ui.css selects on both: a string
- * would replace React Aria's. */
-function also(name: string) {
-  return ({ defaultClassName }: { defaultClassName: string | undefined }) =>
-    `${defaultClassName ?? ""} ${name}`.trim();
 }
 
 /**

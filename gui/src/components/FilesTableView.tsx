@@ -1,16 +1,6 @@
 import type { FilesReply, SourceFile } from "../api/types";
 import { cellsOf, rowsOf, selectedIndices } from "../lib/files";
-import { ROW_HEIGHT } from "../lib/findingsWindow";
-import {
-  Cell,
-  Column,
-  Row,
-  Table,
-  TableBody,
-  TableHeader,
-  TableLayout,
-  Virtualizer,
-} from "../ui/Table";
+import { also, Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
 
 export interface FilesTableViewProps {
   reply: FilesReply;
@@ -39,53 +29,50 @@ export function FilesTableView({ reply, files, selected, onSelect }: FilesTableV
   const rows = rowsOf(reply, files);
   return (
     rows.length > 0 && (
-      <Virtualizer
-        layout={TableLayout}
-        layoutOptions={{ rowHeight: ROW_HEIGHT, headingHeight: ROW_HEIGHT }}
+      <LongTable
+        aria-label="Files"
+        selectionMode="single"
+        selectedKeys={selected === undefined ? [] : selectedIndices(rows, selected)}
+        onSelectionChange={(keys) => {
+          const key = keys === "all" ? undefined : [...keys][0];
+          const index = typeof key === "number" ? key : undefined;
+          onSelect(index === undefined ? undefined : rows[index]?.key);
+        }}
       >
-        <Table
-          aria-label="Files"
-          className={also("long")}
-          selectionMode="single"
-          selectedKeys={selected === undefined ? [] : selectedIndices(rows, selected)}
-          onSelectionChange={(keys) => {
-            const key = keys === "all" ? undefined : [...keys][0];
-            const index = typeof key === "number" ? key : undefined;
-            onSelect(index === undefined ? undefined : rows[index]?.key);
-          }}
-        >
-          <TableHeader>
-            {/* Entry is left to take the width the other three do not: a path or a pattern runs
-                far longer than its own Kind, the longest State sentence ("not read by the last
-                analysis"), or a Findings count. */}
-            <Column isRowHeader>Entry</Column>
-            <Column width={110}>Kind</Column>
-            <Column width={220}>State</Column>
-            <Column width={90}>Findings</Column>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row, index) => {
-              const cells = cellsOf(row, reply.project);
-              return (
-                // biome-ignore lint/suspicious/noArrayIndexKey: a row is its own position in rowsOf's list - two rows may share one `key`
-                <Row key={index} id={index} className={also(row.child ? "child" : "")}>
-                  <Cell>{cells.entry}</Cell>
-                  <Cell>{cells.kind}</Cell>
-                  <Cell>{cells.state}</Cell>
-                  <Cell>{cells.findings}</Cell>
-                </Row>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </Virtualizer>
+        <TableHeader>
+          {/* Entry is left to take the width the other three do not, with a floor under it so a
+              panel beside this table cannot push it below a whole path's worth (fix round 1,
+              Important 3): a path or a pattern runs far longer than its own Kind, the longest
+              State sentence ("not read by the last analysis"), or a Findings count - which, with
+              Entry's own floor, is why those three are narrower now than before. */}
+          <Column isRowHeader minWidth={200}>
+            Entry
+          </Column>
+          <Column width={90}>Kind</Column>
+          <Column width={150}>State</Column>
+          {/* `minWidth` repeats `width`: React Aria floors a column with none of its own at 75px
+              regardless of its `width` (`getDefaultMinWidth`, react-stately's own
+              TableColumnLayout.mjs) - measured, a plain `width={70}` here still rendered at
+              75px. */}
+          <Column width={70} minWidth={70}>
+            Findings
+          </Column>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row, index) => {
+            const cells = cellsOf(row, reply.project);
+            return (
+              // biome-ignore lint/suspicious/noArrayIndexKey: a row is its own position in rowsOf's list - two rows may share one `key`
+              <Row key={index} id={index} className={also(row.child ? "child" : "")}>
+                <Cell>{cells.entry}</Cell>
+                <Cell>{cells.kind}</Cell>
+                <Cell>{cells.state}</Cell>
+                <Cell>{cells.findings}</Cell>
+              </Row>
+            );
+          })}
+        </TableBody>
+      </LongTable>
     )
   );
-}
-
-/** React Aria's own class with this table's beside it, since ui.css selects on both (as
- * `FindingsTableView`'s own `also` already does). */
-function also(name: string) {
-  return ({ defaultClassName }: { defaultClassName: string | undefined }) =>
-    `${defaultClassName ?? ""} ${name}`.trim();
 }

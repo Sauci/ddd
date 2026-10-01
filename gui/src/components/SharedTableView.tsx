@@ -1,18 +1,8 @@
 import type { SharedReply } from "../api/types";
-import { ROW_HEIGHT } from "../lib/findingsWindow";
 import { rowKey, type SharedSelection, selectionAt, tabTitle, vocabularyOf } from "../lib/shared";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
-import {
-  Cell,
-  Column,
-  Row,
-  Table,
-  TableBody,
-  TableHeader,
-  TableLayout,
-  Virtualizer,
-} from "../ui/Table";
+import { Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
 
 export interface SharedTableViewProps {
   reply: SharedReply;
@@ -81,57 +71,61 @@ export function SharedTableView({
           Declare an entry
         </Button>
       ) : (
-        <Virtualizer
-          layout={TableLayout}
-          layoutOptions={{ rowHeight: ROW_HEIGHT, headingHeight: ROW_HEIGHT }}
+        <LongTable
+          aria-label="Shared files"
+          selectionMode="single"
+          selectedKeys={selected === undefined ? [] : [rowKey(selected.kind, selected.name)]}
+          onSelectionChange={(keys) => {
+            const key = keys === "all" ? undefined : [...keys][0];
+            onSelect(typeof key === "string" ? selectionAt(key) : undefined);
+          }}
         >
-          <Table
-            aria-label="Shared files"
-            className={also("long")}
-            selectionMode="single"
-            selectedKeys={selected === undefined ? [] : [rowKey(selected.kind, selected.name)]}
-            onSelectionChange={(keys) => {
-              const key = keys === "all" ? undefined : [...keys][0];
-              onSelect(typeof key === "string" ? selectionAt(key) : undefined);
-            }}
-          >
-            <TableHeader>
-              {/* Name is left to take the width the other four do not (part 17's task 9): this
-                  table has no Description column to give it instead (the doc below says why),
-                  and a declared name can run far longer than a vocabulary's word, a States cell,
-                  a places count or a finding count. */}
-              <Column isRowHeader>Name</Column>
-              <Column width={110}>Vocabulary</Column>
-              {/* No Description column, unlike TypesTableView: an entry's description is a full
-                  sentence - the shipped example's is "sample slots of a pressure trend buffer, a
-                  device wide size no single component owns" - which would dominate every row, where
-                  what a reader scans this list for is an entry's States, not a paragraph explaining
-                  it (spec 5.1). The description is in the panel (Task 8). */}
-              {/* States, not Value: the word has to fit a constant's own state ("16") as well as a
-                  section's ("read-only, align 4"), which Value does not - the same call as the
-                  Vocabulary rename above, from PR #68: cheap before a second vocabulary ships into
-                  the word, expensive after. */}
-              <Column width={170}>States</Column>
-              <Column width={100}>Used by</Column>
-              <Column width={90}>Findings</Column>
-            </TableHeader>
-            <TableBody items={rows}>
-              {/* Keyed by vocabulary and name, not by name alone: a section's name is a linker
-                  string, so a project may declare a constant and a section spelling it the same
-                  way, and two rows under one id are one row to React Aria - the second would lose
-                  its selection to the first (fix round 1). */}
-              {(row) => (
-                <Row id={rowKey(row.kind, row.name)}>
-                  <Cell>{row.name}</Cell>
-                  <Cell>{vocabularyOf(row.kind)}</Cell>
-                  <Cell>{row.states}</Cell>
-                  <Cell>{used(row.uses)}</Cell>
-                  <Cell>{row.findings === 0 ? "" : String(row.findings)}</Cell>
-                </Row>
-              )}
-            </TableBody>
-          </Table>
-        </Virtualizer>
+          <TableHeader>
+            {/* Name is left to take the width the other four do not (part 17's task 9), with a
+                floor under it so a panel beside this table cannot push it below a declared name's
+                worth (fix round 1, Important 3): this table has no Description column to give it
+                instead (the doc below says why), and a declared name can run far longer than a
+                vocabulary's word, a States cell, a places count or a finding count - which, with
+                Name's own floor, is why those four are narrower now than before. */}
+            <Column isRowHeader minWidth={140}>
+              Name
+            </Column>
+            <Column width={90}>Vocabulary</Column>
+            {/* No Description column, unlike TypesTableView: an entry's description is a full
+                sentence - the shipped example's is "sample slots of a pressure trend buffer, a
+                device wide size no single component owns" - which would dominate every row, where
+                what a reader scans this list for is an entry's States, not a paragraph explaining
+                it (spec 5.1). The description is in the panel (Task 8). */}
+            {/* States, not Value: the word has to fit a constant's own state ("16") as well as a
+                section's ("read-only, align 4"), which Value does not - the same call as the
+                Vocabulary rename above, from PR #68: cheap before a second vocabulary ships into
+                the word, expensive after. */}
+            <Column width={160}>States</Column>
+            <Column width={80}>Used by</Column>
+            {/* `minWidth` repeats `width`: React Aria floors a column with none of its own at
+                75px regardless of its `width` (`getDefaultMinWidth`, react-stately's own
+                TableColumnLayout.mjs) - measured, a plain `width={70}` here still rendered at
+                75px. */}
+            <Column width={70} minWidth={70}>
+              Findings
+            </Column>
+          </TableHeader>
+          <TableBody items={rows}>
+            {/* Keyed by vocabulary and name, not by name alone: a section's name is a linker
+                string, so a project may declare a constant and a section spelling it the same
+                way, and two rows under one id are one row to React Aria - the second would lose
+                its selection to the first (fix round 1). */}
+            {(row) => (
+              <Row id={rowKey(row.kind, row.name)}>
+                <Cell>{row.name}</Cell>
+                <Cell>{vocabularyOf(row.kind)}</Cell>
+                <Cell>{row.states}</Cell>
+                <Cell>{used(row.uses)}</Cell>
+                <Cell>{row.findings === 0 ? "" : String(row.findings)}</Cell>
+              </Row>
+            )}
+          </TableBody>
+        </LongTable>
       )}
     </>
   );
@@ -144,11 +138,4 @@ export function SharedTableView({
  * table came first (design §2). */
 function used(count: number): string {
   return count === 0 ? "" : `${count} place${count === 1 ? "" : "s"}`;
-}
-
-/** React Aria's own class with this table's beside it, since ui.css selects on both: a string
- * would replace React Aria's. */
-function also(name: string) {
-  return ({ defaultClassName }: { defaultClassName: string | undefined }) =>
-    `${defaultClassName ?? ""} ${name}`.trim();
 }

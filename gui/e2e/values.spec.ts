@@ -469,10 +469,13 @@ test("a curve naming a scalar type keeps its button, and its grid", async ({ pag
   await page.goto(gui.address);
   await page.getByRole("button", { name: "Controller", exact: true }).click();
 
-  // The Type cell reads the type, since there is no datatype of its own to read.
-  await expect(page.getByRole("gridcell", { name: "Millis_t" })).toBeVisible();
+  // CurveA is the thirteenth of Controller's fourteen declarations, past the box's own bottom at
+  // this viewport and in the DOM only through overscan (fix round 1, Important 5) - scrolled to
+  // before either cell of its row is asked for, not after.
   const button = page.getByRole("button", { name: "Show the values of CurveA" });
   await scrolledIntoView(page, "Declarations of Controller", button);
+  // The Type cell reads the type, since there is no datatype of its own to read.
+  await expect(page.getByRole("gridcell", { name: "Millis_t" })).toBeVisible();
   await button.click();
 
   const grid = page.getByRole("grid", { name: "Values of CurveA" });

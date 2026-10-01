@@ -1,17 +1,7 @@
 import type { TypesReply } from "../api/types";
-import { ROW_HEIGHT } from "../lib/findingsWindow";
 import { typeRows, typesTitle } from "../lib/projectTypes";
 import { Banner } from "../ui/Banner";
-import {
-  Cell,
-  Column,
-  Row,
-  Table,
-  TableBody,
-  TableHeader,
-  TableLayout,
-  Virtualizer,
-} from "../ui/Table";
+import { Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
 
 export interface TypesTableViewProps {
   types: TypesReply;
@@ -55,45 +45,47 @@ export function TypesTableView({
       )}
       <p className="summary">{typesTitle(types)}</p>
       {rows.length > 0 && (
-        <Virtualizer
-          layout={TableLayout}
-          layoutOptions={{ rowHeight: ROW_HEIGHT, headingHeight: ROW_HEIGHT }}
+        <LongTable
+          aria-label="Types"
+          selectionMode="single"
+          selectedKeys={selected === undefined ? [] : [selected]}
+          onSelectionChange={(keys) => {
+            const key = keys === "all" ? undefined : [...keys][0];
+            onSelect(typeof key === "string" ? key : undefined);
+          }}
         >
-          <Table
-            aria-label="Types"
-            className={also("long")}
-            selectionMode="single"
-            selectedKeys={selected === undefined ? [] : [selected]}
-            onSelectionChange={(keys) => {
-              const key = keys === "all" ? undefined : [...keys][0];
-              onSelect(typeof key === "string" ? key : undefined);
-            }}
-          >
-            <TableHeader>
-              {/* Description is left to take the width the other four do not: a type's own
-                  sentence runs far longer than its name, its kind's word, how many places use
-                  it, or its one finding count. */}
-              <Column isRowHeader width={160}>
-                Type
-              </Column>
-              <Column width={90}>Kind</Column>
-              <Column>Description</Column>
-              <Column width={100}>Used by</Column>
-              <Column width={90}>Findings</Column>
-            </TableHeader>
-            <TableBody items={rows}>
-              {(row) => (
-                <Row id={row.name}>
-                  <Cell>{row.name}</Cell>
-                  <Cell>{row.kindWord}</Cell>
-                  <Cell>{row.description}</Cell>
-                  <Cell>{used(row.uses)}</Cell>
-                  <Cell>{row.findings === 0 ? "" : String(row.findings)}</Cell>
-                </Row>
-              )}
-            </TableBody>
-          </Table>
-        </Virtualizer>
+          <TableHeader>
+            {/* Description is left to take the width the other four do not, with a floor under
+                it so a panel beside this table cannot push it below a sentence's worth (fix
+                round 1, Important 3): a type's own sentence runs far longer than its name, its
+                kind's word, how many places use it, or its one finding count - which, with
+                Description's own floor, is why those are narrower now than before. */}
+            <Column isRowHeader width={160}>
+              Type
+            </Column>
+            <Column width={80}>Kind</Column>
+            <Column minWidth={150}>Description</Column>
+            <Column width={80}>Used by</Column>
+            {/* `minWidth` repeats `width`: React Aria floors a column with none of its own at
+                75px regardless of its `width` (`getDefaultMinWidth`, react-stately's own
+                TableColumnLayout.mjs) - measured, a plain `width={65}` here still rendered at
+                75px. */}
+            <Column width={65} minWidth={65}>
+              Findings
+            </Column>
+          </TableHeader>
+          <TableBody items={rows}>
+            {(row) => (
+              <Row id={row.name}>
+                <Cell>{row.name}</Cell>
+                <Cell>{row.kindWord}</Cell>
+                <Cell>{row.description}</Cell>
+                <Cell>{used(row.uses)}</Cell>
+                <Cell>{row.findings === 0 ? "" : String(row.findings)}</Cell>
+              </Row>
+            )}
+          </TableBody>
+        </LongTable>
       )}
     </>
   );
@@ -103,11 +95,4 @@ export function TypesTableView({
  * column a reader scans for the ones that are used. */
 function used(count: number): string {
   return count === 0 ? "" : `${count} place${count === 1 ? "" : "s"}`;
-}
-
-/** React Aria's own class with this table's beside it, since ui.css selects on both: a string
- * would replace React Aria's. */
-function also(name: string) {
-  return ({ defaultClassName }: { defaultClassName: string | undefined }) =>
-    `${defaultClassName ?? ""} ${name}`.trim();
 }

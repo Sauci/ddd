@@ -330,9 +330,9 @@ async function openedProject(page: Page, measure: string): Promise<boolean> {
   return true;
 }
 
-/** The first row of whichever table is on screen: index 0 is always the header row, for
- * react-aria's own `Table` (a `grid`) and the Table tab's plain `<table>` alike - both spell a
- * header row `role="row"` too. */
+/** The first row of whichever table is on screen: index 0 is always the header row, for a
+ * virtualised grid - react-aria's own `Table`, part 17's task 9, the Table tab among them now -
+ * exactly as for a plain `<table>`, since both spell a header row `role="row"` too. */
 function firstRow(page: Page): Locator {
   return page.getByRole("row").nth(1);
 }

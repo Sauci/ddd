@@ -105,8 +105,11 @@ export async function openPanel(
  * Shape cell's own button - CurveA's and MapA's own among Controller's fourteen declarations,
  * past the box's edge at this viewport (part 17's task 9: the declarations table is virtualised).
  * Wheeled into view first, the mouse over the table, rather than left to the click's own
- * auto-scroll: a virtualised row can be recycled to another one mid-scroll, and a click already
- * under way then lands wherever the scroll leaves that same spot, not on the row it was sent to
+ * auto-scroll: React Aria's own ScrollView sets `pointer-events: none` on a long table's content
+ * while it scrolls and for 300 ms after (`private/virtualizer/ScrollView.mjs`), and Playwright's
+ * own actionability check hit-tests only a click's first event - so a click sent mid-scroll can
+ * pass that check against a target already back under the pointer, and still open nothing,
+ * `usePress` itself cancelling a press made while `pointer-events` read `none` partway through
  * (measured: `Show the values of CurveA` clicked at the box's own reported, visible position
  * still opened nothing, the page left on Controller's own heading - and the same click, the box
  * already wheeled to rest first, opened CurveA's grid every time). Never enlarges the box: this
@@ -126,12 +129,14 @@ export async function openValues(
 
 /** Wheels a long table's own box, the mouse over its middle, until `target` sits inside the
  * box's own bounds top to bottom - stopping as soon as it does, so a row already in view is
- * never scrolled past. Not `target.isVisible()`: that reads true for a row the box has scrolled
- * well past, since nothing about a virtualised row's own CSS says it is clipped by the box's
- * scroll position - visible and displayed is all that check ever meant, on a row a reader could
- * not actually see (measured: true before any wheel at all, for a row two past the box's last
- * drawn one). Bounded at forty steps: a target that never comes within the box's own bounds
- * fails here, in words that say why, rather than at whatever assertion happens to be next. */
+ * never scrolled past. Not `target.isVisible()`: that reads true for a row already drawn past
+ * the box's own visible bottom, through the overscan a virtualised layout keeps there as well as
+ * above what is visible - nothing about a drawn row's own CSS says the box's own scroll position
+ * clips it; visible and displayed is all that check ever meant, on a row a reader could not
+ * actually see (measured: true before any wheel at all, for a row the overscan had already drawn
+ * past the box's own last visible one). Bounded at forty steps: a target that never comes within
+ * the box's own bounds fails here, in words that say why, rather than at whatever assertion
+ * happens to be next. */
 export async function scrolledIntoView(page: Page, label: string, target: Locator): Promise<void> {
   const box = page.getByRole("grid", { name: label });
   const container = await box.boundingBox();
@@ -144,10 +149,22 @@ export async function scrolledIntoView(page: Page, label: string, target: Locato
       rect.y + rect.height <= container.y + container.height
     );
   };
+  // Settles on the box's own `scrollTop` rather than a fixed pause: a wheel's own scroll is still
+  // animating, or the virtualiser still catching rows up to it, for longer than any one guess
+  // would cover on a slow run, and longer than it need wait on a fast one.
+  const settled = async () => {
+    let last: number | null = null;
+    for (let tries = 0; tries < 20; tries += 1) {
+      const current = await box.evaluate((element) => element.scrollTop);
+      if (current === last) return;
+      last = current;
+      await page.waitForTimeout(16);
+    }
+  };
   await page.mouse.move(container.x + container.width / 2, container.y + container.height / 2);
   for (let step = 0; step < 40 && !(await withinBox()); step += 1) {
     await page.mouse.wheel(0, 200);
-    await page.waitForTimeout(50);
+    await settled();
   }
   if (!(await withinBox())) {
     throw new Error(`scrolling "${label}" never brought its target row within the box`);

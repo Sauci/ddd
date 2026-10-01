@@ -807,8 +807,11 @@ class TestLayout:
 
     def test_a_gap_after_a_value_member_counts_from_its_end(self) -> None:
         messages = self.layout(Member("x", U8, 0), Member("y", U8, 12, 2))
-        assert len(messages) == 1
-        assert messages[0].startswith("'L_s.y' starts at bit 12 although it fits at bit 8")
+        assert messages == [
+            "'L_s.y' starts at bit 12 although it fits at bit 8: an unnamed or zero width "
+            "bitfield leaves such a gap, which DDD cannot state, so the structure DDD generates "
+            "starts it at bit 8"
+        ]
 
     def test_a_member_whose_offset_is_unknown_leaves_the_next_unjudged(self) -> None:
         assert self.layout(Member("a", U8, None, 2), Member("b", U8, 5, 2)) == []

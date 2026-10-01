@@ -1126,6 +1126,26 @@ class TestDiscarded:
             DISCARDED,
         )
 
+    @pytest.mark.parametrize(
+        ("row", "address", "missing"),
+        [
+            ("x86_64", 0xFFFF_FFFF_FFFF_FFFF, DISCARDED),
+            ("armv7m", 0xFFFF_FFFF, DISCARDED),
+            ("x86_64", 0xFFFF_FFFF, ""),
+        ],
+        ids=["all ones at 64 bits", "all ones at 32 bits", "32 bits of ones at 64"],
+    )
+    def test_all_ones_is_a_linker_s_tombstone_at_the_image_s_own_width(
+        self, tmp_path: Path, row: str, address: int, missing: str
+    ) -> None:
+        """lld writes all ones for what it discarded when told to (-z dead-reloc-in-nonalloc,
+        measured with lld 19): at the width of the image's addresses, which the copy of a row
+        whose DWARF moves Meas_U16 there, where no symbol of its name sits, holds the reader
+        to."""
+        path = relocated(tmp_path, row, "Meas_U16", address)
+        found = by_name(open_image(path), "Meas_U16")
+        assert (found.address, found.missing) == (None if missing else address, missing)
+
     def test_the_variable_it_kept_is_where_its_symbol_says(self) -> None:
         image = open_image(FIXTURES / "gc-sections.elf")
         kept = by_name(image, "Cal_Kept")
@@ -1267,6 +1287,26 @@ def damaged(tmp_path: Path, row: str, name: str, change: Any) -> Path:
     path = tmp_path / name
     path.write_bytes(bytes(data))
     return path
+
+
+def relocated(tmp_path: Path, row: str, name: str, address: int) -> Path:
+    """A copy of a row whose DWARF places ``name`` at ``address``: the operand of its one
+    DW_OP_addr in .debug_info rewritten, at the image's width and in its byte order."""
+    old = by_name(open_image(FIXTURES / f"{row}.elf"), name).address
+    assert old is not None
+
+    def change(data: bytearray, elf: ELFFile) -> None:
+        size = elf.elfclass // 8
+        order = "little" if elf.little_endian else "big"
+        section = elf.get_section_by_name(".debug_info")
+        start = section["sh_offset"]
+        info = bytes(data[start : start + section["sh_size"]])
+        operation = bytes([0x03]) + old.to_bytes(size, order)  # DW_OP_addr, then its operand
+        assert info.count(operation) == 1
+        at = start + info.index(operation) + 1
+        data[at : at + size] = address.to_bytes(size, order)
+
+    return damaged(tmp_path, row, f"{name}.elf", change)
 
 
 def refusal(path: Path) -> str:

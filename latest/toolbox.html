@@ -1,0 +1,440 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The toolbox &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=f3b36f1a"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/js/versions.js?v=a915def3"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Build integration" href="build_integration.html" />
+    <link rel="prev" title="Command line interface" href="command_line_interface.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            DDD
+              <img src="_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="concept.html">Concept</a></li>
+<li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="plugins.html">Plugins</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">The toolbox</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#from-an-elf-image">From an ELF image</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-an-image-states-and-what-it-does-not">What an image states, and what it does not</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#structures">Structures</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-layout-of-a-structure">The layout of a structure</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#what-the-tool-cannot-describe">What the tool cannot describe</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-findings">The findings</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">The toolbox</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/toolbox.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="the-toolbox">
+<h1>The toolbox<a class="headerlink" href="#the-toolbox" title="Link to this heading"></a></h1>
+<p>Some work is done once rather than in every build: bringing what a project already has into
+DDD, or taking DDD’s descriptions somewhere else. That is what the toolbox is for. Its tools
+are commands under <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">tool</span></code>, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">tool</span> <span class="pre">from-elf</span></code> is the first.</p>
+<section id="from-an-elf-image">
+<h2>From an ELF image<a class="headerlink" href="#from-an-elf-image" title="Link to this heading"></a></h2>
+<p>A project that adopts DDD rarely starts from nothing: its variables already exist, in C,
+compiled into an image. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">tool</span> <span class="pre">from-elf</span></code> reads a linked ELF image and its DWARF debug
+information, and prints the DDD declaration of every C variable it is asked for - as far as
+the image states it, and checked by DDD itself before it is printed, the way
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span> <span class="pre">--standalone</span></code> checks a component. It needs pyelftools, which the <code class="docutils literal notranslate"><span class="pre">elf</span></code> extra
+installs, and an image built with debug information (<code class="docutils literal notranslate"><span class="pre">-g</span></code>):</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>pip install 'ddd-tool[elf]'
+</pre></div>
+</div>
+<p>A variable is named as it is in C, or matched with a glob such as <code class="docutils literal notranslate"><span class="pre">'Cal_*'</span></code>, and a
+<code class="docutils literal notranslate"><span class="pre">static</span></code> that several compilation units define is taken from one of them by naming its unit
+first, <code class="docutils literal notranslate"><span class="pre">cal.c:Gain</span></code>. What the tool prints is the <code class="docutils literal notranslate"><span class="pre">interface</span></code> of a component, ready to paste
+into one; <code class="docutils literal notranslate"><span class="pre">examples/firmware/firmware.elf</span></code> is an image of the tests’ fixture, built for a
+Cortex-M4:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd tool from-elf examples/firmware/firmware.elf Cal_Gain Enum_State
+[
+  {
+    "scope": "output",
+    "definition": {
+      "name": "Cal_Gain",
+      "kind": "parameter",
+      "datatype": "uint16",
+      "conversion": {
+        "kind": "identity"
+      },
+      "init": 300,
+      "volatile": false
+    }
+  },
+  {
+    "scope": "output",
+    "definition": {
+      "name": "Enum_State",
+      "kind": "measurement",
+      "datatype": "uint8",
+      "conversion": {
+        "kind": "enum",
+        "name": "State_t",
+        "enumerators": {
+          "STATE_OFF": 0,
+          "STATE_ON": 1,
+          "STATE_FAULT": 200
+        }
+      },
+      "init": 1,
+      "volatile": false
+    }
+  }
+]
+examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: every conversion but an enum's is the identity, the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
+1 info
+$ echo $?
+0
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">Enum_State</span></code> is a <code class="docutils literal notranslate"><span class="pre">uint8</span></code> because this target makes an enum as small as its values: the
+datatype is the one the image states, never the one its C spelling suggests elsewhere.
+<code class="docutils literal notranslate"><span class="pre">--scope</span> <span class="pre">input</span></code> prints the same entries as a consumer states them, without the initial value
+and the section; <code class="docutils literal notranslate"><span class="pre">-o</span> <span class="pre">FILE</span></code> writes them into a file instead of standard output.</p>
+</section>
+<section id="what-an-image-states-and-what-it-does-not">
+<h2>What an image states, and what it does not<a class="headerlink" href="#what-an-image-states-and-what-it-does-not" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 28.0%" />
+<col style="width: 72.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>key</p></th>
+<th class="head"><p>where it comes from</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">kind</span></code></p></td>
+<td><p>the variable’s <code class="docutils literal notranslate"><span class="pre">const</span></code>: a <code class="docutils literal notranslate"><span class="pre">measurement</span></code> without it; with it a <code class="docutils literal notranslate"><span class="pre">parameter</span></code>, or a
+<code class="docutils literal notranslate"><span class="pre">value_block</span></code> for an array. Nothing in an image tells a curve, a map or an axis from
+any other array, so none is inferred.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">datatype</span></code></p></td>
+<td><p>the encoding and size DWARF states: <code class="docutils literal notranslate"><span class="pre">long</span></code>, plain <code class="docutils literal notranslate"><span class="pre">char</span></code> and an enum follow the
+target that built the image.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">conversion</span></code></p></td>
+<td><p>the identity, or an <code class="docutils literal notranslate"><span class="pre">enum</span></code> conversion carrying the enumerators in declaration order,
+named after the typedef closest to the enum, else its tag.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dimensions</span></code></p></td>
+<td><p>the array’s extents, in C order.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">init</span></code></p></td>
+<td><p>the image’s own bytes, in its byte order; an array of one value as that value, a
+<code class="docutils literal notranslate"><span class="pre">float32</span></code> in the fewest digits that read it back. None for a variable in a section
+without contents, whose bytes the image does not hold: <code class="docutils literal notranslate"><span class="pre">.bss</span></code> starts at zero, a
+<code class="docutils literal notranslate"><span class="pre">.noinit</span></code> section is not initialised at all, and <code class="docutils literal notranslate"><span class="pre">section</span></code> says which.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">section</span></code></p></td>
+<td><p>stated only where the variable’s section is not one of the toolchain’s defaults. It is
+the image’s output section, which is the name the source used when the linker script
+kept it, and the project has to declare it in a sections file.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">volatile</span></code></p></td>
+<td><p>the qualifier.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">typename</span></code> and <code class="docutils literal notranslate"><span class="pre">types</span></code></p></td>
+<td><p>a structure, its members, bitfields and nested structures, one <code class="docutils literal notranslate"><span class="pre">types</span></code> entry per
+structure.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unit</span></code>, <code class="docutils literal notranslate"><span class="pre">description</span></code>, <code class="docutils literal notranslate"><span class="pre">limits</span></code>, <code class="docutils literal notranslate"><span class="pre">id</span></code>, <code class="docutils literal notranslate"><span class="pre">raster</span></code>, the <code class="docutils literal notranslate"><span class="pre">a2l</span></code> block</p></td>
+<td><p>nothing in an image states them. They are left out, and the run says so once:
+<code class="docutils literal notranslate"><span class="pre">elf-not-inferred</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="structures">
+<h2>Structures<a class="headerlink" href="#structures" title="Link to this heading"></a></h2>
+<p>A variable of a structure names it as its <code class="docutils literal notranslate"><span class="pre">typename</span></code>, and <code class="docutils literal notranslate"><span class="pre">--component</span> <span class="pre">NAME</span></code> prints a whole
+component file, with a <code class="docutils literal notranslate"><span class="pre">types</span></code> entry for every structure the variables reach:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd tool from-elf examples/firmware/firmware.elf Struct_Inlet --component Inlet
+{
+  "component": {
+    "name": "Inlet",
+    "types": [
+...
+    "interface": [
+      {
+        "scope": "output",
+        "definition": {
+          "name": "Struct_Inlet",
+          "kind": "measurement",
+          "typename": "Inlet_t",
+          "volatile": false
+        }
+      }
+    ]
+  }
+}
+main.c:57: warning[elf-name-synthesized]: an anonymous structure is named 'Inlet_t_pair_t', after the first thing that reaches it; rename it if the source has a better name
+examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: every conversion but an enum's is the identity, the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
+main.c:63: info[elf-boolean-bitfield]: 'Inlet_t.ready' is a _Bool bitfield, described as a uint8 one of the same width: DDD refuses a boolean bitfield
+1 warning, 2 infos
+</pre></div>
+</div>
+<p>The list output has nowhere to put a <code class="docutils literal notranslate"><span class="pre">types</span></code> entry, and says so (<code class="docutils literal notranslate"><span class="pre">elf-types-omitted</span></code>). A
+structure’s entry belongs once in a project: where two components need it, move it into a
+shared types file rather than pasting it into both.</p>
+<p>A structure is named by the typedef closest to it, else by its tag, and an anonymous one after
+the first thing that reaches it (<code class="docutils literal notranslate"><span class="pre">elf-name-synthesized</span></code>). Two structures of one name that
+differ - one per compilation unit, each unit’s own - are <code class="docutils literal notranslate"><span class="pre">elf-type-conflict</span></code>, and no
+variable reaching either is printed. A <code class="docutils literal notranslate"><span class="pre">_Bool</span></code> bitfield is described as a <code class="docutils literal notranslate"><span class="pre">uint8</span></code> one
+(<code class="docutils literal notranslate"><span class="pre">elf-boolean-bitfield</span></code>), since DDD refuses a boolean bitfield, and <code class="docutils literal notranslate"><span class="pre">const</span></code> or <code class="docutils literal notranslate"><span class="pre">volatile</span></code>
+on a member is dropped (<code class="docutils literal notranslate"><span class="pre">elf-qualifier-dropped</span></code>): DDD qualifies whole objects. A structured
+object states no initial value, as DDD requires; values the image holds for one are dropped
+and said to be (<code class="docutils literal notranslate"><span class="pre">elf-init-dropped</span></code>).</p>
+<section id="the-layout-of-a-structure">
+<h3>The layout of a structure<a class="headerlink" href="#the-layout-of-a-structure" title="Link to this heading"></a></h3>
+<p>DDD states member order, datatypes and widths, never offsets, and the compiler lays out the
+structure it generates. Nothing in the a2l depends on that, but the structure DDD generates can
+lay out differently from the source’s where the source asked for a layout its members do not
+imply - and DWARF records none of those requests directly. The tool warns about the two traces
+it can read: bits skipped where the next bitfield would have fit, which an unnamed or zero
+width bitfield leaves (<code class="docutils literal notranslate"><span class="pre">elf-bitfield-gap</span></code>), and an alignment the source states
+(<code class="docutils literal notranslate"><span class="pre">elf-alignment</span></code>). Packing - <code class="docutils literal notranslate"><span class="pre">#pragma</span> <span class="pre">pack</span></code>, <code class="docutils literal notranslate"><span class="pre">packed</span></code> - is not detected: whether an
+offset is packed or merely the target’s own alignment depends on the ABI.</p>
+</section>
+</section>
+<section id="what-the-tool-cannot-describe">
+<h2>What the tool cannot describe<a class="headerlink" href="#what-the-tool-cannot-describe" title="Link to this heading"></a></h2>
+<p>A variable that cannot be described is not printed, and a run with one exits <code class="docutils literal notranslate"><span class="pre">1</span></code> and writes
+nothing, unless <code class="docutils literal notranslate"><span class="pre">--force</span></code> asks for what could be described:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd tool from-elf examples/firmware/firmware.elf Type_Pointer Tls_Counter Cal_Gain
+main.c:106: error[elf-no-storage]: 'Tls_Counter' has no address in the image: it is thread-local, with an address of its own in every thread
+main.c:38: error[elf-type-unsupported]: 'Type_Pointer' is a pointer, which DDD cannot state
+examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: every conversion but an enum's is the identity, the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
+2 errors, 1 info
+$ echo $?
+1
+</pre></div>
+</div>
+<p>A finding about a variable is shown at its declaration in the C source, as the image recorded
+the path. An image that cannot be used at all - not ELF, without DWARF, a relocatable object
+rather than a linked image, one whose types sit in DWARF type units (<code class="docutils literal notranslate"><span class="pre">-fdebug-types-section</span></code>),
+one built with gcc’s link-time optimisation (<code class="docutils literal notranslate"><span class="pre">-flto</span></code>), one whose debug information is
+compressed with zstd rather than zlib (<code class="docutils literal notranslate"><span class="pre">-gz=zlib</span></code>), or a damaged file - is a usage error,
+exit <code class="docutils literal notranslate"><span class="pre">2</span></code>, and the message names the flag to build it with or without where one would do. So
+are a malformed argument and an <code class="docutils literal notranslate"><span class="pre">-o</span></code> naming the image, refused before the image is read.</p>
+<section id="the-findings">
+<h3>The findings<a class="headerlink" href="#the-findings" title="Link to this heading"></a></h3>
+<p>They are the tool’s own rather than checks of the catalogue: <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code> does not list them
+and <code class="docutils literal notranslate"><span class="pre">-W</span></code> does not take them. DDD’s own findings on the declarations are reported beside them
+under DDD’s identifiers.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 12.0%" />
+<col style="width: 58.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>finding</p></th>
+<th class="head"><p>severity</p></th>
+<th class="head"><p>when</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-symbol-missing</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a name or a pattern matches no variable of the image’s debug information; where the
+symbol table holds the name and no unit’s debug information does, the unit defining it
+was built without <code class="docutils literal notranslate"><span class="pre">-g</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-symbol-ambiguous</span></code></p></td>
+<td><p>error</p></td>
+<td><p>several compilation units define the name at different addresses; <code class="docutils literal notranslate"><span class="pre">UNIT:NAME</span></code>
+takes one. A tentative definition two units share (<code class="docutils literal notranslate"><span class="pre">-fcommon</span></code>) is one variable</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-no-storage</span></code></p></td>
+<td><p>error</p></td>
+<td><p>the variable has no address: only declared, folded into a constant or removed by the
+compiler, thread-local, at a location that is not a fixed address, discarded by the
+linker - which leaves its address at 0, or at all ones, where no symbol of its name
+sits - or at an address no section of the image holds</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-type-unsupported</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a type DDD cannot state - a pointer, a union, a <code class="docutils literal notranslate"><span class="pre">long</span> <span class="pre">double</span></code> wider than eight bytes,
+a <code class="docutils literal notranslate"><span class="pre">const</span></code> array of structures - named at the member where it occurs</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-type-conflict</span></code></p></td>
+<td><p>error</p></td>
+<td><p>one name stands for two different structures or enums</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-init-unsupported</span></code></p></td>
+<td><p>error</p></td>
+<td><p>an initial value DDD has no spelling for, such as NaN</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-init-dropped</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>a structured object whose values the image holds</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-bitfield-gap</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>bits skipped where the next bitfield would have fit</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-alignment</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>an alignment the source states</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-qualifier-dropped</span></code></p></td>
+<td><p>warning</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">const</span></code> or <code class="docutils literal notranslate"><span class="pre">volatile</span></code> on a structure member</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-section</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>a section the output states, once per name</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-name-synthesized</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>an anonymous structure or enum given a name</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-types-omitted</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>the list output holds a structured object, whose type only <code class="docutils literal notranslate"><span class="pre">--component</span></code> prints</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-boolean-bitfield</span></code></p></td>
+<td><p>info</p></td>
+<td><p>a <code class="docutils literal notranslate"><span class="pre">_Bool</span></code> bitfield described as a <code class="docutils literal notranslate"><span class="pre">uint8</span></code> one</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-not-inferred</span></code></p></td>
+<td><p>info</p></td>
+<td><p>once per run: what an image never states</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="command_line_interface.html" class="btn btn-neutral float-left" title="Command line interface" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="build_integration.html" class="btn btn-neutral float-right" title="Build integration" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="./../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -59,6 +59,7 @@
 <li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="toolbox.html">The toolbox</a></li>
 <li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
 </ul>
@@ -76,6 +77,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#diagnostics-never-raise">Diagnostics never raise</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#what-the-calibration-tools-actually-implement">What the calibration tools actually implement</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-coverage-gate">The coverage gate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-elf-fixtures">The ELF fixtures</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#running-the-checks">Running the checks</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#continuous-integration">Continuous integration</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#development-builds">Development builds</a></li>
@@ -175,6 +177,14 @@ ownership ends up being re-implemented, slightly differently, in a jinja templat
 <td><p>the language server protocol, a document’s bytes and positions in it</p></td>
 <td><p>any output format</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/elf.py</span></code></p></td>
+<td><p>ELF images, DWARF 2 to 5, C types, the variables of static storage</p></td>
+<td><p>DDD: it imports no <code class="docutils literal notranslate"><span class="pre">ddd</span></code> module</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/toolbox/</span></code></p></td>
+<td><p>turning what a project already has into DDD descriptions, once</p></td>
+<td><p>where its output goes, any output format</p></td>
+</tr>
 </tbody>
 </table>
 <p>The analysis row says “how anything is rendered” rather than “any output format” for a
@@ -220,9 +230,10 @@ formats under <a class="reference internal" href="data_contracts.html"><span cla
 <h2>The split is enforced by a test<a class="headerlink" href="#the-split-is-enforced-by-a-test" title="Link to this heading"></a></h2>
 <p>A layering that lives only in the documentation rots the first time somebody is in a hurry,
 so DDD asserts it. <code class="docutils literal notranslate"><span class="pre">tests/test_backends.py</span></code> parses the layered modules - <code class="docutils literal notranslate"><span class="pre">loading.py</span></code>,
-<code class="docutils literal notranslate"><span class="pre">analysis.py</span></code>, <code class="docutils literal notranslate"><span class="pre">ir.py</span></code>, <code class="docutils literal notranslate"><span class="pre">diagnostics.py</span></code>, everything under <code class="docutils literal notranslate"><span class="pre">backends/</span></code> and
-<code class="docutils literal notranslate"><span class="pre">plugins.py</span></code> - with <code class="docutils literal notranslate"><span class="pre">ast</span></code>, collects the <code class="docutils literal notranslate"><span class="pre">ddd.*</span></code> modules each one imports, and fails if
-the import graph disagrees with the table above:</p>
+<code class="docutils literal notranslate"><span class="pre">analysis.py</span></code>, <code class="docutils literal notranslate"><span class="pre">ir.py</span></code>, <code class="docutils literal notranslate"><span class="pre">diagnostics.py</span></code>, everything under <code class="docutils literal notranslate"><span class="pre">backends/</span></code>,
+<code class="docutils literal notranslate"><span class="pre">plugins.py</span></code>, <code class="docutils literal notranslate"><span class="pre">elf.py</span></code> and everything under <code class="docutils literal notranslate"><span class="pre">toolbox/</span></code> - with <code class="docutils literal notranslate"><span class="pre">ast</span></code>, collects the
+<code class="docutils literal notranslate"><span class="pre">ddd.*</span></code> modules each one imports, and fails if the import graph disagrees with the table
+above:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">loading.py</span></code>, <code class="docutils literal notranslate"><span class="pre">analysis.py</span></code>, <code class="docutils literal notranslate"><span class="pre">ir.py</span></code> and <code class="docutils literal notranslate"><span class="pre">diagnostics.py</span></code> import no backend,</p></li>
 <li><p>nothing under <code class="docutils literal notranslate"><span class="pre">backends/</span></code> imports <code class="docutils literal notranslate"><span class="pre">ddd.loading</span></code> or <code class="docutils literal notranslate"><span class="pre">ddd.analysis</span></code>,</p></li>
@@ -233,7 +244,10 @@ is spelled by both of them, so a new datatype cannot be added to the contract wh
 output format silently has no name for it,</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">plugins.py</span></code> imports no loader, analysis or backend at runtime, so a plugin sees exactly
 what a backend sees, and the <code class="docutils literal notranslate"><span class="pre">Backend</span></code> protocol it names is only imported there under
-<code class="docutils literal notranslate"><span class="pre">TYPE_CHECKING</span></code>.</p></li>
+<code class="docutils literal notranslate"><span class="pre">TYPE_CHECKING</span></code>,</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">elf.py</span></code> imports no <code class="docutils literal notranslate"><span class="pre">ddd</span></code> module at all, so that reading an address map straight out of
+an image can use it without the toolbox, and</p></li>
+<li><p>nothing under <code class="docutils literal notranslate"><span class="pre">toolbox/</span></code> imports a backend or <code class="docutils literal notranslate"><span class="pre">ddd.cli</span></code>.</p></li>
 </ul>
 <p>A second test in the same file reads the text of <code class="docutils literal notranslate"><span class="pre">src/ddd/models/</span></code> and fails if a spelling
 that belongs to a single output format - <code class="docutils literal notranslate"><span class="pre">uint16_t</span></code>, <code class="docutils literal notranslate"><span class="pre">UWORD</span></code>, <code class="docutils literal notranslate"><span class="pre">COMPU_</span></code>, <code class="docutils literal notranslate"><span class="pre">AXIS_PTS</span></code>,
@@ -423,8 +437,34 @@ two documentation guards - a claim about what the tool prints is checked against
 prints - so a reworded diagnostic fails there first. What it does <em>not</em> run is counted rather
 than left to be discovered: a page that runs one of its commands has the rest read as
 illustrations, and <code class="docutils literal notranslate"><span class="pre">SILENTLY_SHOWN</span></code> in that file records how many such commands each page
-has - 51 of the 170 shown, and three of the eighty-four runs pinning an exit status. A page
+has - 51 of the 173 shown, and five of the eighty-seven runs pinning an exit status. A page
 that gains one fails until somebody writes the new number down.</p>
+</section>
+<section id="the-elf-fixtures">
+<h2>The ELF fixtures<a class="headerlink" href="#the-elf-fixtures" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">tool</span> <span class="pre">from-elf</span></code> is tested against ten images of one C source - little and big endian, 32
+and 64 bit, gcc and clang, DWARF 2 to 5, compressed debug sections and not, a static PIE - which
+<code class="docutils literal notranslate"><span class="pre">tests/fixtures/elf/</span></code> holds beside a manifest of what each image’s own toolchain says about its
+target: byte order, the signedness of <code class="docutils literal notranslate"><span class="pre">char</span></code>, the sizes of <code class="docutils literal notranslate"><span class="pre">long</span></code>, <code class="docutils literal notranslate"><span class="pre">long</span> <span class="pre">double</span></code> and an
+enum, the alignment of a <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>, and the section and size of every symbol - and what
+<code class="docutils literal notranslate"><span class="pre">readelf</span></code> says of each image as a file: its ELF type, the versions of its DWARF and whether
+its debug sections are compressed. The reader’s tests hold it to the manifest, never to itself.
+<code class="docutils literal notranslate"><span class="pre">examples/firmware/firmware.elf</span></code> is a copy of the Cortex-M4 image, for the transcripts of
+<a class="reference internal" href="toolbox.html"><span class="doc">The toolbox</span></a>. Beside the ten rows sit the negative inputs, each built by x86_64 gcc from a
+small source of its own: DWARF type units at versions 4 and 5, gcc’s link-time optimisation,
+and a variable <code class="docutils literal notranslate"><span class="pre">--gc-sections</span></code> discarded - the images the reader refuses, or reads a way of
+its own.</p>
+<p>The images are committed, so the suite needs neither Docker nor a compiler. They are built in
+Docker, out of <code class="docutils literal notranslate"><span class="pre">tests/fixtures/elf/src/</span></code>, by <code class="docutils literal notranslate"><span class="pre">docker/build_elf_fixtures.py</span></code> in the image of
+<code class="docutils literal notranslate"><span class="pre">docker/elf-fixtures.Dockerfile</span></code>, a Debian image pinned by digest. Its packages are not
+pinned, since a pinned version stops the build once a point release of Debian replaces it;
+the manifest records the compiler that built each image instead:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ docker compose run --rm elf-fixtures  # rebuilds every image and the manifest
+</pre></div>
+</div>
+<p>The manifest holds a hash of every file the images are built from, and
+<code class="docutils literal notranslate"><span class="pre">tests/test_elf_fixtures.py</span></code> fails, naming that command, when one of them changed without a
+rebuild. Commit what the rebuild writes.</p>
 </section>
 <section id="running-the-checks">
 <h2>Running the checks<a class="headerlink" href="#running-the-checks" title="Link to this heading"></a></h2>

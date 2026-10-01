@@ -24,7 +24,7 @@
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Build integration" href="build_integration.html" />
+    <link rel="next" title="The toolbox" href="toolbox.html" />
     <link rel="prev" title="Templates" href="templates.html" /> 
 </head>
 
@@ -68,6 +68,7 @@
 </li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="toolbox.html">The toolbox</a></li>
 <li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
 </ul>
@@ -122,13 +123,13 @@ of source files) goes to standard output. The two never mix, so
 nothing has to be filtered out of a redirection: <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">project.ddd.json</span> <span class="pre">&gt;</span>
 <span class="pre">baseline.json</span></code> archives the dictionary and nothing else, even on a run that had something to
 say about it.</p>
-<p>For a job that files findings rather than reads them, eight commands understand
+<p>For a job that files findings rather than reads them, nine commands understand
 <code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code>: <code class="docutils literal notranslate"><span class="pre">check</span></code>, <code class="docutils literal notranslate"><span class="pre">compare</span></code>, <code class="docutils literal notranslate"><span class="pre">generate</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span></code>, <code class="docutils literal notranslate"><span class="pre">dump</span></code>, <code class="docutils literal notranslate"><span class="pre">sources</span></code>,
-<code class="docutils literal notranslate"><span class="pre">artefacts</span></code> and <code class="docutils literal notranslate"><span class="pre">checks</span></code>. That leaves out <code class="docutils literal notranslate"><span class="pre">schema</span></code> and <code class="docutils literal notranslate"><span class="pre">build-info</span></code>, whose output is
-json already, <code class="docutils literal notranslate"><span class="pre">lsp</span></code>, which speaks json-rpc, <code class="docutils literal notranslate"><span class="pre">gui</span></code>, which serves pages to a browser,
-<code class="docutils literal notranslate"><span class="pre">cmake-dir</span></code> and <code class="docutils literal notranslate"><span class="pre">templates-dir</span></code>, which print one path, and <code class="docutils literal notranslate"><span class="pre">id</span></code>, which reports the files
-it skipped and one total rather than findings. In json the diagnostics become part of the
-document the command prints, next to whatever else it has to report:</p>
+<code class="docutils literal notranslate"><span class="pre">artefacts</span></code>, <code class="docutils literal notranslate"><span class="pre">checks</span></code> and <code class="docutils literal notranslate"><span class="pre">tool</span></code>. That leaves out <code class="docutils literal notranslate"><span class="pre">schema</span></code> and <code class="docutils literal notranslate"><span class="pre">build-info</span></code>, whose
+output is json already, <code class="docutils literal notranslate"><span class="pre">lsp</span></code>, which speaks json-rpc, <code class="docutils literal notranslate"><span class="pre">gui</span></code>, which serves pages to a
+browser, <code class="docutils literal notranslate"><span class="pre">cmake-dir</span></code> and <code class="docutils literal notranslate"><span class="pre">templates-dir</span></code>, which print one path, and <code class="docutils literal notranslate"><span class="pre">id</span></code>, which reports
+the files it skipped and one total rather than findings. In json the diagnostics become part
+of the document the command prints, next to whatever else it has to report:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates --format json
 {
   "diagnostics": [],
@@ -653,6 +654,11 @@ integration module of the installation it is actually using.</p></td>
 starting point for its own. They are an example and not a default: no run of
 <code class="docutils literal notranslate"><span class="pre">generate</span></code> falls back to them.</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">tool</span> <span class="pre">from-elf</span> <span class="pre">IMAGE</span> <span class="pre">SYMBOL...</span></code></p></td>
+<td><p>print, as json, the declarations of the C variables a linked ELF image’s DWARF
+describes - by name, by glob, or narrowed to a unit as <code class="docutils literal notranslate"><span class="pre">UNIT:NAME</span></code> - checked by DDD
+itself before they are printed; <a class="reference internal" href="toolbox.html"><span class="doc">The toolbox</span></a> is the guide. Needs the <code class="docutils literal notranslate"><span class="pre">elf</span></code> extra.</p></td>
+</tr>
 </tbody>
 </table>
 <p><code class="docutils literal notranslate"><span class="pre">FILE</span></code> is a project description or a single component description in every command that
@@ -785,7 +791,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <h3>ddd<a class="headerlink" href="#ddd" title="Link to this heading"></a></h3>
 <p>Data dictionary for the global variables of a component based embedded software project.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd [-h] [-v]</span>
-<span class="go">           {check,compare,generate,list,dump,id,lsp,gui,build-info,schema,artefacts,sources,checks,cmake-dir,templates-dir}</span>
+<span class="go">           {check,compare,generate,list,dump,id,lsp,gui,build-info,schema,artefacts,sources,checks,cmake-dir,templates-dir,tool}</span>
 <span class="go">           ...</span>
 </pre></div>
 </div>
@@ -1532,6 +1538,77 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 </dd></dl>
 
 </section>
+<section id="ddd-tool">
+<h4>ddd tool<a class="headerlink" href="#ddd-tool" title="Link to this heading"></a></h4>
+<p>The toolbox holds what is run once rather than in every build: a tool that turns something a project already has into DDD descriptions, or DDD descriptions into something else. Each tool is a command of its own under this one.</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd tool [-h] {from-elf} ...</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-tool-h">
+<span id="cmdoption-ddd-tool-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-tool-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+</section>
+<section id="ddd-tool-from-elf">
+<h4>ddd tool from-elf<a class="headerlink" href="#ddd-tool-from-elf" title="Link to this heading"></a></h4>
+<p>Reads a linked ELF image and its DWARF debug information, and prints as json the declaration of every C variable named or matched: its kind, datatype, shape, enumerators, structure members, initial value and section, as the image states them. What an image does not state - a unit, a description, limits, a scaling, whether an array is a curve - is left out, and said once. DDD itself checks every entry, as ‘ddd check –standalone’ checks a component, before it is printed. Needs pyelftools, which the ‘elf’ extra installs.</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd tool from-elf [-h] [--component NAME]</span>
+<span class="go">                         [--scope {output,local,input}] [-o OUTPUT] [--force]</span>
+<span class="go">                         [--format {text,json}]</span>
+<span class="go">                         image SYMBOL [SYMBOL ...]</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-tool-from-elf-arg-image">
+<span class="sig-name descname"><span class="pre">image</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-tool-from-elf-arg-image" title="Link to this definition"></a></dt>
+<dd><p>the linked ELF image, built with debug information (-g)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-tool-from-elf-arg-symbol">
+<span class="sig-name descname"><span class="pre">symbol</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-tool-from-elf-arg-symbol" title="Link to this definition"></a></dt>
+<dd><p>a C variable, by name or by a pattern in shell glob syntax, prefixed with UNIT: to take it from one compilation unit, for a static several units define</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-tool-from-elf-h">
+<span id="cmdoption-ddd-tool-from-elf-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-tool-from-elf-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-tool-from-elf-component">
+<span class="sig-name descname"><span class="pre">--component</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;name&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-tool-from-elf-component" title="Link to this definition"></a></dt>
+<dd><p>print a component file of this name, holding the types its structures need, rather than a list of interface entries</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-tool-from-elf-scope">
+<span class="sig-name descname"><span class="pre">--scope</span></span><span class="sig-prename descclassname"> <span class="pre">{output,local,input}</span></span><a class="headerlink" href="#cmdoption-ddd-tool-from-elf-scope" title="Link to this definition"></a></dt>
+<dd><p>the scope of every entry; input leaves out the initial value and the section, which a consumer does not state</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-tool-from-elf-o">
+<span id="cmdoption-ddd-tool-from-elf-output"></span><span class="sig-name descname"><span class="pre">-o</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--output</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-tool-from-elf-o" title="Link to this definition"></a></dt>
+<dd><p>write the declarations to this file instead of stdout, leaving the file untouched when its content would not change</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-tool-from-elf-force">
+<span class="sig-name descname"><span class="pre">--force</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-tool-from-elf-force" title="Link to this definition"></a></dt>
+<dd><p>write the declarations that were described even where others were not; the exit code still reports the errors</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-tool-from-elf-format">
+<span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-tool-from-elf-format" title="Link to this definition"></a></dt>
+<dd><p>format of the diagnostics, which go to stderr on this command; the declarations are json either way</p>
+</dd></dl>
+
+</section>
 </section>
 </section>
 </section>
@@ -1541,7 +1618,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="templates.html" class="btn btn-neutral float-left" title="Templates" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="build_integration.html" class="btn btn-neutral float-right" title="Build integration" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="toolbox.html" class="btn btn-neutral float-right" title="The toolbox" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

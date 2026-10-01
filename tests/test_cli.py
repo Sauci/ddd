@@ -4400,10 +4400,15 @@ class TestToolFromElf:
             main(["tool", "from-elf", str(X86), "Cal_Gain"])
 
     def test_the_toolbox_without_a_tool_is_a_usage_error_listing_the_tools(
-        self, capsys: pytest.CaptureFixture[str]
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Section 5.3 of the design: the error lists the tools, as 'ddd' alone lists its
-        commands, rather than a placeholder naming none of them."""
+        commands, rather than a placeholder naming none of them.
+
+        PYTHON_COLORS=0 keeps this independent of the environment's own colour settings:
+        Python 3.14's argparse colours its usage text, which 'can_colorize' decides from
+        PYTHON_COLORS before it even looks at FORCE_COLOR, and earlier versions ignore."""
+        monkeypatch.setenv("PYTHON_COLORS", "0")
         with pytest.raises(SystemExit) as exited:
             main(["tool"])
         assert exited.value.code == EXIT_USAGE

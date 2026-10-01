@@ -1146,6 +1146,15 @@ class TestDiscarded:
         found = by_name(open_image(path), "Meas_U16")
         assert (found.address, found.missing) == (None if missing else address, missing)
 
+    def test_a_symbol_of_its_name_at_another_address_keeps_no_variable_at_0(
+        self, tmp_path: Path
+    ) -> None:
+        """The pairs are read off the symbol table, address and all: Meas_U16's symbol still
+        sits where the row put it when a copy's DWARF moves the variable to 0."""
+        path = relocated(tmp_path, "x86_64", "Meas_U16", 0)
+        found = by_name(open_image(path), "Meas_U16")
+        assert (found.address, found.missing) == (None, DISCARDED)
+
     def test_the_variable_it_kept_is_where_its_symbol_says(self) -> None:
         image = open_image(FIXTURES / "gc-sections.elf")
         kept = by_name(image, "Cal_Kept")

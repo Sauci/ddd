@@ -3971,6 +3971,8 @@ def expected_definitions(traits: dict[str, Any]) -> dict[str, dict[str, Any]]:
             "Enum_Table", "value_block", unsigned_enum, [200, 0], dimensions=[2], conversion=state
         ),
         value("Static_Used", "measurement", "uint16", 0x0102),
+        # unit_a.c and unit_b.c each define it, and the linker makes the two one variable.
+        value("Common_Counter", "measurement", "uint32"),
     ]
     definitions = {definition["name"]: definition for definition in rows}
     definitions["Section_Calib"] = {

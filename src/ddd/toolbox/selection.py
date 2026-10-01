@@ -44,53 +44,68 @@ def select(image: Image, arguments: Sequence[Wanted], bag: DiagnosticBag) -> lis
     """The variables the arguments name, in their order, each once; a glob's in name order.
 
     An argument naming nothing, a name several units define and a variable without storage
-    are findings rather than usage errors, so that one run reports every one of them.
+    are findings rather than usage errors, so that one run reports every one of them, and
+    each name is reported once however many arguments reach it. A name at one address is one
+    variable, however many units describe it: ``-fcommon`` makes a tentative definition in
+    several units one variable, which the DWARF of each unit describes.
     """
     chosen: list[Variable] = []
-    taken: set[tuple[str, str]] = set()
+    taken: set[tuple[str, int]] = set()
     judged: set[str] = set()
     for argument in arguments:
-        matched = [
-            variable
-            for variable in image.variables
-            if _in_unit(variable, argument.unit) and _matches(variable, argument)
-        ]
+        matched: dict[str, list[Variable]] = {}
+        for variable in image.variables:
+            if _in_unit(variable, argument.unit) and _matches(variable, argument):
+                matched.setdefault(variable.name, []).append(variable)
         if not matched:
             report(bag, "elf-symbol-missing", _missing(argument, image), where(image.path))
             continue
-        for name in sorted({variable.name for variable in matched}):
-            group = sorted(
-                (variable for variable in matched if variable.name == name),
-                key=lambda variable: variable.unit,
+        for name in sorted(matched):
+            group = _distinct(sorted(matched[name], key=lambda variable: variable.unit))
+            (variable, *others) = group
+            if not others and variable.address is not None:
+                if (name, variable.address) not in taken:
+                    taken.add((name, variable.address))
+                    chosen.append(variable)
+                continue
+            if name in judged:
+                continue
+            judged.add(name)
+            if others:
+                _report_ambiguous(name, group, image, bag)
+                continue
+            report(
+                bag,
+                "elf-no-storage",
+                f"'{name}' has no address in the image: {variable.missing}",
+                place(image, variable.declared_at),
             )
-            if len(group) > 1:
-                if name not in judged:
-                    judged.add(name)
-                    _report_ambiguous(name, group, image, bag)
-                continue
-            (variable,) = group
-            if variable.address is None:
-                if name not in judged:
-                    judged.add(name)
-                    report(
-                        bag,
-                        "elf-no-storage",
-                        f"'{name}' has no address in the image: {variable.missing}",
-                        place(image, variable.declared_at),
-                    )
-                continue
-            key = (variable.name, variable.unit)
-            if key not in taken:
-                taken.add(key)
-                chosen.append(variable)
     return chosen
 
 
+def _distinct(group: Sequence[Variable]) -> list[Variable]:
+    """One variable per address: the first unit's, where several units describe one. A
+    variable without storage is one of its own."""
+    seen: set[int] = set()
+    distinct: list[Variable] = []
+    for variable in group:
+        if variable.address is not None:
+            if variable.address in seen:
+                continue
+            seen.add(variable.address)
+        distinct.append(variable)
+    return distinct
+
+
 def _in_unit(variable: Variable, unit: str | None) -> bool:
+    """Whether ``variable`` is of ``unit``, whole or by its trailing components, the separators
+    of both spelled as forward slashes - a Windows build records its units with backslashes,
+    and the argument repeats them, as the ambiguity's own hint does."""
     if unit is None:
         return True
     spelled = variable.unit.replace("\\", "/")
-    return spelled == unit or spelled.endswith(f"/{unit}")
+    asked = unit.replace("\\", "/")
+    return spelled == asked or spelled.endswith(f"/{asked}")
 
 
 def _matches(variable: Variable, argument: Wanted) -> bool:
@@ -106,7 +121,10 @@ def _missing(argument: Wanted, image: Image) -> str:
     if argument.glob:
         return f"no variable of the image's debug information matches '{argument.pattern}'{within}"
     message = f"the image's debug information holds no variable named '{argument.pattern}'{within}"
-    if argument.pattern in image.symbols:
+    # The hint is true only where no unit's DWARF holds the name: asked for in the wrong unit,
+    # a variable is missing there, and its own unit has debug information.
+    described = any(variable.name == argument.pattern for variable in image.variables)
+    if argument.pattern in image.symbols and not described:
         message += (
             "; the symbol table holds it, so the unit defining it was built without debug "
             "information (-g)"

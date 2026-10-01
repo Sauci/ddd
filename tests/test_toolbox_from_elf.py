@@ -194,8 +194,8 @@ class TestSelect:
     ) -> None:
         bag = DiagnosticBag()
         img = image(
-            stored("Twin", unit="unit_a.c", line=9),
-            stored("Twin", unit="unit_b.c", line=8),
+            stored("Twin", unit="unit_a.c", line=9, address=0x100),
+            stored("Twin", unit="unit_b.c", line=8, address=0x102),
             stored("Tweed"),
         )
         assert chosen(img, "Tw*", "Twin", bag=bag) == ["Tweed"]
@@ -212,7 +212,10 @@ class TestSelect:
         )
 
     def test_its_unit_resolves_an_ambiguous_name(self) -> None:
-        img = image(stored("Twin", unit="unit_a.c"), stored("Twin", unit="unit_b.c"))
+        img = image(
+            stored("Twin", unit="unit_a.c", address=0x100),
+            stored("Twin", unit="unit_b.c", address=0x102),
+        )
         assert chosen(img, "unit_b.c:Twin") == ["Twin"]
 
     def test_a_variable_without_storage_is_reported_once_with_its_reason(self) -> None:
@@ -227,6 +230,88 @@ class TestSelect:
             )
         ]
         assert bag.sorted[0].location == Location(Path("unit.c"), line=4)
+
+    def test_one_name_at_one_address_is_one_variable_whichever_units_describe_it(self) -> None:
+        """-fcommon, or the common attribute, makes a tentative definition in two units one
+        variable, which the DWARF of each unit describes: it is no ambiguity, and it is taken
+        from the first unit by name, printed once however it is asked for."""
+        bag = DiagnosticBag()
+        img = image(
+            stored("Shared", unit="unit_b.c", address=0x104),
+            stored("Shared", unit="unit_a.c", address=0x104),
+        )
+        picked = select(img, [wanted("Shared"), wanted("unit_b.c:Shared"), wanted("S*")], bag)
+        assert [(v.name, v.unit) for v in picked] == [("Shared", "unit_a.c")]
+        assert found(bag) == []
+
+    def test_its_unit_still_takes_one_of_a_name_at_one_address(self) -> None:
+        img = image(
+            stored("Shared", unit="unit_a.c", address=0x104),
+            stored("Shared", unit="unit_b.c", address=0x104),
+        )
+        picked = select(img, [wanted("unit_b.c:Shared")], DiagnosticBag())
+        assert [(v.name, v.unit) for v in picked] == [("Shared", "unit_b.c")]
+
+    def test_a_name_at_two_addresses_is_ambiguous_listing_one_unit_per_address(self) -> None:
+        bag = DiagnosticBag()
+        img = image(
+            stored("Twin", unit="unit_a.c", address=0x104),
+            stored("Twin", unit="unit_b.c", address=0x104),
+            stored("Twin", unit="unit_c.c", address=0x108),
+        )
+        assert chosen(img, "Twin", bag=bag) == []
+        assert [(d.check, d.message) for d in bag.sorted] == [
+            (
+                "elf-symbol-ambiguous",
+                "'Twin' names a variable in 2 units, 'unit_a.c', 'unit_c.c': prefix it with "
+                "one, as 'unit_a.c:Twin'",
+            )
+        ]
+
+    def test_a_name_with_storage_in_one_unit_and_none_in_another_is_ambiguous(self) -> None:
+        bag = DiagnosticBag()
+        img = image(
+            stored("Gain", unit="unit_a.c", address=0x104),
+            stored("Gain", unit="unit_b.c", address=None, missing="it is thread-local"),
+        )
+        assert chosen(img, "Gain", bag=bag) == []
+        assert [d.check for d in bag.sorted] == ["elf-symbol-ambiguous"]
+
+    def test_two_names_without_storage_in_two_units_are_two_variables(self) -> None:
+        """A static const each unit folded is no variable at one address: two units still
+        define the name, and only a unit says which is meant."""
+        bag = DiagnosticBag()
+        img = image(
+            stored("Limit", unit="unit_a.c", address=None, missing="it was folded"),
+            stored("Limit", unit="unit_b.c", address=None, missing="it was folded"),
+        )
+        assert chosen(img, "Limit", bag=bag) == []
+        assert [d.check for d in bag.sorted] == ["elf-symbol-ambiguous"]
+
+    @pytest.mark.parametrize("unit", ["src\\app\\a.c", "app\\a.c", "src/app/a.c", "a.c"])
+    def test_a_unit_spelled_with_backslashes_matches_as_dwarf_recorded_it(self, unit: str) -> None:
+        """A Windows build records its units with backslashes, and the ambiguity's own hint
+        repeats the unit as recorded: 'src\\app\\a.c:Twin' must take the variable it names."""
+        img = image(
+            stored("Twin", unit="src\\app\\a.c", address=0x104),
+            stored("Twin", unit="src\\app\\b.c", address=0x108),
+        )
+        picked = select(img, [wanted(f"{unit}:Twin")], DiagnosticBag())
+        assert [(v.name, v.unit) for v in picked] == [("Twin", "src\\app\\a.c")]
+
+    def test_the_g_hint_is_left_out_where_another_unit_s_dwarf_holds_the_name(self) -> None:
+        """The symbol table holds the name and so does the DWARF of cal.c: asked for in
+        other.c, the variable is missing there, and no unit lacks debug information."""
+        bag = DiagnosticBag()
+        img = image(stored("Gain", unit="cal.c"), symbols=frozenset({"Gain"}))
+        assert chosen(img, "other.c:Gain", bag=bag) == []
+        assert found(bag) == [
+            (
+                "elf-symbol-missing",
+                Severity.ERROR,
+                "the image's debug information holds no variable named 'Gain' in unit 'other.c'",
+            )
+        ]
 
 
 U16 = Base("short unsigned int", DW_ATE_UNSIGNED, 2)

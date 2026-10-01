@@ -8,7 +8,7 @@ import pytest
 
 from conftest import directory_link
 from ddd.diagnostics import Diagnostic, Location, Severity
-from ddd.gui.derived import derived
+from ddd.gui.derived import derived, key_of
 from ddd.gui.session import Filed, Revision, SourceFile
 
 
@@ -222,6 +222,17 @@ class TestTheFindingsTabsOrder:
         findings = (made_of(fields), made_of({**fields, **other}), made_of(fields))
         made = derived(revision_of(project, (described(project, "project"),), findings))
         assert made.repeats == (0, 0, 1)
+
+    def test_a_finding_placed_nowhere_is_keyed_with_no_place(self) -> None:
+        """Its place an empty string, as ``GET /api/findings`` answers its ``pointer`` - the key a
+        compact json array of the five and the repeat."""
+        nowhere = Filed(Path("/p/p.ddd.json"), Diagnostic("schema", Severity.ERROR, "bad", None))
+        assert key_of(nowhere, 0) == '["/p/p.ddd.json","error","schema","","bad",0]'
+        placed = Filed(
+            Path("/p/a.ddd.json"),
+            Diagnostic("schema", Severity.ERROR, "bad", Location(Path("/p/a.ddd.json"), "x[1]")),
+        )
+        assert key_of(placed, 2) == '["/p/a.ddd.json","error","schema","x[1]","bad",2]'
 
     def test_a_finding_placed_nowhere_repeats_another_placed_nowhere(self, tmp_path: Path) -> None:
         project = tmp_path / "p.ddd.json"

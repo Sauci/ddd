@@ -4,7 +4,6 @@ import {
   countsOf,
   distinctFindings,
   findingCounts,
-  findingRows,
   findingsTotal,
   fixEdit,
   keyedFindings,
@@ -14,7 +13,7 @@ import {
   routeHref,
   routeLabel,
   routeOf,
-  stillReported,
+  selectedNow,
   unreadable,
 } from "./findings";
 import { SHARED_KINDS } from "./shared";
@@ -122,30 +121,6 @@ test("findings that differ in severity, check or message are each kept, in order
   expect(distinctFindings(listed)).toEqual(listed);
 });
 
-describe("the rows of the findings tab", () => {
-  test("errors come before warnings, and warnings before information", () => {
-    const rows = findingRows([
-      finding({ severity: "info", check: "missing-id" }),
-      finding({ severity: "error" }),
-      finding({ severity: "warning", check: "storage-mismatch" }),
-    ]);
-    expect(rows.map((row) => row.finding.severity)).toEqual(["error", "warning", "info"]);
-  });
-
-  test("within a severity the analysis's own order is kept, which groups them by file", () => {
-    const rows = findingRows([
-      finding({ file: TYPES, check: "duplicate-type", route: null }),
-      finding({ file: SENSOR_HUB }),
-    ]);
-    expect(rows.map((row) => row.file)).toEqual(["types.ddd.json", "sensor_hub.ddd.json"]);
-  });
-
-  test("each row has a key that tells two findings of one wording apart", () => {
-    const rows = findingRows([finding(), finding()]);
-    expect(new Set(rows.map((row) => row.key)).size).toBe(2);
-  });
-});
-
 describe("what the tab says about how many there are", () => {
   test.each([
     [{ error: 0, warning: 0, info: 0 }, "Nothing to report"],
@@ -196,22 +171,34 @@ describe("what the tab says about how many there are", () => {
   });
 });
 
-describe("whether a selected finding is still reported", () => {
-  const listed = (key: string): ListedFinding => ({ ...finding(), key });
-  const reply = (...keys: string[]): FindingsReply => ({
+describe("what a selected finding's panel shows", () => {
+  const listed = (key: string, fields: Partial<Finding> = {}): ListedFinding => ({
+    ...finding(fields),
+    key,
+  });
+  const reply = (...findings: ListedFinding[]): FindingsReply => ({
     revision: 8,
-    total: keys.length,
+    total: findings.length,
     offset: 0,
-    findings: keys.map(listed),
+    findings,
+  });
+  const selected = listed("b");
+
+  test("the finding as it was selected, until a reply about it has come", () => {
+    expect(selectedNow(selected, undefined)).toBe(selected);
   });
 
-  test("yes, where the reply carries its key", () => {
-    expect(stillReported("b", reply("a", "b"))).toBe(true);
+  test("the finding as the reply reports it, its notes and its route the revision's", () => {
+    const moved = listed("b", {
+      notes: [{ message: "reference declaration", file: TYPES, pointer: "types[1]" }],
+      route: null,
+    });
+    expect(selectedNow(selected, reply(listed("a"), moved))).toBe(moved);
   });
 
-  test("no, where it does not - however alike another finding reads", () => {
-    expect(stillReported("c", reply("a", "b"))).toBe(false);
-    expect(stillReported("a", reply())).toBe(false);
+  test("nothing, where the reply no longer reports its key - however alike another reads", () => {
+    expect(selectedNow(selected, reply(listed("a"), listed("c")))).toBeNull();
+    expect(selectedNow(selected, reply())).toBeNull();
   });
 });
 

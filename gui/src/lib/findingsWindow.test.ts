@@ -4,10 +4,12 @@ import type { FindingsReply, ListedFinding } from "../api/types";
 import {
   arrivedPages,
   BOX_HEIGHT,
+  keeps,
   MARGIN,
   PAGE_SIZE,
   pageQuery,
   pagesOf,
+  pendingKeys,
   ROW_HEIGHT,
   spacersOf,
   spanOf,
@@ -52,9 +54,10 @@ describe("the window's measures", () => {
   });
 
   test("ui.css draws the rows and the box the window's arithmetic counts on", () => {
-    // What turns a scroll position into a row is ROW_HEIGHT, and what the window covers before
-    // the box reports its own height is BOX_HEIGHT: a stylesheet drawing either otherwise would
-    // misplace every row the window draws, and no other test would see it.
+    // What turns a scroll position into a row is ROW_HEIGHT: a stylesheet drawing rows of another
+    // height would misplace every row the window draws. What the window covers before the box
+    // reports its own height is BOX_HEIGHT: a box drawn another height would have the window
+    // draw too few or too many rows until it does. No other test would see either.
     const css = readFileSync(new URL("../styles/ui.css", import.meta.url), "utf8");
     const rules = css.match(/\.findings-window\s*\{[^}]*\}/g) ?? [];
     expect(rules.some((rule) => rule.includes(`max-height: ${BOX_HEIGHT}px;`))).toBe(true);
@@ -115,9 +118,12 @@ describe("the pages a span covers", () => {
     expect(pagesOf({ first: 99, last: 201 })).toEqual([0, 1, 2]);
   });
 
-  test("none, for a span with no row", () => {
+  test("none, for a span with no row, wherever it stands", () => {
     expect(pagesOf({ first: 0, last: 0 })).toEqual([]);
     expect(pagesOf({ first: 100, last: 100 })).toEqual([]);
+    // What a box scrolled past the end of a table that has grown shorter draws for one render
+    // (`spanOf(32500, 495, 150)`), off a page boundary.
+    expect(pagesOf({ first: 150, last: 150 })).toEqual([]);
   });
 
   test("a page is asked for as a hundred findings from its first", () => {
@@ -127,8 +133,16 @@ describe("the pages a span covers", () => {
 
   test("the pages that have arrived, by page, and none that has not", () => {
     const third = page(3);
-    expect(arrivedPages([3, 4], [third, undefined])).toEqual(new Map([[3, third]]));
-    expect(arrivedPages([], [])).toEqual(new Map());
+    expect(arrivedPages([3, 4], [third, undefined], 7)).toEqual(new Map([[3, third]]));
+    expect(arrivedPages([], [], 7)).toEqual(new Map());
+  });
+
+  test("a page another revision answered is not drawn among this one's", () => {
+    // Asked under the revision the page holds, answered by the newest the server has: between an
+    // analysis landing and the state saying so, the two differ.
+    const third = page(3);
+    const newer = { ...page(4), revision: 8 };
+    expect(arrivedPages([3, 4], [third, newer], 7)).toEqual(new Map([[3, third]]));
   });
 });
 
@@ -158,6 +172,35 @@ describe("the rows the window draws", () => {
 
   test("none, for a span with no row", () => {
     expect(windowRows({ first: 0, last: 0 }, new Map())).toEqual([]);
+  });
+});
+
+describe("the rows nobody can select", () => {
+  test("each placeholder, by its key, and no row whose finding has arrived", () => {
+    const rows = windowRows({ first: 98, last: 102 }, new Map([[0, page(0)]]));
+    expect(pendingKeys(rows)).toEqual(["pending-100", "pending-101"]);
+    expect(pendingKeys(windowRows({ first: 0, last: 3 }, new Map([[0, page(0)]])))).toEqual([]);
+  });
+});
+
+describe("whether a scroll keeps the row the keyboard is on", () => {
+  // A row that leaves the window while it holds the focus is one React Aria moves the focus off,
+  // to whichever row then stands at its place, and scrolls the box back to: it gives the focus up
+  // first.
+  test("yes, while the rows drawn after the scroll still include it", () => {
+    expect(keeps(3, 0, BOX_HEIGHT, 1000)).toBe(true);
+    expect(keeps(3, 23 * ROW_HEIGHT, BOX_HEIGHT, 1000)).toBe(true);
+    expect(keeps(57, 23 * ROW_HEIGHT, BOX_HEIGHT, 1000)).toBe(true);
+  });
+
+  test("no, once a scroll takes the window past it, either way", () => {
+    expect(keeps(3, 24 * ROW_HEIGHT, BOX_HEIGHT, 1000)).toBe(false);
+    expect(keeps(58, 23 * ROW_HEIGHT, BOX_HEIGHT, 1000)).toBe(false);
+    expect(keeps(3, 1200, BOX_HEIGHT, 1000)).toBe(false);
+  });
+
+  test("no, for a row past the end of a table that has grown shorter", () => {
+    expect(keeps(150, 0, BOX_HEIGHT, 150)).toBe(false);
   });
 });
 

@@ -1210,31 +1210,60 @@ export const NO_FINDINGS: State = {
   edits: 0,
 };
 
-/** How many findings a long table has: a findings-heavy project's, constructed below. */
+/** How many findings a long table has: those of the project `tools/generate_project.py` writes for
+ * 4,000 declarations in its many shape with half its input slots unread
+ * (`generate(directory, 4000, "many", unread=0.5)`): 133 components, the first five of 32
+ * declarations and the rest of 30, and 2,000 `unused-output` warnings, its only findings. */
 export const LONG_TOTAL = 2000;
 
-/** The first page of a long table's findings - constructed, not read from an example: what
- * `tools/generate_project.py` files on a project of its many shape with every output unread, the
- * first hundred of its warnings, fifteen to a component, as `GET /api/findings` answers them. The
- * table has `LONG_TOTAL` findings in all. */
+/** That project's findings, the first `count` of them as `GET /api/findings` answers them, its file
+ * paths spelled as these fixtures spell paths. The generator numbers the project's outputs from 0
+ * across its components, each component's own `_O` outputs first in its interface, then one entry
+ * per input slot, numbered the same way: an odd-numbered slot is written as an output `_X` that
+ * nobody reads, and an even-numbered one reads an even-numbered output - so every odd-numbered
+ * `_O` output is read by nobody either. In each component's file, its unread `_O` outputs, then its
+ * `_X` ones; and the files in order. Checked against a run of the generator: the first hundred are
+ * the hundred that run's first page answered. */
+function longFindings(count: number): ListedFinding[] {
+  const found: ListedFinding[] = [];
+  let numbered = 0;
+  for (let component = 0; found.length < count; component += 1) {
+    const half = component < 5 ? 16 : 15;
+    const name = `C${String(component).padStart(5, "0")}`;
+    const unread: [number, string][] = [];
+    for (let at = 0; at < half; at += 1) {
+      if ((numbered + at) % 2 === 1) unread.push([at, `${name}_O${String(at).padStart(4, "0")}`]);
+    }
+    for (let slot = 0; slot < half; slot += 1) {
+      if ((numbered + slot) % 2 === 1) {
+        unread.push([half + slot, `${name}_X${String(slot).padStart(4, "0")}`]);
+      }
+    }
+    for (const [at, output] of unread.slice(0, count - found.length)) {
+      found.push(
+        listed({
+          file: `C:/work/heavy/components/${name.toLowerCase()}.ddd.json`,
+          check: "unused-output",
+          severity: "warning",
+          message: `'${output}' is written by component '${name}' but read by nobody`,
+          pointer: `component.interface[${at}]`,
+          notes: [],
+          route: { kind: "variable", name: output },
+        }),
+      );
+    }
+    numbered += half;
+  }
+  return found;
+}
+
+/** The first page of a long table's findings: that project's first hundred, at its first
+ * revision. */
 export const LONG_FIRST_PAGE: FindingsReply = {
-  revision: 3,
+  revision: 1,
   total: LONG_TOTAL,
   offset: 0,
-  findings: Array.from({ length: 100 }, (_, index) => {
-    const component = `C${String(Math.floor(index / 15)).padStart(5, "0")}`;
-    const at = (index % 15) * 2;
-    const output = `${component}_O${String(at).padStart(4, "0")}`;
-    return listed({
-      file: `C:/work/heavy/components/${component.toLowerCase()}.ddd.json`,
-      check: "unused-output",
-      severity: "warning",
-      message: `'${output}' is written by component '${component}' but read by nobody`,
-      pointer: `component.interface[${at}]`,
-      notes: [],
-      route: { kind: "variable", name: output },
-    });
-  }),
+  findings: longFindings(100),
 };
 
 /** What `GET /api/undo` answers for an adoption: the project description put back a line, and

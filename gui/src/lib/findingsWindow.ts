@@ -34,9 +34,11 @@ export function spanOf(scrollTop: number, height: number, total: number): Span {
   };
 }
 
-/** The pages of `PAGE_SIZE` findings a span covers, in order. */
+/** The pages of `PAGE_SIZE` findings a span covers, in order: none for a span with no row,
+ * wherever it stands - one off a page boundary would otherwise ask for the page it starts in. */
 export function pagesOf(span: Span): number[] {
   const pages: number[] = [];
+  if (span.first >= span.last) return pages;
   for (let page = Math.floor(span.first / PAGE_SIZE); page * PAGE_SIZE < span.last; page += 1) {
     pages.push(page);
   }
@@ -48,16 +50,21 @@ export function pageQuery(page: number): FindingsQuery {
   return { offset: page * PAGE_SIZE, limit: PAGE_SIZE };
 }
 
-/** The pages that have arrived, by page: `replies` answers `pages`, place for place, with
- * `undefined` for one still on its way. */
+/** The pages of `revision` that have arrived, by page: `replies` answers `pages`, place for place,
+ * with `undefined` for one still on its way. A page is asked for under the revision the page holds
+ * and answered by the newest the server has, and the two differ between an analysis landing and
+ * the state saying so: a page of another revision is left out, drawn as placeholders until its
+ * own revision's arrives, rather than set among this one's, where a finding could be drawn twice
+ * or not at all. */
 export function arrivedPages(
   pages: readonly number[],
   replies: readonly (FindingsReply | undefined)[],
+  revision: number,
 ): Map<number, FindingsReply> {
   const arrived = new Map<number, FindingsReply>();
   pages.forEach((page, at) => {
     const reply = replies[at];
-    if (reply !== undefined) arrived.set(page, reply);
+    if (reply !== undefined && reply.revision === revision) arrived.set(page, reply);
   });
   return arrived;
 }
@@ -84,6 +91,20 @@ export function windowRows(span: Span, pages: ReadonlyMap<number, FindingsReply>
     });
   }
   return rows;
+}
+
+/** The keys of the rows drawn as placeholders: the ones nobody can select. */
+export function pendingKeys(rows: readonly WindowRow[]): string[] {
+  return rows.filter((row) => row.finding === null).map((row) => row.key);
+}
+
+/** Whether a box scrolled to `scrollTop`, `height` high, still draws the row at `index` of a table
+ * of `total`. Where it does not and that row holds the keyboard's focus, the focus is given up
+ * before the window lets the row go: React Aria would otherwise move it to whichever row then
+ * stands at the same place, and scroll the box back to that one. */
+export function keeps(index: number, scrollTop: number, height: number, total: number): boolean {
+  const span = spanOf(scrollTop, height, total);
+  return span.first <= index && index < span.last;
 }
 
 /** How tall, in pixels, the space above the rows drawn and the space below them stand: each row

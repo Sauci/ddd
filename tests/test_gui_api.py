@@ -416,7 +416,8 @@ def get(api: Api, path: str, /, **query: str) -> Reply:
 
 def every_finding(api: Api) -> list[dict[str, Any]]:
     """Every finding of the newest revision, in the Findings tab's order, each without its
-    ``key`` - what ``State.findings`` answered before findings came a page at a time."""
+    ``key`` - what ``State.findings`` answered before findings came a page at a time, though in
+    the revision's own order, which the tab sorted by severity."""
     return [
         {name: value for name, value in listed.items() if name != "key"}
         for listed in get(api, "/api/findings").body["findings"]
@@ -641,8 +642,8 @@ def unkeyed(listed: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def in_the_tabs_order(api: Api) -> list[dict[str, Any]]:
     """Every finding of the newest revision as ``GET /api/state`` listed it before findings came
-    a page at a time - in the revision's order, each with where it leads - sorted as the page's
-    ``findingRows`` sorted that list: by severity, worst first, keeping the revision's order
+    a page at a time - in the revision's order, each with where it leads - sorted as the page then
+    sorted that list for the Findings tab: by severity, worst first, keeping the revision's order
     within a severity."""
     revision, _ = analysed(api)
     return as_listed(
@@ -867,6 +868,17 @@ class TestFindingsAPageAtATime:
         assert body["findings"] == [
             found for found in whole if Path(found["file"]).resolve() == controller
         ]
+
+    def test_the_state_counts_what_the_findings_answer_severity_by_severity(
+        self, demo: Api
+    ) -> None:
+        """What the Findings tab sizes its window by: the state's counts, which add up to the
+        endpoint's whole list, and each to what a filter by its severity leaves."""
+        counts = get(demo, "/api/state").body["counts"]
+        assert counts == {"error": 4, "warning": 2, "info": 1}
+        assert sum(counts.values()) == get(demo, "/api/findings").body["total"]
+        for severity, count in counts.items():
+            assert get(demo, "/api/findings", severity=severity).body["total"] == count
 
     def test_without_a_limit_every_finding_from_the_offset_is_answered(self, demo: Api) -> None:
         whole = get(demo, "/api/findings").body

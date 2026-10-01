@@ -10,7 +10,7 @@ export default { title: "Components / FindingsTableView" };
  * from the pages that have arrived. */
 function atTheTop(total: number, pages: ReadonlyMap<number, FindingsReply>) {
   const span = spanOf(0, BOX_HEIGHT, total);
-  return { rows: windowRows(span, pages), ...spacersOf(span, total) };
+  return { rows: windowRows(span, pages), ...spacersOf(span, total), total };
 }
 
 /** Nothing moves when a story's box is scrolled: each story is a picture of one window. */

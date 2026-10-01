@@ -1,4 +1,12 @@
-import type { Changes, Finding, FindingCounts, FindingsReply, FixReply, State } from "../api/types";
+import type {
+  Changes,
+  Finding,
+  FindingCounts,
+  FindingsReply,
+  FixReply,
+  ListedFinding,
+  State,
+} from "../api/types";
 import { hrefOf, type Route } from "./route";
 import { baseName } from "./units";
 
@@ -49,24 +57,12 @@ export function distinctFindings(findings: readonly Finding[]): Finding[] {
   });
 }
 
-/** One row of the Findings tab: a finding, a key stable in the list, and the file's own name. */
+/** One row of a table of findings drawn whole, as the Compare tab draws its own: a finding, a key
+ * stable in the list, and the file's own name. */
 export interface FindingRow {
   finding: Finding;
   key: string;
   file: string;
-}
-
-/** Worst first, and within a severity in the order they were given: the Findings tab's own order,
- * which `GET /api/findings` answers a revision's findings in itself, its page at a time. A stable
- * sort is what keeps the second half of that sentence true. `ignore` never reaches this list -
- * that severity means a finding is not reported at all - but `Record` still needs it named to
- * index by severity. Takes a list of its own, for findings that come in one reply rather than a
- * page at a time. */
-export function findingRows(findings: readonly Finding[]): FindingRow[] {
-  const rank: Record<Finding["severity"], number> = { error: 0, warning: 1, info: 2, ignore: 3 };
-  return keyedFindings(findings)
-    .map(([finding, key]) => ({ finding, key, file: baseName(finding.file) }))
-    .sort((one, other) => rank[one.finding.severity] - rank[other.finding.severity]);
 }
 
 /** Each severity's word, singular then plural, and the noun `findingCounts` says it under. */
@@ -104,11 +100,17 @@ export function findingCounts(counts: FindingCounts, _updating: boolean): string
   return `${total} finding${total === 1 ? "" : "s"} · ${parts.join(", ")}`;
 }
 
-/** Whether a reply carries the finding of this key: what a selected finding's panel stays open
- * on when a new revision comes, its key being the one thing a page of findings and a selection
- * hold in common. */
-export function stillReported(key: string, reply: FindingsReply): boolean {
-  return reply.findings.some((finding) => finding.key === key);
+/** What the panel of a selected finding shows once `reply` - the findings of its file and its
+ * check, asked of the newest revision - has come: the finding of the same key as the reply reports
+ * it, so that its notes and its route are that revision's, or `null` where the reply no longer
+ * reports that key, when the panel closes; until the reply comes, the finding as it was selected.
+ * Its key is the one thing a page of findings and a selection hold in common. */
+export function selectedNow(
+  selected: ListedFinding,
+  reply: FindingsReply | undefined,
+): ListedFinding | null {
+  if (reply === undefined) return selected;
+  return reply.findings.find((finding) => finding.key === selected.key) ?? null;
 }
 
 /** What the button that follows a finding says, or `null` when it leads nowhere. */

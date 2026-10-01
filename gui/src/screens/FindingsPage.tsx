@@ -18,7 +18,7 @@ import {
   routeHref,
   routeLabel,
   routeOf,
-  stillReported,
+  selectedNow,
 } from "../lib/findings";
 import {
   arrivedPages,
@@ -73,10 +73,12 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
     arrivedPages(
       pages,
       asked.map((page) => page.data),
+      revision,
     ),
   );
   const unasked = asked.find((page) => page.isError)?.error ?? null;
-  // The finding whose panel is open, kept whole: the window may have scrolled its row away.
+  // The finding whose panel is open, kept whole as it was selected: the window may have scrolled
+  // its row away.
   const [selected, setSelected] = useState<ListedFinding | undefined>(undefined);
   const [chosen, setChosen] = useState<string | undefined>(undefined);
   const [changesShown, setChangesShown] = useState(false);
@@ -106,28 +108,28 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
         ? skipToken
         : () => getFindings({ file: selected.file, check: selected.check }),
   });
-  if (
-    selected !== undefined &&
-    reported.data !== undefined &&
-    !stillReported(selected.key, reported.data)
-  ) {
+  // The open panel's finding as that reply reports it - its notes and its route the newest
+  // revision's - or `null` once the reply no longer reports it, when the panel closes.
+  const shown = selected === undefined ? undefined : selectedNow(selected, reported.data);
+  if (shown === null) {
     setSelected(undefined);
     setGone(true);
   }
+  const finding = shown ?? undefined;
 
   const fixes = useQuery({
-    queryKey: ["fix", selected?.file, selected?.pointer, selected?.check, revision],
+    queryKey: ["fix", finding?.file, finding?.pointer, finding?.check, revision],
     queryFn:
-      selected === undefined
+      finding === undefined
         ? skipToken
-        : () => getFix(selected.file, selected.pointer, selected.check),
+        : () => getFix(finding.file, finding.pointer, finding.check),
   });
   const apply = useMutation({
     mutationFn: () => {
       const edit =
-        fixes.data === undefined || chosen === undefined || selected === undefined
+        fixes.data === undefined || chosen === undefined || finding === undefined
           ? null
-          : fixEdit(fixes.data, chosen, fixLabel(selected, chosen));
+          : fixEdit(fixes.data, chosen, fixLabel(finding, chosen));
       if (edit === null) throw new Error("there is nothing to apply");
       return postEdit(edit);
     },
@@ -147,7 +149,7 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
     // kind clears the other, so the panel never shows two different answers to the same apply.
     onError: (error) => {
       if (error instanceof ApiError && error.code === "stale") {
-        setStale({ key: selected?.key, text: STALE, revision });
+        setStale({ key: finding?.key, text: STALE, revision });
         setRefused(null);
       } else {
         setRefused(`The change was refused: ${error.message}`);
@@ -178,29 +180,30 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
       <p className="summary">{findingCounts(state.counts, false)}</p>
       {gone && <Banner tone="warning">This finding is no longer reported.</Banner>}
       {unasked !== null && <Banner tone="error">{unasked.message}</Banner>}
-      <div className={selected !== undefined ? "with-panel" : undefined}>
+      <div className={finding !== undefined ? "with-panel" : undefined}>
         <div>
           <FindingsTableView
             rows={rows}
             {...spacersOf(span, total)}
-            selected={selected?.key}
+            total={total}
+            selected={finding?.key}
             onSelect={select}
             onScroll={onScroll}
           />
         </div>
-        {selected !== undefined && (
-          <div key={selected.key}>
+        {finding !== undefined && (
+          <div key={finding.key}>
             {/* The fix a finding carries could not even be asked for - a refusal from the
              * engine itself (e.g. a stale fingerprint), not one the reader's own choice
              * provoked - so it is said here rather than under a fix nothing offered. */}
             {fixes.isError && <Banner tone="error">{fixes.error.message}</Banner>}
             <FindingPanelView
-              finding={selected}
-              label={routeLabel(selected, state)}
-              href={routeHref(selected)}
-              reason={noRouteReason(selected, state)}
+              finding={finding}
+              label={routeLabel(finding, state)}
+              href={routeHref(finding)}
+              reason={noRouteReason(finding, state)}
               onOpen={() => {
-                const route = routeOf(selected);
+                const route = routeOf(finding);
                 if (route !== null) onOpen(route);
               }}
               fixes={fixes.data ?? null}
@@ -210,7 +213,7 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
               onChangesShown={setChangesShown}
               onApply={() => apply.mutate()}
               refusal={
-                (stale !== null && stale.key === selected.key
+                (stale !== null && stale.key === finding.key
                   ? shownRefusal(stale, revision)
                   : null) ?? refused
               }

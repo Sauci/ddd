@@ -1242,12 +1242,14 @@ class IncludedEntryReply(_Frozen):
     entry does: one naming a file a sub-project includes already brings a file that was read.
 
     The tab's own edit leaves such a row where the page asks for the entries again before a
-    revision made after the edit reaches it: ``POST /api/edit`` answers once the edit's own
-    revision is made, the page asks on that answer, and revisions come through
-    ``GET /api/state``, whose reply is built finding by finding. Measured, driving the built page
-    on a running ``ddd gui``: never, in eighteen creates and eighteen adds, on a copy of
-    ``examples/vocabulary``; every time, for 0.86 to 1.42 seconds, in eight creates and eight adds
-    on a project of 300 components and 18000 findings."""
+    revision made after the edit reaches it - as it can: ``POST /api/edit`` answers once the
+    edit's files are written, before their analysis, the page asks on that answer, and the
+    revision that analysis makes reaches the page through ``GET /api/state`` once it lands.
+    Measured while ``POST /api/edit`` still answered once the edit's own revision was made, and
+    ``GET /api/state`` carried every finding, driving the built page on a running ``ddd gui``:
+    never, in eighteen creates and eighteen adds, on a copy of ``examples/vocabulary``; every
+    time, for 0.86 to 1.42 seconds, in eight creates and eight adds on a project of 300 components
+    and 18000 findings."""
 
     findings: int
     """How many of the revision's findings, of every severity, are filed on the project

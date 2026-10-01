@@ -157,10 +157,10 @@ WAIT_SECONDS: Final = 25.0
 """How long a request for a newer state waits before answering with the current one."""
 
 MEMO: Final = 256
-"""How many answers the api keeps for the newest revision: every tab's rows, the graph, and the
-pages of findings a reader scrolls back to. A bound, the oldest dropped first: without one, every
-page of a findings-heavy project a reader scrolled through would be kept until its next
-analysis."""
+"""How many answers the api keeps for the newest revision: the graph, the Types and Shared files
+tabs' rows, and the pages of findings a reader scrolls back to. A bound, the oldest dropped first:
+without one, every page of a findings-heavy project a reader scrolled through would be kept until
+its next analysis."""
 
 LISTED: Final = (Severity.ERROR, Severity.WARNING, Severity.INFO)
 """The severities a finding is reported at, and so the ones ``GET /api/findings`` filters by:

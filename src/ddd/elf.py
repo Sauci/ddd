@@ -447,9 +447,10 @@ def _image(path: Path, contents: bytes) -> Image:
             raise ElfReadError(msg)
     dwarf = elf.get_dwarf_info(relocate_dwarf_sections=False, follow_links=False)
     compile_units = list(dwarf.iter_CUs())
-    # A type unit's entries count their offsets from its own start, and pyelftools resolves no
-    # DWARF 5 signature: gcc's -fdebug-types-section read as it is gave wrong types at DWARF 4
-    # and a KeyError at 5 (measured with gcc 15.2).
+    # A DWARF 4 type unit's entries count their offsets from .debug_types's own start, which
+    # collides with .debug_info's; a DWARF 5 one sits in .debug_info with ordinary offsets, but
+    # pyelftools resolves no signature at all. gcc's -fdebug-types-section read as it is gave wrong
+    # types at DWARF 4 and a KeyError at 5 (measured with gcc 15.2).
     if elf.get_section_by_name(".debug_types") is not None or any(
         cu.header.get("unit_type") == "DW_UT_type" for cu in compile_units
     ):
@@ -493,7 +494,12 @@ def _sections(elf: ELFFile) -> tuple[Section, ...]:
         if not flags & SH_FLAGS.SHF_ALLOC or flags & SH_FLAGS.SHF_TLS:
             continue
         offset = None if section["sh_type"] == "SHT_NOBITS" else section["sh_offset"]
-        sections.append(Section(section.name, section["sh_addr"], section["sh_size"], offset))
+        # A section's name comes from .shstrtab, not DWARF, but reaches the same places a
+        # DWARF string does - a refusal, a finding, the output - so it is untrusted the same
+        # way: _decoded() writes out its control characters here, as it does for DWARF's.
+        sections.append(
+            Section(_decoded(section.name), section["sh_addr"], section["sh_size"], offset)
+        )
     return tuple(sections)
 
 

@@ -1259,13 +1259,41 @@ class TestRefusals:
             f"'.data' runs past the end of the file"
         )
 
+    def test_a_section_name_with_control_characters_is_escaped_in_the_refusal(
+        self, tmp_path: Path
+    ) -> None:
+        """A section's name comes from ``.shstrtab``, not DWARF, and reaches this refusal by a
+        different path than the strings ``TestUntrustedText`` pins: ``.calib`` renamed in place
+        to the same six bytes, ``.c\\x1b[2K``, with its ``sh_size`` enlarged so it runs past the
+        end of the file."""
+        data = bytearray((FIXTURES / "x86_64.elf").read_bytes())
+        with (FIXTURES / "x86_64.elf").open("rb") as stream:
+            elf = ELFFile(stream)
+            index = elf.get_section_index(".calib")
+            calib = elf.get_section(index)
+            shstrtab = elf.get_section(elf.header["e_shstrndx"])
+            name_at = shstrtab["sh_offset"] + calib.header["sh_name"]
+            entry = elf.header["e_shoff"] + index * elf.header["e_shentsize"]
+        assert bytes(data[name_at : name_at + 6]) == b".calib"
+        data[name_at : name_at + 6] = b".c\x1b[2K"
+        struct.pack_into("<Q", data, entry + 32, len(data))  # sh_size, past the file's end
+        path = tmp_path / "overrun.elf"
+        path.write_bytes(bytes(data))
+        with pytest.raises(ElfReadError) as refused:
+            open_image(path)
+        assert str(refused.value) == (
+            f"'{path.as_posix()}' is not an ELF image this tool can read: its section "
+            f"'.c\\x1b[2K' runs past the end of the file"
+        )
+
     @pytest.mark.parametrize("name", ["type-units-dwarf4", "type-units-dwarf5"])
     def test_an_image_whose_types_are_in_type_units_is_refused_naming_the_option(
         self, name: str
     ) -> None:
         """At DWARF 4 in a .debug_types section of their own, at 5 as DW_UT_type units of
-        .debug_info: a type unit's entries restart their offsets, and pyelftools cannot resolve a
-        DWARF 5 signature at all (measured with gcc 15.2: wrong types at 4, a KeyError at 5)."""
+        .debug_info: a DWARF 4 unit's offsets count from .debug_types's own start, colliding
+        with .debug_info's, and pyelftools resolves no DWARF 5 signature at all (measured with
+        gcc 15.2: wrong types at 4, a KeyError at 5)."""
         path = FIXTURES / f"{name}.elf"
         assert refusal(path) == (
             f"'{path.as_posix()}' is not an ELF image this tool can read: its DWARF holds type "

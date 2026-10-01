@@ -259,22 +259,44 @@ def prepare(transcript: Transcript, cwd: Path) -> None:
                 target.write_text(block, encoding="utf-8")
 
 
-def normalized(text: str, cwd: Path) -> list[str]:
+_PATH_CHARACTER = r"[\w./\\~-]"
+"""A character that continues a path token rather than ending or starting one."""
+
+
+def _replace_directory(text: str, directory: str, placeholder: str) -> str:
+    """Replaces ``directory`` with ``placeholder`` everywhere it stands as a path, not a
+    substring: a match has to begin a path token - the start of the string, or after
+    whitespace, a quote, or another delimiter a printed path can follow - and has to be
+    followed by a path separator or the end of the token.
+
+    Without that, replacing the checkout's root when it is mounted at ``/work`` - the Docker
+    test service's own mount point - also ate the ``work`` of the committed
+    ``examples/pressure/work/``: its ``work`` sits after a ``/`` that belongs to the same
+    token, which is a continuation, not a delimiter a path can start after.
+    """
+    pattern = re.compile(
+        rf"(?<!{_PATH_CHARACTER}){re.escape(directory)}(?=[/\\]|(?!{_PATH_CHARACTER}))"
+    )
+    return pattern.sub(placeholder, text)
+
+
+def normalized(text: str, cwd: Path, root: Path = ROOT) -> list[str]:
     """The printed lines as a page shows them, the scratch directory standing for the checkout.
 
     This checkout stands for it too: a command asked where the tool keeps its templates or its
     cmake module answers with the installation it is running from, which here is this tree.
     The tool prints paths in posix form on every platform, so both spellings of each directory
-    are replaced: the native one and the posix one.
+    are replaced: the native one and the posix one. ``root`` defaults to this module's own
+    :data:`ROOT`, and takes another value only to make this function testable against a root
+    that collides with a shipped example, such as the Docker test image's ``/work``.
     """
-    printed = [
-        line.rstrip()
-        .replace(str(cwd), CHECKOUT)
-        .replace(cwd.as_posix(), CHECKOUT)
-        .replace(str(ROOT), CHECKOUT)
-        .replace(ROOT.as_posix(), CHECKOUT)
-        for line in text.splitlines()
-    ]
+    directories = (str(cwd), cwd.as_posix(), str(root), root.as_posix())
+    printed = []
+    for line in text.splitlines():
+        stripped = line.rstrip()
+        for directory in directories:
+            stripped = _replace_directory(stripped, directory, CHECKOUT)
+        printed.append(stripped)
     while printed and not printed[-1]:
         printed.pop()
     return printed
@@ -517,6 +539,30 @@ def test_the_pages_this_module_runs_were_found() -> None:
         "no command on any page is seen as runnable, so nothing re-runs the documentation and "
         "the transcripts are unguarded"
     )
+
+
+class TestNormalized:
+    """The replacement has to find the checkout's root as a path, not as a substring."""
+
+    def test_the_root_is_replaced_only_where_it_stands_as_a_path(self, tmp_path: Path) -> None:
+        """Measured in the Docker test image, where the checkout is mounted at ``/work``:
+        ``/work`` is also a substring of the committed ``examples/pressure/work/``, whose
+        ``work`` must survive untouched. ``/workspace/x.json`` pins the lookahead - without it,
+        ``/work`` matches as a prefix of ``/workspace`` too, becoming ``/home/you/dddspace/x``.
+        ``../work/x.json`` pins the lookbehind's non-``\\w`` characters - narrowed to ``\\w``
+        alone, a ``.`` no longer blocks a match starting right after ``..``."""
+        text = (
+            "examples/pressure/work/x.json\n"
+            "/work/examples/x.json\n"
+            "/workspace/x.json\n"
+            "../work/x.json\n"
+        )
+        assert normalized(text, tmp_path, root=Path("/work")) == [
+            "examples/pressure/work/x.json",
+            f"{CHECKOUT}/examples/x.json",
+            "/workspace/x.json",
+            "../work/x.json",
+        ]
 
 
 class TestTheMatcher:

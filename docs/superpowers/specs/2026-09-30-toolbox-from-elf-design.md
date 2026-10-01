@@ -46,12 +46,13 @@ rather than a step of the build.
 - **Separate debug files** (`.gnu_debuglink`, `.dwo`, `.dwp`): the DWARF has to be in the image.
 - **DWARF type units** (`-fdebug-types-section`). gcc then moves structures and enums into units
   of their own - a `.debug_types` section at DWARF 4, `DW_UT_type` units of `.debug_info` at
-  DWARF 5 - whose entries count their offsets from the unit's own start, where types are
-  memoised by offset (section 5.1), and pyelftools resolves no DWARF 5 signature at all. Read as
-  the rest is, the DWARF 4 build described a `sint8` parameter as a structure and exited `0`,
-  and the DWARF 5 build ended in a traceback (section 10). Firmware builds rarely ask for type
-  units, and a refusal is honest where a wrong type is not: such an image is refused (exit
-  `2`), with a message naming the option.
+  DWARF 5. A DWARF 4 unit's entries count their offsets from `.debug_types`'s own start, which
+  collides with `.debug_info`'s offsets in a memo keyed by offset alone (section 5.1); a DWARF 5
+  one sits in `.debug_info` with ordinary offsets, where pyelftools resolves no signature at
+  all. Read as the rest is, the DWARF 4 build described a `sint8` parameter as a structure and
+  exited `0`, and the DWARF 5 build ended in a traceback (section 10). Firmware builds rarely
+  ask for type units, and a refusal is honest where a wrong type is not: such an image is
+  refused (exit `2`), with a message naming the option.
 - **gcc's link-time optimisation** (`-flto`). gcc then names each variable in the unit of its
   source, without a location, and locates it in an `<artificial>` unit that `GNU GIMPLE`
   produces, without a name, through `DW_AT_abstract_origin`. Read as the rest is, every
@@ -103,11 +104,12 @@ Every argument must match something:
 - An argument that matches no candidate, exact name or glob, is `elf-symbol-missing`. When the
   name is in the ELF symbol table and no unit's DWARF holds it, the message adds that the unit
   defining it carries no debug information.
-- A name several units define at different addresses is `elf-symbol-ambiguous`, listing the
-  units, whether an exact name or a glob reached it. `UNIT:` resolves it. One name at one
-  address is one variable, however many units describe it: `-fcommon`, or the `common`
-  attribute, makes a tentative definition in several units one variable, which the DWARF of
-  each unit describes, and it is described as the unit whose name sorts first describes it.
+- A name several units define, other than as one variable at one address, is
+  `elf-symbol-ambiguous`, listing the units, whether an exact name or a glob reached it.
+  `UNIT:` resolves it. One name at one address is one variable, however many units
+  describe it: `-fcommon`, or the `common` attribute, makes a tentative definition in
+  several units one variable, which the DWARF of each unit describes, and it is described
+  as the unit whose name sorts first describes it.
 - A name that is only declared, that the optimiser folded into a constant (a
   `DW_AT_const_value` in place of a location) or removed (no location at all), that is
   thread-local, whose location is not a fixed address, or that the linker discarded is
@@ -178,7 +180,7 @@ they judge an image, not a description.
 | `elf-no-storage` | error | declared only, folded or removed by the compiler, thread-local, at no fixed address, discarded by the linker, or at an address no section holds |
 | `elf-type-unsupported` | error | a type DDD cannot state, at the path where it occurs (section 4) |
 | `elf-type-conflict` | error | two different structures or enums under one name, or a synthesised name that is taken |
-| `elf-init-unsupported` | error | an initial value DDD cannot state: NaN, an infinity, a boolean byte other than 0 and 1 |
+| `elf-init-unsupported` | error | an initial value DDD cannot state: NaN, an infinity, a boolean byte other than 0 and 1, or one whose bytes run past the end of its section |
 | `elf-init-dropped` | warning | a structured object whose bytes in the image are not all zero (section 4.6) |
 | `elf-bitfield-gap` | warning | bits skipped where the next bitfield would have fitted (section 4.5) |
 | `elf-alignment` | warning | an alignment the source states explicitly (section 4.5) |
@@ -433,8 +435,10 @@ hand-built C model.
   the exact place where it occurs, so the translator can name the path and go on with the other
   variables. A pointer is an `Unsupported` leaf whose pointee is never followed, so a structure
   pointing at itself stays finite. Types are memoised by DIE offset, so a type reached twice is
-  built once; an offset names one entry within `.debug_info`, which is why type units, whose
-  offsets restart, are refused rather than read (section 2).
+  built once; an offset names one entry within `.debug_info`, which is why type units are
+  refused rather than read: a DWARF 4 one's offsets count from `.debug_types`'s own start
+  instead, colliding with `.debug_info`'s, and pyelftools cannot resolve a DWARF 5 one by
+  signature at all (section 2).
 - **Every DWARF variation stops here.** The translator never sees one. These are:
   - a definition completing a declaration (`DW_AT_specification`), with the declaration's type
     or, where it states one of its own, its own: gcc states the completed type on the
@@ -449,8 +453,9 @@ hand-built C model.
   - thread-local locations, and a thread-local variable given no location at all, as aarch64's
     gcc and clang give one; the image's `STT_TLS` symbol then says what it is
   - enumerator values in any form
-  - strings in `.debug_str` or through `.debug_str_offsets`, their control characters written
-    out as `\xNN`: an image is untrusted, and its names and paths reach standard error
+  - strings in `.debug_str` or through `.debug_str_offsets`, and a section's name from
+    `.shstrtab`, their control characters written out as `\xNN`: an image is untrusted, and
+    its names and paths reach standard error
   - compressed debug sections, zlib's; zstd's are refused, naming `-gz=zlib`
   - a variable the linker discarded, whose address is a tombstone (section 3.1)
   - type units and gcc's link-time optimisation, both refused at open (section 2), and any

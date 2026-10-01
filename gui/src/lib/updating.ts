@@ -7,7 +7,12 @@ export function analysed(state: Pick<State, "revision">): boolean {
 
 /** Whether the findings on screen may be about to change (spec §6): an analysis is asked for or
  * running, or the page's own last edit is newer than the revision it holds - which covers the
- * moment between an edit's answer and the state saying it is being analysed. */
-export function updatingOf(state: Pick<State, "analysing" | "edits">, ownEdit: number): boolean {
-  return state.analysing || ownEdit > state.edits;
+ * moment between an edit's answer and the state saying it is being analysed. Never before the
+ * project's first analysis has landed: there is no finding on screen to update, and the page says
+ * "Analysing the project…" instead. */
+export function updatingOf(
+  state: Pick<State, "revision" | "analysing" | "edits">,
+  ownEdit: number,
+): boolean {
+  return analysed(state) && (state.analysing || ownEdit > state.edits);
 }

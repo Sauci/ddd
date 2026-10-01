@@ -21,7 +21,7 @@ import { shortValue } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
-import { UpdatingNote } from "../ui/UpdatingNote";
+import { UpdatingNote, UpdatingStatus } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
 import { ValuesPlotView } from "./ValuesPlotView";
 
@@ -160,6 +160,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
         <Button variant="link" onPress={props.onBack}>
           Back to {backTo}
         </Button>
+        <UpdatingStatus updating={props.updating === true} />
       </div>
       <p className="values-meta">{meta}</p>
       {reply.stated === "text" ? (

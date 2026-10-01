@@ -12,7 +12,7 @@ import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
-import { UpdatingNote } from "../ui/UpdatingNote";
+import { UpdatingNote, UpdatingStatus } from "../ui/UpdatingNote";
 import { DeclarePanel } from "./DeclarePanel";
 import { UndoStrip } from "./UndoStrip";
 import { VariablePanel } from "./VariablePanel";
@@ -179,8 +179,8 @@ export function ComponentPage({
           >
             Add a declaration
           </Button>
-          {/* Last in the row: coming and going, it moves none of the controls before it. */}
-          {updating && <UpdatingNote />}
+          {/* Last in the row, so that none of the controls before it ever moves. */}
+          <UpdatingStatus updating={updating} />
         </div>
         {undeclared !== null && (
           <Banner tone="warning">

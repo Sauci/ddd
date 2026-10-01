@@ -13,7 +13,7 @@ import {
   routeHref,
   routeLabel,
   routeOf,
-  selectedNow,
+  selectionAfter,
   tableLine,
   unreadable,
 } from "./findings";
@@ -198,7 +198,7 @@ describe("what the tab says about how many there are", () => {
   });
 });
 
-describe("what a selected finding's panel shows", () => {
+describe("what the Findings tab keeps of a selected finding", () => {
   const listed = (key: string, fields: Partial<Finding> = {}): ListedFinding => ({
     ...finding(fields),
     key,
@@ -211,21 +211,38 @@ describe("what a selected finding's panel shows", () => {
   });
   const selected = listed("b");
 
-  test("the finding as it was selected, until a reply about it has come", () => {
-    expect(selectedNow(selected, undefined)).toBe(selected);
+  test("nothing, with nothing selected", () => {
+    expect(selectionAfter(undefined, reply(listed("b")))).toEqual({
+      selected: undefined,
+      gone: false,
+    });
   });
 
-  test("the finding as the reply reports it, its notes and its route the revision's", () => {
+  test("the finding as it is kept, until a reply about it has come", () => {
+    expect(selectionAfter(selected, undefined).selected).toBe(selected);
+    expect(selectionAfter(selected, undefined).gone).toBe(false);
+  });
+
+  test("the reply's own report of it, kept: what the panel shows until the next reply comes", () => {
+    // Its notes and its route the newest revision's - and kept as the selection, so that while
+    // the next revision's reply is asked for the panel goes on showing this report, never the
+    // finding as it was first selected.
     const moved = listed("b", {
       notes: [{ message: "reference declaration", file: TYPES, pointer: "types[1]" }],
       route: null,
     });
-    expect(selectedNow(selected, reply(listed("a"), moved))).toBe(moved);
+    const kept = selectionAfter(selected, reply(listed("a"), moved));
+    expect(kept.selected).toBe(moved);
+    expect(kept.gone).toBe(false);
+    expect(selectionAfter(kept.selected, undefined).selected).toBe(moved);
   });
 
-  test("nothing, where the reply no longer reports its key - however alike another reads", () => {
-    expect(selectedNow(selected, reply(listed("a"), listed("c")))).toBeNull();
-    expect(selectedNow(selected, reply())).toBeNull();
+  test("nothing, and gone, where the reply no longer reports its key - however alike another reads", () => {
+    expect(selectionAfter(selected, reply(listed("a"), listed("c")))).toEqual({
+      selected: undefined,
+      gone: true,
+    });
+    expect(selectionAfter(selected, reply())).toEqual({ selected: undefined, gone: true });
   });
 });
 

@@ -137,16 +137,4 @@ describe("what a panel shows of the answer about its own entity", () => {
       });
     },
   );
-
-  test("the moment the analysis lands, the revision moved and the answer not come, no refusal shows", () => {
-    // The query keyed by the new revision starts again with no error, carrying the last answer it
-    // had while the next is asked for, or nothing.
-    expect(panelShows({ data: RPM, error: null }, about, "RPM", false)).toEqual({
-      shown: "reply",
-      reply: RPM,
-    });
-    expect(panelShows({ data: undefined, error: null }, about, "RPM", false)).toEqual({
-      shown: "reading",
-    });
-  });
 });

@@ -22,6 +22,11 @@ export interface ValuesHold {
   edit: number;
   before: ValuesReply;
   after: ValuesReply;
+  /** The first revision the page saw include the hold's last edit - the Apply, or the undo of it
+   * once there is one - and which edit that was; `null` until one has. An answer of that revision
+   * or a later one includes what the hold says, and from then on is shown in its place: the hold
+   * has ended, and an answer kept on screen at a later landing is never covered up again. */
+  landed: { edit: number; revision: number } | null;
 }
 
 /** The hold of an Apply answered as edit `edit`, made over `before` - what the grid showed -
@@ -37,7 +42,37 @@ export function holdOf(edit: number, before: ValuesReply, written: Written): Val
             ? cells.map((value, column) => (column === written.cell.column ? written.raw : value))
             : cells,
         );
-  return { edit, before, after: { ...before, rows, stated: "array" } };
+  return { edit, before, after: { ...before, rows, stated: "array" }, landed: null };
+}
+
+/** The hold's own last edit: the undo of its Apply, once one is noted in `undone`, else the
+ * Apply. */
+function lastOf(hold: ValuesHold, undone: ReadonlyMap<number, number>): number {
+  return undone.get(hold.edit) ?? hold.edit;
+}
+
+/** The hold as it stands once `state` has come: stamped with the state's revision the first time
+ * it includes the hold's last edit, and otherwise the very same hold, so that the page can tell
+ * nothing changed. An undo of the Apply noted after the stamp is the hold's last edit from then
+ * on, and the hold waits for the first revision including it. */
+export function holdAfter(
+  hold: ValuesHold | null,
+  undone: ReadonlyMap<number, number>,
+  state: Pick<State, "revision" | "edits">,
+): ValuesHold | null {
+  if (hold === null) return null;
+  const last = lastOf(hold, undone);
+  if (state.edits < last || hold.landed?.edit === last) return hold;
+  return { ...hold, landed: { edit: last, revision: state.revision } };
+}
+
+/** Whether an Apply may be planned over `shown`, the values the grid shows: only once they are the
+ * answer of the revision the page holds, or of a newer one. Not over an older revision's answer,
+ * kept on screen while the page's own is asked for, nor over what the grid holds of an Apply the
+ * page's revision does not include yet: an Apply planned over either would hold those values as
+ * its values from before. */
+export function appliesOver(shown: ValuesReply, state: Pick<State, "revision">): boolean {
+  return shown.revision >= state.revision;
 }
 
 /**
@@ -47,11 +82,14 @@ export function holdOf(edit: number, before: ValuesReply, written: Written): Val
  * `GET /api/values` answers from what the last analysis read, and an edit is answered once
  * written, before its analysis (spec 5): for one analysis after an Apply the server still answers
  * the values from before it, as though the Apply had failed. So the grid shows what the Apply
- * wrote until a revision including it - the state's `edits` at its number or past it - has
- * answered; the answer on screen may be an older revision's while the query keyed by the new one
- * is asked, and is not taken until it is that revision's or newer. An undo of that Apply, made in
- * the Undo strip and noted in `undone` (the edit it put back, to the number the undo took), shows
- * the values from before the Apply until a revision including the undo has answered.
+ * wrote until an answer of a revision including it has come: of the first revision the page saw
+ * include it (`landed`, which `holdAfter` stamps), or, the moment that revision arrives, of the
+ * state's own. An older revision's answer, kept on screen while the query keyed by the new one
+ * is asked, is not taken in its place. Once an answer including the Apply has been, the hold has
+ * ended, and the answers of every later landing - kept ones too - are shown as they come. An undo
+ * of that Apply, made in the Undo strip and noted in `undone` (the edit it put back, to the number
+ * the undo took), shows the values from before the Apply the same way, until an answer including
+ * the undo has come.
  *
  * Any other undo the page made after the hold's last edit - of an edit the grid never held, or
  * no longer holds because a later Apply replaced it - leaves nothing the hold can say of the
@@ -66,12 +104,12 @@ export function valuesShown(
   served: ValuesReply,
 ): ValuesReply {
   if (hold === null) return served;
-  const undoneAs = undone.get(hold.edit);
-  // The hold's own last edit: the undo of its Apply, once there is one, else the Apply.
-  const last = undoneAs ?? hold.edit;
+  const last = lastOf(hold, undone);
   for (const [at, edit] of undone) {
     if (at !== hold.edit && edit > last) return served;
   }
-  if (state.edits >= last && served.revision >= state.revision) return served;
-  return undoneAs === undefined ? hold.after : hold.before;
+  const landed =
+    hold.landed?.edit === last ? hold.landed.revision : state.edits >= last ? state.revision : null;
+  if (landed !== null && served.revision >= landed) return served;
+  return last === hold.edit ? hold.after : hold.before;
 }

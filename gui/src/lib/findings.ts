@@ -123,19 +123,22 @@ export function tableLine(counts: FindingCounts, updating: boolean): string {
   return updating ? `${errors}, ${warnings}${UPDATING}` : `${errors}, ${warnings}`;
 }
 
-/** What the panel of a selected finding shows once `reply` - the findings of its file and its
- * check, asked of the newest revision - has come: the finding of the same key as the reply reports
- * it, so that its notes and its route are that revision's, or `null` where the reply no longer
- * reports that key, when the panel closes; until the reply comes, `selected` itself - which the
- * page keeps as the newest report it had, so that between two revisions' replies the panel never
- * goes back to the finding as it was first selected. Its key is the one thing a page of findings
- * and a selection hold in common. */
-export function selectedNow(
-  selected: ListedFinding,
+/** What the Findings tab keeps as its selected finding once `reply` - the findings of its file and
+ * its check, asked of the newest revision - has come: the reply's own report of it, its notes and
+ * its route that revision's, kept as the selection so that while the next revision's reply is
+ * asked for the panel goes on showing it, never the finding as it was first selected; `selected`
+ * itself while no reply has come; and nothing, `gone`, once the reply no longer reports its key -
+ * the panel closes, saying so. Its key is the one thing a page of findings and a selection hold in
+ * common. */
+export function selectionAfter(
+  selected: ListedFinding | undefined,
   reply: FindingsReply | undefined,
-): ListedFinding | null {
-  if (reply === undefined) return selected;
-  return reply.findings.find((finding) => finding.key === selected.key) ?? null;
+): { selected: ListedFinding | undefined; gone: boolean } {
+  if (selected === undefined || reply === undefined) return { selected, gone: false };
+  const reported = reply.findings.find((finding) => finding.key === selected.key);
+  return reported === undefined
+    ? { selected: undefined, gone: true }
+    : { selected: reported, gone: false };
 }
 
 /** What the button that follows a finding says, or `null` when it leads nowhere. */

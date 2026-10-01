@@ -69,15 +69,19 @@ function isUnreadable(error: Error): boolean {
  * `updating` or not.
  *
  * An edit is answered once its files are written and analysed after (spec 5), and these answers
- * are built from what the last analysis indexed: an entity an edit renamed or added, or whose
- * declaration it moved within its file, is refused `unreadable` until the analysis reading that
- * file lands - "'RPM' is not declared in any file that has not changed since, and pump.ddd.json,
- * units.ddd.json changed since it was read". While the findings are updating, that refusal is not
- * shown: the panel says "Updating the findings…" in its place, over what it already showed of its
- * own entity, and alone where it showed nothing of it yet - a renamed or an added entity's panel.
- * It never shows another entity's answer under this one's name, which a query carries from one
- * key to the next (`placeholderData`) and could carry from a name before. Every other refusal,
- * and an `unreadable` one once nothing is updating, is shown as it always was.
+ * are built from what the last analysis indexed: an entity an edit renamed or added - and a
+ * variable whose declaration it moved within its file, the one kind whose answer reads its
+ * declarations where the index recorded them - is refused `unreadable` until the analysis reading
+ * that file lands: "'RPM' is not declared in any file that has not changed since, and
+ * pump.ddd.json, units.ddd.json changed since it was read". While the findings are updating, that
+ * refusal is not shown: the panel says "Updating the findings…" in its place, over what its query
+ * still holds of its own entity, and alone where it holds nothing of it - a renamed or an added
+ * entity's panel. What a query holds is the last answer of its own key: a revision that lands
+ * while the page is still updating starts a new key, and where that key's first answer is
+ * refused, the panel says the note alone, its content gone until an answer comes. That is
+ * accepted. It never shows another entity's answer under this one's name, which a query carries
+ * from one key to the next (`placeholderData`) and could carry from a name before. Every other
+ * refusal, and an `unreadable` one once nothing is updating, is shown as it always was.
  *
  * The moment the analysis lands asks nothing of its own: the state's revision moves before the
  * panel's next answer comes, and the panel's query, keyed by that revision, starts again with no

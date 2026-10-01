@@ -172,12 +172,28 @@ tr.changing td {
   padding: 0;
   list-style: none;
 }
-/* "Updating the findings…" (spec 6), said quietly: last in a heading's row, where a panel lists
-   its findings, and above a component's. */
+/* "Updating the findings…" (spec 6), said quietly where a panel or the values grid lists its
+   findings, and above a component's. */
 .updating-note {
   margin: var(--space-2) 0 0;
   color: var(--ink-quiet);
   font-size: var(--text-small);
+}
+/* The heading's own (`UpdatingStatus`), last in the heading's row: it takes only the room the row
+   has left - its basis and its least width are nothing, so its words never decide where the row
+   breaks - and is cut short rather than wrapped, one line high whether or not it says anything:
+   its words coming and going never change the heading's height or move what is below it. */
+.updating-status {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 1.5em;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+  line-height: 1.5;
 }
 .panel-refusal {
   margin: var(--space-2) 0 0;

@@ -18,7 +18,7 @@ import { ValuesPage } from "../screens/ValuesPage";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { LinkTabs } from "../ui/LinkTabs";
-import { UpdatingNote } from "../ui/UpdatingNote";
+import { UpdatingStatus } from "../ui/UpdatingNote";
 import { UpdatingContext } from "./updating";
 import { useProjectState } from "./useProjectState";
 import { useRoute } from "./useRoute";
@@ -159,8 +159,8 @@ export function App() {
         <div className="heading">
           <h1>{opened.name ?? opened.path}</h1>
           <UndoStrip state={state} stopped={stopped} />
-          {/* Last in the row: coming and going, it moves none of the controls before it. */}
-          {updating && <UpdatingNote />}
+          {/* Last in the row, so that none of the controls before it ever moves. */}
+          <UpdatingStatus updating={updating} />
         </div>
         <LinkTabs
           label="Project views"
@@ -225,7 +225,6 @@ export function App() {
       <section>
         <div className="heading">
           <h1>{opened.name ?? opened.path}</h1>
-          {updating && <UpdatingNote />}
         </div>
         <p className="quiet">Analysing the project…</p>
       </section>

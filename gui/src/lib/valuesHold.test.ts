@@ -1,6 +1,13 @@
 import { describe, expect, test } from "vitest";
 import type { ValuesReply } from "../api/types";
-import { holdOf, type ValuesHold, valuesShown, writtenBy } from "./valuesHold";
+import {
+  appliesOver,
+  holdAfter,
+  holdOf,
+  type ValuesHold,
+  valuesShown,
+  writtenBy,
+} from "./valuesHold";
 
 /** CurveA as the grid showed it before an Apply, at revision 4 - the demo's own six values. */
 const BEFORE: ValuesReply = {
@@ -58,6 +65,7 @@ describe("what an Apply would write", () => {
 describe("what an Apply in the grid holds", () => {
   test("one cell: the values the grid showed, that cell set to the raw count written", () => {
     expect(HOLD.edit).toBe(7);
+    expect(HOLD.landed).toBeNull();
     expect(HOLD.before).toBe(BEFORE);
     expect(HOLD.after).toEqual({ ...BEFORE, rows: [[1200, 900, 750, 750, 700, 650]] });
     // What the grid showed is left as it was.
@@ -179,5 +187,74 @@ describe("which values the grid shows", () => {
         served(5, HOLD.after.rows),
       );
     });
+  });
+});
+
+describe("when the hold ends", () => {
+  /** HOLD once revision 5, the first to include edit 7, has been seen. */
+  const LANDED: ValuesHold = { ...HOLD, landed: { edit: 7, revision: 5 } };
+
+  test("it is stamped with the first revision the page sees include its edit", () => {
+    expect(holdAfter(HOLD, NONE, state(5, 7))).toEqual(LANDED);
+    // Seen first past it, the revision is the one seen: an earlier one was never heard of.
+    expect(holdAfter(HOLD, NONE, state(6, 9))).toEqual({
+      ...HOLD,
+      landed: { edit: 7, revision: 6 },
+    });
+  });
+
+  test("it stays as it is while no revision includes its edit, or once it is stamped", () => {
+    // The very same hold, so that the page can tell nothing changed.
+    expect(holdAfter(HOLD, NONE, state(5, 6))).toBe(HOLD);
+    expect(holdAfter(LANDED, NONE, state(6, 8))).toBe(LANDED);
+    expect(holdAfter(null, NONE, state(6, 8))).toBeNull();
+  });
+
+  test("an undo of its Apply noted after the stamp waits for the first revision including the undo", () => {
+    const undone = new Map([[7, 9]]);
+    expect(holdAfter(LANDED, undone, state(6, 8))).toBe(LANDED);
+    expect(holdAfter(LANDED, undone, state(7, 9))).toEqual({
+      ...HOLD,
+      landed: { edit: 9, revision: 7 },
+    });
+  });
+
+  test("a later revision answers with the placeholder it keeps, which already includes the edit", () => {
+    // Revision 5 included edit 7 and answered; revision 6 landed, and its own answer is asked for.
+    const fifth = served(5, HOLD.after.rows);
+    expect(valuesShown(LANDED, NONE, state(6, 7), fifth)).toBe(fifth);
+  });
+
+  test("a value saved from outside after the landing shows as saved, never as the hold had it", () => {
+    // Element 6 set to 100 by a save the analysis of revision 5 read beside edit 7: at the next
+    // landing, revision 5's answer is kept while revision 6's is asked for.
+    const saved = served(5, [[1200, 900, 750, 750, 700, 100]]);
+    expect(valuesShown(LANDED, NONE, state(6, 7), saved).rows).toEqual([
+      [1200, 900, 750, 750, 700, 100],
+    ]);
+  });
+
+  test("an answer from before the stamped revision is still not taken", () => {
+    expect(valuesShown(LANDED, NONE, state(6, 7), served(4))).toBe(HOLD.after);
+  });
+
+  test("an undo of its Apply after the stamp shows the values from before until the undo lands", () => {
+    const undone = new Map([[7, 9]]);
+    // Revision 6 answers what edit 7 wrote: the undo, as 9, is not in it.
+    expect(valuesShown(LANDED, undone, state(6, 8), served(6, HOLD.after.rows))).toBe(HOLD.before);
+    const undoLanded = { ...HOLD, landed: { edit: 9, revision: 7 } };
+    expect(valuesShown(undoLanded, undone, state(8, 9), served(7))).toEqual(served(7));
+  });
+});
+
+describe("whether an Apply may be planned over the values shown", () => {
+  test("yes, over the answer of the revision the page holds, or a newer one", () => {
+    expect(appliesOver(served(5), state(5, 7))).toBe(true);
+    expect(appliesOver(served(6), state(5, 7))).toBe(true);
+  });
+
+  test("no, over an older revision's answer, kept while the page's own is asked for", () => {
+    // Its hold would keep that revision's values as the values from before the Apply.
+    expect(appliesOver(served(4), state(5, 7))).toBe(false);
   });
 });

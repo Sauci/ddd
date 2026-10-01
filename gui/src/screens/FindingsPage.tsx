@@ -19,7 +19,7 @@ import {
   routeHref,
   routeLabel,
   routeOf,
-  selectedNow,
+  selectionAfter,
 } from "../lib/findings";
 import {
   arrivedPages,
@@ -93,6 +93,7 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
     {
       revision,
       total,
+      counts: state.counts,
       span,
       pages: arrivedPages(
         pages,
@@ -147,18 +148,15 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
         ? skipToken
         : () => getFindings({ file: selected.file, check: selected.check }),
   });
-  // The open panel's finding as that reply reports it - its notes and its route the newest
-  // revision's - or `null` once the reply no longer reports it, when the panel closes. Kept as the
-  // selection once reported, so that while the next revision's reply is asked for the panel goes
-  // on showing the newest report of it, not the finding as it was first selected.
-  const shown = selected === undefined ? undefined : selectedNow(selected, reported.data);
-  if (shown === null) {
-    setSelected(undefined);
-    setGone(true);
-  } else if (shown !== selected) {
-    setSelected(shown);
+  // What the panel keeps of its finding once that reply has come (`selectionAfter`): the newest
+  // report of it, kept as the selection, or nothing once the reply no longer reports it - when the
+  // panel closes, and the tab says so.
+  const after = selectionAfter(selected, reported.data);
+  if (after.selected !== selected) {
+    setSelected(after.selected);
+    setGone(after.gone);
   }
-  const finding = shown ?? undefined;
+  const finding = after.selected;
 
   const fixes = useQuery({
     queryKey: ["fix", finding?.file, finding?.pointer, finding?.check, revision],
@@ -220,7 +218,8 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
 
   return (
     <>
-      <p className="summary">{findingCounts(state.counts, updating)}</p>
+      {/* The revision the table draws: the one kept while the newest's pages come (`drawnWindow`). */}
+      <p className="summary">{findingCounts(drawn.counts, updating)}</p>
       {gone && <Banner tone="warning">This finding is no longer reported.</Banner>}
       {unasked !== null && <Banner tone="error">{unasked.message}</Banner>}
       <div className={finding !== undefined ? "with-panel" : undefined}>

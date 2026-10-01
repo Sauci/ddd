@@ -149,7 +149,8 @@ test("a cell changed is written to the producer's file", async ({ page, gui }) =
 });
 
 /** Whether the frames watched saw the page say its findings were updating, and have since seen
- * thirty frames - half a second - without it: the analysis landed, and the answers after it came. */
+ * thirty frames without it - half a second at sixty frames a second: the update was seen to start
+ * and to end, and thirty frames were watched after it. */
 function updatedAndSettled(frames: readonly Frame[]): boolean {
   const last = frames.slice(-30);
   return (

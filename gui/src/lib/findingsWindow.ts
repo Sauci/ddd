@@ -1,5 +1,5 @@
 import type { FindingsQuery } from "../api/client";
-import type { FindingsReply, ListedFinding } from "../api/types";
+import type { FindingCounts, FindingsReply, ListedFinding } from "../api/types";
 import { baseName } from "./units";
 
 /** Every row of the Findings table is this tall, in pixels - `ui.css` draws it so - which is what
@@ -108,11 +108,13 @@ export function keeps(index: number, scrollTop: number, height: number): boolean
   return span.first <= index && index < span.last;
 }
 
-/** One revision's window: which revision it is, how many findings it has in all, the rows the box
- * covers of them, and the pages of those rows that have arrived. */
+/** One revision's window: which revision it is, how many findings it has in all and of each
+ * severity - what the line above the table counts - the rows the box covers of them, and the pages
+ * of those rows that have arrived. */
 export interface RevisionWindow {
   revision: number;
   total: number;
+  counts: FindingCounts;
   span: Span;
   pages: ReadonlyMap<number, FindingsReply>;
 }
@@ -131,8 +133,9 @@ function whole(window: RevisionWindow): boolean {
  * (`arrivedPages`): drawing the newest at once, an analysis landing turned every row into a
  * placeholder and back for one round trip, and every row's key changed twice - React Aria then
  * moved the focus to the row standing at its place, and under the keyboard scrolled the box back
- * to it. Kept until the newest is whole and then switched at once, total included, a finding that
- * stays keeps its key across the two revisions, and React Aria its focus on it.
+ * to it. Kept until the newest is whole and then switched at once, total and counts included - so
+ * the line above the table always counts the revision the table draws - a finding that stays keeps
+ * its key across the two revisions, and React Aria its focus on it.
  */
 export function drawnWindow(newest: RevisionWindow, last: RevisionWindow | null): RevisionWindow {
   if (whole(newest) || last === null || !whole(last)) return newest;
@@ -140,10 +143,11 @@ export function drawnWindow(newest: RevisionWindow, last: RevisionWindow | null)
 }
 
 /** Which revision the window draws through the next analysis landing, and how many findings it
- * has in all. */
+ * has in all and of each severity. */
 export interface KeptWindow {
   revision: number;
   total: number;
+  counts: FindingCounts;
 }
 
 /** The revision to keep drawing through the next analysis landing: the one `drawn` now, once its
@@ -151,7 +155,7 @@ export interface KeptWindow {
  * nothing changed, so that the page can tell. */
 export function keptAfter(drawn: RevisionWindow, kept: KeptWindow | null): KeptWindow | null {
   if (!whole(drawn) || drawn.revision === kept?.revision) return kept;
-  return { revision: drawn.revision, total: drawn.total };
+  return { revision: drawn.revision, total: drawn.total, counts: drawn.counts };
 }
 
 /** How tall, in pixels, the space above the rows drawn and the space below them stand: each row

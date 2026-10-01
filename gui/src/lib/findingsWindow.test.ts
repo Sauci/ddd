@@ -204,11 +204,12 @@ describe("whether a scroll keeps the row the keyboard is on", () => {
 });
 
 describe("which revision's rows the window draws", () => {
-  /** A revision's window at the top of the box, of `total` findings, with these pages arrived. */
+  /** A revision's window at the top of the box, of `total` findings - every one a warning - with
+   * these pages arrived. */
   function windowOf(revision: number, total: number, arrived: number[]): RevisionWindow {
     const span = spanOf(0, BOX_HEIGHT, total);
     const pages = new Map(arrived.map((number) => [number, { ...page(number, total), revision }]));
-    return { revision, total, span, pages };
+    return { revision, total, counts: { error: 0, warning: total, info: 0 }, span, pages };
   }
   /** Revision 7, drawn whole at the top of the box: its one page there has arrived. */
   const last = windowOf(7, 1000, [0]);
@@ -245,16 +246,35 @@ describe("which revision's rows the window draws", () => {
     expect(drawnWindow(windowOf(8, 990, [0]), last).total).toBe(990);
   });
 
-  test("the one to keep drawing through the next landing: the window drawn, once it is whole", () => {
-    expect(keptAfter(windowOf(8, 990, [0]), null)).toEqual({ revision: 8, total: 990 });
-    expect(keptAfter(windowOf(8, 990, [0]), { revision: 7, total: 1000 })).toEqual({
-      revision: 8,
-      total: 990,
+  test("its counts switch with it: the line above the table counts the revision drawn", () => {
+    // Until the newest revision's pages have come, the table draws the last one's rows, and the
+    // line above it says how many that one has, not the newest.
+    expect(drawnWindow(windowOf(8, 990, []), last).counts).toEqual({
+      error: 0,
+      warning: 1000,
+      info: 0,
+    });
+    expect(drawnWindow(windowOf(8, 990, [0]), last).counts).toEqual({
+      error: 0,
+      warning: 990,
+      info: 0,
     });
   });
 
+  test("the one to keep drawing through the next landing: the window drawn, once it is whole", () => {
+    const counts = { error: 0, warning: 990, info: 0 };
+    expect(keptAfter(windowOf(8, 990, [0]), null)).toEqual({ revision: 8, total: 990, counts });
+    expect(
+      keptAfter(windowOf(8, 990, [0]), {
+        revision: 7,
+        total: 1000,
+        counts: { error: 0, warning: 1000, info: 0 },
+      }),
+    ).toEqual({ revision: 8, total: 990, counts });
+  });
+
   test("the one kept before, while the window drawn is not whole, or is that very revision", () => {
-    const kept = { revision: 7, total: 1000 };
+    const kept = { revision: 7, total: 1000, counts: { error: 0, warning: 1000, info: 0 } };
     expect(keptAfter(windowOf(8, 990, []), kept)).toBe(kept);
     expect(keptAfter(windowOf(8, 990, []), null)).toBeNull();
     // The very same answer, so that the page can tell nothing changed.

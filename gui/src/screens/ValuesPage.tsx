@@ -8,10 +8,19 @@ import { cellAt, drawable, pasted, rawOf, typedNumber } from "../lib/objectValue
 import { planEdit } from "../lib/projectUnits";
 import { type Refused, shownRefusal as staleRefusal } from "../lib/refusals";
 import { pasteLabel, valueLabel } from "../lib/undo";
-import { holdOf, type ValuesHold, valuesShown, type Written, writtenBy } from "../lib/valuesHold";
+import {
+  appliesOver,
+  holdAfter,
+  holdOf,
+  type ValuesHold,
+  valuesShown,
+  type Written,
+  writtenBy,
+} from "../lib/valuesHold";
 import { ownEdits } from "../state/edits";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
+import { UpdatingStatus } from "../ui/UpdatingNote";
 import { UndoStrip } from "./UndoStrip";
 import { refusalOf } from "./UnitPanel";
 
@@ -49,8 +58,10 @@ type Editing = { row: number; column: number; typed: string } | null;
  *
  * What an Apply wrote shows at once (spec 6): `GET /api/values` answers what the last analysis
  * read, so the grid holds the values its own Apply wrote - and, once the Undo strip puts that
- * Apply back, the values from before it - until a revision including the edit has answered
- * (`valuesShown`).
+ * Apply back, the values from before it - until an answer of a revision including that edit has
+ * come, when the hold ends (`valuesShown`, stamped by `holdAfter`). No Apply is planned over values
+ * that are not the page's revision's own answer (`appliesOver`), so that the values a hold keeps
+ * from before its Apply are always that revision's.
  */
 export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   const queries = useQueryClient();
@@ -68,12 +79,17 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
     // the table stays up while the next revision's answer is read.
     placeholderData: (previous) => previous,
   });
-  // What this grid's last Apply wrote, held until a revision including it has answered, and the
-  // edits the page's undos put back - the Undo strip's, which tell the grid its Apply was undone.
+  // What this grid's last Apply wrote, and the edits the page's undos put back - the Undo strip's,
+  // which tell the grid its Apply was undone. The hold is stamped with the first revision the page
+  // sees include its last edit (`holdAfter`), and ends once an answer of that revision has come.
   const [hold, setHold] = useState<ValuesHold | null>(null);
   const undone = useSyncExternalStore(ownEdits.subscribe, ownEdits.undone);
+  const holding = holdAfter(hold, undone, state);
+  if (holding !== hold) setHold(holding);
   const shown =
-    values.data === undefined ? undefined : valuesShown(hold, undone, state, values.data);
+    values.data === undefined ? undefined : valuesShown(holding, undone, state, values.data);
+  // Whether an Apply may be planned over the values shown: only over the page's revision's own.
+  const current = shown !== undefined && appliesOver(shown, state);
 
   const [physical, setPhysical] = useState(true);
   const [editing, setEditing] = useState<Editing>(null);
@@ -111,7 +127,8 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
         : typed;
   const plan = useQuery({
     queryKey: ["value-plan", name, at, raw, revision],
-    queryFn: at === null || raw === null ? skipToken : () => getValuePlan({ name, at, raw }),
+    queryFn:
+      at === null || raw === null || !current ? skipToken : () => getValuePlan({ name, at, raw }),
   });
   // A pasted table's own preview, keyed on the counts themselves so a second, different paste
   // asks again - the same shape `plan` above already takes for one cell, and `getValuesPlan`
@@ -119,7 +136,9 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   const table = useQuery({
     queryKey: ["values-plan", name, pastedRows, revision],
     queryFn:
-      pastedRows === null ? skipToken : () => getValuesPlan({ name, raw: pastedRows.flat() }),
+      pastedRows === null || !current
+        ? skipToken
+        : () => getValuesPlan({ name, raw: pastedRows.flat() }),
   });
 
   // One offer under the grid at a time: whichever of the two was last acted on owns the preview,
@@ -165,7 +184,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
     // and the refusal either may have shown; the values this grid reads, the file's own content
     // and every value-plan preview - one cell's and a whole table's - are asked for again, since
     // the edit just spent the fingerprints they were made from. What it wrote is held, over the
-    // values the grid showed when it was made, until a revision including it answers.
+    // values the grid showed when it was made, until an answer of a revision including it comes.
     onSuccess: (reply, applied) => {
       setHold(holdOf(reply.edit, applied.before, applied.written));
       setStaleFailed(null);
@@ -205,6 +224,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
           <Button variant="link" onPress={onBack}>
             Back to {backTo}
           </Button>
+          <UpdatingStatus updating={updating} />
         </div>
         <Banner tone="error">{values.error.message}</Banner>
       </section>
@@ -223,6 +243,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
           <Button variant="link" onPress={onBack}>
             Back to {backTo}
           </Button>
+          <UpdatingStatus updating={updating} />
         </div>
         <p className="quiet">{`'${reply.name}' has no cell for a value to sit in`}</p>
       </section>

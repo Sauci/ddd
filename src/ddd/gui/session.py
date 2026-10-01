@@ -708,7 +708,9 @@ def _described(path: Path, findings: Iterable[Diagnostic]) -> SourceFile:
     listed = list(findings)
     try:
         data = path.read_bytes()
-    except OSError:
+    except (OSError, ValueError):
+        # Read as empty, a path the system refuses even to look at - a NUL byte - as much as one
+        # that cannot be read: the loader has said why already, and the revision carries it.
         data = b""
     parsed = None if path.suffix == ".py" else _parsed(data)
     kind = kind_of(path, parsed)
@@ -784,9 +786,9 @@ def _is_project(path: Path) -> bool:
 def _named_by(project: Path) -> set[Path]:
     """The project description and every file its own ``includes`` name now, by the loader's own
     rule: the descriptions the first analysis of a project is about to read, stamped before it
-    reads them so that opening a flat project analyses it once. Neither a sub-project's
-    ``includes`` nor the project's ``plugins`` are read: those files have no stamp from before,
-    and cost opening the one analysis more it always cost.
+    reads them so that opening a flat project naming no plugin analyses it once. Neither a
+    sub-project's ``includes`` nor the project's ``plugins`` are read: those files have no stamp
+    from before, and cost opening the one analysis more it always cost.
 
     Read again after :func:`_is_project` judged the file, so the two conditional expressions
     guard a description changed in between; an ``includes`` that is not a list names nothing,
@@ -810,8 +812,9 @@ def _name_in(data: Any, kind: str) -> str | None:
 
 def stamped(paths: Iterable[Path]) -> dict[Path, tuple[int, int] | None]:
     """The modification time and size of each path, ``None`` for one that is not there - or that
-    the system refuses even to look at, one holding a NUL byte or a lone surrogate, which no
-    analysis can read either.
+    the system refuses even to look at: one holding a NUL byte, on every system, or one holding a
+    character the encoding of a path to bytes cannot write, where paths are so encoded, as on
+    Linux - U+D800 is one. No analysis can read either.
 
     How this session decides a file has changed, without a file watcher the standard library
     does not have: taken again and compared with what was taken before. Shared with

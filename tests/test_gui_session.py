@@ -146,29 +146,33 @@ def saving_while_analysing(file: Path, unit: bytes) -> Callable[..., Run]:
     return run
 
 
-NAMES_NO_PATH: tuple[str, ...] = ("b\u0000.ddd.json", "\ud800.ddd.json")
-"""Include entries naming a path the system refuses even to look at: one holding a NUL byte, and
-one holding a lone surrogate, which no file name encodes."""
+NUL_ENTRY = "b\u0000.ddd.json"
+"""An include entry naming a path no system lets a program even look at: it holds a NUL byte."""
 
 
-def unreachable(base: Path, entry: str) -> Path:
-    """A project including a component and ``entry``; returns the project file."""
+def unreachable(base: Path) -> Path:
+    """A project including a component and :data:`NUL_ENTRY`; returns the project file."""
     write_tree(
         base,
         {
-            "p.ddd.json": project("P", "a.ddd.json", entry),
+            "p.ddd.json": project("P", "a.ddd.json", NUL_ENTRY),
             "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
         },
     )
     return base / "p.ddd.json"
 
 
-def refusal_of(project_file: Path, entry: str) -> str:
-    """What reading the file ``entry`` names raises, by Python's own rule rather than the
-    session's: the reason an analysis reading it gives."""
+def unreadable(project_file: Path) -> tuple[str, str, str]:
+    """The one finding a revision of :func:`unreachable`'s project carries - its file, its check
+    and its words - the reason given in Python's own words, which are the platform's."""
+    path = project_file.resolve().parent / NUL_ENTRY
     with pytest.raises(ValueError) as refused:
-        (project_file.resolve().parent / entry).read_bytes()
-    return str(refused.value)
+        path.read_text(encoding="utf-8-sig")
+    return ("p.ddd.json", "file-not-found", f"cannot read '{path.as_posix()}': {refused.value}")
+
+
+def findings_of(revision: Revision) -> list[tuple[str, str, str]]:
+    return [(f.file.name, f.diagnostic.check, f.diagnostic.message) for f in revision.findings]
 
 
 class TestFindingProjects:
@@ -736,50 +740,57 @@ class TestTheAnalyser:
         finally:
             stopped(session)
 
-    @pytest.mark.parametrize("entry", NAMES_NO_PATH)
-    def test_an_include_naming_no_path_fails_its_analysis_and_the_analyser_lives_on(
-        self, tmp_path: Path, entry: str, capsys: pytest.CaptureFixture[str]
+    def test_a_project_including_a_path_no_system_reads_is_analysed_to_its_end(
+        self, tmp_path: Path
     ) -> None:
-        """A path the system refuses to look at is stamped as a file that is not there, and the
-        analysis reading it fails as any failure on the thread does: printed, and asked for
-        again at the next poll, by an analyser still there to make it."""
-        project_file = unreachable(tmp_path, entry)
+        """A path holding a NUL byte is stamped as a file that is not there and read as an empty
+        one, so the analysis goes to its end and its revision carries what the loader reports of
+        the path, with the analyser still there; stamped ``None`` again by every poll, the path
+        asks for no analysis more."""
+        project_file = unreachable(tmp_path)
         session = Gated(tmp_path)
         session.gate.set()
         session.start()
         try:
             session.open(project_file)
             begun(session)
-            assert session.settled(timeout=10) is None
-            assert session.poll() is True
-            begun(session)
-            assert session.settled(timeout=10) is None
+            revision = session.settled(timeout=10)
+            assert revision is not None and findings_of(revision) == [unreadable(project_file)]
             assert session._analyser is not None and session._analyser.is_alive()
+            assert session.poll() is False
+            assert session.poll() is False
+            assert (session.revision, session.analyses) == (revision, 1)
         finally:
             stopped(session)
-        failure = f"ddd gui: analysing the project failed: {refusal_of(project_file, entry)}"
-        assert capsys.readouterr().err.splitlines() == [failure, failure]
 
-    @pytest.mark.parametrize("entry", NAMES_NO_PATH)
-    def test_where_no_analyser_runs_an_include_naming_no_path_fails_each_call_that_asks(
-        self, tmp_path: Path, entry: str
+    def test_where_no_analyser_runs_a_project_including_a_path_no_system_reads_opens_all_the_same(
+        self, tmp_path: Path
     ) -> None:
-        """Opening, then the poll after it, each make the analysis and each are told why it
-        failed: nothing is left running in between."""
-        project_file = unreachable(tmp_path, entry)
+        """Opening answers with the revision, the path listed as an empty file of no kind and its
+        refusal filed where the project names it, which leaves the project not loaded."""
+        project_file = unreachable(tmp_path)
         session = Session(tmp_path)
-        with pytest.raises(ValueError) as opening:
-            session.open(project_file)
-        with pytest.raises(ValueError) as polling:
-            session.poll()
-        assert str(opening.value) == str(polling.value) == refusal_of(project_file, entry)
+        session.open(project_file)
+        revision = session.revision
+        assert revision is not None and findings_of(revision) == [unreadable(project_file)]
+        described = {f.path.name: (f.kind, f.loaded, f.fingerprint) for f in revision.files}
+        assert described == {
+            "p.ddd.json": ("project", False, fingerprint(project_file.read_bytes())),
+            "a.ddd.json": ("component", True, fingerprint((tmp_path / "a.ddd.json").read_bytes())),
+            NUL_ENTRY: ("unknown", True, fingerprint(b"")),
+        }
+        (filed,) = revision.findings
+        assert filed.diagnostic.location is not None
+        assert filed.diagnostic.location.pointer == "project.includes[1]"
+        assert session.poll() is False
 
     def test_a_file_named_for_one_analysis_is_not_watched_by_the_ones_after(
         self, shared: Path
     ) -> None:
-        """What an edit or an undo wrote is stamped by the analysis after it and by no other:
-        the units file an undone adoption took away, written again while a later edit's analysis
-        runs, is no file of the project, and asks for nothing."""
+        """What an edit or an undo wrote is carried into the stamps of the one analysis after it,
+        and watched after that only while the project includes it: the units file an undone
+        adoption took away, written again while a later edit's analysis runs, is no file of the
+        project, and asks for nothing."""
         session = Gated(shared.parent)
         session.gate.set()
         session.start()
@@ -891,10 +902,13 @@ class TestStamps:
         assert revision is not None and "b.ddd.json" in {f.path.name for f in revision.files}
         assert session.poll() is False
 
-    @pytest.mark.parametrize("entry", NAMES_NO_PATH)
+    @pytest.mark.parametrize("entry", [NUL_ENTRY, "\ud800.ddd.json"])
     def test_a_path_the_system_refuses_to_look_at_is_stamped_as_not_there(
         self, tmp_path: Path, entry: str
     ) -> None:
+        """A NUL byte is refused on every system. U+D800 is refused where a path is encoded to
+        bytes, as on Linux, and names a file that is simply not there on Windows: ``None`` on
+        both."""
         path = tmp_path / entry
         assert module.stamped([path]) == {path: None}
 

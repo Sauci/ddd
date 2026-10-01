@@ -2434,8 +2434,13 @@ DWARF debug information, versions 2 to 5, and prints the declarations of the C v
 or matched, as json on standard output: a list of interface entries, or with `--component NAME`
 a component file whose `types` holds the structures the variables name. A `SYMBOL` is
 `[UNIT:]PATTERN`: a C identifier matched exactly, or a glob matched case sensitively, narrowed
-to the compilation unit whose name is `UNIT` or ends in `/UNIT`. A candidate is a variable at
-the top of a unit with a static address; the `static` locals of a function are not candidates.
+to the compilation unit whose name is `UNIT` or ends in `/UNIT`, `/` and `\` separating alike.
+A candidate is a variable at the top of a unit with a static address; the `static` locals of a
+function are not candidates. One name at one address is one variable, however many units
+describe it, as a tentative definition `-fcommon` merges is. A variable without an address -
+only declared, folded or removed by the compiler, thread-local, at no fixed address, or
+discarded by the linker, which leaves its DWARF address at 0 or at all ones where no symbol of
+its name sits - is `elf-no-storage`.
 
 What the image states, the declaration states:
 
@@ -2454,8 +2459,8 @@ What the image states, the declaration states:
   `_Bool` bitfield is described as a `uint8` one.
 - `init`: from the image's bytes in its byte order - an array whose elements are all equal as
   that one value, a `float32` as the shortest decimal that reads back to it - and none for a
-  variable in a section without contents, which starts at zero. A structured object states
-  none ([section 3.7](#37-type-description)).
+  variable in a section without contents, whose bytes the image does not hold. A structured
+  object states none ([section 3.7](#37-type-description)).
 - `section`: where the variable's section is not one of the toolchain's defaults, `.data`,
   `.bss`, `.rodata`, `.sdata`, `.sbss`, `.sdata2`, `.sbss2`, `.srodata`, `.data1` and
   `.rodata1`. It is the image's output section, which the project **must** declare
@@ -2487,5 +2492,8 @@ bitfield. The gap such a bitfield leaves where the next one would have fit is
 
 The exit code is `0` when every argument was described, and `1` when one was not; nothing is
 written then unless `--force`, which writes what was described. An image that cannot be read,
-is not ELF, carries no DWARF or is not linked, an `-o` naming the image, and a missing
-pyelftools - which the `elf` extra installs - are usage errors, `2`.
+is not ELF, carries no DWARF or is not linked, an image whose DWARF holds type units
+(`-fdebug-types-section`), comes from gcc's link-time optimisation (`-flto`) or is compressed
+with zstd rather than zlib, a malformed `SYMBOL` and an `-o` naming the image - both refused
+before the image is read - and a missing pyelftools - which the `elf` extra installs - are
+usage errors, `2`.

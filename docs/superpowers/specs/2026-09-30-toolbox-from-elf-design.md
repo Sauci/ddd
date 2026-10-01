@@ -44,6 +44,22 @@ rather than a step of the build.
   symbols have no section, and its debug information needs relocating first. None of that is
   hard, and none of it is needed while firmware images are the input. Refused (exit `2`).
 - **Separate debug files** (`.gnu_debuglink`, `.dwo`, `.dwp`): the DWARF has to be in the image.
+- **DWARF type units** (`-fdebug-types-section`). gcc then moves structures and enums into units
+  of their own - a `.debug_types` section at DWARF 4, `DW_UT_type` units of `.debug_info` at
+  DWARF 5 - whose entries count their offsets from the unit's own start, where types are
+  memoised by offset (section 5.1), and pyelftools resolves no DWARF 5 signature at all. Read as
+  the rest is, the DWARF 4 build described a `sint8` parameter as a structure and exited `0`,
+  and the DWARF 5 build ended in a traceback (section 10). Firmware builds rarely ask for type
+  units, and a refusal is honest where a wrong type is not: such an image is refused (exit
+  `2`), with a message naming the option.
+- **gcc's link-time optimisation** (`-flto`). gcc then names each variable in the unit of its
+  source, without a location, and locates it in an `<artificial>` unit that `GNU GIMPLE`
+  produces, without a name, through `DW_AT_abstract_origin`. Read as the rest is, every
+  variable is one the compiler removed, which is false. Reading it means following
+  `DW_AT_abstract_origin` across units and setting the early entries aside, a piece of work of
+  its own that wants LTO rows in the matrix (section 11); until then such an image is refused
+  (exit `2`), with a message naming `-flto`. clang's `-flto` keeps every variable's location in
+  the unit of its source and reads exactly as a build without it (section 10): it is read.
 - **C++.** A C++ construct is an unsupported type (a class, a reference) or not a candidate at
   all (a variable in a namespace). Nothing is done to read them, and nothing is tested.
 - **Checking the layout DDD would generate against the image's.** DDD states member order,
@@ -72,8 +88,10 @@ ddd tool from-elf IMAGE SYMBOL [SYMBOL ...] [--component NAME]
   sensitively (`fnmatch.fnmatchcase`) against the names of the candidates.
 - `UNIT` narrows the match to one compilation unit, for a `static` that several units define.
   It matches the unit's `DW_AT_name` exactly or as its trailing path components: `cal.c`
-  matches `src/app/cal.c` and not `src/app/xcal.c`. The argument is split at its last colon,
-  which neither an identifier nor a glob contains, so a Windows path keeps its drive letter.
+  matches `src/app/cal.c` and not `src/app/xcal.c`. `/` and `\` separate components alike, in
+  the unit's name and in the argument, since a Windows build records its units with
+  backslashes. The argument is split at its last colon, which neither an identifier nor a glob
+  contains, so a Windows path keeps its drive letter.
 
 A candidate is a variable with a static address in the image: a `DW_TAG_variable` directly
 under a compilation unit, whose location is an address, either on the entry itself or on a
@@ -83,12 +101,22 @@ candidates, since C gives them no name outside the function.
 Every argument must match something:
 
 - An argument that matches no candidate, exact name or glob, is `elf-symbol-missing`. When the
-  name is in the ELF symbol table, the message adds that the unit defining it carries no debug
-  information.
-- A name defined by several units is `elf-symbol-ambiguous`, listing the units, whether an
-  exact name or a glob reached it. `UNIT:` resolves it.
-- A name that is only declared, whose storage the optimiser removed (a `DW_AT_const_value` in
-  place of a location), or that is thread-local is `elf-no-storage`.
+  name is in the ELF symbol table and no unit's DWARF holds it, the message adds that the unit
+  defining it carries no debug information.
+- A name several units define at different addresses is `elf-symbol-ambiguous`, listing the
+  units, whether an exact name or a glob reached it. `UNIT:` resolves it. One name at one
+  address is one variable, however many units describe it: `-fcommon`, or the `common`
+  attribute, makes a tentative definition in several units one variable, which the DWARF of
+  each unit describes, and it is taken from the first of them by name.
+- A name that is only declared, that the optimiser folded into a constant (a
+  `DW_AT_const_value` in place of a location) or removed (no location at all), that is
+  thread-local, whose location is not a fixed address, or that the linker discarded is
+  `elf-no-storage`. A linker keeps the entry of a variable it discarded and resolves its address
+  to a tombstone: GNU ld and lld write 0, and lld all ones when told to (section 10). A variable
+  at 0, or at all ones at the image's address width, at which no object symbol of its name sits,
+  in any symbol table, global or local, is one the linker discarded. A `static` really placed at
+  0 reads as discarded too in an image linked without its local symbols (`-x`), which is the
+  price of reading no code as a variable.
 
 Entries come out in the order of the arguments, a glob's matches sorted by name and then by
 unit. A variable matched by two arguments is printed once, where it was first matched.
@@ -146,7 +174,7 @@ they judge an image, not a description.
 | --- | --- | --- |
 | `elf-symbol-missing` | error | an argument matches no candidate (section 3.1) |
 | `elf-symbol-ambiguous` | error | a name is defined by several units |
-| `elf-no-storage` | error | declared only, optimised to a constant, or thread-local |
+| `elf-no-storage` | error | declared only, folded or removed by the compiler, thread-local, at no fixed address, discarded by the linker, or at an address no section holds |
 | `elf-type-unsupported` | error | a type DDD cannot state, at the path where it occurs (section 4) |
 | `elf-type-conflict` | error | two different structures or enums under one name, or a synthesised name that is taken |
 | `elf-init-unsupported` | error | an initial value DDD cannot state: NaN, an infinity, a boolean byte other than 0 and 1 |
@@ -171,8 +199,13 @@ A variable with an error is not printed. The exit code is the one every command 
   `--force` asks for the entries that were described. The code stays `1` either way, so that a
   script reads the verdict from the code rather than from the presence of the output.
 - `2`: the command line or the image is unusable. That is a malformed argument; an image that
-  cannot be read, is not ELF, carries no DWARF, or is relocatable; an `-o` naming the image; or
-  `pyelftools` not installed, in which case the message names `pip install ddd-tool[elf]`.
+  cannot be read, is not ELF, carries no DWARF, or is relocatable; an image whose DWARF holds
+  type units, comes from gcc's link-time optimisation (section 2) or is compressed with zstd,
+  which pyelftools does not decompress and the message answers with `-gz=zlib`; an image whose
+  reading raises any other exception, named in the message, since an image is untrusted input
+  and a damaged one must not end in a traceback; an `-o` naming the image; or `pyelftools` not
+  installed, in which case the message names `pip install ddd-tool[elf]`. The arguments and
+  `-o` are judged before the image is read.
 
 ## 4 From C to DDD
 
@@ -399,9 +432,12 @@ hand-built C model.
   the exact place where it occurs, so the translator can name the path and go on with the other
   variables. A pointer is an `Unsupported` leaf whose pointee is never followed, so a structure
   pointing at itself stays finite. Types are memoised by DIE offset, so a type reached twice is
-  built once.
+  built once; an offset names one entry within `.debug_info`, which is why type units, whose
+  offsets restart, are refused rather than read (section 2).
 - **Every DWARF variation stops here.** The translator never sees one. These are:
-  - a definition completing a declaration (`DW_AT_specification`)
+  - a definition completing a declaration (`DW_AT_specification`), with the declaration's type
+    or, where it states one of its own, its own: gcc states the completed type on the
+    definition of an array the declaration left without a size (`extern T x[];`)
   - a qualifier on an array or on its element
   - nested array types or several subranges
   - `DW_AT_count` or `DW_AT_upper_bound`
@@ -412,8 +448,12 @@ hand-built C model.
   - thread-local locations, and a thread-local variable given no location at all, as aarch64's
     gcc and clang give one; the image's `STT_TLS` symbol then says what it is
   - enumerator values in any form
-  - strings in `.debug_str` or through `.debug_str_offsets`
-  - compressed debug sections
+  - strings in `.debug_str` or through `.debug_str_offsets`, their control characters written
+    out as `\xNN`: an image is untrusted, and its names and paths reach standard error
+  - compressed debug sections, zlib's; zstd's are refused, naming `-gz=zlib`
+  - a variable the linker discarded, whose address is a tombstone (section 3.1)
+  - type units and gcc's link-time optimisation, both refused at open (section 2), and any
+    exception reading an image raises, refused naming it
 - **It reads DIEs through two narrow protocols.** `Entry` (tag, attributes, children, offset)
   is satisfied by pyelftools' `DIE`. `Unit` (its name, its top entry, expression parsing,
   `.debug_addr` and the file table) is satisfied by a thin adapter over a pyelftools
@@ -467,7 +507,8 @@ name longer than 128 characters are all DDD's findings, reported under DDD's ide
 ### 5.3 The command line
 
 `cli.py` adds the `tool` subparser group, whose one tool is `from-elf`; `ddd tool` without a
-tool is a usage error listing them. The handler imports `ddd.elf` inside itself, so that
+tool is a usage error listing them. Every `SYMBOL` is parsed, and an `-o` naming the image
+refused, before the image is read. The handler imports `ddd.elf` inside itself, so that
 `ddd --help` and every other command work without `pyelftools`. A `ModuleNotFoundError` for
 `elftools` becomes the exit `2` of section 3.3. The handler also turns `ElfReadError` into exit
 `2`, prints the diagnostics with the existing machinery, and writes the output under the rules
@@ -505,9 +546,18 @@ changes.
 - `main.c` holds a variable for every case of section 4, each named for its case. It also holds
   the entry symbol and the probes of section 6.4, and, after the entry symbol so that no line
   the documentation cites moves, a structure holding an array of structures, a two dimensional
-  array and signed bitfields (`Nested_Frame`).
+  array and signed bitfields (`Nested_Frame`). After that come an array a header declares
+  without its size and the definition completes (`Cal_Curve`, read with the definition's size),
+  and the members section 4.4 refuses: a flexible array (`Member_Flexible`), a zero length array
+  (`Member_Zero`, a GNU extension) and an anonymous structure (`Member_Anonymous`, C11).
 - `unit_a.c` and `unit_b.c` hold a `static` of the same name, a structure from `shared.h` that
-  they share, and a structure whose tag is the same in both and whose members are not.
+  they share, and a structure whose tag is the same in both and whose members are not; and, at
+  their ends, an `__attribute__((common))` global of one name (`Common_Counter`), which the
+  linker makes one variable and section 3.1 reads as one.
+- `type_units.c`, `lto.c` and `gc_sections.c` are the sources of the negative inputs of section
+  6.2, one each: types for `-fdebug-types-section` to move into type units, variables for gcc's
+  link-time optimisation, and a variable nothing references beside one the code reads, for
+  `--gc-sections` to discard and keep.
 - `nodebug.c` is compiled without `-g`, so that its variable is in the symbol table and in no
   DWARF: the case of `elf-symbol-missing`'s hint.
 
@@ -523,7 +573,9 @@ has.
 ### 6.2 The image and the build
 
 - **`docker/elf-fixtures.Dockerfile`** is a Debian image pinned by digest, holding the cross
-  gcc packages, clang, lld and each target's binutils. It lives in `docker/`, which
+  gcc packages, clang, lld and each target's binutils. The base image is what is pinned; the
+  packages are the versions trixie carries when the image is built, and the manifest records
+  the compiler each image was built with. It lives in `docker/`, which
   `pyproject.toml` describes as the scripts the container runs.
 - **`docker/build_elf_fixtures.py`** compiles every row and writes the files below. It sits
   directly in `docker/`, which `pyproject.toml` puts on pytest's path, so that the drift guard
@@ -539,6 +591,11 @@ has.
   - `stripped.elf`, one row's image without its DWARF
   - `main.o`, a relocatable object with DWARF, so that `.o` is refused for being relocatable
     rather than for lacking DWARF
+  - the negative inputs, each built by x86_64 gcc from its own source (section 6.1):
+    `type-units-dwarf4.elf` and `type-units-dwarf5.elf` (`-fdebug-types-section` at DWARF 4 and
+    5), `gcc-lto.elf` (`-flto`) and `gc-sections.elf` (`-fdata-sections -Wl,--gc-sections
+    -Wl,-Ttext=0x0`: its text at address 0, as flash is on many microcontrollers, where GNU ld
+    leaves the discarded variable's DWARF address)
   - `manifest.json`
 - **And `examples/firmware/firmware.elf`**, a copy of the `armv7m` row. The suite re-runs every
   `$ ddd ...` transcript of the documentation in a scratch copy of `examples/`
@@ -582,6 +639,11 @@ The oracle is the compiler and its binutils, never the reader under test.
   - enum size and the alignment of a `uint64_t` inside a structure, from the sizes GNU
     `readelf -s` reports for probe variables
   - whether the DWARF carries `DW_AT_alignment` at all, from GNU `readelf --debug-dump=info`
+- **For each image, row or negative input:** its ELF type (`readelf -h`), the versions and unit
+  types of its DWARF (`readelf --debug-dump=info`), and its debug sections and whether they are
+  compressed (`readelf -S`), so that a test holds the matrix to spanning DWARF 2 to 5, a
+  compressed row and `ET_DYN`.
+- **For each negative input:** its compiler, its source and its flags.
 - **For each object and thread-local symbol:** its section, whether that section has contents,
   and its size, from GNU `readelf -s` and `readelf -S`. A thread-local variable's symbol is of
   type `TLS`, not `OBJECT`, and its section is what the reader is held to leaving out.
@@ -604,7 +666,9 @@ Tests first, in the files that own each concern:
   - On every row of the manifest: the candidates, their types, sections and sizes against the
     manifest, `init` bytes in both byte orders, thread-local and removed storage, the DWARF 2
     to 5 variants and compressed sections.
-  - The refusals: a file that is not ELF, a truncated one, `stripped.elf` and `main.o`.
+  - The refusals: a file that is not ELF, a truncated one, `stripped.elf`, `main.o`, the
+    negative inputs, and copies of the rows damaged as pyelftools cannot read them: a
+    compressed section that does not decompress, an entry it cannot parse, zstd compression.
   - The test double of section 5.1, for the branches no compiler produces.
 - **`tests/test_elf_fixtures.py` is the drift guard:** the hashes in the manifest must match the
   files, or the test fails naming `docker compose run --rm elf-fixtures`. It is a file of its
@@ -742,12 +806,44 @@ What each source settles, so that a later reader knows which claims rest on what
   thread-local variable no location at all. DDD's own check accepted every declaration the
   translator drafted for every row.
 
+- **The final review's probes, re-measured on 2026-10-01** with gcc 15.2 and GNU ld 2.46 on the
+  host, and with the fixture image's gcc 14.2, clang 19.1 and lld 19.1:
+  - `-fdebug-types-section` writes a `.debug_types` section at DWARF 4 and `DW_UT_type` units of
+    `.debug_info` at DWARF 5, with gcc 15.2 and gcc 14.2 alike. Read as the rest is, a twelve
+    unit build at DWARF 4 described `Cal_S8_1`, a `const int8_t`, as a `parameter` of type
+    `Channel_t`, exit `0`, and the DWARF 5 build raised `KeyError: 'Signature ... not found in
+    .debug_types'`. clang 19 writes no type unit for C, at DWARF 4 or 5.
+  - gcc `-flto` writes a unit named `<artificial>` whose producer starts `GNU GIMPLE` (`GNU
+    GIMPLE 15.2.0`, `GNU GIMPLE 14.2.0`), whose variables carry a location and
+    `DW_AT_abstract_origin` and no name; the unit of the source names them without a location.
+  - clang 19 `-flto` over the fixture's own units, the riscv32 row's flags, every global object
+    kept alive with `--undefined`: 37 entries and 22 findings, the plain build's exactly, but for
+    the thread-local variable the optimisation removed.
+  - `--gc-sections` discards a variable nothing references and keeps its entry: GNU ld (gcc
+    14.2, gcc 15.2) and lld 19 resolve its `DW_OP_addr` to 0, and lld its `.debug_addr` entry at
+    DWARF 5; lld writes all ones, at 32 and at 64 bits, when told to with
+    `-z dead-reloc-in-nonalloc`.
+  - `-gz=zstd` (gcc 15.2) writes `SHF_COMPRESSED` sections of type 2, `ELFCOMPRESS_ZSTD`, which
+    pyelftools 0.33 answers with "Unknown compression type: 0x2".
+  - `extern const uint16_t Cal_Curve[];` completed by `const uint16_t Cal_Curve[4] = ...` gives
+    the definition `DW_AT_specification` and a `DW_AT_type` of its own, the declaration an array
+    of no extent. gcc states no `DW_AT_decl_line` on an anonymous member; clang states the line
+    the anonymous structure opens on.
+  - The review's seeded fuzz, 1 to 8 bytes of one debug section of each of 100 copies of every
+    row: before the wave, 222 of the 1000 images let an exception escape `open_image` - 123
+    `KeyError`, 80 `zlib.error`, 14 `TypeError`, 3 `AssertionError`, 1 `AttributeError`, 1
+    `OverflowError`; after it, none escapes `open_image` or `describe`.
+  - `describe(image, ["*"])` over the review's synthetic image of 40,000 variables in 200 units:
+    21.9 s before the selection grouped a glob's matches in one pass, 3.4 s after.
+
 ## 11 Deferred
 
 - **Addresses from the image:** the address map of `SPEC.md` section 6, read by the same
   reader, and the cross-check of the linked symbols against the declarations that the section
   plans.
 - **Relocatable objects and separate debug files.**
+- **Type units and gcc's link-time optimisation** (section 2): reading type units across their
+  own offsets, and following `DW_AT_abstract_origin` from gcc's `<artificial>` units.
 - **A sections file** for the sections the output names, rather than a warning per name.
 - **Checking the layout:** compiling DDD's generated structure with the image's own toolchain
   and comparing offsets, which is the one reliable way to catch packing.

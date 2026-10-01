@@ -96,7 +96,8 @@ What an image states, and what it does not
    * - ``init``
      - the image's own bytes, in its byte order; an array of one value as that value, a
        ``float32`` in the fewest digits that read it back. None for a variable in a section
-       without contents, which starts at zero.
+       without contents, whose bytes the image does not hold: ``.bss`` starts at zero, a
+       ``.noinit`` section is not initialised at all, and ``section`` says which.
    * - ``section``
      - stated only where the variable's section is not one of the toolchain's defaults. It is
        the image's output section, which is the name the source used when the linker script
@@ -185,7 +186,11 @@ nothing, unless ``--force`` asks for what could be described:
 
 A finding about a variable is shown at its declaration in the C source, as the image recorded
 the path. An image that cannot be used at all - not ELF, without DWARF, a relocatable object
-rather than a linked image - is a usage error, exit ``2``.
+rather than a linked image, one whose types sit in DWARF type units (``-fdebug-types-section``),
+one built with gcc's link-time optimisation (``-flto``), one whose debug information is
+compressed with zstd rather than zlib (``-gz=zlib``), or a damaged file - is a usage error,
+exit ``2``, and the message names the flag to build it with or without where one would do. So
+are a malformed argument and an ``-o`` naming the image, refused before the image is read.
 
 The findings
 ~~~~~~~~~~~~
@@ -204,13 +209,18 @@ under DDD's identifiers.
    * - ``elf-symbol-missing``
      - error
      - a name or a pattern matches no variable of the image's debug information; where the
-       symbol table holds the name, the unit defining it was built without ``-g``
+       symbol table holds the name and no unit's debug information does, the unit defining it
+       was built without ``-g``
    * - ``elf-symbol-ambiguous``
      - error
-     - several compilation units define the name; ``UNIT:NAME`` takes one
+     - several compilation units define the name at different addresses; ``UNIT:NAME``
+       takes one. A tentative definition two units share (``-fcommon``) is one variable
    * - ``elf-no-storage``
      - error
-     - the variable has no address: only declared, folded into a constant, or thread-local
+     - the variable has no address: only declared, folded into a constant or removed by the
+       compiler, thread-local, at a location that is not a fixed address, discarded by the
+       linker - which leaves its address at 0, or at all ones, where no symbol of its name
+       sits - or at an address no section of the image holds
    * - ``elf-type-unsupported``
      - error
      - a type DDD cannot state - a pointer, a union, a ``long double`` wider than eight bytes,

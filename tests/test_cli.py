@@ -4035,7 +4035,7 @@ class TestToolFromElf:
         self, capsys: pytest.CaptureFixture[str], row: str
     ) -> None:
         """Section 4.4 refuses each at the member, naming its path. gcc states no line for an
-        anonymous member, clang the line its structure opens on."""
+        anonymous member, clang the line the anonymous structure opens on."""
         code, out, err = from_elf(
             capsys,
             str(FIXTURES / f"{row}.elf"),

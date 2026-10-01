@@ -334,13 +334,20 @@ The ELF fixtures
 and 64 bit, gcc and clang, DWARF 2 to 5, compressed debug sections and not, a static PIE - which
 ``tests/fixtures/elf/`` holds beside a manifest of what each image's own toolchain says about its
 target: byte order, the signedness of ``char``, the sizes of ``long``, ``long double`` and an
-enum, the alignment of a ``uint64_t``, and the section and size of every symbol. The reader's
-tests hold it to the manifest, never to itself. ``examples/firmware/firmware.elf`` is a copy of
-the Cortex-M4 image, for the transcripts of :doc:`toolbox`.
+enum, the alignment of a ``uint64_t``, and the section and size of every symbol - and what
+``readelf`` says of each image as a file: its ELF type, the versions of its DWARF and whether
+its debug sections are compressed. The reader's tests hold it to the manifest, never to itself.
+``examples/firmware/firmware.elf`` is a copy of the Cortex-M4 image, for the transcripts of
+:doc:`toolbox`. Beside the ten rows sit the negative inputs, each built by x86_64 gcc from a
+small source of its own: DWARF type units at versions 4 and 5, gcc's link-time optimisation,
+and a variable ``--gc-sections`` discarded - the images the reader refuses, or reads a way of
+its own.
 
 The images are committed, so the suite needs neither Docker nor a compiler. They are built in
 Docker, out of ``tests/fixtures/elf/src/``, by ``docker/build_elf_fixtures.py`` in the image of
-``docker/elf-fixtures.Dockerfile``, a Debian image pinned by digest:
+``docker/elf-fixtures.Dockerfile``, a Debian image pinned by digest. Its packages are not
+pinned, since a pinned version stops the build once a point release of Debian replaces it;
+the manifest records the compiler that built each image instead:
 
 .. code-block:: text
 

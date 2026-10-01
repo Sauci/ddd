@@ -3881,6 +3881,12 @@ def fixture_line(unit: str, text: str) -> int:
     return found
 
 
+def subcommands(parser: Any) -> dict[str, Any]:
+    """The subcommands of a parser, by name: argparse keeps them on a private action."""
+    (action,) = [a for a in parser._actions if a.__class__.__name__ == "_SubParsersAction"]
+    return dict(action.choices)
+
+
 def from_elf(capsys: pytest.CaptureFixture[str], *arguments: str) -> tuple[int, str, str]:
     code = main(["tool", "from-elf", *arguments])
     out, err = capsys.readouterr()
@@ -4220,6 +4226,44 @@ class TestToolFromElf:
         )
         assert image.read_bytes() == X86.read_bytes()
 
+    def test_an_output_naming_the_image_is_refused_before_the_image_is_read(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        """Refused only when the output was written, the refusal never came where a finding
+        stopped the run first: 'Missing_Name -o copy.elf' exited 1, the code of a finding."""
+        image = tmp_path / "copy.elf"
+        image.write_bytes(X86.read_bytes())
+        code, out, err = from_elf(capsys, str(image), "Missing_Name", "-o", str(image))
+        assert (code, out, err) == (
+            EXIT_USAGE,
+            "",
+            f"ddd: -o would write over '{image.as_posix()}', which this run reads; give it a "
+            f"file of its own\n",
+        )
+        assert image.read_bytes() == X86.read_bytes()
+
+    def test_an_output_naming_a_directory_is_refused_before_the_image_is_read(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        code, out, err = from_elf(capsys, str(tmp_path / "missing.elf"), "Cal_Gain", "-o", ".")
+        assert (code, out, err) == (
+            EXIT_USAGE,
+            "",
+            "ddd: -o names a directory, '.'; give it a file to write\n",
+        )
+
+    def test_a_malformed_symbol_is_refused_before_the_image_is_read(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """stripped.elf is refused once read; the argument after the one that would be read
+        fine is refused first, without reading the image at all."""
+        code, out, err = from_elf(capsys, str(FIXTURES / "stripped.elf"), "Cal_Gain", "main.c:")
+        assert (code, out, err) == (
+            EXIT_USAGE,
+            "",
+            "ddd: 'main.c:' names no variable: give a name or a pattern after the unit\n",
+        )
+
     def test_an_image_that_cannot_be_used_is_a_usage_error(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -4315,20 +4359,22 @@ class TestToolFromElf:
         with pytest.raises(ModuleNotFoundError):
             main(["tool", "from-elf", str(X86), "Cal_Gain"])
 
-    def test_the_toolbox_without_a_tool_is_a_usage_error(
+    def test_the_toolbox_without_a_tool_is_a_usage_error_listing_the_tools(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
+        """Section 5.3 of the design: the error lists the tools, as 'ddd' alone lists its
+        commands, rather than a placeholder naming none of them."""
         with pytest.raises(SystemExit) as exited:
             main(["tool"])
         assert exited.value.code == EXIT_USAGE
-        assert "TOOL" in capsys.readouterr().err
+        assert set(subcommands(subcommands(_build_parser())["tool"])) == {"from-elf"}
+        assert capsys.readouterr().err.splitlines() == [
+            "usage: ddd tool [-h] {from-elf} ...",
+            "ddd tool: error: the following arguments are required: tool",
+        ]
 
     def test_the_scopes_offered_are_ddd_s_scopes(self) -> None:
         from ddd.models.component import Scope
-
-        def subcommands(parser: Any) -> dict[str, Any]:
-            (action,) = [a for a in parser._actions if a.__class__.__name__ == "_SubParsersAction"]
-            return dict(action.choices)
 
         tool = subcommands(subcommands(_build_parser())["tool"])["from-elf"]
         (scope,) = [action for action in tool._actions if action.dest == "scope"]
@@ -4338,11 +4384,6 @@ class TestToolFromElf:
         """No test above asks for ``--format text`` by name: the default bypasses the choice
         check, so a ``choices`` list that quietly lost ``"text"`` - or gained a third value
         nothing else here exercises - would pass every other test in this class."""
-
-        def subcommands(parser: Any) -> dict[str, Any]:
-            (action,) = [a for a in parser._actions if a.__class__.__name__ == "_SubParsersAction"]
-            return dict(action.choices)
-
         tool = subcommands(subcommands(_build_parser())["tool"])["from-elf"]
         (output_format,) = [action for action in tool._actions if action.dest == "format"]
         assert set(output_format.choices) == {"text", "json"}

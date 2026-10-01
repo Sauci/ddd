@@ -513,7 +513,9 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
             "something else. Each tool is a command of its own under this one."
         ),
     )
-    tools = tool.add_subparsers(dest="tool", required=True, metavar="TOOL")
+    # No metavar: argparse then spells the tools out, so that `ddd tool` alone lists them, as
+    # `ddd` alone lists its commands.
+    tools = tool.add_subparsers(dest="tool", required=True)
     from_elf = tools.add_parser(
         "from-elf",
         help="print the DDD declarations of C variables a linked ELF image describes",
@@ -1270,6 +1272,10 @@ def _command_tool_from_elf(args: argparse.Namespace) -> int:
     the findings go to stderr in either format. Nothing is written while an error stands unless
     ``--force`` asks for what was described; the exit code reports the errors either way, so
     that a script reads the verdict from the code rather than from the presence of the output.
+
+    The command line is judged whole before the image is read: a malformed ``SYMBOL`` or an
+    ``-o`` naming the image is a usage error however large the image, and whatever the image
+    would have been found to hold.
     """
     try:
         from ddd.elf import open_image
@@ -1282,6 +1288,7 @@ def _command_tool_from_elf(args: argparse.Namespace) -> int:
     from ddd.loading import resolve_path
     from ddd.models.common import C_IDENTIFIER_PATTERN, IDENTIFIER_MAX_LENGTH
     from ddd.toolbox.from_elf import describe, document_text
+    from ddd.toolbox.selection import wanted
 
     component = args.component
     if component is not None and (
@@ -1292,6 +1299,11 @@ def _command_tool_from_elf(args: argparse.Namespace) -> int:
             f"not '{component}'"
         )
         raise ValueError(msg)
+    for text in args.symbols:
+        wanted(text)
+    if args.output is not None:
+        _refuse_a_directory(args.output, "-o")
+        _refuse_a_source(args.output, "-o", resolve_path(args.image))
     image = open_image(args.image)
     bag = DiagnosticBag()
     description = describe(image, args.symbols, scope=args.scope, component=component, bag=bag)

@@ -212,6 +212,23 @@ function Canvas({
     const box = node.getBoundingClientRect();
     setContainerSize({ width: box.width, height: box.height });
   }, []);
+  // `null` until `containerSize` is - `<ReactFlow>` itself does not mount before then either
+  // (below), so this is never handed to it as a stale or default viewport for the wrong size -
+  // and, once computed, kept rather than redone: `defaultViewport` is only ever read on
+  // `<ReactFlow>`'s own first mount, so recomputing this on a later render this component makes
+  // for its own reasons (a hover, a keystroke in the search box) would be an O(placed) pass -
+  // thousands of modules, at this task's own largest sizes - spent on a value nothing reads
+  // again. Deliberately not keyed on `drawnPlacement` either: only `containerSize` becoming
+  // known should ever (re)compute this one-time value, the same reason `defaultViewport` is
+  // never updated once mounted, below.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above.
+  const opening = useMemo(
+    () =>
+      containerSize === null
+        ? null
+        : openingViewport(drawnPlacement() ?? [], containerSize, MIN_ZOOM),
+    [containerSize],
+  );
   const onNodesChange = useCallback<OnNodesChange<ModuleNodeType>>(
     (changes) => setNodes((current) => applyNodeChanges(changes, current)),
     [],
@@ -291,12 +308,6 @@ function Canvas({
   // applies itself.
   if (screen.kind === "waiting") return <p className="quiet">Laying the project out…</p>;
   if (screen.kind === "failed") return <Banner tone="error">{screen.message}</Banner>;
-  // `null` until `containerSize` is: `<ReactFlow>` itself does not mount before then either
-  // (below), so this is never handed to it as a stale or default viewport for the wrong size.
-  const opening =
-    containerSize === null
-      ? null
-      : openingViewport(drawnPlacement() ?? [], containerSize, MIN_ZOOM);
   return (
     <div className={variable !== undefined || chooser !== null ? "with-panel" : undefined}>
       <div>

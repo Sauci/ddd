@@ -1,10 +1,10 @@
 """The server half of the benchmark of ``ddd gui`` on a large project.
 
-Times, in order, opening a project, one analysis, each of ``GET /api/state``, ``/graph``,
-``/units``, ``/types``, ``/shared`` and ``/files``, the Findings tab's first page of findings and
-every finding of one component's file, a variable's panel, a unit's panel, judging a removal on
-the Files tab, an edit's round trip, and planning the rename of the unit stated in the most
-files - the server driven in process, over one :class:`~ddd.gui.session.Session` and one
+Times, in order, opening a project, each of ``GET /api/state``, ``/graph``, ``/units``,
+``/types``, ``/shared`` and ``/files``, the Findings tab's first page of findings and every
+finding of one component's file, a variable's panel, a unit's panel, judging a removal on the
+Files tab, one analysis, an edit's round trip, and planning the rename of the unit stated in the
+most files - the server driven in process, over one :class:`~ddd.gui.session.Session` and one
 :class:`~ddd.gui.api.Api` (``docs/superpowers/specs/2026-09-30-gui-large-projects-design.md``
 §4). Everything a measure needs to choose - the file, the variable, the unit, the entry to
 remove, the unit to rename - is read off the project's own analysed revision, sorted, so the

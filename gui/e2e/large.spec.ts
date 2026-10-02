@@ -21,6 +21,36 @@ async function withinFindingsWindow(page: Page, target: Locator): Promise<boolea
   );
 }
 
+/** One frame as a reader saw it: the unit cell's own text, and whether the heading says its
+ * findings are updating - the same technique `demo.ts`'s own `watchFrames`/`framesWatched` use
+ * for a field and an undo offer, read here for a button and the heading's status region instead,
+ * so that two things true at once - the cell already reading the applied unit, the heading still
+ * saying "Updating the findings…" - are read off one continuous recording rather than two
+ * separate waits in a row, which nothing stops the page from racing (the second settling before
+ * the first is even asked for). */
+type UnitFrame = readonly [cell: string | null, updating: boolean];
+
+async function watchUnitCell(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const frames: UnitFrame[] = [];
+    (window as unknown as { watchedUnit: UnitFrame[] }).watchedUnit = frames;
+    const each = () => {
+      const cell = document.querySelector<HTMLElement>(
+        '[aria-label="Set the unit of C00000_O0000"]',
+      );
+      const status = document.querySelector(".updating-status");
+      frames.push([cell?.textContent ?? null, status?.textContent === "Updating the findings…"]);
+      requestAnimationFrame(each);
+    };
+    requestAnimationFrame(each);
+  });
+}
+
+/** Every frame `watchUnitCell` has recorded so far, in order. */
+function unitFramesWatched(page: Page): Promise<UnitFrame[]> {
+  return page.evaluate(() => (window as unknown as { watchedUnit: UnitFrame[] }).watchedUnit);
+}
+
 /**
  * An edit shows at once, and its findings follow (design doc §5-6, tasks 6 and 8): the component
  * page's own cell already reads the unit just applied while "Updating the findings…" stands in
@@ -59,19 +89,31 @@ test("an edit shows at once, and its findings follow", async ({ page, generatedG
   await picker.fill("XYZ");
   await picker.press("Enter");
   await expect(panel.getByText("Changes 2 files", { exact: false })).toBeVisible();
+
+  // Armed before Apply, not after: the two things a reader sees - the cell already reading the
+  // applied unit, the heading still saying "Updating the findings…" - can land in either order
+  // from here, so this records every frame rather than asking for them one after the other,
+  // which nothing stops the second settling before the first is even asked for (review fix
+  // round 1). The panel's own `.panel-refusal` also carries a `role="status"`, once Apply has
+  // written the files and this re-asks its own settlement against them before the analysis has
+  // landed - "an edit that wrote c00000.ddd.json has not been analysed yet, so this change can
+  // be planned once it has" - which is why the heading's own region is read by its class here,
+  // not its role.
+  await watchUnitCell(page);
   await panel.getByRole("button", { name: "Apply to 2 files" }).click();
 
-  // Written at once: the cell reads the applied unit before the analysis it waits on next. The
-  // heading's own status region (`UpdatingStatus`, `.updating-status`) is asked for by that
-  // class rather than its role alone: the panel re-asks for its own settlement once Apply has
-  // written the files, and until the analysis lands that ask is refused `analysing` - "an edit
-  // that wrote c00000.ddd.json has not been analysed yet, so this change can be planned once it
-  // has" - which the panel shows in a `role="status"` of its own (`.panel-refusal`), found
-  // alongside the heading's while both stand.
-  const status = page.locator("p.updating-status");
-  await expect(cell).toHaveText("XYZ");
-  await expect(status).toHaveText("Updating the findings…");
-  await expect(status).toHaveText("");
+  // A frame where the cell already reads XYZ while the heading still says the findings are
+  // updating - proving the one shows at once and the other lags, not merely that both happen
+  // somewhere in the run - followed, once settled, by the cell holding XYZ with nothing left
+  // updating. Fails outright, rather than racing, if either never happens.
+  await expect
+    .poll(async () => {
+      const frames = await unitFramesWatched(page);
+      const shownWhileUpdating = frames.some(([unit, updating]) => unit === "XYZ" && updating);
+      const last = frames.at(-1);
+      return shownWhileUpdating && last?.[0] === "XYZ" && last[1] === false;
+    })
+    .toBe(true);
 
   // The component's own page carries no tabs of its own (spec 5.4): back to the project through
   // the masthead's own link, named "Generated" - `generate_project.py`'s own fixed project name -
@@ -85,10 +127,14 @@ test("an edit shows at once, and its findings follow", async ({ page, generatedG
  * The Findings table scrolled to its end (task 7's paging, task 9's window): the tab's line
  * counts every finding the project has, and the box's own 495px, scrolled to its bottom - one
  * large wheel rather than the many small ones `demo.ts`'s own `scrolledIntoView` sends a short
- * table, which would need thousands of them to cross a list this long - shows rows of the last
- * component's own file, `c00665.ddd.json` (confirmed against this fixture's own generated
- * project: findings sort worst first and, within one severity, by file, so the last of the
- * 15,000 `missing-id` notes - the worst severity this clean a project carries - are this file's).
+ * table, which would need thousands of them to cross a list this long - shows the last row,
+ * `data-index="24999"` of 25,000, which is one of the last component's own `c00665.ddd.json`
+ * (confirmed against this fixture's own generated project: findings sort worst first and,
+ * within one severity, by file, so the last of the 15,000 `missing-id` notes - info, the
+ * mildest severity this clean a project carries, which is why they sort after `unused-output`'s
+ * warnings rather than before them - are this file's). `data-index`, not the file name alone:
+ * `c00665.ddd.json` also names rows 9985-9999, where that same file's own `unused-output`
+ * warnings end, so the name by itself cannot tell the table's middle from its end.
  */
 test("the Findings table scrolled to its end", async ({ page, generatedGui }) => {
   await page.goto(generatedGui.address);
@@ -101,7 +147,9 @@ test("the Findings table scrolled to its end", async ({ page, generatedGui }) =>
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
   await page.mouse.wheel(0, 2_000_000);
 
-  await expect(page.getByRole("gridcell", { name: "c00665.ddd.json" }).first()).toBeVisible();
+  const last = page.locator('[data-index="24999"]');
+  await expect(last).toBeVisible();
+  await expect(last).toContainText("c00665.ddd.json");
 });
 
 /**
@@ -116,7 +164,11 @@ test("the keyboard walks past the rows drawn", async ({ page, generatedGui }) =>
   await page.getByRole("link", { name: "Findings" }).click();
 
   const first = page.locator('[data-index="0"]');
-  await expect(first).toBeVisible();
+  // Visible alone is not enough to select: its page of findings may not have arrived yet, and
+  // the row drawn meanwhile - a "Reading…" placeholder, not selectable - carries no check chip
+  // (review fix round 1). Waiting for the chip is waiting for the row that selecting it, next,
+  // actually needs.
+  await expect(first.locator(".chip")).toBeVisible();
   await first.click();
   for (let step = 0; step < 60; step += 1) await page.keyboard.press("ArrowDown");
 

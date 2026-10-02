@@ -900,41 +900,53 @@ are made nowhere else.
 ``npm run lint`` and ``npm run typecheck`` are the frontend's ruff and mypy, and ``npm test``
 runs Vitest with a 100 % gate over the modules that hold logic - ``src/api``, ``src/lib`` and
 ``src/state``. The screens are covered by ``npm run e2e``: Playwright drives the real ``ddd gui``
-over a copy of ``examples/demo``, started with the interpreter ``DDD_PYTHON`` names, and
-``PLAYWRIGHT_CHANNEL=msedge`` drives the installed Edge on a machine without Playwright's own
-Chromium. The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0,
-BSD-2-Clause, BSD-3-Clause or 0BSD. The project screen's canvas is drawn with ``@xyflow/react``
-and laid out with ``@dagrejs/dagre``, both MIT like every other bundled package.
+over a copy of ``examples/demo``, and over a project it generates and serves the same way
+(``gui/e2e/fixtures.ts``'s own ``generatedGui``), each started with the interpreter
+``DDD_PYTHON`` names, and ``PLAYWRIGHT_CHANNEL=msedge`` drives the installed Edge on a machine
+without Playwright's own Chromium. The build refuses a bundled package whose licence is not
+MIT, ISC, Apache-2.0, BSD-2-Clause, BSD-3-Clause or 0BSD. The project screen's canvas is drawn
+with ``@xyflow/react`` and laid out with ``@dagrejs/dagre``, both MIT like every other bundled
+package.
 
-``tools/generate_project.py DIRECTORY --declarations N`` writes a project of ``N`` declarations
-to measure ``ddd gui`` on, large enough to matter in a way nothing under ``examples/`` is, the
-same bytes for the same arguments on every machine. ``--shape`` chooses ``many`` small components
-(the default), ``large`` few components sharing most of the declarations, or ``mixed`` half of
-each. Every output takes an id and a unit its vocabulary lists, and every input reads one stating
-what its producer states, so a project generated with no further option carries no finding at
-all; ``--missing-ids`` and ``--unread`` give it, at the fraction of outputs each names, the
-findings a project half-way through a migration carries instead - a ``missing-id`` for one left
-without an id, an ``unused-output`` for one no input reads - which is what "findings-heavy" means
-wherever this plan or its pull request says it, as opposed to the clean project the defaults make.
+``.venv/bin/python tools/generate_project.py DIRECTORY --declarations N`` writes a project of
+``N`` declarations, rounded down to even components and refused under 120, to measure ``ddd
+gui`` on - large enough to matter in a way nothing under ``examples/`` is, the same bytes for
+the same arguments on every machine. ``--shape`` chooses ``many`` small components (the
+default), ``large`` thirty components sharing every declaration, or ``mixed`` half of each.
+Every output takes an id and a unit its vocabulary lists, and every input reads one stating what
+its producer states, so a project generated with no further option carries no finding at all.
+``--missing-ids`` gives that fraction of outputs no id instead, a ``missing-id`` each; ``--unread``
+turns that fraction of the *inputs* into outputs of their own instead, each leaving two outputs
+unread - itself, and the one it would have read - an ``unused-output`` each: the findings a
+project half-way through a migration carries, at the density asked for.
+``--missing-ids 1 --unread 0.5`` is what "findings-heavy" means wherever
+``docs/superpowers/plans/2026-09-30-gui-large-projects.md`` or the pull request say it, as
+opposed to the clean project the defaults make.
 
 The benchmark measuring ``ddd gui`` on what it makes is in two halves, run by hand and never in
 continuous integration - both are slow, and the machine's own, so a shared or variably loaded
-runner could not answer either honestly. ``tools/bench_gui.py PROJECT...`` times the server half
-in process, one :class:`~ddd.gui.session.Session` and one :class:`~ddd.gui.api.Api` over each
-project named in turn: opening it, one analysis, each endpoint's own answer and its size, the
-Findings tab's first page and one component's own findings, a variable's panel, a unit's panel,
-judging a removal on the Files tab, an edit answered and then analysed, and, once that analysis
-has landed, planning the rename of the unit stated in the most files. ``cd gui && npm run bench``
-(``playwright test -c playwright.bench.config.ts``) times the page half the same way a reader
-would meet it: a Playwright script against a running ``ddd gui``, ``DDD_BENCH_PROJECT`` naming
-the ``project.ddd.json`` to start it over and ``DDD_PYTHON`` the interpreter to start it with -
-the page answering after opening, the first analysed screen, each tab's own first drawing, typing
-in a panel, scrolling a long table, and an Apply until its own change shows and until the findings
-it brought are current, every measure's own row printed and, where ``DDD_BENCH_OUT`` names a file,
-appended to it too. Both halves are checked only by a smoke test on a small generated project
-(``tests/test_bench_gui.py`` and ``tests/test_generate_project.py``); the figures either half
-takes on the sizes and shapes ``tools/generate_project.py`` makes are not kept here, but in this
-plan and the pull request that carried them.
+runner could not answer either honestly. ``.venv/bin/python tools/bench_gui.py PROJECT...``
+times the server half in process, one :class:`~ddd.gui.session.Session` and one
+:class:`~ddd.gui.api.Api` over each project named in turn, in this order: opening it; six of its
+plain ``GET`` endpoints - ``/api/state``, ``/graph``, ``/units``, ``/types``, ``/shared`` and
+``/files``; the Findings tab's first page and one component's own findings; a variable's panel;
+a unit's panel; judging a removal on the Files tab; one analysis; an edit answered and then
+analysed; and, once that analysis has landed, planning the rename of the unit stated in the most
+files. The page half needs the pages built first, and a channel naming an installed browser:
+``cd gui && npm run build && PLAYWRIGHT_CHANNEL=chrome npm run bench`` (``playwright test -c
+playwright.bench.config.ts``) times it the same way a reader would meet it, against a running
+``ddd gui`` - ``DDD_BENCH_PROJECT`` naming the ``project.ddd.json`` to start it over and
+``DDD_PYTHON`` the interpreter to start it with - timing the page answering after opening, the
+first analysed screen, each tab's own first drawing but the Compare tab's, typing in a panel,
+scrolling a long table, and an Apply until its own change shows and until the findings it
+brought are current, every measure's own row printed and, where ``DDD_BENCH_OUT`` names a file,
+appended to it too. The server half is checked by a smoke test on a small generated project
+(``tests/test_bench_gui.py``); nothing checks the page half beyond ``gui``'s own type checking
+and linting - nothing runs ``gui/bench/page.bench.ts`` outside ``npm run bench`` itself. The
+generator both halves start from is checked on its own (``tests/test_generate_project.py``). The
+figures either half takes on the sizes and shapes it makes are not kept here, but in
+``docs/superpowers/plans/2026-09-30-gui-large-projects.md``'s own *Figures* section, and the
+pull request that carried them.
 
 A change to the project's units - a rename, an addition, a description, a removal, an
 adoption - is planned once, in ``ddd.lsp.units``: the operations ``ddd.editing`` takes, on

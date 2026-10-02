@@ -26,6 +26,12 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   pyelftools 0.32 or newer, which joins pydantic and jinja2 as a runtime dependency; every other
   command runs without importing it.  No file format changes.
 
+* **Large projects stay responsive.**  An edit shows at once and its findings follow once the
+  project has been analysed again; the Findings tab reads its findings a page at a time as the
+  reader scrolls it, rather than every one at once; and the component table, the Types, Units,
+  Shared files and Files tabs, a component's own declarations, a unit's own places and a
+  variable's keys draw only the rows in view.
+
 ## 0.11.0
 
 * **A browser interface, as a preview.**  `ddd gui` serves a browser interface over one
@@ -179,11 +185,6 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   comparison finds - objects the two sides agree are one and the same, called differently
   now - are drawn here as a table, exactly what `ddd compare --renames` would write to a
   file, and the tab does not write it.
-
-  Large projects stay responsive.  An edit shows at once and its findings follow once the
-  project has been analysed again; the Findings tab reads its findings a page at a time as
-  the reader scrolls it, rather than every one at once; and every long table draws only the
-  rows in view.
 
 * **A `definition-mismatch` finding now carries a button for each key its declarations
   disagree about.**  Opened from a consumer, it takes the producing component's value;

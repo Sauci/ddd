@@ -125,6 +125,28 @@ def test_the_same_arguments_write_the_same_bytes(tmp_path: Path) -> None:
     assert written(tmp_path / "one") == written(tmp_path / "two")
 
 
+def test_every_file_is_written_with_the_same_line_ending_on_every_os(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``write_text``'s own default would translate every "\\n" to ``os.linesep`` on write,
+    which is "\\r\\n" on Windows - a byte this generator would otherwise write differently
+    there, contradicting its own docstring's "the same bytes ... on every machine". Checked on
+    the call itself, which this platform's own ``os.linesep`` ("\\n") cannot: every file this
+    machine writes would read back with none either way, so reading them back proves nothing
+    here - the fix an ablation of ``newline="\\n"`` would leave unnoticed on this machine."""
+    calls: list[tuple[str | None, ...]] = []
+    original = Path.write_text
+
+    def recording(self: Path, data: str, **kwargs: object) -> int:
+        calls.append((kwargs.get("newline"),))
+        return original(self, data, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", recording)
+    generate(tmp_path / "p", 1200, "many")
+    assert len(calls) > 1
+    assert all(call == ("\n",) for call in calls)
+
+
 @pytest.mark.parametrize(
     ("arguments", "sentence"),
     [

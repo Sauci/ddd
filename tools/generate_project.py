@@ -211,7 +211,10 @@ def _write(directory: Path, interfaces: Sequence[Sequence[dict[str, Any]]]) -> N
 
 
 def _dump(path: Path, data: object) -> None:
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    # newline="\n": write_text's own default translates every "\n" to os.linesep on write,
+    # which is "\r\n" on Windows - the one platform difference the same arguments would
+    # otherwise leave in "the same bytes ... on every machine" above.
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
 def _density(text: str) -> float:

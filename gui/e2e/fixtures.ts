@@ -41,18 +41,39 @@ export interface Gui {
  * is a window rather than a page's worth of rows (tasks 7 and 9).
  */
 function generated(directory: string): void {
-  const result = spawnSync(process.env.DDD_PYTHON ?? "python", [
-    GENERATE_PROJECT,
-    directory,
-    "--declarations",
-    "20000",
-    "--shape",
-    "many",
-    "--missing-ids",
-    "1",
-    "--unread",
-    "0.5",
-  ]);
+  const result = spawnSync(
+    process.env.DDD_PYTHON ?? "python",
+    [
+      GENERATE_PROJECT,
+      directory,
+      "--declarations",
+      "20000",
+      "--shape",
+      "many",
+      "--missing-ids",
+      "1",
+      "--unread",
+      "0.5",
+    ],
+    // A minute is far more than the ~0.15 s this takes (measured): long enough that a real run
+    // never trips it, short enough that an interpreter stuck for some other reason does not
+    // hang the whole suite behind one fixture.
+    { timeout: 60_000 },
+  );
+  // Spawning itself can fail - the interpreter named is not there at all - before there is any
+  // status, signal or stderr to read; `result.error` is the only field set then, and reading
+  // `result.stderr` as though it were one throws "Cannot read properties of undefined", losing
+  // the ENOENT under a different error entirely.
+  if (result.error) {
+    throw new Error(
+      `generate_project.py ${directory} could not be started: ${result.error.message}`,
+    );
+  }
+  // A timeout, or a signal from elsewhere, ends the process without a status - `status` is then
+  // `null`, and naming it would print "exited with null", true of every signal alike.
+  if (result.signal !== null) {
+    throw new Error(`generate_project.py ${directory} was killed by ${result.signal}`);
+  }
   if (result.status !== 0) {
     throw new Error(
       `generate_project.py ${directory} --declarations 20000 --shape many --missing-ids 1 ` +

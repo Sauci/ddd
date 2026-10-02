@@ -289,7 +289,10 @@ The commands
      - preview: serve a browser interface over one project's description files, on this
        computer by default, and open the browser on it. The project opens on a graph
        of its modules, an arrow per pair coloured by the worst disagreement between
-       them, with the component table, a Units tab - listing the project's units and
+       them, laid out in a worker rather than on the page's own thread, and, where the
+       project is too large for that layout to finish, in ranks alone instead -
+       ``Laid out in ranks only: the project is too large for the full layout.`` -
+       with the component table, a Units tab - listing the project's units and
        maintaining its vocabulary - a Findings tab of every finding, worst first, and a
        Compare tab asking whether the open project can replace a baseline delivery the
        reader names, one tab away. A variable's panel shows every key its declarations
@@ -434,11 +437,18 @@ The commands
        page holds has not read. Among the causes of that last: the root's own schema failing
        before its includes are read, a plugin's model raising while the project is read, a
        pattern matching a file created since, or an entry the description gained since,
-       which the tab's own New file and Add show until the revision after them arrives:
-       measured, never on a copy of ``examples/vocabulary``, and for a little over half a
-       second on a project of 18000 findings. New file, Add a file and Remove are its three
-       actions, the first two above the table and the third opened by selecting a row. New
-       file takes a kind - ``component``, ``types``, ``units``, ``constants``, ``sections`` or
+       which the tab's own New file and Add show until the revision after them arrives.
+       Measured on the Linux development PC, in Chrome, with a ``MutationObserver`` and a
+       ``requestAnimationFrame`` sample taken every frame: creating a file of kind ``types``
+       through New file shows the words for one painted frame - 21-29 ms in the DOM - in 9 of
+       10 runs on a copy of ``examples/vocabulary``, and for three to seven painted frames -
+       54-112 ms - in every run on a freshly generated project of 18,000 findings (480
+       components, ``--declarations 14400 --shape many --missing-ids 1 --unread 0.5``), its
+       table scrolled to its end first: the new row sits below the pattern's own 480, where a
+       reader who has not scrolled there sees nothing at all. New file, Add a file and Remove
+       are its three actions, the first two above the table and the third opened by selecting
+       a row. New file takes a kind - ``component``, ``types``, ``units``, ``constants``,
+       ``sections`` or
        ``rasters``, offered as ``GET /api/files`` sends the list, the page keeping no copy of
        its own - and a name, creating the file beside the project description and adding it
        to the includes in the same edit: a vocabulary file declares nothing and a component
@@ -513,19 +523,29 @@ The commands
        by the findings on it, but is not opened, edited or drawn into a preview here: the
        refusal names the directories served, and starting ``ddd gui`` in one that holds them all
        opens them together.
-       Large projects stay responsive: the page never waits for an analysis to answer. An edit
-       answers once its files are written, before it is analysed, and the change shows where it
-       was made; its findings follow once the project has been analysed again, the heading
-       saying ``Updating the findings…`` until then, and every panel listing findings saying so
-       too, in its own place. A plan that would change a file an edit wrote since the revision
-       it is judged against was analysed is refused until that edit's own analysis has landed,
-       naming the file - ``an edit that wrote pump.ddd.json has not been analysed yet, so this
-       change can be planned once it has``. Opening a project answers at once with its name,
-       read from its description as it stands, and ``Analysing the project…`` stands in its
-       place until the first analysis lands; asked of anything before that, the server answers
-       ``the open project has not been analysed yet``. The Findings tab asks for its findings a
-       page at a time as the reader scrolls it, rather than every one at once, and every long
-       table draws only the rows in view, in a box of its own.
+       Large projects stay responsive. An edit is answered once its files are written, before
+       it is analysed, and the change shows where it was made; its findings follow once the
+       project has been analysed again, the heading saying ``Updating the findings…`` until
+       then, and every panel listing findings saying so too, in its own place. A request
+       answered while an analysis runs shares the interpreter with it and can therefore be
+       slower than either on its own. The server stopping is reported once, and not at the
+       first ask that goes unanswered - which an analysis merely sharing the interpreter
+       could also leave looking that way - but only once asking again goes unanswered too.
+       A plan that would change a file an edit wrote since the revision it is judged
+       against was analysed is refused until that edit's own analysis has landed, naming
+       the file - ``an edit that wrote pump.ddd.json has not been analysed yet, so this
+       change can be planned once it has``. Opening a project answers at once with its
+       name, read from its description as it stands and kept in the heading from then on;
+       ``Analysing the project…`` stands where the tab's own content goes, until the first
+       analysis lands, and every answer needing a revision is refused until then, in the
+       same words - ``the open project has not been analysed yet``. A panel's own plan
+       request waits for a pause in the reader's typing before it asks for one; a pick
+       from a list, or Enter, goes through at once, with no pause to wait out. The
+       Findings tab asks for its findings a page at a time as the reader scrolls it,
+       rather than every one at once, and every long table - the component table, the
+       Types, Units, Shared files and Files tabs' own, a component's own declarations, a
+       unit's own places and a variable's keys - draws only the rows in view, in a box of
+       its own.
        ``-b DIR`` names a build directory as for ``ddd lsp``, ``--host ADDRESS``
        listens beyond this computer for a container, ``--port N`` fixes the port and
        ``--no-browser`` only prints the address. It serves until interrupted, and its

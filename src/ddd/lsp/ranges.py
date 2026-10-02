@@ -298,8 +298,9 @@ class _Scanner:
 
     Each step matches one of the regular expressions above at the walk's position, consuming in
     one call what the walk once consumed in one python step per character. The plans and edits of
-    ``ddd gui`` change a file through ``ddd.editing.edit_text``, which reads it once and again
-    after each operation it makes.
+    ``ddd gui`` change a file through ``ddd.editing.edit_text``, which reads it once and then
+    again after each operation it makes - or, for a batch of sets none of which can depend on
+    another, once after all of them.
 
     A level of nesting costs the stack what it cost the character walk: a frame for ``value`` and
     one for ``_object`` or ``_array``, each making, one frame further down, calls the walk made in

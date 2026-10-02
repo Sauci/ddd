@@ -1,16 +1,16 @@
 import dagre, { type EdgeLabel, type GraphLabel, type NodeLabel } from "@dagrejs/dagre";
 import type { GraphFlow, GraphModule } from "../api/types";
-
-const NODE_WIDTH = 180;
-const NODE_HEIGHT = 48;
+import { NODE_HEIGHT, NODE_WIDTH } from "./nodeSize";
 
 /**
  * A module placed on the canvas.
  *
- * It carries the module itself, not only its path: what draws the node needs the name and the
- * counts beside the position, and a second lookup by path would need a fallback for a module
- * that was never laid out - a case this function makes impossible, since it places every module
- * it is given.
+ * It carries the module itself, not only its path: `laidOut` and `ranked` both place every
+ * module they are given, so a position is never missing the module it belongs to at the moment
+ * either makes one. `nodesOf` (`gui/src/lib/canvas.ts`) still looks a placed module back up by
+ * path against the *current* modules, with its own fallback for one the lookup misses - not
+ * because placing can leave one out, but because a layout kept across a revision (`shapeOf`
+ * unchanged) can be older than the modules it is now drawn against.
  */
 export interface Placed {
   module: GraphModule;
@@ -54,35 +54,98 @@ export function laidOut(
   });
 }
 
-/**
- * One string standing for a graph's shape: the sorted module paths, then the sorted arrows'
- * `from` and `to` pairs. Two calls give the same string for the same modules and arrows
- * regardless of the order either was given in, and a different string the moment a module or an
- * arrow comes or goes - a revision that only changes a module's findings counts or `loaded`, or
- * an arrow's objects, severity or disagreements, carries the same modules and the same arrows,
- * so its shape is unchanged. This is what `useLayout` (`gui/src/app`) compares to decide whether
- * the layout - the one part of drawing the graph dagre's own cost makes too slow for the main
- * thread (Ruling 2) - has to be made again, rather than kept as it was for a revision that moved
- * nothing.
- */
-export function shapeOf(modules: readonly GraphModule[], flows: readonly GraphFlow[]): string {
-  const paths = modules.map((module) => module.path).sort();
-  const arrows = flows.map((flow) => JSON.stringify([flow.from, flow.to])).sort();
-  return JSON.stringify([paths, arrows]);
-}
+/** The gap, in pixels, `ranked` leaves between two modules' boxes - between ranks and within one
+ * - a plain, stated number rather than one read from dagre, which `ranked` never calls. */
+const RANK_GAP = 60;
 
 /**
- * How many modules a graph needs before drawing every node whole, rather than only the ones in
- * view, costs something a reader would notice (Ruling 2). Below this, React Flow drawing every
- * node regardless of the viewport is free enough that a reader never meets one appear late while
- * panning; `visibleOnly` is what reads this threshold, so nothing else compares against it.
+ * Where every module goes when dagre cannot lay the graph out at all: a chain long enough
+ * overflows its stack in the worker (review fix round 1, Critical 1 - about 908 modules deep
+ * there, against about 1,772 on the main thread and 1,787 in Node, all measured the same way).
+ * `ranked` never recurses, so it has no depth of its own to overflow at any size.
+ *
+ * A module's rank is its breadth-first distance along the flows from the modules nothing feeds -
+ * every such module starts the one search at rank 0 together, a true multi-source breadth-first
+ * search with an explicit array and a read index standing in for the queue, so a node two
+ * different roots can both reach keeps the shorter of the two distances regardless of which root
+ * `modules` happened to sort first. A flow naming a module `modules` does not carry is ignored,
+ * the same tolerance `nodesOf` has for a placement naming one `modules` no longer carries.
+ *
+ * A module left unranked after that sits on a cycle nothing outside it feeds: the smallest of
+ * the remaining modules by path starts a further search from itself alone, repeated - each
+ * pass's own leftover smallest module starting the next - until every module has a rank. Within
+ * a rank, modules are ordered by path and stacked top to bottom; ranks run left to right, dagre's
+ * own `NODE_WIDTH`/`NODE_HEIGHT` sizing each box and `RANK_GAP` the space between them, so a
+ * fallback placement sits on the same kind of grid a dagre one would.
+ *
+ * Two calls with the same modules and flows, in any order, rank and place them the same way:
+ * `modules` is sorted by path before anything else reads it, a flow's own order never decides
+ * which root's search reaches a node first (the multi-source search above), and position comes
+ * from each module's rank and its place in that rank's own path-sorted list, never from search
+ * order.
  */
-export const VISIBLE_ONLY_ABOVE = 200;
+export function ranked(modules: readonly GraphModule[], flows: readonly GraphFlow[]): Placed[] {
+  const sorted = [...modules].sort((a, b) => a.path.localeCompare(b.path));
+  const known = new Set(sorted.map((module) => module.path));
+  const outgoing = new Map<string, string[]>();
+  const fed = new Set<string>();
+  for (const flow of flows) {
+    if (!known.has(flow.from) || !known.has(flow.to)) continue;
+    const targets = outgoing.get(flow.from);
+    if (targets === undefined) outgoing.set(flow.from, [flow.to]);
+    else targets.push(flow.to);
+    fed.add(flow.to);
+  }
 
-/**
- * Whether the canvas should ask React Flow to draw only the nodes currently in view
- * (`onlyRenderVisibleElements`), rather than every one regardless of the viewport.
- */
-export function visibleOnly(count: number): boolean {
-  return count > VISIBLE_ONLY_ABOVE;
+  const rank = new Map<string, number>();
+  // Every call below passes only paths `rank` does not have yet - a module's own path is unique
+  // (the same assumption `laidOut` and `nodesOf` make), so the root call's own starts, one per
+  // distinct module, can never repeat, and the cycle fallback's loop only ever calls this with a
+  // path its own `!rank.has` just confirmed is still unranked. So marking a start needs no guard
+  // of its own the way following an edge to `next` does, two lines down - where a chain's second
+  // module really can be reached while already ranked, by more than one of its producers.
+  function search(starts: readonly string[]): void {
+    const queue: string[] = [...starts];
+    for (const start of starts) rank.set(start, 0);
+    let at = 0;
+    while (at < queue.length) {
+      const path = queue[at] as string;
+      at += 1;
+      const distance = rank.get(path) as number;
+      for (const next of outgoing.get(path) ?? []) {
+        if (rank.has(next)) continue;
+        rank.set(next, distance + 1);
+        queue.push(next);
+      }
+    }
+  }
+
+  const roots = sorted.filter((module) => !fed.has(module.path)).map((module) => module.path);
+  search(roots);
+  for (const module of sorted) {
+    if (!rank.has(module.path)) search([module.path]);
+  }
+
+  const byRank = new Map<number, string[]>();
+  for (const module of sorted) {
+    const at = rank.get(module.path) as number;
+    const inRank = byRank.get(at);
+    if (inRank === undefined) byRank.set(at, [module.path]);
+    else inRank.push(module.path);
+  }
+
+  const position = new Map<string, { x: number; y: number }>();
+  for (const [at, paths] of byRank) {
+    paths.forEach((path, index) => {
+      position.set(path, {
+        x: at * (NODE_WIDTH + RANK_GAP),
+        y: index * (NODE_HEIGHT + RANK_GAP),
+      });
+    });
+  }
+
+  return sorted.map((module) => {
+    const at = position.get(module.path) as { x: number; y: number };
+    return { module, x: at.x, y: at.y };
+  });
 }

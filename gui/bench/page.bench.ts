@@ -448,14 +448,18 @@ test("answering", async ({ page }) => {
 
 test("first screen", async ({ page }) => {
   await page.goto(address);
-  // The module node's own wrapper, not its inner button: React Flow's Controls panel (Tidy/Fit
-  // sit beside it, but the zoom buttons it draws on its own are not disabled) adds buttons of its
-  // own to the same canvas, and `.react-flow__node` is what the existing journeys already use to
-  // mean a module specifically (e.g. `e2e/skeleton.spec.ts`'s dragged-module test).
-  const firstModule = page.locator(".react-flow__node").first();
+  // The canvas region itself, not a module node in it (review fix round 1, Minor 4): GraphPage
+  // draws this region only once a layout - dagre's or the no-recursion fallback's - has actually
+  // landed (`layoutScreen`, `gui/src/lib/layoutAnswers.ts`), but above VISIBLE_ONLY_ABOVE modules
+  // React Flow draws only the ones in view, which a graph whose fitted middle holds none - part
+  // 17's own task 10, Ruling T10-2 - can leave at zero regardless, forever, with the layout
+  // itself long since done. `.react-flow__node` was what earlier journeys used to mean a module
+  // specifically (e.g. `e2e/skeleton.spec.ts`'s dragged-module test), which is a different
+  // question from whether the screen itself is ready.
+  const canvas = page.getByRole("region", { name: "Modules" });
   const ms = await elapsedCapped(async () => {
     await page.getByRole("button", { name: /Generated/ }).click();
-    await expect(firstModule).toBeVisible({ timeout: LONG_TIMEOUT });
+    await expect(canvas).toBeVisible({ timeout: LONG_TIMEOUT });
   });
   record("first screen", formatMs(ms));
 });

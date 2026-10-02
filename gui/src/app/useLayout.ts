@@ -1,46 +1,54 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { GraphFlow, GraphModule } from "../api/types";
-import { type Placed, shapeOf } from "../lib/layout";
-import type { LayoutAnswer } from "./layoutWorker";
+import type { Placed } from "../lib/layout";
+import {
+  INITIAL_LAYOUT_STATE,
+  type LayoutAnswer,
+  type LayoutState,
+  WORKER_FAILED,
+  withAnswer,
+} from "../lib/layoutAnswers";
+import { shapeOf } from "../lib/shape";
 
 /**
  * The graph's layout, made once per shape and off the main thread (design doc §6, Ruling 2): one
  * worker for the page's whole life, asked again only when `shapeOf` changes - never for a
  * revision that only changes a module's findings counts or `loaded`, or a flow's objects,
- * severity or disagreements. `placed` is the last layout that answered successfully; it stays
- * what it was while the next is made, and is never `null` again once it has answered once, so
- * `GraphPage` can tell "no layout yet" from "the current one, kept while a new one is made" by
- * nothing more than whether this is still `null`. `error` names the last answer that failed
- * instead, beside `placed` rather than in place of it, so a shape dagre cannot lay out (Step 2:
- * it overflows its stack on a long enough chain) never empties a canvas already drawn.
+ * severity or disagreements.
  *
  * Glue only (Global Constraints: "no decision may live in a .tsx file... a src/app hook is glue
- * only"): `shapeOf` is `gui/src/lib/layout.ts`'s own, under the Vitest gate; the one thing this
- * hook decides for itself is which answer a message belongs to, immediately below.
+ * only"): `shapeOf` and `withAnswer` are `gui/src/lib`'s own, under the Vitest gate. This hook
+ * decides nothing - it only tracks which shape it currently wants (`wanted`, written by the
+ * posting effect and read by the worker's handlers to tell a stale answer from the one they are
+ * waiting for) and which `modules`/`flows` go with it (`latest`, read by that same effect so it
+ * does not also have to depend on `modules`/`flows` themselves - depending on them would repost
+ * on every revision whose *shape* did not change, exactly the layout this hook exists to avoid
+ * making again).
  */
 export function useLayout(
   modules: readonly GraphModule[],
   flows: readonly GraphFlow[],
-): { placed: Placed[] | null; error: string | null } {
-  const [placed, setPlaced] = useState<Placed[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+): { placed: Placed[] | null; ranksOnly: boolean; error: string | null } {
+  const [state, setState] = useState<LayoutState>(INITIAL_LAYOUT_STATE);
   const worker = useRef<Worker | null>(null);
-  // `latest` mirrors this render's own `modules`/`flows`, written unconditionally below rather
-  // than read from the posting effect's own closure: that effect runs only when `shape` changes,
-  // and depending it on `modules`/`flows` as well would also re-run it, and so re-post to the
-  // worker, for a revision whose shape did not change - exactly the layout this hook exists to
-  // avoid making again. Writing a ref during render is safe here because nothing this render
-  // returns reads it back; only a later effect does.
+  // Memoised (review fix round 1, Minor 5): `shapeOf` walks every module and arrow, building a
+  // string of up to a few megabytes on a large project, and this hook's caller re-renders on
+  // every hover and keystroke over the canvas - recomputing it only when `modules`/`flows`
+  // themselves have a new identity (a new revision) keeps that walk off those renders.
+  const shape = useMemo(() => shapeOf(modules, flows), [modules, flows]);
+  // Mirrors this render's own `modules`/`flows`, written unconditionally below rather than read
+  // from the posting effect's own closure: that effect runs only when `shape` changes, and
+  // depending it on `modules`/`flows` as well would also re-run it, and so re-post, for a
+  // revision whose shape did not change. Writing a ref during render is safe here because
+  // nothing this render returns reads it back; only the effect below does.
   const latest = useRef({ modules, flows });
   latest.current = { modules, flows };
-  // The shape most recently posted (`wanted`), and every shape posted whose answer has not
-  // arrived yet, oldest first (`requested`). A worker answers in the order it was asked, so the
-  // oldest outstanding entry is always the request this next message answers; comparing it
-  // against `wanted` is what lets a message for a shape this hook has since moved past - one
-  // superseded by a later post before its own answer arrived - be told apart from the answer to
-  // the shape it is currently asking for, and dropped rather than overwriting `placed` or `error`
-  // with a layout for a shape no longer on screen.
-  const bound = useRef({ wanted: "", requested: [] as string[] });
+  // The shape currently wanted: written by the posting effect at the moment it posts, read by
+  // the worker's handlers (attached once, on mount) to bind an answer to the request it belongs
+  // to - comparing the answer's own echoed shape against this, rather than trusting the order
+  // answers arrive in, which a worker remade mid-flight (StrictMode's double mount) cannot be
+  // trusted to preserve (`withAnswer`'s own doc, `gui/src/lib/layoutAnswers.ts`).
+  const wanted = useRef(shape);
 
   useEffect(() => {
     const created = new Worker(new URL("./layoutWorker.ts", import.meta.url), {
@@ -48,14 +56,15 @@ export function useLayout(
     });
     worker.current = created;
     created.onmessage = (event: MessageEvent<LayoutAnswer>) => {
-      const respondingTo = bound.current.requested.shift();
-      if (respondingTo !== bound.current.wanted) return;
-      if (event.data.placed !== undefined) {
-        setPlaced(event.data.placed);
-        setError(null);
-      } else if (event.data.error !== undefined) {
-        setError(event.data.error);
-      }
+      setState((current) => withAnswer(current, event.data, wanted.current));
+    };
+    // A worker that fails to start, or dies - including a stale URL from before a rebuild
+    // answering something that is not JavaScript at all (Minor 3) - fires this instead of ever
+    // answering a message; without it the page is left on "Laying the project out…" for good.
+    created.onerror = () => {
+      setState((current) =>
+        withAnswer(current, { shape: wanted.current, error: WORKER_FAILED }, wanted.current),
+      );
     };
     return () => {
       created.terminate();
@@ -63,15 +72,13 @@ export function useLayout(
     };
   }, []);
 
-  const shape = shapeOf(modules, flows);
   useEffect(() => {
-    bound.current.wanted = shape;
-    bound.current.requested.push(shape);
+    wanted.current = shape;
     worker.current?.postMessage({
       modules: latest.current.modules,
       flows: latest.current.flows,
     });
   }, [shape]);
 
-  return { placed, error };
+  return { placed: state.placed, ranksOnly: state.ranksOnly, error: state.error };
 }

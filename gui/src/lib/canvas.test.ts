@@ -6,14 +6,19 @@ import {
   fadedNodes,
   firstMatch,
   flowTitle,
+  initialViewport,
+  MIN_ZOOM,
+  type ModuleNodeType,
   nodesOf,
   objectsInDisagreement,
   STROKE,
   shownEdges,
   stateOf,
+  withMeasured,
   withSavedPositions,
 } from "./canvas";
 import type { Placed } from "./layout";
+import { NODE_WIDTH } from "./nodeSize";
 
 const graphModule = (path: string, name: string, errors = 0, warnings = 0): GraphModule => ({
   path,
@@ -92,6 +97,23 @@ test("a module the given modules no longer carry draws no node", () => {
 test("a module not yet placed draws no node, until the layout that places it arrives", () => {
   const nodes = nodesOf([placedAt(A, 0, 0)], [A, B], () => undefined);
   expect(nodes.map((node) => node.id)).toEqual([A.path]);
+});
+
+// Review fix round 1, Important 2: the two tests above pin only the findings counts, which left
+// `loaded` and `name` free to be read from the placement's own (possibly stale) module instead
+// of the current one, unnoticed.
+test("a node's loaded flag comes from the modules given now, never from when it was placed", () => {
+  const placedWhileLoaded: Placed = { module: { ...A, loaded: true }, x: 0, y: 0 };
+  const unloadedNow: GraphModule = { ...A, loaded: false };
+  const nodes = nodesOf([placedWhileLoaded], [unloadedNow], () => undefined);
+  expect(nodes[0]?.data.loaded).toBe(false);
+});
+
+test("a node's name comes from the modules given now, never from when it was placed", () => {
+  const placedAsAlpha: Placed = { module: { ...A, name: "Alpha" }, x: 0, y: 0 };
+  const renamedNow: GraphModule = { ...A, name: "Omega" };
+  const nodes = nodesOf([placedAsAlpha], [renamedNow], () => undefined);
+  expect(nodes[0]?.data.name).toBe("Omega");
 });
 
 test("a saved position wins for its module, and leaves the others as they were placed", () => {
@@ -277,4 +299,83 @@ test("an arrow is bright only while both of its ends are, and open only while it
     [true, false],
   ]);
   expect(shownEdges(edges, null, null)).toEqual(edges);
+});
+
+function nodeWithMeasured(
+  id: string,
+  measured?: { width: number; height: number },
+): ModuleNodeType {
+  return {
+    id,
+    type: "module",
+    position: { x: 0, y: 0 },
+    // Spread in only when given: exactOptionalPropertyTypes makes `measured: undefined` a type
+    // error of its own, distinct from the key being absent - the same reason `edgesOf` spreads
+    // `ariaRole` in conditionally (canvas.ts's own doc on it).
+    ...(measured !== undefined ? { measured } : {}),
+    data: {
+      name: id,
+      loaded: true,
+      errors: 0,
+      warnings: 0,
+      onOpen: () => undefined,
+      faded: false,
+    },
+  };
+}
+
+test("withMeasured carries a current node's measured size onto the fresh node of the same id", () => {
+  const current = [nodeWithMeasured(A.path, { width: 180, height: 48 })];
+  const fresh = [nodeWithMeasured(A.path)];
+  const result = withMeasured(fresh, current);
+  expect(result[0]?.measured).toEqual({ width: 180, height: 48 });
+});
+
+test("withMeasured leaves a node current does not carry exactly as it was built", () => {
+  const fresh = [nodeWithMeasured(A.path)];
+  const result = withMeasured(fresh, []);
+  expect(result).toEqual(fresh);
+  expect(result[0]).toBe(fresh[0]);
+});
+
+test("withMeasured does not carry a measured of undefined over one already set", () => {
+  const current = [nodeWithMeasured(A.path)];
+  const fresh = [nodeWithMeasured(A.path, { width: 1, height: 1 })];
+  const result = withMeasured(fresh, current);
+  expect(result[0]?.measured).toEqual({ width: 1, height: 1 });
+});
+
+test("initialViewport leaves fitView alone when nothing is placed", () => {
+  expect(initialViewport([], { width: 1280, height: 800 }, MIN_ZOOM)).toBeNull();
+});
+
+test("initialViewport leaves fitView alone when its own fit already shows everything", () => {
+  const placed = [placedAt(A, 0, 0), placedAt(B, 300, 0)];
+  expect(initialViewport(placed, { width: 1280, height: 800 }, MIN_ZOOM)).toBeNull();
+});
+
+test("initialViewport centres the first rank at minZoom when the whole graph would not fit", () => {
+  // Fifty ranks spread along x: fitting all fifty into 1280px needs a zoom fitView would clamp
+  // to MIN_ZOOM, leaving the fitted middle - around rank 25 - the only thing in view.
+  const GAP = 60;
+  const placed = Array.from({ length: 50 }, (_, rank) =>
+    placedAt(graphModule(`/m${rank}.ddd.json`, `M${rank}`), rank * (NODE_WIDTH + GAP), 0),
+  );
+  const size = { width: 1280, height: 800 };
+  const result = initialViewport(placed, size, MIN_ZOOM);
+  expect(result).not.toBeNull();
+  expect(result?.zoom).toBe(MIN_ZOOM);
+  // The first rank (x = 0) must actually be on screen at this viewport: world x = 0 maps to
+  // screen x = 0 * zoom + result.x, which has to land inside [0, size.width].
+  const screenX = 0 * MIN_ZOOM + (result?.x ?? 0);
+  const screenY = 0 * MIN_ZOOM + (result?.y ?? 0);
+  expect(screenX).toBeGreaterThanOrEqual(0);
+  expect(screenX).toBeLessThan(size.width);
+  expect(screenY).toBeGreaterThanOrEqual(0);
+  expect(screenY).toBeLessThan(size.height);
+});
+
+test("initialViewport leaves fitView alone when the canvas has not been measured yet", () => {
+  const placed = [placedAt(A, 0, 0)];
+  expect(initialViewport(placed, { width: 0, height: 0 }, MIN_ZOOM)).toBeNull();
 });

@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { cpSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { test as base, type TestInfo } from "@playwright/test";
 
 const EXAMPLES = fileURLToPath(new URL("../../examples/", import.meta.url));
+const GENERATE_PROJECT = fileURLToPath(new URL("../../tools/generate_project.py", import.meta.url));
 
 /** An example the journeys serve a copy of: its directory under examples/, and its project. */
 interface Example {
@@ -28,18 +29,47 @@ export interface Gui {
   stop: () => Promise<void>;
 }
 
-/** `ddd gui` over a fresh copy of an example, with its project named or not. */
-async function started(
-  example: Example,
-  named: boolean,
+/**
+ * `tools/generate_project.py DIRECTORY --declarations 20000 --shape many --missing-ids 1
+ * --unread 0.5` through `DDD_PYTHON`, into `directory`, which must not exist yet - the way
+ * `demo.ts`'s own `dump` runs `ddd dump` (part 17's task 1). 20,000 declarations, "every output
+ * without an id and half the inputs unread" (task 12's own brief): large enough that an analysis
+ * of it lasts long enough for a reader to see "Updating the findings…" rather than a flash
+ * between two frames - measured on the Linux development PC, in process over a running session,
+ * one declaration's unit changed: the edit answered in 3 ms and the analysis that followed it
+ * landed about 760 ms later - and findings enough, 25,000 of them, that the Findings tab's table
+ * is a window rather than a page's worth of rows (tasks 7 and 9).
+ */
+function generated(directory: string): void {
+  const result = spawnSync(process.env.DDD_PYTHON ?? "python", [
+    GENERATE_PROJECT,
+    directory,
+    "--declarations",
+    "20000",
+    "--shape",
+    "many",
+    "--missing-ids",
+    "1",
+    "--unread",
+    "0.5",
+  ]);
+  if (result.status !== 0) {
+    throw new Error(
+      `generate_project.py ${directory} --declarations 20000 --shape many --missing-ids 1 ` +
+        `--unread 0.5 exited with ${String(result.status)}: ${result.stderr.toString("utf8")}`,
+    );
+  }
+}
+
+/** `ddd gui` over `directory`, already prepared, naming `project` on the command line or opening
+ * on the start page where it is empty - the shared tail of `started` and `generatedGui`, which
+ * prepare `directory` two different ways (a copied example; a generated project) and otherwise
+ * start the very same server the very same way. */
+async function serving(
+  directory: string,
+  project: readonly string[],
   use: (gui: Gui) => Promise<void>,
-  testInfo: TestInfo,
 ): Promise<void> {
-  // Under test-results/, which Playwright empties at the start of every run: a failed journey
-  // then keeps its copy beside its trace, and nothing here has to remove it.
-  const directory = testInfo.outputPath(example.directory);
-  cpSync(join(EXAMPLES, example.directory), directory, { recursive: true });
-  const project = named ? [join(directory, example.project)] : [];
   // python -m ddd rather than the ddd launcher: on Windows the launcher starts python as a child
   // of its own, which killing the launcher leaves running, holding the port and the copy.
   const child = spawn(
@@ -59,11 +89,25 @@ async function started(
   };
   try {
     const address = await served(child);
-    if (named) await analysed(address);
+    if (project.length > 0) await analysed(address);
     await use({ address, directory, stop });
   } finally {
     await stop();
   }
+}
+
+/** `ddd gui` over a fresh copy of an example, with its project named or not. */
+async function started(
+  example: Example,
+  named: boolean,
+  use: (gui: Gui) => Promise<void>,
+  testInfo: TestInfo,
+): Promise<void> {
+  // Under test-results/, which Playwright empties at the start of every run: a failed journey
+  // then keeps its copy beside its trace, and nothing here has to remove it.
+  const directory = testInfo.outputPath(example.directory);
+  cpSync(join(EXAMPLES, example.directory), directory, { recursive: true });
+  await serving(directory, named ? [join(directory, example.project)] : [], use);
 }
 
 /**
@@ -130,6 +174,7 @@ export const test = base.extend<{
   bareGui: Gui;
   vocabularyGui: Gui;
   structuresGui: Gui;
+  generatedGui: Gui;
 }>({
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
   gui: async ({}, use, testInfo) => started(DEMO, true, use, testInfo),
@@ -139,6 +184,12 @@ export const test = base.extend<{
   vocabularyGui: async ({}, use, testInfo) => started(VOCABULARY, true, use, testInfo),
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
   structuresGui: async ({}, use, testInfo) => started(STRUCTURES, true, use, testInfo),
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
+  generatedGui: async ({}, use, testInfo) => {
+    const directory = testInfo.outputPath("generated");
+    generated(directory);
+    await serving(directory, [join(directory, "project.ddd.json")], use);
+  },
 });
 
 export { expect } from "@playwright/test";

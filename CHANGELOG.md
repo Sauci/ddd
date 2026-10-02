@@ -180,6 +180,11 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   now - are drawn here as a table, exactly what `ddd compare --renames` would write to a
   file, and the tab does not write it.
 
+  Large projects stay responsive.  An edit shows at once and its findings follow once the
+  project has been analysed again; the Findings tab reads its findings a page at a time as
+  the reader scrolls it, rather than every one at once; and every long table draws only the
+  rows in view.
+
 * **A `definition-mismatch` finding now carries a button for each key its declarations
   disagree about.**  Opened from a consumer, it takes the producing component's value;
   opened from the producer's own row - the same disagreement, filed there too - it sends

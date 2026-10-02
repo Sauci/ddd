@@ -435,10 +435,10 @@ The commands
        before its includes are read, a plugin's model raising while the project is read, a
        pattern matching a file created since, or an entry the description gained since,
        which the tab's own New file and Add show until the revision after them arrives:
-       measured, never on a copy of ``examples/vocabulary``, and for about a second on a
-       project of 18000 findings. New file, Add a file and Remove are its three actions, the
-       first two above the table and the third opened by selecting a row. New file takes a
-       kind - ``component``, ``types``, ``units``, ``constants``, ``sections`` or
+       measured, never on a copy of ``examples/vocabulary``, and for a little over half a
+       second on a project of 18000 findings. New file, Add a file and Remove are its three
+       actions, the first two above the table and the third opened by selecting a row. New
+       file takes a kind - ``component``, ``types``, ``units``, ``constants``, ``sections`` or
        ``rasters``, offered as ``GET /api/files`` sends the list, the page keeping no copy of
        its own - and a name, creating the file beside the project description and adding it
        to the includes in the same edit: a vocabulary file declares nothing and a component
@@ -513,6 +513,19 @@ The commands
        by the findings on it, but is not opened, edited or drawn into a preview here: the
        refusal names the directories served, and starting ``ddd gui`` in one that holds them all
        opens them together.
+       Large projects stay responsive: the page never waits for an analysis to answer. An edit
+       answers once its files are written, before it is analysed, and the change shows where it
+       was made; its findings follow once the project has been analysed again, the heading
+       saying ``Updating the findings…`` until then, and every panel listing findings saying so
+       too, in its own place. A plan that would change a file an edit wrote since the revision
+       it is judged against was analysed is refused until that edit's own analysis has landed,
+       naming the file - ``an edit that wrote pump.ddd.json has not been analysed yet, so this
+       change can be planned once it has``. Opening a project answers at once with its name,
+       read from its description as it stands, and ``Analysing the project…`` stands in its
+       place until the first analysis lands; asked of anything before that, the server answers
+       ``the open project has not been analysed yet``. The Findings tab asks for its findings a
+       page at a time as the reader scrolls it, rather than every one at once, and every long
+       table draws only the rows in view, in a box of its own.
        ``-b DIR`` names a build directory as for ``ddd lsp``, ``--host ADDRESS``
        listens beyond this computer for a container, ``--port N`` fixes the port and
        ``--no-browser`` only prints the address. It serves until interrupted, and its

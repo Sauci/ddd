@@ -906,6 +906,36 @@ Chromium. The build refuses a bundled package whose licence is not MIT, ISC, Apa
 BSD-2-Clause, BSD-3-Clause or 0BSD. The project screen's canvas is drawn with ``@xyflow/react``
 and laid out with ``@dagrejs/dagre``, both MIT like every other bundled package.
 
+``tools/generate_project.py DIRECTORY --declarations N`` writes a project of ``N`` declarations
+to measure ``ddd gui`` on, large enough to matter in a way nothing under ``examples/`` is, the
+same bytes for the same arguments on every machine. ``--shape`` chooses ``many`` small components
+(the default), ``large`` few components sharing most of the declarations, or ``mixed`` half of
+each. Every output takes an id and a unit its vocabulary lists, and every input reads one stating
+what its producer states, so a project generated with no further option carries no finding at
+all; ``--missing-ids`` and ``--unread`` give it, at the fraction of outputs each names, the
+findings a project half-way through a migration carries instead - a ``missing-id`` for one left
+without an id, an ``unused-output`` for one no input reads - which is what "findings-heavy" means
+wherever this plan or its pull request says it, as opposed to the clean project the defaults make.
+
+The benchmark measuring ``ddd gui`` on what it makes is in two halves, run by hand and never in
+continuous integration - both are slow, and the machine's own, so a shared or variably loaded
+runner could not answer either honestly. ``tools/bench_gui.py PROJECT...`` times the server half
+in process, one :class:`~ddd.gui.session.Session` and one :class:`~ddd.gui.api.Api` over each
+project named in turn: opening it, one analysis, each endpoint's own answer and its size, the
+Findings tab's first page and one component's own findings, a variable's panel, a unit's panel,
+judging a removal on the Files tab, an edit answered and then analysed, and, once that analysis
+has landed, planning the rename of the unit stated in the most files. ``cd gui && npm run bench``
+(``playwright test -c playwright.bench.config.ts``) times the page half the same way a reader
+would meet it: a Playwright script against a running ``ddd gui``, ``DDD_BENCH_PROJECT`` naming
+the ``project.ddd.json`` to start it over and ``DDD_PYTHON`` the interpreter to start it with -
+the page answering after opening, the first analysed screen, each tab's own first drawing, typing
+in a panel, scrolling a long table, and an Apply until its own change shows and until the findings
+it brought are current, every measure's own row printed and, where ``DDD_BENCH_OUT`` names a file,
+appended to it too. Both halves are checked only by a smoke test on a small generated project
+(``tests/test_bench_gui.py`` and ``tests/test_generate_project.py``); the figures either half
+takes on the sizes and shapes ``tools/generate_project.py`` makes are not kept here, but in this
+plan and the pull request that carried them.
+
 A change to the project's units - a rename, an addition, a description, a removal, an
 adoption - is planned once, in ``ddd.lsp.units``: the operations ``ddd.editing`` takes, on
 json pointers, file by file, or a refusal naming the file it concerns. The language server

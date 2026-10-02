@@ -145,6 +145,16 @@ async function started(
  * after, as it happens - the two drifts of one journey were once split between them, its arrow
  * then naming one disagreement where the journey made two. Asked of the state the page itself
  * follows, signed in with the address's own token, and never of anything a journey reads.
+ *
+ * Past every analysis opening makes: on examples/demo, two - its sub-project's own
+ * event_logger.ddd.json has no stamp before the first reads it, and the revision the first
+ * publishes asks for the second (`_finished`, session.py). The server's first poll used to ask
+ * for it instead, and the state saying so came 952 to 1036 ms after this resolved, asked as this
+ * asks, in 20 starts on the Linux development PC - about a second into the journey. A press made
+ * then, on Apply or Show changes, went down on one button and came up on something else - above
+ * the button, once "Updating the findings…" had moved it down a line, or on a button drawn anew
+ * once its plan was asked for again for the new revision - and was lost, the journey waiting out
+ * its timeout for what the press never asked for.
  */
 async function analysed(address: string): Promise<void> {
   const signedIn = await fetch(address, { redirect: "manual" });

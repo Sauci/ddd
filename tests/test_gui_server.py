@@ -509,7 +509,9 @@ def answered(
 
 @pytest.fixture
 def demo(tmp_path: Path, pages: Path) -> Iterator[tuple[GuiServer, Path]]:
-    """ddd gui serving a copy of examples/demo, and where the copy is."""
+    """ddd gui serving a copy of examples/demo, and where the copy is: at revision 2, opening
+    making two analyses of the demo, since it does not stamp its sub-project's own component
+    before the first reads it."""
     root = tmp_path / "demo"
     shutil.copytree(EXAMPLES / "demo", root)
     session = Session(root)
@@ -542,7 +544,7 @@ class TestEveryEndpointOnTheDemo:
         server, root = demo
         body = answered(server, "POST", "/api/open", {"path": f"{root.as_posix()}/demo.ddd.json"})
         assert body["project"]["name"] == "DemoDevice"
-        assert answered(server, "GET", "/api/state")["revision"] == 2
+        assert answered(server, "GET", "/api/state")["revision"] == 4
 
     def test_the_state_lists_the_components_loaded_and_clean(self, demo) -> None:
         server, _ = demo
@@ -566,7 +568,7 @@ class TestEveryEndpointOnTheDemo:
     def test_the_dictionary_is_the_demos(self, demo) -> None:
         server, _ = demo
         body = answered(server, "GET", "/api/dictionary")
-        assert (body["revision"], body["dictionary"]["name"]) == (1, "DemoDevice")
+        assert (body["revision"], body["dictionary"]["name"]) == (2, "DemoDevice")
 
     def test_the_checks_are_listed(self, demo) -> None:
         server, _ = demo

@@ -57,7 +57,9 @@ SEARCH_DEPTH: Final = 4
 
 UNKNOWN: Final = (-1, -1)
 """The stamp of a file whose modification time and size were not taken before an analysis read
-it: a size no file has, so the next poll finds the file changed and analyses once more."""
+it: a size no file has, so a poll finds the file changed. A revision published with one asks for
+the next analysis itself (:meth:`Session._finished`); an analysis that raised leaves every file
+it stamped so, and the next poll asks again."""
 
 MAX_UNDO: Final = 50
 """How many edits the stack keeps, the oldest falling off: a session that runs all day does not
@@ -252,12 +254,12 @@ class Session:
     """One open project at a time, analysed into numbered revisions by one analysis at a time.
 
     Everything that asks for an analysis - opening a project, an edit, an undo, the poll noticing
-    that a file changed - asks it the same way, and one asked for while another runs is merged
-    with any other: one analysis follows, of the disk as it then stands, never a queue. Once
-    :meth:`start` has started the analyser, it runs them on a thread of its own and whatever
-    asked answers at once; where nothing started it - every test not about it, and a session
-    nobody started - whatever asked makes the analysis itself before it answers, and a failure
-    is raised to it.
+    that a file changed, a revision that read a file it had no stamp for - asks it the same way,
+    and one asked for while another runs is merged with any other: one analysis follows, of the
+    disk as it then stands, never a queue. Once :meth:`start` has started the analyser, it runs
+    them on a thread of its own and whatever asked answers at once; where nothing started it -
+    every test not about it, and a session nobody started - whatever asked makes the analysis
+    itself before it answers, and a failure is raised to it.
 
     One lock guards the project, its newest revision, the undo stack, the counters, the request,
     the stamps and the files written since an analysis began, and every write is made holding
@@ -618,8 +620,11 @@ class Session:
         in the stamps, so no poll ever saw it and the page kept the findings of bytes no longer
         on disk. A file with no stamp from before - a sub-project's file or a plugin, when the
         project was just opened, or a file the analysis found newly included - is stamped
-        :data:`UNKNOWN`, which costs one analysis more and catches a save made to that file while
-        this one ran.
+        :data:`UNKNOWN`, and the revision is published asking for the next analysis: one
+        analysis more, which catches a save made to that file while this one ran. Asked here
+        rather than left to the next poll, which asked for it up to ``poll_interval`` later, so
+        that the session says it is analysing until that analysis lands, rather than that it is
+        done and then, a poll later, that it is analysing again.
 
         A revision published lets go of the files every edit it includes wrote: none of them is
         waiting for an analysis any more. Whatever it leaves, the version moves - an analysis
@@ -640,6 +645,8 @@ class Session:
                     if number > begun.edits:
                         waiting.append((number, paths))
                 self._written = waiting
+                if UNKNOWN in self._signature.values():
+                    self._request()
         self._version += 1
         self._changed.notify_all()
 
@@ -863,7 +870,8 @@ def _named_by(project: Path) -> set[Path]:
     rule: the descriptions the first analysis of a project is about to read, stamped before it
     reads them so that opening a flat project naming no plugin analyses it once. Neither a
     sub-project's ``includes`` nor the project's ``plugins`` are read: those files have no stamp
-    from before, and cost opening the one analysis more it always cost.
+    from before, and cost opening the one analysis more it always cost, which the first revision
+    asks for as it is published.
 
     Read again after :func:`_is_project` judged the file, so the two conditional expressions
     guard a description changed in between; an ``includes`` that is not a list names nothing,

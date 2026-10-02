@@ -664,7 +664,11 @@ def every_severity(tmp_path: Path, *, two_builds: bool = False) -> Api:
     ``two_builds``: the copy built for two images, the first lowering ``storage-mismatch`` to a
     note, so that the revision files controller.ddd.json's two notes before its warning - each
     build's run files a file's findings worst first, and the second build's come after the
-    first's."""
+    first's.
+
+    Opened at revision 2, as every copy of examples/demo is: opening does not stamp the logging
+    sub-project's own event_logger.ddd.json before the first analysis reads it, and the revision
+    that analysis publishes asks for one more."""
     root = copied_example(tmp_path / "real", "demo")
 
     def controller(document: dict[str, Any]) -> None:
@@ -728,7 +732,7 @@ class TestFindingsAPageAtATime:
             laid: list[dict[str, Any]] = []
             for offset in range(0, len(expected), size):
                 body = get(demo, "/api/findings", offset=str(offset), limit=str(size)).body
-                assert (body["revision"], body["total"], body["offset"]) == (1, 7, offset)
+                assert (body["revision"], body["total"], body["offset"]) == (2, 7, offset)
                 assert len(body["findings"]) == min(size, len(expected) - offset)
                 laid.extend(body["findings"])
             assert unkeyed(laid) == expected, size
@@ -955,7 +959,7 @@ class TestFindingsAPageAtATime:
         }
         assert post(demo, "/api/edit", edit).status == 200
         after = get(demo, "/api/findings").body
-        assert after["revision"] == 2
+        assert after["revision"] == 3
         assert after["findings"] == [
             found for found in before if found["check"] != "storage-mismatch"
         ]
@@ -1206,7 +1210,8 @@ class TestGraph:
 
     @pytest.fixture
     def demo(self, tmp_path: Path) -> tuple[Api, Path]:
-        """``ddd gui``'s api over a copy of examples/demo, and where the copy is."""
+        """``ddd gui``'s api over a copy of examples/demo, and where the copy is: at revision 2,
+        its sub-project's own component costing opening one analysis more."""
         root = tmp_path / "demo"
         shutil.copytree(EXAMPLES / "demo", root)
         session = Session(root)
@@ -1218,7 +1223,7 @@ class TestGraph:
     ) -> None:
         api, root = demo
         body = get(api, "/api/graph").body
-        assert body["revision"] == 1
+        assert body["revision"] == 2
         modules = {m["path"]: m for m in body["modules"]}
         assert set(modules) == {(root / suffix).as_posix() for suffix in self.COMPONENTS}
         for suffix, name in self.COMPONENTS.items():
@@ -2999,6 +3004,8 @@ class TestTheDemo:
 
     @pytest.fixture
     def demo(self, tmp_path: Path) -> tuple[Api, Path]:
+        """At revision 2: the demo's sub-project's own component costs opening one analysis
+        more."""
         return copied(tmp_path, "demo", "demo.ddd.json")
 
     def test_a_variable_is_answered_with_each_file_declaring_it(
@@ -3056,7 +3063,7 @@ class TestTheDemo:
     ) -> None:
         api, _ = demo
         assert picked(get(api, "/api/units").body) == {
-            "revision": 1,
+            "revision": 2,
             "vocabulary": None,
             "used": [
                 {"unit": "%", "variables": 5},

@@ -127,13 +127,29 @@ def mismatches(session: Session) -> int:
 
 
 def opened_and_settled(project_file: Path, poll_interval: float = 1.0) -> Session:
-    """A session on the project, past any analysis more that opening it costs: one, where a
-    sub-project's files had no stamp before the first analysis read them, and none for a flat
-    project, whose files opening stamps."""
+    """A session on the project, past any analysis more that opening it costs - one, where a
+    sub-project's files had no stamp before the first analysis read them, which its revision asks
+    for at once, and none for a flat project, whose files opening stamps - and polled once, which
+    finds nothing then."""
     session = Session(project_file.parent, poll_interval=poll_interval)
     session.open(project_file)
     session.poll()
     return session
+
+
+def with_a_sub_project(base: Path) -> Path:
+    """A project including a sub-project, whose own ``includes`` name its one component - files
+    opening does not stamp, since it reads no sub-project's ``includes``; returns the project
+    file."""
+    write_tree(
+        base,
+        {
+            "p.ddd.json": project("P", "sub/s.ddd.json"),
+            "sub/s.ddd.json": project("S", "c.ddd.json"),
+            "sub/c.ddd.json": component("C", declare("output", "Speed", unit="rpm")),
+        },
+    )
+    return base / "p.ddd.json"
 
 
 def saving_while_analysing(file: Path, unit: bytes) -> Callable[..., Run]:
@@ -369,12 +385,13 @@ class TestFollowingTheDisk:
         assert session.poll() is True
         assert mismatches(session) == 0
 
-    def test_a_save_made_to_a_file_the_analysis_brought_in_is_picked_up_by_the_next_poll(
+    def test_a_save_made_to_a_file_the_analysis_brought_in_is_picked_up_by_the_analysis_it_asks(
         self, shared: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A file the project did not have when the poll stamped its files has no stamp of its
-        own, so the next poll analyses once more - which is what catches a save made to it while
-        the analysis that brought it in ran."""
+        own, so the revision that read it asks for one analysis more at once - which is what
+        catches a save made to it while the analysis that brought it in ran, with no poll after
+        it."""
         session = opened_and_settled(shared)
         write_tree(
             shared.parent,
@@ -387,8 +404,8 @@ class TestFollowingTheDisk:
         monkeypatch.setattr(module, "run_project", saving_while_analysing(newcomer, b'"Hz"'))
         assert session.poll() is True
         monkeypatch.undo()
-        assert mismatches(session) == 0
-        assert session.poll() is True
+        revision = session.revision
+        assert revision is not None and revision.number == 3
         assert mismatches(session) == 2
 
     def test_a_waiting_request_gets_what_the_session_says_as_soon_as_it_changes(
@@ -1169,21 +1186,44 @@ class TestStamps:
         assert session.poll() is False
         assert session.revision is not None and session.revision.number == 1
 
-    def test_a_sub_projects_files_still_cost_opening_one_analysis_more(
+    def test_a_sub_projects_files_cost_opening_one_analysis_more_asked_at_once(
         self, tmp_path: Path
     ) -> None:
-        write_tree(
-            tmp_path,
-            {
-                "p.ddd.json": project("P", "sub/s.ddd.json"),
-                "sub/s.ddd.json": project("S", "c.ddd.json"),
-                "sub/c.ddd.json": component("C", declare("output", "Speed", unit="rpm")),
-            },
-        )
+        """Opening reads no sub-project's own ``includes``, so the first analysis reads its files
+        with no stamp from before: the revision it publishes asks for the next analysis itself,
+        and opening ends with both made, leaving the poll nothing to find."""
         session = Session(tmp_path)
-        session.open(tmp_path / "p.ddd.json")
-        assert session.poll() is True
+        session.open(with_a_sub_project(tmp_path))
+        assert session.revision is not None and session.revision.number == 2
         assert session.poll() is False
+
+    def test_a_revision_that_read_a_file_with_no_stamp_is_published_analysing(
+        self, tmp_path: Path
+    ) -> None:
+        """The analysis it asks for begins with no poll to notice anything - this session polls
+        an hour apart - and the session says it is analysing from the first revision on, until
+        that analysis lands: whatever waits for the project to be analysed, a page or the
+        journeys' own fixture, waits for that one too, rather than hearing that the findings are
+        settled and then, a poll later, that they are updating again."""
+        session = Stepped(tmp_path)
+        opening, second, _ = session.goes
+        opening.set()
+        session.start()
+        try:
+            session.open(with_a_sub_project(tmp_path))
+            begun(session)
+            begun(session)  # the second, asked for by nothing but the first's revision
+            during = session.snapshot()
+            assert during.revision is not None and during.revision.number == 1
+            assert during.analysing is True
+            second.set()
+            after = landed(session)
+            assert after.revision is not None and after.revision.number == 2
+            assert session.poll() is False
+        finally:
+            for go in session.goes:
+                go.set()
+            stopped(session)
 
     def test_a_file_an_edit_created_costs_no_second_analysis(self, shared: Path) -> None:
         session = Session(shared.parent)

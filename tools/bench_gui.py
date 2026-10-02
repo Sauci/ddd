@@ -3,19 +3,20 @@
 Times, in order, opening a project, one analysis, each of ``GET /api/state``, ``/graph``,
 ``/units``, ``/types``, ``/shared`` and ``/files``, the Findings tab's first page of findings and
 every finding of one component's file, a variable's panel, a unit's panel, judging a removal on
-the Files tab, and an edit's round trip - the server driven in process, over one
-:class:`~ddd.gui.session.Session` and one :class:`~ddd.gui.api.Api`
-(``docs/superpowers/specs/2026-09-30-gui-large-projects-design.md`` §4). Everything a measure
-needs to choose - the file, the variable, the unit, the entry to remove - is read off the
-project's own analysed revision, sorted, so the same project measures the same things on every
-run; nothing here imports the generator.
+the Files tab, an edit's round trip, and planning the rename of the unit stated in the most
+files - the server driven in process, over one :class:`~ddd.gui.session.Session` and one
+:class:`~ddd.gui.api.Api` (``docs/superpowers/specs/2026-09-30-gui-large-projects-design.md``
+§4). Everything a measure needs to choose - the file, the variable, the unit, the entry to
+remove, the unit to rename - is read off the project's own analysed revision, sorted, so the
+same project measures the same things on every run; nothing here imports the generator.
 
 Every measure but ``open``, ``analysis`` and ``edit analysed`` answers a reply whose body is
 timed serialised exactly as the server would send it, ``json.dumps(reply.body, allow_nan=False)``
 inside the timed span, the size being those bytes. The session analyses on a thread of its own,
 as ``ddd gui``'s does: ``open`` and ``analysis`` are each timed until the analysis they ask for
 has landed, ``edit answered`` until the edit's reply - written, before its analysis has
-landed - and ``edit analysed`` from the same moment until that analysis has landed.
+landed - and ``edit analysed`` from the same moment until that analysis has landed. ``rename
+plan`` is asked once that analysis has landed, and only plans: it writes nothing.
 
 ``measure`` undoes the one edit it made and stops the analyser it started before it returns, so a
 second run measures the same bytes. Not part of the ``ddd`` package, like
@@ -38,6 +39,7 @@ from typing import Any, Final
 from ddd.editing import fingerprint
 from ddd.gui.api import Api, Reply
 from ddd.gui.session import Session
+from ddd.lsp.navigation import Index
 from ddd.variables import Declared, declarations_of
 
 NAMES: Final[tuple[str, ...]] = (
@@ -56,6 +58,7 @@ NAMES: Final[tuple[str, ...]] = (
     "analysis",
     "edit answered",
     "edit analysed",
+    "rename plan",
 )
 """Every measure :func:`measure` takes, in the order it takes them."""
 
@@ -97,7 +100,9 @@ def measure(project: Path) -> list[Measure]:
     least two distinct units stated somewhere in it (the edit has another to move to), and its
     middle variable's first declaration must state its own unit rather than leave it to be filled
     some other way (there is otherwise nothing for the edit to read as "current"). Every project
-    ``tools/generate_project.py`` makes satisfies all three.
+    ``tools/generate_project.py`` makes satisfies all three. A rename plan the server refuses ends
+    the run with a ``RuntimeError`` as well, once the edit has been undone: a refusal is no plan,
+    and its time would read as one.
     """
     session = Session(project.parent, poll_interval=_POLL_SECONDS)
     session.start()
@@ -175,7 +180,16 @@ def _measured(session: Session, project: Path) -> list[Measure]:
     taken.append(answered)
     taken.append(analysed)
 
+    # Asked once the edit's analysis has landed and before the undo: a plan changing a file an
+    # edit wrote is refused until that edit's analysis has landed, and the undo writes one again.
+    renamed = _most_stated(built)
+    asked = {"action": ["rename"], "unit": [renamed], "to": [_unused(built, renamed)]}
+    elapsed, reply, size = _get(api, "/api/unit-plan", asked)
+
     _undo(api, session)
+    if reply.status != 200:
+        raise RuntimeError(f"the benchmark's own rename plan was refused: {reply.body}")
+    taken.append(Measure("rename plan", elapsed, size))
     return taken
 
 
@@ -239,6 +253,27 @@ def _edit(
         raise RuntimeError(f"the benchmark's own edit was refused: {reply.body}")
     session.settled(None)
     return answered, Measure("edit analysed", _elapsed(start), None)
+
+
+def _most_stated(built: Index) -> str:
+    """The unit stated in the most files, counting each file once however often it states the
+    unit; of units stated in as many files, the first by spelling. :func:`measure` already
+    confirmed that some unit is stated."""
+    files = {
+        unit: len({stated.site.path for stated in sites}) for unit, sites in built.units.items()
+    }
+    return min(sorted(files), key=lambda unit: -files[unit])
+
+
+def _unused(built: Index, unit: str) -> str:
+    """``unit`` followed by the first number from 2 that spells a unit the project neither states
+    nor lists: a name it does not use, as a rename to a new spelling has. Renamed to a unit it
+    lists, ``unit``'s own entries would be taken out of the vocabulary rather than renamed in it,
+    a plan of another shape."""
+    number = 2
+    while f"{unit}{number}" in built.units or f"{unit}{number}" in built.vocabulary:
+        number += 1
+    return f"{unit}{number}"
 
 
 def _undo(api: Api, session: Session) -> None:

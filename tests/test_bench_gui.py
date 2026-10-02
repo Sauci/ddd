@@ -10,9 +10,9 @@ from pathlib import Path
 import bench_gui
 import pytest
 from bench_gui import NAMES, main, measure
-from generate_project import generate
+from generate_project import UNITS, generate
 
-from ddd.gui.api import Api
+from ddd.gui.api import Api, Reply
 from ddd.gui.session import Session
 from ddd.variables import declarations_of
 
@@ -49,6 +49,7 @@ def test_every_measure_is_taken_in_order_with_its_size(tmp_path: Path) -> None:
         "unit",
         "remove judged",
         "edit answered",
+        "rename plan",
     }
 
 
@@ -192,12 +193,99 @@ def test_the_edit_moves_to_the_next_unit_of_the_projects_own_sorted_order(
     assert json.loads(operation["raw"]) == expected
 
 
+def planned(made_project: Path, monkeypatch: pytest.MonkeyPatch) -> list[dict[str, list[str]]]:
+    """Every query ``measure`` asks ``GET /api/unit-plan`` with, over ``made_project``."""
+    asked = []
+    original = Api.handle
+
+    def spying(self, method, path, query, body):
+        if path == "/api/unit-plan":
+            asked.append(dict(query))
+        return original(self, method, path, query, body)
+
+    monkeypatch.setattr(Api, "handle", spying)
+    measure(made_project)
+    return asked
+
+
+def test_the_rename_plan_is_asked_once_of_the_first_unit_when_every_file_states_every_unit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every component of this generated project states every unit, so every unit is stated in
+    as many files and the first by spelling is renamed - to itself followed by 2, which nothing
+    uses."""
+    made = generate(tmp_path / "p", 120, "many")
+    texts = [path.read_text(encoding="utf-8") for path in (tmp_path / "p").glob("components/*")]
+    assert all(f'"unit": "{unit}"' in text for unit in UNITS for text in texts)
+    assert planned(made.project, monkeypatch) == [
+        {"action": ["rename"], "unit": ["A"], "to": ["A2"]}
+    ]
+
+
+def test_the_rename_plan_asks_for_the_unit_stated_in_the_most_files_by_a_name_nobody_uses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Counted in files, not in statements, and renamed to a spelling the project neither states
+    nor lists: ``rpm`` is stated in all four files, though ``kPa`` is stated more often in one
+    alone; ``rpm2`` is stated and ``rpm3`` listed, so the plan renames ``rpm`` to ``rpm4``."""
+    made = generate(tmp_path / "p", 120, "many")
+    first, *others = sorted((tmp_path / "p" / "components").glob("*.ddd.json"))
+    text = re.sub(r'"unit": "[^"]+"', '"unit": "kPa"', first.read_text(encoding="utf-8"))
+    text = text.replace('"unit": "kPa"', '"unit": "rpm"', 1).replace(
+        '"unit": "kPa"', '"unit": "rpm2"', 1
+    )
+    first.write_text(text, encoding="utf-8")
+    for other in others:
+        moved = other.read_text(encoding="utf-8").replace('"unit": "kPa"', '"unit": "Nm"')
+        other.write_text(moved, encoding="utf-8")
+    units = made.project.parent / "units.ddd.json"
+    vocabulary = json.loads(units.read_text(encoding="utf-8"))
+    vocabulary["units"].append("rpm3")
+    units.write_text(json.dumps(vocabulary, indent=2) + "\n", encoding="utf-8")
+
+    def stating(unit: str) -> list[int]:
+        """How often each component file states ``unit``."""
+        return [
+            path.read_text(encoding="utf-8").count(f'"unit": "{unit}"') for path in (first, *others)
+        ]
+
+    assert all(stating("rpm"))
+    kpa = stating("kPa")
+    assert kpa[0] > sum(stating("rpm"))
+    assert not any(kpa[1:])
+    assert planned(made.project, monkeypatch) == [
+        {"action": ["rename"], "unit": ["rpm"], "to": ["rpm4"]}
+    ]
+
+
+def test_a_refused_rename_plan_ends_the_run_once_the_edit_is_undone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refusal is no plan: its time would read as one."""
+    made = generate(tmp_path / "p", 120, "many")
+    before = {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))}
+    original = Api.handle
+    refusal = {"error": "unreadable", "message": "a refusal made up for the test"}
+
+    def refusing(self, method, path, query, body):
+        if path == "/api/unit-plan":
+            return Reply(409, refusal)
+        return original(self, method, path, query, body)
+
+    monkeypatch.setattr(Api, "handle", refusing)
+    with pytest.raises(RuntimeError) as raised:
+        measure(made.project)
+    assert str(raised.value) == f"the benchmark's own rename plan was refused: {refusal}"
+    assert {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))} == before
+
+
 def test_open_the_analysis_and_the_edit_are_timed_until_their_analysis_has_landed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The session analyses on a thread of its own, so a measure ending where its request
     returns times the request alone: ``open``, ``analysis`` and ``edit analysed`` each end once
-    the session has settled - its analysis landed - and ``edit answered`` ends before."""
+    the session has settled - its analysis landed - and ``edit answered`` ends before. ``rename
+    plan`` is timed after the edit's analysis has landed and before the undo."""
     made = generate(tmp_path / "p", 120, "many")
     happened: list[str] = []
 
@@ -230,6 +318,7 @@ def test_open_the_analysis_and_the_edit_are_timed_until_their_analysis_has_lande
         *("poll", "settled", "timed"),  # analysis
         *("/api/edit", "timed"),  # edit answered
         *("settled", "timed"),  # edit analysed
+        "timed",  # rename plan
         "/api/undo",
     ]
 

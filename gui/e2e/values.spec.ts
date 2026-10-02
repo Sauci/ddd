@@ -145,16 +145,14 @@ test("a cell changed is written to the producer's file", async ({ page, gui }) =
     .toContain('"init": [1200, 900, 750, 750, 700, 650]');
 });
 
-/** Whether the frames watched saw the page say its findings were updating, and have since seen
- * thirty frames without it - half a second at sixty frames a second: the update was seen to start
- * and to end, and thirty frames were watched after it. */
-function updatedAndSettled(frames: readonly Frame[]): boolean {
+/** Whether the page has taken in the analysis of its own edit and stood on it for the last thirty
+ * frames watched - half a second at sixty frames a second: in each, it offers to undo the edit,
+ * which only a state from after the edit does, and says nothing is updating, which with such a
+ * state it says once the analysis including the edit has come. Not whether it was seen to say
+ * "Updating the findings…" first: that can come and go between two frames (below). */
+function settledAfterTheEdit(frames: readonly Frame[]): boolean {
   const last = frames.slice(-30);
-  return (
-    frames.some(([, updating]) => updating) &&
-    last.length === 30 &&
-    last.every(([, updating]) => !updating)
-  );
+  return last.length === 30 && last.every(([, updating, offered]) => offered && !updating);
 }
 
 // Spec 6: an edit is answered once written and analysed after, and `GET /api/values` answers what
@@ -162,7 +160,11 @@ function updatedAndSettled(frames: readonly Frame[]): boolean {
 // as though the Apply had failed. The grid holds what it wrote meanwhile. Waited on as a reader
 // sees it, frame by frame: element 3 reads 7.5 from Apply on - while the grid says its findings are
 // updating, and after - and never the 8 it was. With the hold taken out, on the Linux development
-// PC in headless Chrome, two runs: the note stood four frames, and element 3 read 8 in three.
+// PC in headless Chrome, ten runs: the note stood four frames (five in one), and element 3 read 8
+// in three of them in every run. The wait is for the analysis to have come, not for the note to
+// have been seen: on the same PC, in 80 runs of these steps, the edit's analysis took 2.5 to 6.1
+// ms, and in 8 runs the note stood 3.6 to 12.2 ms in the page, between two frames, and no frame
+// painted it.
 test("a value applied in the grid shows at once, and stays while its findings update", async ({
   page,
   gui,
@@ -173,9 +175,9 @@ test("a value applied in the grid shows at once, and stays while its findings up
   await cell.fill("7.5");
   await expect(page.getByText("Sets element 3 of CurveA to 7.5 ms")).toBeVisible();
 
-  await watchFrames(page, "element 3");
+  await watchFrames(page, "element 3", "element 3 of CurveA");
   await page.getByRole("button", { name: "Apply to 1 file" }).click();
-  await expect.poll(async () => updatedAndSettled(await framesWatched(page))).toBe(true);
+  await expect.poll(async () => settledAfterTheEdit(await framesWatched(page))).toBe(true);
   const read = new Set((await framesWatched(page)).map(([value]) => value));
   expect(read).toEqual(new Set(["7.5"]));
 });

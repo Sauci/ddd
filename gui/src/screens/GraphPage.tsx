@@ -13,6 +13,7 @@ import {
 import { type KeyboardEvent, useCallback, useMemo, useState } from "react";
 import { getGraph } from "../api/client";
 import type { GraphReply, State } from "../api/types";
+import { useLayout } from "../app/useLayout";
 import { FlowEdge } from "../components/FlowEdge";
 import { ModuleNode } from "../components/ModuleNode";
 import {
@@ -25,7 +26,9 @@ import {
   nodesOf,
   objectsInDisagreement,
   shownEdges,
+  withSavedPositions,
 } from "../lib/canvas";
+import { visibleOnly } from "../lib/layout";
 import { forgetPositions, rememberPosition, savedPositions } from "../state/positions";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
@@ -108,8 +111,9 @@ export function GraphPage({
 }
 
 /**
- * The canvas itself, mounted only once there is a graph to draw so that `fitView` has something
- * to fit. `onComponent` is baked into every node, so the caller keeps one identity for it.
+ * The canvas itself, mounted only once there is a graph to draw, so that `fitView` has something
+ * to fit once laid out. `onComponent` is baked into every node, so the caller keeps one identity
+ * for it.
  *
  * It lives under a `ReactFlowProvider` because the search box, `Tidy` and `Fit` sit outside the
  * `<ReactFlow>` element and still have to reach its viewport.
@@ -135,24 +139,37 @@ function Canvas({
   onOpenType: (name: string) => void;
   onOpenConstant: (name: string) => void;
 }) {
+  // Called unconditionally, like every hook below, never behind the `placed === null` return at
+  // the foot of this function (the rules of hooks): `graph` is this call's own real modules and
+  // flows, never a placeholder, since `GraphPage` above mounts `Canvas` only once it has a graph
+  // to draw - so the first answer this hook ever receives is already the one this project's
+  // reader is waiting for, not a throwaway layout of nothing that would make `placed` stop being
+  // `null` before a real one has arrived.
+  const { placed, error: layoutError } = useLayout(graph.modules, graph.flows);
   const flow = useReactFlow();
   const [hovered, setHovered] = useState<string | null>(null);
   const [reached, setReached] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
-  /** Every module where it belongs right now: the reader's own position, or the layout's. */
+  /** Every module where it belongs right now: the reader's own position, or the layout's, with
+   * every module's data as fresh as `graph` - `useLayout` keeps `placed` as it was for a
+   * revision whose shape did not change, this is what still takes that revision's new counts
+   * and `loaded` to the nodes it draws. Nothing to place before the first layout has arrived. */
   const place = useCallback(
-    () => nodesOf(graph, savedPositions(project), onComponent),
-    [graph, project, onComponent],
+    () =>
+      placed === null
+        ? []
+        : nodesOf(withSavedPositions(placed, savedPositions(project)), graph.modules, onComponent),
+    [placed, graph, project, onComponent],
   );
   // React Flow moves a node only through the array it is handed back, so the nodes are state.
   const [nodes, setNodes] = useState<ModuleNodeType[]>(place);
-  const [drawn, setDrawn] = useState(graph);
-  if (drawn !== graph) {
-    // A new revision lays the canvas out again (spec 5.1), keeping every module the reader
-    // moved where they put it. Adjusted while rendering the new graph rather than in an effect,
-    // so the previous revision's nodes are never painted against it.
-    setDrawn(graph);
+  const [drawn, setDrawn] = useState({ graph, placed });
+  if (drawn.graph !== graph || drawn.placed !== placed) {
+    // A new revision, or a freshly made layout for one, draws the canvas again (spec 5.1),
+    // keeping every module the reader moved where they put it. Adjusted while rendering rather
+    // than in an effect, so the previous revision's nodes are never painted against this one.
+    setDrawn({ graph, placed });
     setNodes(place());
   }
   const onNodesChange = useCallback<OnNodesChange<ModuleNodeType>>(
@@ -216,9 +233,22 @@ function Canvas({
   const shownNodes = useMemo(() => fadedNodes(nodes, bright), [nodes, bright]);
   const shownArrows = useMemo(() => shownEdges(edges, bright, reached), [edges, bright, reached]);
 
+  if (placed === null) {
+    // No layout has ever succeeded for this project yet (Step 3): still waiting for the first
+    // one, or - `layoutError` set - told the first one failed, with nothing drawn yet to keep
+    // showing beside that news. Once a layout has succeeded once, `placed` is never `null`
+    // again (`useLayout`'s own doc): a later revision's own re-layout, or a later one's failure,
+    // is instead shown beside the canvas kept from the last one that succeeded, below.
+    return layoutError === null ? (
+      <p className="quiet">Laying the project out…</p>
+    ) : (
+      <Banner tone="error">{layoutError}</Banner>
+    );
+  }
   return (
     <div className={variable !== undefined || chooser !== null ? "with-panel" : undefined}>
       <div>
+        {layoutError !== null && <Banner tone="error">{layoutError}</Banner>}
         {undeclared !== null && (
           <Banner tone="warning">{undeclared} is no longer declared in the open project.</Banner>
         )}
@@ -255,6 +285,11 @@ function Canvas({
             // The node is a box around a button: React Flow's own tab stop in front of it carries
             // no name and would put two stops in the way of every module.
             nodesFocusable={false}
+            // Ruling 2: above VISIBLE_ONLY_ABOVE modules, drawing every one regardless of the
+            // viewport costs enough that it is left to React Flow's own culling; below it,
+            // drawing them all is free enough that a reader should never meet one appear late
+            // while panning.
+            onlyRenderVisibleElements={visibleOnly(graph.modules.length)}
           >
             <Background />
             {/* Tidy and Fit are this canvas's controls, named above it. React Flow's lock would

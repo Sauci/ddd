@@ -11,7 +11,9 @@ import {
   STROKE,
   shownEdges,
   stateOf,
+  withSavedPositions,
 } from "./canvas";
+import type { Placed } from "./layout";
 
 const graphModule = (path: string, name: string, errors = 0, warnings = 0): GraphModule => ({
   path,
@@ -38,6 +40,8 @@ const A = graphModule("/a.ddd.json", "Alpha", 2);
 const B = graphModule("/b.ddd.json", "Beta", 0, 1);
 const C = graphModule("/c.ddd.json", "Gamma");
 
+const placedAt = (module: GraphModule, x: number, y: number): Placed => ({ module, x, y });
+
 /** A handler React Flow calls with a DOM event these tests have no need to build. */
 function fire(handler: ((event: never) => void) | undefined): void {
   if (handler === undefined) throw new Error("the arrow carries no such handler");
@@ -53,16 +57,16 @@ test("a severity the arrow paints with, and every other one leaving it plain", (
 });
 
 test("every module becomes a node carrying what its box draws", () => {
-  const nodes = nodesOf(reply([A, B], []), {}, () => undefined);
+  const nodes = nodesOf([placedAt(A, 0, 0), placedAt(B, 10, 10)], [A, B], () => undefined);
   expect(nodes.map((node) => node.id)).toEqual([A.path, B.path]);
   expect(nodes[0]?.data).toMatchObject({ name: "Alpha", loaded: true, errors: 2, warnings: 0 });
   expect(nodes[1]?.data).toMatchObject({ name: "Beta", errors: 0, warnings: 1 });
   expect(nodes.every((node) => node.type === "module" && !node.data.faded)).toBe(true);
 });
 
-test("a node opens its own module's page, and sits where the reader left it", () => {
+test("a node opens its own module's page, and sits at its placed position", () => {
   const opened: string[] = [];
-  const nodes = nodesOf(reply([A, B], []), { [B.path]: { x: 7, y: 9 } }, (path) => {
+  const nodes = nodesOf([placedAt(A, 0, 0), placedAt(B, 7, 9)], [A, B], (path) => {
     opened.push(path);
   });
   const beta = nodes[1];
@@ -70,6 +74,42 @@ test("a node opens its own module's page, and sits where the reader left it", ()
   beta.data.onOpen(beta.id);
   expect(opened).toEqual([B.path]);
   expect(beta.position).toEqual({ x: 7, y: 9 });
+});
+
+test("a node's data comes from the modules given now, never from when it was placed", () => {
+  const placedWhenQuiet = placedAt(graphModule(A.path, "Alpha", 0, 0), 5, 5);
+  const busyNow = graphModule(A.path, "Alpha", 3, 1);
+  const nodes = nodesOf([placedWhenQuiet], [busyNow], () => undefined);
+  expect(nodes[0]?.data).toMatchObject({ errors: 3, warnings: 1 });
+  expect(nodes[0]?.position).toEqual({ x: 5, y: 5 });
+});
+
+test("a module the given modules no longer carry draws no node", () => {
+  const nodes = nodesOf([placedAt(A, 0, 0), placedAt(B, 1, 1)], [A], () => undefined);
+  expect(nodes.map((node) => node.id)).toEqual([A.path]);
+});
+
+test("a module not yet placed draws no node, until the layout that places it arrives", () => {
+  const nodes = nodesOf([placedAt(A, 0, 0)], [A, B], () => undefined);
+  expect(nodes.map((node) => node.id)).toEqual([A.path]);
+});
+
+test("a saved position wins for its module, and leaves the others as they were placed", () => {
+  const placed = [placedAt(A, 10, 20), placedAt(B, 30, 40)];
+  expect(withSavedPositions(placed, { [B.path]: { x: 999, y: 111 } })).toEqual([
+    placedAt(A, 10, 20),
+    placedAt(B, 999, 111),
+  ]);
+});
+
+test("no saved position leaves every module exactly as it was placed", () => {
+  const placed = [placedAt(A, 10, 20), placedAt(B, 30, 40)];
+  expect(withSavedPositions(placed, {})).toEqual(placed);
+});
+
+test("a saved position for a module the placement does not carry changes nothing", () => {
+  const placed = [placedAt(A, 10, 20)];
+  expect(withSavedPositions(placed, { [B.path]: { x: 1, y: 1 } })).toEqual(placed);
 });
 
 test("every flow becomes an arrow announced as one sentence, coloured by its severity", () => {
@@ -217,7 +257,7 @@ test("the first match is the first module whose name contains the text", () => {
 });
 
 test("a node outside the bright set is faded, and one whose state did not change is left alone", () => {
-  const nodes = nodesOf(reply([A, B], []), {}, () => undefined);
+  const nodes = nodesOf([placedAt(A, 0, 0), placedAt(B, 10, 10)], [A, B], () => undefined);
   const faded = fadedNodes(nodes, new Set([A.path]));
   expect(faded.map((node) => node.data.faded)).toEqual([false, true]);
   expect(faded[0]).toBe(nodes[0]);

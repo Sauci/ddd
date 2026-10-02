@@ -11,7 +11,7 @@
 import { type Edge, MarkerType, type Node } from "@xyflow/react";
 import type { KeyboardEvent } from "react";
 import type { GraphDisagreement, GraphFlow, GraphModule, GraphReply } from "../api/types";
-import { laidOut } from "./layout";
+import type { Placed } from "./layout";
 import { neighboursOf } from "./neighbours";
 
 /**
@@ -68,25 +68,58 @@ export const STROKE: Record<ReturnType<typeof stateOf>, string> = {
   agreed: "var(--rule)",
 };
 
-/** Every module as a node, where the layout puts it, with what its box has to draw. */
+/**
+ * A layout's positions with the reader's saved ones laid over them: a saved position wins for
+ * its module, and every other one is left exactly where it was placed - the same substitution
+ * `laidOut` makes when it is given the saved positions directly (spec 5.1), done here instead
+ * because the worker that makes the layout (`gui/src/app/layoutWorker.ts`) always asks `laidOut`
+ * with none, so that its answer does not depend on which browser asks and can be reused for it
+ * unchanged. A saved position for a module the placement does not carry changes nothing, the
+ * same way `laidOut` itself ignores one for a module that no longer exists.
+ */
+export function withSavedPositions(
+  placed: readonly Placed[],
+  saved: Readonly<Record<string, { x: number; y: number }>>,
+): Placed[] {
+  return placed.map((at) => {
+    const position = saved[at.module.path];
+    return position === undefined ? at : { ...at, x: position.x, y: position.y };
+  });
+}
+
+/**
+ * Every placed module as a node, its data taken from `modules` as they are now rather than as
+ * they were when `placed` was made: a revision whose shape is unchanged keeps its placement
+ * (`shapeOf`, `gui/src/lib/layout.ts`) while its nodes still take the new counts and `loaded`, so
+ * a module never moves on screen because only its findings changed. A module `modules` no longer
+ * carries draws no node; one `placed` does not carry yet - a shape just grown, its fresh layout
+ * still being made - draws none either, until the layout that places it arrives.
+ */
 export function nodesOf(
-  graph: GraphReply,
-  positions: Readonly<Record<string, { x: number; y: number }>>,
+  placed: readonly Placed[],
+  modules: readonly GraphModule[],
   onOpen: (path: string) => void,
 ): ModuleNodeType[] {
-  return laidOut(graph.modules, graph.flows, positions).map((at) => ({
-    id: at.module.path,
-    type: "module",
-    position: { x: at.x, y: at.y },
-    data: {
-      name: at.module.name,
-      loaded: at.module.loaded,
-      errors: at.module.findings.error,
-      warnings: at.module.findings.warning,
-      onOpen,
-      faded: false,
-    },
-  }));
+  const byPath = new Map(modules.map((module) => [module.path, module]));
+  return placed.flatMap((at) => {
+    const module = byPath.get(at.module.path);
+    if (module === undefined) return [];
+    return [
+      {
+        id: module.path,
+        type: "module" as const,
+        position: { x: at.x, y: at.y },
+        data: {
+          name: module.name,
+          loaded: module.loaded,
+          errors: module.findings.error,
+          warnings: module.findings.warning,
+          onOpen,
+          faded: false,
+        },
+      },
+    ];
+  });
 }
 
 /**

@@ -55,28 +55,31 @@ export function TypesTableView({
           }}
         >
           <TableHeader>
-            {/* Every column is a share of the box's own width (`fr`), not a fixed pixel count
-                (fix round 2, New Important 2): a fixed column never grows, so at full width -
-                plenty of room - a type's own sentence clipped under a fixed Description width
-                sized only for beside a panel. `minWidth` is each column's own floor instead,
-                sized so the five sum to at most 535px, what a panel beside this table leaves once
-                a headed browser's own vertical scrollbar is taken from the 552px box (a headless
-                one, Docker's own screenshot gate among them, draws none). Below about a 1077px
-                viewport, even full width does not leave every column its own floor; `.long`'s own
-                horizontal scroll is the accepted floor there (fix round 2, New Important 2d). */}
+            {/* Widths measured in Chrome (fix round 3) on a scratch copy of examples/demo and on
+                this table's stories (a generated project declares no types). Kind is fixed at
+                90px: its words are `KIND_WORDS`' and "unknown", the widest at 79px. The other
+                four share the rest - Type 2fr, Description 5fr, Used by and Findings 1fr each -
+                in a 1280px window 217px for Type, 544px for Description, which hold the demo's
+                widest type (SensorDiagnosis_t, 137px) and its longest description (475px). A
+                panel beside the table leaves it a box of about 552px, 537px once a browser draws
+                the box's own vertical scrollbar; a column never goes below its `minWidth`, so
+                Type keeps 150px there, Used by and Findings 80px, and Description takes what is
+                left - 135px in a 535px box - its sentences cut with an ellipsis. The floors sum to
+                500px: beside a panel they fit a window down to about 1000px wide - 1044px where a
+                browser draws the box's own vertical scrollbar and the page's, 15px each - and
+                narrower, until the panel moves under the table at 900px, the box scrolls
+                sideways; with no panel the table fits a window down to about 532px (562px). */}
             <Column isRowHeader width="2fr" minWidth={150}>
               Type
             </Column>
-            <Column width="1fr" minWidth={70}>
-              Kind
-            </Column>
-            <Column width="4fr" minWidth={140}>
+            <Column width={90}>Kind</Column>
+            <Column width="5fr" minWidth={100}>
               Description
             </Column>
-            <Column width="1fr" minWidth={70}>
+            <Column width="1fr" minWidth={80}>
               Used by
             </Column>
-            <Column width="1fr" minWidth={70}>
+            <Column width="1fr" minWidth={80}>
               Findings
             </Column>
           </TableHeader>

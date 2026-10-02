@@ -200,40 +200,43 @@ export function ComponentPage({
           }}
         >
           <TableHeader>
-            {/* Every column is a share of the box's own width (`fr`), not a fixed pixel count
-                (fix round 2, New Important 2): a fixed column never grows, so at full width -
-                plenty of room - "measurement" clipped to "measureme" under a fixed Kind width, a
-                type's own name to "SensorDi", and a single Findings chip to less than its own
-                88px under a fixed Findings width, all three sized only for beside a panel. Seven
-                columns is the most of any table here, so `minWidth` - each column's own floor -
-                is the tightest sum of any of them too, at 525px of the 535px a panel beside this
-                table leaves once a headed browser's own vertical scrollbar is taken from the
-                552px box (a headless one, Docker's own screenshot gate among them, draws none).
-                Below about a 1077px viewport, even full width does not leave every column its own
-                floor; `.long`'s own horizontal scroll is the accepted floor there (fix round 2,
-                New Important 2d). */}
-            <Column width="1fr" minWidth={55}>
+            {/* Widths measured in Chrome (fix round 3) on scratch copies of examples/demo, of a
+                generated project of 10,000 declarations and of examples/vocabulary. Scope and
+                Kind are fixed, their words the schema's own: "output" takes 63px of Scope's 70px
+                (`minWidth` repeats it, as React Aria floors a column with none of its own at
+                75px), "measurement" 109px of Kind's 115px. The other five share the rest - Name
+                and Type 3fr each, Shape 2fr, Unit 1fr, Findings 4fr - in a 1280px window 204px
+                each for Name and Type, 135px for Shape and 272px for Findings, which hold the
+                widest name (examples/vocabulary's ManifoldPressure, 132px), the widest type (the
+                demo's SensorDiagnosis_t, 137px), the widest shape (a dimension naming a constant,
+                examples/vocabulary's PRESSURE_CELLS, 120px) and a row's two chips (the generated
+                project's unused-output and missing-id, 200px). A panel beside the table leaves it
+                a box of about 552px, 537px once a browser draws the box's own vertical
+                scrollbar; a column never goes below its `minWidth`, so Name keeps 140px there,
+                every name of the three projects whole, and Unit 55px, which holds "degC" and
+                "none", while Type, Shape and Findings share what is left - 49px, 40px and 66px in
+                a 535px box - each cut where it runs longer. The floors sum to 515px: beside a
+                panel they fit a window down to about 1029px wide - 1072px where a browser draws
+                the box's own vertical scrollbar and the page's, 15px each - and narrower, until
+                the panel moves under the table at 900px, the box scrolls sideways; with no panel
+                the table fits a window down to about 547px (577px). */}
+            <Column width={70} minWidth={70}>
               Scope
             </Column>
-            {/* Name is left to take the width the other six do not: nothing else in this row is
-                more than a word or two, and Findings alone can hold more than one chip - which is
-                why Name's own share and floor are each the largest of the seven. */}
-            <Column isRowHeader width="4fr" minWidth={145}>
+            <Column isRowHeader width="3fr" minWidth={140}>
               Name
             </Column>
-            <Column width="2fr" minWidth={75}>
-              Kind
-            </Column>
-            <Column width="2.5fr" minWidth={75}>
+            <Column width={115}>Kind</Column>
+            <Column width="3fr" minWidth={45}>
               Type
             </Column>
-            <Column width="1fr" minWidth={50}>
+            <Column width="2fr" minWidth={40}>
               Shape
             </Column>
-            <Column width="1fr" minWidth={50}>
+            <Column width="1fr" minWidth={55}>
               Unit
             </Column>
-            <Column width="2.5fr" minWidth={75}>
+            <Column width="4fr" minWidth={50}>
               Findings
             </Column>
           </TableHeader>

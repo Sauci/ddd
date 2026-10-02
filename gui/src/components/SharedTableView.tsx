@@ -81,23 +81,25 @@ export function SharedTableView({
           }}
         >
           <TableHeader>
-            {/* Every column is a share of the box's own width (`fr`), not a fixed pixel count
-                (fix round 2, New Important 2): a fixed column never grows, so at full width -
-                plenty of room - a declared name clipped under a fixed Name width sized only for
-                beside a panel. `minWidth` is each column's own floor instead, sized so the five
-                sum to at most 535px, what a panel beside this table leaves once a headed
-                browser's own vertical scrollbar is taken from the 552px box (a headless one,
-                Docker's own screenshot gate among them, draws none). Below about a 1077px
-                viewport, even full width does not leave every column its own floor; `.long`'s own
-                horizontal scroll is the accepted floor there (fix round 2, New Important 2d). This
-                table has no Description column, unlike TypesTableView (the next comment says why),
-                so Name is the one column given more than a 1fr share. */}
-            <Column isRowHeader width="4fr" minWidth={160}>
+            {/* Widths measured in Chrome (fix round 3) on this table's stories and on a scratch
+                copy of examples/vocabulary - neither examples/demo nor a generated project
+                declares a shared entry. Vocabulary is fixed at 95px, its header the widest of its
+                words at 90px. The other four share the rest - Name and States 2fr each, Used by
+                and Findings 1fr each - in a 1280px window 324px for Name and 325px for States,
+                which hold the widest name (PRESSURE_CELLS, 128px) and the longest states
+                ("read-write, align 4", 135px). A panel beside the table leaves it a box of about
+                552px, 537px once a browser draws the box's own vertical scrollbar; a column never
+                goes below its `minWidth`, so Used by and Findings keep 80px there and Name and
+                States share what is left - 140px each in a 535px box, which still holds both. The
+                floors sum to 495px: beside a panel they fit a window down to about 991px wide -
+                1034px where a browser draws the box's own vertical scrollbar and the page's, 15px
+                each - and narrower, until the panel moves under the table at 900px, the box
+                scrolls sideways; with no panel the table fits a window down to about 527px
+                (557px). */}
+            <Column isRowHeader width="2fr" minWidth={140}>
               Name
             </Column>
-            <Column width="1fr" minWidth={70}>
-              Vocabulary
-            </Column>
+            <Column width={95}>Vocabulary</Column>
             {/* No Description column, unlike TypesTableView: an entry's description is a full
                 sentence - the shipped example's is "sample slots of a pressure trend buffer, a
                 device wide size no single component owns" - which would dominate every row, where
@@ -106,15 +108,14 @@ export function SharedTableView({
             {/* States, not Value: the word has to fit a constant's own state ("16") as well as a
                 section's ("read-only, align 4"), which Value does not - the same call as the
                 Vocabulary rename above, from PR #68: cheap before a second vocabulary ships into
-                the word, expensive after. Given its own fr share too, since it is the longer of
-                the two. */}
-            <Column width="2fr" minWidth={130}>
+                the word, expensive after. */}
+            <Column width="2fr" minWidth={100}>
               States
             </Column>
-            <Column width="1fr" minWidth={70}>
+            <Column width="1fr" minWidth={80}>
               Used by
             </Column>
-            <Column width="1fr" minWidth={70}>
+            <Column width="1fr" minWidth={80}>
               Findings
             </Column>
           </TableHeader>

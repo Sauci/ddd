@@ -404,7 +404,8 @@ tr.changing td {
    A short table stays no taller than its rows; `max-height` only bites once a long one's rows
    exceed it. A row brought into view from above - the keyboard walking up past the box's own top -
    used to stop exactly under the sticky header, hidden behind it rather than below it; the same
-   `scroll-padding-top` as `.findings-window` (:574 below), one row tall, now keeps it clear. */
+   `scroll-padding-top` as `.findings-window`'s own (further down this file), one row tall, now
+   keeps it clear. */
 .react-aria-Table.long {
   display: block;
   max-height: 60vh;
@@ -445,12 +446,12 @@ tr.changing td {
    through `ListLayout`'s own `buildChild` (react-stately's own private/layout/ListLayout.mjs),
    which sets `allowOverflow = true` on each one regardless, and `VirtualizerItem` reads that into
    `overflow: visible` on the wrapper. What clips a cell's own text to its one line is the cell's
-   own `overflow: hidden`, two rules up (fix round 2, Important 6b) - only the header group's and
-   the body rowgroup's own wrappers clip, built directly rather than through `buildChild`, so
-   `allowOverflow` is never set on them. A row given no height of its own still draws at zero
-   height itself, since an absolutely positioned child - every cell's own wrapper - does not count
-   toward it: invisible to anything that asks the row for its own box rather than a cell's, which
-   is what left this undiscovered until a journey tried to click one by its row
+   own `overflow: hidden`, in the rule just above (fix round 2, Important 6b) - only the header
+   group's and the body rowgroup's own wrappers clip, built directly rather than through
+   `buildChild`, so `allowOverflow` is never set on them. A row given no height of its own still
+   draws at zero height itself, since an absolutely positioned child - every cell's own wrapper -
+   does not count toward it: invisible to anything that asks the row for its own box rather than a
+   cell's, which is what left this undiscovered until a journey tried to click one by its row
    (`getByRole("row", ...).click()`, Playwright's own actionability check, measured failing
    "element is not visible" against a row whose `getBoundingClientRect()` read `h: 0`) - a
    screenshot alone never would have, since a screenshot shows the cells, each sized by its own

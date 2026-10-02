@@ -22,25 +22,34 @@ export function ProjectPage({ state, onComponent }: Props) {
       <p className="summary">{tableLine(state.counts, updating)}</p>
       <LongTable
         aria-label="Components"
-        // A row opens its component on a press anywhere in it, not only on the Name button, and
-        // on Enter too (fix round 1, Minor 4). Accepted as it reaches every press rather than only
-        // the button's own (fix round 2, New Minor 5): it also keeps a mouse from selecting a
-        // path's own text in the row that names it - a reader wanting to copy one does it from the
-        // Files tab, where no row press opens anything. The Name button's own `onPress` does not
-        // also fire the row's: React Aria's own `usePress` stops a press event from propagating
-        // past whichever element handles it first, by default, and a `Button` never opts out of
-        // that (`usePress.mjs`'s own `shouldStopPropagation`) - so the two never fire together over
-        // one click.
+        // A press anywhere in a row opens its component, not only a press on the Name button, and
+        // so does Enter on a focused row (fix round 1, Minor 4). A press on a row selects no text:
+        // React Aria's `usePress` takes it, and turns text selection off on the row from the
+        // press's start to its end (`usePress.mjs`, `disableTextSelection`), so a mouse dragged
+        // across a File cell selects none of its path - as a press on a row of the Files tab, which
+        // selects that row and opens its Remove panel, selects none of its entry. The Name
+        // button's own `onPress` does not also fire the row's: `usePress` stops a press event from
+        // propagating past whichever element handles it first, by default, and a `Button` never
+        // opts out of that (`usePress.mjs`'s own `shouldStopPropagation`) - so the two never fire
+        // together over one click.
         onRowAction={(key) => onComponent(String(key))}
       >
         <TableHeader>
+          {/* Widths measured in Chrome (fix round 3) on scratch copies of examples/demo and of a
+              generated project of 10,000 declarations: no component's name takes more than 101px
+              of Component's 240px, and no count more than its header - 58px of Errors' 90px, 80px
+              of Warnings' 100px. File is left to take the width the other three do not, 638px in
+              a 1280px window: a path runs far longer than a component's own name or either of its
+              counts, and it is an absolute one, so how long it runs depends on where the project
+              sits on disk - a longer one is cut with an ellipsis. This table never sits beside a
+              panel; it fits a window down to about 537px wide - 567px where a browser draws the
+              box's own vertical scrollbar and the page's, 15px each - and narrower, the box
+              scrolls sideways. */}
           <Column isRowHeader width={240}>
             Component
           </Column>
           <Column width={90}>Errors</Column>
           <Column width={100}>Warnings</Column>
-          {/* File is left to take the width the other three do not: a path runs far longer
-              than a component's own name or either of its counts. */}
           <Column>File</Column>
         </TableHeader>
         <TableBody items={components}>

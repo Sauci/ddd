@@ -40,34 +40,29 @@ export function FilesTableView({ reply, files, selected, onSelect }: FilesTableV
         }}
       >
         <TableHeader>
-          {/* Every column is a share of the box's own width (`fr`, the same unit CSS Grid and
-              Flexbox use), not a fixed pixel count (fix round 2, New Important 2): a fixed column
-              never grows, so at full width - plenty of room - Kind, State and Findings stayed
-              exactly as narrow as the floor below needs them to be beside a panel, clipping their
-              own longest word even where nothing crowded them (measured: State's own longest
-              sentence, "not read by the last analysis", FilesTableView.tsx:45 below, clipped at
-              1280px wide under the fixed 150px fix round 1 gave it). `minWidth` is each column's
-              own floor instead, sized so the four sum to at most 535px - what a panel beside this
-              table leaves once a headed browser's own vertical scrollbar (15-17px of the 552px
-              box; a headless one, Docker's own screenshot gate among them, draws none) is taken
-              from it. Below about a 1077px viewport, even full width does not leave every column
-              its own floor; `.long`'s own horizontal scroll is the accepted floor there, not
-              fixed by this table's own widths (fix round 2, New Important 2d). */}
-          <Column isRowHeader width="5fr" minWidth={220}>
+          {/* Widths measured in Chrome (fix round 3) on scratch copies of examples/demo and of a
+              generated project of 10,000 declarations, and on this table's stories. Kind and
+              Findings are fixed: Kind's words are the file kinds the server's `kind_of` answers,
+              "component" the widest at 93px, and Findings a count, six digits taking 66px of its
+              80px. Entry and State share the rest, 3fr to 2fr - in a 1280px window, 533px and
+              355px, which hold the demo's widest entry (components/user_interface.ddd.json, 270px)
+              and State's longest sentence (lib/files.ts's `stateOf`, 196px). A panel beside the
+              table leaves it a box of about 552px, 537px once a browser draws the box's own
+              vertical scrollbar; a column never goes below its `minWidth`, so Entry keeps 280px
+              there, every entry of both projects whole, and State takes what is left - 75px in a
+              535px box - its sentences cut with an ellipsis. The floors sum to 520px: beside a
+              panel they fit a window down to about 1038px wide - 1082px where a browser draws the
+              box's own vertical scrollbar and the page's, 15px each - and narrower, until the panel
+              moves under the table at 900px, the box scrolls sideways; with no panel the table fits
+              a window down to about 552px (582px). */}
+          <Column isRowHeader width="3fr" minWidth={280}>
             Entry
           </Column>
-          <Column width="1fr" minWidth={70}>
-            Kind
-          </Column>
-          {/* State's own longest sentence, "not read by the last analysis" (lib/files.ts's own
-              `stateOf`): the one other column besides Entry given more than a 1fr share, so it
-              has room to read whole at full width instead of only beside a panel. */}
-          <Column width="4fr" minWidth={150}>
+          <Column width={100}>Kind</Column>
+          <Column width="2fr" minWidth={60}>
             State
           </Column>
-          <Column width="1fr" minWidth={70}>
-            Findings
-          </Column>
+          <Column width={80}>Findings</Column>
         </TableHeader>
         <TableBody>
           {rows.map((row, index) => {

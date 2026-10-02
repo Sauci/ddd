@@ -12,6 +12,7 @@ import {
   typeCurveA,
   watchFrames,
   widenBlockA,
+  withinBox,
   writeBlockAInit,
 } from "./demo";
 import { expect, test } from "./fixtures";
@@ -488,15 +489,16 @@ test("a curve naming a scalar type keeps its button, and its grid", async ({ pag
 
 // `scroll-padding-top` pinned a second way (fix round 2, New Minor 4): the stylesheet test beside
 // `.findings-window`'s own (findingsWindow.test.ts) checks the rule is written; this walks it with
-// the keyboard, on Controller's own fourteen rows - past the 432px box at this viewport, the same
-// one `openValues`'s own doc measures CurveA against. Twelve ArrowUps from the fourteenth
-// (MapA), not three: measured, a row still inside the box's own current scroll - the eleventh,
-// three up, still was - does not move at all, keeping whatever position it already had rather
-// than answering `scroll-padding-top`; only a row the walk scrolls past the box's own current top
-// edge for, landing it there fresh, does. Not Control+End then Control+Home either: measured, the
-// row at index 0 lands correctly regardless - the layout reserves the header's own space there,
-// not `scroll-padding-top`. The second row, ValueB, is both: past the current scroll and short of
-// index 0.
+// the keyboard. At this viewport the box is 432px tall, and Controller's header and fourteen rows
+// 495px, so Control+End leaves the box scrolled to its end, 63px: the second row, ValueB, whose
+// top is at 66px, is then drawn 3px below the box's own top - inside the scrolled view, under the
+// 33px sticky header. Twelve ArrowUps walk the focus from the fourteenth row (MapA) to it. Every
+// row on the way is clear of the header, so React Aria's scroll to the focused row moves the box
+// for ValueB alone, and only with the rule: `scroll-padding-top` moves the top of the box's scroll
+// port down below the header, so ValueB counts as out of view and is scrolled to just below the
+// header (to 33px); without it, ValueB counts as in view and stays under the header. Not
+// Control+Home: that scrolls the box to 0, where the first row sits below the header, rule or no
+// rule.
 test("a row walked back up near the top stops below the sticky header, not under it", async ({
   page,
   gui,
@@ -511,10 +513,17 @@ test("a row walked back up near the top stops below the sticky header, not under
   // narrows the table and races the walk below over the same frame.
   await lastRow.evaluate((node) => (node as HTMLElement).focus());
   await page.keyboard.press("Control+End");
-  await expect.poll(() => lastRow.isVisible()).toBe(true);
+  // Control+End moves the box by Chrome's own smooth scroll, about 150ms long: React Aria leaves
+  // End's default alone in a table that selects by toggling, and a key held with Control never
+  // sets its keyboard modality, so it scrolls nothing itself. MapA is drawn - the Virtualizer's
+  // overscan - before that scroll even starts, so the walk waits instead for MapA to sit whole
+  // inside the box, which it does only once the box stands at its end. Started sooner, the
+  // ArrowUps race the smooth scroll, which can carry ValueB under the header after the walk has
+  // reached it.
+  await expect.poll(() => withinBox(page, "Declarations of Controller", lastRow)).toBe(true);
   for (let step = 0; step < 12; step += 1) await page.keyboard.press("ArrowUp");
-  // Settled on, not read once: the row the keyboard walks to still catches up to
-  // `scroll-padding-top`'s own stop for a frame or two after the last ArrowUp itself returns.
+  // Polled, not read once: React Aria scrolls a newly focused row into view in an animation frame
+  // after the key that focused it, not while it handles the key.
   await expect
     .poll(async () => {
       const headerBottom = await header.evaluate((node) => node.getBoundingClientRect().bottom);

@@ -110,29 +110,34 @@ export function UnitPanelView(props: UnitPanelViewProps) {
         <p className="quiet">Nothing in the project states {unit.unit}.</p>
       ) : (
         // Ruling T9-1: a unit stated 12,500 times over (100,000 declarations, one unit) makes
-        // this table as long as the brief's own seven, so it is virtualised the same way. Where
-        // is its own identifying column, as every other table's own is - a declaration's or a
-        // type's own name, which can run as long as any of them, or as short as a one-letter
-        // state - so, as every other table's own does, it is given the largest share of the
-        // box's own width (`fr`) and the highest floor (`minWidth`) once this panel narrows it
-        // (fix round 2, New Important 2): File and What are each given a smaller share and floor
-        // of their own instead of a fixed width, so a file's own base name or the few words
-        // `placeRole` answers can still grow at this panel's own full width rather than clip
-        // under a width sized only for its narrowest. `.panel-declarations` beside `.long`, for
-        // this table alone: it draws in a panel already, the one place a plain `<table>` of the
-        // same class once stood, and keeps that look - its header's own size, the margin above
-        // the table - rather than `.long`'s own, smaller, unmargined one (fix round 1, Minor 5).
+        // this table as long as the brief's own seven, so it is virtualised the same way.
+        // `.panel-declarations` beside `.long`, for this table alone: it draws in a panel
+        // already, the one place a plain `<table>` of the same class once stood, and keeps that
+        // look - its header's own size, the margin above the table - rather than `.long`'s own,
+        // smaller, unmargined one (fix round 1, Minor 5).
+        //
+        // Widths measured in Chrome (fix round 3) on scratch copies of examples/demo, of a
+        // generated project of 10,000 declarations and of examples/vocabulary. The table draws only
+        // inside this panel, whose box is 472px in a 1280px window and 456px when the table beside
+        // the panel measures 535px. What is fixed at 140px: its words are `placeRole`'s, "structure
+        // member" the widest at 136px. File and Where share the rest, 1fr each, and a column never
+        // goes below its `minWidth`: File keeps 180px, which holds the demo's widest file name
+        // (user_interface.ddd.json, 169px), and Where, whose names are short - the demo's widest is
+        // ParameterA at 96px, the generated project's C00000_O0005 at 115px, examples/vocabulary's
+        // ManifoldPressure at 132px - takes what is left, 152px in the 472px box and 136px in the
+        // 456px one, above a floor of 125px. The floors sum to 445px: the panel's box holds them
+        // down to a window about 1043px wide - 1089px where a browser draws the box's own vertical
+        // scrollbar and the page's, 15px each - and narrower, until the panel moves under the table
+        // it stands beside at 900px and takes the window's whole width, the box scrolls sideways.
         <LongTable aria-label={`Where ${unit.unit} is stated`} className="panel-declarations">
           <TableHeader>
-            <Column isRowHeader width="3fr" minWidth={140}>
+            <Column isRowHeader width="1fr" minWidth={125}>
               Where
             </Column>
-            <Column width="2fr" minWidth={110}>
+            <Column width="1fr" minWidth={180}>
               File
             </Column>
-            <Column width="2fr" minWidth={110}>
-              What
-            </Column>
+            <Column width={140}>What</Column>
           </TableHeader>
           <TableBody items={reply.sites}>
             {(site) => (

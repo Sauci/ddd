@@ -26,32 +26,31 @@ export function UnitsTableView({ units, selected, onSelect }: UnitsTableViewProp
       }}
     >
       <TableHeader>
-        {/* Unit alone keeps a fixed width: its own vocabulary is short and bounded (%, Hz, RPM,
-            degC, …), so it never benefits from more room, at full width or beside a panel. The
-            other three are shares of the box's own width (`fr`) instead of fixed pixels (fix
-            round 2, New Important 2): a fixed column never grows, so at full width - plenty of
-            room - a vocabulary's own sentence clipped under a fixed Description width sized only
-            for beside a panel. `minWidth` is each column's own floor, sized so Unit's own fixed
-            96px plus the other three's floors sum to at most 535px, what a panel beside this
-            table leaves once a headed browser's own vertical scrollbar is taken from the 552px
-            box (a headless one, Docker's own screenshot gate among them, draws none). Below about
-            a 1077px viewport, even full width does not leave every column its own floor; `.long`'s
-            own horizontal scroll is the accepted floor there (fix round 2, New Important 2d). */}
-        <Column isRowHeader width={96} minWidth={96}>
+        {/* Widths measured in Chrome (fix round 3) on scratch copies of examples/demo and of a
+            generated project of 10,000 declarations, and on this table's stories. Unit and Findings
+            are fixed: no unit of either project or the stories takes more than 54px of Unit's 96px
+            (a unit is free text, so a longer one is cut), and Findings holds one chip,
+            "unknown-unit" or "duplicate-unit" (`findingCheck`), either taking 118px of its 130px.
+            Description and Stated by share the rest, 3fr to 1fr - in a 1280px window 632px and
+            210px, which hold the stories' longest description (275px) and "1 variable, 1 type"
+            (`statedBy`, 128px). A panel beside the table leaves it a box of about 552px, 537px once
+            a browser draws the box's own vertical scrollbar; a column never goes below its
+            `minWidth`, so Stated by keeps 135px there and Description takes what is left - 174px in
+            a 535px box - a longer sentence cut with an ellipsis. The floors sum to 461px: beside a
+            panel they fit a window down to about 926px wide - 969px where a browser draws the box's
+            own vertical scrollbar and the page's, 15px each - and narrower, until the panel moves
+            under the table at 900px, the box scrolls sideways; with no panel the table fits a
+            window down to about 493px (523px). */}
+        <Column isRowHeader width={96}>
           Unit
         </Column>
-        <Column width="4fr" minWidth={180}>
+        <Column width="3fr" minWidth={100}>
           Description
         </Column>
-        {/* `2fr`, not `1fr`: measured, "1 variable, 1 type" (`statedBy`, lib/projectUnits.ts) still
-            clipped at full width under a `1fr` share, Description's own `4fr` leaving it only
-            121px of the 972px the two share there with Findings. */}
-        <Column className={also("stated")} width="2fr" minWidth={110}>
+        <Column className={also("stated")} width="1fr" minWidth={135}>
           Stated by
         </Column>
-        <Column width="1fr" minWidth={90}>
-          Findings
-        </Column>
+        <Column width={130}>Findings</Column>
       </TableHeader>
       <TableBody items={rows}>
         {(row) => {

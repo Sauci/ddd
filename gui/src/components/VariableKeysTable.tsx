@@ -66,9 +66,19 @@ export function VariableKeysTable({
           // `exactOptionalPropertyTypes` tells apart from unset), each takes the equal share of
           // what the key column leaves that `TableColumnLayout` gives a column without one, down
           // to the 75px floor it gives one with neither a width nor a `minWidth` of its own
-          // (react-stately's own TableColumnLayout.mjs; spec §6, task 9 brief).
+          // (react-stately's own TableColumnLayout.mjs; spec §6, task 9 brief). 115px, measured
+          // in Chrome (fix round 3): the widest key, "conversion" or "dimensions" in the key
+          // column's monospace, takes 101px. The table draws inside the variable's panel, whose
+          // box is 472px in a 1280px window and 456px when the table beside the panel measures
+          // 535px; there, three declarations share 341px, 113px each, and in either box no value
+          // is cut in the keys of any variable of examples/demo or examples/vocabulary, nor of
+          // the first variable of each component of a generated project of 10,000 declarations.
+          // Three declarations' floors and the key column's sum to 340px, which the panel's box
+          // holds at every window down to 900px, where the panel moves under the table it stands
+          // beside (measured, the demo's ValueE, with a browser's scrollbars drawn or not); a
+          // fourth adds 75px, and a box narrower than its floors scrolls sideways.
           return (
-            <Column isRowHeader={isKey} {...(isKey ? { width: 140 } : {})}>
+            <Column isRowHeader={isKey} {...(isKey ? { width: 115 } : {})}>
               {column.name}
             </Column>
           );

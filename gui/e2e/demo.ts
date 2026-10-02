@@ -143,14 +143,6 @@ export async function scrolledIntoView(page: Page, label: string, target: Locato
   const box = page.getByRole("grid", { name: label });
   const container = await box.boundingBox();
   if (container === null) throw new Error(`no table labelled "${label}" to scroll`);
-  const withinBox = async () => {
-    const rect = await target.boundingBox();
-    return (
-      rect !== null &&
-      rect.y >= container.y &&
-      rect.y + rect.height <= container.y + container.height
-    );
-  };
   // Settles on the box's own `scrollTop` rather than a fixed pause: a wheel's own scroll is still
   // animating, or the virtualiser still catching rows up to it, for longer than any one guess
   // would cover on a slow run, and longer than it need wait on a fast one.
@@ -164,13 +156,28 @@ export async function scrolledIntoView(page: Page, label: string, target: Locato
     }
   };
   await page.mouse.move(container.x + container.width / 2, container.y + container.height / 2);
-  for (let step = 0; step < 40 && !(await withinBox()); step += 1) {
+  for (let step = 0; step < 40 && !(await withinBox(page, label, target)); step += 1) {
     await page.mouse.wheel(0, 200);
     await settled();
   }
-  if (!(await withinBox())) {
+  if (!(await withinBox(page, label, target))) {
     throw new Error(`scrolling "${label}" never brought its target row within the box`);
   }
+}
+
+/** Whether `target` sits whole inside the box of the long table labelled `label`, top to bottom:
+ * what a reader can see of it, which `target.isVisible()` does not say (`scrolledIntoView`'s own
+ * doc says why). The box and the target are both measured on each call, so the answer holds
+ * wherever the page itself stands. */
+export async function withinBox(page: Page, label: string, target: Locator): Promise<boolean> {
+  const container = await page.getByRole("grid", { name: label }).boundingBox();
+  const rect = await target.boundingBox();
+  return (
+    container !== null &&
+    rect !== null &&
+    rect.y >= container.y &&
+    rect.y + rect.height <= container.y + container.height
+  );
 }
 
 /** A table pasted into the grid the way a browser delivers one: a `DataTransfer` built in the

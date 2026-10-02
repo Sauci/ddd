@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import type { GraphFlow, GraphModule } from "../api/types";
-import { laidOut, type Placed, ranked } from "./layout";
+import { laidOut, layoutOf, type Placed, ranked } from "./layout";
+import { NODE_HEIGHT, NODE_WIDTH } from "./nodeSize";
 
 const graphModule = (path: string): GraphModule => ({
   path,
@@ -181,4 +182,102 @@ test("ranked ignores a flow naming a module it was not given", () => {
     [graphFlow("/gone.ddd.json", a.path), graphFlow(a.path, "/gone.ddd.json")],
   );
   expect(placed).toEqual([{ module: a, x: 0, y: 0 }]);
+});
+
+// Review fix round 2, Minor 3: a further pass used to start from the smallest unranked module by
+// path, which can sit downstream of an unfed cycle rather than on it.
+test("ranked starts an unfed cycle's further pass on the cycle, not downstream of it", () => {
+  const [a, b, c] = [
+    graphModule("/a.ddd.json"),
+    graphModule("/b.ddd.json"),
+    graphModule("/c.ddd.json"),
+  ];
+  // b and c cycle (b→c, c→b); c also feeds a, downstream of the cycle. Nothing from outside
+  // feeds any of the three - all three need the fallback - and the smallest path overall, a, is
+  // not on the cycle, only downstream of it.
+  const placed = ranked(
+    [a, b, c],
+    [graphFlow(b.path, c.path), graphFlow(c.path, b.path), graphFlow(c.path, a.path)],
+  );
+  // b, the cycle's own smallest member, starts the pass - not a, which would run c→a backwards.
+  expect(positionOf(placed, b.path).x).toBeLessThan(positionOf(placed, c.path).x);
+  expect(positionOf(placed, c.path).x).toBeLessThan(positionOf(placed, a.path).x);
+});
+
+test("ranked places a self-loop's own module once, not forever", () => {
+  const a = graphModule("/a.ddd.json");
+  const placed = ranked([a], [graphFlow(a.path, a.path)]);
+  expect(placed).toEqual([{ module: a, x: 0, y: 0 }]);
+});
+
+// Review fix round 2, New Important 2: pins the multi-source search layout.ts's own doc
+// describes - searching from each root on its own, instead, also passed every test above.
+test("ranked's root search is multi-source: a node two roots reach keeps the shorter distance", () => {
+  const [m, r1, r2, x] = [
+    graphModule("/m.ddd.json"),
+    graphModule("/r1.ddd.json"),
+    graphModule("/r2.ddd.json"),
+    graphModule("/x.ddd.json"),
+  ];
+  const flows = [graphFlow(r1.path, x.path), graphFlow(x.path, m.path), graphFlow(r2.path, m.path)];
+  const placed = ranked([m, r1, r2, x], flows);
+  // r1 (sorted before r2) reaches m in two hops, via x; r2 reaches it directly, in one. A true
+  // multi-source search starts both roots together and keeps the shorter distance regardless of
+  // which root sorts first, so m lands in the same rank as x - one hop from a root, not two, the
+  // way processing r1's own search to completion before starting r2's would leave it.
+  expect(positionOf(placed, m.path).x).toBe(positionOf(placed, x.path).x);
+  expect(positionOf(placed, r1.path).x).toBeLessThan(positionOf(placed, x.path).x);
+});
+
+// Review fix round 2, Minor 4: dagre's own default spacing (`ranksep`/`nodesep`, 50 each), since
+// `laidOut` sets neither of its own - pinned by the literal 50, not by importing the constant.
+test("ranked spaces ranks 50px apart, beyond the node's own width", () => {
+  const [a, b] = [graphModule("/a.ddd.json"), graphModule("/b.ddd.json")];
+  const placed = ranked([a, b], [graphFlow(a.path, b.path)]);
+  expect(positionOf(placed, b.path).x - positionOf(placed, a.path).x).toBe(NODE_WIDTH + 50);
+});
+
+test("ranked spaces modules sharing a rank 50px apart, beyond the node's own height", () => {
+  const [r, a, b] = [
+    graphModule("/r.ddd.json"),
+    graphModule("/a.ddd.json"),
+    graphModule("/b.ddd.json"),
+  ];
+  const placed = ranked([r, a, b], [graphFlow(r.path, a.path), graphFlow(r.path, b.path)]);
+  expect(positionOf(placed, b.path).y - positionOf(placed, a.path).y).toBe(NODE_HEIGHT + 50);
+});
+
+// Review fix round 2, New Important 1: the fallback's own trigger - a RangeError means ranks
+// only, any other error is not this function's to answer - as a lib function, tested.
+test("layoutOf falls back to ranked, marked ranksOnly, when dagre overflows its stack", () => {
+  const modules = Array.from({ length: 3000 }, (_, i) => graphModule(`/m${i}.ddd.json`));
+  const pairs: Array<[GraphModule, GraphModule]> = [];
+  for (let i = 0; i + 1 < modules.length; i += 1) {
+    const from = modules[i];
+    const to = modules[i + 1];
+    if (from === undefined || to === undefined) throw new Error("unreachable: i stays in range");
+    pairs.push([from, to]);
+  }
+  const flows = pairs.map(([from, to]) => graphFlow(from.path, to.path));
+  const result = layoutOf(modules, flows);
+  expect(result.ranksOnly).toBe(true);
+  expect(result.placed).toHaveLength(3000);
+});
+
+test("layoutOf answers dagre's own layout directly when it succeeds, not ranksOnly", () => {
+  const [a, b] = [graphModule("/a.ddd.json"), graphModule("/b.ddd.json")];
+  const result = layoutOf([a, b], [graphFlow(a.path, b.path)]);
+  expect(result.ranksOnly).toBe(false);
+  expect(result.placed).toEqual(laidOut([a, b], [graphFlow(a.path, b.path)], {}));
+});
+
+test("layoutOf lets an error that is not a RangeError through, rather than falling back", () => {
+  // Array.prototype.sort never calls its comparator for a single element, so laidOut's own
+  // sorted = [...modules].sort(...) needs a second malformed module before comparing paths - and
+  // so throwing - actually happens.
+  const malformed = [
+    { path: undefined, name: "x", loaded: true, findings: { error: 0, warning: 0, info: 0 } },
+    { path: undefined, name: "y", loaded: true, findings: { error: 0, warning: 0, info: 0 } },
+  ] as unknown as GraphModule[];
+  expect(() => layoutOf(malformed, [])).toThrow(TypeError);
 });

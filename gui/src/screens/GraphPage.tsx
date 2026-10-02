@@ -7,7 +7,6 @@ import {
   type OnNodeDrag,
   type OnNodesChange,
   ReactFlow,
-  type ReactFlowInstance,
   ReactFlowProvider,
   useReactFlow,
 } from "@xyflow/react";
@@ -20,17 +19,15 @@ import { ModuleNode } from "../components/ModuleNode";
 import {
   brightOf,
   edgesOf,
-  type FlowEdgeType,
   fadedNodes,
   firstMatch,
   flowTitle,
-  initialViewport,
   MIN_ZOOM,
   type ModuleNodeType,
   nodesOf,
   objectsInDisagreement,
+  openingViewport,
   shownEdges,
-  withMeasured,
   withSavedPositions,
 } from "../lib/canvas";
 import { layoutScreen } from "../lib/layoutAnswers";
@@ -158,21 +155,24 @@ function Canvas({
   const [reached, setReached] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
-  /** Every module where it belongs right now: the reader's own position, or the layout's, with
-   * every module's data as fresh as `graph` - `useLayout` keeps `placed` as it was for a
-   * revision whose shape did not change, this is what still takes that revision's new counts
-   * and `loaded` to the nodes it draws. Nothing to place before the first layout has arrived. */
-  const place = useCallback(
+  /** The placement actually drawn: the layout's own, with the reader's saved positions laid over
+   * it (`withSavedPositions`) - what both the opening view and `Fit` decide against, so neither
+   * ever answers from a module's un-moved position once the reader has dragged it (review fix
+   * round 2, item 1: the re-review found the first attempt deciding from the bare layout
+   * instead). `null` only before the first layout for this shape has arrived. */
+  const drawnPlacement = useCallback(
     () =>
-      layout.placed === null
-        ? []
-        : nodesOf(
-            withSavedPositions(layout.placed, savedPositions(project)),
-            graph.modules,
-            onComponent,
-          ),
-    [layout.placed, graph, project, onComponent],
+      layout.placed === null ? null : withSavedPositions(layout.placed, savedPositions(project)),
+    [layout.placed, project],
   );
+  /** Every module where it belongs right now, with every module's data as fresh as `graph` -
+   * `useLayout` keeps `placed` as it was for a revision whose shape did not change, this is what
+   * still takes that revision's new counts and `loaded` to the nodes it draws. Nothing to place
+   * before the first layout has arrived. */
+  const place = useCallback(() => {
+    const placement = drawnPlacement();
+    return placement === null ? [] : nodesOf(placement, graph.modules, onComponent);
+  }, [drawnPlacement, graph, onComponent]);
   // React Flow moves a node only through the array it is handed back, so the nodes are state.
   const [nodes, setNodes] = useState<ModuleNodeType[]>(place);
   const [drawn, setDrawn] = useState({ graph, placed: layout.placed });
@@ -180,40 +180,38 @@ function Canvas({
     // A new revision, or a freshly made layout for one, draws the canvas again (spec 5.1),
     // keeping every module the reader moved where they put it. Adjusted while rendering rather
     // than in an effect, so the previous revision's nodes are never painted against this one.
-    // `withMeasured` carries each node's measured size over from the one it replaces, so React
-    // Flow does not mount all of them in the DOM for one frame before culling most of them again
-    // (review fix round 1, Minor 1).
+    // Plainly `place()`, with no carrying-over of a previous node's own measured size: every
+    // node `nodesOf` builds already carries its own (`measured`/`handles`, review fix round 2,
+    // Finding 7), the same known box regardless of which node it replaces.
     setDrawn({ graph, placed: layout.placed });
-    setNodes((current) => withMeasured(place(), current));
+    setNodes(place());
   }
-  // The canvas element's own box, measured once `onReactFlowInit` (below) fires, to tell
-  // `initialViewport` (review fix round 1, Ruling T10-2) how big a screen it is deciding for.
-  const canvasRef = useRef<HTMLElement | null>(null);
   /**
-   * React Flow's own `fitView` does not finish synchronously within React's commit - it waits
-   * for every node to report its measured size (`@xyflow/system`'s `useOnInitHandler` only calls
-   * `onInit` once its own `viewportInitialized` turns true, itself behind a `setTimeout`), so a
-   * correction applied any earlier is a race `fitView` wins: tried first from a `useLayoutEffect`
-   * of this component's own, by hand on 10000-many-clean, the viewport still read `fitView`'s own
-   * clamped, centred transform afterwards - the correction never visibly took. `onInit` is React
-   * Flow's own signal that `fitView` (if asked for) has already run, so applying the correction
-   * here replaces its result instead of racing it - confirmed by hand the same way, below.
+   * The canvas element's own box, measured the moment the element exists at all - a ref callback
+   * runs synchronously during React's commit, before paint, the same timing class as
+   * `useLayoutEffect` - rather than in an effect that would run a tick later. `<ReactFlow>`
+   * itself mounts only once `containerSize` is known (below): this "two-pass mount" is what lets
+   * `openingViewport` (review fix round 2, item 1, replacing round 1's Ruling T10-2) be given to
+   * it as `defaultViewport`, applied once, synchronously, on that first mount - rather than
+   * raced against React Flow's own `fitView`, which does not finish synchronously within React's
+   * commit at all: it waits for every node to report its measured size
+   * (`@xyflow/system`'s `useOnInitHandler` only calls `onInit` once its own `viewportInitialized`
+   * turns true, itself behind a `setTimeout`). A correction applied through `onInit`, tried in
+   * round 1, is still only ever a race for which of the two runs last - confirmed by hand that
+   * round's own fix usually won it, and the re-review's own by-hand check that it just as often
+   * did not. `defaultViewport` has no such race to lose: nothing runs after it to overwrite it,
+   * because `fitView` is not asked for at all (`fitView={false}`, below).
    */
-  const onReactFlowInit = useCallback(
-    (instance: ReactFlowInstance<ModuleNodeType, FlowEdgeType>) => {
-      if (layout.placed === null) return;
-      const container = canvasRef.current;
-      if (container === null) return;
-      const box = container.getBoundingClientRect();
-      const alt = initialViewport(
-        layout.placed,
-        { width: box.width, height: box.height },
-        MIN_ZOOM,
-      );
-      if (alt !== null) void instance.setViewport(alt);
-    },
-    [layout.placed],
+  const containerRef = useRef<HTMLElement | null>(null);
+  const [containerSize, setContainerSize] = useState<{ width: number; height: number } | null>(
+    null,
   );
+  const canvasRef = useCallback((node: HTMLElement | null) => {
+    containerRef.current = node;
+    if (node === null) return;
+    const box = node.getBoundingClientRect();
+    setContainerSize({ width: box.width, height: box.height });
+  }, []);
   const onNodesChange = useCallback<OnNodesChange<ModuleNodeType>>(
     (changes) => setNodes((current) => applyNodeChanges(changes, current)),
     [],
@@ -230,9 +228,22 @@ function Canvas({
 
   const onTidy = useCallback(() => {
     forgetPositions(project);
-    setNodes((current) => withMeasured(place(), current));
+    setNodes(place());
   }, [project, place]);
-  const onFit = useCallback(() => void flow.fitView({ duration: FLIGHT }), [flow]);
+  /**
+   * The same rule the opening view decides by (`openingViewport`, above), applied again: `Fit`
+   * re-measures the canvas element fresh, rather than trusting `containerSize` (set once, at
+   * mount, and never again), so a window resized since opening is still answered correctly -
+   * React Flow's own `fitView` always re-measured this way too, and this keeps that part of its
+   * behaviour even though it is no longer what calls it.
+   */
+  const onFit = useCallback(() => {
+    const box = containerRef.current?.getBoundingClientRect();
+    const placement = drawnPlacement();
+    if (box === undefined || placement === null) return;
+    const view = openingViewport(placement, { width: box.width, height: box.height }, MIN_ZOOM);
+    if (view !== null) void flow.setViewport(view, { duration: FLIGHT });
+  }, [flow, drawnPlacement]);
   const onSearchKey = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key !== "Enter") return;
@@ -280,6 +291,12 @@ function Canvas({
   // applies itself.
   if (screen.kind === "waiting") return <p className="quiet">Laying the project out…</p>;
   if (screen.kind === "failed") return <Banner tone="error">{screen.message}</Banner>;
+  // `null` until `containerSize` is: `<ReactFlow>` itself does not mount before then either
+  // (below), so this is never handed to it as a stale or default viewport for the wrong size.
+  const opening =
+    containerSize === null
+      ? null
+      : openingViewport(drawnPlacement() ?? [], containerSize, MIN_ZOOM);
   return (
     <div className={variable !== undefined || chooser !== null ? "with-panel" : undefined}>
       <div>
@@ -303,44 +320,51 @@ function Canvas({
           <Button onPress={onFit}>Fit</Button>
         </div>
         <section className="canvas" aria-label="Modules" ref={canvasRef}>
-          <ReactFlow
-            nodes={shownNodes}
-            edges={shownArrows}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            onNodesChange={onNodesChange}
-            onNodeDragStop={onDragStop}
-            onNodeMouseEnter={onEnter}
-            onNodeMouseLeave={onLeave}
-            fitView
-            // Fires once fitView has already run (this component's own doc, above, has the
-            // measured reasoning): where `initialViewport`'s own correction belongs, rather than
-            // racing it from an effect of this component's own.
-            onInit={onReactFlowInit}
-            // Given explicitly rather than left to React Flow's own default, so
-            // `initialViewport` (review fix round 1, Ruling T10-2) always decides against the
-            // same minimum `fitView` itself is bound by.
-            minZoom={MIN_ZOOM}
-            // A reader reads this graph; they do not draw one, and they do not take a module out
-            // of it either - the delete key would otherwise remove what it is pointing at until
-            // the next revision put it back.
-            nodesConnectable={false}
-            deleteKeyCode={null}
-            // The node is a box around a button: React Flow's own tab stop in front of it carries
-            // no name and would put two stops in the way of every module.
-            nodesFocusable={false}
-            // Ruling 2: above VISIBLE_ONLY_ABOVE modules, drawing every one regardless of the
-            // viewport costs enough that it is left to React Flow's own culling; below it,
-            // drawing them all is free enough that a reader should never meet one appear late
-            // while panning.
-            onlyRenderVisibleElements={visibleOnly(graph.modules.length)}
-          >
-            <Background />
-            {/* Tidy and Fit are this canvas's controls, named above it. React Flow's lock would
-                write dragging and connecting back into its own store, past the props here, and
-                its fit-view icon is Fit again without a name worth reading. */}
-            <Controls showInteractive={false} showFitView={false} />
-          </ReactFlow>
+          {containerSize !== null && (
+            <ReactFlow
+              nodes={shownNodes}
+              edges={shownArrows}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              onNodesChange={onNodesChange}
+              onNodeDragStop={onDragStop}
+              onNodeMouseEnter={onEnter}
+              onNodeMouseLeave={onLeave}
+              // Never asked for (review fix round 2, item 1): `defaultViewport`, below, is what
+              // opens the canvas on the right view now, applied once, synchronously, on this
+              // mount, with nothing running after it - fitView's own correction - to overwrite
+              // it.
+              fitView={false}
+              // Only present when there is one: exactOptionalPropertyTypes makes
+              // `defaultViewport: undefined` a type error of its own, the same reason `edgesOf`
+              // (`gui/src/lib/canvas.ts`) spreads `ariaRole` in conditionally rather than falling
+              // back past the key.
+              {...(opening !== null ? { defaultViewport: opening } : {})}
+              // Given explicitly rather than left to React Flow's own default, so
+              // `openingViewport` (review fix round 2, item 1, replacing round 1's Ruling T10-2)
+              // always decides against the same minimum this canvas itself is bound by.
+              minZoom={MIN_ZOOM}
+              // A reader reads this graph; they do not draw one, and they do not take a module
+              // out of it either - the delete key would otherwise remove what it is pointing at
+              // until the next revision put it back.
+              nodesConnectable={false}
+              deleteKeyCode={null}
+              // The node is a box around a button: React Flow's own tab stop in front of it
+              // carries no name and would put two stops in the way of every module.
+              nodesFocusable={false}
+              // Ruling 2: above VISIBLE_ONLY_ABOVE modules, drawing every one regardless of the
+              // viewport costs enough that it is left to React Flow's own culling; below it,
+              // drawing them all is free enough that a reader should never meet one appear late
+              // while panning.
+              onlyRenderVisibleElements={visibleOnly(graph.modules.length)}
+            >
+              <Background />
+              {/* Tidy and Fit are this canvas's controls, named above it. React Flow's lock would
+                  write dragging and connecting back into its own store, past the props here, and
+                  its fit-view icon is Fit again without a name worth reading. */}
+              <Controls showInteractive={false} showFitView={false} />
+            </ReactFlow>
+          )}
         </section>
       </div>
       {variable !== undefined ? (

@@ -11,9 +11,12 @@ import type { Placed } from "./layout";
  * than trusting the order answers arrive in, which a worker remade mid-flight (StrictMode) can
  * no longer be trusted to preserve on its own.
  *
- * `placed` is set whether dagre made the layout or the no-recursion fallback did (`ranksOnly`
- * true, Critical 1); `error` is set instead when neither could - dagre failed with something
- * other than a stack overflow, or the fallback itself somehow did.
+ * `placed` is set whether dagre made the layout or `layoutOf`'s own no-recursion fallback did
+ * (`ranksOnly` true, Critical 1); `error` is set instead when `layoutOf` (`gui/src/lib/
+ * layout.ts`) threw - dagre failed with something other than a stack overflow, or, review fix
+ * round 2, the fallback itself somehow did; the worker's own `try` now reaches around both. A
+ * throw from naming the shape itself, before `layoutOf` is even called, is not answered this way
+ * at all - `useLayout`'s `onerror` catches that instead (`WORKER_FAILED`, below).
  */
 export interface LayoutAnswer {
   shape: string;

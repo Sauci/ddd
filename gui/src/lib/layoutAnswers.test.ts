@@ -5,8 +5,21 @@ import {
   type LayoutState,
   layoutScreen,
   RANKS_ONLY_NOTE,
+  WORKER_FAILED,
   withAnswer,
 } from "./layoutAnswers";
+
+// Review fix round 2, New Important 2: pinned by the literal text, not by comparing a constant
+// against itself.
+test("RANKS_ONLY_NOTE is its own exact sentence", () => {
+  expect(RANKS_ONLY_NOTE).toBe(
+    "Laid out in ranks only: the project is too large for the full layout.",
+  );
+});
+
+test("WORKER_FAILED is its own exact sentence", () => {
+  expect(WORKER_FAILED).toBe("The layout worker stopped; reload the page to try again.");
+});
 
 const graphModule = (path: string): GraphModule => ({
   path,
@@ -93,7 +106,7 @@ test("the screen draws the canvas with the ranks-only note when the fallback mad
     kind: "drawn",
     placed,
     errorMessage: null,
-    note: RANKS_ONLY_NOTE,
+    note: "Laid out in ranks only: the project is too large for the full layout.",
   });
 });
 
@@ -104,6 +117,6 @@ test("the screen shows both the error and the ranks-only note when both apply at
     kind: "drawn",
     placed,
     errorMessage: "boom",
-    note: RANKS_ONLY_NOTE,
+    note: "Laid out in ranks only: the project is too large for the full layout.",
   });
 });

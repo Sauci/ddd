@@ -6,15 +6,13 @@ import {
   fadedNodes,
   firstMatch,
   flowTitle,
-  initialViewport,
   MIN_ZOOM,
-  type ModuleNodeType,
   nodesOf,
   objectsInDisagreement,
+  openingViewport,
   STROKE,
   shownEdges,
   stateOf,
-  withMeasured,
   withSavedPositions,
 } from "./canvas";
 import type { Placed } from "./layout";
@@ -67,6 +65,18 @@ test("every module becomes a node carrying what its box draws", () => {
   expect(nodes[0]?.data).toMatchObject({ name: "Alpha", loaded: true, errors: 2, warnings: 0 });
   expect(nodes[1]?.data).toMatchObject({ name: "Beta", errors: 0, warnings: 1 });
   expect(nodes.every((node) => node.type === "module" && !node.data.faded)).toBe(true);
+});
+
+// Review fix round 2, Finding 7: a node without these is mounted at least once to be measured
+// regardless of whether it was ever in view. Pinned by the literal numbers the re-review read
+// off the real DOM: target (-3, 21), source (177, 21), each 6×6.
+test("every node carries its own measured size and both handles from the start", () => {
+  const [node] = nodesOf([placedAt(A, 0, 0)], [A], () => undefined);
+  expect(node?.measured).toEqual({ width: 180, height: 48 });
+  expect(node?.handles).toEqual([
+    { type: "target", position: "left", x: -3, y: 21, width: 6, height: 6 },
+    { type: "source", position: "right", x: 177, y: 21, width: 6, height: 6 },
+  ]);
 });
 
 test("a node opens its own module's page, and sits at its placed position", () => {
@@ -301,81 +311,45 @@ test("an arrow is bright only while both of its ends are, and open only while it
   expect(shownEdges(edges, null, null)).toEqual(edges);
 });
 
-function nodeWithMeasured(
-  id: string,
-  measured?: { width: number; height: number },
-): ModuleNodeType {
-  return {
-    id,
-    type: "module",
-    position: { x: 0, y: 0 },
-    // Spread in only when given: exactOptionalPropertyTypes makes `measured: undefined` a type
-    // error of its own, distinct from the key being absent - the same reason `edgesOf` spreads
-    // `ariaRole` in conditionally (canvas.ts's own doc on it).
-    ...(measured !== undefined ? { measured } : {}),
-    data: {
-      name: id,
-      loaded: true,
-      errors: 0,
-      warnings: 0,
-      onOpen: () => undefined,
-      faded: false,
-    },
-  };
-}
-
-test("withMeasured carries a current node's measured size onto the fresh node of the same id", () => {
-  const current = [nodeWithMeasured(A.path, { width: 180, height: 48 })];
-  const fresh = [nodeWithMeasured(A.path)];
-  const result = withMeasured(fresh, current);
-  expect(result[0]?.measured).toEqual({ width: 180, height: 48 });
+// Review fix round 2, New Important 2: MIN_ZOOM pinned by the literal 0.5, not by comparing the
+// constant against itself the way passing it as openingViewport's own minZoom argument would.
+test("MIN_ZOOM is React Flow's own default, 0.5", () => {
+  expect(MIN_ZOOM).toBe(0.5);
 });
 
-test("withMeasured leaves a node current does not carry exactly as it was built", () => {
-  const fresh = [nodeWithMeasured(A.path)];
-  const result = withMeasured(fresh, []);
-  expect(result).toEqual(fresh);
-  expect(result[0]).toBe(fresh[0]);
+test("openingViewport shows nothing when nothing is placed", () => {
+  expect(openingViewport([], { width: 1280, height: 800 }, MIN_ZOOM)).toBeNull();
 });
 
-test("withMeasured does not carry a measured of undefined over one already set", () => {
-  const current = [nodeWithMeasured(A.path)];
-  const fresh = [nodeWithMeasured(A.path, { width: 1, height: 1 })];
-  const result = withMeasured(fresh, current);
-  expect(result[0]?.measured).toEqual({ width: 1, height: 1 });
-});
-
-test("initialViewport leaves fitView alone when nothing is placed", () => {
-  expect(initialViewport([], { width: 1280, height: 800 }, MIN_ZOOM)).toBeNull();
-});
-
-test("initialViewport leaves fitView alone when its own fit already shows everything", () => {
-  const placed = [placedAt(A, 0, 0), placedAt(B, 300, 0)];
-  expect(initialViewport(placed, { width: 1280, height: 800 }, MIN_ZOOM)).toBeNull();
-});
-
-test("initialViewport centres the first rank at minZoom when the whole graph would not fit", () => {
-  // Fifty ranks spread along x: fitting all fifty into 1280px needs a zoom fitView would clamp
-  // to MIN_ZOOM, leaving the fitted middle - around rank 25 - the only thing in view.
-  const GAP = 60;
-  const placed = Array.from({ length: 50 }, (_, rank) =>
-    placedAt(graphModule(`/m${rank}.ddd.json`, `M${rank}`), rank * (NODE_WIDTH + GAP), 0),
-  );
-  const size = { width: 1280, height: 800 };
-  const result = initialViewport(placed, size, MIN_ZOOM);
-  expect(result).not.toBeNull();
-  expect(result?.zoom).toBe(MIN_ZOOM);
-  // The first rank (x = 0) must actually be on screen at this viewport: world x = 0 maps to
-  // screen x = 0 * zoom + result.x, which has to land inside [0, size.width].
-  const screenX = 0 * MIN_ZOOM + (result?.x ?? 0);
-  const screenY = 0 * MIN_ZOOM + (result?.y ?? 0);
-  expect(screenX).toBeGreaterThanOrEqual(0);
-  expect(screenX).toBeLessThan(size.width);
-  expect(screenY).toBeGreaterThanOrEqual(0);
-  expect(screenY).toBeLessThan(size.height);
-});
-
-test("initialViewport leaves fitView alone when the canvas has not been measured yet", () => {
+test("openingViewport shows nothing when the canvas has not been measured yet", () => {
   const placed = [placedAt(A, 0, 0)];
-  expect(initialViewport(placed, { width: 0, height: 0 }, MIN_ZOOM)).toBeNull();
+  expect(openingViewport(placed, { width: 0, height: 0 }, MIN_ZOOM)).toBeNull();
+});
+
+test("openingViewport fits the whole placement when it already fits, uncapped", () => {
+  // Three modules spread so the zoom needed to fit them all lands strictly between MIN_ZOOM and
+  // React Flow's own default maxZoom (2) - neither clamp applies, so this is fitView's own
+  // result, computed directly rather than left to it.
+  const placed = [placedAt(A, 0, 0), placedAt(B, 400, 0), placedAt(C, 800, 0)];
+  const result = openingViewport(placed, { width: 1280, height: 800 }, MIN_ZOOM);
+  expect(result).toEqual({ x: 58, y: 371.49387755102043, zoom: 1.1877551020408164 });
+});
+
+test("openingViewport fits the whole placement capped at maxZoom when it fits with room to spare", () => {
+  const placed = [placedAt(A, 0, 0), placedAt(B, 300, 0)];
+  const result = openingViewport(placed, { width: 1280, height: 800 }, MIN_ZOOM);
+  // Uncapped this would zoom to 2.425 - capped at React Flow's own default maxZoom, 2, the same
+  // ceiling fitView itself would apply.
+  expect(result).toEqual({ x: 160, y: 352, zoom: 2 });
+});
+
+test("openingViewport centres the first rank at minZoom when the whole graph would not fit", () => {
+  // Fifty ranks spread along x, ranked's own spacing (NODE_WIDTH + 50): fitting all fifty into
+  // 1280px needs a zoom below MIN_ZOOM, leaving the fitted middle - around rank 25 - the only
+  // thing in view were this the fit instead.
+  const placed = Array.from({ length: 50 }, (_, rank) =>
+    placedAt(graphModule(`/m${rank}.ddd.json`, `M${rank}`), rank * (NODE_WIDTH + 50), 0),
+  );
+  const result = openingViewport(placed, { width: 1280, height: 800 }, MIN_ZOOM);
+  expect(result).toEqual({ x: 595, y: 388, zoom: 0.5 });
 });

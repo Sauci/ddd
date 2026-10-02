@@ -7,6 +7,14 @@
  * (`LayoutAnswer`, `gui/src/lib/layoutAnswers.ts`) beside `placed`, `placed` with `ranksOnly`, or
  * `error`.
  *
+ * Glue only (review fix round 2, New Important 1): whether dagre's own layout stands or `ranked`
+ * replaces it is `layoutOf`'s decision (`gui/src/lib/layout.ts`), under Vitest; this file only
+ * calls it and turns what comes back into a message. `shapeOf` itself can still throw before
+ * either is reached - defensively, on modules or flows malformed enough that even sorting them
+ * fails - and that throw is not this file's to catch either; it reaches `useLayout`'s `onerror`
+ * the same as a worker that fails to start at all (`layoutAnswers.ts`'s own doc on `WORKER_
+ * FAILED`).
+ *
  * Vite 8 builds this file as an IIFE by default (`worker.format`), not an ES module - what makes
  * it a *module worker* is the construction `useLayout` uses to load it, `new Worker(new URL(...),
  * { type: "module" })`, which is also what gets it built and served as a file of its own rather
@@ -21,7 +29,7 @@
  * it, and `postMessage`'s "DOM" signature accepts a lone message with no target origin.
  */
 import type { GraphFlow, GraphModule } from "../api/types";
-import { laidOut, ranked } from "../lib/layout";
+import { layoutOf } from "../lib/layout";
 import type { LayoutAnswer } from "../lib/layoutAnswers";
 import { shapeOf } from "../lib/shape";
 
@@ -34,26 +42,12 @@ self.addEventListener("message", (event: MessageEvent<LayoutRequest>) => {
   const { modules, flows } = event.data;
   const shape = shapeOf(modules, flows);
   try {
-    const placed = laidOut(modules, flows, {});
-    self.postMessage({ shape, placed } satisfies LayoutAnswer);
+    const { placed, ranksOnly } = layoutOf(modules, flows);
+    self.postMessage({ shape, placed, ranksOnly } satisfies LayoutAnswer);
   } catch (error) {
-    if (error instanceof RangeError) {
-      // dagre's own layering recurses, and overflows the stack on a long enough chain of
-      // producers and consumers - measured in this worker (review fix round 1, Critical 1) at
-      // about 908 modules, roughly half the main thread's own 1,772, since a worker starts with
-      // less stack to begin with. `ranked` never recurses, so it has no depth of its own to
-      // overflow at any size, and still places every module - quietly marked `ranksOnly` rather
-      // than answered as a failure, so GraphPage says so above the canvas, not in the error
-      // banner (Step 2's is for a layout that could not be made at all).
-      self.postMessage({
-        shape,
-        placed: ranked(modules, flows),
-        ranksOnly: true,
-      } satisfies LayoutAnswer);
-      return;
-    }
-    // A layout that fails for any other reason says so, rather than leaving the canvas on this
-    // shape empty for good (Step 2).
+    // A layout `layoutOf` could not make at all - a `RangeError` is already `ranksOnly` by the
+    // time it gets here - says so, rather than leaving the canvas on this shape empty for good
+    // (Step 2).
     const message = error instanceof Error ? error.message : String(error);
     self.postMessage({ shape, error: message } satisfies LayoutAnswer);
   }

@@ -119,11 +119,8 @@ are commands under <code class="docutils literal notranslate"><span class="pre">
 compiled into an image. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">tool</span> <span class="pre">from-elf</span></code> reads a linked ELF image and its DWARF debug
 information, and prints the DDD declaration of every C variable it is asked for - as far as
 the image states it, and checked by DDD itself before it is printed, the way
-<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span> <span class="pre">--standalone</span></code> checks a component. It needs pyelftools, which the <code class="docutils literal notranslate"><span class="pre">elf</span></code> extra
-installs, and an image built with debug information (<code class="docutils literal notranslate"><span class="pre">-g</span></code>):</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>pip install 'ddd-tool[elf]'
-</pre></div>
-</div>
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span> <span class="pre">--standalone</span></code> checks a component. It needs an image built with debug information
+(<code class="docutils literal notranslate"><span class="pre">-g</span></code>); pyelftools, which reads it, is installed with DDD.</p>
 <p>A variable is named as it is in C, or matched with a glob such as <code class="docutils literal notranslate"><span class="pre">'Cal_*'</span></code>, and a
 <code class="docutils literal notranslate"><span class="pre">static</span></code> that several compilation units define is taken from one of them by naming its unit
 first, <code class="docutils literal notranslate"><span class="pre">cal.c:Gain</span></code>. What the tool prints is the <code class="docutils literal notranslate"><span class="pre">interface</span></code> of a component, ready to paste

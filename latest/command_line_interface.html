@@ -657,7 +657,7 @@ starting point for its own. They are an example and not a default: no run of
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">tool</span> <span class="pre">from-elf</span> <span class="pre">IMAGE</span> <span class="pre">SYMBOL...</span></code></p></td>
 <td><p>print, as json, the declarations of the C variables a linked ELF image’s DWARF
 describes - by name, by glob, or narrowed to a unit as <code class="docutils literal notranslate"><span class="pre">UNIT:NAME</span></code> - checked by DDD
-itself before they are printed; <a class="reference internal" href="toolbox.html"><span class="doc">The toolbox</span></a> is the guide. Needs the <code class="docutils literal notranslate"><span class="pre">elf</span></code> extra.</p></td>
+itself before they are printed; <a class="reference internal" href="toolbox.html"><span class="doc">The toolbox</span></a> is the guide.</p></td>
 </tr>
 </tbody>
 </table>
@@ -1553,7 +1553,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 </section>
 <section id="ddd-tool-from-elf">
 <h4>ddd tool from-elf<a class="headerlink" href="#ddd-tool-from-elf" title="Link to this heading"></a></h4>
-<p>Reads a linked ELF image and its DWARF debug information, and prints as json the declaration of every C variable named or matched: its kind, datatype, shape, enumerators, structure members, initial value and section, as the image states them. What an image does not state - a unit, a description, limits, a scaling, whether an array is a curve - is left out, and said once. DDD itself checks every entry, as ‘ddd check –standalone’ checks a component, before it is printed. Needs pyelftools, which the ‘elf’ extra installs.</p>
+<p>Reads a linked ELF image and its DWARF debug information, and prints as json the declaration of every C variable named or matched: its kind, datatype, shape, enumerators, structure members, initial value and section, as the image states them. What an image does not state - a unit, a description, limits, a scaling, whether an array is a curve - is left out, and said once. DDD itself checks every entry, as ‘ddd check –standalone’ checks a component, before it is printed. Needs an image built with debug information (-g).</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd tool from-elf [-h] [--component NAME]</span>
 <span class="go">                         [--scope {output,local,input}] [-o OUTPUT] [--force]</span>
 <span class="go">                         [--format {text,json}]</span>

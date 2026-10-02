@@ -289,8 +289,8 @@ The commands
      - preview: serve a browser interface over one project's description files, on this
        computer by default, and open the browser on it. The project opens on a graph
        of its modules, an arrow per pair coloured by the worst disagreement between
-       them, laid out in a worker rather than on the page's own thread, and, where the
-       project is too large for that layout to finish, in ranks alone instead -
+       them, laid out in a worker rather than on the page's own thread, falling back to
+       ranks alone when the layout overflows its own stack on a chain too long for it -
        ``Laid out in ranks only: the project is too large for the full layout.`` -
        with the component table, a Units tab - listing the project's units and
        maintaining its vocabulary - a Findings tab of every finding, worst first, and a
@@ -436,19 +436,13 @@ The commands
        ``not read by the last analysis`` for a file an entry names that the revision the
        page holds has not read. Among the causes of that last: the root's own schema failing
        before its includes are read, a plugin's model raising while the project is read, a
-       pattern matching a file created since, or an entry the description gained since,
-       which the tab's own New file and Add show until the revision after them arrives.
-       Measured on the Linux development PC, in Chrome, with a ``MutationObserver`` and a
-       ``requestAnimationFrame`` sample taken every frame: creating a file of kind ``types``
-       through New file shows the words for one painted frame - 21-29 ms in the DOM - in 9 of
-       10 runs on a copy of ``examples/vocabulary``, and for three to seven painted frames -
-       54-112 ms - in every run on a freshly generated project of 18,000 findings (480
-       components, ``--declarations 14400 --shape many --missing-ids 1 --unread 0.5``), its
-       table scrolled to its end first: the new row sits below the pattern's own 480, where a
-       reader who has not scrolled there sees nothing at all. New file, Add a file and Remove
-       are its three actions, the first two above the table and the third opened by selecting
-       a row. New file takes a kind - ``component``, ``types``, ``units``, ``constants``,
-       ``sections`` or
+       pattern matching a file created since, or an entry the description gained since: the
+       row a New file or an Add makes reads ``not read by the last analysis`` between the
+       tab's own next list of its entries - asked once the edit answers - and the analysis
+       after it, which is what the next list of entries then reads instead. New file, Add a
+       file and Remove are its three actions, the first two above the table and the third
+       opened by selecting a row. New file takes a
+       kind - ``component``, ``types``, ``units``, ``constants``, ``sections`` or
        ``rasters``, offered as ``GET /api/files`` sends the list, the page keeping no copy of
        its own - and a name, creating the file beside the project description and adding it
        to the includes in the same edit: a vocabulary file declares nothing and a component
@@ -528,9 +522,10 @@ The commands
        project has been analysed again, the heading saying ``Updating the findings…`` until
        then, and every panel listing findings saying so too, in its own place. A request
        answered while an analysis runs shares the interpreter with it and can therefore be
-       slower than either on its own. The server stopping is reported once, and not at the
-       first ask that goes unanswered - which an analysis merely sharing the interpreter
-       could also leave looking that way - but only once asking again goes unanswered too.
+       slower than either on its own. The server stopping is reported only once an ask that
+       failed outright - its connection refused or reset, never a slow answer alone, which
+       nothing here times out - is asked again and fails the same way, not after the first
+       failure by itself.
        A plan that would change a file an edit wrote since the revision it is judged
        against was analysed is refused until that edit's own analysis has landed, naming
        the file - ``an edit that wrote pump.ddd.json has not been analysed yet, so this
@@ -539,8 +534,9 @@ The commands
        ``Analysing the project…`` stands where the tab's own content goes, until the first
        analysis lands, and every answer needing a revision is refused until then, in the
        same words - ``the open project has not been analysed yet``. A panel's own plan
-       request waits for a pause in the reader's typing before it asks for one; a pick
-       from a list, or Enter, goes through at once, with no pause to wait out. The
+       request goes out at once the first time a field asks for one; typed text asks
+       again only after a pause in the reader's typing; a pick from a list, or Enter,
+       always goes out at once, first time or later. The
        Findings tab asks for its findings a page at a time as the reader scrolls it,
        rather than every one at once, and every long table - the component table, the
        Types, Units, Shared files and Files tabs' own, a component's own declarations, a

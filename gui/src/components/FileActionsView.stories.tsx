@@ -102,6 +102,7 @@ function NewFile({
         creatable={reply.creatable}
         kind={typedKind}
         onKind={setKind}
+        onKindPicked={setKind}
         name={typedName}
         onName={setName}
         component={typedComponent}

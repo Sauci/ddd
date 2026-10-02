@@ -26,11 +26,11 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   pyelftools 0.32 or newer, which joins pydantic and jinja2 as a runtime dependency; every other
   command runs without importing it.  No file format changes.
 
-* **Large projects stay responsive.**  An edit shows at once and its findings follow once the
-  project has been analysed again; the Findings tab reads its findings a page at a time as the
-  reader scrolls it, rather than every one at once; and the component table, the Types, Units,
-  Shared files and Files tabs, a component's own declarations, a unit's own places and a
-  variable's keys draw only the rows in view.
+* **`ddd gui` stays responsive on large projects.**  An edit shows at once and its findings
+  follow once the project has been analysed again; its Findings tab reads its findings a page
+  at a time as the reader scrolls it, rather than every one at once; and its component table,
+  Types, Units, Shared files and Files tabs, a component's own declarations, a unit's own
+  places and a variable's keys draw only the rows in view.
 
 ## 0.11.0
 

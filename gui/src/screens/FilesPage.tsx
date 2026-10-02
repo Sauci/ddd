@@ -210,9 +210,13 @@ function useFilesApply(
   };
 }
 
-/** New file's form, holding its three fields; its plan is debounced as each is typed (spec §6):
- * Kind commits on every keystroke (`NewFileView`'s own chooser, which takes typed text as
- * readily as a pick), and so do the plain File name and Component name fields. */
+/** New file's form, holding its three fields; its plan is debounced as each is typed (spec §6),
+ * except a pick of Kind, which takes effect at once like every other pick (Ruling T12-3): File
+ * name and Component name are always typed, but Kind commits by a pick as readily as by typing
+ * (`NewFileView`'s own chooser), and `typedKind` says which the latest change was - never
+ * inferred from the value itself, which a pick and typing can both leave in the very same shape
+ * (the same reason `VariablePanel`'s `typedLimits` and `DeclarePanel`'s `typedEdit` keep their
+ * own record rather than following the field). */
 function NewFile({
   project,
   creatable,
@@ -230,8 +234,9 @@ function NewFile({
   const [name, setName] = useState("");
   const [component, setComponent] = useState("");
   const [changesShown, setChangesShown] = useState(false);
+  const [typedKind, setTypedKind] = useState(true);
   const request = fileCreate(kind, name, component);
-  const asked = useDebounced(request);
+  const asked = useDebounced(request, typedKind);
   const plan = useFilesPlan(asked, revision);
   // Created, the form closes: the new file's row is the table's to show, once it reads again.
   const {
@@ -247,16 +252,24 @@ function NewFile({
       kind={kind}
       onKind={(text) => {
         setKind(text);
+        setTypedKind(true);
+        chose();
+      }}
+      onKindPicked={(text) => {
+        setKind(text);
+        setTypedKind(false);
         chose();
       }}
       name={name}
       onName={(text) => {
         setName(text);
+        setTypedKind(true);
         chose();
       }}
       component={component}
       onComponent={(text) => {
         setComponent(text);
+        setTypedKind(true);
         chose();
       }}
       offer={{ plan: offerPlan, refusal }}

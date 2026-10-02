@@ -42,6 +42,10 @@ export interface SectionPanelViewProps {
   /** What the Access field holds: what is being typed or was picked, else the entry's own word. */
   access: string;
   onAccess: (text: string) => void;
+  /** The chooser's own pick or Enter, apart from typing (`onAccess`): a discrete commit, which
+   * `SectionPanel.tsx` takes at once rather than waiting out a pause as it does for typing
+   * (spec §6, Ruling T12-3). */
+  onAccessPicked: (text: string) => void;
   /** What the Alignment field holds: what is being typed, else the entry's own whole number. */
   alignment: string;
   onAlignment: (text: string) => void;
@@ -121,8 +125,8 @@ export function SectionPanelView(props: SectionPanelViewProps) {
               })),
             },
           ]}
-          onPick={props.onAccess}
-          onEnter={props.onAccess}
+          onPick={props.onAccessPicked}
+          onEnter={props.onAccessPicked}
           onClose={() => undefined}
           isDisabled={busy}
         />

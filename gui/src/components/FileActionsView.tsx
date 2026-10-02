@@ -55,6 +55,10 @@ export interface NewFileViewProps {
    * what is picked - the server refuses a kind it creates no file of, in its own words. */
   kind: string;
   onKind: (text: string) => void;
+  /** The chooser's own pick or Enter, apart from typing (`onKind`): a discrete commit, which
+   * `FilesPage.tsx` takes at once rather than waiting out a pause as it does for typing (spec
+   * §6, Ruling T12-3). */
+  onKindPicked: (text: string) => void;
   /** What the File name field holds: the name before `.ddd.json`, which the server adds. */
   name: string;
   onName: (text: string) => void;
@@ -94,9 +98,11 @@ export function NewFileView(props: NewFileViewProps) {
           ]}
           // The choice's own id is the word the field holds, so picking one from the list and
           // typing it out by hand leave the form in the very same state - `SharedAddView`'s own
-          // chooser takes a vocabulary the same way.
-          onPick={props.onKind}
-          onEnter={props.onKind}
+          // chooser takes a vocabulary the same way. `onPick` and `onEnter` go to `onKindPicked`,
+          // never `onKind`: both are a discrete commit, not typing, however the field reads
+          // afterwards.
+          onPick={props.onKindPicked}
+          onEnter={props.onKindPicked}
           onClose={() => undefined}
           isDisabled={props.busy}
         />

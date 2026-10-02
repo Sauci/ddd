@@ -27,6 +27,10 @@ export interface SharedAddViewProps {
   /** What the Access field holds: one of a section's two, or "" until one is chosen. */
   access: string;
   onAccess: (text: string) => void;
+  /** The chooser's own pick or Enter, apart from typing (`onAccess`): a discrete commit, which
+   * `SharedPage.tsx` takes at once rather than waiting out a pause as it does for typing (spec
+   * §6, Ruling T12-3). */
+  onAccessPicked: (text: string) => void;
   /** What the Alignment field holds: the whole number of bytes a section guarantees. */
   alignment: string;
   onAlignment: (text: string) => void;
@@ -140,8 +144,8 @@ export function SharedAddView(props: SharedAddViewProps) {
                   })),
                 },
               ]}
-              onPick={props.onAccess}
-              onEnter={props.onAccess}
+              onPick={props.onAccessPicked}
+              onEnter={props.onAccessPicked}
               onClose={() => undefined}
               isDisabled={props.busy}
             />

@@ -249,6 +249,9 @@ function SharedAdd({
   const [typed, setTyped] = useState(seed);
   const [raw, setRaw] = useState("");
   const [access, setAccess] = useState("");
+  // Which kind of change `access` last held, a pick or typing - never inferred from the value
+  // itself, which both can leave in the very same shape (Ruling T12-3).
+  const [typedSection, setTypedSection] = useState(true);
   const [alignment, setAlignment] = useState("");
   const [event, setEvent] = useState("");
   const [changesShown, setChangesShown] = useState(false);
@@ -263,12 +266,15 @@ function SharedAdd({
   const constantRequest = kind === "constant" ? constantAdd(typed, raw) : null;
   const sectionRequest = kind === "section" ? sectionAdd(typed, access, alignment) : null;
   const rasterRequest = kind === "raster" ? rasterAdd(typed, event) : null;
-  // Every field here is a plain one, committing on every keystroke (`SharedAddView`'s own), so
+  // Every field but Access is plain, committing on every keystroke (`SharedAddView`'s own), so
   // each of the three requests is debounced (spec §6, review fix round 1, Ruling T11-1: missing
-  // from this screen the first time round). Only one is ever non-null at once (`kind` picks the
-  // vocabulary), so only one is ever actually waiting.
+  // from this screen the first time round). Access, within the section request, is typed just
+  // as readily through its own chooser, but a pick of it takes effect at once instead (Ruling
+  // T12-3) - `typedSection` says which the latest change to that request was. Only one of the
+  // three is ever non-null at once (`kind` picks the vocabulary), so only one is ever actually
+  // waiting.
   const askedConstant = useDebounced(constantRequest);
-  const askedSection = useDebounced(sectionRequest);
+  const askedSection = useDebounced(sectionRequest, typedSection);
   const askedRaster = useDebounced(rasterRequest);
   const constantPlan = useConstantPlan(askedConstant, revision);
   const sectionPlan = useSectionPlan(askedSection, revision);
@@ -324,6 +330,7 @@ function SharedAdd({
       typed={typed}
       onTyped={(text) => {
         setTyped(text);
+        setTypedSection(true);
         setRefusal(null);
       }}
       raw={raw}
@@ -334,11 +341,18 @@ function SharedAdd({
       access={access}
       onAccess={(text) => {
         setAccess(text);
+        setTypedSection(true);
+        setRefusal(null);
+      }}
+      onAccessPicked={(text) => {
+        setAccess(text);
+        setTypedSection(false);
         setRefusal(null);
       }}
       alignment={alignment}
       onAlignment={(text) => {
         setAlignment(text);
+        setTypedSection(true);
         setRefusal(null);
       }}
       event={event}

@@ -240,7 +240,11 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await stopGui();
+  // `stopGui` is only assigned once `beforeAll` runs to its own end; when it throws first - a
+  // project `DDD_BENCH_PROJECT` names wrong, or `startGui` itself failing - calling an
+  // unassigned `stopGui` would add "stopGui is not a function" on top, burying the one error
+  // this run is actually about. Nothing was started to stop, so there is nothing to do here.
+  if (stopGui) await stopGui();
 });
 
 /**

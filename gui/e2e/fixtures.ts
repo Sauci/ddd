@@ -33,12 +33,11 @@ export interface Gui {
  * `tools/generate_project.py DIRECTORY --declarations 20000 --shape many --missing-ids 1
  * --unread 0.5` through `DDD_PYTHON`, into `directory`, which must not exist yet - the way
  * `demo.ts`'s own `dump` runs `ddd dump` (part 17's task 1). 20,000 declarations, "every output
- * without an id and half the inputs unread" (task 12's own brief): large enough that an analysis
- * of it lasts long enough for a reader to see "Updating the findings…" rather than a flash
- * between two frames - measured on the Linux development PC, in process over a running session,
- * one declaration's unit changed: the edit answered in 3 ms and the analysis that followed it
- * landed about 760 ms later - and findings enough, 25,000 of them, that the Findings tab's table
- * is a window rather than a page's worth of rows (tasks 7 and 9).
+ * without an id and half the inputs unread" (task 12's own brief): large enough that the
+ * analysis an edit starts runs long enough for a reader to see the heading read "Updating the
+ * findings…" rather than turn back before a reader's eye catches it - and findings enough,
+ * 25,000 of them, that the Findings tab's table is a window rather than a page's worth of rows
+ * (tasks 7 and 9).
  */
 function generated(directory: string): void {
   const result = spawnSync(
@@ -60,17 +59,25 @@ function generated(directory: string): void {
     // hang the whole suite behind one fixture.
     { timeout: 60_000 },
   );
-  // Spawning itself can fail - the interpreter named is not there at all - before there is any
-  // status, signal or stderr to read; `result.error` is the only field set then, and reading
-  // `result.stderr` as though it were one throws "Cannot read properties of undefined", losing
-  // the ENOENT under a different error entirely.
+  // The timeout above kills the process on expiry and sets *both* `result.error` (`code:
+  // "ETIMEDOUT"`) and `result.signal` - checked first, ahead of the plainer spawn failure below,
+  // or a run merely slow would be misread as the interpreter never starting at all.
+  if (result.error && (result.error as NodeJS.ErrnoException).code === "ETIMEDOUT") {
+    throw new Error(`generate_project.py ${directory} did not finish within 60 s`);
+  }
+  // Spawning itself can otherwise fail - the interpreter named is not there at all - before
+  // there is any status, signal or stderr to read; `result.error` is the only field set then
+  // (with no signal, unlike the timeout above), and reading `result.stderr` as though it were
+  // one throws "Cannot read properties of undefined", losing the ENOENT under a different error
+  // entirely.
   if (result.error) {
     throw new Error(
       `generate_project.py ${directory} could not be started: ${result.error.message}`,
     );
   }
-  // A timeout, or a signal from elsewhere, ends the process without a status - `status` is then
-  // `null`, and naming it would print "exited with null", true of every signal alike.
+  // A signal from elsewhere - not the timeout above, already reported - ends the process without
+  // a status - `status` is then `null`, and naming it would print "exited with null", true of
+  // every signal alike.
   if (result.signal !== null) {
     throw new Error(`generate_project.py ${directory} was killed by ${result.signal}`);
   }

@@ -899,11 +899,13 @@ are made nowhere else.
 
 ``npm run lint`` and ``npm run typecheck`` are the frontend's ruff and mypy, and ``npm test``
 runs Vitest with a 100 % gate over the modules that hold logic - ``src/api``, ``src/lib`` and
-``src/state``. The screens are covered by ``npm run e2e``: Playwright drives the real ``ddd gui``
-over a copy of ``examples/demo``, and over a project it generates and serves the same way
-(``gui/e2e/fixtures.ts``'s own ``generatedGui``), each started with the interpreter
-``DDD_PYTHON`` names, and ``PLAYWRIGHT_CHANNEL=msedge`` drives the installed Edge on a machine
-without Playwright's own Chromium. The build refuses a bundled package whose licence is not
+``src/state``. The screens are covered by ``npm run e2e``: Playwright drives the real
+``ddd gui`` over a copy of ``examples/demo``, over copies of ``examples/vocabulary`` and
+``examples/structures`` that eight of the spec files serve instead, and over a project it
+generates and serves the same way - ``gui/e2e/fixtures.ts``'s own ``vocabularyGui``,
+``structuresGui`` and ``generatedGui`` - each started with the interpreter ``DDD_PYTHON``
+names, and ``PLAYWRIGHT_CHANNEL=msedge`` drives the installed Edge on a machine without
+Playwright's own Chromium. The build refuses a bundled package whose licence is not
 MIT, ISC, Apache-2.0, BSD-2-Clause, BSD-3-Clause or 0BSD. The project screen's canvas is drawn
 with ``@xyflow/react`` and laid out with ``@dagrejs/dagre``, both MIT like every other bundled
 package.

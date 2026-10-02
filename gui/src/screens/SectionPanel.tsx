@@ -80,6 +80,9 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
   // What the reader has chosen or typed into the three fields, `undefined` until they do: each
   // field then reads the entry's own text.
   const [access, setAccess] = useState<string | undefined>(undefined);
+  // Which kind of change `access` last held, a pick or typing - never inferred from the value
+  // itself, which both can leave in the very same shape (Ruling T12-3).
+  const [typedAccess, setTypedAccess] = useState(true);
   const [alignment, setAlignment] = useState<string | undefined>(undefined);
   const [description, setDescription] = useState<string | undefined>(undefined);
   // The spelling chosen to rename the section to, `null` until one is typed.
@@ -134,13 +137,14 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
     rename: Extract<SectionPlanRequest, { action: "rename" }> | null;
     remove: Extract<SectionPlanRequest, { action: "remove" }> | null;
   };
-  // Access, alignment, description and rename each commit on every keystroke - access through
-  // its own chooser, which takes typed text like every other field here (`useSectionPlan`'s own
-  // doc) - so each is debounced on its own (spec §6): a field's first ask is immediate, and only
-  // one asked of before waits. Remove is never typed into - it is offered outright once nothing
-  // places data in the section any longer - so `asked.remove` is `requests.remove` itself.
+  // Alignment, description and rename are always typed, and each is debounced on its own (spec
+  // §6): a field's first ask is immediate, and only one asked of before waits. Access is typed
+  // just as readily, through its own chooser, but a pick of it takes effect at once instead
+  // (Ruling T12-3) - `typedAccess` says which the latest change was. Remove is never typed into
+  // - it is offered outright once nothing places data in the section any longer - so
+  // `asked.remove` is `requests.remove` itself.
   const asked: Record<SectionAction, SectionPlanRequest | null> = {
-    access: useDebounced(requests.access),
+    access: useDebounced(requests.access, typedAccess),
     alignment: useDebounced(requests.alignment),
     describe: useDebounced(requests.describe),
     rename: useDebounced(requests.rename),
@@ -253,6 +257,12 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
       access={access ?? entry.access}
       onAccess={(text) => {
         setAccess(text);
+        setTypedAccess(true);
+        setFailed(null);
+      }}
+      onAccessPicked={(text) => {
+        setAccess(text);
+        setTypedAccess(false);
         setFailed(null);
       }}
       alignment={alignment ?? entry.alignment}

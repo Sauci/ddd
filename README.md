@@ -49,9 +49,8 @@ Licence terms are in [LICENSE](https://github.com/Sauci/ddd/blob/master/LICENSE)
 
 ## Installation
 
-Requires Python 3.12 or newer; the only runtime dependencies are pydantic and jinja2.
-`ddd tool from-elf` reads ELF images with pyelftools, which the `elf` extra installs:
-`pip install 'ddd-tool[elf]'`.
+Requires Python 3.12 or newer; the runtime dependencies are pydantic, jinja2 and pyelftools,
+which reads ELF images for `ddd tool from-elf`.
 
 ```bash
 pip install ddd-tool                 # from the index
@@ -784,7 +783,7 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | `ddd checks` | list the checks and their default severity, marking the ones that cannot be relaxed `(fixed)`, need every component of a project `(project)` or grade a delivery comparison `(comparison)`; `--plugin` lists a plugin's checks after the built-in ones |
 | `ddd cmake-dir` | print the directory holding the cmake integration module |
 | `ddd templates-dir` | print the directory holding the example c templates, to copy into a project |
-| `ddd tool from-elf IMAGE SYMBOL...` | print the declarations of C variables a linked ELF image's DWARF describes, checked by DDD itself; `--component NAME` prints a component file with the types its structures need; needs the `elf` extra |
+| `ddd tool from-elf IMAGE SYMBOL...` | print the declarations of C variables a linked ELF image's DWARF describes, checked by DDD itself; `--component NAME` prints a component file with the types its structures need |
 
 `FILE` may be a project or a single component file, which makes it possible to check, list
 or dump a component on its own before integrating it - add `--standalone` in that case, which

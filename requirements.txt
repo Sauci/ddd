@@ -1,2 +1,7 @@
 pydantic>=2.7,<3
 jinja2>=3.1,<4
+# What DDD reads ELF images and their DWARF with: `ddd tool from-elf` today. 0.32 is the first
+# release whose has_dwarf_info takes strict, measured against the fixture matrix on 2026-09-30;
+# an older one already installed in an environment is upgraded by this floor, and ddd.elf refuses
+# to read with one that slipped through regardless.
+pyelftools>=0.32,<1

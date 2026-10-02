@@ -68,12 +68,12 @@ reaches the diagnostics on stderr alone, so "output format" would read as a prom
 document a build archives.
 """
 
-_ELF_EXTRA_MISSING = (
-    "reading an ELF image needs pyelftools, which the 'elf' extra installs: "
-    "pip install 'ddd-tool[elf]'"
+_PYELFTOOLS_MISSING = (
+    "reading an ELF image needs pyelftools, which is not installed: "
+    "pip install 'pyelftools>=0.32,<1'"
 )
-"""The usage error ``ddd tool from-elf`` answers without pyelftools, which is an extra rather
-than a dependency: every other command runs without it."""
+"""The usage error ``ddd tool from-elf`` answers without pyelftools. It is a dependency, so only
+a broken installation lacks it, and the command says how to mend one rather than raising."""
 
 
 def cmake_module_directory() -> Path | None:
@@ -526,7 +526,7 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
             "them. What an image does not state - a unit, a description, limits, a scaling, "
             "whether an array is a curve - is left out, and said once. DDD itself checks every "
             "entry, as 'ddd check --standalone' checks a component, before it is printed. "
-            "Needs pyelftools, which the 'elf' extra installs."
+            "Needs an image built with debug information (-g)."
         ),
     )
     from_elf.add_argument(
@@ -1284,7 +1284,7 @@ def _command_tool_from_elf(args: argparse.Namespace) -> int:
         # `elftools` - so the package decides, not the whole name.
         if (error.name or "").partition(".")[0] != "elftools":
             raise
-        raise ValueError(_ELF_EXTRA_MISSING) from None
+        raise ValueError(_PYELFTOOLS_MISSING) from None
     from ddd.loading import resolve_path
     from ddd.models.common import C_IDENTIFIER_PATTERN, IDENTIFIER_MAX_LENGTH
     from ddd.toolbox.from_elf import describe, document_text

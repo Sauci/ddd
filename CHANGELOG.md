@@ -22,9 +22,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   and section, as the image states them - as a list of interface entries or, with `--component
   NAME`, a component file holding the types its structures need.  DDD itself checks every
   entry before it is printed, as `ddd check --standalone` checks a component; what an image
-  does not state, a unit or a scaling, is left out and said once.  It needs pyelftools, which
-  the new `elf` extra installs (`pip install 'ddd-tool[elf]'`); the runtime dependencies are
-  unchanged, and every other command runs without it.  No file format changes.
+  does not state, a unit or a scaling, is left out and said once.  It reads images with
+  pyelftools 0.32 or newer, which joins pydantic and jinja2 as a runtime dependency; every other
+  command runs without importing it.  No file format changes.
 
 ## 0.11.0
 

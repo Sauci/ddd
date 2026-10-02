@@ -1,6 +1,0 @@
-# What `ddd tool from-elf` reads ELF images and their DWARF with, installed by the `elf` extra
-# (pip install 'ddd-tool[elf]') and by `dev`, so that every environment that runs the suite has
-# it. Not a runtime dependency: the command imports it inside its handler, and says how to
-# install it where it is missing. 0.32 is the first release whose has_dwarf_info takes strict,
-# measured against the fixture matrix on 2026-09-30.
-pyelftools>=0.32,<1

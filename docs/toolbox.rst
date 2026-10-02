@@ -12,12 +12,8 @@ A project that adopts DDD rarely starts from nothing: its variables already exis
 compiled into an image. ``ddd tool from-elf`` reads a linked ELF image and its DWARF debug
 information, and prints the DDD declaration of every C variable it is asked for - as far as
 the image states it, and checked by DDD itself before it is printed, the way
-``ddd check --standalone`` checks a component. It needs pyelftools, which the ``elf`` extra
-installs, and an image built with debug information (``-g``):
-
-.. code-block:: text
-
-   pip install 'ddd-tool[elf]'
+``ddd check --standalone`` checks a component. It needs an image built with debug information
+(``-g``); pyelftools, which reads it, is installed with DDD.
 
 A variable is named as it is in C, or matched with a glob such as ``'Cal_*'``, and a
 ``static`` that several compilation units define is taken from one of them by naming its unit

@@ -3,10 +3,12 @@ import { useState, useSyncExternalStore } from "react";
 import { ApiError, getValuePlan, getValues, getValuesPlan, postEdit } from "../api/client";
 import type { State, ValuesReply } from "../api/types";
 import { useUpdating } from "../app/updating";
+import { useDebounced } from "../app/useDebounced";
 import { ValuesGridView } from "../components/ValuesGridView";
 import { cellAt, drawable, pasted, rawOf, typedNumber } from "../lib/objectValues";
 import { planEdit } from "../lib/projectUnits";
 import { type Refused, shownRefusal as staleRefusal } from "../lib/refusals";
+import { sameRequest } from "../lib/typing";
 import { pasteLabel, valueLabel } from "../lib/undo";
 import {
   appliesOver,
@@ -129,11 +131,25 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
       : physical
         ? rawOf(typed, shown.conversion, shown.datatype)
         : typed;
+  // A cell is typed into character by character, so its plan is debounced (spec §6): `at`/`raw`
+  // change on every keystroke the same way every other plain field in this part does. Folded
+  // into one request so one `useDebounced` call covers both, as `VariablePanel`'s own settle
+  // request is. A pasted table is not: `pastedRows` is set once, by the one paste event, never a
+  // stream of keystrokes to wait out, so `table` below keeps asking for its plan at once, as
+  // every query in this file did before this task.
+  const cellRequest = at === null || raw === null || !current ? null : { at, raw };
+  const askedCell = useDebounced(cellRequest);
   const plan = useQuery({
-    queryKey: ["value-plan", name, at, raw, revision],
+    queryKey: ["value-plan", name, askedCell, revision],
     queryFn:
-      at === null || raw === null || !current ? skipToken : () => getValuePlan({ name, at, raw }),
+      askedCell === null
+        ? skipToken
+        : () => getValuePlan({ name, at: askedCell.at, raw: askedCell.raw }),
   });
+  // Shown and applied only once the debounced request is what the fields now say (`sameRequest`):
+  // this grid has no separate `pending` flag to disable Apply with, so `shownPlan`/`shownSentence`
+  // below read the cell's query only while this holds.
+  const cellCurrent = sameRequest(askedCell, cellRequest);
   // A pasted table's own preview, keyed on the counts themselves so a second, different paste
   // asks again - the same shape `plan` above already takes for one cell, and `getValuesPlan`
   // wants them row-major in one flat list.
@@ -155,7 +171,9 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // was never a cell to begin with - driving it through a real browser (`values.spec.ts`'s own
   // "a block of the wrong shape is refused and nothing is written") is what actually found this.
   const pasting = pastedRows !== null || pasteRefusal !== null;
-  const shownPlan = pasting ? (table.data ?? null) : (plan.data ?? null);
+  // Never the cell's plan while it is an earlier keystroke's (`cellCurrent`): that plan is for
+  // text the reader has since typed past, and is dropped exactly as one still loading would be.
+  const shownPlan = pasting ? (table.data ?? null) : cellCurrent ? (plan.data ?? null) : null;
   // The pre-apply refusal each offer can find for itself - a pasted block's own sentence, or the
   // server's, for the one thing the parser cannot check - ahead of a stale or a plain apply
   // failure either way. A typed cell's own refusal is `ValuesGridView`'s to find, from `editing`
@@ -166,7 +184,9 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
       staleRefusal(staleFailed, revision) ??
       failed ??
       (table.isError ? table.error.message : null))
-    : (staleRefusal(staleFailed, revision) ?? failed ?? (plan.isError ? plan.error.message : null));
+    : (staleRefusal(staleFailed, revision) ??
+      failed ??
+      (cellCurrent && plan.isError ? plan.error.message : null));
   // What either offer's own edit is called, for the undo stack: the whole object for a paste,
   // the one element for a cell - `pasteLabel`'s and `valueLabel`'s own difference.
   const label = pasting

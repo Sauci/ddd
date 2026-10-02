@@ -9,9 +9,11 @@ import {
   type UnitPlanRequest,
 } from "../api/client";
 import { useUpdating } from "../app/updating";
+import { useDebounced } from "../app/useDebounced";
 import { type Offer, type UnitAction, UnitPanelView } from "../components/UnitPanelView";
 import { offers, planEdit } from "../lib/projectUnits";
 import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
+import { sameRequest } from "../lib/typing";
 import { unitLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
@@ -41,8 +43,9 @@ export function refusalOf(error: Error): string {
  * not asked for at all while `request` is `null`.
  *
  * `keep` leaves the last plan on screen while the next is asked for, marked as a placeholder, for
- * a description: its plan changes with every key typed, and only in the text it writes, so the
- * line saying which file it changes would otherwise blink at every key.
+ * a description: it is debounced before `request` ever reaches this hook (`useDebounced`, spec
+ * §6), so it changes once the reader pauses rather than with every key - but without `keep`, the
+ * line saying which file it changes would still blink away each time it does.
  */
 export function usePlan(
   request: UnitPlanRequest | null,
@@ -123,11 +126,24 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
     remove: offered?.remove ? { action: "remove", unit: name } : null,
     rename: to === null ? null : { action: "rename", unit: name, to },
   };
+  // Description is the one field here typed into directly (a plain field, committing on every
+  // keystroke), so it is the one debounced (spec §6): a panel's first ask of it is immediate, and
+  // only a later one waits. Add and remove are never typed into - `offers` offers each outright
+  // once the unit's own state says so - and the rename picker commits only on a spelling picked
+  // or typed and confirmed with Enter (`UnitPanelView`'s own `UnitPicker`), never on a keystroke
+  // of its own: `to` only ever holds a whole, deliberate choice, so there is no keystroke for any
+  // of the three to wait on, and `asked`'s own entries for them are `requests`' outright.
+  const asked: Record<UnitAction, UnitPlanRequest | null> = {
+    describe: useDebounced(requests.describe),
+    add: requests.add,
+    remove: requests.remove,
+    rename: requests.rename,
+  };
   const plans = {
-    describe: usePlan(requests.describe, revision, true),
-    add: usePlan(requests.add, revision),
-    remove: usePlan(requests.remove, revision),
-    rename: usePlan(requests.rename, revision),
+    describe: usePlan(asked.describe, revision, true),
+    add: usePlan(asked.add, revision),
+    remove: usePlan(asked.remove, revision),
+    rename: usePlan(asked.rename, revision),
   };
   const apply = useMutation({
     mutationFn: (action: UnitAction) => {
@@ -178,7 +194,11 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
       if (error === null && action === "describe") setDescription(undefined);
     },
   });
-  /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for. */
+  /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for.
+   * `pending` also covers a debounced request not yet caught up with what the fields now say
+   * (`sameRequest`): the preview is then an earlier request's, same as while any plan loads, and
+   * Apply stays disabled rather than offered over text the reader has since typed past. Always
+   * `false` for `add`/`remove`/`rename`, whose `asked` entries are never behind `requests`'. */
   const offer = (action: UnitAction): Offer => ({
     plan: plans[action].data ?? null,
     refusal:
@@ -187,7 +207,7 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
         : failed?.action === action
           ? failed.message
           : (plans[action].error?.message ?? null),
-    pending: plans[action].isPlaceholderData,
+    pending: plans[action].isPlaceholderData || !sameRequest(asked[action], requests[action]),
   });
 
   if (gone) return null;

@@ -24,8 +24,9 @@ export interface Offer {
   plan: PlanReply | null;
   /** Why the plan was refused, or why applying it was; `null` when neither was. */
   refusal: string | null;
-  /** The plan shown is an earlier one's, kept on screen while this one is asked for: a value or
-   * a description, both of which change with every key typed. It cannot be applied. */
+  /** The plan shown is an earlier one's: a value's or a description's, debounced (spec §6) so it
+   * is kept on screen while the next one is asked for, or a debounced request not yet caught up
+   * with what the fields now say. It cannot be applied. */
   pending: boolean;
 }
 

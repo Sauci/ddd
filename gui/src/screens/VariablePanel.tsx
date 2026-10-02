@@ -9,10 +9,12 @@ import {
   postEdit,
 } from "../api/client";
 import { useUpdating } from "../app/updating";
+import { useDebounced } from "../app/useDebounced";
 import type { Offer } from "../components/UnitPanelView";
 import { VariablePanelView } from "../components/VariablePanelView";
 import { planEdit } from "../lib/projectUnits";
 import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
+import { sameRequest } from "../lib/typing";
 import { removeLabel, settleLabel } from "../lib/undo";
 import { editOf, outsideVocabulary, textOf } from "../lib/units";
 import {
@@ -26,6 +28,13 @@ import {
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
 import { UpdatingNote } from "../ui/UpdatingNote";
+
+/** What a settle's preview is asked for: the key, and the raw count to settle it on - `null` for
+ * "go from every declaration", a value in its own right rather than "nothing to ask" (spec 5.1). */
+interface SettleRequest {
+  selected: string;
+  target: string | null;
+}
 
 interface Props {
   name: string;
@@ -166,11 +175,26 @@ export function VariablePanel({
         : chosen === undefined
           ? startingRaw(reply, selected)
           : chosen;
+  // `target` is typed into directly while `selected` is `limits` (the two range fields commit on
+  // every keystroke, like every other plain field on this screen) and otherwise set discretely by
+  // a chooser's pick or Enter - but, as `TypePanel`'s own `key` is, debounced uniformly (spec §6)
+  // rather than only while a `limits` row happens to be open. `null` while there is nothing to ask
+  // for yet (`settleRequest`'s own doc); once there is, `target` on its own can still legitimately
+  // be `null` - "go from every declaration" - so the gate is `settleRequest` itself, never `target`.
+  const settleRequest: SettleRequest | null =
+    reply === undefined || selected === undefined || broken !== null ? null : { selected, target };
+  const askedSettle = useDebounced(settleRequest);
   const preview = useQuery({
-    queryKey: ["settle", name, selected, target, revision],
-    queryFn: () => getSettle(name, selected as string, target),
-    enabled: reply !== undefined && selected !== undefined && broken === null,
+    queryKey: ["settle", name, askedSettle, revision],
+    queryFn:
+      askedSettle === null
+        ? skipToken
+        : () => getSettle(name, askedSettle.selected, askedSettle.target),
   });
+  // Shown and applied only once the debounced request is what the fields now say (`sameRequest`):
+  // this screen has no separate `pending` flag to disable Apply with (unlike `UnitPanel`'s
+  // `Offer`), so `preview`/`refusal` below read the query only while this holds.
+  const settleCurrent = sameRequest(askedSettle, settleRequest);
   // Selecting a row starts that key afresh - what was chosen for the last one means nothing for
   // this one. Letting a row go is a choice too, not a blank: it must show the table alone even
   // while a row still disagrees, not hand the reader straight back to it.
@@ -363,14 +387,17 @@ export function VariablePanel({
           : undefined)
       }
       // Nothing is previewed while the fields say nothing to apply, whatever this key was
-      // previewed on before: the query is not asked, and an answer it kept is not shown.
-      preview={broken === null ? (preview.data ?? null) : null}
+      // previewed on before: the query is not asked, and an answer it kept is not shown. Nor is
+      // the debounced request's own answer, while it is not yet what `target` now says
+      // (`settleCurrent`) - that answer is an earlier target's, same as while any plan loads.
+      preview={broken === null && settleCurrent ? (preview.data ?? null) : null}
       // A settlement refused is about the value that was asked for; while the fields make no
-      // value, nothing was asked, and the note is the whole of what the panel has to say.
+      // value, nothing was asked, and the note is the whole of what the panel has to say - nor
+      // once the fields have moved past the target this refusal was about.
       refusal={
         (stale !== null && stale.key === selected ? shownRefusal(stale, revision) : null) ??
         refused ??
-        (broken !== null || preview.error === null ? null : preview.error.message)
+        (broken !== null || !settleCurrent || preview.error === null ? null : preview.error.message)
       }
       changesShown={changesShown}
       onChangesShown={setChangesShown}

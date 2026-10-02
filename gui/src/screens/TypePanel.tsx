@@ -9,10 +9,12 @@ import {
   type TypePlanRequest,
 } from "../api/client";
 import { useUpdating } from "../app/updating";
+import { useDebounced } from "../app/useDebounced";
 import { TypePanelView } from "../components/TypePanelView";
 import { planEdit } from "../lib/projectUnits";
 import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
 import type { Route } from "../lib/route";
+import { sameRequest } from "../lib/typing";
 import { typeLabel } from "../lib/undo";
 import { textOf, unitLabel } from "../lib/units";
 import { limitsNote, limitsOf, limitsRaw, shortValue } from "../lib/variableKeys";
@@ -48,8 +50,9 @@ export function refusalOf(error: Error): string {
  * against.
  *
  * `keep` leaves the last plan on screen while the next is asked for, marked as a placeholder, for
- * a description: its plan changes with every key typed, and only in the text it writes, so the
- * line saying which file it changes would otherwise blink at every key.
+ * a description: it is debounced before `request` ever reaches this hook (`useDebounced`, spec
+ * §6), so it changes once the reader pauses rather than with every key - but without `keep`, the
+ * line saying which file it changes would still blink away each time it does.
  */
 export function usePlan(
   request: TypePlanRequest | null,
@@ -164,10 +167,22 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
         : { action: "set", name, key: "description", raw: JSON.stringify(draft) },
     rename: renameTo === null ? null : { action: "rename", name, to: renameTo },
   };
+  // All three are debounced (spec §6): `describe` and `rename` are plain fields, committing on
+  // every keystroke; `key`'s own chooser commits discretely - a pick, or typed text confirmed
+  // with Enter - except while its `limits` editor is open, whose two fields write `edited` on
+  // every keystroke the same way `describe`'s and `rename`'s always do. Debounced uniformly
+  // rather than only while a `limits` row happens to be open, so a row picked straight after one
+  // still waits the same `PLAN_DELAY_MS` a second keystroke would - `planDelay`'s own "every
+  // later one", not only a later keystroke.
+  const asked: Record<Kind, TypePlanRequest | null> = {
+    key: useDebounced(requests.key),
+    describe: useDebounced(requests.describe),
+    rename: useDebounced(requests.rename),
+  };
   const plans = {
-    key: usePlan(requests.key, revision),
-    describe: usePlan(requests.describe, revision, true),
-    rename: usePlan(requests.rename, revision),
+    key: usePlan(asked.key, revision),
+    describe: usePlan(asked.describe, revision, true),
+    rename: usePlan(asked.rename, revision),
   };
   // The panel shows one preview at a time, so at most one of the three is ever dirty at once:
   // `onSelect`, `onRenameTo` and `onDescription` below each clear the other two the moment they
@@ -186,6 +201,12 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
           ? "describe"
           : null;
   const activePlan = active === null ? null : plans[active];
+  // Whether the active path's debounced request is what the fields now say (`sameRequest`): this
+  // panel has no separate `pending` flag to disable Apply with (unlike `UnitPanel`'s `Offer`), so
+  // `preview`/`refusal` below read the plan only while this holds, and are `null` otherwise - the
+  // preview is pending, as it is while any plan loads, and `TypePanelView`'s own gate
+  // (`pending && preview !== null`) then draws neither a consequence nor an Apply for it.
+  const activeCurrent = active !== null && sameRequest(asked[active], requests[active]);
 
   const apply = useMutation({
     mutationFn: (kind: Kind) => {
@@ -336,7 +357,7 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
           setChangesShown(false);
         }
       }}
-      preview={activePlan?.data ?? null}
+      preview={activeCurrent ? (activePlan?.data ?? null) : null}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => {
@@ -348,7 +369,7 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
           ? null
           : ((stale?.kind === active ? shownRefusal(stale, revision) : null) ??
             (refused?.kind === active ? refused.message : null) ??
-            activePlan?.error?.message ??
+            (activeCurrent ? activePlan?.error?.message : null) ??
             null)
       }
       busy={stopped || apply.isPending}

@@ -8,10 +8,12 @@ import {
   type SectionPlanRequest,
 } from "../api/client";
 import { useUpdating } from "../app/updating";
+import { useDebounced } from "../app/useDebounced";
 import { type Offer, type SectionAction, SectionPanelView } from "../components/SectionPanelView";
 import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planEdit, sectionSet } from "../lib/shared";
+import { sameRequest } from "../lib/typing";
 import { sectionLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
@@ -42,8 +44,9 @@ interface Props {
  *
  * `keep` leaves the last plan on screen while the next is asked for, marked as a placeholder, for
  * each of the section's three keys - the access among them, its chooser taking typed text as well
- * as a pick: all three change with every key typed, and only in the text they write, so the line
- * saying which file it changes would otherwise blink at every key.
+ * as a pick: all three are debounced before `request` ever reaches this hook (`useDebounced`,
+ * spec §6), so it changes once the reader pauses rather than with every key - but without `keep`,
+ * the line saying which file it changes would still blink away each time it does.
  */
 export function useSectionPlan(
   request: SectionPlanRequest | null,
@@ -136,12 +139,24 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
     rename: Extract<SectionPlanRequest, { action: "rename" }> | null;
     remove: Extract<SectionPlanRequest, { action: "remove" }> | null;
   };
+  // Access, alignment, description and rename each commit on every keystroke - access through
+  // its own chooser, which takes typed text like every other field here (`useSectionPlan`'s own
+  // doc) - so each is debounced on its own (spec §6): a field's first ask is immediate, and only
+  // one asked of before waits. Remove is never typed into - it is offered outright once nothing
+  // places data in the section any longer - so `asked.remove` is `requests.remove` itself.
+  const asked: Record<SectionAction, SectionPlanRequest | null> = {
+    access: useDebounced(requests.access),
+    alignment: useDebounced(requests.alignment),
+    describe: useDebounced(requests.describe),
+    rename: useDebounced(requests.rename),
+    remove: requests.remove,
+  };
   const plans = {
-    access: useSectionPlan(requests.access, revision, true),
-    alignment: useSectionPlan(requests.alignment, revision, true),
-    describe: useSectionPlan(requests.describe, revision, true),
-    rename: useSectionPlan(requests.rename, revision),
-    remove: useSectionPlan(requests.remove, revision),
+    access: useSectionPlan(asked.access, revision, true),
+    alignment: useSectionPlan(asked.alignment, revision, true),
+    describe: useSectionPlan(asked.describe, revision, true),
+    rename: useSectionPlan(asked.rename, revision),
+    remove: useSectionPlan(asked.remove, revision),
   };
   const apply = useMutation({
     mutationFn: (action: SectionAction) => {
@@ -194,7 +209,10 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
       if (error === null && action === "describe") setDescription(undefined);
     },
   });
-  /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for. */
+  /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for.
+   * `pending` also covers a debounced request not yet caught up with what the fields now say
+   * (`sameRequest`): the preview is then an earlier request's, same as while any plan loads, and
+   * Apply stays disabled rather than offered over text the reader has since typed past. */
   const offer = (action: SectionAction): Offer => ({
     plan: plans[action].data ?? null,
     refusal:
@@ -203,7 +221,7 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
         : failed?.action === action
           ? failed.message
           : (plans[action].error?.message ?? null),
-    pending: plans[action].isPlaceholderData,
+    pending: plans[action].isPlaceholderData || !sameRequest(asked[action], requests[action]),
   });
 
   if (gone) return null;

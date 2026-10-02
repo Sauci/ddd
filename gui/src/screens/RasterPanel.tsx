@@ -8,10 +8,12 @@ import {
   type RasterPlanRequest,
 } from "../api/client";
 import { useUpdating } from "../app/updating";
+import { useDebounced } from "../app/useDebounced";
 import { type Offer, type RasterAction, RasterPanelView } from "../components/RasterPanelView";
 import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planEdit, rasterRemovable, rasterSet } from "../lib/shared";
+import { sameRequest } from "../lib/typing";
 import { rasterLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
@@ -44,8 +46,10 @@ interface Props {
  * invalidates `` [`${declared}-plan`] `` from the kind itself, which is this key exactly.
  *
  * `keep` leaves the last plan on screen while the next is asked for, marked as a placeholder, for
- * each of the raster's three keys: all three change with every key typed, and only in the text
- * they write, so the line saying which file it changes would otherwise blink at every key.
+ * each of the raster's three keys: all three are debounced before `request` ever reaches this
+ * hook (`useDebounced`, spec §6), so it changes once the reader pauses rather than with every key
+ * - but without `keep`, the line saying which file it changes would still blink away each time it
+ * does.
  */
 export function useRasterPlan(
   request: RasterPlanRequest | null,
@@ -135,12 +139,23 @@ export function RasterPanel({ name, revision, stopped, onClose, onGone, onMoved,
     rename: Extract<RasterPlanRequest, { action: "rename" }> | null;
     remove: Extract<RasterPlanRequest, { action: "remove" }> | null;
   };
+  // Event, cycle, description and rename each commit on every keystroke - plain fields, every
+  // one - so each is debounced on its own (spec §6): a field's first ask is immediate, and only
+  // one asked of before waits. Remove is never typed into - it is offered outright once nothing
+  // names the raster any longer - so `asked.remove` is `requests.remove` itself.
+  const asked: Record<RasterAction, RasterPlanRequest | null> = {
+    event: useDebounced(requests.event),
+    cycle: useDebounced(requests.cycle),
+    describe: useDebounced(requests.describe),
+    rename: useDebounced(requests.rename),
+    remove: requests.remove,
+  };
   const plans = {
-    event: useRasterPlan(requests.event, revision, true),
-    cycle: useRasterPlan(requests.cycle, revision, true),
-    describe: useRasterPlan(requests.describe, revision, true),
-    rename: useRasterPlan(requests.rename, revision),
-    remove: useRasterPlan(requests.remove, revision),
+    event: useRasterPlan(asked.event, revision, true),
+    cycle: useRasterPlan(asked.cycle, revision, true),
+    describe: useRasterPlan(asked.describe, revision, true),
+    rename: useRasterPlan(asked.rename, revision),
+    remove: useRasterPlan(asked.remove, revision),
   };
   const apply = useMutation({
     mutationFn: (action: RasterAction) => {
@@ -193,7 +208,10 @@ export function RasterPanel({ name, revision, stopped, onClose, onGone, onMoved,
       if (error === null && action === "describe") setDescription(undefined);
     },
   });
-  /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for. */
+  /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for.
+   * `pending` also covers a debounced request not yet caught up with what the fields now say
+   * (`sameRequest`): the preview is then an earlier request's, same as while any plan loads, and
+   * Apply stays disabled rather than offered over text the reader has since typed past. */
   const offer = (action: RasterAction): Offer => ({
     plan: plans[action].data ?? null,
     refusal:
@@ -202,7 +220,7 @@ export function RasterPanel({ name, revision, stopped, onClose, onGone, onMoved,
         : failed?.action === action
           ? failed.message
           : (plans[action].error?.message ?? null),
-    pending: plans[action].isPlaceholderData,
+    pending: plans[action].isPlaceholderData || !sameRequest(asked[action], requests[action]),
   });
 
   if (gone) return null;

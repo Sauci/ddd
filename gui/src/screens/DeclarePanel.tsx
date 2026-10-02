@@ -7,9 +7,11 @@ import {
   postEdit,
 } from "../api/client";
 import type { DeclarableReply } from "../api/types";
+import { useDebounced } from "../app/useDebounced";
 import { DeclarePanelView } from "../components/DeclarePanelView";
 import { definitionOf, dimensionsRaw, type Mode, modeOf, scopesOf } from "../lib/declarations";
 import { planEdit } from "../lib/projectUnits";
+import { sameRequest } from "../lib/typing";
 import { declareLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
@@ -92,10 +94,19 @@ export function DeclarePanel({ file, component, revision, stopped, onClose, onDe
 
   const mode = declarable.data === undefined ? "unchosen" : modeOf(typed, declarable.data.names);
   const request = requestOf(file, mode, typed, kind, scope, values, dimensions, declarable.data);
+  // The one plan this panel ever asks for, debounced as a whole (spec §6): the name, kind and
+  // scope fields each commit on every keystroke (`DeclarePanelView`'s own `ComboBox`es wire
+  // `onInputChange` straight to the state `requestOf` reads), so the request above changes on
+  // every one of them, not only when a key's own chooser commits a value.
+  const asked = useDebounced(request);
   const plan = useQuery({
-    queryKey: ["declaration-plan", request, revision],
-    queryFn: request === null ? skipToken : () => getDeclarationPlan(request),
+    queryKey: ["declaration-plan", asked, revision],
+    queryFn: asked === null ? skipToken : () => getDeclarationPlan(asked),
   });
+  // Shown and applied only once the debounced request is what the fields now say (`sameRequest`):
+  // otherwise the preview is pending, as it is while any plan loads - there is no separate
+  // `pending` flag here, so a mismatch nulls the plan outright rather than disabling a button.
+  const current = sameRequest(asked, request);
 
   const apply = useMutation({
     mutationFn: () => {
@@ -144,8 +155,8 @@ export function DeclarePanel({ file, component, revision, stopped, onClose, onDe
       values={values}
       typed_={typed_}
       dimensions={dimensions}
-      plan={plan.data ?? null}
-      refusal={refusal ?? plan.error?.message ?? null}
+      plan={current ? (plan.data ?? null) : null}
+      refusal={refusal ?? (current ? plan.error?.message : null) ?? null}
       changesShown={changesShown}
       busy={stopped || apply.isPending}
       onTyped={(text) => {

@@ -8,6 +8,7 @@ import {
   postEdit,
 } from "../api/client";
 import { useUpdating } from "../app/updating";
+import { useDebounced } from "../app/useDebounced";
 import {
   type ConstantAction,
   ConstantPanelView,
@@ -16,6 +17,7 @@ import {
 import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planEdit } from "../lib/shared";
+import { sameRequest } from "../lib/typing";
 import { constantLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
@@ -46,8 +48,9 @@ interface Props {
  * enough for both requests would be a bigger change than one more tab's own hook.
  *
  * `keep` leaves the last plan on screen while the next is asked for, marked as a placeholder, for
- * a value or a description: both change with every key typed, and only in the text they write, so
- * the line saying which file it changes would otherwise blink at every key.
+ * a value or a description: both are debounced before `request` ever reaches this hook
+ * (`useDebounced`, spec §6), so it changes once the reader pauses rather than with every key - but
+ * without `keep`, the line saying which file it changes would still blink away each time it does.
  */
 export function useConstantPlan(
   request: ConstantPlanRequest | null,
@@ -147,11 +150,23 @@ export function ConstantPanel({
     rename: Extract<ConstantPlanRequest, { action: "rename" }> | null;
     remove: Extract<ConstantPlanRequest, { action: "remove" }> | null;
   };
+  // Value, description and rename each commit on every keystroke - plain fields, rename's with
+  // no chooser of its own - so each is debounced on its own (spec §6): a panel's first ask of a
+  // field is immediate, and only a field asked of before waits. Remove is never typed into - it
+  // is offered outright once there is nothing left naming the constant - so there is no keystroke
+  // for it to wait on, and `asked.remove` is `requests.remove` itself, asked for as soon as it is
+  // offered.
+  const asked: Record<ConstantAction, ConstantPlanRequest | null> = {
+    value: useDebounced(requests.value),
+    describe: useDebounced(requests.describe),
+    rename: useDebounced(requests.rename),
+    remove: requests.remove,
+  };
   const plans = {
-    value: useConstantPlan(requests.value, revision, true),
-    describe: useConstantPlan(requests.describe, revision, true),
-    rename: useConstantPlan(requests.rename, revision),
-    remove: useConstantPlan(requests.remove, revision),
+    value: useConstantPlan(asked.value, revision, true),
+    describe: useConstantPlan(asked.describe, revision, true),
+    rename: useConstantPlan(asked.rename, revision),
+    remove: useConstantPlan(asked.remove, revision),
   };
   const apply = useMutation({
     mutationFn: (action: ConstantAction) => {
@@ -203,7 +218,10 @@ export function ConstantPanel({
       if (error === null && action === "describe") setDescription(undefined);
     },
   });
-  /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for. */
+  /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for.
+   * `pending` also covers a debounced request not yet caught up with what the fields now say
+   * (`sameRequest`): the preview is then an earlier request's, same as while any plan loads, and
+   * Apply stays disabled rather than offered over text the reader has since typed past. */
   const offer = (action: ConstantAction): Offer => ({
     plan: plans[action].data ?? null,
     refusal:
@@ -212,7 +230,7 @@ export function ConstantPanel({
         : failed?.action === action
           ? failed.message
           : (plans[action].error?.message ?? null),
-    pending: plans[action].isPlaceholderData,
+    pending: plans[action].isPlaceholderData || !sameRequest(asked[action], requests[action]),
   });
 
   if (gone) return null;

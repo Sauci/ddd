@@ -8,6 +8,7 @@ import {
 import { useState } from "react";
 import { type FilesPlanRequest, getFiles, getFilesPlan, postEdit } from "../api/client";
 import type { FilesPlanReply, State } from "../api/types";
+import { useDebounced } from "../app/useDebounced";
 import {
   AddFileView,
   FileActionsView,
@@ -18,6 +19,7 @@ import { FilesTableView } from "../components/FilesTableView";
 import { type FileRemoval, fileAdd, fileCreate, fileRemoval, rowsOf } from "../lib/files";
 import { isStale, type Refused, refusalShown } from "../lib/refusals";
 import { planEdit } from "../lib/shared";
+import { sameRequest } from "../lib/typing";
 import { filesLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { refusalOf } from "./UnitPanel";
@@ -119,9 +121,10 @@ export function FilesPage({ state, path, onPath, stopped }: Props) {
  *
  * Keyed `["files-plan", ...]`, apart from every other tab's plans, so that invalidating these on an
  * edit throws none of theirs away. Never kept on screen while the next is asked for: New file's and
- * Add's fields ask again with every key typed, and a plan kept through a refusal would come back
- * as the plan of a request the reader has typed past - React Query hands a placeholder the last
- * plan that came, not the last one asked. `SharedAdd`'s own per-keystroke plans keep none either.
+ * Add's fields are debounced as a whole (spec §6) rather than kept, since a plan kept through a
+ * refusal would come back as the plan of a request the reader has typed past once the debounced
+ * request moved on - React Query hands a placeholder the last plan that came, not the last one
+ * asked. `SharedAdd`'s own per-keystroke plans keep none either.
  */
 function useFilesPlan(request: FilesPlanRequest | null, revision: number | undefined) {
   return useQuery({
@@ -147,6 +150,14 @@ function useFilesApply(
   plan: UseQueryResult<FilesPlanReply>,
   revision: number | undefined,
   onApplied: () => void,
+  // Whether `plan` is the answer to a debounced request that is still what the form's fields say
+  // (`sameRequest`): `true` where a form's own request is never debounced - `RemoveFile`'s, never
+  // typed into - so its one call site below needs no third fact to pass. Where it is `false`,
+  // `plan`'s own refusal is an earlier request's, same as while any plan loads, and is dropped
+  // rather than shown for text the reader has since typed past; a stale or a plain apply failure
+  // is neither - both are about an Apply already made, not a plan still loading - and keep
+  // showing exactly as they did before this parameter existed.
+  current = true,
 ) {
   const queries = useQueryClient();
   const [refused, setRefused] = useState<string | null>(null);
@@ -186,13 +197,15 @@ function useFilesApply(
   });
   return {
     apply,
-    refusal: refusalShown(stale, refused, plan.error, revision),
+    refusal: refusalShown(stale, refused, current ? plan.error : null, revision),
     /** The reader chose again: what an earlier Apply was refused for says nothing of this plan. */
     chose: () => setRefused(null),
   };
 }
 
-/** New file's form, holding its three fields; its plan is asked for again as each is typed. */
+/** New file's form, holding its three fields; its plan is debounced as each is typed (spec §6):
+ * Kind commits on every keystroke (`NewFileView`'s own chooser, which takes typed text as
+ * readily as a pick), and so do the plain File name and Component name fields. */
 function NewFile({
   project,
   creatable,
@@ -211,9 +224,20 @@ function NewFile({
   const [component, setComponent] = useState("");
   const [changesShown, setChangesShown] = useState(false);
   const request = fileCreate(kind, name, component);
-  const plan = useFilesPlan(request, revision);
+  const asked = useDebounced(request);
+  const plan = useFilesPlan(asked, revision);
+  // Whether the debounced request is what the three fields now say (`sameRequest`): otherwise
+  // the preview is pending, as it is while any plan loads, and is dropped rather than shown.
+  const current = sameRequest(asked, request);
   // Created, the form closes: the new file's row is the table's to show, once it reads again.
-  const { apply, refusal, chose } = useFilesApply(request, project, plan, revision, onClose);
+  const { apply, refusal, chose } = useFilesApply(
+    request,
+    project,
+    plan,
+    revision,
+    onClose,
+    current,
+  );
   return (
     <NewFileView
       project={project}
@@ -233,7 +257,7 @@ function NewFile({
         setComponent(text);
         chose();
       }}
-      offer={{ plan: plan.data ?? null, refusal }}
+      offer={{ plan: current ? (plan.data ?? null) : null, refusal }}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => apply.mutate()}
@@ -243,7 +267,8 @@ function NewFile({
   );
 }
 
-/** Add's form, holding its path; its plan is asked for again as it is typed. */
+/** Add's form, holding its path; its plan is debounced as it is typed (spec §6): the plain Path
+ * field commits on every keystroke, exactly as `AddFileView`'s own doc already says it does. */
 function AddFile({
   project,
   revision,
@@ -258,9 +283,20 @@ function AddFile({
   const [path, setPath] = useState("");
   const [changesShown, setChangesShown] = useState(false);
   const request = fileAdd(path);
-  const plan = useFilesPlan(request, revision);
+  const asked = useDebounced(request);
+  const plan = useFilesPlan(asked, revision);
+  // Whether the debounced request is what the Path field now says (`sameRequest`): otherwise the
+  // preview is pending, as it is while any plan loads, and is dropped rather than shown.
+  const current = sameRequest(asked, request);
   // Added, the form closes: the file's row is the table's to show, once it reads again.
-  const { apply, refusal, chose } = useFilesApply(request, project, plan, revision, onClose);
+  const { apply, refusal, chose } = useFilesApply(
+    request,
+    project,
+    plan,
+    revision,
+    onClose,
+    current,
+  );
   return (
     <AddFileView
       project={project}
@@ -269,7 +305,7 @@ function AddFile({
         setPath(text);
         chose();
       }}
-      offer={{ plan: plan.data ?? null, refusal }}
+      offer={{ plan: current ? (plan.data ?? null) : null, refusal }}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => apply.mutate()}

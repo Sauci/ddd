@@ -82,20 +82,20 @@ export function SharedTableView({
         >
           <TableHeader>
             {/* Widths measured in Chrome (fix round 3) on this table's stories and on a scratch
-                copy of examples/vocabulary - neither examples/demo nor a generated project
-                declares a shared entry. Vocabulary is fixed at 95px, its header the widest of its
-                words at 90px. The other four share the rest - Name and States 2fr each, Used by
-                and Findings 1fr each - in a 1280px window 324px for Name and 325px for States,
-                which hold the widest name (PRESSURE_CELLS, 128px) and the longest states
-                ("read-write, align 4", 135px). A panel beside the table leaves it a box of about
-                552px, 537px once a browser draws the box's own vertical scrollbar; a column never
-                goes below its `minWidth`, so Used by and Findings keep 80px there and Name and
-                States share what is left - 140px each in a 535px box, which still holds both. The
-                floors sum to 495px: beside a panel they fit a window down to about 991px wide -
-                1034px where a browser draws the box's own vertical scrollbar and the page's, 15px
-                each - and narrower, until the panel moves under the table at 900px, the box
-                scrolls sideways; with no panel the table fits a window down to about 527px
-                (557px). */}
+                copy of examples/vocabulary - neither examples/demo nor a generated project declares
+                a shared entry. Vocabulary is fixed at 95px, its header the widest of its words at
+                90px. The other four share the rest - Name and States 2fr each, Used by and Findings
+                1fr each - in a 1280px window 324px for Name and 325px for States, which hold the
+                widest name (PRESSURE_CELLS, 128px) and the longest states ("read-write, align 4",
+                135px). A panel beside the table leaves it a box of about 552px, 537px once a
+                browser draws the box's own vertical scrollbar; a column never goes below its
+                `minWidth`, so Used by and Findings keep 80px there and Name and States share what
+                is left - 140px each in a 535px box, which still holds both; a longer name is cut
+                with an ellipsis, never wrapped. The floors sum to 495px: beside a panel they fit a
+                window down to about 991px wide - 1034px where a browser draws the box's own
+                vertical scrollbar and the page's, 15px each - and narrower, until the panel moves
+                under the table at 900px, the box scrolls sideways; with no panel the table fits a
+                window down to about 527px (557px). */}
             <Column isRowHeader width="2fr" minWidth={140}>
               Name
             </Column>

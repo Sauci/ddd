@@ -487,6 +487,17 @@ tr.changing td {
 .react-aria-Table.long .react-aria-Row.child .react-aria-Cell[aria-colindex="1"] {
   padding-left: calc(10px + var(--space-4));
 }
+/* A name longer than its column is cut with an ellipsis, never wrapped (Ruling T9-6): a long
+   table's cells do that to their own text (the cell rule further up). A row header holding its name
+   as a button - the Table tab's Component, the one long table that does - needs the same said to
+   the button: a button is an inline-block, which a cell's ellipsis does not cut, so Chrome left an
+   overlong name clipped at the cell's edge with no ellipsis at all (measured, in a 110px cell).
+   Measured too: a name that fits stands exactly where it stood before this rule. */
+.react-aria-Table.long .react-aria-Cell[role="rowheader"] > button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* The unit panel's own places table draws through `LongTable` now (fix round 1, Minor 5),
    `.panel-declarations` merged onto `.long` for this margin above and this look - but
    `.react-aria-Column` is a div, never a `th`, so `.panel-declarations th`'s own rule above never

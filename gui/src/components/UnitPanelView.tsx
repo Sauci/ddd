@@ -125,10 +125,12 @@ export function UnitPanelView(props: UnitPanelViewProps) {
         // (user_interface.ddd.json, 169px), and Where, whose names are short - the demo's widest is
         // ParameterA at 96px, the generated project's C00000_O0005 at 115px, examples/vocabulary's
         // ManifoldPressure at 132px - takes what is left, 152px in the 472px box and 136px in the
-        // 456px one, above a floor of 125px. The floors sum to 445px: the panel's box holds them
-        // down to a window about 1043px wide - 1089px where a browser draws the box's own vertical
-        // scrollbar and the page's, 15px each - and narrower, until the panel moves under the table
-        // it stands beside at 900px and takes the window's whole width, the box scrolls sideways.
+        // 456px one, above a floor of 125px. A name longer than its column - ManifoldPressure is
+        // about 4px short of the 136px - is cut with an ellipsis, never wrapped; Windows' own font
+        // was not measured. The floors sum to 445px: the panel's box holds them down to a window
+        // about 1043px wide - 1089px where a browser draws the box's own vertical scrollbar and the
+        // page's, 15px each - and narrower, until the panel moves under the table it stands beside
+        // at 900px and takes the window's whole width, the box scrolls sideways.
         <LongTable aria-label={`Where ${unit.unit} is stated`} className="panel-declarations">
           <TableHeader>
             <Column isRowHeader width="1fr" minWidth={125}>

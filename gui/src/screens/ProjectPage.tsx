@@ -1,6 +1,7 @@
 import type { State } from "../api/types";
 import { useUpdating } from "../app/updating";
 import { tableLine } from "../lib/findings";
+import { shownPath } from "../lib/paths";
 import { Button } from "../ui/Button";
 import { also, Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
 
@@ -35,22 +36,31 @@ export function ProjectPage({ state, onComponent }: Props) {
         onRowAction={(key) => onComponent(String(key))}
       >
         <TableHeader>
-          {/* Widths measured in Chrome (fix round 3) on scratch copies of examples/demo and of a
-              generated project of 10,000 declarations: no component's name takes more than 101px
-              of Component's 240px, and no count more than its header - 58px of Errors' 90px, 80px
-              of Warnings' 100px. File is left to take the width the other three do not, 638px in
-              a 1280px window: a path runs far longer than a component's own name or either of its
-              counts, and it is an absolute one, so how long it runs depends on where the project
-              sits on disk - a longer one is cut with an ellipsis. This table never sits beside a
-              panel; it fits a window down to about 537px wide - 567px where a browser draws the
-              box's own vertical scrollbar and the page's, 15px each - and narrower, the box
-              scrolls sideways. */}
-          <Column isRowHeader width={240}>
+          {/* Widths measured in Chrome (fix round 3, addendum) on scratch copies of examples/demo,
+              of a generated project of 10,000 declarations and of examples/vocabulary. Errors and
+              Warnings are fixed at 70px and 90px, just above their headers - 58px and 79px, wider
+              than any count - Errors with a `minWidth` of its own, as React Aria floors a column
+              with none at 75px. Component and File share the rest, 1fr to 3fr: in a 1280px window
+              227px for names of at most 101px (UserInterface), and 681px for paths of at most 321px
+              (subsystems/logging/event_logger.ddd.json), each path relative to the project's
+              directory (`shownPath`) with the absolute one in its title. A column never goes below
+              its `minWidth`: in a narrower window Component keeps 110px, which holds every name of
+              the three projects - a longer one is cut with an ellipsis, never wrapped (ui.css says
+              how, for a name that is a button) - and File takes what is left: 265px in a 535px box,
+              where the demo's two longest paths are cut with an ellipsis, and 75px at the least.
+              This table never sits beside a panel; its floors, 345px, fit a window down to about
+              377px wide - 407px where a browser draws the box's own vertical scrollbar and the
+              page's, 15px each - and narrower, the box scrolls sideways. */}
+          <Column isRowHeader width="1fr" minWidth={110}>
             Component
           </Column>
-          <Column width={90}>Errors</Column>
-          <Column width={100}>Warnings</Column>
-          <Column>File</Column>
+          <Column width={70} minWidth={70}>
+            Errors
+          </Column>
+          <Column width={90}>Warnings</Column>
+          <Column width="3fr" minWidth={75}>
+            File
+          </Column>
         </TableHeader>
         <TableBody items={components}>
           {(file) => (
@@ -62,7 +72,13 @@ export function ProjectPage({ state, onComponent }: Props) {
               </Cell>
               <Cell>{file.findings.error}</Cell>
               <Cell>{file.findings.warning}</Cell>
-              <Cell className={also("path")}>{file.path}</Cell>
+              {/* The path relative to the project's directory (`shownPath`, Ruling T9-5), the
+                  absolute one in its title. On a span: React Aria's `Cell` hands its element no
+                  `title` (`filterDOMProps` passes on only `dir`, `lang`, `hidden`, `inert` and
+                  `translate` of the global attributes), so the title shows over the path's text. */}
+              <Cell className={also("path")}>
+                <span title={file.path}>{shownPath(state.project, file.path)}</span>
+              </Cell>
             </Row>
           )}
         </TableBody>

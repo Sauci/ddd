@@ -50,11 +50,12 @@ export function FilesTableView({ reply, files, selected, onSelect }: FilesTableV
               table leaves it a box of about 552px, 537px once a browser draws the box's own
               vertical scrollbar; a column never goes below its `minWidth`, so Entry keeps 280px
               there, every entry of both projects whole, and State takes what is left - 75px in a
-              535px box - its sentences cut with an ellipsis. The floors sum to 520px: beside a
-              panel they fit a window down to about 1038px wide - 1082px where a browser draws the
-              box's own vertical scrollbar and the page's, 15px each - and narrower, until the panel
-              moves under the table at 900px, the box scrolls sideways; with no panel the table fits
-              a window down to about 552px (582px). */}
+              535px box - its sentences cut with an ellipsis. An entry longer than its column is cut
+              with an ellipsis too, never wrapped. The floors sum to 520px: beside a panel they fit
+              a window down to about 1038px wide - 1082px where a browser draws the box's own
+              vertical scrollbar and the page's, 15px each - and narrower, until the panel moves
+              under the table at 900px, the box scrolls sideways; with no panel the table fits a
+              window down to about 552px (582px). */}
           <Column isRowHeader width="3fr" minWidth={280}>
             Entry
           </Column>

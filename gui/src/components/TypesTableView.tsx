@@ -56,19 +56,20 @@ export function TypesTableView({
         >
           <TableHeader>
             {/* Widths measured in Chrome (fix round 3) on a scratch copy of examples/demo and on
-                this table's stories (a generated project declares no types). Kind is fixed at
-                90px: its words are `KIND_WORDS`' and "unknown", the widest at 79px. The other
-                four share the rest - Type 2fr, Description 5fr, Used by and Findings 1fr each -
-                in a 1280px window 217px for Type, 544px for Description, which hold the demo's
-                widest type (SensorDiagnosis_t, 137px) and its longest description (475px). A
-                panel beside the table leaves it a box of about 552px, 537px once a browser draws
-                the box's own vertical scrollbar; a column never goes below its `minWidth`, so
-                Type keeps 150px there, Used by and Findings 80px, and Description takes what is
-                left - 135px in a 535px box - its sentences cut with an ellipsis. The floors sum to
-                500px: beside a panel they fit a window down to about 1000px wide - 1044px where a
-                browser draws the box's own vertical scrollbar and the page's, 15px each - and
-                narrower, until the panel moves under the table at 900px, the box scrolls
-                sideways; with no panel the table fits a window down to about 532px (562px). */}
+                this table's stories (a generated project declares no types). Kind is fixed at 90px:
+                its words are `KIND_WORDS`' and "unknown", the widest at 79px. The other four share
+                the rest - Type 2fr, Description 5fr, Used by and Findings 1fr each - in a 1280px
+                window 217px for Type, 544px for Description, which hold the demo's widest type
+                (SensorDiagnosis_t, 137px) and its longest description (475px). A panel beside the
+                table leaves it a box of about 552px, 537px once a browser draws the box's own
+                vertical scrollbar; a column never goes below its `minWidth`, so Type keeps 150px
+                there, Used by and Findings 80px, and Description takes what is left - 135px in a
+                535px box - its sentences cut with an ellipsis. A type's name longer than its column
+                is cut with an ellipsis too, never wrapped. The floors sum to 500px: beside a panel
+                they fit a window down to about 1000px wide - 1044px where a browser draws the box's
+                own vertical scrollbar and the page's, 15px each - and narrower, until the panel
+                moves under the table at 900px, the box scrolls sideways; with no panel the table
+                fits a window down to about 532px (562px). */}
             <Column isRowHeader width="2fr" minWidth={150}>
               Type
             </Column>

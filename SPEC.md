@@ -2495,5 +2495,5 @@ written then unless `--force`, which writes what was described. An image that ca
 is not ELF, carries no DWARF or is not linked, an image whose DWARF holds type units
 (`-fdebug-types-section`), comes from gcc's link-time optimisation (`-flto`) or is compressed
 with zstd rather than zlib, a malformed `SYMBOL` and an `-o` naming the image - both refused
-before the image is read - and a missing pyelftools - which the `elf` extra installs - are
-usage errors, `2`.
+before the image is read - and a pyelftools missing or older than 0.32 are usage errors,
+`2`.

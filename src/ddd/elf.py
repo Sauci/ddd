@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Final, Literal, Protocol
 
+import elftools
 from elftools.common.exceptions import DWARFError, ELFError
 from elftools.dwarf.dwarf_expr import DWARFExprParser
 from elftools.elf.constants import SH_FLAGS
@@ -48,6 +49,12 @@ REMOVED: Final = "the compiler removed its storage"
 THREAD_LOCAL: Final = "it is thread-local, with an address of its own in every thread"
 NOT_AN_ADDRESS: Final = "its location is not a fixed address"
 DISCARDED: Final = "the linker discarded its storage"
+
+_PYELFTOOLS_FLOOR: Final = (0, 32)
+"""The oldest pyelftools this reader reads with: 0.32 is the first whose ``has_dwarf_info``
+takes ``strict``. An older one still imports, and every image then raised a ``TypeError`` -
+which the refusal of a damaged image named as the image's fault (seen on a maintainer's venv
+holding 0.31 from before ddd was installed)."""
 
 _DW_OP_PLUS_UCONST: Final = 0x23
 _CONTROL: Final = re.compile(r"[\x00-\x1f\x7f-\x9f]")
@@ -377,6 +384,14 @@ def open_image(path: Path) -> Image:
     own. Any exception while reading refuses the image, naming the exception, so that a damaged
     file is a usage error rather than a traceback.
     """
+    installed = elftools.__version__
+    if tuple(int(part) for part in re.findall(r"\d+", installed)[:2]) < _PYELFTOOLS_FLOOR:
+        floor = ".".join(str(part) for part in _PYELFTOOLS_FLOOR)
+        msg = (
+            f"pyelftools {installed} is installed, and reading an ELF image needs {floor} or "
+            f"newer: pip install --upgrade 'pyelftools>={floor}'"
+        )
+        raise ElfReadError(msg)
     shown = path.as_posix()
     try:
         contents = path.read_bytes()

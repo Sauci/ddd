@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import elftools
 import pytest
 from elftools.elf.elffile import ELFFile
 
@@ -1169,6 +1170,23 @@ class TestRefusals:
     """What open_image refuses, each in a sentence naming the file. Where the end of the
     sentence is pyelftools' own words about a damaged file, the test pins ours and leaves
     theirs to them."""
+
+    def test_a_pyelftools_older_than_the_floor_is_named_rather_than_the_image(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """0.31's has_dwarf_info takes no strict: read with it, every image raised a TypeError,
+        and the refusal of a damaged image blamed the image (seen on a maintainer's venv)."""
+        monkeypatch.setattr(elftools, "__version__", "0.31")
+        with pytest.raises(ElfReadError) as refused:
+            open_image(FIXTURES / "x86_64.elf")
+        assert str(refused.value) == (
+            "pyelftools 0.31 is installed, and reading an ELF image needs 0.32 or newer: "
+            "pip install --upgrade 'pyelftools>=0.32'"
+        )
+
+    def test_the_floor_itself_reads(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(elftools, "__version__", "0.32")
+        assert open_image(FIXTURES / "x86_64.elf").variables
 
     def test_a_file_that_cannot_be_read_is_refused(self, tmp_path: Path) -> None:
         path = tmp_path / "missing.elf"

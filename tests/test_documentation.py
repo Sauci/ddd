@@ -968,14 +968,16 @@ class TestPackaging:
             )
 
     def test_the_runtime_requirements_are_what_the_package_imports(self) -> None:
-        """The two runtime dependencies are a deliberate claim of the README, so a third one
-        appearing in requirements.txt has to be a decision rather than a drive-by addition."""
+        """The three runtime dependencies are a deliberate claim of the README, so a fourth one
+        appearing in requirements.txt has to be a decision rather than a drive-by addition.
+        pyelftools was one: it joined when reading ELF images became part of DDD rather than an
+        extra, after an old copy already installed in a venv went unnoticed by the extra."""
         listed = {
             re.split(r"[<>=!~ ]", line, maxsplit=1)[0].lower()
             for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
             if line.strip() and not line.startswith("#")
         }
-        assert listed == {"pydantic", "jinja2"}
+        assert listed == {"pydantic", "jinja2", "pyelftools"}
 
     def test_the_extension_declines_an_untrusted_workspace_and_the_pages_say_why(self) -> None:
         """A description file names the plugins the server runs, and the server imports the

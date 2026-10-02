@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any, ClassVar
 
+import elftools
 import pytest
 
 from conftest import (
@@ -4374,7 +4375,7 @@ class TestToolFromElf:
             "ddd: 'main.c:' names no variable: give a name or a pattern after the unit\n",
         )
 
-    def test_without_pyelftools_the_command_names_the_extra(
+    def test_without_pyelftools_the_command_says_how_to_install_it(
         self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """An import answers from sys.modules before it looks at a parent package, so every
@@ -4388,11 +4389,24 @@ class TestToolFromElf:
         code, _, err = from_elf(capsys, str(X86), "Cal_Gain")
         assert (code, err) == (
             EXIT_USAGE,
-            "ddd: reading an ELF image needs pyelftools, which the 'elf' extra installs: "
-            "pip install 'ddd-tool[elf]'\n",
+            "ddd: reading an ELF image needs pyelftools, which is not installed: "
+            "pip install 'pyelftools>=0.32,<1'\n",
         )
 
-    def test_a_broken_install_is_not_blamed_on_the_extra(
+    def test_an_old_pyelftools_is_named_and_not_the_image(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A maintainer's report: a venv still holding pyelftools 0.31 answered every image
+        with "not an ELF image this tool can read: TypeError: ... 'strict'"."""
+        monkeypatch.setattr(elftools, "__version__", "0.31")
+        code, _, err = from_elf(capsys, str(X86), "Cal_Gain")
+        assert (code, err) == (
+            EXIT_USAGE,
+            "ddd: pyelftools 0.31 is installed, and reading an ELF image needs 0.32 or newer: "
+            "pip install --upgrade 'pyelftools>=0.32'\n",
+        )
+
+    def test_a_missing_module_of_ddd_is_not_blamed_on_pyelftools(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setitem(sys.modules, "ddd.elf", None)

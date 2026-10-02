@@ -34,7 +34,7 @@ export function FileActionsView({ onNewFile, onAddFile }: FileActionsViewProps) 
  * Where one of the three actions stands: its plan once it has come, and why it cannot be applied -
  * the two facts `ConstantPanelView`'s own `Offer` keeps for each of a constant's changes, less its
  * `pending`: these plans are never kept on screen while the next is asked for, as `SharedAdd`'s
- * own form keeps none of its per-keystroke plans either.
+ * own three - debounced the same way (spec §6) - keep none of theirs either (fix round 2).
  */
 export interface FileOffer {
   /** The plan; `null` while it is being asked for, when it was refused, and while the form does

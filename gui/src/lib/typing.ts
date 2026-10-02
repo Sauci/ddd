@@ -2,8 +2,10 @@
  * previews: long enough that typing a name asks once, short enough that the preview follows. */
 export const PLAN_DELAY_MS = 250;
 
-/** How long to wait before asking for a plan: at once for a panel's first - opening it previews
- * straight away - and `PLAN_DELAY_MS` for every later one. */
+/** How long to wait before asking for a plan: at once for one debounced value's first wait -
+ * previewed straight away - and `PLAN_DELAY_MS` for every later one. Per value, not per panel:
+ * `useDebounced` keeps `asked` per call, so a panel with several debounced fields asks each
+ * field's own first at once, and only a field already asked of before waits. */
 export function planDelay(asked: boolean): number {
   return asked ? PLAN_DELAY_MS : 0;
 }

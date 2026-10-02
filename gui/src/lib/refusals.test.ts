@@ -26,27 +26,27 @@ test("an Apply refused for a file changed on disk is stale, and no other refusal
 
 test("a stale Apply's sentence is shown over any other while its revision stands", () => {
   const stale = { text: "A file changed on disk", revision: 7 };
-  expect(refusalShown(stale, null, new Error("asked"), 7)).toBe("A file changed on disk");
+  expect(refusalShown(stale, null, "asked", 7)).toBe("A file changed on disk");
   // Over another Apply's refusal too. `useFilesApply` never sets both - setting one clears the
   // other - but the order is the function's own, and this is where it is stated.
-  expect(refusalShown(stale, "The change was refused: no", new Error("asked"), 7)).toBe(
+  expect(refusalShown(stale, "The change was refused: no", "asked", 7)).toBe(
     "A file changed on disk",
   );
 });
 
 test("once the analysis moves past a stale Apply, why the plan was refused shows again", () => {
   const stale = { text: "A file changed on disk", revision: 7 };
-  expect(refusalShown(stale, null, new Error("refused when asked"), 8)).toBe("refused when asked");
+  expect(refusalShown(stale, null, "refused when asked", 8)).toBe("refused when asked");
 });
 
 test("an Apply refused for another reason is shown over why the plan was refused", () => {
-  expect(refusalShown(null, "The change was refused: no", new Error("asked"), 7)).toBe(
+  expect(refusalShown(null, "The change was refused: no", "asked", 7)).toBe(
     "The change was refused: no",
   );
 });
 
 test("a plan refused when asked is shown in the server's own words", () => {
-  expect(refusalShown(null, null, new Error("units.ddd.json is there already"), 7)).toBe(
+  expect(refusalShown(null, null, "units.ddd.json is there already", 7)).toBe(
     "units.ddd.json is there already",
   );
 });

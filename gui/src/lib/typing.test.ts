@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { atOnce, PLAN_DELAY_MS, planDelay, planShown, sameRequest } from "./typing";
 
 describe("planDelay", () => {
-  test("a panel's first plan is asked for at once", () => {
+  test("a debounced value's first plan is asked for at once, not only a panel's very first", () => {
     expect(planDelay(false)).toBe(0);
   });
 

@@ -81,6 +81,15 @@ export function DeclarePanel({ file, component, revision, stopped, onClose, onDe
   // The one write refused, cleared on the next change of the form - unlike the other panels, this
   // one always closes on success, so there is no later revision for a stale refusal to wait on.
   const [refusal, setRefusal] = useState<string | null>(null);
+  // Whether the most recent change to the form was typed into a field, or committed discretely -
+  // a key's own chooser, picked or confirmed with Enter (`onValue`, never typing: `DeclarePanelView`'s
+  // own `KeyChooser` commits only through `onChosen`, same as every other panel's). Fed to
+  // `useDebounced` below so a key's own Enter takes effect at once, the same as every other pick
+  // or button on this screen, rather than waiting `PLAN_DELAY_MS` for debouncing the one combined
+  // request uniformly (fix round 2's own finding). `dimensions` is left typed, conservatively:
+  // `DimensionsField`'s own `onRows` fires for a row typed into as readily as one picked or
+  // entered, and does not say which.
+  const [typedEdit, setTypedEdit] = useState(true);
 
   // Scope follows the name: a scope the newly typed (or newly loaded) name may not take is not
   // kept, and moves forward onto the first this name does take. Typing between two names that
@@ -97,8 +106,9 @@ export function DeclarePanel({ file, component, revision, stopped, onClose, onDe
   // The one plan this panel ever asks for, debounced as a whole (spec §6): the name, kind and
   // scope fields each commit on every keystroke (`DeclarePanelView`'s own `ComboBox`es wire
   // `onInputChange` straight to the state `requestOf` reads), so the request above changes on
-  // every one of them, not only when a key's own chooser commits a value.
-  const asked = useDebounced(request);
+  // every one of them, not only when a key's own chooser commits a value - `typedEdit` tells
+  // `useDebounced` which this latest change was.
+  const asked = useDebounced(request, typedEdit);
   const plan = useQuery({
     queryKey: ["declaration-plan", asked, revision],
     queryFn: asked === null ? skipToken : () => getDeclarationPlan(asked),
@@ -163,23 +173,28 @@ export function DeclarePanel({ file, component, revision, stopped, onClose, onDe
       busy={stopped || apply.isPending}
       onTyped={(text) => {
         setTyped(text);
+        setTypedEdit(true);
         setRefusal(null);
       }}
       onKind={(next) => {
         setKind(next);
+        setTypedEdit(true);
         setRefusal(null);
       }}
       onScope={(next) => {
         setScope(next);
+        setTypedEdit(true);
         setRefusal(null);
       }}
       onValue={(key, raw) => {
         setValues((current) => ({ ...current, [key]: raw }));
+        setTypedEdit(false);
         setRefusal(null);
       }}
       onTyped_={(key, text) => setTyped_((current) => ({ ...current, [key]: text }))}
       onDimensions={(rows) => {
         setDimensions(rows);
+        setTypedEdit(true);
         setRefusal(null);
       }}
       onChangesShown={setChangesShown}

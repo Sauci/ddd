@@ -25,9 +25,11 @@ export interface Offer {
   plan: PlanReply | null;
   /** Why the plan was refused, or why applying it was; `null` when neither was. */
   refusal: string | null;
-  /** The plan shown is an earlier one's: a description's, debounced (spec §6) so it is kept on
-   * screen while the next one is asked for, or a debounced request not yet caught up with what
-   * the fields now say. It cannot be applied. */
+  /** Whether `plan` is `null` because there is none to trust yet: a description's own debounced
+   * request (spec §6) has not yet caught up with what the fields now say, or the server has not
+   * yet answered the one that has (`planShown`, `lib/typing.ts` - never an earlier request's
+   * answer, kept on screen in its place). `plan` is drawn, and Apply offered, only once this is
+   * `false`. */
   pending: boolean;
 }
 

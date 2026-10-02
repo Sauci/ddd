@@ -45,21 +45,16 @@ interface Props {
  * bigger change than one more hook. `SharedPage`'s own add form relies on that spelling too - it
  * invalidates `` [`${declared}-plan`] `` from the kind itself, which is this key exactly.
  *
- * `keep` leaves the last plan on screen while the next is asked for, marked as a placeholder, for
- * each of the raster's three keys: all three are debounced before `request` ever reaches this
- * hook (`useDebounced`, spec §6), so it changes once the reader pauses rather than with every key
- * - but without `keep`, the line saying which file it changes would still blink away each time it
- * does.
+ * Keeps no placeholder while the next is asked for: each of the raster's three keys is debounced
+ * before `request` ever reaches this hook (`useDebounced`, spec §6), and `planShown`
+ * (`lib/typing.ts`) never trusts a placeholder's own answer, so one kept here would never be
+ * drawn - a `keep` option once did exactly that (fix round 2's own finding), which is why there
+ * is none now.
  */
-export function useRasterPlan(
-  request: RasterPlanRequest | null,
-  revision: number | undefined,
-  keep = false,
-) {
+export function useRasterPlan(request: RasterPlanRequest | null, revision: number | undefined) {
   return useQuery({
     queryKey: ["raster-plan", request, revision],
     queryFn: request === null ? skipToken : () => getRasterPlan(request),
-    placeholderData: (previous) => (keep ? previous : undefined),
   });
 }
 
@@ -151,9 +146,9 @@ export function RasterPanel({ name, revision, stopped, onClose, onGone, onMoved,
     remove: requests.remove,
   };
   const plans = {
-    event: useRasterPlan(asked.event, revision, true),
-    cycle: useRasterPlan(asked.cycle, revision, true),
-    describe: useRasterPlan(asked.describe, revision, true),
+    event: useRasterPlan(asked.event, revision),
+    cycle: useRasterPlan(asked.cycle, revision),
+    describe: useRasterPlan(asked.describe, revision),
     rename: useRasterPlan(asked.rename, revision),
     remove: useRasterPlan(asked.remove, revision),
   };

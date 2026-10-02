@@ -49,20 +49,15 @@ export function refusalOf(error: Error): string {
  * exact request would only be given again until a later revision changes what it is checked
  * against.
  *
- * `keep` leaves the last plan on screen while the next is asked for, marked as a placeholder, for
- * a description: it is debounced before `request` ever reaches this hook (`useDebounced`, spec
- * §6), so it changes once the reader pauses rather than with every key - but without `keep`, the
- * line saying which file it changes would still blink away each time it does.
+ * Keeps no placeholder while the next is asked for: a description is debounced before `request`
+ * ever reaches this hook (`useDebounced`, spec §6), and `planShown` (`lib/typing.ts`) never
+ * trusts a placeholder's own answer, so one kept here would never be drawn - a `keep` option once
+ * did exactly that (fix round 2's own finding), which is why there is none now.
  */
-export function usePlan(
-  request: TypePlanRequest | null,
-  revision: number | undefined,
-  keep = false,
-) {
+export function usePlan(request: TypePlanRequest | null, revision: number | undefined) {
   return useQuery({
     queryKey: ["type-plan", request, revision],
     queryFn: request === null ? skipToken : () => getTypePlan(request),
-    placeholderData: (previous) => (keep ? previous : undefined),
     retry: false,
   });
 }
@@ -115,6 +110,13 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
   // The two fields of a range, touched, while `selected` is `limits` - the same tri-state
   // `chosen` is for every other key: `undefined` until the reader edits one.
   const [edited, setEdited] = useState<{ min: string; max: string } | undefined>(undefined);
+  // Whether `edited`'s own value came from typing into Min or Max, rather than a pick from the
+  // list: `onChosen` below writes `edited` too, for a range picked outright or "state nothing"
+  // chosen, so `edited !== undefined` alone cannot tell a pick from typing (fix round 2's own
+  // finding - that read every limits pick as typing, and waited `PLAN_DELAY_MS` for one that
+  // should go through at once, the same as every other pick on this screen already does). Reset
+  // wherever `edited` itself is, so it never outlives the row it was made for.
+  const [typedLimits, setTypedLimits] = useState(false);
   // What the reader types into the Description field, `undefined` until they do: the field then
   // reads the type's own description.
   const [description, setDescription] = useState<string | undefined>(undefined);
@@ -170,18 +172,18 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
   // `describe` and `rename` are plain fields, committing - and so debounced - on every keystroke.
   // `key`'s own chooser commits discretely - a pick, or typed text confirmed with Enter - except
   // while its `limits` editor is open: there, the two fields write `edited` on every keystroke
-  // the same way `describe`'s and `rename`'s always do. `edited !== undefined` is exactly that -
-  // `undefined` until the reader has actually typed into Min or Max (review fix round 1,
-  // Important 3 and Minor 2: a pick, including the first moment a `limits` row opens and reads
-  // its starting range, takes effect at once; only typing into it waits).
+  // the same way `describe`'s and `rename`'s always do. `typedLimits` says which this one is
+  // (fix round 2: `selected` and `chosen`/`edited` alone cannot - a pick, including the first
+  // moment a `limits` row opens and reads its starting range, takes effect at once; only typing
+  // into Min or Max waits).
   const asked: Record<Kind, TypePlanRequest | null> = {
-    key: useDebounced(requests.key, edited !== undefined),
+    key: useDebounced(requests.key, typedLimits),
     describe: useDebounced(requests.describe),
     rename: useDebounced(requests.rename),
   };
   const plans = {
     key: usePlan(asked.key, revision),
-    describe: usePlan(asked.describe, revision, true),
+    describe: usePlan(asked.describe, revision),
     rename: usePlan(asked.rename, revision),
   };
   // The panel shows one preview at a time, so at most one of the three is ever dirty at once:
@@ -203,9 +205,10 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
   // The active path's plan to draw, why its own fetch was refused if it was, and whether it may
   // still change - `planShown`'s own, `lib/typing.ts` (review fix round 1, Important 1): all
   // three held back while the debounced request has not caught up with what the fields now say,
-  // or while the answer is an earlier request's kept as a placeholder (`describe`'s `keep = true`
-  // above) - never a plan, nor its own fetch refusal, for text the reader has since typed past.
-  // This panel has no separate `pending` flag of its own (unlike `UnitPanel`'s `Offer`):
+  // or while the answer is an earlier request's, kept as a placeholder while this one loads -
+  // `planShown` never trusts one - never a plan, nor its own fetch refusal, for text the reader
+  // has since typed past. This panel has no separate `pending` flag of its own (unlike
+  // `UnitPanel`'s `Offer`):
   // `TypePanelView`'s own gate (`pending && preview !== null`) draws neither a consequence nor an
   // Apply once `preview` below is `null`, which is exactly when `shown.pending` holds.
   const shown =
@@ -294,6 +297,7 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
         setTyped(undefined);
         setChosen(undefined);
         setEdited(undefined);
+        setTypedLimits(false);
         setChangesShown(false);
         setRefused(null);
         // The panel shows one preview at a time: selecting a row dirties this path, so whichever
@@ -320,13 +324,20 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
         setTyped(undefined);
         setRefused(null);
         // A range chosen from the list - in play, or "state nothing", which empties the two
-        // fields - is settled on by writing it into them, since they are what is applied.
-        if (selected === "limits") setEdited(limitsOf(raw));
+        // fields - is settled on by writing it into them, since they are what is applied. It is
+        // the reader's own choice, so it counts as an edit of the fields - a picked one, not a
+        // typed one: `typedLimits` stays `false`, so this takes effect at once, the same as
+        // every other pick here.
+        if (selected === "limits") {
+          setEdited(limitsOf(raw));
+          setTypedLimits(false);
+        }
       }}
       onPickerClosed={() => setTyped(undefined)}
       range={range}
       onRange={(next) => {
         setEdited(next);
+        setTypedLimits(true);
         setTyped(undefined);
         setRefused(null);
       }}
@@ -343,6 +354,7 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
           setTyped(undefined);
           setChosen(undefined);
           setEdited(undefined);
+          setTypedLimits(false);
           setRenameTo(null);
           setChangesShown(false);
         }
@@ -358,6 +370,7 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
           setTyped(undefined);
           setChosen(undefined);
           setEdited(undefined);
+          setTypedLimits(false);
           setDescription(undefined);
           setChangesShown(false);
         }

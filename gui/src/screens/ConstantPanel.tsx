@@ -47,20 +47,16 @@ interface Props {
  * invalidating one tab's plans on an edit does not throw away the other's, and a generic wide
  * enough for both requests would be a bigger change than one more tab's own hook.
  *
- * `keep` leaves the last plan on screen while the next is asked for, marked as a placeholder, for
- * a value or a description: both are debounced before `request` ever reaches this hook
- * (`useDebounced`, spec §6), so it changes once the reader pauses rather than with every key - but
- * without `keep`, the line saying which file it changes would still blink away each time it does.
+ * Keeps no placeholder while the next is asked for: a value and a description are both debounced
+ * before `request` ever reaches this hook (`useDebounced`, spec §6), and `planShown`
+ * (`lib/typing.ts`) never trusts a placeholder's own answer, so one kept here would never be
+ * drawn - a `keep` option once did exactly that (fix round 2's own finding), which is why there
+ * is none now.
  */
-export function useConstantPlan(
-  request: ConstantPlanRequest | null,
-  revision: number | undefined,
-  keep = false,
-) {
+export function useConstantPlan(request: ConstantPlanRequest | null, revision: number | undefined) {
   return useQuery({
     queryKey: ["constant-plan", request, revision],
     queryFn: request === null ? skipToken : () => getConstantPlan(request),
-    placeholderData: (previous) => (keep ? previous : undefined),
   });
 }
 
@@ -163,8 +159,8 @@ export function ConstantPanel({
     remove: requests.remove,
   };
   const plans = {
-    value: useConstantPlan(asked.value, revision, true),
-    describe: useConstantPlan(asked.describe, revision, true),
+    value: useConstantPlan(asked.value, revision),
+    describe: useConstantPlan(asked.describe, revision),
     rename: useConstantPlan(asked.rename, revision),
     remove: useConstantPlan(asked.remove, revision),
   };

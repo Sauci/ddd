@@ -33,7 +33,11 @@ export function isStale(error: Error): boolean {
 /**
  * The one refusal an action shows, of the three it can have: an Apply refused as stale, while the
  * revision it was refused at stands; else an Apply refused for another reason; else why its plan
- * was refused when asked for, in the server's own words.
+ * was refused when asked for, in the server's own words - `asked` reads that straight off
+ * `planShown`'s own `refusal` (`lib/typing.ts`) at every call site now, never an `Error` of its
+ * own: the one thing that could still be asked for once Task 11 debounced every plan is whether
+ * the debounced request is trusted at all, which `planShown` has already judged by the time this
+ * runs.
  *
  * The precedence the other panels already have, kept rather than argued afresh: `UnitsPage`'s
  * adoption banner writes this very expression, and `ConstantPanel`'s own `offer` asks in the same
@@ -43,10 +47,10 @@ export function isStale(error: Error): boolean {
 export function refusalShown(
   stale: Refused | null,
   refused: string | null,
-  asked: Error | null,
+  asked: string | null,
   revision: number | undefined,
 ): string | null {
-  return shownRefusal(stale, revision) ?? refused ?? asked?.message ?? null;
+  return shownRefusal(stale, revision) ?? refused ?? asked ?? null;
 }
 
 /** What a panel about one entity shows of the server's answer about it: the answer, a refusal in

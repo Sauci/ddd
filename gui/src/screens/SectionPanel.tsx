@@ -42,21 +42,16 @@ interface Props {
  * one vocabulary's plans on an edit does not throw away the other's, and a generic wide enough for
  * both requests would be a bigger change than one more hook.
  *
- * `keep` leaves the last plan on screen while the next is asked for, marked as a placeholder, for
- * each of the section's three keys - the access among them, its chooser taking typed text as well
- * as a pick: all three are debounced before `request` ever reaches this hook (`useDebounced`,
- * spec §6), so it changes once the reader pauses rather than with every key - but without `keep`,
- * the line saying which file it changes would still blink away each time it does.
+ * Keeps no placeholder while the next is asked for: each of the section's three keys - the
+ * access among them, its chooser taking typed text as well as a pick - is debounced before
+ * `request` ever reaches this hook (`useDebounced`, spec §6), and `planShown` (`lib/typing.ts`)
+ * never trusts a placeholder's own answer, so one kept here would never be drawn - a `keep`
+ * option once did exactly that (fix round 2's own finding), which is why there is none now.
  */
-export function useSectionPlan(
-  request: SectionPlanRequest | null,
-  revision: number | undefined,
-  keep = false,
-) {
+export function useSectionPlan(request: SectionPlanRequest | null, revision: number | undefined) {
   return useQuery({
     queryKey: ["section-plan", request, revision],
     queryFn: request === null ? skipToken : () => getSectionPlan(request),
-    placeholderData: (previous) => (keep ? previous : undefined),
   });
 }
 
@@ -152,9 +147,9 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
     remove: requests.remove,
   };
   const plans = {
-    access: useSectionPlan(asked.access, revision, true),
-    alignment: useSectionPlan(asked.alignment, revision, true),
-    describe: useSectionPlan(asked.describe, revision, true),
+    access: useSectionPlan(asked.access, revision),
+    alignment: useSectionPlan(asked.alignment, revision),
+    describe: useSectionPlan(asked.describe, revision),
     rename: useSectionPlan(asked.rename, revision),
     remove: useSectionPlan(asked.remove, revision),
   };

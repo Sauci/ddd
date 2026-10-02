@@ -17,7 +17,7 @@ import {
 } from "../components/FileActionsView";
 import { FilesTableView } from "../components/FilesTableView";
 import { type FileRemoval, fileAdd, fileCreate, fileRemoval, rowsOf } from "../lib/files";
-import { isStale, type Refused, shownRefusal } from "../lib/refusals";
+import { isStale, type Refused, refusalShown } from "../lib/refusals";
 import { planEdit } from "../lib/shared";
 import { planShown } from "../lib/typing";
 import { filesLabel } from "../lib/undo";
@@ -124,7 +124,9 @@ export function FilesPage({ state, path, onPath, stopped }: Props) {
  * Add's fields are debounced as a whole (spec §6) rather than kept, since a plan kept through a
  * refusal would come back as the plan of a request the reader has typed past once the debounced
  * request moved on - React Query hands a placeholder the last plan that came, not the last one
- * asked. `SharedAdd`'s own per-keystroke plans keep none either.
+ * asked. `SharedAdd`'s own three plans are debounced the very same way and keep none either -
+ * `useConstantPlan`, `useSectionPlan` and `useRasterPlan` (called from there as much as from the
+ * three panels that otherwise own them) have no `keep` option to ask for one with (fix round 2).
  */
 function useFilesPlan(request: FilesPlanRequest | null, revision: number | undefined) {
   return useQuery({
@@ -138,8 +140,9 @@ function useFilesPlan(request: FilesPlanRequest | null, revision: number | undef
  * the plan's, under the label an undo of it will offer (`filesLabel`, from the very request the
  * plan was asked with and the plan itself: a created file named as the plan creates it, a
  * removal's key relative to `project`); a refusal because a file changed on disk is held until
- * the analysis moves past it, and any other until the reader chooses again (`refusalShown` says
- * which is shown).
+ * the analysis moves past it, and any other until the reader chooses again - `refusalShown`
+ * (`lib/refusals.ts`) says which is shown, read with `shown.refusal` (`planShown`,
+ * `lib/typing.ts`) as the plan-fetch refusal it already takes a `string | null` for.
  * Once an Apply is answered, applied or refused, the tab's entries and every plan are asked for
  * again - each of the three edits the project description, whose fingerprint every plan carries -
  * and applied, `onApplied` closes the panel.
@@ -201,7 +204,7 @@ function useFilesApply(
     plan: shown.plan,
     // Stale or a plain apply failure takes precedence, as it always did - both are about an
     // Apply already made, not a plan still loading, so neither is affected by `shown`.
-    refusal: shownRefusal(stale, revision) ?? refused ?? shown.refusal,
+    refusal: refusalShown(stale, refused, shown.refusal, revision),
     /** The reader chose again: what an earlier Apply was refused for says nothing of this plan. */
     chose: () => setRefused(null),
   };

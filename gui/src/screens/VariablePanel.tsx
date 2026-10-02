@@ -126,6 +126,13 @@ export function VariablePanel({
   // value the chooser starts on. Two empty fields are a removal, and a removal is something
   // the reader asks for, never where a row opens.
   const [edited, setEdited] = useState<{ min: string; max: string } | undefined>(undefined);
+  // Whether `edited`'s own value came from typing into Min or Max, rather than a pick from the
+  // list: `onChosen` below writes `edited` too, for a range picked outright or "state nothing"
+  // chosen, so `edited !== undefined` alone cannot tell a pick from typing (fix round 2's own
+  // finding - that read every limits pick as typing, and waited `PLAN_DELAY_MS` for one that
+  // should go through at once, the same as every other pick on this screen already does). Reset
+  // wherever `edited` itself is, so it never outlives the row it was made for.
+  const [typedLimits, setTypedLimits] = useState(false);
   const [changesShown, setChangesShown] = useState(false);
   // A refusal for a reason other than staleness - a type fixing this key, a kind that cannot
   // carry one, the engine's own rule - cleared whenever the reader chooses again, exactly as
@@ -178,15 +185,15 @@ export function VariablePanel({
           : chosen;
   // `target` is typed into directly while `selected` is `limits` (the two range fields commit on
   // every keystroke, like every other plain field on this screen) and otherwise set discretely by
-  // a chooser's pick or Enter. `edited !== undefined` is exactly the typed case - `undefined`
-  // until the reader has actually typed into Min or Max (review fix round 1, Important 3 and
-  // Minor 2: a pick, including the first moment a `limits` row opens and reads its starting
-  // range, takes effect at once; only typing into it waits). `null` while there is nothing to ask
-  // for yet (`settleRequest`'s own doc); once there is, `target` on its own can still legitimately
-  // be `null` - "go from every declaration" - so the gate is `settleRequest` itself, never `target`.
+  // a chooser's pick or Enter. `typedLimits` says which this one is (fix round 2: `selected` and
+  // `chosen`/`edited` alone cannot - a pick, including the first moment a `limits` row opens and
+  // reads its starting range, takes effect at once; only typing into Min or Max waits). `null`
+  // while there is nothing to ask for yet (`settleRequest`'s own doc); once there is, `target` on
+  // its own can still legitimately be `null` - "go from every declaration" - so the gate is
+  // `settleRequest` itself, never `target`.
   const settleRequest: SettleRequest | null =
     reply === undefined || selected === undefined || broken !== null ? null : { selected, target };
-  const askedSettle = useDebounced(settleRequest, edited !== undefined);
+  const askedSettle = useDebounced(settleRequest, typedLimits);
   const preview = useQuery({
     queryKey: ["settle", name, askedSettle, revision],
     queryFn:
@@ -207,6 +214,7 @@ export function VariablePanel({
     setChosen(undefined);
     setTyped(undefined);
     setEdited(undefined);
+    setTypedLimits(false);
     setChangesShown(false);
     setRefused(null);
   };
@@ -221,6 +229,7 @@ export function VariablePanel({
   // applied in its place.
   const onRange = (next: { min: string; max: string }) => {
     setEdited(next);
+    setTypedLimits(true);
     setTyped(undefined);
     setRefused(null);
   };
@@ -377,9 +386,14 @@ export function VariablePanel({
         setTyped(undefined);
         setRefused(null);
         // A range chosen from the list - one in play, or "state nothing", which empties them -
-        // is settled on by writing it into the two fields, since they are what is applied.
-        // It is the reader's own choice, so it counts as an edit of the fields.
-        if (selected === "limits") setEdited(limitsOf(raw));
+        // is settled on by writing it into the two fields, since they are what is applied. It is
+        // the reader's own choice, so it counts as an edit of the fields - a picked one, not a
+        // typed one: `typedLimits` stays `false`, so this takes effect at once, the same as
+        // every other pick here.
+        if (selected === "limits") {
+          setEdited(limitsOf(raw));
+          setTypedLimits(false);
+        }
       }}
       onPickerClosed={() => setTyped(undefined)}
       range={range}

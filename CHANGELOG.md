@@ -14,6 +14,18 @@ its own.  A check identifier is the one entry of that list a release only ever a
 name a project has written into a severity override does not change once it has been
 published, as the specification requires ([section 4](SPEC.md#4-consistency-checks)).
 
+## Unreleased
+
+* **A toolbox, and its first tool: `ddd tool from-elf`.**  It reads a linked ELF image and its
+  DWARF debug information and prints the DDD declarations of the C variables named or matched
+  on the command line - kind, datatype, shape, enumerators, structure members, initial value
+  and section, as the image states them - as a list of interface entries or, with `--component
+  NAME`, a component file holding the types its structures need.  DDD itself checks every
+  entry before it is printed, as `ddd check --standalone` checks a component; what an image
+  does not state, a unit or a scaling, is left out and said once.  It reads images with
+  pyelftools 0.32 or newer, which joins pydantic and jinja2 as a runtime dependency; every other
+  command runs without importing it.  No file format changes.
+
 ## 0.11.0
 
 * **A browser interface, as a preview.**  `ddd gui` serves a browser interface over one

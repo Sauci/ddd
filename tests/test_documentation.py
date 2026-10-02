@@ -41,6 +41,7 @@ from ddd.cli import EXIT_OK, _build_parser, main, schema_models
 from ddd.diagnostics import CHECKS
 from ddd.loading import FILE_KINDS
 from ddd.models import Component, DataObject, Datatype, ObjectKind, ScalarType
+from ddd.toolbox.findings import FINDINGS
 
 ROOT = Path(__file__).resolve().parents[1]
 README = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -406,6 +407,7 @@ class TestCommands:
             "templates-dir",
             "sources",
             "artefacts",
+            "tool",
         }
 
 
@@ -966,14 +968,16 @@ class TestPackaging:
             )
 
     def test_the_runtime_requirements_are_what_the_package_imports(self) -> None:
-        """The two runtime dependencies are a deliberate claim of the README, so a third one
-        appearing in requirements.txt has to be a decision rather than a drive-by addition."""
+        """The three runtime dependencies are a deliberate claim of the README, so a fourth one
+        appearing in requirements.txt has to be a decision rather than a drive-by addition.
+        pyelftools was one: it joined when reading ELF images became part of DDD rather than an
+        extra, after an old copy already installed in a venv went unnoticed by the extra."""
         listed = {
             re.split(r"[<>=!~ ]", line, maxsplit=1)[0].lower()
             for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
             if line.strip() and not line.startswith("#")
         }
-        assert listed == {"pydantic", "jinja2"}
+        assert listed == {"pydantic", "jinja2", "pyelftools"}
 
     def test_the_extension_declines_an_untrusted_workspace_and_the_pages_say_why(self) -> None:
         """A description file names the plugins the server runs, and the server imports the
@@ -3137,3 +3141,25 @@ class TestTheRuleAJsonSchemaCannotCarry:
     ) -> None:
         described = published(kind)["$defs"][model]["properties"][key]["description"]
         assert phrase in described, described
+
+
+class TestToolbox:
+    """The findings of ddd tool from-elf, held to the one table of them: each is named in the
+    user guide and in the specification, as every check of the catalogue is."""
+
+    GUIDE = PAGES["docs/toolbox.rst"]
+
+    @pytest.mark.parametrize("finding", sorted(FINDINGS))
+    def test_every_finding_of_the_tool_is_named_in_the_guide(self, finding: str) -> None:
+        assert f"``{finding}``" in self.GUIDE
+
+    @pytest.mark.parametrize("finding", sorted(FINDINGS))
+    def test_every_finding_of_the_tool_is_named_in_the_spec(self, finding: str) -> None:
+        assert f"`{finding}`" in SPEC
+
+    @pytest.mark.parametrize(("finding", "severity"), sorted(FINDINGS.items()))
+    def test_the_guide_gives_every_finding_the_severity_the_tool_reports_it_with(
+        self, finding: str, severity: str
+    ) -> None:
+        """A finding's severity decides the exit status; the guide is where a user reads it."""
+        assert f"   * - ``{finding}``\n     - {severity}\n" in self.GUIDE

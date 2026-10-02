@@ -9,7 +9,7 @@ import os
 import re
 import sys
 import unicodedata
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -67,6 +67,13 @@ _FORMAT_HELP = "output format"
 reaches the diagnostics on stderr alone, so "output format" would read as a promise about the
 document a build archives.
 """
+
+_PYELFTOOLS_MISSING = (
+    "reading an ELF image needs pyelftools, which is not installed: "
+    "pip install 'pyelftools>=0.32,<1'"
+)
+"""The usage error ``ddd tool from-elf`` answers without pyelftools. It is a dependency, so only
+a broken installation lacks it, and the command says how to mend one rather than raising."""
 
 
 def cmake_module_directory() -> Path | None:
@@ -496,6 +503,88 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
         ),
     )
     templates.set_defaults(handler=_command_templates_dir)
+
+    tool = subparsers.add_parser(
+        "tool",
+        help="run a tool of the toolbox, used once on the way into DDD or out of it",
+        description=(
+            "The toolbox holds what is run once rather than in every build: a tool that turns "
+            "something a project already has into DDD descriptions, or DDD descriptions into "
+            "something else. Each tool is a command of its own under this one."
+        ),
+    )
+    # No metavar: argparse then spells the tools out, so that `ddd tool` alone lists them, as
+    # `ddd` alone lists its commands.
+    tools = tool.add_subparsers(dest="tool", required=True)
+    from_elf = tools.add_parser(
+        "from-elf",
+        help="print the DDD declarations of C variables a linked ELF image describes",
+        description=(
+            "Reads a linked ELF image and its DWARF debug information, and prints as json the "
+            "declaration of every C variable named or matched: its kind, datatype, shape, "
+            "enumerators, structure members, initial value and section, as the image states "
+            "them. What an image does not state - a unit, a description, limits, a scaling, "
+            "whether an array is a curve - is left out, and said once. DDD itself checks every "
+            "entry, as 'ddd check --standalone' checks a component, before it is printed. "
+            "Needs an image built with debug information (-g)."
+        ),
+    )
+    from_elf.add_argument(
+        "image", type=Path, help="the linked ELF image, built with debug information (-g)"
+    )
+    from_elf.add_argument(
+        "symbols",
+        nargs="+",
+        metavar="SYMBOL",
+        help=(
+            "a C variable, by name or by a pattern in shell glob syntax, prefixed with UNIT: "
+            "to take it from one compilation unit, for a static several units define"
+        ),
+    )
+    from_elf.add_argument(
+        "--component",
+        metavar="NAME",
+        help=(
+            "print a component file of this name, holding the types its structures need, "
+            "rather than a list of interface entries"
+        ),
+    )
+    from_elf.add_argument(
+        "--scope",
+        choices=["output", "local", "input"],
+        default="output",
+        help=(
+            "the scope of every entry; input leaves out the initial value and the section, "
+            "which a consumer does not state"
+        ),
+    )
+    from_elf.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        help=(
+            "write the declarations to this file instead of stdout, leaving the file untouched "
+            "when its content would not change"
+        ),
+    )
+    from_elf.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "write the declarations that were described even where others were not; the exit "
+            "code still reports the errors"
+        ),
+    )
+    from_elf.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help=(
+            "format of the diagnostics, which go to stderr on this command; the declarations "
+            "are json either way"
+        ),
+    )
+    from_elf.set_defaults(handler=_command_tool_from_elf)
 
     return parser
 
@@ -1176,6 +1265,61 @@ def _command_dump(args: argparse.Namespace) -> int:
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
 
 
+def _command_tool_from_elf(args: argparse.Namespace) -> int:
+    """``ddd tool from-elf``: the DDD declarations of the C variables a linked ELF image holds.
+
+    stdout carries the declarations and nothing else, as ``dump``'s carries the dictionary, and
+    the findings go to stderr in either format. Nothing is written while an error stands unless
+    ``--force`` asks for what was described; the exit code reports the errors either way, so
+    that a script reads the verdict from the code rather than from the presence of the output.
+
+    The command line is judged whole before the image is read: a malformed ``SYMBOL`` or an
+    ``-o`` naming the image is a usage error however large the image, and whatever the image
+    would have been found to hold.
+    """
+    try:
+        from ddd.elf import open_image
+    except ModuleNotFoundError as error:
+        # The name is the module the import stopped at - `elftools.common` as often as
+        # `elftools` - so the package decides, not the whole name.
+        if (error.name or "").partition(".")[0] != "elftools":
+            raise
+        raise ValueError(_PYELFTOOLS_MISSING) from None
+    from ddd.loading import resolve_path
+    from ddd.models.common import C_IDENTIFIER_PATTERN, IDENTIFIER_MAX_LENGTH
+    from ddd.toolbox.from_elf import describe, document_text
+    from ddd.toolbox.selection import wanted
+
+    component = args.component
+    if component is not None and (
+        not re.fullmatch(C_IDENTIFIER_PATTERN, component) or len(component) > IDENTIFIER_MAX_LENGTH
+    ):
+        msg = (
+            f"--component takes a C identifier of at most {IDENTIFIER_MAX_LENGTH} characters, "
+            f"not '{component}'"
+        )
+        raise ValueError(msg)
+    for text in args.symbols:
+        wanted(text)
+    if args.output is not None:
+        _refuse_a_directory(args.output, "-o")
+        _refuse_a_source(args.output, "-o", resolve_path(args.image))
+    image = open_image(args.image)
+    bag = DiagnosticBag()
+    description = describe(image, args.symbols, scope=args.scope, component=component, bag=bag)
+    if bag.has_errors and not args.force:
+        _report(bag, args.format, stream=sys.stderr)
+        return EXIT_FINDINGS
+    text = document_text(description, component)
+    if args.output is None:
+        print(text, end="")
+        sys.stdout.flush()
+        _report(bag, args.format, stream=sys.stderr)
+    else:
+        _write_output(args.output, lambda: text, bag, args.format, resolve_path(args.image))
+    return EXIT_FINDINGS if bag.has_errors else EXIT_OK
+
+
 def _write_dictionary(
     resolved: Resolved, path: Path, bag: DiagnosticBag, output_format: str
 ) -> None:
@@ -1191,14 +1335,37 @@ def _write_dictionary(
     whatever it is handed. The write sits in a block of its own, so a target that cannot be
     written is reported after the findings of the run, as ``generate`` reports one.
     """
+    _write_output(
+        path,
+        lambda: _dictionary_text(resolved.dictionary),
+        bag,
+        output_format,
+        *resolved.sources,
+    )
+
+
+def _write_output(
+    path: Path,
+    text: Callable[[], str],
+    bag: DiagnosticBag,
+    output_format: str,
+    *sources: Path,
+) -> None:
+    """One text into ``path``, reported the way ``generate`` reports a file: what ``dump -o``
+    and ``tool from-elf -o`` write through.
+
+    ``text`` is made inside the reported block, as the dictionary always was, so that a failure
+    to make it is reported after the findings of the run exactly as a failure to write it is.
+    A path naming a directory, or a file the run read - ``sources`` - is refused.
+    """
     from ddd.backends import GeneratedFile, describe_write_failure, write
 
     with _reported_on_failure(bag, output_format, sys.stderr):
         _refuse_a_directory(path, "-o")
-        _refuse_a_source(path, "-o", *resolved.sources)
-        text = _dictionary_text(resolved.dictionary)
+        _refuse_a_source(path, "-o", *sources)
+        content = text()
         try:
-            (result,) = write([GeneratedFile(path, text)])
+            (result,) = write([GeneratedFile(path, content)])
         except OSError as error:
             raise OSError(describe_write_failure(error, path.as_posix())) from None
     shown = path.as_posix()

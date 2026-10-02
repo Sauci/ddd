@@ -47,6 +47,12 @@ Layers
    * - ``src/ddd/lsp/``
      - the language server protocol, a document's bytes and positions in it
      - any output format
+   * - ``src/ddd/elf.py``
+     - ELF images, DWARF 2 to 5, C types, the variables of static storage
+     - DDD: it imports no ``ddd`` module
+   * - ``src/ddd/toolbox/``
+     - turning what a project already has into DDD descriptions, once
+     - where its output goes, any output format
 
 The analysis row says "how anything is rendered" rather than "any output format" for a
 reason: two of the checks are about what an output format can carry, so the module states
@@ -96,9 +102,10 @@ The split is enforced by a test
 
 A layering that lives only in the documentation rots the first time somebody is in a hurry,
 so DDD asserts it. ``tests/test_backends.py`` parses the layered modules - ``loading.py``,
-``analysis.py``, ``ir.py``, ``diagnostics.py``, everything under ``backends/`` and
-``plugins.py`` - with ``ast``, collects the ``ddd.*`` modules each one imports, and fails if
-the import graph disagrees with the table above:
+``analysis.py``, ``ir.py``, ``diagnostics.py``, everything under ``backends/``,
+``plugins.py``, ``elf.py`` and everything under ``toolbox/`` - with ``ast``, collects the
+``ddd.*`` modules each one imports, and fails if the import graph disagrees with the table
+above:
 
 * ``loading.py``, ``analysis.py``, ``ir.py`` and ``diagnostics.py`` import no backend,
 * nothing under ``backends/`` imports ``ddd.loading`` or ``ddd.analysis``,
@@ -109,7 +116,10 @@ the import graph disagrees with the table above:
   output format silently has no name for it,
 * ``plugins.py`` imports no loader, analysis or backend at runtime, so a plugin sees exactly
   what a backend sees, and the ``Backend`` protocol it names is only imported there under
-  ``TYPE_CHECKING``.
+  ``TYPE_CHECKING``,
+* ``elf.py`` imports no ``ddd`` module at all, so that reading an address map straight out of
+  an image can use it without the toolbox, and
+* nothing under ``toolbox/`` imports a backend or ``ddd.cli``.
 
 A second test in the same file reads the text of ``src/ddd/models/`` and fails if a spelling
 that belongs to a single output format - ``uint16_t``, ``UWORD``, ``COMPU_``, ``AXIS_PTS``,
@@ -314,8 +324,38 @@ two documentation guards - a claim about what the tool prints is checked against
 prints - so a reworded diagnostic fails there first. What it does *not* run is counted rather
 than left to be discovered: a page that runs one of its commands has the rest read as
 illustrations, and ``SILENTLY_SHOWN`` in that file records how many such commands each page
-has - 51 of the 170 shown, and three of the eighty-four runs pinning an exit status. A page
+has - 51 of the 173 shown, and five of the eighty-seven runs pinning an exit status. A page
 that gains one fails until somebody writes the new number down.
+
+The ELF fixtures
+----------------
+
+``ddd tool from-elf`` is tested against ten images of one C source - little and big endian, 32
+and 64 bit, gcc and clang, DWARF 2 to 5, compressed debug sections and not, a static PIE - which
+``tests/fixtures/elf/`` holds beside a manifest of what each image's own toolchain says about its
+target: byte order, the signedness of ``char``, the sizes of ``long``, ``long double`` and an
+enum, the alignment of a ``uint64_t``, and the section and size of every symbol - and what
+``readelf`` says of each image as a file: its ELF type, the versions of its DWARF and whether
+its debug sections are compressed. The reader's tests hold it to the manifest, never to itself.
+``examples/firmware/firmware.elf`` is a copy of the Cortex-M4 image, for the transcripts of
+:doc:`toolbox`. Beside the ten rows sit the negative inputs, each built by x86_64 gcc from a
+small source of its own: DWARF type units at versions 4 and 5, gcc's link-time optimisation,
+and a variable ``--gc-sections`` discarded - the images the reader refuses, or reads a way of
+its own.
+
+The images are committed, so the suite needs neither Docker nor a compiler. They are built in
+Docker, out of ``tests/fixtures/elf/src/``, by ``docker/build_elf_fixtures.py`` in the image of
+``docker/elf-fixtures.Dockerfile``, a Debian image pinned by digest. Its packages are not
+pinned, since a pinned version stops the build once a point release of Debian replaces it;
+the manifest records the compiler that built each image instead:
+
+.. code-block:: text
+
+   $ docker compose run --rm elf-fixtures  # rebuilds every image and the manifest
+
+The manifest holds a hash of every file the images are built from, and
+``tests/test_elf_fixtures.py`` fails, naming that command, when one of them changed without a
+rebuild. Commit what the rebuild writes.
 
 Running the checks
 ------------------

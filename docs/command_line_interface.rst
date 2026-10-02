@@ -19,13 +19,13 @@ nothing has to be filtered out of a redirection: ``ddd dump project.ddd.json >
 baseline.json`` archives the dictionary and nothing else, even on a run that had something to
 say about it.
 
-For a job that files findings rather than reads them, eight commands understand
+For a job that files findings rather than reads them, nine commands understand
 ``--format json``: ``check``, ``compare``, ``generate``, ``list``, ``dump``, ``sources``,
-``artefacts`` and ``checks``. That leaves out ``schema`` and ``build-info``, whose output is
-json already, ``lsp``, which speaks json-rpc, ``gui``, which serves pages to a browser,
-``cmake-dir`` and ``templates-dir``, which print one path, and ``id``, which reports the files
-it skipped and one total rather than findings. In json the diagnostics become part of the
-document the command prints, next to whatever else it has to report:
+``artefacts``, ``checks`` and ``tool``. That leaves out ``schema`` and ``build-info``, whose
+output is json already, ``lsp``, which speaks json-rpc, ``gui``, which serves pages to a
+browser, ``cmake-dir`` and ``templates-dir``, which print one path, and ``id``, which reports
+the files it skipped and one total rather than findings. In json the diagnostics become part
+of the document the command prints, next to whatever else it has to report:
 
 .. code-block:: text
 
@@ -534,6 +534,10 @@ The commands
      - print the directory holding the example c templates, to copy into a project as a
        starting point for its own. They are an example and not a default: no run of
        ``generate`` falls back to them.
+   * - ``ddd tool from-elf IMAGE SYMBOL...``
+     - print, as json, the declarations of the C variables a linked ELF image's DWARF
+       describes - by name, by glob, or narrowed to a unit as ``UNIT:NAME`` - checked by DDD
+       itself before they are printed; :doc:`toolbox` is the guide.
 
 ``FILE`` is a project description or a single component description in every command that
 takes one. A component checks, lists and dumps on its own - with ``--standalone`` holding

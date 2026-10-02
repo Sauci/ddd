@@ -38,6 +38,7 @@
   - [7 Tool interface](#7-tool-interface)
     - [7.1 Build system integration](#71-build-system-integration)
     - [7.2 Editor integration](#72-editor-integration)
+    - [7.3 Toolbox](#73-toolbox)
 
 ## 1 Introduction
 
@@ -2020,7 +2021,9 @@ just been told are incomplete, unless `--force` asks for the file anyway
 alone - no C is rendered and no template directory is accepted - so the post-link run
 regenerates the A2L without touching the sources the image was built from. Reading the
 linker output directly (ELF/DWARF, IEEE-695) and cross-checking the linked symbols against
-the declarations is *planned*.
+the declarations is *planned*. The reader `ddd tool from-elf` uses
+([section 7.3](#73-toolbox)) reads ELF images and their DWARF already, and imports nothing
+of DDD, so that reading the address map can use it.
 
 ## 7 Tool interface
 
@@ -2103,7 +2106,9 @@ carrying `check`, `default_severity`, `description`, `overridable`,
 `needs_every_component` and `comparison`, the
 built-in ones in the order of the registry and then each `--plugin`'s checks in their
 declared order); reporting where its build system integration and its example templates
-live (`ddd cmake-dir`, `ddd templates-dir`; a piece not installed is a usage error); and
+live (`ddd cmake-dir`, `ddd templates-dir`; a piece not installed is a usage error);
+describing the C variables of a linked ELF image as declarations (`ddd tool from-elf`, the
+first tool of a toolbox, [section 7.3](#73-toolbox)); and
 printing its own version (`ddd --version`). Beside the command line, the package publishes
 a pre-commit hook, `ddd-id`, that runs `ddd id --assign` on the staged description files.
 The root handed to a command is a project or a single component file; a component alone is
@@ -2418,3 +2423,77 @@ only in a workspace the reader has trusted, where the editor has such a notion: 
 runs the plugins of every project it analyses ([section 3.11](#311-plugins)), so opening a
 repository is running its python, and that is a decision the reader makes, not the
 extension.
+
+### 7.3 Toolbox
+
+`ddd tool` holds the tools run once rather than in every build, on the way into DDD or out of
+it. Its one tool is `from-elf`.
+
+`ddd tool from-elf IMAGE SYMBOL...` reads a linked ELF image, `ET_EXEC` or `ET_DYN`, and its
+DWARF debug information, versions 2 to 5, and prints the declarations of the C variables named
+or matched, as json on standard output: a list of interface entries, or with `--component NAME`
+a component file whose `types` holds the structures the variables name. A `SYMBOL` is
+`[UNIT:]PATTERN`: a C identifier matched exactly, or a glob matched case sensitively, narrowed
+to the compilation unit whose name is `UNIT` or ends in `/UNIT`, `/` and `\` separating alike.
+A candidate is a variable at the top of a unit with a static address; the `static` locals of a
+function are not candidates. One name at one address is one variable, however many units
+describe it, as a tentative definition `-fcommon` merges is. A variable without an address -
+only declared, folded or removed by the compiler, thread-local, at no fixed address, or
+discarded by the linker, which leaves its DWARF address at 0 or at all ones where no symbol of
+its name sits - is `elf-no-storage`.
+
+What the image states, the declaration states:
+
+- `kind`: a `measurement` without `const`; with it a `parameter`, or a `value_block` for an
+  array. A `const` array of structures is refused, since a `parameter` has no `dimensions` and
+  a `value_block` holds no structure ([section 3.7](#37-type-description)). A curve, a map or
+  an axis is never inferred.
+- `datatype`: from the DWARF encoding and size - `boolean` of one byte, `uint8` to `uint64`,
+  `sint8` to `sint64`, `float32` and `float64`. Any other pairing, a pointer, a union, an
+  `_Atomic` type or a function is refused.
+- `conversion`: the identity, or an `enum` conversion carrying the enumerators in declaration
+  order, named by the typedef closest to the enum, else by its tag, else by a name made from
+  what first reaches it.
+- a structure: its `typename`, and one `struct` entry of `types`, members in declaration
+  order, a bitfield a `bits` member. `const` or `volatile` on a member cannot be stated, and a
+  `_Bool` bitfield is described as a `uint8` one.
+- `init`: from the image's bytes in its byte order - an array whose elements are all equal as
+  that one value, a `float32` as the shortest decimal that reads back to it - and none for a
+  variable in a section without contents, whose bytes the image does not hold. A structured
+  object states none ([section 3.7](#37-type-description)).
+- `section`: where the variable's section is not one of the toolchain's defaults, `.data`,
+  `.bss`, `.rodata`, `.sdata`, `.sbss`, `.sdata2`, `.sbss2`, `.srodata`, `.data1` and
+  `.rodata1`. It is the image's output section, which the project **must** declare
+  ([section 3.5](#35-memory-placement)).
+- `volatile`: from the qualifier.
+
+`--scope` is `output`, the default, `local` or `input`; an `input` entry states neither `init`
+nor `section` (`consumer-storage`, [section 3.3.1.2](#3312-storage)). Nothing else is stated:
+no `unit`, `description`, `limits`, `id`, `raster` or `a2l` block.
+
+Before anything is printed, DDD's own loader and analysis check the declarations, under the
+policy of `ddd check --standalone` with `missing-id` ignored. A variable one of their errors
+concerns is left out, and the check is repeated until none remains, since a load error stops
+DDD before its analysis. Their findings are reported with the tool's own, under their own
+identifiers.
+
+The tool's own findings are not checks of [section 4](#4-consistency-checks) and take no `-W`:
+`elf-symbol-missing`, `elf-symbol-ambiguous`, `elf-no-storage`, `elf-type-unsupported`,
+`elf-type-conflict` and `elf-init-unsupported` are errors; `elf-init-dropped`,
+`elf-bitfield-gap`, `elf-alignment`, `elf-qualifier-dropped`, `elf-section`,
+`elf-name-synthesized` and `elf-types-omitted` warnings; `elf-boolean-bitfield` and
+`elf-not-inferred` infos. A finding about a variable is located at its declaration in the C
+source, as the image recorded the path.
+
+The layout of a structure is not checked: DDD states no offsets
+([section 3.7](#37-type-description)), and DWARF records neither packing nor an unnamed
+bitfield. The gap such a bitfield leaves where the next one would have fit is
+`elf-bitfield-gap`, and an alignment the source states is `elf-alignment`.
+
+The exit code is `0` when every argument was described, and `1` when one was not; nothing is
+written then unless `--force`, which writes what was described. An image that cannot be read,
+is not ELF, carries no DWARF or is not linked, an image whose DWARF holds type units
+(`-fdebug-types-section`), comes from gcc's link-time optimisation (`-flto`) or is compressed
+with zstd rather than zlib, a malformed `SYMBOL` and an `-o` naming the image - both refused
+before the image is read - and a pyelftools missing or older than 0.32 are usage errors,
+`2`.

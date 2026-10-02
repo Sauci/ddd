@@ -49,7 +49,8 @@ Licence terms are in [LICENSE](https://github.com/Sauci/ddd/blob/master/LICENSE)
 
 ## Installation
 
-Requires Python 3.12 or newer; the only runtime dependencies are pydantic and jinja2.
+Requires Python 3.12 or newer; the runtime dependencies are pydantic, jinja2 and pyelftools,
+which reads ELF images for `ddd tool from-elf`.
 
 ```bash
 pip install ddd-tool                 # from the index
@@ -782,6 +783,7 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | `ddd checks` | list the checks and their default severity, marking the ones that cannot be relaxed `(fixed)`, need every component of a project `(project)` or grade a delivery comparison `(comparison)`; `--plugin` lists a plugin's checks after the built-in ones |
 | `ddd cmake-dir` | print the directory holding the cmake integration module |
 | `ddd templates-dir` | print the directory holding the example c templates, to copy into a project |
+| `ddd tool from-elf IMAGE SYMBOL...` | print the declarations of C variables a linked ELF image's DWARF describes, checked by DDD itself; `--component NAME` prints a component file with the types its structures need |
 
 `FILE` may be a project or a single component file, which makes it possible to check, list
 or dump a component on its own before integrating it - add `--standalone` in that case, which
@@ -789,14 +791,15 @@ holds back the checks that need the components the file does not contain.
 
 `--format json` prints machine readable diagnostics for a ci job. It is available on every
 command that produces findings - `check`, `compare`, `generate`, `list`, `dump`, `sources`,
-`artefacts` and `checks`. The rest have nothing to format: `ddd schema` and `ddd build-info` emit json
-already, `ddd lsp` speaks json-rpc on its own, `ddd cmake-dir` and `ddd templates-dir` print
-a single path, and `ddd id --assign` reports which files it could not read or write and one
-total of ids written across all of them, not a list of findings. `ddd dump` is the
-one command whose stdout is *itself* the payload, so there the diagnostics go to stderr and
-`--format` chooses how they are written; `ddd dump project.ddd.json > baseline.json` works
-in either format, and `ddd dump project.ddd.json -o baseline.json` writes the same text
-without the shell in between - the same bytes on every platform, stdout left empty.
+`artefacts`, `checks` and `tool`. The rest have nothing to format: `ddd schema` and
+`ddd build-info` emit json already, `ddd lsp` speaks json-rpc on its own, `ddd cmake-dir` and
+`ddd templates-dir` print a single path, and `ddd id --assign` reports which files it could
+not read or write and one total of ids written across all of them, not a list of findings.
+`ddd dump` is the one command whose stdout is *itself* the payload, so there the diagnostics
+go to stderr and `--format` chooses how they are written; `ddd dump project.ddd.json >
+baseline.json` works in either format, and `ddd dump project.ddd.json -o baseline.json` writes
+the same text without the shell in between - the same bytes on every platform, stdout left
+empty.
 
 Exit codes: `0` clean, `1` findings, `2` wrong usage.  `1` means at least one finding was
 reported **as an error**: a run with only warnings exits `0`, which is what `--strict` is

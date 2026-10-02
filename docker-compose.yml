@@ -159,5 +159,28 @@ services:
         chown -R "$$(stat -c %u:%g .)" screenshots ladle-build test-results 2>/dev/null
         exit $$status
 
+  # docker compose run --rm elf-fixtures rebuilds the ELF images of `ddd tool from-elf` that
+  # tests/fixtures/elf/ holds, with their manifest and the copy examples/firmware/ holds, out of
+  # tests/fixtures/elf/src/ and the pinned cross toolchains of docker/elf-fixtures.Dockerfile. The
+  # images are committed, so the suite needs neither Docker nor a compiler: this service is only
+  # for changing them. Its image is its own rather than ddd:dev, and what it writes into the
+  # checkout is handed back to the checkout's owner, since the image runs as root.
+  elf-fixtures:
+    build:
+      context: docker
+      dockerfile: elf-fixtures.Dockerfile
+    image: ddd-elf-fixtures:dev
+    working_dir: /work
+    volumes:
+      - .:/work
+    command:
+      - sh
+      - -c
+      - |
+        python3 docker/build_elf_fixtures.py
+        status=$$?
+        chown -R "$$(stat -c %u:%g .)" tests/fixtures/elf examples/firmware
+        exit $$status
+
 volumes:
   gui-screenshots-packages:

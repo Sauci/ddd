@@ -13,7 +13,7 @@ import { useDebounced } from "../app/useDebounced";
 import { type Offer, type UnitAction, UnitPanelView } from "../components/UnitPanelView";
 import { offers, planEdit } from "../lib/projectUnits";
 import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
-import { sameRequest } from "../lib/typing";
+import { planShown } from "../lib/typing";
 import { unitLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
@@ -195,20 +195,25 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
     },
   });
   /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for.
-   * `pending` also covers a debounced request not yet caught up with what the fields now say
-   * (`sameRequest`): the preview is then an earlier request's, same as while any plan loads, and
-   * Apply stays disabled rather than offered over text the reader has since typed past. Always
-   * `false` for `add`/`remove`/`rename`, whose `asked` entries are never behind `requests`'. */
-  const offer = (action: UnitAction): Offer => ({
-    plan: plans[action].data ?? null,
-    refusal:
-      staleFailed?.action === action
-        ? shownRefusal(staleFailed, revision)
-        : failed?.action === action
-          ? failed.message
-          : (plans[action].error?.message ?? null),
-    pending: plans[action].isPlaceholderData || !sameRequest(asked[action], requests[action]),
-  });
+   * `plan`/`refusal`/`pending` are `planShown`'s own, `lib/typing.ts` (review fix round 1):
+   * `null`/`null`/pending while the debounced request has not caught up with what the fields now
+   * say, or while the answer is an earlier request's kept as a placeholder - never a plan, nor
+   * its own fetch refusal, for text the reader has since typed past. A stale or a plain apply
+   * failure takes precedence, as it always did. Never held back for `add`/`remove`/`rename`
+   * beyond their own query settling, whose `asked` entries are never behind `requests`'. */
+  const offer = (action: UnitAction): Offer => {
+    const shown = planShown(asked[action], requests[action], plans[action]);
+    return {
+      plan: shown.plan,
+      refusal:
+        staleFailed?.action === action
+          ? shownRefusal(staleFailed, revision)
+          : failed?.action === action
+            ? failed.message
+            : shown.refusal,
+      pending: shown.pending,
+    };
+  };
 
   if (gone) return null;
   if (answer.shown === "refusal") {
@@ -255,8 +260,9 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
       }}
       onPickerClosed={() => setTyped(undefined)}
       to={to}
-      // Nothing is said of a description left as it is: the plan kept for the last key typed
-      // (usePlan) would otherwise still show once the text is the vocabulary's again.
+      // Nothing is said of a description left as it is: the plan kept for an earlier, debounced
+      // request (usePlan's own `keep`) would otherwise still show once the text is the
+      // vocabulary's again.
       describing={draft === null ? null : offer("describe")}
       adding={offer("add")}
       removing={offer("remove")}

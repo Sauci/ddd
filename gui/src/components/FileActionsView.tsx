@@ -72,8 +72,9 @@ export interface NewFileViewProps {
 
 /**
  * New file (design §3): a kind, a name, and a component's name for a component - then the plan
- * the server makes of them, or its refusal, asked for again as each is typed; applied the way
- * every other panel applies its own. Nothing here judges a name: a name with a dot, a file there
+ * the server makes of them, or its refusal, asked for again once the reader pauses (debounced,
+ * spec §6 - `FilesPage.tsx`'s own concern, not this picture of props); applied the way every
+ * other panel applies its own. Nothing here judges a name: a name with a dot, a file there
  * already, a component's name taken are each the server's to refuse, in its words.
  */
 export function NewFileView(props: NewFileViewProps) {
@@ -156,11 +157,11 @@ export interface AddFileViewProps {
 }
 
 /**
- * Add a file (design §3): a path, then the plan the server makes of it, asked for again as it is
- * typed - with the errors the server counts the file bringing, listed as it lists them, and never
- * refused for them: the spec's "informs rather than refuses". Where the server could not judge
- * what the file brings, its own sentence says so, drawn as it comes; nothing here says it in other
- * words.
+ * Add a file (design §3): a path, then the plan the server makes of it, asked for again once the
+ * reader pauses (debounced, spec §6 - `FilesPage.tsx`'s own concern, not this picture of props) -
+ * with the errors the server counts the file bringing, listed as it lists them, and never refused
+ * for them: the spec's "informs rather than refuses". Where the server could not judge what the
+ * file brings, its own sentence says so, drawn as it comes; nothing here says it in other words.
  */
 export function AddFileView(props: AddFileViewProps) {
   return (

@@ -11,7 +11,7 @@ import { useDebounced } from "../app/useDebounced";
 import { DeclarePanelView } from "../components/DeclarePanelView";
 import { definitionOf, dimensionsRaw, type Mode, modeOf, scopesOf } from "../lib/declarations";
 import { planEdit } from "../lib/projectUnits";
-import { sameRequest } from "../lib/typing";
+import { planShown } from "../lib/typing";
 import { declareLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
@@ -103,10 +103,12 @@ export function DeclarePanel({ file, component, revision, stopped, onClose, onDe
     queryKey: ["declaration-plan", asked, revision],
     queryFn: asked === null ? skipToken : () => getDeclarationPlan(asked),
   });
-  // Shown and applied only once the debounced request is what the fields now say (`sameRequest`):
-  // otherwise the preview is pending, as it is while any plan loads - there is no separate
-  // `pending` flag here, so a mismatch nulls the plan outright rather than disabling a button.
-  const current = sameRequest(asked, request);
+  // The plan to draw, and why its own fetch was refused if it was - `planShown`'s own,
+  // `lib/typing.ts` (review fix round 1): there is no separate `pending` flag here, so a
+  // debounced request not yet caught up with what the fields now say, or an answer kept as a
+  // placeholder, nulls the plan and its own fetch refusal outright rather than disabling a
+  // button.
+  const shown = planShown(asked, request, plan);
 
   const apply = useMutation({
     mutationFn: () => {
@@ -155,8 +157,8 @@ export function DeclarePanel({ file, component, revision, stopped, onClose, onDe
       values={values}
       typed_={typed_}
       dimensions={dimensions}
-      plan={current ? (plan.data ?? null) : null}
-      refusal={refusal ?? (current ? plan.error?.message : null) ?? null}
+      plan={shown.plan}
+      refusal={refusal ?? shown.refusal}
       changesShown={changesShown}
       busy={stopped || apply.isPending}
       onTyped={(text) => {

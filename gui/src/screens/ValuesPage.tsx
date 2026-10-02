@@ -8,7 +8,7 @@ import { ValuesGridView } from "../components/ValuesGridView";
 import { cellAt, drawable, pasted, rawOf, typedNumber } from "../lib/objectValues";
 import { planEdit } from "../lib/projectUnits";
 import { type Refused, shownRefusal as staleRefusal } from "../lib/refusals";
-import { sameRequest } from "../lib/typing";
+import { planShown } from "../lib/typing";
 import { pasteLabel, valueLabel } from "../lib/undo";
 import {
   appliesOver,
@@ -136,7 +136,11 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // into one request so one `useDebounced` call covers both, as `VariablePanel`'s own settle
   // request is. A pasted table is not: `pastedRows` is set once, by the one paste event, never a
   // stream of keystrokes to wait out, so `table` below keeps asking for its plan at once, as
-  // every query in this file did before this task.
+  // every query in this file did before this task. `cellRequest` going `null` the moment
+  // `current` does - Task 8's own `appliesOver` gate closing - takes effect at once
+  // (`useDebounced`'s own `atOnce`, review fix round 1, Important 3): the debounced `askedCell`
+  // never lags behind it, so the query above never asks for a cell the gate has already closed
+  // on, including the instant a new revision changes the key it shares with `revision`.
   const cellRequest = at === null || raw === null || !current ? null : { at, raw };
   const askedCell = useDebounced(cellRequest);
   const plan = useQuery({
@@ -146,10 +150,10 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
         ? skipToken
         : () => getValuePlan({ name, at: askedCell.at, raw: askedCell.raw }),
   });
-  // Shown and applied only once the debounced request is what the fields now say (`sameRequest`):
-  // this grid has no separate `pending` flag to disable Apply with, so `shownPlan`/`shownSentence`
-  // below read the cell's query only while this holds.
-  const cellCurrent = sameRequest(askedCell, cellRequest);
+  // The cell plan to draw, why its own fetch was refused if it was, and whether it may still
+  // change - `planShown`'s own, `lib/typing.ts` (review fix round 1): this grid has no separate
+  // `pending` flag of its own, so `shownPlan`/`shownSentence` below read `shownCell` directly.
+  const shownCell = planShown(askedCell, cellRequest, plan);
   // A pasted table's own preview, keyed on the counts themselves so a second, different paste
   // asks again - the same shape `plan` above already takes for one cell, and `getValuesPlan`
   // wants them row-major in one flat list.
@@ -171,9 +175,10 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // was never a cell to begin with - driving it through a real browser (`values.spec.ts`'s own
   // "a block of the wrong shape is refused and nothing is written") is what actually found this.
   const pasting = pastedRows !== null || pasteRefusal !== null;
-  // Never the cell's plan while it is an earlier keystroke's (`cellCurrent`): that plan is for
-  // text the reader has since typed past, and is dropped exactly as one still loading would be.
-  const shownPlan = pasting ? (table.data ?? null) : cellCurrent ? (plan.data ?? null) : null;
+  // Never the cell's plan while it is an earlier keystroke's (`shownCell.plan`, already `null`
+  // then): that plan is for text the reader has since typed past, and is dropped exactly as one
+  // still loading would be.
+  const shownPlan = pasting ? (table.data ?? null) : shownCell.plan;
   // The pre-apply refusal each offer can find for itself - a pasted block's own sentence, or the
   // server's, for the one thing the parser cannot check - ahead of a stale or a plain apply
   // failure either way. A typed cell's own refusal is `ValuesGridView`'s to find, from `editing`
@@ -184,9 +189,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
       staleRefusal(staleFailed, revision) ??
       failed ??
       (table.isError ? table.error.message : null))
-    : (staleRefusal(staleFailed, revision) ??
-      failed ??
-      (cellCurrent && plan.isError ? plan.error.message : null));
+    : (staleRefusal(staleFailed, revision) ?? failed ?? shownCell.refusal);
   // What either offer's own edit is called, for the undo stack: the whole object for a paste,
   // the one element for a cell - `pasteLabel`'s and `valueLabel`'s own difference.
   const label = pasting

@@ -13,7 +13,7 @@ import { type Offer, type SectionAction, SectionPanelView } from "../components/
 import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planEdit, sectionSet } from "../lib/shared";
-import { sameRequest } from "../lib/typing";
+import { planShown } from "../lib/typing";
 import { sectionLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
@@ -210,19 +210,24 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
     },
   });
   /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for.
-   * `pending` also covers a debounced request not yet caught up with what the fields now say
-   * (`sameRequest`): the preview is then an earlier request's, same as while any plan loads, and
-   * Apply stays disabled rather than offered over text the reader has since typed past. */
-  const offer = (action: SectionAction): Offer => ({
-    plan: plans[action].data ?? null,
-    refusal:
-      staleFailed?.action === action
-        ? shownRefusal(staleFailed, revision)
-        : failed?.action === action
-          ? failed.message
-          : (plans[action].error?.message ?? null),
-    pending: plans[action].isPlaceholderData || !sameRequest(asked[action], requests[action]),
-  });
+   * `plan`/`refusal`/`pending` are `planShown`'s own, `lib/typing.ts` (review fix round 1):
+   * `null`/`null`/pending while the debounced request has not caught up with what the fields now
+   * say, or while the answer is an earlier request's kept as a placeholder - never a plan, nor
+   * its own fetch refusal, for text the reader has since typed past. A stale or a plain apply
+   * failure takes precedence, as it always did. */
+  const offer = (action: SectionAction): Offer => {
+    const shown = planShown(asked[action], requests[action], plans[action]);
+    return {
+      plan: shown.plan,
+      refusal:
+        staleFailed?.action === action
+          ? shownRefusal(staleFailed, revision)
+          : failed?.action === action
+            ? failed.message
+            : shown.refusal,
+      pending: shown.pending,
+    };
+  };
 
   if (gone) return null;
   if (answer.shown === "refusal") {

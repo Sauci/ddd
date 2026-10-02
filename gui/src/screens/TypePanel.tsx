@@ -14,7 +14,7 @@ import { TypePanelView } from "../components/TypePanelView";
 import { planEdit } from "../lib/projectUnits";
 import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
 import type { Route } from "../lib/route";
-import { sameRequest } from "../lib/typing";
+import { planShown } from "../lib/typing";
 import { typeLabel } from "../lib/undo";
 import { textOf, unitLabel } from "../lib/units";
 import { limitsNote, limitsOf, limitsRaw, shortValue } from "../lib/variableKeys";
@@ -167,15 +167,15 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
         : { action: "set", name, key: "description", raw: JSON.stringify(draft) },
     rename: renameTo === null ? null : { action: "rename", name, to: renameTo },
   };
-  // All three are debounced (spec §6): `describe` and `rename` are plain fields, committing on
-  // every keystroke; `key`'s own chooser commits discretely - a pick, or typed text confirmed
-  // with Enter - except while its `limits` editor is open, whose two fields write `edited` on
-  // every keystroke the same way `describe`'s and `rename`'s always do. Debounced uniformly
-  // rather than only while a `limits` row happens to be open, so a row picked straight after one
-  // still waits the same `PLAN_DELAY_MS` a second keystroke would - `planDelay`'s own "every
-  // later one", not only a later keystroke.
+  // `describe` and `rename` are plain fields, committing - and so debounced - on every keystroke.
+  // `key`'s own chooser commits discretely - a pick, or typed text confirmed with Enter - except
+  // while its `limits` editor is open: there, the two fields write `edited` on every keystroke
+  // the same way `describe`'s and `rename`'s always do. `edited !== undefined` is exactly that -
+  // `undefined` until the reader has actually typed into Min or Max (review fix round 1,
+  // Important 3 and Minor 2: a pick, including the first moment a `limits` row opens and reads
+  // its starting range, takes effect at once; only typing into it waits).
   const asked: Record<Kind, TypePlanRequest | null> = {
-    key: useDebounced(requests.key),
+    key: useDebounced(requests.key, edited !== undefined),
     describe: useDebounced(requests.describe),
     rename: useDebounced(requests.rename),
   };
@@ -200,13 +200,18 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
         : draft !== null
           ? "describe"
           : null;
-  const activePlan = active === null ? null : plans[active];
-  // Whether the active path's debounced request is what the fields now say (`sameRequest`): this
-  // panel has no separate `pending` flag to disable Apply with (unlike `UnitPanel`'s `Offer`), so
-  // `preview`/`refusal` below read the plan only while this holds, and are `null` otherwise - the
-  // preview is pending, as it is while any plan loads, and `TypePanelView`'s own gate
-  // (`pending && preview !== null`) then draws neither a consequence nor an Apply for it.
-  const activeCurrent = active !== null && sameRequest(asked[active], requests[active]);
+  // The active path's plan to draw, why its own fetch was refused if it was, and whether it may
+  // still change - `planShown`'s own, `lib/typing.ts` (review fix round 1, Important 1): all
+  // three held back while the debounced request has not caught up with what the fields now say,
+  // or while the answer is an earlier request's kept as a placeholder (`describe`'s `keep = true`
+  // above) - never a plan, nor its own fetch refusal, for text the reader has since typed past.
+  // This panel has no separate `pending` flag of its own (unlike `UnitPanel`'s `Offer`):
+  // `TypePanelView`'s own gate (`pending && preview !== null`) draws neither a consequence nor an
+  // Apply once `preview` below is `null`, which is exactly when `shown.pending` holds.
+  const shown =
+    active === null
+      ? { plan: null, refusal: null, pending: false }
+      : planShown(asked[active], requests[active], plans[active]);
 
   const apply = useMutation({
     mutationFn: (kind: Kind) => {
@@ -357,7 +362,7 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
           setChangesShown(false);
         }
       }}
-      preview={activeCurrent ? (activePlan?.data ?? null) : null}
+      preview={shown.plan}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => {
@@ -369,8 +374,7 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
           ? null
           : ((stale?.kind === active ? shownRefusal(stale, revision) : null) ??
             (refused?.kind === active ? refused.message : null) ??
-            (activeCurrent ? activePlan?.error?.message : null) ??
-            null)
+            shown.refusal)
       }
       busy={stopped || apply.isPending}
       onClose={onClose}

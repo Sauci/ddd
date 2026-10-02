@@ -1,13 +1,16 @@
 import { describe, expect, test } from "vitest";
-import { PLAN_DELAY_MS, planDelay, sameRequest } from "./typing";
+import { atOnce, PLAN_DELAY_MS, planDelay, planShown, sameRequest } from "./typing";
 
 describe("planDelay", () => {
   test("a panel's first plan is asked for at once", () => {
     expect(planDelay(false)).toBe(0);
   });
 
-  test("every later plan waits PLAN_DELAY_MS, long enough to ask once typing pauses", () => {
-    expect(planDelay(true)).toBe(PLAN_DELAY_MS);
+  // Pinned by the literal, not by the constant: comparing against `PLAN_DELAY_MS` itself is true
+  // whatever that constant is set to, and so catches nothing (review fix round 1, Important 4).
+  test("every later plan waits exactly 250 ms - long enough to ask once typing pauses, short enough that the preview follows", () => {
+    expect(PLAN_DELAY_MS).toBe(250);
+    expect(planDelay(true)).toBe(250);
   });
 });
 
@@ -43,5 +46,57 @@ describe("sameRequest", () => {
   test("asked for nothing, typed into since, is not the same - and the other way about", () => {
     expect(sameRequest(null, { action: "remove", name: "RPM" })).toBe(false);
     expect(sameRequest({ action: "remove", name: "RPM" }, null)).toBe(false);
+  });
+});
+
+describe("atOnce", () => {
+  test("a null value - nothing to ask for, or a gate closing - takes effect at once", () => {
+    expect(atOnce(null, true)).toBe(true);
+    expect(atOnce(null, false)).toBe(true);
+  });
+
+  test("a discrete commit takes effect at once, whatever it carries", () => {
+    expect(atOnce({ action: "set", name: "RPM", key: "value", raw: "1" }, false)).toBe(true);
+  });
+
+  test("only text actually typed waits", () => {
+    expect(atOnce({ action: "set", name: "RPM", key: "value", raw: "1" }, true)).toBe(false);
+  });
+});
+
+describe("planShown", () => {
+  const request = { action: "set", name: "RPM", key: "value", raw: "1" };
+  const changed = { action: "set", name: "RPM", key: "value", raw: "12" };
+  const plan = { revision: 7, changes: [{ file: "a.ddd.json" }] };
+  const refused = { message: "units.ddd.json is there already" };
+
+  test("the debounced request's own answer, settled and not a placeholder, is shown", () => {
+    expect(
+      planShown(request, request, { data: plan, error: null, isPlaceholderData: false }),
+    ).toEqual({ plan, refusal: null, pending: false });
+  });
+
+  test("why the current request's own fetch was refused is shown, pending or not", () => {
+    expect(
+      planShown(request, request, { data: undefined, error: refused, isPlaceholderData: false }),
+    ).toEqual({ plan: null, refusal: refused.message, pending: true });
+  });
+
+  test("still loading - no data and no refusal yet - is pending, with nothing to draw", () => {
+    expect(
+      planShown(request, request, { data: undefined, error: null, isPlaceholderData: false }),
+    ).toEqual({ plan: null, refusal: null, pending: true });
+  });
+
+  test("a reply for text the reader has since typed past is never shown, whatever it answers - a refusal included", () => {
+    expect(
+      planShown(request, changed, { data: plan, error: refused, isPlaceholderData: false }),
+    ).toEqual({ plan: null, refusal: null, pending: true });
+  });
+
+  test("a placeholder - an earlier request's answer, kept while this one loads - is never shown, even where it is the request the fields now say", () => {
+    expect(
+      planShown(request, request, { data: plan, error: null, isPlaceholderData: true }),
+    ).toEqual({ plan: null, refusal: null, pending: true });
   });
 });

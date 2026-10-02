@@ -17,9 +17,9 @@ import {
 } from "../components/FileActionsView";
 import { FilesTableView } from "../components/FilesTableView";
 import { type FileRemoval, fileAdd, fileCreate, fileRemoval, rowsOf } from "../lib/files";
-import { isStale, type Refused, refusalShown } from "../lib/refusals";
+import { isStale, type Refused, shownRefusal } from "../lib/refusals";
 import { planEdit } from "../lib/shared";
-import { sameRequest } from "../lib/typing";
+import { planShown } from "../lib/typing";
 import { filesLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { refusalOf } from "./UnitPanel";
@@ -146,22 +146,23 @@ function useFilesPlan(request: FilesPlanRequest | null, revision: number | undef
  */
 function useFilesApply(
   request: FilesPlanRequest | null,
+  // The debounced request actually behind `plan`'s own key - `request` itself where a form is
+  // never debounced (`RemoveFile`'s, never typed into), so its one call site below passes the
+  // same value twice.
+  asked: FilesPlanRequest | null,
   project: string,
   plan: UseQueryResult<FilesPlanReply>,
   revision: number | undefined,
   onApplied: () => void,
-  // Whether `plan` is the answer to a debounced request that is still what the form's fields say
-  // (`sameRequest`): `true` where a form's own request is never debounced - `RemoveFile`'s, never
-  // typed into - so its one call site below needs no third fact to pass. Where it is `false`,
-  // `plan`'s own refusal is an earlier request's, same as while any plan loads, and is dropped
-  // rather than shown for text the reader has since typed past; a stale or a plain apply failure
-  // is neither - both are about an Apply already made, not a plan still loading - and keep
-  // showing exactly as they did before this parameter existed.
-  current = true,
 ) {
   const queries = useQueryClient();
   const [refused, setRefused] = useState<string | null>(null);
   const [stale, setStale] = useState<Refused | null>(null);
+  // The plan to offer, and why its own fetch was refused if it was - `planShown`'s own,
+  // `lib/typing.ts` (review fix round 1): `null`/`null` while `asked` has not caught up with
+  // `request`, or while `plan`'s answer is an earlier request's kept as a placeholder - never a
+  // plan, nor its own fetch refusal, for text the reader has since typed past.
+  const shown = planShown(asked, request, plan);
   const apply = useMutation({
     mutationFn: () => {
       const edit =
@@ -197,7 +198,10 @@ function useFilesApply(
   });
   return {
     apply,
-    refusal: refusalShown(stale, refused, current ? plan.error : null, revision),
+    plan: shown.plan,
+    // Stale or a plain apply failure takes precedence, as it always did - both are about an
+    // Apply already made, not a plan still loading, so neither is affected by `shown`.
+    refusal: shownRefusal(stale, revision) ?? refused ?? shown.refusal,
     /** The reader chose again: what an earlier Apply was refused for says nothing of this plan. */
     chose: () => setRefused(null),
   };
@@ -226,18 +230,13 @@ function NewFile({
   const request = fileCreate(kind, name, component);
   const asked = useDebounced(request);
   const plan = useFilesPlan(asked, revision);
-  // Whether the debounced request is what the three fields now say (`sameRequest`): otherwise
-  // the preview is pending, as it is while any plan loads, and is dropped rather than shown.
-  const current = sameRequest(asked, request);
   // Created, the form closes: the new file's row is the table's to show, once it reads again.
-  const { apply, refusal, chose } = useFilesApply(
-    request,
-    project,
-    plan,
-    revision,
-    onClose,
-    current,
-  );
+  const {
+    apply,
+    plan: offerPlan,
+    refusal,
+    chose,
+  } = useFilesApply(request, asked, project, plan, revision, onClose);
   return (
     <NewFileView
       project={project}
@@ -257,7 +256,7 @@ function NewFile({
         setComponent(text);
         chose();
       }}
-      offer={{ plan: current ? (plan.data ?? null) : null, refusal }}
+      offer={{ plan: offerPlan, refusal }}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => apply.mutate()}
@@ -268,7 +267,7 @@ function NewFile({
 }
 
 /** Add's form, holding its path; its plan is debounced as it is typed (spec §6): the plain Path
- * field commits on every keystroke, exactly as `AddFileView`'s own doc already says it does. */
+ * field (`AddFileView`'s own) commits on every keystroke. */
 function AddFile({
   project,
   revision,
@@ -285,18 +284,13 @@ function AddFile({
   const request = fileAdd(path);
   const asked = useDebounced(request);
   const plan = useFilesPlan(asked, revision);
-  // Whether the debounced request is what the Path field now says (`sameRequest`): otherwise the
-  // preview is pending, as it is while any plan loads, and is dropped rather than shown.
-  const current = sameRequest(asked, request);
   // Added, the form closes: the file's row is the table's to show, once it reads again.
-  const { apply, refusal, chose } = useFilesApply(
-    request,
-    project,
-    plan,
-    revision,
-    onClose,
-    current,
-  );
+  const {
+    apply,
+    plan: offerPlan,
+    refusal,
+    chose,
+  } = useFilesApply(request, asked, project, plan, revision, onClose);
   return (
     <AddFileView
       project={project}
@@ -305,7 +299,7 @@ function AddFile({
         setPath(text);
         chose();
       }}
-      offer={{ plan: current ? (plan.data ?? null) : null, refusal }}
+      offer={{ plan: offerPlan, refusal }}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => apply.mutate()}
@@ -333,13 +327,19 @@ function RemoveFile({
   const plan = useFilesPlan(removal.request, revision);
   // Removed, the panel closes, the address going bare: the row is gone - and where a pattern
   // keeps the file in all the same, the row left is the pattern's child, whose own Remove the
-  // server would refuse, naming the pattern, the moment it was selected again.
-  const { apply, refusal } = useFilesApply(removal.request, project, plan, revision, onClose);
+  // server would refuse, naming the pattern, the moment it was selected again. Never debounced -
+  // `asked` and `request` are the same value - so `planShown` inside `useFilesApply` is always
+  // trusted the moment the query itself settles.
+  const {
+    apply,
+    plan: offerPlan,
+    refusal,
+  } = useFilesApply(removal.request, removal.request, project, plan, revision, onClose);
   return (
     <RemoveFileView
       removal={removal}
       project={project}
-      offer={{ plan: plan.data ?? null, refusal }}
+      offer={{ plan: offerPlan, refusal }}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => apply.mutate()}

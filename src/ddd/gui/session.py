@@ -259,7 +259,8 @@ class Session:
     disk as it then stands, never a queue. Once :meth:`start` has started the analyser, it runs
     them on a thread of its own and whatever asked answers at once; where nothing started it -
     every test not about it, and a session nobody started - whatever asked makes the analysis
-    itself before it answers, and a failure is raised to it.
+    itself before it answers, and the one its revision asks for in turn, and a failure of either
+    is raised to it.
 
     One lock guards the project, its newest revision, the undo stack, the counters, the request,
     the stamps and the files written since an analysis began, and every write is made holding
@@ -627,8 +628,10 @@ class Session:
         done and then, a poll later, that it is analysing again.
 
         A revision published lets go of the files every edit it includes wrote: none of them is
-        waiting for an analysis any more. Whatever it leaves, the version moves - an analysis
-        ended is a change of what the session says, ``analysing`` among it.
+        waiting for an analysis any more. Whatever it leaves, the version moves, since what the
+        session says may have changed with it: the newest revision, where one is published, and
+        ``analysing``, which turns false unless another analysis is asked for by then - the one
+        this revision asks for, or one asked while this analysis ran.
         """
         self._running = False
         if begun.project == self._project:

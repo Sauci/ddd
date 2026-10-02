@@ -391,22 +391,42 @@ class TestFollowingTheDisk:
         """A file the project did not have when the poll stamped its files has no stamp of its
         own, so the revision that read it asks for one analysis more at once - which is what
         catches a save made to it while the analysis that brought it in ran, with no poll after
-        it."""
-        session = opened_and_settled(shared)
-        write_tree(
-            shared.parent,
-            {
-                "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
-                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
-            },
-        )
-        newcomer = shared.parent / "c.ddd.json"
-        monkeypatch.setattr(module, "run_project", saving_while_analysing(newcomer, b'"Hz"'))
-        assert session.poll() is True
-        monkeypatch.undo()
-        revision = session.revision
-        assert revision is not None and revision.number == 3
-        assert mismatches(session) == 2
+        it: this session polls an hour apart. The analysis it asks for is held while revision 2 is
+        read, whose lack of any disagreement shows that the analysis bringing the file in read it
+        before the save."""
+        session = Stepped(shared.parent)
+        opening, bringing, asked = session.goes
+        opening.set()
+        bringing.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+            write_tree(
+                shared.parent,
+                {
+                    "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
+                    "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                },
+            )
+            newcomer = shared.parent / "c.ddd.json"
+            monkeypatch.setattr(module, "run_project", saving_while_analysing(newcomer, b'"Hz"'))
+            assert session.poll() is True
+            begun(session)  # the analysis bringing c.ddd.json in, saving it once it has read it
+            begun(session)  # the one its revision asks for, held
+            monkeypatch.undo()
+            brought = session.revision
+            assert brought is not None and brought.number == 2
+            assert mismatches(session) == 0
+            asked.set()
+            caught = landed(session).revision
+            assert caught is not None and caught.number == 3
+            assert mismatches(session) == 2
+        finally:
+            for go in session.goes:
+                go.set()
+            stopped(session)
 
     def test_a_waiting_request_gets_what_the_session_says_as_soon_as_it_changes(
         self, shared: Path
@@ -477,6 +497,21 @@ class Stepped(Session):
         self.begun.release()
         assert go.wait(timeout=10), "the test never let this analysis go"
         return super()._analysed(project)
+
+
+class Recording(Session):
+    """A session that keeps what it says at the end of each analysis, read in the same hold of the
+    lock that published what the analysis left: what it says from that moment, since no reader -
+    a page's long poll, the journeys' fixture - can read it in between, every one holding the lock
+    to read."""
+
+    def __init__(self, root: Path) -> None:
+        super().__init__(root, poll_interval=3600)
+        self.left: list[Snapshot] = []
+
+    def _finished(self, begun: module._Begun, revision: Revision | None) -> None:
+        super()._finished(begun, revision)
+        self.left.append(self._snapshot())
 
 
 class SecondFails(Gated):
@@ -1200,30 +1235,18 @@ class TestStamps:
     def test_a_revision_that_read_a_file_with_no_stamp_is_published_analysing(
         self, tmp_path: Path
     ) -> None:
-        """The analysis it asks for begins with no poll to notice anything - this session polls
-        an hour apart - and the session says it is analysing from the first revision on, until
-        that analysis lands: whatever waits for the project to be analysed, a page or the
-        journeys' own fixture, waits for that one too, rather than hearing that the findings are
-        settled and then, a poll later, that they are updating again."""
-        session = Stepped(tmp_path)
-        opening, second, _ = session.goes
-        opening.set()
-        session.start()
-        try:
-            session.open(with_a_sub_project(tmp_path))
-            begun(session)
-            begun(session)  # the second, asked for by nothing but the first's revision
-            during = session.snapshot()
-            assert during.revision is not None and during.revision.number == 1
-            assert during.analysing is True
-            second.set()
-            after = landed(session)
-            assert after.revision is not None and after.revision.number == 2
-            assert session.poll() is False
-        finally:
-            for go in session.goes:
-                go.set()
-            stopped(session)
+        """Said in the hold of the lock that publishes the revision, so that no reader ever hears
+        the first one with nothing analysing: whatever waits for the project to be analysed - a
+        page, or the journeys' own fixture - waits for the second too, rather than hearing that
+        the findings have settled and then that they are updating again. Asked in a hold of its
+        own after that one, the request would leave a moment in which the session said so."""
+        session = Recording(tmp_path)
+        session.open(with_a_sub_project(tmp_path))
+        first, second = session.left
+        assert first.revision is not None and first.revision.number == 1
+        assert first.analysing is True
+        assert second.revision is not None and second.revision.number == 2
+        assert second.analysing is False
 
     def test_a_file_an_edit_created_costs_no_second_analysis(self, shared: Path) -> None:
         session = Session(shared.parent)

@@ -151,10 +151,10 @@ async function started(
  * publishes asks for the second (`_finished`, session.py). The server's first poll used to ask
  * for it instead, and the state saying so came 952 to 1036 ms after this resolved, asked as this
  * asks, in 20 starts on the Linux development PC - about a second into the journey. A press made
- * then, on Apply or Show changes, went down on one button and came up on something else - above
- * the button, once "Updating the findings…" had moved it down a line, or on a button drawn anew
- * once its plan was asked for again for the new revision - and was lost, the journey waiting out
- * its timeout for what the press never asked for.
+ * then, on Apply or Show changes, went down on the button and came up off it - above it, once
+ * "Updating the findings…" had moved it down a line, or where it had been, withdrawn while its
+ * plan was asked for again for the new revision - and was lost, the journey waiting out its
+ * timeout for what the press never asked for.
  */
 async function analysed(address: string): Promise<void> {
   const signedIn = await fetch(address, { redirect: "manual" });

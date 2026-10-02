@@ -286,9 +286,12 @@ def build_record(base: Path, project_file: Path, image: str = "firmware.elf", **
 
 
 def first_revision(root: Path, project_file: Path) -> Revision:
-    """The revision opening ``project_file`` makes, in a session on ``root`` that nobody started:
-    such a session makes the analysis before :meth:`~ddd.gui.session.Session.open` returns, which
-    answers nothing of its own."""
+    """The newest revision once opening ``project_file`` is done, in a session on ``root`` that
+    nobody started: such a session makes every analysis opening asks for before
+    :meth:`~ddd.gui.session.Session.open` returns, which answers nothing of its own. One for a flat
+    project, so revision 1; two where the first read a file opening does not stamp - a
+    sub-project's, as on examples/demo, or a plugin - and its revision asked for the second, so
+    revision 2."""
     session = Session(root)
     session.open(project_file)
     revision = session.revision

@@ -12,10 +12,13 @@ import json
 import os
 import re
 import shutil
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
+from generate_project import generate
 
 from conftest import (
     DEMO,
@@ -3922,6 +3925,348 @@ class TestPositions:
         assert document.position(offset) == {"line": 2, "character": 2}
         after_emoji = document.text.index('",\n  "a"')
         assert document.position(after_emoji)["character"] == len('  "unit": "°C 😀') + 1
+
+
+# The scanner ``ddd.lsp.ranges`` walked the text with before it matched regular expressions,
+# copied from that module verbatim but for its names, as the oracle the tests below compare
+# ``Document`` with. Kept because the rewrite claims answers identical to this walk's, on every
+# text, and only the walk itself can say what it answered: an oracle written afresh could share
+# the rewrite's mistakes, and one that is the code under test agrees with any change.
+
+_REFERENCE_WHITESPACE: Final = " \t\n\r"
+_REFERENCE_LITERAL_END: Final = ",}] \t\n\r"
+
+
+def _reference_line_starts(text: str) -> list[int]:
+    starts = [0]
+    starts.extend(index + 1 for index, character in enumerate(text) if character == "\n")
+    return starts
+
+
+def _reference_decoded(key: str) -> str:
+    """A member's key as json means it, from the source text that spells it.
+
+    ``"na\\u006de"`` is ``name``, and every pointer this module is asked about was built from
+    the parsed document, where it already is. Taken as written, the key named nothing: a
+    finding about it fell back to the enclosing object's range, and ``ddd id --assign``
+    skipped such a declaration in silence, having computed an insertion for a pointer the
+    document has not got.
+
+    The parse is skipped where there is no escape to decode, which is every key of every
+    description anybody writes: json's own parser has already accepted this text, so what
+    comes back here is the same string it put in the document.
+    """
+    return str(json.loads(f'"{key}"')) if "\\" in key else key
+
+
+class _ReferenceScanner:
+    """A recursive descent walk over known-good json, recording where each value sits."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.pos = 0
+        self.spans: dict[str, tuple[int, int]] = {}
+        self.texts: dict[str, tuple[int, int]] = {}
+        """Where the characters of a string value sit, without the quotes around them."""
+        self.values: dict[str, tuple[int, int]] = {}
+        """Where a value sits, of whatever shape, without the key in front of it."""
+        self._skip_whitespace()
+
+    def value(self, pointer: str, start: int | None = None) -> None:
+        begin = self.pos
+        character = self.text[self.pos]
+        if character == "{":
+            self._object(pointer)
+        elif character == "[":
+            self._array(pointer)
+        elif character == '"':
+            self._string()
+            # Between the quotes: begin is the opening one, pos is just past the closing one.
+            self.texts[pointer] = (begin + 1, self.pos - 1)
+        else:
+            self._literal()
+        self.spans[pointer] = (begin if start is None else start, self.pos)
+        self.values[pointer] = (begin, self.pos)
+
+    def _object(self, pointer: str) -> None:
+        self.pos += 1
+        self._skip_whitespace()
+        if self.text[self.pos] == "}":
+            self.pos += 1
+            return
+        while True:
+            self._skip_whitespace()
+            key_start = self.pos
+            key = _reference_decoded(self._string())
+            self._skip_whitespace()
+            self.pos += 1  # the ':'
+            self._skip_whitespace()
+            # The key is part of the span, so that the underline says which key is meant.
+            self.value(f"{pointer}.{key}" if pointer else key, key_start)
+            self._skip_whitespace()
+            if self.text[self.pos] == ",":
+                self.pos += 1
+                continue
+            self.pos += 1  # the '}'
+            return
+
+    def _array(self, pointer: str) -> None:
+        self.pos += 1
+        self._skip_whitespace()
+        if self.text[self.pos] == "]":
+            self.pos += 1
+            return
+        index = 0
+        while True:
+            self._skip_whitespace()
+            self.value(f"{pointer}[{index}]")
+            index += 1
+            self._skip_whitespace()
+            if self.text[self.pos] == ",":
+                self.pos += 1
+                continue
+            self.pos += 1  # the ']'
+            return
+
+    def _string(self) -> str:
+        self.pos += 1  # the opening quote
+        start = self.pos
+        while self.text[self.pos] != '"':
+            # A backslash consumes whatever follows it, so an escaped quote does not end the
+            # string. What comes back is the raw source text, because the offsets have to
+            # stay offsets into it; a key is decoded by the caller, which builds a pointer
+            # out of it rather than a span.
+            self.pos += 2 if self.text[self.pos] == "\\" else 1
+        text = self.text[start : self.pos]
+        self.pos += 1  # the closing quote
+        return text
+
+    def _literal(self) -> None:
+        """A number, ``true``, ``false`` or ``null``: everything up to what can follow one.
+
+        The end of the text ends it too. Inside an object or an array a literal is always
+        followed by a comma or a bracket, but a document that *is* a literal - ``7`` is legal
+        json, if not a legal description - has nothing after it, and walking off the end took
+        the whole server down with it.
+        """
+        while self.pos < len(self.text) and self.text[self.pos] not in _REFERENCE_LITERAL_END:
+            self.pos += 1
+
+    def _skip_whitespace(self) -> None:
+        while self.pos < len(self.text) and self.text[self.pos] in _REFERENCE_WHITESPACE:
+            self.pos += 1
+
+
+class _ReferenceScan:
+    """What ``Document`` recorded of a text when it walked it: its ``__init__``, verbatim but for
+    its names and for its comments, which the module keeps.
+
+    A class, as ``Document`` is, so that the two are called alike: whether a document is too deep
+    for the scan depends on the frames above the scan too, and on python 3.14 a call through a
+    class's ``__init__`` spends one frame of the recursion limit more than a call of a function
+    does. A function in this one's place, with the walk the same in both, read some of the shapes
+    below one level deeper than ``Document`` did.
+    """
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self._line_starts = _reference_line_starts(text)
+        try:
+            self.data: Any = json.loads(text)
+            scanner = _ReferenceScanner(text)
+            scanner.value("")
+        except (ValueError, RecursionError):
+            self.data = None
+            self._spans: dict[str, tuple[int, int]] = {}
+            self._texts: dict[str, tuple[int, int]] = {}
+            self._values: dict[str, tuple[int, int]] = {}
+        else:
+            self._spans = scanner.spans
+            self._texts = scanner.texts
+            self._values = scanner.values
+
+
+def scanned_alike(text: str) -> None:
+    """``Document(text)`` answers what the walk recorded: the same document, the same line index,
+    and for every value it found the same place, key and quotes in or out.
+
+    Read through what the callers read - ``span_of``, ``value_span_of``, ``raw_at``,
+    ``text_range_of`` - but for two things compared as recorded: the pointers found, which no
+    public answer lists, so that none is found that the walk did not find; and the line index,
+    which ``position`` and ``pointer_at`` read, compared whole rather than at every offset.
+    """
+    document = Document(text)
+    reference = _ReferenceScan(text)
+    # repr rather than ==, which a NaN fails against itself and which takes 1 for 1.0 and True.
+    assert repr(document.data) == repr(reference.data)
+    assert document._line_starts == reference._line_starts
+    assert document._spans.keys() == reference._spans.keys()
+    assert document._values.keys() == reference._values.keys()
+    assert document._texts.keys() == reference._texts.keys()
+    for pointer, span in reference._spans.items():
+        assert document.span_of(pointer) == span
+        start, end = reference._values[pointer]
+        assert document.value_span_of(pointer) == (start, end)
+        assert document.raw_at(pointer) == text[start:end]
+        inner = reference._texts.get(pointer)
+        assert document.text_range_of(pointer) == (
+            None
+            if inner is None
+            else {"start": document.position(inner[0]), "end": document.position(inner[1])}
+        )
+
+
+def deepest(reads: Callable[[str], bool], nested: Callable[[int], str]) -> int:
+    """The deepest of ``nested``'s documents ``reads`` reads, between 1 and 2,000 levels: each
+    level costs the scan stack, and from some depth on it gives up."""
+    low, high = 1, 2_000
+    while low < high:
+        middle = (low + high + 1) // 2
+        if reads(nested(middle)):
+            low = middle
+        else:
+            high = middle - 1
+    return low
+
+
+def lower(frames: int, reads: Callable[[str], bool]) -> Callable[[str], bool]:
+    """``reads``, called ``frames`` frames further down the stack than it would be."""
+    for _ in range(frames):
+        reads = partial(_called, reads)
+    return reads
+
+
+def _called(reads: Callable[[str], bool], text: str) -> bool:
+    return reads(text)
+
+
+class TestTheScanAnswersAsTheWalkDid:
+    """``Document`` finds where each value sits with regular expressions, matched at a position,
+    where it once walked the text a character at a time; every answer is the walk's, compared
+    here with the walk itself (``_ReferenceScan``)."""
+
+    @pytest.mark.parametrize(
+        "path",
+        sorted(EXAMPLES.rglob("*.json")),
+        ids=lambda path: path.relative_to(EXAMPLES).as_posix(),
+    )
+    def test_every_example(self, path: Path) -> None:
+        scanned_alike(path.read_text(encoding="utf-8-sig"))
+
+    def test_every_file_of_a_generated_project(self, tmp_path: Path) -> None:
+        """Its project description, its units file and its ten components, at three hundred
+        declarations: half the outputs without an id, and half the places of readers taken by
+        outputs nobody reads."""
+        generate(tmp_path / "p", 300, "many", missing_ids=0.5, unread=0.5)
+        files = sorted((tmp_path / "p").rglob("*.json"))
+        assert len(files) == 12
+        for path in files:
+            scanned_alike(path.read_text(encoding="utf-8"))
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # An escaped quote mid-string; an escaped backslash right before a closing quote, in
+            # a value and in a key; an escaped backslash and then an escaped quote.
+            r'{"a": "say \" here", "b": "ends in \\", "c\\": "\\", "d": "\\\"", "e": 1}',
+            # \u escapes, in keys and values, a surrogate pair among them, and text outside
+            # ascii and outside the basic plane written as itself.
+            '{"na\\u006de": "\\u00b0C", "°C": "😀 \\ud83d\\ude00",\n "\\u00e9t\\u00e9": ["é", 1]}',
+            # Empty objects and arrays, with and without whitespace inside them.
+            '{"a": {}, "b": [], "c": [{}, []], "d": { }, "e": [\n ], "f": {"g": [[], {}]}}',
+            "{}",
+            "[]",
+            # A literal that ends the text, alone or after whitespace, and literals of each kind.
+            "7",
+            " -12.5e+3",
+            "true",
+            "null\n",
+            "[NaN, Infinity, -Infinity, 1E5, -0.0, 0, true, false, null]",
+            # Whitespace of all four kinds, everywhere json allows it.
+            ' \t\n\r{ \t\n\r"a" \t\n\r: \t\n\r1 \t\n\r, \t\n\r"b" \t\n\r: \t\n\r'
+            '[ \t\n\r2 \t\n\r, \t\n\r"x" \t\n\r] \t\n\r} \t\n\r',
+            # Line ends of two characters.
+            '{\r\n  "a": 1,\r\n  "b": [\r\n    "x",\r\n    true\r\n  ]\r\n}\r\n',
+            # Strings holding what ends a literal, an object or an array, and a key spelled twice.
+            '{"a": "{[,:]} ", "b": "\\"}{\\"", "a": {"c": "\\/\\b\\f\\n\\r\\t"}}',
+            # Text that does not parse.
+            "",
+            "{not json",
+            '{"a": 1,}',
+            "[1, 2",
+            "\ufeff{}",
+            # Nested past the scan's depth, though not past the parse's.
+            "[" * 1_000 + "]" * 1_000,
+        ],
+        ids=[
+            "escaped-quotes-and-backslashes",
+            "u-escapes-and-text-outside-ascii",
+            "empty-objects-and-arrays",
+            "an-empty-object",
+            "an-empty-array",
+            "a-number-alone",
+            "a-number-after-whitespace",
+            "true-alone",
+            "null-and-a-line-end",
+            "literals-of-each-kind",
+            "whitespace-of-all-four-kinds",
+            "crlf",
+            "structure-inside-strings-and-a-key-twice",
+            "empty",
+            "not-json",
+            "a-trailing-comma",
+            "unclosed",
+            "a-byte-order-mark",
+            "nested-past-the-scan",
+        ],
+    )
+    def test_a_written_case(self, text: str) -> None:
+        scanned_alike(text)
+
+    def test_a_document_nested_past_the_scan_reads_as_nothing_though_it_parses(self) -> None:
+        """The case above, said outright: the parse reads it, the scan gives up, and the
+        ``RecursionError`` is caught, so there is no data and no span, as for text that does
+        not parse."""
+        text = "[" * 1_000 + "]" * 1_000
+        assert json.loads(text) is not None
+        document = Document(text)
+        assert document.data is None
+        assert document.span_of("") is None
+
+    @pytest.mark.parametrize(
+        "nested",
+        [
+            lambda depth: "[" * depth + "]" * depth,
+            lambda depth: "[" * depth + "1" + "]" * depth,
+            lambda depth: "[" * depth + '"s"' + "]" * depth,
+            lambda depth: '{"a":' * depth + "{}" + "}" * depth,
+            lambda depth: '{"a": ' * depth + "true" + " }" * depth,
+            lambda depth: '{"\\u0061":' * depth + "{}" + "}" * depth,
+            lambda depth: '[{"a":' * depth + "[]" + "}]" * depth,
+        ],
+        ids=[
+            "arrays",
+            "arrays-round-a-number",
+            "arrays-round-a-string",
+            "objects",
+            "objects-round-a-literal",
+            "objects-under-an-escaped-key",
+            "objects-in-arrays",
+        ],
+    )
+    @pytest.mark.parametrize("frames", [0, 1, 2, 3])
+    def test_the_scan_gives_up_at_the_depth_the_walk_gave_up_at(
+        self, nested: Callable[[int], str], frames: int
+    ) -> None:
+        """Where a document is nested too deeply depends on how much stack each level costs, and
+        that is unchanged: the deepest document of each shape the scan reads is the deepest the
+        walk read, each called from the same depth of the stack. From four depths in a row: a
+        frame spent more or less at the deepest point moves that limit at one depth of every
+        two for a shape whose levels cost two frames, and at one of every four for one whose
+        levels cost four."""
+        assert deepest(
+            lower(frames, lambda text: Document(text).span_of("") is not None), nested
+        ) == deepest(lower(frames, lambda text: bool(_ReferenceScan(text)._spans)), nested)
 
 
 class TestServer:

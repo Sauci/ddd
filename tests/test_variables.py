@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import difflib
 import json
+import random
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +20,7 @@ from ddd.lsp.ranges import Document
 from ddd.variables import (
     Hunk,
     declarations_of,
+    hunks,
     located_on,
     preview,
     refusal,
@@ -254,3 +257,206 @@ class TestRefusal:
 
 def test_a_settlement_with_nothing_to_change_previews_nothing() -> None:
     assert preview(Settlement((), ()), "unit", {}) == ()
+
+
+# ``hunks`` as it stood before it answered a change made in place without difflib, verbatim but
+# for its name: the oracle of the tests below. Kept because ``hunks`` claims to answer what this
+# answers, difflib over the whole of both texts, on every pair of texts.
+
+
+def _reference_hunks(before: str, after: str) -> tuple[Hunk, ...]:
+    """The lines a change replaces in a text, each run of them numbered as the text stood."""
+    old, new = before.splitlines(), after.splitlines()
+    matcher = difflib.SequenceMatcher(a=old, b=new, autojunk=False)
+    return tuple(
+        Hunk(first + 1, tuple(old[first:last]), tuple(new[start:end]))
+        for tag, first, last, start, end in matcher.get_opcodes()
+        if tag != "equal"
+    )
+
+
+BASE = (
+    json.dumps(
+        component(
+            "A",
+            *(declare("output", f"S{k}", unit=("rpm", "Nm", "kPa")[k % 3]) for k in range(6)),
+        ),
+        indent=2,
+    )
+    + "\n"
+)
+"""Six declarations of one component, written out as a description file is: their lines are
+spelled alike but for each declaration's name and unit."""
+
+LINES = BASE.splitlines()
+
+
+def text_of(lines: list[str]) -> str:
+    return "\n".join(lines) + "\n"
+
+
+def replaced(**lines: str) -> str:
+    """``BASE`` with each line ``_<number>`` - counted from 1 - replaced by the text given."""
+    changed = list(LINES)
+    for spelled, text in lines.items():
+        changed[int(spelled.removeprefix("_")) - 1] = text
+    return text_of(changed)
+
+
+class TestHunks:
+    """``hunks`` answers what difflib answers over the whole of both texts: each case is compared
+    with ``_reference_hunks``, and the cases a change in place answers are written out too."""
+
+    @pytest.mark.parametrize(
+        ("after", "expected"),
+        [
+            (replaced(_1="[{"), (Hunk(1, ("{",), ("[{",)),)),
+            (replaced(**{f"_{len(LINES)}": "}]"}), (Hunk(len(LINES), ("}",), ("}]",)),)),
+            (
+                replaced(_34='          "name": "Speed",'),
+                (Hunk(34, ('          "name": "S2",',), ('          "name": "Speed",',)),),
+            ),
+            (
+                replaced(_8='          "name": "Engine",', _60='          "name": "Pump",'),
+                (
+                    Hunk(8, ('          "name": "S0",',), ('          "name": "Engine",',)),
+                    Hunk(60, ('          "name": "S4",',), ('          "name": "Pump",',)),
+                ),
+            ),
+            (
+                replaced(_3='    "name": "Bench",', _4='    "declarations": ['),
+                (
+                    Hunk(
+                        3,
+                        ('    "name": "A",', '    "interface": ['),
+                        ('    "name": "Bench",', '    "declarations": ['),
+                    ),
+                ),
+            ),
+            (
+                replaced(_15='          "unit": "Hz"', _54='          "unit": "Hz"'),
+                (
+                    Hunk(15, ('          "unit": "rpm"',), ('          "unit": "Hz"',)),
+                    Hunk(54, ('          "unit": "rpm"',), ('          "unit": "Hz"',)),
+                ),
+            ),
+            (
+                text_of([f"other {line}" for line in LINES]),
+                (Hunk(1, tuple(LINES), tuple(f"other {line}" for line in LINES)),),
+            ),
+            (BASE, ()),
+        ],
+        ids=[
+            "the-first-line",
+            "the-last-line",
+            "a-line-in-the-middle",
+            "two-separate-lines",
+            "two-lines-together",
+            "a-unit-renamed-everywhere",
+            "nothing-in-common-as-long",
+            "nothing-changed",
+        ],
+    )
+    def test_a_change_in_place_is_answered_without_difflib(
+        self, after: str, expected: tuple[Hunk, ...], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Each line changed is replaced by one the old text holds nowhere, and is itself held
+        nowhere in the new text - as renaming a unit everywhere, to a spelling nothing uses,
+        replaces its every statement.
+        Before, difflib took 0.95 of the 0.97 ms ``hunks`` took over one such file - a component
+        of 455 lines of a generated project, one unit renamed in it - on the Linux development
+        PC."""
+        reference = _reference_hunks(BASE, after)
+
+        def refused(*arguments: object, **keywords: object) -> None:
+            raise AssertionError("difflib was asked")
+
+        monkeypatch.setattr(difflib, "SequenceMatcher", refused)
+        assert hunks(BASE, after) == expected == reference
+
+    @pytest.mark.parametrize(
+        "after",
+        [
+            # A line inserted.
+            text_of([*LINES[:9], '          "description": "a speed",', *LINES[9:]]),
+            # The first declaration taken out: thirteen lines, most of them spelled as the next
+            # declaration's are, which difflib numbers from line 5 - matching the shared head and
+            # tail first would number them from line 8.
+            text_of([*LINES[:4], *LINES[17:]]),
+            # A line taken out, at the end.
+            text_of(LINES[:-1]),
+            # Nothing in common, and not as long.
+            text_of([f"other {line}" for line in LINES[:20]]),
+            # A unit replaced by one another declaration states, as merging two spellings does.
+            replaced(_15='          "unit": "Nm"'),
+            # A unit replaced while another declaration still states it.
+            replaced(_15='          "unit": "Hz"'),
+            # A file created, and one emptied.
+            "",
+        ],
+        ids=[
+            "an-insertion",
+            "a-removal",
+            "a-removal-at-the-end",
+            "nothing-in-common-and-shorter",
+            "into-a-line-held-elsewhere",
+            "out-of-a-line-held-elsewhere",
+            "emptied",
+        ],
+    )
+    def test_any_other_change_is_numbered_as_difflib_numbers_it(self, after: str) -> None:
+        assert hunks(BASE, after) == _reference_hunks(BASE, after)
+        assert hunks(after, BASE) == _reference_hunks(after, BASE)
+
+    @pytest.mark.parametrize(
+        ("before", "after", "expected"),
+        [
+            ("X\nX\n", "Y\nX\n", (Hunk(1, (), ("Y",)), Hunk(2, ("X",), ()))),
+            ("A\nB\n", "B\nB\n", (Hunk(1, ("A",), ()), Hunk(3, (), ("B",)))),
+        ],
+        ids=["the-line-taken-out-held-in-the-new-text", "the-line-put-in-held-in-the-old-text"],
+    )
+    def test_a_line_matched_elsewhere_is_not_answered_in_place(
+        self, before: str, after: str, expected: tuple[Hunk, ...]
+    ) -> None:
+        """Why a change in place takes out only lines the new text holds nowhere and puts in only
+        lines the old text holds nowhere: each of these replaces one line where it stands, and
+        difflib matches the line taken out, or the one put in, at another place."""
+        assert hunks(before, after) == expected == _reference_hunks(before, after)
+
+    def test_the_removal_is_numbered_from_where_difflib_numbers_it(self) -> None:
+        """Written out: the case above where the shared head and tail would have moved it."""
+        assert hunks(BASE, text_of([*LINES[:4], *LINES[17:]])) == (Hunk(5, tuple(LINES[4:17]), ()),)
+
+    def test_random_changes_are_numbered_as_difflib_numbers_them(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Lines replaced, inserted and taken out at random among a few spellings, some of them
+        new: every answer is difflib's, made in place or by difflib itself."""
+        generator = random.Random(11)
+        asked = []
+        matcher = difflib.SequenceMatcher
+
+        def counted(*arguments: Any, **keywords: Any) -> difflib.SequenceMatcher[str]:
+            asked.append(1)
+            return matcher(*arguments, **keywords)
+
+        cases = 3_000
+        for case in range(cases):
+            spellings = [f"line {index}" for index in range(generator.randint(1, 5))]
+            old = [generator.choice(spellings) for _ in range(generator.randint(0, 12))]
+            new = list(old)
+            for _ in range(generator.randint(0, 4)):
+                fresh = [*spellings, f"new {case}", f"new {case} again"]
+                roll = generator.random()
+                if roll < 0.6 and new:
+                    new[generator.randrange(len(new))] = generator.choice(fresh)
+                elif roll < 0.8:
+                    new.insert(generator.randint(0, len(new)), generator.choice(fresh))
+                elif new:
+                    del new[generator.randrange(len(new))]
+            expected = _reference_hunks(text_of(old), text_of(new))
+            monkeypatch.setattr(difflib, "SequenceMatcher", counted)
+            assert hunks(text_of(old), text_of(new)) == expected
+            monkeypatch.setattr(difflib, "SequenceMatcher", matcher)
+        assert 0 < len(asked) < cases

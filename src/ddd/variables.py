@@ -216,13 +216,61 @@ def planned(
 
 
 def hunks(before: str, after: str) -> tuple[Hunk, ...]:
-    """The lines a change replaces in a text, each run of them numbered as the text stood."""
+    """The lines a change replaces in a text, each run of them numbered as the text stood: what
+    ``difflib.SequenceMatcher`` answers over the lines of the two texts.
+
+    Answered without difflib for a change made in place (:func:`_replaced_in_place`): renaming a
+    unit to a spelling nothing used made such a change of every file it touched, all 1,167, in a
+    generated project of 35,000 declarations. Any other change goes to difflib over both texts
+    whole: matching the lines the two share at their start and at their end first would number
+    some of them otherwise. Where the lines taken out are spelled like the lines beside them,
+    which of those difflib names depends on the text all around - taking the first of six
+    declarations out of a component, it answers lines 5 to 17, where the head matched first
+    would answer lines 8 to 20 (``tests/test_variables.py``).
+    """
     old, new = before.splitlines(), after.splitlines()
+    in_place = _replaced_in_place(old, new)
+    if in_place is not None:
+        return in_place
     matcher = difflib.SequenceMatcher(a=old, b=new, autojunk=False)
     return tuple(
         Hunk(first + 1, tuple(old[first:last]), tuple(new[start:end]))
         for tag, first, last, start, end in matcher.get_opcodes()
         if tag != "equal"
+    )
+
+
+def _replaced_in_place(old: list[str], new: list[str]) -> tuple[Hunk, ...] | None:
+    """The hunks of a change made in place, or ``None`` for any other: the two texts as long as
+    each other, and each line that differs replaced by a line the old text holds nowhere, itself
+    held nowhere in the new text.
+
+    What difflib answers then, found by comparing the lines at each place. No changed line has an
+    equal in the other text, so every block of equal lines difflib can match is of unchanged
+    lines on both sides, and an unchanged line stands at the same place in both texts. Of the
+    longest blocks, difflib takes the one earliest in the old text and then in the new, and that
+    one is at the same place in both: a block at place i of the old text and j of the new is of
+    unchanged lines at both places, so the lines at i, and those at j, form a block as long at
+    the same place in both - and one of those two comes before it. The block taken is then a
+    whole run of unchanged lines, no run being longer than the longest block, and difflib goes on
+    alike on each side of it, taking every run whole. Between two runs lies a run of changed
+    lines, replaced by the new text's.
+    """
+    if len(old) != len(new):
+        return None
+    changed = [index for index, (was, now) in enumerate(zip(old, new, strict=True)) if was != now]
+    held, holding = set(old), set(new)
+    for index in changed:
+        if old[index] in holding or new[index] in held:
+            return None
+    runs: list[list[int]] = []
+    for index in changed:
+        if runs and runs[-1][1] == index:
+            runs[-1][1] = index + 1
+        else:
+            runs.append([index, index + 1])
+    return tuple(
+        Hunk(first + 1, tuple(old[first:last]), tuple(new[first:last])) for first, last in runs
     )
 
 

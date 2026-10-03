@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import re
 import threading
@@ -12,8 +13,9 @@ import pytest
 from bench_gui import NAMES, main, measure
 from generate_project import UNITS, generate
 
+from conftest import landed, stopped
 from ddd.gui.api import Api, Reply
-from ddd.gui.session import Session
+from ddd.gui.session import Revision, Session
 from ddd.variables import declarations_of
 
 
@@ -50,6 +52,9 @@ def test_every_measure_is_taken_in_order_with_its_size(tmp_path: Path) -> None:
         "remove judged",
         "edit answered",
         "rename plan",
+        "state while analysing",
+        "plan while analysing",
+        "edit while analysing",
     }
 
 
@@ -188,9 +193,10 @@ def test_the_edit_moves_to_the_next_unit_of_the_projects_own_sorted_order(
 
     monkeypatch.setattr(Api, "handle", spying)
     measure(made.project)
-    assert len(edited) == 1
-    operation = json.loads(edited[0])["changes"][0]["operations"][0]
-    assert json.loads(operation["raw"]) == expected
+    assert len(edited) == 2  # once idle, and once while an analysis runs
+    for body in edited:
+        operation = json.loads(body)["changes"][0]["operations"][0]
+        assert json.loads(operation["raw"]) == expected
 
 
 def planned(made_project: Path, monkeypatch: pytest.MonkeyPatch) -> list[dict[str, list[str]]]:
@@ -285,14 +291,21 @@ def test_open_the_analysis_and_the_edit_are_timed_until_their_analysis_has_lande
     """The session analyses on a thread of its own, so a measure ending where its request
     returns times the request alone: ``open``, ``analysis`` and ``edit analysed`` each end once
     the session has settled - its analysis landed - and ``edit answered`` ends before. ``rename
-    plan`` is timed after the edit's analysis has landed and before the undo."""
+    plan`` is timed after the edit's analysis has landed and before the undo. Then, over the
+    second session, each measure under load is asked once an analysis has begun
+    (:func:`bench_gui._analysing`), and the session settles before the next one asks its own;
+    the edit is undone last.
+
+    Recorded on this thread alone: the second session's poller polls on a thread of its own,
+    whenever its second comes round."""
     made = generate(tmp_path / "p", 120, "many")
     happened: list[str] = []
 
     def recording(name: str, real):
         def recorded(*arguments, **keywords):
             answer = real(*arguments, **keywords)
-            happened.append(name)
+            if threading.current_thread() is threading.main_thread():
+                happened.append(name)
             return answer
 
         return recorded
@@ -311,6 +324,7 @@ def test_open_the_analysis_and_the_edit_are_timed_until_their_analysis_has_lande
     monkeypatch.setattr(Session, "settled", recording("settled", Session.settled))
     monkeypatch.setattr(Api, "handle", posting(Api.handle))
     monkeypatch.setattr(bench_gui, "_elapsed", recording("timed", bench_gui._elapsed))
+    monkeypatch.setattr(bench_gui, "_analysing", recording("analysing", bench_gui._analysing))
     measure(made.project)
     assert happened == [
         *("open", "settled", "timed"),  # open
@@ -319,6 +333,11 @@ def test_open_the_analysis_and_the_edit_are_timed_until_their_analysis_has_lande
         *("/api/edit", "timed"),  # edit answered
         *("settled", "timed"),  # edit analysed
         "timed",  # rename plan
+        "/api/undo",
+        *("open", "settled"),  # the second session, opened untimed
+        *("poll", "analysing", "timed", "settled"),  # state while analysing
+        *("poll", "analysing", "timed", "settled"),  # plan while analysing, once derived
+        *("poll", "analysing", "/api/edit", "timed", "settled"),  # edit while analysing
         "/api/undo",
     ]
 
@@ -337,11 +356,14 @@ def test_the_analyser_it_starts_has_ended_when_it_returns(tmp_path: Path) -> Non
     assert running() == before
 
 
-def test_the_session_it_measures_polls_an_hour_apart(
+def test_the_first_session_polls_an_hour_apart_and_the_second_as_ddd_gui_does(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Its own poller never polls while a run lasts: ``analysis`` polls for itself, and a poller
-    noticing the moved file first would leave that poll nothing to notice."""
+    """The first session's poller never polls while a run lasts: ``analysis`` polls for itself,
+    and a poller noticing the moved file first would leave that poll nothing to notice. The
+    second's polls at the interval ``ddd gui`` runs its own at - the session's default, which
+    ``ddd.gui.server.run`` leaves as it is - so that its rounds fall among the measures under
+    load as they fall among a reader's requests."""
     made = generate(tmp_path / "p", 120, "many")
     intervals: list[float] = []
     real = Session.start
@@ -352,4 +374,165 @@ def test_the_session_it_measures_polls_an_hour_apart(
 
     monkeypatch.setattr(Session, "start", starting)
     measure(made.project)
-    assert intervals == [3600]
+    default = inspect.signature(Session).parameters["poll_interval"].default
+    assert intervals == [3600, default]
+    assert default == 1.0
+
+
+def test_the_plan_under_load_settles_the_middle_variables_unit_on_the_next_unit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The plan a variable's panel asks while a reader picks a unit: the edit's own change, the
+    next unit after the middle variable's own, previewed on every declaration of it."""
+    made = generate(tmp_path / "p", 120, "many")
+    session = Session(made.project.parent)
+    session.open(made.project)
+    built = session.revision.index
+    assert built is not None
+    variables = sorted(built.declarations)
+    variable = variables[len(variables) // 2]
+    current = json.loads(declarations_of(built, variable, {})[0].stated["unit"])
+    units = sorted(built.units)
+    expected = units[(units.index(current) + 1) % len(units)]
+    asked = []
+    original = Api.handle
+
+    def spying(self, method, path, query, body):
+        if path == "/api/settle":
+            asked.append(dict(query))
+        return original(self, method, path, query, body)
+
+    monkeypatch.setattr(Api, "handle", spying)
+    taken = {each.name: each for each in measure(made.project)}
+    assert asked == [{"name": [variable], "key": ["unit"], "raw": [json.dumps(expected)]}]
+    assert taken["plan while analysing"].size is not None
+
+
+class _Gate(Session):
+    """A session whose analyses each wait at a gate the test opens, once they have begun."""
+
+    gate: threading.Event
+    entered: int
+
+    def _analysed(self, project: Path) -> Revision:
+        self.entered += 1
+        assert self.gate.wait(timeout=10), "the test never opened the gate"
+        return super()._analysed(project)
+
+
+class _HeldWatched(bench_gui._Watched, _Gate):
+    """The benchmark's own session, its analyses held at a gate past the moment it says that
+    each has begun: ``_Watched`` comes first, so it says so before the gate holds the analysis."""
+
+    def __init__(self, root: Path) -> None:
+        super().__init__(root)
+        self.gate = threading.Event()
+        self.entered = 0
+
+
+def test_analysing_returns_once_the_analysis_it_asks_for_has_begun(tmp_path: Path) -> None:
+    """And before it lands: held at the gate, it has begun - entered, the second after
+    opening's - the session says it is analysing, and the revision is still the one before."""
+    made = generate(tmp_path / "p", 120, "many")
+    session = _HeldWatched(made.project.parent)
+    session.gate.set()
+    session.start()
+    try:
+        session.open(made.project)
+        before = landed(session).revision
+        assert before is not None and session.entered == 1
+        session.gate.clear()
+        target = sorted((made.project.parent / "components").glob("*.ddd.json"))[0]
+        bench_gui._analysing(session, target, 0.0)
+        assert session.entered == 2
+        snapshot = session.snapshot()
+        assert snapshot.analysing and snapshot.revision is before
+        session.gate.set()
+        after = landed(session).revision
+        assert after is not None and after.number == before.number + 1
+    finally:
+        session.gate.set()
+        stopped(session)
+
+
+def test_analysing_ends_the_run_where_no_analysis_begins(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A poll that asks for nothing, and no poller to notice the file either: waited for as
+    long as ``_BEGUN_SECONDS`` says, then refused rather than waited for for good."""
+    made = generate(tmp_path / "p", 120, "many")
+    session = bench_gui._Watched(made.project.parent)
+    session.open(made.project)
+    monkeypatch.setattr(session, "poll", lambda: False)
+    monkeypatch.setattr(bench_gui, "_BEGUN_SECONDS", 0.01)
+    target = sorted((made.project.parent / "components").glob("*.ddd.json"))[0]
+    with pytest.raises(RuntimeError) as raised:
+        bench_gui._analysing(session, target, 0.0)
+    assert str(raised.value) == f"{target} was moved forward, but no analysis began"
+
+
+def test_a_rename_plan_that_raises_leaves_the_project_as_it_was(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The edit before it is undone all the same: a request raising is not a refusal, and ends
+    the run with what it raised."""
+    made = generate(tmp_path / "p", 120, "many")
+    before = {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))}
+    original = Api.handle
+
+    def raising(self, method, path, query, body):
+        if path == "/api/unit-plan":
+            raise OSError("a failure made up for the test")
+        return original(self, method, path, query, body)
+
+    monkeypatch.setattr(Api, "handle", raising)
+    with pytest.raises(OSError, match=r"^a failure made up for the test$"):
+        measure(made.project)
+    assert {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))} == before
+
+
+def test_a_refused_plan_under_load_ends_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refusal is no plan, as for the rename: its time would read as one."""
+    made = generate(tmp_path / "p", 120, "many")
+    before = {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))}
+    original = Api.handle
+    refusal = {"error": "unreadable", "message": "a refusal made up for the test"}
+
+    def refusing(self, method, path, query, body):
+        if path == "/api/settle":
+            return Reply(409, refusal)
+        return original(self, method, path, query, body)
+
+    monkeypatch.setattr(Api, "handle", refusing)
+    with pytest.raises(RuntimeError) as raised:
+        measure(made.project)
+    assert str(raised.value) == f"the benchmark's own plan was refused: {refusal}"
+    assert {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))} == before
+
+
+def test_a_refused_edit_ends_the_run_with_nothing_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Refused while an analysis runs, as the first one could be idle: no edit, so nothing to
+    undo, and its time would read as an edit's."""
+    made = generate(tmp_path / "p", 120, "many")
+    before = {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))}
+    original = Api.handle
+    refusal = {"error": "stale", "message": "a refusal made up for the test"}
+    edits: list[bytes | None] = []
+
+    def refusing(self, method, path, query, body):
+        if path == "/api/edit":
+            edits.append(body)
+            if len(edits) == 2:
+                return Reply(409, refusal)
+        return original(self, method, path, query, body)
+
+    monkeypatch.setattr(Api, "handle", refusing)
+    with pytest.raises(RuntimeError) as raised:
+        measure(made.project)
+    assert str(raised.value) == f"the benchmark's own edit was refused: {refusal}"
+    assert len(edits) == 2
+    assert {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))} == before

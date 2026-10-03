@@ -934,7 +934,11 @@ plain ``GET`` endpoints - ``/api/state``, ``/graph``, ``/units``, ``/types``, ``
 ``/files``; the Findings tab's first page and one component's own findings; a variable's panel;
 a unit's panel; judging a removal on the Files tab; one analysis; an edit answered and then
 analysed; and, once that analysis has landed, planning the rename of the unit stated in the most
-files. The page half needs the pages built first, and a channel naming an installed browser:
+files. Then, over a second session polling once a second, as ``ddd gui``'s own does, three
+requests each asked as an analysis begins, and so answered while it runs: ``/api/state``, the plan
+of that edit's own change (``GET /api/settle``, what a variable's panel asks while a reader picks
+a unit), and the edit itself. The page half needs the pages built first, and a channel naming an
+installed browser:
 ``cd gui && npm run build && PLAYWRIGHT_CHANNEL=chrome npm run bench`` (``playwright test -c
 playwright.bench.config.ts``) times it the same way a reader would meet it, against a running
 ``ddd gui`` - ``DDD_BENCH_PROJECT`` naming the ``project.ddd.json`` to start it over and

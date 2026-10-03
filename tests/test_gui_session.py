@@ -1295,6 +1295,203 @@ class TestStamps:
         assert session.revision is not None and session.revision.edits == undone
 
 
+class Held:
+    """A stand-in for a function of the session module that, called on the thread named
+    ``thread``, says so and waits there until the test lets it go - the first such call alone;
+    every other call is the real one's."""
+
+    def __init__(self, real: Callable[..., object], thread: str) -> None:
+        self.real = real
+        self.thread = thread
+        self.inside = threading.Event()
+        self.going = threading.Event()
+        self.held = False
+
+    def __call__(self, *arguments: object) -> object:
+        if threading.current_thread().name == self.thread and not self.held:
+            self.held = True
+            self.inside.set()
+            assert self.going.wait(timeout=10), "the test never let the call go"
+        return self.real(*arguments)
+
+
+def finished[T](call: Callable[[], T]) -> T:
+    """What ``call`` answers, called on a thread of its own, failing the test where five seconds
+    pass first: what a call waiting for a lock held across a held call would do. Five, so that it
+    fails before the held call gives up waiting (:class:`Held`, ten) and lets the lock go."""
+    answers: list[T] = []
+    thread = threading.Thread(target=lambda: answers.append(call()), name="asking", daemon=True)
+    thread.start()
+    thread.join(timeout=5)
+    assert not thread.is_alive(), "the call waited for the session's lock"
+    (answer,) = answers
+    return answer
+
+
+class TestNothingIsReadHoldingTheLock:
+    """The poll stamps the files without the session's lock, an analysis stamps those it is about
+    to read without it, and opening reads what a project includes before taking it: while another
+    thread computes, every system call waits for that thread's turn, and one of these held across
+    a project's thousands of files held every edit, every state and every plan behind it for
+    seconds. Each is held here mid-way, on its own thread, while another thread's call is
+    answered."""
+
+    def test_a_poll_stamps_the_files_without_holding_the_lock(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """While the poll stamps, the session says what it says and an edit is written and
+        analysed. The edit's analysis replaced the stamps the poll was comparing with, so that
+        round passes rather than taking the edit's own write for a change: the edit's analysis
+        read it, and the next poll compares with the stamps it took."""
+        session = opened_and_settled(shared)
+        held = Held(module.stamped, "polling")
+        monkeypatch.setattr(module, "stamped", held)
+        polled: list[bool] = []
+        polling = threading.Thread(
+            target=lambda: polled.append(session.poll()), name="polling", daemon=True
+        )
+        polling.start()
+        try:
+            assert held.inside.wait(timeout=10), "the poll never stamped"
+            assert finished(session.snapshot).analysing is False
+            at, _ = finished(lambda: session.edit([unit_of_b(shared, "Hz")], "the unit of Speed"))
+        finally:
+            held.going.set()
+            polling.join(timeout=10)
+        assert not polling.is_alive()
+        assert polled == [False]
+        revision = session.revision
+        assert revision is not None and (revision.number, revision.edits) == (2, at)
+        assert mismatches(session) == 2
+        assert session.poll() is False
+
+    def test_an_analysis_stamps_the_files_it_reads_without_holding_the_lock(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """While the analysis an edit asked for stamps the files it is about to read, the session
+        says it is analysing and another edit is written. The analysis counts the edits on disk
+        when it took its request up, before it stamped: the edit written while it stamped is the
+        next analysis's, as one written while it read the files is."""
+        session = Stepped(shared.parent)
+        opening, first, second = session.goes
+        opening.set()
+        session.start()
+        held = Held(module.stamped, "ddd-gui-analyse")
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+            monkeypatch.setattr(module, "stamped", held)
+            at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of B's Speed")
+            assert held.inside.wait(timeout=10), "the analysis never stamped"
+            assert finished(session.snapshot).analysing is True
+            later, _ = finished(
+                lambda: session.edit([unit_of_a(shared, "Hz")], "the unit of A's Speed")
+            )
+            held.going.set()
+            begun(session)
+            first.set()
+            begun(session)  # the second edit's analysis, begun once the first edit's landed
+            revision = session.revision
+            assert revision is not None and (revision.number, revision.edits) == (2, at)
+            second.set()
+            settled = landed(session).revision
+            assert settled is not None and (settled.number, settled.edits) == (3, later)
+        finally:
+            held.going.set()
+            for go in session.goes:
+                go.set()
+            stopped(session)
+
+    def test_a_poll_while_an_analysis_stamps_asks_for_nothing(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """While an analysis's stamps are being taken there are none to compare with, and the poll
+        finds nothing - as it finds nothing once they are taken
+        (``test_the_poll_does_not_take_an_edits_own_write_for_a_change_its_analysis_missed``):
+        the edit's own write, made before that analysis took its request up, is one it is about
+        to read."""
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        held = Held(module.stamped, "ddd-gui-analyse")
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+            monkeypatch.setattr(module, "stamped", held)
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            assert held.inside.wait(timeout=10), "the analysis never stamped"
+            assert session.poll() is False
+            held.going.set()
+            begun(session)
+            landed(session)
+            assert session.analyses == 2
+        finally:
+            held.going.set()
+            session.gate.set()
+            stopped(session)
+
+    def test_a_project_opened_while_an_analysis_stamps_keeps_stamps_of_its_own(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The analysis of the project open before is thrown away when it ends, as one the opening
+        found reading the files is
+        (``test_a_project_opened_while_another_is_analysed_throws_that_analysis_away``), and what
+        it stamped is not taken for the new project's stamps: a save of a file the new project
+        does not have asks for nothing."""
+        write_tree(shared.parent, {"q.ddd.json": project("Q", "a.ddd.json")})
+        other = shared.parent / "q.ddd.json"
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        held = Held(module.stamped, "ddd-gui-analyse")
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+            monkeypatch.setattr(module, "stamped", held)
+            session.gate.clear()
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            assert held.inside.wait(timeout=10), "the analysis never stamped"
+            session.open(other)
+            held.going.set()
+            begun(session)  # the edit's analysis, of the project open before, held at the gate
+            b = shared.parent / "b.ddd.json"
+            b.write_bytes(b.read_bytes() + b" ")
+            assert session.poll() is False
+            session.gate.set()
+            settled = landed(session).revision
+            assert settled is not None and settled.project == other.resolve()
+        finally:
+            held.going.set()
+            session.gate.set()
+            stopped(session)
+
+    def test_opening_reads_what_a_project_includes_without_holding_the_lock(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Opening reads the description and expands its includes to know which files to stamp
+        before the first analysis reads them; meanwhile the session answers for what was open
+        before."""
+        session = Session(shared.parent)
+        session.open(shared)
+        before = session.snapshot()
+        held = Held(module._named_by, "opening")
+        monkeypatch.setattr(module, "_named_by", held)
+        opening = threading.Thread(target=lambda: session.open(shared), name="opening", daemon=True)
+        opening.start()
+        try:
+            assert held.inside.wait(timeout=10), "opening never read what the project includes"
+            assert finished(session.snapshot) == before
+        finally:
+            held.going.set()
+            opening.join(timeout=10)
+        assert not opening.is_alive()
+        assert session.revision is not None and session.revision.number == 2
+        assert session.poll() is False
+
+
 class TestReadingAndEditing:
     def test_a_description_file_is_read_with_its_fingerprint(self, shared: Path) -> None:
         session = Session(shared.parent)

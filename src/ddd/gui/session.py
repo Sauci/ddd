@@ -9,9 +9,13 @@ while one analysis runs are all analysed by the one after it. What the session s
 revision, whether an analysis is asked for or running, the undo entry - is read whole as a
 :class:`Snapshot`, numbered by a version that moves at every change of it, which is what a page
 waits past. A change on disk is noticed by another thread, comparing each file's modification
-time and size once a second: the standard library has no file watcher, and re-checking a project
-of thousands of declarations takes well under a second. A file a wildcard include would match
-only once it exists is noticed when something else changes, which is a limit of the preview.
+time and size once a second: the standard library has no file watcher. Re-checking the 1,683 files
+of a generated project of 100,000 declarations (``--shape mixed --missing-ids 1 --unread 0.5``)
+took 2 to 6 ms a round with nothing else running, and 2.8 to 3.4 s a round while an analysis ran,
+every stat waiting out the analysis's turn of the interpreter - one run of four analyses on the
+Linux development PC, Python 3.14 - which is why a round holds no lock while it stamps
+(:meth:`Session.poll`). A file a wildcard include would match only once it exists is noticed when
+something else changes, which is a limit of the preview.
 
 The analysis is the language server's, run the way ``ddd lsp`` runs it: under the severities of
 every build record naming the project, or under the defaults when none does.
@@ -263,8 +267,17 @@ class Session:
     is raised to it.
 
     One lock guards the project, its newest revision, the undo stack, the counters, the request,
-    the stamps and the files written since an analysis began, and every write is made holding
-    it. An analysis runs without it, which is what lets an edit be written while one runs.
+    the stamps and the files written since an analysis began, and every write of them is made
+    holding it. An analysis runs without it, which is what lets an edit be written while one
+    runs. Nothing on disk is touched holding it but the files an edit or an undo writes, so that
+    the number it takes, the stack and the files waiting for an analysis move with the write: the
+    poll stamps the files without it (:meth:`poll`), an analysis stamps those it is about to read
+    without it (:meth:`_next`), and opening reads what a project includes before taking it
+    (:meth:`open`). While another thread computes, every system call waits out that thread's
+    turn of the interpreter, and a lock held across a project's thousands of files held every
+    edit, state and plan behind them: edits asked 0.2 to 3.0 s into an analysis of a generated
+    project of 100,000 declarations answered in 2 to 3,363 ms while the poll stamped holding it,
+    and in 2 to 129 ms since - one run each, seven edits, on the Linux development PC.
     """
 
     def __init__(
@@ -312,17 +325,27 @@ class Session:
 
     def open(self, project: Path) -> None:
         """Open a project description, replacing the project open before it, and ask for its
-        first analysis."""
+        first analysis.
+
+        What its own includes name (:func:`_named_by`) is read before the lock is taken, as
+        whether it is a project description at all is: the description read and its patterns
+        expanded on disk, system calls each of which waits out any busy thread's turn. Sound,
+        because what it names is only which files are stamped as the first analysis begins, the
+        stamps themselves taken then (:meth:`_next`): a description changed in between names a
+        file with no stamp from before, which costs the one analysis more any such file costs
+        (:meth:`_finished`).
+        """
         path = project.resolve()
         if not _is_project(path):
             raise ValueError(f"{project} is not a project description")
+        named = _named_by(path)
         with self._lock:
             self._project = path
             self._revision = None
             self._stack = []
             self._written = []
             self._signature = {}
-            self._fresh = _named_by(path)
+            self._fresh = named
             self._request()
         self._analyse_here()
 
@@ -364,9 +387,26 @@ class Session:
 
     def poll(self) -> bool:
         """Ask for an analysis if a file of the open project changed on disk since its stamps
-        were taken; say whether one did."""
+        were taken; say whether one did.
+
+        The files are stamped without the lock, which is held only to read the stamps to compare
+        with and then to compare and ask: one stat a file, each waiting out any busy thread's
+        turn, held every edit, state and plan behind a round of them for seconds. Stamps replaced
+        in between - an analysis begun or published, a project opened, each of which rebinds them
+        whole and never changes them in place - make this reading moot, and the round passes
+        asking for nothing: whatever replaced them took stamps of its own, from before its
+        analysis reads a file, and the next round compares with those. Two statements rather than
+        one condition, so that coverage counts a branch for each.
+        """
         with self._lock:
-            if self._project is None or stamped(self._signature) == self._signature:
+            if self._project is None:
+                return False
+            signature = self._signature
+        now = stamped(signature)
+        with self._lock:
+            if self._signature is not signature:
+                return False
+            if now == signature:
                 return False
             self._request()
         self._analyse_here()
@@ -570,7 +610,21 @@ class Session:
     def _next(self, *, wait: bool) -> _Begun | None:
         """The analysis to make next, begun - its stamps taken before it reads a file - or
         ``None`` where there is none to make; after waiting for one, where asked to, until the
-        session stops."""
+        session stops.
+
+        Taken up holding the lock - the request, the files to stamp and the edits already on
+        disk, every one of which this analysis reads - and stamped without it, as :meth:`poll`
+        stamps. An edit written while the files are stamped is numbered past the edits taken up,
+        so it is the next analysis's, which its own request asks for, however this one's stamps
+        caught its write: stamped after it, the write is what this analysis reads; stamped
+        before, the poll after this revision finds the file changed, and asks for the analysis
+        that edit asked for already.
+
+        While they are stamped the stamps stand empty, so that a poll compares nothing then: an
+        edit's own write, made before this analysis took its request up, is not a change it
+        missed, being about to be read. Put in place once taken, unless something replaced the
+        empty ones meanwhile: only opening a project can, whose own stamps they then are.
+        """
         with self._changed:
             if wait:
                 self._changed.wait_for(
@@ -583,14 +637,20 @@ class Session:
                 return None
             self._asked = None
             self._running = True
-            # Raising nothing: `stamped` stamps a path the system refuses even to look at as one
-            # that is not there, and an exception here would leave `_running` set for good.
-            stamps = stamped(set(self._signature) | self._fresh)
+            paths = set(self._signature) | self._fresh
             self._fresh = set()
+            edits = self._edits
+            stamping: dict[Path, tuple[int, int] | None] = {}
+            self._signature = stamping
+        # Raising nothing: `stamped` stamps a path the system refuses even to look at as one that
+        # is not there, and an exception here would leave `_running` set for good.
+        stamps = stamped(paths)
+        with self._changed:
             # Standing in for the last revision's while this one runs, so that the poll does not
             # take an edit's own write, stamped here, for a change this analysis missed.
-            self._signature = dict(stamps)
-            return _Begun(project, stamps, self._edits)
+            if self._signature is stamping:
+                self._signature = dict(stamps)
+        return _Begun(project, stamps, edits)
 
     def _run(self, begun: _Begun, *, raising: bool) -> None:
         """Make the analysis ``begun`` and publish what it made; one that raises is raised to

@@ -1,5 +1,6 @@
 import dagre, { type EdgeLabel, type GraphLabel, type NodeLabel } from "@dagrejs/dagre";
 import type { GraphFlow, GraphModule } from "../api/types";
+import { LAYOUT_MEASURE } from "./layoutAnswers";
 import { NODE_HEIGHT, NODE_WIDTH } from "./nodeSize";
 
 /**
@@ -270,4 +271,22 @@ export function layoutOf(
     if (error instanceof RangeError) return { placed: ranked(modules, flows), ranksOnly: true };
     throw error;
   }
+}
+
+/**
+ * `layoutOf`, measured on the timeline of the thread that makes it - the layout worker's own
+ * (`gui/src/app/layoutWorker.ts`) - as one `performance.measure` named `LAYOUT_MEASURE`, from just
+ * before `layoutOf` to just after it: the worker's layout alone, not the messages that carry its
+ * request and its answer, nor the drawing after. A worker's entries stay on its own timeline,
+ * which the page's never sees; `gui/bench/page.bench.ts` reads them from the worker itself. A
+ * layout `layoutOf` throws is not measured.
+ */
+export function measuredLayoutOf(
+  modules: readonly GraphModule[],
+  flows: readonly GraphFlow[],
+): { placed: Placed[]; ranksOnly: boolean } {
+  const start = performance.now();
+  const answer = layoutOf(modules, flows);
+  performance.measure(LAYOUT_MEASURE, { start, end: performance.now() });
+  return answer;
 }

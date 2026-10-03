@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import type { GraphModule } from "../api/types";
 import {
   INITIAL_LAYOUT_STATE,
+  LAYOUT_MEASURE,
   type LayoutState,
   layoutScreen,
   RANKS_ONLY_NOTE,
@@ -19,6 +20,12 @@ test("RANKS_ONLY_NOTE is its own exact sentence", () => {
 
 test("WORKER_FAILED is its own exact sentence", () => {
   expect(WORKER_FAILED).toBe("The layout worker stopped; reload the page to try again.");
+});
+
+// The name of the worker's own measure of its layout, which gui/bench/page.bench.ts reads back
+// under the same name, imported: pinned by its literal here.
+test("LAYOUT_MEASURE names the measure layout", () => {
+  expect(LAYOUT_MEASURE).toBe("layout");
 });
 
 const graphModule = (path: string): GraphModule => ({

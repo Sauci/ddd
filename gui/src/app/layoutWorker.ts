@@ -9,11 +9,12 @@
  *
  * Glue only (review fix round 2, New Important 1): whether dagre's own layout stands or `ranked`
  * replaces it is `layoutOf`'s decision (`gui/src/lib/layout.ts`), under Vitest; this file only
- * calls it and turns what comes back into a message. `shapeOf` itself can still throw before
- * either is reached - defensively, on modules or flows malformed enough that even sorting them
- * fails - and that throw is not this file's to catch either; it reaches `useLayout`'s `onerror`
- * the same as a worker that fails to start at all (`layoutAnswers.ts`'s own doc on `WORKER_
- * FAILED`).
+ * calls it, through `measuredLayoutOf` - which measures it on this worker's own timeline, for the
+ * benchmark's `layout` - and turns what comes back into a message. `shapeOf` itself can still
+ * throw before either is reached - defensively, on modules or flows malformed enough that even
+ * sorting them fails - and that throw is not this file's to catch either; it reaches
+ * `useLayout`'s `onerror` the same as a worker that fails to start at all (`layoutAnswers.ts`'s
+ * own doc on `WORKER_FAILED`).
  *
  * Vite 8 builds this file as an IIFE by default (`worker.format`), not an ES module - what makes
  * it a *module worker* is the construction `useLayout` uses to load it, `new Worker(new URL(...),
@@ -29,7 +30,7 @@
  * it, and `postMessage`'s "DOM" signature accepts a lone message with no target origin.
  */
 import type { GraphFlow, GraphModule } from "../api/types";
-import { layoutOf } from "../lib/layout";
+import { measuredLayoutOf } from "../lib/layout";
 import type { LayoutAnswer } from "../lib/layoutAnswers";
 import { shapeOf } from "../lib/shape";
 
@@ -42,7 +43,7 @@ self.addEventListener("message", (event: MessageEvent<LayoutRequest>) => {
   const { modules, flows } = event.data;
   const shape = shapeOf(modules, flows);
   try {
-    const { placed, ranksOnly } = layoutOf(modules, flows);
+    const { placed, ranksOnly } = measuredLayoutOf(modules, flows);
     self.postMessage({ shape, placed, ranksOnly } satisfies LayoutAnswer);
   } catch (error) {
     // A layout `layoutOf` could not make at all - a `RangeError` is already `ranksOnly` by the

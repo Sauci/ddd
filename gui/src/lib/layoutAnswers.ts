@@ -53,6 +53,14 @@ export const RANKS_ONLY_NOTE =
 export const WORKER_FAILED = "The layout worker stopped; reload the page to try again.";
 
 /**
+ * The name the worker's own layout is measured under on its timeline (`measuredLayoutOf`,
+ * `./layout.ts`): spec §6's "has its layout measured by the benchmark". Here, beside the other
+ * names the worker and the page share, rather than in `./layout.ts`: `gui/bench/page.bench.ts`
+ * imports it to read the measure back, and this file pulls no dagre in with it.
+ */
+export const LAYOUT_MEASURE = "layout";
+
+/**
  * `state` with `answer` applied, or `state` unchanged when `answer` is not for `wanted` - the
  * shape `useLayout` is currently asking for. A worker answers in the order it is asked, but a
  * later shape can be posted before an earlier one's answer arrives; comparing the answer's own

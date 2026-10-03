@@ -1,9 +1,9 @@
 /**
  * The page half of the benchmark of `ddd gui` on large generated projects (design doc §4): a
  * Playwright script against a running server, timing what a reader sees - the shell answering,
- * the first drawn screen, each tab's own first row, typing, scrolling, an Apply's own change
- * showing and the findings catching up to it - rather than any one request (`tools/bench_gui.py`
- * is the server half, in process). Run by hand only (`playwright.bench.config.ts` says why), on
+ * the first drawn screen and the worker's layout of it, each tab's own first row, typing,
+ * scrolling, an Apply's own change showing and the findings catching up to it - rather than any
+ * one request (`tools/bench_gui.py` is the server half, in process). Run by hand only (`playwright.bench.config.ts` says why), on
  * the projects `tools/generate_project.py` writes under `$BENCH` (Task 1) - this file never
  * imports that generator, so it learns a project's shape from the page alone, the way a reader
  * would.
@@ -43,6 +43,7 @@ import { appendFileSync, existsSync, statSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { createInterface } from "node:readline";
 import { test as base, chromium, expect, type Locator, type Page } from "@playwright/test";
+import { LAYOUT_MEASURE } from "../src/lib/layoutAnswers";
 
 /**
  * `test`, with its `page` fixture backed by a fresh *browser* for every test - a whole new Chrome
@@ -386,8 +387,8 @@ async function openFindingsTab(page: Page): Promise<void> {
 /** How long `undoLastEditIfAny` waits for the Undo button before deciding there is truly nothing
  * to put back - a wait, not an instant, one-shot `isVisible()` read: `state.undoable`, which the
  * button depends on, reaches the page through the continuous `GET /api/state` long poll, a
- * separate path from the file re-fetch `apply shows`'s and `findings current`'s own measured wait
- * already confirms, and one that a one-shot read could lose the race against. Thirty seconds is
+ * separate path from the file read again that `apply shows`'s own measured wait confirms, and one
+ * that a one-shot read could lose the race against. Thirty seconds is
  * far past that gap in every run measured here (the poll is already continuously in flight, so
  * this is one more round trip, not a fresh one) while still far short of `CAP_MS`, for the one
  * genuine case this wait can span the whole of: a `capped()` measure moved on before its own
@@ -450,6 +451,27 @@ test("answering", async ({ page }) => {
   record("answering", formatMs(ms));
 });
 
+/**
+ * How long the worker's own layout of the graph took, the first it made on this page: the
+ * `performance.measure` named `LAYOUT_MEASURE` that `measuredLayoutOf` (`gui/src/lib/layout.ts`)
+ * makes around `layoutOf` in the worker (spec §6, "has its layout measured by the benchmark").
+ * Read from the worker's own timeline - a worker's entries never reach the page's - once the
+ * canvas is drawn, which is only ever after a layout has landed (`layoutScreen`,
+ * `gui/src/lib/layoutAnswers.ts`). A page with no worker holding the measure is this script's
+ * fault, not the page's, and fails the test loudly.
+ */
+async function workerLayout(page: Page): Promise<number> {
+  for (const worker of page.workers()) {
+    const durations = await worker.evaluate(
+      (name) => performance.getEntriesByName(name, "measure").map((entry) => entry.duration),
+      LAYOUT_MEASURE,
+    );
+    const first = durations[0];
+    if (first !== undefined) return first;
+  }
+  throw new Error(`no worker of the page measured ${LAYOUT_MEASURE}`);
+}
+
 test("first screen", async ({ page }) => {
   await page.goto(address);
   // The canvas region itself, not a module node in it (review fix round 1, Minor 4): GraphPage
@@ -466,6 +488,9 @@ test("first screen", async ({ page }) => {
     await expect(canvas).toBeVisible({ timeout: LONG_TIMEOUT });
   });
   record("first screen", formatMs(ms));
+  // The worker's own layout, out of that first screen's time (spec §6): recorded as a measure
+  // of its own, capped or crashed whenever the screen it is part of was.
+  record("layout", formatMs(didNotFinish(ms) ? ms : await workerLayout(page)));
 });
 
 test("Table", async ({ page }) => {
@@ -602,6 +627,30 @@ test("apply shows", async ({ page }) => {
   await undoLastEditIfAny(page);
 });
 
+/**
+ * The words the bench's own edit brings to its component's findings: `unknown-unit`'s message for
+ * "BenchUnit", a unit no generated project's vocabulary lists (`apply shows`'s own comment) - the
+ * text `ddd.analysis` files it with, up to its "did you mean" suggestion, if any.
+ */
+const BENCH_UNIT_FINDING = "'BenchUnit' is not a unit this project declares";
+
+/**
+ * Whether the page shows the findings current after the bench's own edit, read in one frame: the
+ * heading's status (`UpdatingStatus`) no longer says "Updating the findings…", and the edit's own
+ * `unknown-unit` finding is drawn in "Findings in this component", the list a reader of the
+ * component's page sees (`ul.findings`, an error's item first, worst first). Handed to
+ * `page.waitForFunction` whole, so it reads nothing from outside its own body.
+ */
+function findingsCurrent(message: string): boolean {
+  const status = document.querySelector(".heading > .updating-status");
+  if (status === null || status.textContent !== "") return false;
+  return Array.from(document.querySelectorAll("ul.findings > li.error")).some(
+    (item) =>
+      item.querySelector(".check")?.textContent === "unknown-unit" &&
+      (item.textContent ?? "").includes(message),
+  );
+}
+
 test("findings current", async ({ page }) => {
   if (!(await openedProject(page, "findings current"))) return;
   const opened = await capped(() => openFirstVariablePicker(page));
@@ -615,32 +664,16 @@ test("findings current", async ({ page }) => {
   await combobox.press("Enter");
   const apply = page.getByRole("button", { name: /^Apply to \d+ files?$/ });
   await expect(apply).toBeVisible({ timeout: LONG_TIMEOUT });
-  // One targeted read of the revision right before the press, not a listener kept running from
-  // the start of the test: that would re-parse every long-poll answer for as long as the test
-  // runs, and at 100,000 declarations findings-heavy that answer was upward of 50 MB before the
-  // state stopped carrying every finding (design doc §2) - a needless cost this avoids regardless
-  // of whether it was ever actually what slowed an earlier, listener-based version of this test;
-  // never confirmed as a cause the way `isPageCrash`'s own finding was.
-  const before = await page.evaluate<number>(async () => {
-    const response = await fetch("/api/state");
-    const body = (await response.json()) as { revision: number };
-    return body.revision;
-  });
   const ms = await elapsedCapped(async () => {
-    // A benchmark may wait on a response directly; a journey may not (brief). The long poll in
-    // flight when Apply is pressed answers the edit's write, its revision unchanged; the page's
-    // next one answers when the edit's analysis lands, with the newer revision this waits for.
-    const newer = page.waitForResponse(async (response) => {
-      if (new URL(response.url()).pathname !== "/api/state") return false;
-      try {
-        const body = (await response.json()) as { revision?: unknown };
-        return typeof body.revision === "number" && body.revision > before;
-      } catch {
-        return false;
-      }
-    });
     await apply.click();
-    await newer;
+    // What a reader sees, never a reply (the final review, Important 2): the heading done
+    // updating and the edit's own finding drawn, both in one frame - `findingsCurrent` is read
+    // on every animation frame until it holds. Neither alone: the status reads "" before Apply
+    // too, and the finding could be drawn while another analysis still runs.
+    await page.waitForFunction(findingsCurrent, BENCH_UNIT_FINDING, {
+      polling: "raf",
+      timeout: LONG_TIMEOUT,
+    });
   });
   record("findings current", formatMs(ms));
   // "After findings current, press Undo, so the project is as generated for the next run" (brief).

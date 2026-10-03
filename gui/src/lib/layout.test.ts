@@ -1,6 +1,8 @@
-import { expect, test } from "vitest";
+import dagre from "@dagrejs/dagre";
+import { afterEach, expect, test, vi } from "vitest";
 import type { GraphFlow, GraphModule } from "../api/types";
-import { laidOut, layoutOf, type Placed, ranked } from "./layout";
+import { laidOut, layoutOf, measuredLayoutOf, type Placed, ranked } from "./layout";
+import { LAYOUT_MEASURE } from "./layoutAnswers";
 import { NODE_HEIGHT, NODE_WIDTH } from "./nodeSize";
 
 const graphModule = (path: string): GraphModule => ({
@@ -271,13 +273,47 @@ test("layoutOf answers dagre's own layout directly when it succeeds, not ranksOn
   expect(result.placed).toEqual(laidOut([a, b], [graphFlow(a.path, b.path)], {}));
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 test("layoutOf lets an error that is not a RangeError through, rather than falling back", () => {
-  // Array.prototype.sort never calls its comparator for a single element, so laidOut's own
-  // sorted = [...modules].sort(...) needs a second malformed module before comparing paths - and
-  // so throwing - actually happens.
-  const malformed = [
-    { path: undefined, name: "x", loaded: true, findings: { error: 0, warning: 0, info: 0 } },
-    { path: undefined, name: "y", loaded: true, findings: { error: 0, warning: 0, info: 0 } },
-  ] as unknown as GraphModule[];
-  expect(() => layoutOf(malformed, [])).toThrow(TypeError);
+  // dagre made to throw something other than its stack overflowing, over two modules `ranked`
+  // lays out without fault: a fallback taken on any error would answer them ranks only, so only
+  // an error thrown onward passes (the final review's fix wave, Ruling T10-5 - the modules this
+  // test once used made `ranked` throw the very same TypeError, and pinned nothing).
+  const [a, b] = [graphModule("/a.ddd.json"), graphModule("/b.ddd.json")];
+  const flows = [graphFlow(a.path, b.path)];
+  expect(ranked([a, b], flows)).toHaveLength(2);
+  vi.spyOn(dagre, "layout").mockImplementation(() => {
+    throw new TypeError("not a stack overflowing");
+  });
+  expect(() => layoutOf([a, b], flows)).toThrow(new TypeError("not a stack overflowing"));
+});
+
+// Spec §6, "has its layout measured by the benchmark": the worker's own layout on the timeline of
+// the thread that makes it, read back by `gui/bench/page.bench.ts` as its `layout` measure.
+test("measuredLayoutOf answers layoutOf's layout, measured from just before it to just after", () => {
+  performance.clearMeasures(LAYOUT_MEASURE);
+  const [a, b] = [graphModule("/a.ddd.json"), graphModule("/b.ddd.json")];
+  const flows = [graphFlow(a.path, b.path)];
+  const expected = layoutOf([a, b], flows);
+  // Each reading of the clock a step later than the one before; dagre reads it once more as it
+  // lays out, so a measure taken from 100 to 300 is one that began before the layout and ended
+  // after it.
+  let clock = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => {
+    clock += 100;
+    return clock;
+  });
+  const layout = dagre.layout;
+  let laidOutAt: number | null = null;
+  vi.spyOn(dagre, "layout").mockImplementation((graph, options) => {
+    laidOutAt = performance.now();
+    return layout(graph, options);
+  });
+  expect(measuredLayoutOf([a, b], flows)).toEqual(expected);
+  expect(laidOutAt).toBe(200);
+  const measures = performance.getEntriesByName(LAYOUT_MEASURE, "measure");
+  expect(measures.map((entry) => [entry.startTime, entry.duration])).toEqual([[100, 200]]);
 });

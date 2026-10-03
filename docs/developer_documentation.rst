@@ -945,10 +945,11 @@ needs the pages built first, and a channel naming an installed browser:
 playwright.bench.config.ts``) times it the same way a reader would meet it, against a running
 ``ddd gui`` - ``DDD_BENCH_PROJECT`` naming the ``project.ddd.json`` to start it over and
 ``DDD_PYTHON`` the interpreter to start it with - timing the page answering after opening, the
-first analysed screen, each tab's own first drawing but the Compare tab's, typing in a panel,
-scrolling a long table, and an Apply until its own change shows and until the findings it
-brought are current, every measure's own row printed and, where ``DDD_BENCH_OUT`` names a file,
-appended to it too. The server half is checked by a smoke test on a small generated project
+first analysed screen and, apart, the layout worker's own laying out of its graph, each tab's
+own first drawing but the Compare tab's, typing in a panel, scrolling a long table, and an Apply
+until its own change shows and until the findings are current: the heading no longer saying
+they are updating, and the edit's own finding drawn in its component's list. Every measure's own
+row is printed and, where ``DDD_BENCH_OUT`` names a file, appended to it too. The server half is checked by a smoke test on a small generated project
 (``tests/test_bench_gui.py``); nothing checks the page half beyond ``gui``'s own type checking
 and linting - nothing runs ``gui/bench/page.bench.ts`` outside ``npm run bench`` itself. The
 generator both halves start from is checked on its own (``tests/test_generate_project.py``). The

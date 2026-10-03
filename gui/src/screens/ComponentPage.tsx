@@ -1,12 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import type { MouseEvent } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { getFile, getFindings } from "../api/client";
 import type { State } from "../api/types";
 import { useUpdating } from "../app/updating";
 import { leadsElsewhere, routeHref, routeOf } from "../lib/findings";
+import { findingsByRow } from "../lib/findingsByRow";
 import type { ComponentFile } from "../lib/formats";
-import { pointerOf, valueAt, within } from "../lib/pointer";
+import { pointerOf, valueAt } from "../lib/pointer";
 import { asList, asText } from "../lib/values";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
@@ -102,6 +103,68 @@ export function ComponentPage({
       previousQuery?.queryKey[3] === file ? previous : undefined,
   });
 
+  // `null` while the file is pending, errored, or failed its schema check - the three cases the
+  // early returns below show their own message for instead of this page's table - so that the
+  // two memos just below, like every hook, run the same on every render, those three included
+  // (Rules of Hooks: a hook after an early return would run on some renders and not others).
+  const loaded = !content.isPending && !content.isError && content.data.error === null;
+  const data = loaded ? content.data.data : null;
+  const findings = listed.data?.findings ?? [];
+  // Grouped once per findings answer, not refiltered per row on every render (part 17's task
+  // 11f): on a file of 3,334 declarations and 4,167 findings, a row's own `findings.filter(...)`
+  // cost 13.9 million `within` calls a render, three renders an Apply. `data` and `findings` are
+  // the very object the queries' own `placeholderData` above keeps up across a revision's own
+  // refetch, so those three renders share this one computation rather than repeating it.
+  const byRow = useMemo(() => {
+    const pointers =
+      data === null
+        ? []
+        : asList(valueAt(data, "component.interface")).map((_, index) =>
+            pointerOf(["component", "interface", index]),
+          );
+    return findingsByRow(pointers, findings);
+  }, [data, findings]);
+  // The rows themselves, once per file content and the map just grouped - never over the
+  // findings again.
+  const rows = useMemo(() => {
+    if (data === null) return [];
+    return asList(valueAt(data, "component.interface")).map((_, index) => {
+      const at = pointerOf(["component", "interface", index]);
+      const text = (pointer: string) => asText(valueAt(data, `${at}.${pointer}`));
+      const kind = text("definition.kind");
+      const datatype = text("definition.datatype");
+      const dimensions = asList(valueAt(data, `${at}.definition.dimensions`));
+      return {
+        id: at,
+        name: text("definition.name") ?? `declaration ${index + 1}`,
+        scope: text("scope"),
+        kind,
+        type: datatype ?? text("definition.typename"),
+        unit: text("definition.unit") ?? "",
+        shape: shapeOf(kind, dimensions),
+        // The shape is offered as a button only where the grid can draw what it opens, and
+        // shown as plain text otherwise: a button that refused the moment it was pressed would
+        // be a button that lies (spec 5.1). A curve, a map or an axis is a numeric table
+        // whatever type it names - measured, a curve naming a scalar type resolves exactly as
+        // one stating its own storage does - so its kind alone is enough. Anything else has to
+        // state both a `dimensions` and a `datatype` of its own: `dimensions` beside a
+        // `typename` is a structured declaration, which `DataDictionary.objects` does not hold
+        // at all, so the grid would answer that the project declares no such object. A
+        // structure cannot be a numeric table, which is why every `typename` declaration of
+        // examples/ is a measurement or a parameter. More dimensions than two is more than a
+        // grid draws, whichever way in. A text init in this very file is text and not a grid; a
+        // consumer's declaration cannot see its producer's init, so a text one elsewhere is
+        // offered anyway, and the grid it opens says so itself (`ValuesGridView`,
+        // `reply.stated`).
+        offered:
+          typeof valueAt(data, `${at}.definition.init`) !== "string" &&
+          dimensions.length <= 2 &&
+          (shapedByKind(kind) || (dimensions.length > 0 && datatype !== undefined)),
+        own: byRow.get(at) ?? [],
+      };
+    });
+  }, [data, byRow]);
+
   if (content.isPending) return <p className="quiet">Reading the file…</p>;
   if (content.isError) return <Banner tone="error">{content.error.message}</Banner>;
   if (content.data.error !== null) return <Banner tone="error">{content.data.error}</Banner>;
@@ -122,45 +185,9 @@ export function ComponentPage({
       onVariable(name);
     };
 
-  const data = content.data.data;
   // The file parsed but is only checked against the schema here: it need not match
   // ComponentFile (spec 6.10), so `component` may be absent on disk though the type requires it.
-  const name = (data as ComponentFile).component?.name ?? "Unnamed component";
-  const findings = listed.data?.findings ?? [];
-  const rows = asList(valueAt(data, "component.interface")).map((_, index) => {
-    const at = pointerOf(["component", "interface", index]);
-    const text = (pointer: string) => asText(valueAt(data, `${at}.${pointer}`));
-    const kind = text("definition.kind");
-    const datatype = text("definition.datatype");
-    const dimensions = asList(valueAt(data, `${at}.definition.dimensions`));
-    return {
-      id: at,
-      name: text("definition.name") ?? `declaration ${index + 1}`,
-      scope: text("scope"),
-      kind,
-      type: datatype ?? text("definition.typename"),
-      unit: text("definition.unit") ?? "",
-      shape: shapeOf(kind, dimensions),
-      // The shape is offered as a button only where the grid can draw what it opens, and shown
-      // as plain text otherwise: a button that refused the moment it was pressed would be a
-      // button that lies (spec 5.1). A curve, a map or an axis is a numeric table whatever type
-      // it names - measured, a curve naming a scalar type resolves exactly as one stating its
-      // own storage does - so its kind alone is enough. Anything else has to state both a
-      // `dimensions` and a `datatype` of its own: `dimensions` beside a `typename` is a
-      // structured declaration, which `DataDictionary.objects` does not hold at all, so the
-      // grid would answer that the project declares no such object. A structure cannot be a
-      // numeric table, which is why every `typename` declaration of examples/ is a measurement
-      // or a parameter. More dimensions than two is more than a grid draws, whichever way in.
-      // A text init in this very file is text and not a grid; a consumer's declaration cannot
-      // see its producer's init, so a text one elsewhere is offered anyway, and the grid it
-      // opens says so itself (`ValuesGridView`, `reply.stated`).
-      offered:
-        typeof valueAt(data, `${at}.definition.init`) !== "string" &&
-        dimensions.length <= 2 &&
-        (shapedByKind(kind) || (dimensions.length > 0 && datatype !== undefined)),
-      own: findings.filter((finding) => within(finding.pointer, at)),
-    };
-  });
+  const name = (content.data.data as ComponentFile).component?.name ?? "Unnamed component";
   const selected = new Set(rows.filter((row) => row.name === variable).map((row) => row.id));
 
   return (

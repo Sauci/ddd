@@ -2,10 +2,13 @@
  * "Updating the findings…" where findings are listed - a panel's, the values grid's, a
  * component's - while they may be about to change (spec 6): an edit is waiting for its analysis,
  * or an analysis runs. Plain text, said quietly and read where a reader reaches it; a screen
- * reader is told of the update once, as it starts, by the heading's `UpdatingStatus`.
+ * reader is told of the update once, as it starts, by the heading's `UpdatingStatus`. Its line is
+ * held whether or not anything updates, empty while nothing does (Ruling T12b-1, as Ruling T8-3
+ * holds the heading's), and its words never wrap onto a second (`ui.css`): their coming and going
+ * never move what is below them - in a panel, an offer and its Apply under a reader's pointer.
  */
-export function UpdatingNote() {
-  return <p className="updating-note">Updating the findings…</p>;
+export function UpdatingNote({ updating }: { updating: boolean }) {
+  return <p className="updating-note">{updating ? "Updating the findings…" : ""}</p>;
 }
 
 /**

@@ -8,7 +8,7 @@ import { ValuesGridView } from "../components/ValuesGridView";
 import { cellAt, drawable, pasted, rawOf, typedNumber } from "../lib/objectValues";
 import { planEdit } from "../lib/projectUnits";
 import { type Refused, shownRefusal as staleRefusal } from "../lib/refusals";
-import { planShown } from "../lib/typing";
+import { gated, planShown } from "../lib/typing";
 import { pasteLabel, valueLabel } from "../lib/undo";
 import {
   appliesOver,
@@ -136,13 +136,15 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // into one request so one `useDebounced` call covers both, as `VariablePanel`'s own settle
   // request is. A pasted table is not: `pastedRows` is set once, by the one paste event, never a
   // stream of keystrokes to wait out, so `table` below keeps asking for its plan at once, as
-  // every query in this file did before this task. `cellRequest` going `null` the moment
-  // `current` does - Task 8's own `appliesOver` gate closing - takes effect at once
-  // (`useDebounced`'s own `atOnce`, review fix round 1, Important 3): the debounced `askedCell`
-  // never lags behind it, so the query above never asks for a cell the gate has already closed
-  // on, including the instant a new revision changes the key it shares with `revision`.
-  const cellRequest = at === null || raw === null || !current ? null : { at, raw };
-  const askedCell = useDebounced(cellRequest);
+  // every query in this file did before this task. Task 8's own `appliesOver` gate (`current`)
+  // is applied after the debounce, never before it (`gated`, Ruling T12b-1): it closes as a
+  // revision lands, so the query never asks for a cell over the older answer kept on screen,
+  // from the very render the key it shares with `revision` changes in; and once an answer of
+  // the new revision has come and it opens again, the cell typed before is asked for at once -
+  // nothing was typed meanwhile to wait out.
+  const cellRequest = at === null || raw === null ? null : { at, raw };
+  const debouncedCell = useDebounced(cellRequest);
+  const askedCell = gated(debouncedCell, cellRequest, current);
   const plan = useQuery({
     queryKey: ["value-plan", name, askedCell, revision],
     queryFn:

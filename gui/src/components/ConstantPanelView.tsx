@@ -160,7 +160,7 @@ export function ConstantPanelView(props: ConstantPanelViewProps) {
           </tbody>
         </table>
       )}
-      {props.updating && <UpdatingNote />}
+      <UpdatingNote updating={props.updating === true} />
       {reply.findings.length > 0 && (
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(reply.findings)).map(([finding, key]) => (

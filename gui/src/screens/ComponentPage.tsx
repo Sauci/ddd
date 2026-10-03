@@ -327,7 +327,7 @@ export function ComponentPage({
         </LongTable>
         <h2>Findings in this component</h2>
         {/* Said also while there are none: an edit may be about to bring the first. */}
-        {updating && <UpdatingNote />}
+        <UpdatingNote updating={updating} />
         {listed.isError && <Banner tone="error">{listed.error.message}</Banner>}
         {listed.isPending && <p className="quiet">Reading the findings…</p>}
         {listed.isSuccess && findings.length === 0 && <p className="quiet">None.</p>}

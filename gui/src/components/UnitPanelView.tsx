@@ -97,7 +97,7 @@ export function UnitPanelView(props: UnitPanelViewProps) {
   const files = (plan: PlanReply) => consequence(plan.changes);
   return (
     <Panel title={unit.unit} meta={unitMeta(unit, reply, hasVocabulary)} onClose={props.onClose}>
-      {props.updating && <UpdatingNote />}
+      <UpdatingNote updating={props.updating === true} />
       {reply.findings.length > 0 && (
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(reply.findings)).map(([finding, key]) => (

@@ -17,13 +17,33 @@ export function sameRequest(asked: unknown, typed: unknown): boolean {
 }
 
 /** Whether a value moving into `useDebounced` takes effect at once rather than waiting
- * `planDelay`'s own delay (review fix round 1, Important 3 and Minor 2): a `null` value -
- * nothing to ask for, or a gate such as `ValuesPage`'s `appliesOver` closing - must never be held
- * past the moment it closes, so the next render sees it gone; and a discrete commit - a chooser
- * pick, Enter, a button - was never a keystroke to wait out to begin with. `typed` is false for
- * exactly those discrete commits, true for text actually typed - only that waits. */
+ * `planDelay`'s own delay (review fix round 1, Important 3 and Minor 2): a `null` value - nothing
+ * to ask for any more, the fields emptied or let go - must never be held past that moment, so the
+ * next render sees it gone; and a discrete commit - a chooser pick, Enter, a button - was never a
+ * keystroke to wait out to begin with. `typed` is false for exactly those discrete commits, true
+ * for text actually typed - only that waits. A gate - `ValuesPage`'s `appliesOver` - is no value
+ * moving in at all: it is applied to what comes out (`gated`). */
 export function atOnce(value: unknown, typed: boolean): boolean {
   return value === null || !typed;
+}
+
+/**
+ * What a plan is asked for behind a gate, of `debounced` - `useDebounced`'s own value, the request
+ * the fields made once typing paused: nothing while the gate is closed, and `debounced` while it
+ * is open and still what the fields say (`sameRequest` against `typed`) - never a plan for text
+ * the reader has since typed past.
+ *
+ * Applied after the debounce, never before it (Ruling T12b-1). Before it, a gate closing made the
+ * request `null` and its opening again a change to wait out: the values grid's `appliesOver`
+ * closes as a revision lands, opens once an answer of it has come, and the cell typed before it
+ * was asked for again only `PLAN_DELAY_MS` later, Apply gone meanwhile with nothing typed. After
+ * it, the gate opening asks at once for what the fields still say, and a value typed while it is
+ * closed, or just after, waits for its own debounce alone. Closed, it asks for nothing from the
+ * very render it closes in, so no plan is asked over what it closed on.
+ */
+export function gated<T>(debounced: T | null, typed: T | null, open: boolean): T | null {
+  if (!open) return null;
+  return sameRequest(debounced, typed) ? debounced : null;
 }
 
 /** The plan a screen's offer should draw, why its own fetch was refused if it was, and whether

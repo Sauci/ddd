@@ -4,8 +4,8 @@ import { atOnce, planDelay, sameRequest } from "../lib/typing";
 /**
  * The value last asked for (spec §6, "typing never waits"): starts at `value` itself, so a panel
  * mounted on one has nothing to wait for. A later `value` moves in at once when `atOnce(value,
- * typed)` says so - `null` (nothing to ask, or a gate such as `ValuesPage`'s `appliesOver`
- * closing), or `typed` false (a discrete commit: a chooser pick, Enter, a button) - and otherwise
+ * typed)` says so - `null` (nothing to ask any more), or `typed` false (a discrete commit: a
+ * chooser pick, Enter, a button) - and otherwise
  * after `planDelay(asked)`: at once the first time this ever waits, `PLAN_DELAY_MS` after every
  * later one. A newer `value` arriving before a wait is over cancels it and starts a fresh one
  * from itself; the component unmounting cancels it the same way, through the effect's own
@@ -37,17 +37,18 @@ import { atOnce, planDelay, sameRequest } from "../lib/typing";
  *   24 times every 3 seconds at rest, confirmed live by counting React's own commits. Comparing
  *   with `sameRequest` instead - true of two objects with the same content, whoever built them -
  *   lets the guard actually recognise "nothing changed" and stop.
- * - **A closing gate was held open.** `ValuesPage`'s cell plan is asked for only while its own
- *   `appliesOver` gate holds; once it closes, the live request goes `null` at once, but the old
- *   effect still timed out a plain wait before the *debounced* value followed it - so the query,
- *   keyed on that lagging value, could still be asked again for up to `PLAN_DELAY_MS` after the
- *   gate closed, including the instant a new revision lands and the query key's own `revision`
- *   changes under it. `atOnce`'s null case is resolved below *during render*, not through the
- *   effect: React's own sanctioned way to derive state from a value that changed (see "Storing
- *   information from previous renders" in the React docs), because an effect runs only after this
- *   render's other hooks already have - too late to stop a sibling `useQuery`, reading this same
- *   `debounced` in its own key on this same render, from asking for the very thing the gate just
- *   closed on.
+ * - **A closing gate was held open.** `ValuesPage`'s cell plan was then gated before this hook:
+ *   its `appliesOver` gate closing made the live request `null` at once, but the old effect still
+ *   timed out a plain wait before the *debounced* value followed it - so the query, keyed on that
+ *   lagging value, could still be asked again for up to `PLAN_DELAY_MS` after the gate closed,
+ *   including the instant a new revision lands and the query key's own `revision` changes under
+ *   it. `atOnce`'s null case is resolved below *during render*, not through the effect: React's
+ *   own sanctioned way to derive state from a value that changed (see "Storing information from
+ *   previous renders" in the React docs), because an effect runs only after this render's other
+ *   hooks already have - too late to stop a sibling `useQuery`, reading this same `debounced` in
+ *   its own key on this same render, from asking for what it no longer should. The gate itself
+ *   is applied after this hook now (`gated`, `lib/typing.ts`, Ruling T12b-1): before it, its
+ *   opening again was a change this hook waited out, `PLAN_DELAY_MS` with nothing typed.
  */
 export function useDebounced<T>(value: T, typed = true): T {
   const [debounced, setDebounced] = useState(value);

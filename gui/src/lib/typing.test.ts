@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { atOnce, PLAN_DELAY_MS, planDelay, planShown, sameRequest } from "./typing";
+import { atOnce, gated, PLAN_DELAY_MS, planDelay, planShown, sameRequest } from "./typing";
 
 describe("planDelay", () => {
   test("a debounced value's first plan is asked for at once, not only a panel's very first", () => {
@@ -98,5 +98,30 @@ describe("planShown", () => {
     expect(
       planShown(request, request, { data: plan, error: null, isPlaceholderData: true }),
     ).toEqual({ plan: null, refusal: null, pending: true });
+  });
+});
+
+// Ruling T12b-1: the gate after the debounce, never before it - the values grid's
+// `appliesOver` closing as a revision lands and opening once an answer of it has come must not
+// run the debounce again, with nothing typed: the cell typed before it is asked for at once.
+describe("gated", () => {
+  const typed = { at: [0, 1], raw: 1200 };
+
+  test("closed, nothing is asked for, whatever was typed", () => {
+    expect(gated(typed, typed, false)).toBeNull();
+  });
+
+  test("open, the debounced request is asked for at once, once it is what the fields say", () => {
+    // A fresh object of the same content, as a screen builds its request every render.
+    expect(gated(typed, { at: [0, 1], raw: 1200 }, true)).toBe(typed);
+  });
+
+  test("open while the fields have moved past the debounced request, nothing is asked for", () => {
+    expect(gated(typed, { at: [0, 1], raw: 12000 }, true)).toBeNull();
+  });
+
+  test("nothing typed is nothing asked, open or not", () => {
+    expect(gated(null, null, true)).toBeNull();
+    expect(gated(null, null, false)).toBeNull();
   });
 });

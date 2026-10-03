@@ -64,7 +64,7 @@ export function VariablePanelView(props: VariablePanelViewProps) {
         onOpenType={props.onOpenType}
         onOpenConstant={props.onOpenConstant}
       />
-      {props.updating && <UpdatingNote />}
+      <UpdatingNote updating={props.updating === true} />
       {variable.findings.length > 0 && (
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(variable.findings)).map(([finding, key]) => {

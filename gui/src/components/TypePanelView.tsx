@@ -247,7 +247,7 @@ export function TypePanelView(props: TypePanelViewProps) {
           </table>
         </>
       )}
-      {props.updating && <UpdatingNote />}
+      <UpdatingNote updating={props.updating === true} />
       {type.findings.length > 0 && (
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(type.findings)).map(([finding, key]) => {

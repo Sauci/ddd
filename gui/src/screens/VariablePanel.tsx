@@ -351,7 +351,7 @@ export function VariablePanel({
   if (answer.shown === "updating") {
     return (
       <Panel title={name} onClose={onClose}>
-        <UpdatingNote />
+        <UpdatingNote updating />
       </Panel>
     );
   }

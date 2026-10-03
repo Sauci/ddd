@@ -173,11 +173,20 @@ tr.changing td {
   list-style: none;
 }
 /* "Updating the findings…" (spec 6), said quietly where a panel or the values grid lists its
-   findings, and above a component's. */
+   findings, and above a component's. Its line is always held - a space of no width before its
+   words, as the heading's own below - and its words are cut short rather than wrapped onto a
+   second: their coming and going never move what is below them, an offer and its Apply among it
+   (Ruling T12b-1). */
 .updating-note {
   margin: var(--space-2) 0 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--ink-quiet);
   font-size: var(--text-small);
+}
+.updating-note::before {
+  content: "\200b";
 }
 /* The heading's own (`UpdatingStatus`), last in the heading's row. It needs no room on its line:
    its basis and its least width are nothing, and a margin gives back the row's gap before it, its

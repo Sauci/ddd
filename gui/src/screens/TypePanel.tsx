@@ -275,7 +275,7 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
   if (answer.shown === "updating") {
     return (
       <Panel title={name} onClose={onClose}>
-        <UpdatingNote />
+        <UpdatingNote updating />
       </Panel>
     );
   }

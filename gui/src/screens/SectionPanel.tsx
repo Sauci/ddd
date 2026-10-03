@@ -239,7 +239,7 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
   if (answer.shown === "updating") {
     return (
       <Panel title={name} onClose={onClose}>
-        <UpdatingNote />
+        <UpdatingNote updating />
       </Panel>
     );
   }

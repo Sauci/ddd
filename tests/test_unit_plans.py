@@ -654,7 +654,7 @@ class TestAdopt:
             "invalid",
             "this project states no unit, so there is nothing to adopt",
         )
-        assert adoptable(idx, where) == 0
+        assert adoptable(idx, lambda: where) == 0
 
     @pytest.mark.parametrize("existing", [{"notes": "not a units file"}, {"units": ["rpm"]}])
     def test_a_file_where_the_vocabulary_would_go_is_never_written_over(

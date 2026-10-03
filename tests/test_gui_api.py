@@ -3428,6 +3428,25 @@ class TestTheVocabulary:
 class TestUnitsTab:
     """The rows ``GET /api/units`` adds for the Units tab, and what adopting would list."""
 
+    def test_a_project_with_a_vocabulary_is_refused_adopting_with_no_include_expanded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The first of adopting's guards reads the index alone, and refuses a project with a
+        vocabulary already: the units files among its includes, which only the guards after it
+        read, are not looked for on disk at all - every include expanded and every file read,
+        which while an analysis runs took the request seconds at 100,000 declarations."""
+        api = opened(tmp_path, LISTED)
+        asked: list[object] = []
+        real = api_module.unit_project
+
+        def counted(*arguments: Any) -> Any:
+            asked.append(arguments)
+            return real(*arguments)
+
+        monkeypatch.setattr(api_module, "unit_project", counted)
+        assert get(api, "/api/units").body["adoptable"] is None
+        assert asked == []
+
     def test_each_unit_in_use_is_a_row_and_adopting_would_list_it(self, api: Api) -> None:
         body = get(api, "/api/units").body
         assert body["units"] == [

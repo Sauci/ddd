@@ -710,18 +710,23 @@ class Api:
         Answered anew each time, never kept (:meth:`_memoised`): the offer reads the disk as it
         stands - the includes expanded to find the units files, and whether ``units.ddd.json``
         is there beside the description - which no revision records: neither a file appearing
-        where a pattern matches nor one no include names starts an analysis."""
+        where a pattern matches nor one no include names starts an analysis. Read only where the
+        offer can depend on it (:func:`ddd.project_units.adoptable`): a project holding a
+        vocabulary already is refused adopting by its index alone, and its includes are not
+        expanded at all."""
         revision = self._opened()
         cache: dict[Path, Document] = {}
         vocabulary = vocabulary_of(
             [read(file.path, cache) for file in revision.files if file.kind == "units"]
         )
         built = revision.index
-        # The project `_unit_plan` makes its plans in, built the same way: the offer asks the
-        # plan's own guards of it, so an Adopt this answers is one the plan will not refuse.
-        project = unit_project(
-            revision.project, [file.path for file in revision.files if not file.loaded], cache
-        )
+        unread = [file.path for file in revision.files if not file.loaded]
+
+        def project() -> UnitProject:
+            # The project `_unit_plan` makes its plans in, built the same way: the offer asks the
+            # plan's own guards of it, so an Adopt this answers is one the plan will not refuse.
+            return unit_project(revision.project, unread, cache)
+
         used = () if built is None else units_in_use(built)
         derived = self._derive(revision)
         rows = () if built is None else unit_rows(built, derived.findings, cache)
@@ -1086,7 +1091,13 @@ class Api:
 
         Answered anew each time, never kept (:meth:`_memoised`): the includes are expanded on
         disk as it stands, which no revision records - a file appearing where a pattern matches
-        starts no analysis."""
+        starts no analysis. At a cost while an analysis runs: over a generated project of 100,000
+        declarations, whose one pattern reaches 1,681 files, the request took 1,872 to 2,602 ms
+        asked halfway through an analysis and 24 ms otherwise, of which listing that directory
+        alone took 1,028 to 1,487 ms and under a millisecond - three askings each, on the Linux
+        development PC. Kept for a revision and the session's edits instead, it would list a
+        file saved where a pattern matches only once something else changed, and still be made
+        again after every edit - when the Files tab asks for it again, its own Apply written."""
         revision = self._opened()
         at_entry = self._derive(revision).at_entry
         cache: dict[Path, Document] = {}

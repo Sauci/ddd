@@ -21,7 +21,7 @@ from ddd.finding_routes import UNIT_CHECKS
 from ddd.findings_by_file import FindingsByFile, Pair
 from ddd.lsp.navigation import Index, Site, UnitSite
 from ddd.lsp.ranges import Document, read
-from ddd.lsp.units import PlannedEdit, UnitProject, UnitRefusalError, adoption
+from ddd.lsp.units import PlannedEdit, UnitProject, UnitRefusalError, adoption, listing_files
 from ddd.variables import Planned, declarations_of, hunks, planned, role_of
 
 
@@ -212,7 +212,7 @@ def _sites(built: Index, unit: str) -> tuple[Site, ...]:
     )
 
 
-def adoptable(built: Index | None, project: UnitProject) -> int | None:
+def adoptable(built: Index | None, project: Callable[[], UnitProject]) -> int | None:
     """How many units adopting a vocabulary would list - every unit in use, none where the
     project states none - or ``None`` where adopting is refused.
 
@@ -221,11 +221,22 @@ def adoptable(built: Index | None, project: UnitProject) -> int | None:
     "nothing to adopt" answers ``None``, and that one answers ``0``, for which the banner says
     there is nothing to adopt and draws no Adopt. A project the analysis could not read has no
     index, and so no plan either.
+
+    ``project`` makes the project the plan would be made in - its units files found by expanding
+    every include on disk and reading the files it reaches - and is called only where the answer
+    can depend on it: the first of the guards, a vocabulary held already
+    (:func:`ddd.lsp.units.listing_files`), reads the index alone, and refuses without it. Over a
+    generated project of 100,000 declarations holding a vocabulary (``--shape mixed
+    --missing-ids 1 --unread 0.5``, 1,683 files), the Units tab's request asked halfway through
+    an analysis took 1,762 to 2,665 ms making it, and 54 to 161 ms since; 67 and 15 ms while
+    nothing else ran - three askings each, on the Linux development PC.
     """
     if built is None:
         return None
+    if listing_files(built):
+        return None
     try:
-        planned = adoption(built, project)
+        planned = adoption(built, project())
     except UnitRefusalError:
         return None
     if planned is None:

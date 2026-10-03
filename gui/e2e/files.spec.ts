@@ -90,3 +90,45 @@ test("a component is created, an existing file is added, and one removal is refu
   await expect(page.getByText("2 findings · 2 notes")).toBeVisible();
   await expect(page.getByRole("row", { name: "empty-component" })).toHaveCount(2);
 });
+
+/**
+ * The row the tab's own Apply makes shows at once (spec §3, Ruling F2): drawn from the plan the
+ * page applied, before the tab's next list of its entries answers - held back here, from the
+ * moment the tab has drawn its first, for as long as the row takes to show. At 100,000
+ * declarations that list waits on the edit's own analysis, and the row with it, until the tab
+ * held what it applied. What the row says is the state's to say: on a project this small the
+ * edit's analysis can land before the row is first looked at, and the held row then reads the
+ * file as that analysis read it. Released, the list carries the row, and it stays.
+ */
+test("the row a New file makes shows before the tab's next list of entries answers", async ({
+  page,
+  vocabularyGui,
+}) => {
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  await expect(page.getByRole("row", { name: UNITS })).toBeVisible();
+
+  let release = (): void => undefined;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/files", async (route) => {
+    await released;
+    await route.continue();
+  });
+  try {
+    await page.getByRole("button", { name: "New file" }).click();
+    const creating = page.getByRole("complementary", { name: "New file" });
+    const kind = creating.getByRole("combobox", { name: "Kind" });
+    await kind.fill("component");
+    await kind.press("Enter");
+    await creating.getByRole("textbox", { name: "File name" }).fill("valve");
+    await creating.getByRole("textbox", { name: "Component name" }).fill("Valve");
+    await creating.getByRole("button", { name: "Apply to 2 files" }).click();
+
+    await expect(page.getByRole("row", { name: "valve.ddd.json" })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(page.getByRole("row", { name: "valve.ddd.json" })).toContainText("component");
+});

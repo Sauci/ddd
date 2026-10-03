@@ -5,7 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { type FilesPlanRequest, getFiles, getFilesPlan, postEdit } from "../api/client";
 import type { FilesPlanReply, State } from "../api/types";
 import { useDebounced } from "../app/useDebounced";
@@ -17,10 +17,12 @@ import {
 } from "../components/FileActionsView";
 import { FilesTableView } from "../components/FilesTableView";
 import { type FileRemoval, fileAdd, fileCreate, fileRemoval, rowsOf } from "../lib/files";
+import { type FilesHold, filesHoldAfter, filesHoldOf, filesShown } from "../lib/filesHold";
 import { isStale, type Refused, refusalShown } from "../lib/refusals";
 import { planEdit } from "../lib/shared";
 import { planShown } from "../lib/typing";
 import { filesLabel } from "../lib/undo";
+import { ownEdits } from "../state/edits";
 import { Banner } from "../ui/Banner";
 import { refusalOf } from "./UnitPanel";
 
@@ -38,7 +40,12 @@ interface Props {
  * entry, a pattern's matched files indented beneath it; above it New file and Add a file, each
  * opening its form beside the table, and beside it the Remove panel of the row selected. Fetches
  * `GET /api/files` itself and re-reads it on each new revision, the way every other tab's own
- * screen does. */
+ * screen does.
+ *
+ * The row its own New file or Add makes shows at once (spec §3, Ruling F2): the edit answered,
+ * the tab holds the entry the applied plan appends (`filesHoldOf`) and draws it after the
+ * answer's own (`filesShown`) until an answer carries it, the page's own undo puts it back, or an
+ * answer of a revision including the edit comes (`filesHoldAfter`). */
 export function FilesPage({ state, path, onPath, stopped }: Props) {
   const revision = state?.revision;
   const files = useQuery({
@@ -53,11 +60,17 @@ export function FilesPage({ state, path, onPath, stopped }: Props) {
   // one lets the row selected go, and selecting a row closes it, so that one panel at a time
   // stands beside the table - `SharedPage`'s own rule for its add form and an entry's panel.
   const [form, setForm] = useState<"create" | "add" | null>(null);
+  // The entry the tab's own last New file or Add appended, held until an answer carries it, and
+  // the edits the page's undos put back - the Undo strip's, which end the hold.
+  const [hold, setHold] = useState<FilesHold | null>(null);
+  const undone = useSyncExternalStore(ownEdits.subscribe, ownEdits.undone);
+  const holding = filesHoldAfter(hold, undone, state, files.data);
+  if (holding !== hold) setHold(holding);
   if (files.data === undefined) {
     if (files.isError) return <Banner tone="error">{files.error.message}</Banner>;
     return <p className="quiet">Reading the project's files…</p>;
   }
-  const reply = files.data;
+  const reply = filesShown(holding, files.data);
   const read = state?.files ?? [];
   const removal = fileRemoval(rowsOf(reply, read), path, reply.project);
   const open = (next: "create" | "add") => {
@@ -99,6 +112,7 @@ export function FilesPage({ state, path, onPath, stopped }: Props) {
             revision={revision}
             stopped={stopped}
             onClose={() => setForm(null)}
+            onHeld={setHold}
           />
         ) : (
           form === "add" && (
@@ -107,6 +121,7 @@ export function FilesPage({ state, path, onPath, stopped }: Props) {
               revision={revision}
               stopped={stopped}
               onClose={() => setForm(null)}
+              onHeld={setHold}
             />
           )
         )}
@@ -145,7 +160,8 @@ function useFilesPlan(request: FilesPlanRequest | null, revision: number | undef
  * `lib/typing.ts`) as the plan-fetch refusal it already takes a `string | null` for.
  * Once an Apply is answered, applied or refused, the tab's entries and every plan are asked for
  * again - each of the three edits the project description, whose fingerprint every plan carries -
- * and applied, `onApplied` closes the panel.
+ * and applied, `onApplied` closes the panel, and `onHeld`, where a form passes one, is handed the
+ * entry the plan it posted appends (`filesHoldOf`), for the tab to draw until its entries carry it.
  */
 function useFilesApply(
   request: FilesPlanRequest | null,
@@ -157,6 +173,7 @@ function useFilesApply(
   plan: UseQueryResult<FilesPlanReply>,
   revision: number | undefined,
   onApplied: () => void,
+  onHeld?: (hold: FilesHold | null) => void,
 ) {
   const queries = useQueryClient();
   const [refused, setRefused] = useState<string | null>(null);
@@ -167,19 +184,23 @@ function useFilesApply(
   // plan, nor its own fetch refusal, for text the reader has since typed past.
   const shown = planShown(asked, request, plan);
   const apply = useMutation({
-    mutationFn: () => {
+    // Answers the plan it posted beside the edit's own answer: what the tab holds is read off the
+    // very plan applied, whatever the query holds by the time the answer comes.
+    mutationFn: async () => {
+      const applied = plan.data;
       const edit =
-        request === null || plan.data === undefined
+        request === null || applied === undefined
           ? null
-          : planEdit(plan.data, filesLabel(request, plan.data, project));
-      if (edit === null) throw new Error("there is nothing to change");
-      return postEdit(edit);
+          : planEdit(applied, filesLabel(request, applied, project));
+      if (edit === null || applied === undefined) throw new Error("there is nothing to change");
+      return { reply: await postEdit(edit), applied };
     },
     onMutate: () => setRefused(null),
     // A success is a definite answer, so it also clears a stale wait left over from an earlier
     // attempt; `onMutate` above only ever clears the other refusal.
-    onSuccess: () => {
+    onSuccess: ({ reply, applied }) => {
       setStale(null);
+      onHeld?.(filesHoldOf(reply.edit, applied, project));
       onApplied();
     },
     // Stale is the one refusal that waits for a later revision rather than clearing; setting one
@@ -223,12 +244,15 @@ function NewFile({
   revision,
   stopped,
   onClose,
+  onHeld,
 }: {
   project: string;
   creatable: readonly string[];
   revision: number | undefined;
   stopped: boolean;
   onClose: () => void;
+  /** Applied: the entry the tab holds until its entries carry it. */
+  onHeld: (hold: FilesHold | null) => void;
 }) {
   const [kind, setKind] = useState("");
   const [name, setName] = useState("");
@@ -238,13 +262,13 @@ function NewFile({
   const request = fileCreate(kind, name, component);
   const asked = useDebounced(request, typedKind);
   const plan = useFilesPlan(asked, revision);
-  // Created, the form closes: the new file's row is the table's to show, once it reads again.
+  // Created, the form closes, and the tab holds the new file's row until its entries carry it.
   const {
     apply,
     plan: offerPlan,
     refusal,
     chose,
-  } = useFilesApply(request, asked, project, plan, revision, onClose);
+  } = useFilesApply(request, asked, project, plan, revision, onClose, onHeld);
   return (
     <NewFileView
       project={project}
@@ -289,24 +313,27 @@ function AddFile({
   revision,
   stopped,
   onClose,
+  onHeld,
 }: {
   project: string;
   revision: number | undefined;
   stopped: boolean;
   onClose: () => void;
+  /** Applied: the entry the tab holds until its entries carry it. */
+  onHeld: (hold: FilesHold | null) => void;
 }) {
   const [path, setPath] = useState("");
   const [changesShown, setChangesShown] = useState(false);
   const request = fileAdd(path);
   const asked = useDebounced(request);
   const plan = useFilesPlan(asked, revision);
-  // Added, the form closes: the file's row is the table's to show, once it reads again.
+  // Added, the form closes, and the tab holds the file's row until its entries carry it.
   const {
     apply,
     plan: offerPlan,
     refusal,
     chose,
-  } = useFilesApply(request, asked, project, plan, revision, onClose);
+  } = useFilesApply(request, asked, project, plan, revision, onClose, onHeld);
   return (
     <AddFileView
       project={project}

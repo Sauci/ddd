@@ -437,9 +437,10 @@ The commands
        page holds has not read. Among the causes of that last: the root's own schema failing
        before its includes are read, a plugin's model raising while the project is read, a
        pattern matching a file created since, or an entry the description gained since: the
-       row a New file or an Add makes reads ``not read by the last analysis`` between the
-       tab's own next list of its entries - asked once the edit answers - and the analysis
-       after it, which is what the next list of entries then reads instead. New file, Add a
+       row a New file or an Add makes is drawn once the edit answers, from the plan applied,
+       before the tab's own next list of its entries carries it, and reads ``not read by the
+       last analysis`` until the analysis after it, which is what the next list of entries
+       then reads instead. New file, Add a
        file and Remove are its three actions, the first two above the table and the third
        opened by selecting a row. New file takes a
        kind - ``component``, ``types``, ``units``, ``constants``, ``sections`` or

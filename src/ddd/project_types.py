@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
@@ -156,7 +157,7 @@ def type_findings(built: Index, name: str, findings: FindingsByFile) -> list[Pai
     return [
         (file, found)
         for file, found in findings.on(built.types[name].path)
-        if located_in_type(built, name, file, found)
+        if located_in_type(built, name, file, found, findings.resolve)
     ]
 
 
@@ -195,12 +196,22 @@ def uses_of(built: Index, name: str, cache: dict[Path, Document]) -> tuple[Use, 
     return tuple(found)
 
 
-def located_in_type(built: Index, name: str, file: Path, finding: Diagnostic) -> bool:
+def located_in_type(
+    built: Index,
+    name: str,
+    file: Path,
+    finding: Diagnostic,
+    resolve: Callable[[Path], Path] = Path.resolve,
+) -> bool:
     """Whether a finding shown on ``file`` is filed inside that type's own entry - its own
     ``unknown-unit``, ``type-kind``, ``duplicate-type``, ``init-invalid`` or
-    ``limits-out-of-range``, and anything else a check files at a pointer under it."""
+    ``limits-out-of-range``, and anything else a check files at a pointer under it.
+
+    ``resolve`` resolves both paths compared; :func:`type_findings` passes its findings' own
+    (:meth:`ddd.findings_by_file.FindingsByFile.resolve`), which resolves no path a revision's
+    analysis resolved already."""
     site = built.types.get(name)
-    if site is None or site.path.resolve() != file.resolve():
+    if site is None or resolve(site.path) != resolve(file):
         return False
     return _within_entry(finding, site)
 

@@ -27,7 +27,7 @@ import contextlib
 import sys
 import threading
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Final
@@ -166,6 +166,14 @@ class Revision:
     """The last edit or undo on disk when this revision's analysis began: every one numbered up
     to it was written before the analysis read a file. ``0`` where the session has written
     none."""
+
+    resolved_paths: Mapping[Path, Path] = field(default_factory=dict)
+    """Each path this revision names - each file's and each finding's - and what it resolves to
+    by the loader's own rule (:func:`ddd.loading.resolve_path`), resolved once, by the analysis
+    that made it: a request about the revision looks a path up here rather than resolving it
+    again, a system call for each directory of the path, each of which waits out any busy
+    thread's turn of the interpreter. Empty for a revision made any other way - a test's - whose
+    paths are resolved when they are first asked about (:func:`ddd.gui.derived.derived`)."""
 
     @property
     def dictionary(self) -> DataDictionary | None:
@@ -563,13 +571,15 @@ class Session:
         served: tuple[Path, ...] = (self.root,)
         if not project.parent.is_relative_to(self.root):
             served = (self.root, project.parent)
+        files = tuple(_described(path, grouped.get(path, ())) for path in sorted(covered))
+        findings = _filed(grouped)
         return Revision(
             # Numbered when it is published (`_finished`): an analysis thrown away takes none.
             number=0,
             project=project,
             builds=builds,
-            files=tuple(_described(path, grouped.get(path, ())) for path in sorted(covered)),
-            findings=_filed(grouped),
+            files=files,
+            findings=findings,
             # One run's whole answer, never a field picked from each: the plugins a comparison
             # runs the rules of and the dictionary it compares have to be the same read's, and
             # two `next()` calls over the same list would only agree by coincidence.
@@ -578,6 +588,7 @@ class Session:
             checks=tuple(registered.values()),
             index=next((run.index for run in runs if run.index is not None), None),
             served=served,
+            resolved_paths=_resolved_paths(files, findings),
         )
 
     def _request(self) -> None:
@@ -767,6 +778,18 @@ def _grouped(runs: Sequence[Run], project: Path) -> tuple[dict[Path, list[Diagno
     for run in runs:
         covered |= run.covered | group_findings(run.bag, project, grouped)
     return grouped, covered
+
+
+def _resolved_paths(files: Iterable[SourceFile], findings: Iterable[Filed]) -> dict[Path, Path]:
+    """Each path ``files`` and ``findings`` name, resolved once each by the loader's own rule:
+    :attr:`Revision.resolved_paths`. That rule hands back as it is a path the system refuses even
+    to look at, where :meth:`pathlib.Path.resolve` raised for it, and the state of a project
+    including one answered a server error."""
+    resolved: dict[Path, Path] = {}
+    for path in (*(file.path for file in files), *(filed.file for filed in findings)):
+        if path not in resolved:
+            resolved[path] = resolve_path(path)
+    return resolved
 
 
 def _filed(grouped: Mapping[Path, Sequence[Diagnostic]]) -> tuple[Filed, ...]:

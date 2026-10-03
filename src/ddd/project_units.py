@@ -72,6 +72,7 @@ def unit_rows(
     in every file of a project.
     """
     own = [(file, finding) for file, finding in findings if finding.check in UNIT_CHECKS]
+    resolve = findings.resolve
     return tuple(
         UnitRow(
             unit=unit,
@@ -80,7 +81,9 @@ def unit_rows(
             variables=_stating(built, unit, "variable"),
             types=_stating(built, unit, "type"),
             members=_stating(built, unit, "member"),
-            findings=sum(1 for file, finding in own if located_on_unit(built, unit, file, finding)),
+            findings=sum(
+                1 for file, finding in own if located_on_unit(built, unit, file, finding, resolve)
+            ),
         )
         for unit in sorted(built.units.keys() | built.vocabulary.keys())
     )
@@ -162,15 +165,25 @@ def places_of(
     return tuple(found)
 
 
-def located_on_unit(built: Index, unit: str, file: Path, finding: Diagnostic) -> bool:
+def located_on_unit(
+    built: Index,
+    unit: str,
+    file: Path,
+    finding: Diagnostic,
+    resolve: Callable[[Path], Path] = Path.resolve,
+) -> bool:
     """Whether a finding shown on ``file`` is one of ``unit``'s own: an ``unknown-unit`` or a
-    ``duplicate-unit`` filed on a place stating it or on an entry listing it."""
+    ``duplicate-unit`` filed on a place stating it or on an entry listing it.
+
+    ``resolve`` resolves both paths compared; :func:`unit_rows` and :func:`unit_findings` pass
+    their findings' own (:meth:`ddd.findings_by_file.FindingsByFile.resolve`), which resolves no
+    path a revision's analysis resolved already."""
     location = finding.location
     if location is None or finding.check not in UNIT_CHECKS:
         return False
-    shown = file.resolve()
+    shown = resolve(file)
     return any(
-        site.pointer == location.pointer and site.path.resolve() == shown
+        site.pointer == location.pointer and resolve(site.path) == shown
         for site in _sites(built, unit)
     )
 
@@ -184,7 +197,7 @@ def unit_findings(built: Index, unit: str, findings: FindingsByFile) -> list[Pai
     return [
         (file, found)
         for file, found in findings.on_any(files)
-        if located_on_unit(built, unit, file, found)
+        if located_on_unit(built, unit, file, found, findings.resolve)
     ]
 
 

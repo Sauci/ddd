@@ -1295,6 +1295,27 @@ class TestStamps:
         assert session.revision is not None and session.revision.edits == undone
 
 
+class TestEachPathResolvedOnce:
+    def test_a_revision_names_each_of_its_paths_resolved_by_the_loaders_rule(
+        self, tmp_path: Path
+    ) -> None:
+        """Every file it read and every file a finding is filed on, resolved once by the analysis,
+        as the loader resolves one: examples/demo's sub-project's files included."""
+        shutil.copytree(EXAMPLES / "demo", tmp_path / "demo")
+        revision = first_revision(tmp_path / "demo", tmp_path / "demo" / "demo.ddd.json")
+        named = {file.path for file in revision.files} | {f.file for f in revision.findings}
+        assert revision.resolved_paths == {path: path.resolve() for path in named}
+        assert len(named) == 6
+
+    def test_a_path_no_system_reads_is_named_as_it_is(self, tmp_path: Path) -> None:
+        """The loader's rule hands such a path back unresolved, where resolving it raised."""
+        project_file = unreachable(tmp_path)
+        revision = first_revision(tmp_path, project_file)
+        nul = project_file.resolve().parent / NUL_ENTRY
+        assert revision.resolved_paths[nul] == nul
+        assert set(revision.resolved_paths) == {file.path for file in revision.files}
+
+
 class Held:
     """A stand-in for a function of the session module that, called on the thread named
     ``thread``, says so and waits there until the test lets it go - the first such call alone;

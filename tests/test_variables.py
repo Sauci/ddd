@@ -22,6 +22,7 @@ from ddd.variables import (
     declarations_of,
     hunks,
     located_on,
+    planned,
     preview,
     refusal,
     units_in_use,
@@ -460,3 +461,35 @@ class TestHunks:
             assert hunks(text_of(old), text_of(new)) == expected
             monkeypatch.setattr(difflib, "SequenceMatcher", matcher)
         assert 0 < len(asked) < cases
+
+
+class TestThePlannedFilesStamp:
+    """A file's stamp is looked up as the file is spelled, and the file resolved only where that
+    finds none: a plan renaming a unit stated in every file of a large project resolved every one
+    of them again, though each was spelled as its stamp's own resolved path."""
+
+    def test_a_file_spelled_as_its_stamp_is_not_resolved(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        speed(tmp_path)
+        b = (tmp_path / "b.ddd.json").resolve()
+        known = stamps(tmp_path, "b.ddd.json")
+        asked: list[Path] = []
+        real = Path.resolve
+        monkeypatch.setattr(
+            Path, "resolve", lambda self, strict=False: asked.append(self) or real(self, strict)
+        )
+        made = planned(b, (Operation("set", UNIT, '"rpm"'),), known)
+        assert (made.path, made.fingerprint) == (b, known[b])
+        assert asked == []
+
+    def test_a_file_spelled_otherwise_is_resolved_to_find_its_stamp(self, tmp_path: Path) -> None:
+        speed(tmp_path)
+        (tmp_path / "sub").mkdir()
+        spelled = tmp_path / "sub" / ".." / "b.ddd.json"
+        known = stamps(tmp_path, "b.ddd.json")
+        made = planned(spelled, (Operation("set", UNIT, '"rpm"'),), known)
+        assert (made.path, made.fingerprint) == (
+            spelled,
+            known[(tmp_path / "b.ddd.json").resolve()],
+        )

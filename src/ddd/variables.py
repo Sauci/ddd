@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import codecs
 import difflib
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
@@ -103,15 +103,24 @@ def declarations_of(built: Index, name: str, cache: dict[Path, Document]) -> tup
     return tuple(found)
 
 
-def located_on(declared: Sequence[Declared], file: Path, diagnostic: Diagnostic) -> bool:
+def located_on(
+    declared: Sequence[Declared],
+    file: Path,
+    diagnostic: Diagnostic,
+    resolve: Callable[[Path], Path] = Path.resolve,
+) -> bool:
     """Whether a finding shown on ``file`` is located on one of these declarations: on its entry
-    of the interface or anywhere under it, which is how the page puts a finding on a row."""
+    of the interface or anywhere under it, which is how the page puts a finding on a row.
+
+    ``resolve`` resolves both paths compared: ``ddd gui`` passes one answering from what its
+    revision's analysis resolved already (:meth:`ddd.gui.derived.Derived.resolve`), so that
+    asking this of every finding on a declaration's files resolves none of them again."""
     location = diagnostic.location
     if location is None:
         return False
-    shown = file.resolve()
+    shown = resolve(file)
     return any(
-        shown == entry.site.path.resolve() and _within(location.pointer, _entry(entry.site))
+        shown == resolve(entry.site.path) and _within(location.pointer, _entry(entry.site))
         for entry in declared
     )
 
@@ -204,8 +213,15 @@ def planned(
     The file carries the fingerprint the analysis read it at, from ``fingerprints`` (keyed by
     resolved path): a file the analysis did not read, or that can no longer be read as utf-8,
     is refused as unreadable rather than previewed from bytes nobody analysed.
+
+    Looked up as it is spelled first, and resolved only where that finds nothing: a path spelled
+    as a key is that resolved path already, as every path of an analysis's own index is, and a
+    plan renaming a unit stated in every file of a large project resolved every one of them
+    again.
     """
-    stamp = fingerprints.get(path.resolve())
+    stamp = fingerprints.get(path)
+    if stamp is None:
+        stamp = fingerprints.get(path.resolve())
     if stamp is None:
         raise EditError(UNREADABLE, f"{path} is not a file the last analysis read")
     try:

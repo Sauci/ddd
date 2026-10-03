@@ -13,6 +13,7 @@ from typing import Any, Final
 
 import pytest
 
+import ddd.gui.api as api_module
 from conftest import (
     EXAMPLES,
     Gated,
@@ -35,6 +36,7 @@ from ddd.cli import EXIT_OK, main
 from ddd.diagnostics import CHECKS, Location, Severity
 from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
 from ddd.file_plans import CREATABLE
+from ddd.findings_by_file import FindingsByFile
 from ddd.gui.api import (
     MEMO,
     RASTER_PLANS,
@@ -47,6 +49,7 @@ from ddd.gui.api import (
     _json_texts,
     _required_keys,
 )
+from ddd.gui.derived import Derived
 from ddd.gui.session import Filed, Revision, Session
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document
@@ -8254,3 +8257,356 @@ class TestAnswersKeptForARevision:
         assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
         get(api, "/api/graph")
         assert sorted(api._memo) == [(("graph",), 2, 1)]
+
+
+def resolving(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+    """Every path :meth:`pathlib.Path.resolve` is asked of from now on, in order: each one a system
+    call per directory of its path, which while an analysis runs waits out the analysis's turn of
+    the interpreter."""
+    asked: list[Path] = []
+    real = Path.resolve
+
+    def counted(self: Path, strict: bool = False) -> Path:
+        asked.append(self)
+        return real(self, strict)
+
+    monkeypatch.setattr(Path, "resolve", counted)
+    return asked
+
+
+PLANS: Final = (
+    (
+        "vocabulary",
+        "project.ddd.json",
+        "/api/unit-plan",
+        {"action": "describe", "unit": "Nm", "description": "torque"},
+    ),
+    (
+        "vocabulary",
+        "project.ddd.json",
+        "/api/constant-plan",
+        {"action": "set", "name": "TREND_SAMPLES", "key": "description", "raw": '"planned"'},
+    ),
+    (
+        "vocabulary",
+        "project.ddd.json",
+        "/api/section-plan",
+        {"action": "set", "name": ".calib", "key": "description", "raw": '"planned"'},
+    ),
+    (
+        "vocabulary",
+        "project.ddd.json",
+        "/api/raster-plan",
+        {"action": "set", "name": "100ms", "key": "description", "raw": '"planned"'},
+    ),
+    (
+        "structures",
+        "project.ddd.json",
+        "/api/type-plan",
+        {"action": "set", "name": "Temperature_t", "key": "description", "raw": '"planned"'},
+    ),
+    ("demo", "demo.ddd.json", "/api/settle", {"name": "ValueA", "key": "unit", "raw": '"rpm"'}),
+    (
+        "demo",
+        "demo.ddd.json",
+        "/api/declaration-plan",
+        {"action": "remove", "name": "ValueH", "file": "components/controller.ddd.json"},
+    ),
+    ("demo", "demo.ddd.json", "/api/value-plan", {"name": "CurveA", "at": "[2]", "raw": "750"}),
+    (
+        "demo",
+        "demo.ddd.json",
+        "/api/values-plan",
+        {"name": "CurveA", "raw": "1300,950,850,800,750,700"},
+    ),
+    (
+        "vocabulary",
+        "project.ddd.json",
+        "/api/files-plan",
+        {"action": "create", "kind": "units", "name": "more"},
+    ),
+)
+"""A plan of every endpoint that makes one, over the shipped example it is answered for, each
+changing at least one file the revision read - ``files-plan``'s the description it appends to."""
+
+
+def _a_variable(tmp_path: Path) -> tuple[Api, str, dict[str, str]]:
+    """ValueE of the drifted demo, read in kHz by both its readers against its producer's Hz."""
+    return every_severity(tmp_path), "/api/variable", {"name": "ValueE"}
+
+
+def _a_unit(tmp_path: Path) -> tuple[Api, str, dict[str, str]]:
+    """Nm, stated by a reader its vocabulary does not list: an ``unknown-unit`` of its own."""
+    files = {**LISTED, "b.ddd.json": component("B", declare("input", "Speed", unit="Nm"))}
+    return opened(tmp_path, files), "/api/unit", {"name": "Nm"}
+
+
+def _a_type(tmp_path: Path) -> tuple[Api, str, dict[str, str]]:
+    """The external DriverStatus_t named directly by a declaration of examples/structures: a
+    ``type-kind`` whose note's copy is filed inside the type's own entry."""
+    api = opened_example(tmp_path, "structures", "project.ddd.json")
+    sensing = tmp_path / "structures" / "sensing.ddd.json"
+    text = sensing.read_text(encoding="utf-8")
+    replaced = text.replace('"typename": "Sensor_t"', '"typename": "DriverStatus_t"', 1)
+    sensing.write_text(replaced, encoding="utf-8")
+    assert api.session.poll()
+    return api, "/api/type", {"name": "DriverStatus_t"}
+
+
+def _a_constant(tmp_path: Path) -> tuple[Api, str, dict[str, str]]:
+    """TREND_SAMPLES of examples/vocabulary set to 0, a dimension no shape may take: a
+    ``dimension-value`` at the shape naming it."""
+    api = opened_example(tmp_path, "vocabulary", "project.ddd.json")
+    constants = tmp_path / "vocabulary" / "constants.ddd.json"
+    text = constants.read_text(encoding="utf-8")
+    constants.write_text(text.replace('"value": 16', '"value": 0'), encoding="utf-8")
+    assert api.session.poll()
+    return api, "/api/constant", {"name": "TREND_SAMPLES"}
+
+
+def _a_section(tmp_path: Path) -> tuple[Api, str, dict[str, str]]:
+    """.calib declared twice: a ``duplicate-section`` at its entry."""
+    sections = [
+        {"section": ".calib", "access": "read-only", "alignment": 4},
+        {"section": ".calib", "access": "read-write", "alignment": 8},
+    ]
+    files = {"p.ddd.json": project("P", "s.ddd.json"), "s.ddd.json": {"sections": sections}}
+    return opened(tmp_path, files), "/api/section", {"name": ".calib"}
+
+
+def _a_raster(tmp_path: Path) -> tuple[Api, str, dict[str, str]]:
+    """10ms declared twice: a ``duplicate-raster`` at its entry."""
+    return opened(tmp_path, DECLARED_TWICE), "/api/raster", {"name": "10ms"}
+
+
+PANELS: Final = (_a_variable, _a_unit, _a_type, _a_constant, _a_section, _a_raster)
+"""A panel of every kind that lists findings, each over a project carrying one of its own."""
+
+
+class TestEachRevisionIsResolvedOnce:
+    """Every path a revision names - its files', its findings' - is resolved once, by the
+    analysis that made it, and what the api derives of a revision is derived once, behind a lock
+    of its own: nothing answering a request about it resolves one of them again. While an analysis
+    runs, each system call waits out the analysis's turn of the interpreter, and at 100,000
+    declarations the first state of a revision made 45,403 of them, a plan resolved every file
+    again for its stamps, and a unit's panel 199,024 (counted on the Linux development PC over
+    100000-mixed-heavy, idle)."""
+
+    def test_the_first_state_of_a_revision_resolves_none_of_its_paths(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        api = opened_example(tmp_path, "demo", "demo.ddd.json")
+        asked = resolving(monkeypatch)
+        assert get(api, "/api/state").status == 200
+        assert asked == []
+
+    @pytest.mark.parametrize("panel", PANELS, ids=lambda panel: panel.__name__)
+    def test_a_panel_resolves_none_of_the_revisions_paths(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        panel: Callable[[Path], tuple[Api, str, dict[str, str]]],
+    ) -> None:
+        """Every file it names and every finding it lists is a path the revision names, resolved
+        already; once the revision is derived, as the first state of it derives it, a panel
+        resolves none again - the findings it keeps among those on its files included."""
+        api, path, query = panel(tmp_path)
+        assert get(api, "/api/state").status == 200
+        asked = resolving(monkeypatch)
+        reply = get(api, path, **query)
+        assert reply.status == 200, reply.body
+        assert reply.body["findings"]
+        assert asked == []
+
+    @pytest.mark.parametrize(("example", "description", "path", "query"), PLANS)
+    def test_each_plan_carries_the_revisions_own_stamps(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        example: str,
+        description: str,
+        path: str,
+        query: dict[str, str],
+    ) -> None:
+        """The very map the revision's derivation made, never one made again for the request: made
+        again, it resolved every file of the revision, each a system call per directory."""
+        api = opened_example(tmp_path, example, description)
+        revision = api.session.revision
+        assert revision is not None
+        carried: list[object] = []
+
+        def carrying(name: str) -> None:
+            real = getattr(api_module, name)
+
+            def spied(*arguments: Any) -> Any:
+                carried.append(arguments[-1])
+                return real(*arguments)
+
+            monkeypatch.setattr(api_module, name, spied)
+
+        for name in ("previewed", "preview", "planned"):
+            carrying(name)
+        asked = dict(query)
+        if "file" in asked:
+            asked["file"] = posix(tmp_path / example, asked["file"])
+        reply = get(api, path, **asked)
+        assert reply.status == 200, reply.body
+        stamps = api._derive(revision).stamps
+        assert carried
+        assert all(each is stamps for each in carried)
+
+    @pytest.mark.parametrize("example", ["demo", "structures", "vocabulary"])
+    def test_the_plan_stamps_are_each_files_fingerprint_by_resolved_path_as_they_were(
+        self, tmp_path: Path, example: str
+    ) -> None:
+        description = "demo.ddd.json" if example == "demo" else "project.ddd.json"
+        api = opened_example(tmp_path, example, description)
+        revision = api.session.revision
+        assert revision is not None
+        assert api._derive(revision).stamps == {
+            file.path.resolve(): file.fingerprint for file in revision.files
+        }
+
+    def test_the_stamps_of_a_project_reached_through_a_link_are_as_they_were(
+        self, tmp_path: Path
+    ) -> None:
+        """Opened through a second spelling of its directory, every file of the project is named
+        the way the loader resolves it, and the stamps are keyed so, as they were."""
+        write_tree(
+            tmp_path / "real",
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        directory_link(tmp_path / "link", tmp_path / "real")
+        session = Session(tmp_path / "link")
+        session.open(tmp_path / "link" / "p.ddd.json")
+        api = Api(session, tmp_path / "link" / "p.ddd.json", wait_seconds=0.05)
+        revision = session.revision
+        assert revision is not None
+        stamps = api._derive(revision).stamps
+        assert stamps == {file.path.resolve(): file.fingerprint for file in revision.files}
+        assert set(stamps) == {
+            (tmp_path / "real" / name).resolve() for name in ("p.ddd.json", "a.ddd.json")
+        }
+
+    def test_the_findings_are_grouped_by_file_as_they_were(self, tmp_path: Path) -> None:
+        """Every file of the drifted demo, spelled as the revision names it and spelled through
+        ``..``: the findings each is asked for are those it was asked for when each finding's
+        file was resolved as it was grouped."""
+        api = every_severity(tmp_path)
+        revision = api.session.revision
+        assert revision is not None
+        grouped = api._derive(revision).findings
+        before = FindingsByFile((filed.file, filed.diagnostic) for filed in revision.findings)
+        for file in revision.files:
+            through = file.path.parent / ".." / file.path.parent.name / file.path.name
+            for spelled in (file.path, through):
+                assert grouped.positions(spelled) == before.positions(spelled)
+                assert grouped.on(spelled) == before.on(spelled)
+        assert sum(1 for file in revision.files if grouped.positions(file.path)) == 4
+
+    def test_a_revision_is_derived_once_under_concurrent_first_requests(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The page's first requests of a revision, asked at once: the first derives it, held
+        there, and each other arrives at the derivation's lock - or at the derivation itself,
+        where nothing guards it - before the first is let go. Counted: one derivation, and every
+        answer the one a fresh api gives alone."""
+        api = opened_example(tmp_path, "demo", "demo.ddd.json")
+        paths = (
+            "/api/state",
+            "/api/findings",
+            "/api/graph",
+            "/api/types",
+            "/api/shared",
+            "/api/files",
+        )
+        arrived = threading.Semaphore(0)
+        going = threading.Event()
+        made: list[int] = []
+        real = api_module.derived
+
+        def held(revision: Revision) -> Derived:
+            made.append(revision.number)
+            arrived.release()
+            assert going.wait(timeout=10), "the test never let the derivation go"
+            return real(revision)
+
+        class Arriving:
+            """The derivation's lock, saying when a request arrives at it."""
+
+            def __init__(self, lock: Any) -> None:
+                self.lock = lock
+
+            def __enter__(self) -> None:
+                arrived.release()
+                self.lock.acquire()
+
+            def __exit__(self, *raised: object) -> None:
+                self.lock.release()
+
+        monkeypatch.setattr(api_module, "derived", held)
+        monkeypatch.setattr(api, "_deriving", Arriving(api._deriving))
+        answers: dict[str, Reply] = {}
+        threads = [
+            threading.Thread(
+                target=lambda path=path: answers.update({path: get(api, path)}), daemon=True
+            )
+            for path in paths
+        ]
+        try:
+            for thread in threads:
+                thread.start()
+            # Each request arrives at the lock, and the first at the derivation as well.
+            for _ in range(len(paths) + 1):
+                assert arrived.acquire(timeout=10), "a request never arrived"
+        finally:
+            going.set()
+            for thread in threads:
+                thread.join(timeout=10)
+        assert not any(thread.is_alive() for thread in threads)
+        assert made == [api.session.revision.number]
+        fresh = Api(api.session, api.project, wait_seconds=0.05)
+        assert {path: answers[path] for path in paths} == {path: get(fresh, path) for path in paths}
+
+    def test_a_request_holding_an_older_revision_derives_it_and_keeps_the_newer(
+        self, api: Api, root: Path
+    ) -> None:
+        """Answered from the revision it holds, as every request is, and keeping nothing: the
+        newer revision's derivation and the answers kept beside it stay."""
+        older = api.session.revision
+        assert older is not None
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        newer = api.session.revision
+        assert newer is not None and newer.number > older.number
+        kept = api._derive(newer)
+        graph = get(api, "/api/graph")
+        made = api._derive(older)
+        assert made.number == older.number and made is not kept
+        assert api._derive(newer) is kept
+        assert get(api, "/api/graph") is graph
+
+    def test_a_project_including_a_path_no_system_reads_is_answered(self, tmp_path: Path) -> None:
+        """Its state, and its findings: the path is resolved by the loader's own rule, which hands
+        such a path back as it is, where resolving it raised and the state answered a server
+        error."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b\u0000.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        state = get(api, "/api/state")
+        assert state.status == 200, state.body
+        assert [Path(file["path"]).name for file in state.body["files"]] == [
+            "a.ddd.json",
+            "b\u0000.ddd.json",
+            "p.ddd.json",
+        ]
+        findings = get(api, "/api/findings").body["findings"]
+        assert [(Path(found["file"]).name, found["check"]) for found in findings] == [
+            ("p.ddd.json", "file-not-found")
+        ]

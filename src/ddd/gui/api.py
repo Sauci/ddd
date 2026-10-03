@@ -15,6 +15,7 @@ never a hand-assembled ``dict`` - so the shape answered here and the shape
 from __future__ import annotations
 
 import json
+import threading
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
@@ -305,6 +306,7 @@ class Api:
         self.wait_seconds = wait_seconds
         self._compare_cache: BaselineCache = {}
         self._derived: Derived | None = None
+        self._deriving = threading.Lock()
         self._memo: OrderedDict[tuple[object, ...], Reply] = OrderedDict()
         # The state's answer and the version it was made at: what `GET /api/state` answers again
         # until the version moves, every request of a page's long poll asking for it.
@@ -368,11 +370,11 @@ class Api:
         once the wait runs out.
 
         Made once a version and kept, every request of a page's long poll asking for it: the
-        version moves at every change of what the answer says. Not guarded, as :meth:`_derive`
-        is not: two requests of one version that both find nothing kept both make it, and one
-        made at an older version can be kept over a newer one's, which the newer version's next
-        request makes again. Each answer is the one its own version says; only work is
-        repeated."""
+        version moves at every change of what the answer says. Not guarded, unlike
+        :meth:`_derive`, which is what the making costs most: two requests of one version that
+        both find nothing kept both make it from the one derivation, and one made at an older
+        version can be kept over a newer one's, which the newer version's next request makes
+        again. Each answer is the one its own version says; only work is repeated."""
         after = _integer(query.get("after"))
         if after is None:
             snapshot = self.session.snapshot()
@@ -674,7 +676,7 @@ class Api:
                 name=name,
                 declarations=[
                     {
-                        "path": entry.site.path.resolve().as_posix(),
+                        "path": derived.resolve(entry.site.path).as_posix(),
                         "pointer": entry.site.pointer,
                         "component": entry.component,
                         "role": entry.role,
@@ -695,7 +697,7 @@ class Api:
                         for file, found in derived.findings.on_any(
                             entry.site.path for entry in declared
                         )
-                        if located_on(declared, file, found)
+                        if located_on(declared, file, found, derived.resolve)
                     ],
                     cache,
                 ),
@@ -721,7 +723,8 @@ class Api:
             revision.project, [file.path for file in revision.files if not file.loaded], cache
         )
         used = () if built is None else units_in_use(built)
-        rows = () if built is None else unit_rows(built, self._derive(revision).findings, cache)
+        derived = self._derive(revision)
+        rows = () if built is None else unit_rows(built, derived.findings, cache)
         return Reply(
             200,
             contract.UnitsReply(
@@ -734,7 +737,7 @@ class Api:
                     {
                         "unit": row.unit,
                         "description": row.description,
-                        "files": [path.resolve().as_posix() for path in row.files],
+                        "files": [derived.resolve(path).as_posix() for path in row.files],
                         "variables": row.variables,
                         "types": row.types,
                         "members": row.members,
@@ -767,12 +770,12 @@ class Api:
                 unit=unit,
                 description=description_of(built, unit, cache),
                 entries=[
-                    {"file": entry.path.resolve().as_posix(), "pointer": entry.pointer}
+                    {"file": derived.resolve(entry.path).as_posix(), "pointer": entry.pointer}
                     for entry in built.vocabulary.get(unit, ())
                 ],
                 sites=[
                     {
-                        "path": place.stated.site.path.resolve().as_posix(),
+                        "path": derived.resolve(place.stated.site.path).as_posix(),
                         "pointer": place.stated.site.pointer,
                         "kind": place.stated.kind,
                         "name": place.stated.name,
@@ -815,16 +818,16 @@ class Api:
         except UnitRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
-        stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
+        derived = self._derive(revision)
         try:
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, stamps)
+            planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
             contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, planned)
+                revision=revision.number, changes=_planned_changes(revision, derived, planned)
             ).model_dump(mode="json"),
         )
 
@@ -878,7 +881,7 @@ class Api:
                 revision=revision.number,
                 name=name,
                 kind=row.kind,
-                file=site.path.resolve().as_posix(),
+                file=derived.resolve(site.path).as_posix(),
                 pointer=site.pointer,
                 description=row.description,
                 header=None if header is None else json.loads(header),
@@ -890,7 +893,7 @@ class Api:
                 else [],
                 uses=[
                     {
-                        "path": use.site.path.resolve().as_posix(),
+                        "path": derived.resolve(use.site.path).as_posix(),
                         "pointer": use.site.pointer,
                         "kind": use.kind,
                         "name": use.name,
@@ -943,16 +946,16 @@ class Api:
         except TypeRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
-        stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
+        derived = self._derive(revision)
         try:
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, stamps)
+            planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
             contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, planned)
+                revision=revision.number, changes=_planned_changes(revision, derived, planned)
             ).model_dump(mode="json"),
         )
 
@@ -996,6 +999,7 @@ class Api:
         if not entry_in_place(CONSTANTS, built, name, cache):
             return _undeclared(revision, name)
         site = built.constants[name]
+        derived = self._derive(revision)
         # The whole entry's display texts in one read, through the descriptor: `value` as the json
         # text its file spells and `description` as the string it holds, which is what
         # `CONSTANTS.strings` says of each. The panel names its keys because the reply does; a
@@ -1008,10 +1012,10 @@ class Api:
                 name=name,
                 value=texts["value"],
                 description=texts["description"],
-                file=site.path.resolve().as_posix(),
+                file=derived.resolve(site.path).as_posix(),
                 pointer=site.pointer,
-                uses=_entry_uses(CONSTANTS, built, name, cache),
-                findings=_entry_findings(CONSTANTS, self._derive(revision), built, name, cache),
+                uses=_entry_uses(CONSTANTS, derived, built, name, cache),
+                findings=_entry_findings(CONSTANTS, derived, built, name, cache),
             ).model_dump(mode="json"),
         )
 
@@ -1028,6 +1032,7 @@ class Api:
         if not entry_in_place(SECTIONS, built, name, cache):
             return _undeclared(revision, name)
         site = built.sections[name]
+        derived = self._derive(revision)
         texts = shown(SECTIONS, built, name, cache)
         return Reply(
             200,
@@ -1037,10 +1042,10 @@ class Api:
                 access=texts["access"],
                 alignment=texts["alignment"],
                 description=texts["description"],
-                file=site.path.resolve().as_posix(),
+                file=derived.resolve(site.path).as_posix(),
                 pointer=site.pointer,
-                uses=_entry_uses(SECTIONS, built, name, cache),
-                findings=_entry_findings(SECTIONS, self._derive(revision), built, name, cache),
+                uses=_entry_uses(SECTIONS, derived, built, name, cache),
+                findings=_entry_findings(SECTIONS, derived, built, name, cache),
             ).model_dump(mode="json"),
         )
 
@@ -1057,6 +1062,7 @@ class Api:
         if not entry_in_place(RASTERS, built, name, cache):
             return _undeclared(revision, name)
         site = built.rasters[name]
+        derived = self._derive(revision)
         texts = shown(RASTERS, built, name, cache)
         return Reply(
             200,
@@ -1066,10 +1072,10 @@ class Api:
                 event=texts["event"],
                 cycle=texts["cycle"],
                 description=texts["description"],
-                file=site.path.resolve().as_posix(),
+                file=derived.resolve(site.path).as_posix(),
                 pointer=site.pointer,
-                uses=_entry_uses(RASTERS, built, name, cache),
-                findings=_entry_findings(RASTERS, self._derive(revision), built, name, cache),
+                uses=_entry_uses(RASTERS, derived, built, name, cache),
+                findings=_entry_findings(RASTERS, derived, built, name, cache),
             ).model_dump(mode="json"),
         )
 
@@ -1149,16 +1155,16 @@ class Api:
             return _error(status, refused.code, refused.message)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
+        derived = self._derive(revision)
         try:
-            made = previewed(plan.edits, stamps)
+            made = previewed(plan.edits, derived.stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
             contract.FilesPlanReply(
                 revision=revision.number,
-                changes=_planned_changes(revision, made),
+                changes=_planned_changes(revision, derived, made),
                 unjudged=plan.unjudged,
                 brings=[
                     {"file": path.as_posix(), "check": found.check, "message": found.message}
@@ -1234,16 +1240,16 @@ class Api:
         except SharedRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
-        stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
+        derived = self._derive(revision)
         try:
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            made = previewed(plan.edits, stamps)
+            made = previewed(plan.edits, derived.stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
             contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, made)
+                revision=revision.number, changes=_planned_changes(revision, derived, made)
             ).model_dump(mode="json"),
         )
 
@@ -1275,16 +1281,16 @@ class Api:
         if settlement.unsettled:
             code, message = refusal(settlement.unsettled[0], name, key)
             return _error(409, code, message)
-        stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
+        derived = self._derive(revision)
         try:
             self._refuse_unanalysed(revision, (change.site.path for change in settlement.changes))
-            planned = preview(settlement, key, stamps)
+            planned = preview(settlement, key, derived.stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
             contract.SettleReply(
-                revision=revision.number, changes=_planned_changes(revision, planned)
+                revision=revision.number, changes=_planned_changes(revision, derived, planned)
             ).model_dump(mode="json"),
         )
 
@@ -1295,11 +1301,11 @@ class Api:
         if not file or not check or pointer is None:
             return _error(400, "bad-request", "fix takes ?file=, ?pointer= and ?check=")
         wanted = Path(file).resolve()
-        source = next((f for f in revision.files if f.path.resolve() == wanted), None)
+        derived = self._derive(revision)
+        source = next((f for f in revision.files if derived.resolve(f.path) == wanted), None)
         if source is None:
             return _error(404, "not-found", f"{file} is not a file of the open project")
         cache: dict[Path, Document] = {}
-        stamps = {f.path.resolve(): f.fingerprint for f in revision.files}
         built = revision.index
         if built is None:
             # No index, no declarations - a revision whose project did not load has nothing to
@@ -1309,10 +1315,12 @@ class Api:
         for fix in fixes_for(check, source.path, pointer, cache, built):
             try:
                 self._refuse_unanalysed(revision, (edit.path for edit in fix.changes))
-                made = [planned(edit.path, edit.operations, stamps) for edit in fix.changes]
+                made = [planned(edit.path, edit.operations, derived.stamps) for edit in fix.changes]
             except EditError as refused:
                 return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-            offered.append({"title": fix.title, "changes": _planned_changes(revision, made)})
+            offered.append(
+                {"title": fix.title, "changes": _planned_changes(revision, derived, made)}
+            )
         return Reply(
             200,
             contract.FixReply(revision=revision.number, fixes=offered).model_dump(mode="json"),
@@ -1389,16 +1397,16 @@ class Api:
         except DeclarationRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
-        stamps = {entry.path.resolve(): entry.fingerprint for entry in revision.files}
+        derived = self._derive(revision)
         try:
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, stamps)
+            planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
             contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, planned)
+                revision=revision.number, changes=_planned_changes(revision, derived, planned)
             ).model_dump(mode="json"),
         )
 
@@ -1473,16 +1481,16 @@ class Api:
             if refused.code == "not-found":
                 return _error(404, refused.code, refused.message)
             return _error(409, refused.code, refused.message)
-        stamps = {entry.path.resolve(): entry.fingerprint for entry in revision.files}
+        derived = self._derive(revision)
         try:
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, stamps)
+            planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
             contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, planned)
+                revision=revision.number, changes=_planned_changes(revision, derived, planned)
             ).model_dump(mode="json"),
         )
 
@@ -1504,16 +1512,16 @@ class Api:
             if refused.code == "not-found":
                 return _error(404, refused.code, refused.message)
             return _error(409, refused.code, refused.message)
-        stamps = {entry.path.resolve(): entry.fingerprint for entry in revision.files}
+        derived = self._derive(revision)
         try:
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, stamps)
+            planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
             contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, planned)
+                revision=revision.number, changes=_planned_changes(revision, derived, planned)
             ).model_dump(mode="json"),
         )
 
@@ -1528,7 +1536,7 @@ class Api:
             result = compared(revision, Path(path), self.session.root, self._compare_cache)
         except BaselineRefusedError as refused:
             return _error(400, "bad-request", str(refused))
-        sources = {file.path.resolve(): file for file in revision.files}
+        derived = self._derive(revision)
         cache: dict[Path, Document] = {}
         findings = sorted(result.findings, key=lambda filed: filed.file.as_posix())
         baseline_findings = sorted(
@@ -1540,7 +1548,8 @@ class Api:
                 revision=revision.number,
                 verdict=result.verdict,
                 findings=[
-                    _finding(filed, sources.get(filed.file.resolve()), cache) for filed in findings
+                    _finding(filed, derived.files.get(derived.resolve(filed.file)), cache)
+                    for filed in findings
                 ],
                 # Never a source for one of these, whatever file it resolves to: a baseline given
                 # as a project description can share files, ids and even paths with the open
@@ -1572,9 +1581,10 @@ class Api:
         from an index of bytes no longer on disk. A plan changing only files nobody wrote since is
         made against ``revision`` at once, never waiting for the analysis (spec §5)."""
         waiting = self.session.unanalysed(revision)
+        derived = self._derive(revision)
         named: list[str] = []
         for path in paths:
-            resolved = path.resolve()
+            resolved = derived.resolve(path)
             if resolved in waiting and resolved.name not in named:
                 named.append(resolved.name)
         if named:
@@ -1586,22 +1596,28 @@ class Api:
 
     def _derive(self, revision: Revision) -> Derived:
         """What the api derives from ``revision`` (:func:`ddd.gui.derived.derived`): the one kept
-        where it is that revision's, else derived now and kept in its place, the answers
-        :meth:`_memoised` kept beside the last one emptied with it.
+        where it is that revision's, else derived now and kept in place of an older revision's,
+        the answers :meth:`_memoised` kept beside the last one emptied with it.
 
-        Once per revision while its requests come one at a time, and not guarded: requests are
-        answered on threads of their own, so two first requests of one revision can both derive
-        it, and a request still holding an older revision derives that one again, replacing the
-        newer derivation and emptying the newer revision's kept answers, which the newer
-        revision's next request makes again. Each answer is made from the revision its own
-        request holds, so each stays what it would be; only work is repeated."""
+        Once per revision: derived behind a lock of its own, never the session's, so that a
+        request of a revision another is deriving waits for that derivation and answers from it,
+        rather than deriving it again beside it - the page's first requests of a revision each
+        derived it, six at once each the slower for the five beside it. A request still holding a
+        revision older than the one kept derives its own and keeps nothing, so that the newer
+        revision's derivation and kept answers stay. Each answer is made from the revision its
+        own request holds."""
         kept = self._derived
         if kept is not None and kept.number == revision.number:
             return kept
-        made = derived(revision)
-        self._derived = made
-        self._memo = OrderedDict()
-        return made
+        with self._deriving:
+            kept = self._derived
+            if kept is not None and kept.number == revision.number:
+                return kept
+            made = derived(revision)
+            if kept is None or kept.number < revision.number:
+                self._derived = made
+                self._memo = OrderedDict()
+            return made
 
     def _memoised(
         self, revision: Revision, key: tuple[object, ...], make: Callable[[], Reply]
@@ -1849,7 +1865,7 @@ def _changed_in(derived: Derived) -> Callable[[Path], bool]:
     fingerprinted, against the revision's own fingerprint of it."""
 
     def changed(path: Path) -> bool:
-        source = derived.files.get(path.resolve())
+        source = derived.files.get(derived.resolve(path))
         return source is None or _changed_since(source)
 
     return changed
@@ -2059,13 +2075,17 @@ def _json_texts(vocabulary: Vocabulary, given: Mapping[str, str], raw: str | Non
 
 
 def _entry_uses(
-    vocabulary: Vocabulary, built: Index, name: str, cache: dict[Path, Document]
+    vocabulary: Vocabulary,
+    derived: Derived,
+    built: Index,
+    name: str,
+    cache: dict[Path, Document],
 ) -> list[dict[str, Any]]:
     """Every shape naming that entry of ``vocabulary``, as the page reads one: a constant's
     dimensions and axis sizes, a section's placements, whichever the descriptor reads."""
     return [
         {
-            "path": use.site.path.resolve().as_posix(),
+            "path": derived.resolve(use.site.path).as_posix(),
             "pointer": use.site.pointer,
             "kind": use.kind,
             "name": use.name,
@@ -2093,7 +2113,7 @@ def _listed(
     """Findings of the revision as a panel lists them, in the order given, each with where it
     leads: its file's description looked up among the revision's own."""
     return [
-        _finding(Filed(file, diagnostic), derived.files.get(file.resolve()), cache)
+        _finding(Filed(file, diagnostic), derived.files.get(derived.resolve(file)), cache)
         for file, diagnostic in found
     ]
 
@@ -2369,7 +2389,9 @@ def _declaration_plan_of(
     return declare_object(built, file, given["scope"], definition, cache)
 
 
-def _planned_changes(revision: Revision, planned: Sequence[Planned]) -> list[dict[str, Any]]:
+def _planned_changes(
+    revision: Revision, derived: Derived, planned: Sequence[Planned]
+) -> list[dict[str, Any]]:
     """A preview's files as the page reads them: the edit of each - posted to ``POST /api/edit``
     as it stands - beside the lines it changes.
 
@@ -2384,10 +2406,10 @@ def _planned_changes(revision: Revision, planned: Sequence[Planned]) -> list[dic
     made since can have written a file outside, being resolved through :func:`_source`.
     """
     for entry in planned:
-        _served(revision, entry.path.resolve())
+        _served(revision, derived.resolve(entry.path))
     return [
         {
-            "file": entry.path.resolve().as_posix(),
+            "file": derived.resolve(entry.path).as_posix(),
             "fingerprint": entry.fingerprint,
             "operations": [
                 {"op": o.op, "pointer": o.pointer, "raw": o.raw} for o in entry.operations

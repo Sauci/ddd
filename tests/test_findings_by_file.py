@@ -54,3 +54,24 @@ def test_where_a_file_s_findings_stand_however_it_is_spelled(tmp_path: Path) -> 
     assert grouped.positions(a) == (0, 2)
     assert grouped.positions(b) == (1,)
     assert grouped.positions(tmp_path / "c.ddd.json") == ()
+
+
+def test_a_file_the_record_names_is_never_resolved_again(tmp_path: Path, monkeypatch) -> None:
+    """Grouped by what the record says each file resolves to, and asked about the same way: a
+    file it names is resolved neither as it is grouped nor as it is asked for, nor as it is
+    compared (:meth:`FindingsByFile.resolve`); one it does not name is resolved, as before."""
+    (tmp_path / "sub").mkdir()
+    a, b = tmp_path / "a.ddd.json", tmp_path / "b.ddd.json"
+    spelled = tmp_path / "sub" / ".." / "a.ddd.json"
+    resolved: list[Path] = []
+    real = Path.resolve
+    monkeypatch.setattr(
+        Path, "resolve", lambda self, strict=False: resolved.append(self) or real(self, strict)
+    )
+    grouped = FindingsByFile([(a, found(a, "1")), (b, found(b, "2"))], {a: a, b: b})
+    assert grouped.positions(a) == (0,)
+    assert grouped.on_any([b, a]) == [(a, found(a, "1")), (b, found(b, "2"))]
+    assert grouped.resolve(b) == b
+    assert resolved == []
+    assert grouped.positions(spelled) == (0,)
+    assert resolved == [spelled]

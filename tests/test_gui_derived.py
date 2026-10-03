@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
@@ -256,3 +257,30 @@ class TestTheFindingsTabsOrder:
         project = tmp_path / "p.ddd.json"
         made = derived(revision_of(project, (described(project, "project"),), ()))
         assert (made.ranked, made.repeats, made.counts) == ((), (), (0, 0, 0))
+
+
+def test_a_revision_naming_each_of_its_paths_resolved_is_derived_resolving_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What an analysis records of a revision, the derivation looks up: no path resolved again,
+    the files described and the stamps keyed by what the record says each resolves to."""
+    project, a = tmp_path / "p.ddd.json", tmp_path / "a.ddd.json"
+    files = (described(project, "project"), described(a))
+    findings = (filed(a, Location(a, "component")), filed(project, None))
+    revision = dataclasses.replace(
+        revision_of(project, files, findings), resolved_paths={project: project, a: a}
+    )
+    asked: list[Path] = []
+    real = Path.resolve
+
+    def counted(self: Path, strict: bool = False) -> Path:
+        asked.append(self)
+        return real(self, strict)
+
+    monkeypatch.setattr(Path, "resolve", counted)
+    made = derived(revision)
+    assert made.sources == (files[1], files[0])
+    assert made.stamps == {project: "0" * 64, a: "0" * 64}
+    assert made.resolve(a) == a
+    assert list(made.findings.on(a)) == [(a, findings[0].diagnostic)]
+    assert asked == []

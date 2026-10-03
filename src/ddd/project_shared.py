@@ -296,7 +296,12 @@ class Use:
 
 
 def located_on(
-    vocabulary: Vocabulary, built: Index, name: str, file: Path, found: Diagnostic
+    vocabulary: Vocabulary,
+    built: Index,
+    name: str,
+    file: Path,
+    found: Diagnostic,
+    resolve: Callable[[Path], Path] = Path.resolve,
 ) -> bool:
     """Whether this finding belongs to that entry of ``vocabulary``: filed inside its own record, or
     at a shape naming it.
@@ -318,14 +323,19 @@ def located_on(
     name a consumer had wrongly stated showed ``1`` in the tab's Findings column and listed a
     finding in its panel that routed away from it. That column is what a reader scans for what
     needs attention; a count they can do nothing about is worse than no count.
+
+    ``resolve`` resolves both paths compared; :func:`entry_findings` passes its findings' own
+    (:meth:`ddd.findings_by_file.FindingsByFile.resolve`), which resolves no path a revision's
+    analysis resolved already.
     """
     if found.check in ABOUT_THE_DECLARATION:
         return False
     if found.location is None:
         return False
-    wanted = file.resolve()
+    wanted = resolve(file)
     return any(
-        _at(place, wanted, found.location.pointer) for place in _places(vocabulary, built, name)
+        _at(place, wanted, found.location.pointer, resolve)
+        for place in _places(vocabulary, built, name)
     )
 
 
@@ -342,9 +352,9 @@ def _places(vocabulary: Vocabulary, built: Index, name: str) -> list[Site]:
     return places
 
 
-def _at(place: Site, path: Path, pointer: str) -> bool:
-    """Whether ``pointer`` in ``path`` is that place, or somewhere inside it."""
-    if place.path.resolve() != path:
+def _at(place: Site, path: Path, pointer: str, resolve: Callable[[Path], Path]) -> bool:
+    """Whether ``pointer`` in ``path`` - resolved - is that place, or somewhere inside it."""
+    if resolve(place.path) != path:
         return False
     if pointer == place.pointer:
         return True
@@ -409,7 +419,7 @@ def entry_findings(
     return [
         (file, found)
         for file, found in findings.on_any(place.path for place in _places(vocabulary, built, name))
-        if located_on(vocabulary, built, name, file, found)
+        if located_on(vocabulary, built, name, file, found, findings.resolve)
     ]
 
 

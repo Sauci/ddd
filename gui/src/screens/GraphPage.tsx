@@ -114,9 +114,9 @@ export function GraphPage({
 }
 
 /**
- * The canvas itself, mounted only once there is a graph to draw, so that `fitView` has something
- * to fit once laid out. `onComponent` is baked into every node, so the caller keeps one identity
- * for it.
+ * The canvas itself, mounted only once there is a graph to draw, so that the first layout it asks
+ * for (`useLayout`) is of this project's own modules and flows, never of nothing. `onComponent`
+ * is baked into every node, so the caller keeps one identity for it.
  *
  * It lives under a `ReactFlowProvider` because the search box, `Tidy` and `Fit` sit outside the
  * `<ReactFlow>` element and still have to reach its viewport.
@@ -187,9 +187,13 @@ function Canvas({
     setNodes(place());
   }
   /**
-   * The canvas element's own box, measured the moment the element exists at all - a ref callback
-   * runs synchronously during React's commit, before paint, the same timing class as
-   * `useLayoutEffect` - rather than in an effect that would run a tick later. `<ReactFlow>`
+   * The box React Flow draws in - the canvas element's content box, inside its 1 px border, the
+   * size React Flow's own wrapper takes (`width`/`height` 100 %) and measures itself by - read the
+   * moment the element exists at all: a ref callback runs synchronously during React's commit,
+   * before paint, the same timing class as `useLayoutEffect`, rather than in an effect that would
+   * run a tick later. Never the border box: 2 px wider and taller (1068 by 560 against 1066 by 558
+   * at 1280 by 800), it left every opening view 1 px off centre (the final review's fix wave,
+   * Ruling T10-5). `<ReactFlow>`
    * itself mounts only once `containerSize` is known (below): this "two-pass mount" is what lets
    * `openingViewport` (review fix round 2, item 1, replacing round 1's Ruling T10-2) be given to
    * it as `defaultViewport`, applied once, synchronously, on that first mount - rather than
@@ -209,8 +213,7 @@ function Canvas({
   const canvasRef = useCallback((node: HTMLElement | null) => {
     containerRef.current = node;
     if (node === null) return;
-    const box = node.getBoundingClientRect();
-    setContainerSize({ width: box.width, height: box.height });
+    setContainerSize({ width: node.clientWidth, height: node.clientHeight });
   }, []);
   // `null` until `containerSize` is - `<ReactFlow>` itself does not mount before then either
   // (below), so this is never handed to it as a stale or default viewport for the wrong size -
@@ -249,16 +252,18 @@ function Canvas({
   }, [project, place]);
   /**
    * The same rule the opening view decides by (`openingViewport`, above), applied again: `Fit`
-   * re-measures the canvas element fresh, rather than trusting `containerSize` (set once, at
-   * mount, and never again), so a window resized since opening is still answered correctly -
-   * React Flow's own `fitView` always re-measured this way too, and this keeps that part of its
-   * behaviour even though it is no longer what calls it.
+   * re-measures the box React Flow draws in fresh - the canvas element's content box, as
+   * `canvasRef` reads it - rather than trusting `containerSize` (set once, at mount, and never
+   * again), so a window resized since opening is still answered correctly - React Flow's own
+   * `fitView` always re-measured this way too, and this keeps that part of its behaviour even
+   * though it is no longer what calls it.
    */
   const onFit = useCallback(() => {
-    const box = containerRef.current?.getBoundingClientRect();
+    const node = containerRef.current;
     const placement = drawnPlacement();
-    if (box === undefined || placement === null) return;
-    const view = openingViewport(placement, { width: box.width, height: box.height }, MIN_ZOOM);
+    if (node === null || placement === null) return;
+    const size = { width: node.clientWidth, height: node.clientHeight };
+    const view = openingViewport(placement, size, MIN_ZOOM);
     if (view !== null) void flow.setViewport(view, { duration: FLIGHT });
   }, [flow, drawnPlacement]);
   const onSearchKey = useCallback(

@@ -27,7 +27,9 @@ import { NODE_HEIGHT, NODE_WIDTH } from "./nodeSize";
  * agrees with what it is deciding against (review fix round 1, Ruling T10-2). Pinned by the
  * literal 0.5 in canvas.test.ts (review fix round 2, New Important 2). */
 export const MIN_ZOOM = 0.5;
-/** React Flow's own default `maxZoom`, given explicitly for the same reason. */
+/** React Flow's own default `maxZoom`, which `<ReactFlow>` is left to use: `openingViewport` caps
+ * its fit at the same, so the view it opens on is one React Flow itself would allow. Pinned by
+ * the zoom of 2 in canvas.test.ts's capped fit. */
 const MAX_ZOOM = 2;
 
 /**
@@ -207,11 +209,12 @@ function boundsOf(placed: readonly Placed[]): {
 
 /**
  * Where the canvas should open, and what `Fit` returns it to - review fix round 2, item 1
- * (continuing round 1's Ruling T10-2, which this replaces): applied as `defaultViewport` before
- * React Flow's own `fitView` ever runs, rather than racing it, since `fitView` does not resolve
- * until a `ResizeObserver` delivers every node's own measured size - a later task, not a
- * guarantee about which of the two runs first (confirmed by hand: with another page brought to
- * the front right after the click, the order reversed in most openings on a fresh server).
+ * (continuing round 1's Ruling T10-2, which this replaces): applied as `defaultViewport` on React
+ * Flow's first mount, with `fitView` never asked for (`GraphPage`'s `fitView={false}`), rather
+ * than raced against it: `fitView` does not resolve until a `ResizeObserver` delivers every
+ * node's own measured size - a later task, not a guarantee about which of the two runs first
+ * (confirmed by hand: with another page brought to the front right after the click, the order
+ * reversed in most openings on a fresh server).
  *
  * `placed` is the placement *as drawn* - the reader's saved positions already laid over it
  * (`withSavedPositions`), not the bare layout - so a module the reader moved is where this

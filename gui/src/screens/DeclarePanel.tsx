@@ -9,7 +9,14 @@ import {
 import type { DeclarableReply } from "../api/types";
 import { useDebounced } from "../app/useDebounced";
 import { DeclarePanelView } from "../components/DeclarePanelView";
-import { definitionOf, dimensionsRaw, type Mode, modeOf, scopesOf } from "../lib/declarations";
+import {
+  definitionOf,
+  dimensionsRaw,
+  followedScope,
+  type Mode,
+  modeOf,
+  scopesOf,
+} from "../lib/declarations";
 import { planEdit } from "../lib/projectUnits";
 import { planShown } from "../lib/typing";
 import { declareLabel } from "../lib/undo";
@@ -91,15 +98,20 @@ export function DeclarePanel({ file, component, revision, stopped, onClose, onDe
   // entered, and does not say which.
   const [typedEdit, setTypedEdit] = useState(true);
 
-  // Scope follows the name: a scope the newly typed (or newly loaded) name may not take is not
-  // kept, and moves forward onto the first this name does take. Typing between two names that
-  // both allow the scope already chosen leaves it exactly as it was - this only ever moves it
-  // forward, never back onto a scope let go of for a name typed in between.
+  // Scope follows the name (`followedScope`). A name typed moves it in `onTyped` below, as part of
+  // that typed change. A new answer of `declarable` - its first, or a revision's - can take the
+  // scope chosen away from the name as it stands: moved then, it is a change of the form's own,
+  // no keystroke to wait out, and takes effect at once (`typedEdit` false), where it once rode
+  // whichever kind the reader's last change had been. Run for a new answer alone, reading the
+  // name and the scope as they stand.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run for a new answer alone; typed and scope are read as they stand.
   useEffect(() => {
     if (declarable.data === undefined) return;
-    const scopes = scopesOf(typed, declarable.data);
-    setScope((current) => (scopes.includes(current) ? current : (scopes[0] ?? "")));
-  }, [typed, declarable.data]);
+    const next = followedScope(scope, scopesOf(typed, declarable.data));
+    if (next === scope) return;
+    setScope(next);
+    setTypedEdit(false);
+  }, [declarable.data]);
 
   const mode = declarable.data === undefined ? "unchosen" : modeOf(typed, declarable.data.names);
   const request = requestOf(file, mode, typed, kind, scope, values, dimensions, declarable.data);
@@ -158,9 +170,10 @@ export function DeclarePanel({ file, component, revision, stopped, onClose, onDe
       </Panel>
     );
   }
+  const reply = declarable.data;
   return (
     <DeclarePanelView
-      reply={declarable.data}
+      reply={reply}
       typed={typed}
       kind={kind}
       scope={scope}
@@ -173,6 +186,7 @@ export function DeclarePanel({ file, component, revision, stopped, onClose, onDe
       busy={stopped || apply.isPending}
       onTyped={(text) => {
         setTyped(text);
+        setScope((current) => followedScope(current, scopesOf(text, reply)));
         setTypedEdit(true);
         setRefusal(null);
       }}

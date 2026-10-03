@@ -259,8 +259,9 @@ describe("the undo control", () => {
 
 describe("what an undo asks again", () => {
   // An undo is answered once its files are back, and the revision moves only once they are
-  // analysed: what is on screen and draws a file is asked for again at once.
-  it("asks again for whatever draws a file, a tab's rows, an entry's panel or a plan", () => {
+  // analysed: what draws a file as it stands, and a plan whose fingerprints the undo spent, is
+  // asked for again at once; what an analysis made waits for the revision every key holds.
+  it("asks again for whatever draws a file as it stands, a tab's rows, an entry's panel or a plan", () => {
     const drawn = [
       ["file", "C:/work/demo/components/controller.ddd.json", 7],
       ["variable", "ValueA", 7],
@@ -273,23 +274,41 @@ describe("what an undo asks again", () => {
       ["section", ".calib", 7],
       ["raster", "10ms", 7],
       ["files", 7],
-      ["values", "CurveA", 7],
       ["declarable", "C:/work/demo/components/controller.ddd.json", 7],
       ["unit-plan", { action: "describe", unit: "rpm", description: "speed" }, 7],
+      ["type-plan", { action: "set", name: "Sensor_t", key: "unit", raw: '"rpm"' }, 7],
+      ["constant-plan", { action: "remove", name: "TREND_SAMPLES" }, 7],
+      ["section-plan", { action: "remove", name: ".calib" }, 7],
+      ["raster-plan", { action: "remove", name: "10ms" }, 7],
+      ["files-plan", { action: "add", path: "extra.ddd.json" }, 7],
+      ["declaration-plan", "remove", "C:/work/demo/components/controller.ddd.json", "ValueA", 7],
       ["settle", "ValueA", "unit", '"rpm"', 7],
+      ["value-plan", "CurveA", { at: [0, 1], raw: 900 }, 7],
+      ["values-plan", "CurveA", [[1200, 900]], 7],
       ["fix", "C:/work/demo/components/controller.ddd.json", "", "missing-id", 7],
-      ["undo", 3, 7],
     ];
     expect(drawn.filter((key) => !askedAgainAfterUndo(key))).toEqual([]);
   });
 
-  it("leaves to the analysis the graph and a comparison, and the session and the projects found", () => {
+  it("leaves to the analysis the graph, a comparison, the findings and an object's values", () => {
+    // The final review's fix wave: a component's whole-file findings were asked again at every
+    // undo, 3.4 MB at 100000-large-heavy, and none of them can change before the undo's own
+    // analysis lands - when the revision their key holds moves, and they are asked for anew.
     const left = [
       ["graph", "C:/work/demo/demo.ddd.json", 7],
       ["compare", "C:/b.json", 7],
-      ["session"],
-      ["projects"],
+      ["findings", 7, "file", "C:/work/demo/components/controller.ddd.json"],
+      ["findings", 7, 0],
+      ["findings", 7, "reported", "C:/work/demo/components/controller.ddd.json", "missing-id"],
+      ["values", "CurveA", 7],
     ];
+    expect(left.filter((key) => askedAgainAfterUndo(key))).toEqual([]);
+  });
+
+  it("leaves the strip's own preview, and the session and the projects found", () => {
+    // The undo closes the strip, and the entry it previews next is the one the next state
+    // names, under a key of its own: asked again, the entry just put back answers 404.
+    const left = [["undo", 3, 7], ["session"], ["projects"]];
     expect(left.filter((key) => askedAgainAfterUndo(key))).toEqual([]);
   });
 });

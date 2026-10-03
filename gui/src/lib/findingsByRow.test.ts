@@ -115,8 +115,22 @@ describe("a file's findings, grouped by the row each is within", () => {
     /** The name pool random pointers draw from - "unit" and "units" deliberately both in it, one
      * a literal text-prefix of the other, so some trials probe the same near-miss shape as the
      * dedicated "unit is not a prefix of units" test above, beside the indices below probing the
-     * brief's own `[1]`-against-`[12]` shape. */
-    const NAMES = ["component", "interface", "definition", "unit", "units", "kind", "a", "b"];
+     * brief's own `[1]`-against-`[12]` shape. "1" and "12" too, keys spelled as numerals (the
+     * final review's fix wave, Task 11f's parked minor): a pointer through such a key - `a.1`,
+     * `a.12` - reads like an array index without being one, and a key's near miss, `.1` against
+     * `.12`, is drawn beside an index's. */
+    const NAMES = [
+      "component",
+      "interface",
+      "definition",
+      "unit",
+      "units",
+      "kind",
+      "a",
+      "b",
+      "1",
+      "12",
+    ];
 
     /** A random declaration-like pointer segment: a short name, or an index up to 15 - just
      * large enough for a near-miss like `[1]` against `[12]` to turn up on its own. */

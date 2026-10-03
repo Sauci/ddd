@@ -343,6 +343,16 @@ test("openingViewport fits the whole placement capped at maxZoom when it fits wi
   expect(result).toEqual({ x: 160, y: 352, zoom: 2 });
 });
 
+// The final review's fix wave (Ruling T10-5, Minor 2): the boundary itself is the fit's. Two
+// modules 2,148 px apart make bounds 2,328 px wide; 1,280 px less React Flow's own padding at 0.1
+// (58 px each side, floored) leaves 1,164 px, so the zoom that fits them is exactly MIN_ZOOM - the
+// fit, centred at x 58, where the first rank alone would open at x 595.
+test("openingViewport fits the whole placement when it fits at exactly minZoom", () => {
+  const placed = [placedAt(A, 0, 0), placedAt(B, 2148, 0)];
+  const result = openingViewport(placed, { width: 1280, height: 800 }, MIN_ZOOM);
+  expect(result).toEqual({ x: 58, y: 388, zoom: 0.5 });
+});
+
 test("openingViewport centres the first rank at minZoom when the whole graph would not fit", () => {
   // Fifty ranks spread along x, ranked's own spacing (NODE_WIDTH + 50): fitting all fifty into
   // 1280px needs a zoom below MIN_ZOOM, leaving the fitted middle - around rank 25 - the only

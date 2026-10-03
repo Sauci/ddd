@@ -7,10 +7,11 @@ import type { ListedFinding } from "../api/types";
  * `ComponentPage` once asked this per row - `findings.filter((finding) => within(finding.
  * pointer, at))`, `rows.length` of them over the very same `findings` array - which on a file of
  * 3,334 declarations and 4,167 findings cost 13.9 million `within` calls a render, three renders
- * an Apply (Task 11f). This walks each finding's pointer back through its own boundaries once -
- * the pointer itself, then each prefix ending right before a `.` or a `[`, exactly the set of
- * `entry` values `within` would accept for it - and looks each boundary up in a `Set` of `rows`,
- * so the cost is O(findings × a pointer's own depth), never O(rows × findings).
+ * an Apply (Task 11f). This walks each finding's pointer once, from its start, through its own
+ * boundaries - each prefix ending right before a `.` or a `[`, the shortest first, and then the
+ * pointer itself, exactly the set of `entry` values `within` would accept for it - and looks each
+ * boundary up in a `Set` of `rows`, so the cost is O(findings × a pointer's own depth), never
+ * O(rows × findings).
  *
  * A row no finding ever lands on is left out of the answer rather than stored as an empty array:
  * a caller reads `byRow.get(row) ?? []`, which a large file's rows mostly do.
@@ -40,10 +41,10 @@ export function findingsByRow(
 
 /**
  * Every boundary of `pointer` that `within(pointer, entry)` (`lib/pointer.ts`) would accept as
- * `entry`: `pointer` itself, and each prefix ending right before a `.` or a `[` - the same two
- * characters `within`'s own `startsWith` checks test for. Read directly off the string, rather
- * than through `segments`' own regular expression, so the two can never tokenise one pointer two
- * different ways.
+ * `entry`, in the order they are read off it: each prefix ending right before a `.` or a `[` - the
+ * same two characters `within`'s own `startsWith` checks test for - the shortest first, and then
+ * `pointer` itself. Read directly off the string, rather than through `segments`' own regular
+ * expression, so the two can never tokenise one pointer two different ways.
  */
 function boundariesOf(pointer: string): string[] {
   const boundaries: string[] = [];

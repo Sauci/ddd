@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { MouseEvent } from "react";
 import { useMemo, useState } from "react";
 import { getFile, getFindings } from "../api/client";
-import type { State } from "../api/types";
+import type { ListedFinding, State } from "../api/types";
 import { useUpdating } from "../app/updating";
 import { leadsElsewhere, routeHref, routeOf } from "../lib/findings";
 import { findingsByRow } from "../lib/findingsByRow";
@@ -35,6 +35,10 @@ interface Props {
    * Shared files tab, which leaves this page too, for the same reason. */
   onOpenConstant: (name: string) => void;
 }
+
+/** No findings, while this file's own have not come: one array for every such render, so that
+ * the rows grouped from them (`byRow`, below) are grouped once rather than again each render. */
+const NONE: readonly ListedFinding[] = [];
 
 /** The kinds whose definition states no `dimensions` at all and reads its own word instead - a
  * curve or a map over its axis or axes, or an axis itself. */
@@ -109,7 +113,7 @@ export function ComponentPage({
   // (Rules of Hooks: a hook after an early return would run on some renders and not others).
   const loaded = !content.isPending && !content.isError && content.data.error === null;
   const data = loaded ? content.data.data : null;
-  const findings = listed.data?.findings ?? [];
+  const findings = listed.data?.findings ?? NONE;
   // Grouped once per findings answer, not refiltered per row on every render (part 17's task
   // 11f): on a file of 3,334 declarations and 4,167 findings, a row's own `findings.filter(...)`
   // cost 13.9 million `within` calls a render, three renders an Apply. `data` and `findings` are
@@ -187,7 +191,8 @@ export function ComponentPage({
 
   // The file parsed but is only checked against the schema here: it need not match
   // ComponentFile (spec 6.10), so `component` may be absent on disk though the type requires it.
-  const name = (content.data.data as ComponentFile).component?.name ?? "Unnamed component";
+  // `data` is the very answer read above, past the three returns that leave it `null`.
+  const name = (data as ComponentFile | null)?.component?.name ?? "Unnamed component";
   const selected = new Set(rows.filter((row) => row.name === variable).map((row) => row.id));
 
   return (

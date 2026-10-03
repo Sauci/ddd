@@ -173,23 +173,39 @@ function plural(count: number): string {
   return `${count} file${count === 1 ? "" : "s"}`;
 }
 
-/** The queries an undo leaves alone, by the first part of their key: the graph and a comparison
- * against a baseline draw what an analysis made, and move with the revision; the session and the
- * projects found are no file's. */
-const LEFT_TO_THE_ANALYSIS: ReadonlySet<unknown> = new Set([
+/** The queries an undo leaves alone, by the first part of their key.
+ *
+ * - **What an analysis made**: the graph, a comparison against a baseline, the findings - the
+ *   Findings tab's pages and a component's own whole file's - and an object's values, which
+ *   `GET /api/values` reads off the analysed dictionary rather than its file. An undo changes none
+ *   of them before its own analysis lands, and that moves the revision each of their keys holds,
+ *   so they are asked for anew then. Where a listed finding leads is read off its file as it
+ *   stands, and asked again before then it could lead to what the undo put back while its words
+ *   still name what the analysis read; its own analysis answers both at once.
+ * - **The strip's own preview**: the undo closes the strip, and the entry it previews next is the
+ *   one the next state names, under a key of its own - asked again, the entry put back answers
+ *   that nothing is left to undo, or another one.
+ * - **No file's**: the session, and the projects found.
+ */
+const LEFT_ALONE: ReadonlySet<unknown> = new Set([
   "graph",
   "compare",
+  "findings",
+  "values",
+  "undo",
   "session",
   "projects",
 ]);
 
 /**
  * Whether a query is asked for again once an undo has put its files back (spec §6: the change
- * shows where it was made). An undo can put back any edit - an interface, a vocabulary's entry,
- * the project's own includes - and is answered before its analysis, so the revision a screen
- * keys its queries by moves only an analysis later: every query drawing a file as it stands, a
- * tab's rows, an entry's panel or a plan whose fingerprints the undo spent is asked again now.
+ * shows where it was made): only what the undo can change before its own analysis lands. An undo
+ * can put back any edit - an interface, a vocabulary's entry, the project's own includes - and is
+ * answered before its analysis, so the revision a screen keys its queries by moves only an
+ * analysis later: every query drawing a file as it stands, a tab's rows, an entry's panel or a
+ * plan whose fingerprints the undo spent is asked again now. What its analysis changes is asked
+ * for once that lands, by the revision in its key (`LEFT_ALONE`).
  */
 export function askedAgainAfterUndo(queryKey: readonly unknown[]): boolean {
-  return !LEFT_TO_THE_ANALYSIS.has(queryKey[0]);
+  return !LEFT_ALONE.has(queryKey[0]);
 }

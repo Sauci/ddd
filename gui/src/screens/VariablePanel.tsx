@@ -330,14 +330,17 @@ export function VariablePanel({
       ]),
   });
   // What the removal offers, drawn the same way `UnitPanel`'s own actions are: the plan asked
-  // for, why it - or applying it - was refused, and whether the plan shown is a placeholder.
+  // for, and why it - or applying it - was refused. Never pending: the plan is asked anew for
+  // each revision with nothing kept in its place while it is (the query has no
+  // `placeholderData`), so a plan drawn - and Remove is drawn only beside one - is always this
+  // revision's own; while it is asked for there is none, and nothing to offer.
   const removalOffer: Offer = {
     plan: removal.data ?? null,
     refusal:
       removalStale !== null
         ? shownRefusal(removalStale, revision)
         : (removalRefused ?? removal.error?.message ?? null),
-    pending: removal.isPlaceholderData,
+    pending: false,
   };
 
   if (undeclared) return null;

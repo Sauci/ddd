@@ -11,10 +11,11 @@ import { NODE_HEIGHT, NODE_WIDTH } from "./nodeSize";
  * either makes one. `nodesOf` (`gui/src/lib/canvas.ts`) still looks a placed module back up by
  * path against the *current* modules, with its own fallback for one the lookup misses - which
  * happens only while a revision whose shape *did* change is still being laid out: the kept
- * placement from before it is drawn against the new modules for the one render in between, and a
- * module the new shape added is not in that kept placement yet (review fix round 2, Minor 5a -
- * once `shapeOf` is unchanged again, every placed path is also a current one, and the lookup
- * cannot miss).
+ * placement from before it is drawn against the new modules on every render until the new layout
+ * arrives, and a module it places that the new revision no longer carries is the one the lookup
+ * misses; a module the new shape added is in no placement yet, and draws no node until its layout
+ * arrives (review fix round 2, Minor 5a - once `shapeOf` is unchanged again, every placed path is
+ * also a current one, and the lookup cannot miss).
  */
 export interface Placed {
   module: GraphModule;

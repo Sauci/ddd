@@ -10,6 +10,22 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-30-gui-large-projects-design.md`. Read it before any task. Where this plan departs from it, the departure is a ruling in *Rulings taken* at the end, with its reason and the measurement behind it.
 
+
+> **As built** (executed 2026-09-30 to 2026-10-03; the departures from the task texts, each a ruling under *Rulings taken*):
+> - **Five tasks were added:**
+>   - **11b**, a large edit planned and written without re-scanning every file character by character (P6);
+>   - **11c**, the page says the server stopped only once a prompt retry fails too (P7);
+>   - **11e**, a file's literal sets at places apart made from one reading, not one per place (P10): a unit rename across a "large" project went from 925 s to 3.3 s at 100,000 declarations;
+>   - **11f**, a component page's rows find their findings once (P11);
+>   - **12b**, the cause of journeys failing only in a whole-suite run (P9): the second analysis a project with a sub-project costs is now asked as the first revision is published.
+> - **Master was merged before Task 12** (`ab7b0a5`, P5): `ddd tool from-elf` (#74), its follow-ups (#75) and pyelftools as a requirement (#76), because Task 12's three files had changed there too.
+> - **Task 8 carried an extension** (T6-1 (i)-(iii), T7-7 (iv)): refusals while updating, the values grid's hold across an Apply and an undo, rows built from the index lagging one analysis, and the Findings window across an analysis landing. Its review added a server check (T8-7): an entry, a type or a unit is read at the place the index recorded only while its own name is still there.
+> - **Task 9's columns are `fr` shares with pixel floors** sized from live measurements (T9-4), not "the width that drew it before", which a virtualised table cannot keep. The Table tab's paths are relative to the project (T9-5).
+> - **Task 10 falls back to ranks laid out breadth first** when dagre's stack runs out in the worker (T10-1). A worker has about half the main thread's stack: a chain overflows at about 908 components there, against 1,772 on the main thread. The canvas opens on a view computed in lib, not React Flow's `fitView` (T10-4).
+> - **Task 11's decision of what a screen shows and offers is one lib function**, `planShown`, used by all ten screens that ask a plan, SharedAdd included (T11-1, T11-2). A pick or an Enter goes through at once (T11-3, T12-3).
+> - **Task 7 kept the Compare tab's table** as `CompareTableView` (T7-2), and `stillReported` became `selectedNow` (T7-6).
+> - **Task 12's first journey** sets a unit outside the vocabulary rather than `Nm`, which a settle brings into agreement (T12-1).
+
 ## Global Constraints
 
 Every task's requirements include this section.
@@ -145,7 +161,7 @@ And one cause, found by reading, of the graph fetched twice that the spec's §2 
 | `gui/src/api/client.ts`, `gui/src/api/types.ts` | `getState(after)`; `postEdit`/`postUndo` noting the page's own edits; `getFindings` | 6, 7 |
 | `gui/src/app/useProjectState.ts`, `gui/src/app/App.tsx` | the analysing shell; `updating` | 6, 8 |
 | `gui/src/lib/findingsWindow.ts` *(new)* | which rows the Findings table draws and which pages it asks for | 7 |
-| `gui/src/lib/findings.ts` | `findingCounts` from the state's counts; `stillReported` | 7, 8 |
+| `gui/src/lib/findings.ts` | `findingCounts` from the state's counts; `stillReported` (as built `selectedNow`, T7-6) | 7, 8 |
 | `gui/src/components/FindingsTableView.tsx`, `gui/src/screens/FindingsPage.tsx`, `ProjectPage.tsx`, `ComponentPage.tsx` | the window; the counts; a file's findings | 7, 8, 9 |
 | the seven panel views with a list of findings | "Updating" above it | 8 |
 | `gui/src/ui/Table.tsx`, `gui/src/styles/ui.css`, the table views | long tables virtualised | 9 |
@@ -487,8 +503,8 @@ half as many large ones, beside its small ones."""
 LAYER: Final = 30
 """How many components on a reader's output sits, in the "many" shape: the canvas then lays the
 project out in layers about this many components across, rather than as one chain as deep as the
-project is long, which ``@dagrejs/dagre`` 3.1.1 runs out of stack on past about 1,500
-components."""
+project is long - measured while planning, ``@dagrejs/dagre`` 3.1.1 overflowed its stack on a
+chain of 1,800 components, where one of 1,200 laid out."""
 
 FEWEST: Final = 120
 """The smallest project generated: fewer declarations leave the "many" shape a component or two,
@@ -1875,7 +1891,7 @@ export function windowRows(span: Span, pages: ReadonlyMap<number, FindingsReply>
 - [ ] **Step 10: The other two readers of `State.findings`** - `ProjectPage`'s line counts from `state.counts`; `ComponentPage` asks `getFindings({ file })` under `["findings", revision, "file", file]` - every finding of its own file, no limit - for its rows' chips and its list.
 - [ ] **Step 11: Stories and screenshots** - the `FindingsTableView` stories take the window's props, with fixtures true to `examples/demo` or saying they are constructed; one new story, **a long table**: 2,000 findings, the window at its top, a placeholder row among the arrived ones. `UPDATE=1 docker compose run --rm gui-screenshots`, then **open every Findings reference, new and moved, and say what each shows** - the one-line rows and fixed columns move them all; nothing else may move.
 - [ ] **Step 12: Both gates, the journeys** - schemas, the Python gate, the page gate; build, then the journeys alone. `findings.spec.ts` reads the tab through what a reader sees and should pass unchanged; say so, or why not.
-- [ ] **Step 13: Ablate** - in a scratch worktree: the sort's key from `rank` to the check's name; `repeats` counted over the revision's order instead of the ranked one (a key test must die); `MEMO` to 0. On the page, in place: `MARGIN` to 0 and `spanOf`'s `Math.max(0, ...)` removed.
+- [ ] **Step 13: Ablate** - in a scratch worktree: the sort's key from `rank` to the check's name; `repeats` counted over the revision's order instead of the ranked one (a key test must die - as built, an equivalent mutant, T7-3); `MEMO` to 0. On the page, in place: `MARGIN` to 0 and `spanOf`'s `Math.max(0, ...)` removed.
 - [ ] **Step 14: Measure** - the server benchmark on `$BENCH/35000-many-heavy` and `$BENCH/100000-many-heavy`: `state`'s size and time, and the two new findings measures, in your report.
 - [ ] **Step 15: Commit** - one commit: the endpoint, the contract and the page that reads them.
 
@@ -2259,7 +2275,7 @@ these eight projects (260-4,141 ms) where the budget is "within one analysis plu
   35,000-mixed-heavy, and genuinely capping first at 100,000-many-clean and 100,000-many-heavy.
 - **"An Apply's own change showing, under 500 ms"**: over on all eight, 840-4,867 ms measured
   where it finished at all, capped at 100,000-many-clean.
-- **"The findings current after an edit, within one analysis plus 1 s... the page saying
+- **"The findings current after an edit, within one analysis plus 1 s, the page saying
   "updating" until then"**: under budget only at 10,000-many-clean and 35,000-many-clean (418 ms
   against 1,260 ms, 1,313 against 2,038 ms); over at 10,000-many-heavy (2,695 against 1,351 ms),
   35,000-many-heavy (9,456 against 2,366 ms), 35,000-large-heavy and 35,000-mixed-heavy (12,496
@@ -2267,39 +2283,138 @@ these eight projects (260-4,141 ms) where the budget is "within one analysis plu
 
 ### Server, after
 
-*(Task 13, Step 2.)*
+Linux development PC as *Server, before* gives it (Intel Core i9-14900HX, 32 threads, 30 GiB
+memory, Ubuntu 26.04.1 LTS, kernel 7.0.0-34-generic, Python 3.14.4). `feature/gui-large-projects`
+at `778be23`, one run each, 2026-10-03 01:11-01:15 UTC: `tools/bench_gui.py --json
+server-after.json` over the eighteen projects Step 1 generated afresh. Beside the run, sampled
+every 30 s, were the run's own processes and the maintainer's desktop: GNOME Shell up to 36 % of
+one thread, GitKraken up to 18 %, Claude about 10 %. Since Task 6 `edit answered` and `edit
+analysed` are two spans - the edit's answer, and its analysis landing; `findings page`, `findings
+of a file` (Task 7) and `rename plan` (Task 11b) are this part's own measures.
+
+Milliseconds:
+
+| project | open | state | graph | units | types | shared | files | findings page | findings of a file | variable | unit | remove judged | analysis | edit answered | edit analysed | rename plan |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 10000-many-clean | 284 | 4 | 5 | 9 | 0 | 0 | 5 | 0 | 0 | 2 | 24 | 286 | 262 | 1 | 293 | 342 |
+| 10000-many-heavy | 352 | 20 | 10 | 10 | 0 | 0 | 5 | 3 | 1 | 4 | 26 | 375 | 363 | 2 | 342 | 324 |
+| 10000-large-clean | 246 | 0 | 3 | 4 | 0 | 0 | 1 | 0 | 0 | 8 | 17 | 228 | 237 | 9 | 252 | 288 |
+| 10000-large-heavy | 297 | 8 | 6 | 5 | 0 | 0 | 1 | 4 | 8 | 13 | 18 | 288 | 291 | 9 | 308 | 279 |
+| 10000-mixed-clean | 302 | 2 | 4 | 6 | 0 | 0 | 3 | 0 | 0 | 5 | 20 | 270 | 244 | 9 | 314 | 313 |
+| 10000-mixed-heavy | 337 | 13 | 7 | 7 | 0 | 0 | 3 | 4 | 8 | 19 | 22 | 342 | 355 | 9 | 339 | 305 |
+| 35000-many-clean | 1047 | 14 | 18 | 31 | 0 | 0 | 17 | 0 | 0 | 7 | 88 | 1032 | 1053 | 2 | 1042 | 1192 |
+| 35000-many-heavy | 1327 | 65 | 32 | 32 | 0 | 0 | 17 | 4 | 1 | 10 | 92 | 1418 | 1337 | 1 | 1343 | 1152 |
+| 35000-large-clean | 941 | 1 | 9 | 13 | 0 | 0 | 1 | 0 | 0 | 29 | 60 | 964 | 992 | 33 | 1002 | 1097 |
+| 35000-large-heavy | 1221 | 27 | 21 | 14 | 0 | 0 | 1 | 12 | 27 | 48 | 65 | 1307 | 1240 | 34 | 1453 | 1011 |
+| 35000-mixed-clean | 946 | 8 | 16 | 78 | 0 | 0 | 9 | 0 | 0 | 19 | 77 | 918 | 1058 | 32 | 1023 | 1106 |
+| 35000-mixed-heavy | 1255 | 49 | 29 | 26 | 0 | 0 | 9 | 12 | 27 | 65 | 79 | 1264 | 1335 | 31 | 1559 | 1082 |
+| 100000-many-clean | 2799 | 42 | 54 | 90 | 0 | 0 | 48 | 0 | 0 | 19 | 256 | 3205 | 3037 | 2 | 3393 | 3386 |
+| 100000-many-heavy | 4021 | 200 | 98 | 92 | 0 | 0 | 48 | 4 | 1 | 30 | 274 | 3956 | 4199 | 2 | 3993 | 3334 |
+| 100000-large-clean | 2953 | 1 | 27 | 39 | 0 | 0 | 1 | 0 | 0 | 90 | 271 | 2796 | 2927 | 95 | 3300 | 3084 |
+| 100000-large-heavy | 3633 | 79 | 65 | 41 | 0 | 0 | 1 | 36 | 84 | 139 | 262 | 3998 | 3832 | 94 | 3820 | 3482 |
+| 100000-mixed-clean | 2775 | 63 | 48 | 73 | 0 | 0 | 24 | 0 | 0 | 59 | 215 | 3132 | 3118 | 97 | 3095 | 3501 |
+| 100000-mixed-heavy | 3728 | 138 | 178 | 70 | 0 | 0 | 25 | 34 | 87 | 31 | 312 | 4171 | 3951 | 1 | 3844 | 3537 |
+
+Bytes, the reply serialised as the server sends it:
+
+| project | state | graph | units | types | shared | files | findings page | findings of a file | variable | unit | remove judged | edit answered | rename plan |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 10000-many-clean | 119,528 | 304,169 | 2,905 | 28 | 30 | 53,177 | 56 | 56 | 83,555 | 382,991 | 476 | 272 | 323,268 |
+| 10000-many-heavy | 120,200 | 264,453 | 2,913 | 28 | 30 | 53,177 | 70,388 | 32,073 | 123,488 | 384,866 | 476 | 272 | 323,227 |
+| 10000-large-clean | 11,693 | 110,689 | 2,913 | 28 | 30 | 5,640 | 56 | 56 | 83,560 | 385,494 | 477 | 273 | 241,851 |
+| 10000-large-heavy | 11,819 | 70,809 | 2,921 | 28 | 30 | 5,640 | 70,748 | 334,754 | 123,501 | 387,369 | 477 | 273 | 241,831 |
+| 10000-mixed-clean | 65,600 | 216,092 | 2,913 | 28 | 30 | 29,498 | 56 | 56 | 83,558 | 384,863 | 477 | 273 | 282,582 |
+| 10000-mixed-heavy | 65,998 | 176,484 | 2,921 | 28 | 30 | 29,498 | 70,748 | 334,754 | 124,040 | 386,737 | 477 | 273 | 282,550 |
+| 35000-many-clean | 416,076 | 1,034,201 | 2,921 | 28 | 30 | 183,958 | 56 | 56 | 283,559 | 1,339,457 | 476 | 272 | 1,130,284 |
+| 35000-many-heavy | 418,416 | 896,151 | 2,921 | 28 | 30 | 183,958 | 70,390 | 32,073 | 423,491 | 1,346,326 | 476 | 272 | 1,130,324 |
+| 35000-large-clean | 11,693 | 306,849 | 2,929 | 28 | 30 | 5,640 | 56 | 56 | 283,564 | 1,349,882 | 477 | 273 | 828,529 |
+| 35000-large-heavy | 11,821 | 163,129 | 2,929 | 28 | 30 | 5,640 | 70,748 | 1,175,655 | 423,500 | 1,356,754 | 477 | 273 | 828,527 |
+| 35000-mixed-clean | 214,469 | 888,697 | 2,929 | 28 | 30 | 95,384 | 56 | 56 | 283,562 | 1,346,859 | 477 | 273 | 979,999 |
+| 35000-mixed-heavy | 215,703 | 644,323 | 2,929 | 28 | 30 | 95,384 | 70,748 | 1,175,655 | 424,044 | 1,353,729 | 477 | 273 | 980,014 |
+| 100000-many-clean | 1,190,864 | 2,936,236 | 2,929 | 28 | 30 | 527,514 | 56 | 56 | 803,563 | 3,839,867 | 477 | 273 | 3,233,037 |
+| 100000-many-heavy | 1,197,538 | 2,542,518 | 2,937 | 28 | 30 | 527,514 | 70,589 | 32,153 | 1,203,495 | 3,858,617 | 477 | 273 | 3,232,436 |
+| 100000-large-clean | 11,726 | 823,119 | 2,937 | 28 | 30 | 5,674 | 56 | 56 | 803,570 | 3,877,372 | 478 | 274 | 2,364,577 |
+| 100000-large-heavy | 11,914 | 419,439 | 2,945 | 28 | 30 | 5,674 | 70,949 | 3,368,631 | 1,203,503 | 5,827,372 | 478 | 274 | 3,545,439 |
+| 100000-mixed-clean | 602,784 | 2,520,519 | 2,937 | 28 | 30 | 268,183 | 56 | 56 | 803,567 | 3,864,873 | 478 | 274 | 2,800,339 |
+| 100000-mixed-heavy | 606,214 | 2,121,625 | 2,945 | 28 | 30 | 268,183 | 70,949 | 3,368,631 | 1,203,496 | 5,808,623 | 478 | 274 | 3,968,776 |
 
 ### Page, after
 
-*(Task 13, Step 3 - all eighteen.)*
+As *Server, after* gives the machine. Browser: Google Chrome 153.0.8010.52
+(`PLAYWRIGHT_CHANNEL=chrome`). `feature/gui-large-projects` at `778be23`, one run each, 2026-10-03
+01:15-01:25 UTC: `npm run bench` over all eighteen projects (ruling 12), each project's own fresh
+`ddd gui` server. Three measures changed what they wait for since *Page, before*:
+- `first screen` waits for the canvas laid out, not a module node, which culling may never draw (Task 10);
+- `Findings` waits for a row carrying a finding, not the first row (Task 7);
+- `typing` filters the unit picker on the page and asks no plan, so Task 11 cannot move it.
+Nothing capped and nothing crashed.
+
+Milliseconds:
+
+| project | answering | first screen | Table | Units | Types | Shared files | Files | Findings | typing | scrolling | apply shows | findings current |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 10000-many-clean | 306 | 937 | 85 | 61 | 73 | 54 | 93 | 43 | 0 | 0 | 148 | 415 |
+| 10000-many-heavy | 305 | 843 | 71 | 115 | 112 | 75 | 121 | 121 | 0 | 0 | 137 | 560 |
+| 10000-large-clean | 299 | 223 | 63 | 132 | 110 | 110 | 131 | 58 | 0 | 0 | 166 | 452 |
+| 10000-large-heavy | 306 | 248 | 62 | 118 | 126 | 113 | 131 | 123 | 0 | 0 | 152 | 566 |
+| 10000-mixed-clean | 310 | 239 | 89 | 116 | 98 | 93 | 68 | 45 | 0 | 0 | 162 | 449 |
+| 10000-mixed-heavy | 215 | 290 | 65 | 58 | 97 | 60 | 114 | 118 | 0 | 0 | 171 | 512 |
+| 35000-many-clean | 416 | 846 | 81 | 112 | 108 | 113 | 109 | 45 | 0 | 0 | 149 | 1366 |
+| 35000-many-heavy | 345 | 1632 | 80 | 122 | 111 | 111 | 104 | 122 | 0 | 0 | 178 | 1806 |
+| 35000-large-clean | 403 | 932 | 59 | 81 | 111 | 55 | 71 | 53 | 0 | 0 | 242 | 1353 |
+| 35000-large-heavy | 407 | 1031 | 61 | 117 | 79 | 113 | 78 | 91 | 0 | 0 | 264 | 1411 |
+| 35000-mixed-clean | 413 | 3131 | 77 | 95 | 117 | 113 | 84 | 43 | 0 | 0 | 277 | 1193 |
+| 35000-mixed-heavy | 405 | 1641 | 71 | 149 | 116 | 112 | 94 | 101 | 0 | 0 | 282 | 1553 |
+| 100000-many-clean | 616 | 3370 | 125 | 219 | 108 | 112 | 164 | 43 | 0 | 0 | 240 | 3961 |
+| 100000-many-heavy | 615 | 4909 | 129 | 261 | 113 | 74 | 144 | 88 | 0 | 0 | 273 | 5029 |
+| 100000-large-clean | 622 | 2945 | 75 | 136 | 60 | 123 | 109 | 44 | 0 | 0 | 836 | 3901 |
+| 100000-large-heavy | 624 | 4393 | 79 | 251 | 56 | 126 | 74 | 111 | 0 | 0 | 389 | 4562 |
+| 100000-mixed-clean | 617 | 3506 | 92 | 138 | 116 | 81 | 114 | 60 | 0 | 0 | 416 | 3906 |
+| 100000-mixed-heavy | 624 | 4388 | 106 | 130 | 111 | 78 | 125 | 106 | 0 | 0 | 483 | 4818 |
 
 ### Against the budgets
 
-*(Task 13, Step 4.)*
+Against spec §3, read off *Server, after* (each project's `analysis`) and *Page, after*:
+
+- **"The page answering after a project is opened, under 1 s"**: met on all eighteen, 215-624 ms.
+- **"The first analysed screen, within one analysis plus 1 s"**: met on seventeen. 35,000-mixed-clean misses it: 3,131 ms against 2,058 ms. Where its other 1.07 s goes was not measured; it is a row of *What was left open*. At 100,000 declarations the margin is 0.3-1.0 s; for example 100,000-many-heavy reads 4,909 against 5,199 ms.
+- **"Any tab or panel drawing, once analysed, under 1 s"**: met on all eighteen. The tabs draw in 43-261 ms. A component page with 3,334 declarations draws in 181-195 ms once analysed, as Task 11f's review measured.
+- **"Typing or scrolling stalling, never over 100 ms"**: met on all eighteen, with no long task while typing or scrolling. The typing measure covers the unit picker. Plan requests wait for a pause (Task 11).
+- **"An Apply's own change showing, under 500 ms"**: met on seventeen, 137-483 ms. 100,000-large-clean misses it at 836 ms (839 ms in the first run); the cause was not measured. That is a row of *What was left open*. A rename across many files is not this measure: its plan takes 0.3-3.5 s and its write about as long.
+- **"The findings current after an edit, within one analysis plus 1 s, the page saying 'updating' until then"**: met on all eighteen. The narrowest margins are 100,000-many-clean (3,961 against 4,037 ms) and 100,000-large-clean (3,901 against 3,927 ms).
 
 ## Progress log
 
 | Task | Commits | Review | Notes |
 | --- | --- | --- | --- |
-| 1 the generator | | | |
-| 2 the server benchmark, before | | | |
-| 3 the page benchmark, before | | | |
-| 4 the index and the kept answers | | | |
-| 5 the analyser, waited for | | | |
-| 6 edits answer once written | | | |
-| 7 findings a page at a time | | | |
-| 8 "Updating" shown | | | |
-| 9 long tables virtualised | | | |
-| 10 the graph | | | |
-| 11 typing never waits | | | |
-| 12 journeys and documentation | | | |
-| 13 figures after, the gate | | | |
+| 1 the generator | 15e6327 ce46be0 6535022 | clean after 1 round | readers `LAYER` components away (ruling 4); measured figures in the docstring (T1-1) |
+| 2 the server benchmark, before | dc5d392 5706f5f | clean after 1 round | `remove judged` the first entry (T2-1); the next unit sorted (T2-2) |
+| 3 the page benchmark, before | e62b0b0 121bafb | clean after 1 round | a renderer crash recorded as `crashed`, apart from a cap (T3-1) |
+| 4 the index and the kept answers | 29867eb 2528ab4 9b82858 13bae89 a851deb 3922caf b239f95 620993e 29475ce c8da7b8 | clean after 1 round | the unit panel indexed (T4-1); files and units answered anew (T4-2) |
+| 5 the analyser, waited for | 21bf094 837d062 0586ce9 9975011 1108a5b | clean after 2 rounds | a path a stat refuses read as absent (T5-3) |
+| 6 edits answer once written | 49ac6d0 44edbfd | clean after 1 round | what the page applied held in Task 8 (T6-1) |
+| 7 findings a page at a time | c1e69e4 f300141 | clean after 1 round | the keyboard's row kept from pulling the window back; `selectedNow` (T7-6) |
+| 8 "Updating" shown | 1e898da 3e37fc7 1beed13 547d84a b5b2cd1 | clean after 2 rounds | the extension (T6-1, T7-7); entries checked in place (T8-7) |
+| 9 long tables virtualised | 356c600 24494e7 218d567 822d59c c3b2d6d | clean after 3 rounds (the third a fresh implementer, T9-4) | widths from measurement; relative paths (T9-5) |
+| 10 the graph | 38a7347 21d8fa3 8220b75 2f7de8d | clean after 2 rounds | ranks when dagre's stack runs out (T10-1); the opening view (T10-4) |
+| 11 typing never waits | 1ff3dff 43b19dc 20522d5 | clean after 2 rounds | `planShown` for ten screens (T11-2); picks at once (T11-3) |
+| 11b large edits (added, P6) | dd2f1a7 af393d0 | adjudicated (T11b-2) | the scan 2-2.4x faster; `hunks` in place without difflib |
+| 11c one refused poll (added, P7) | 679a757 | adjudicated (T11c-2) | the flake's cause was the journey's wait (T11c-1) |
+| 11e a file scanned once (added, P10) | 3ddc811 1353ffe | clean after 1 round | the fast path narrowed to literals (T11e-1) |
+| 11f a page's rows' findings (added, P11) | 778be23 | clean | apply shows 4.1 s -> about 0.5 s at 100,000-large-heavy |
+| master merged (P5) | ab7b0a5 | every gate on the merge | #74, #75, #76 |
+| 12 journeys and documentation | fb54b1b 4fae603 c981168 | clean after 2 rounds | journey 1's unit (T12-1); the Files-tab sentence read off the code (T12-3) |
+| 12b journeys failing only in a suite (added, P9) | 0511ecb 5a43a31 | clean after 1 round | the second analysis asked as the first is published |
+| 13 figures after, the gate | this close-out | the final review follows | two budgets missed (*What was left open*) |
 
 ## What was left open
 
 Filled in as the work goes. Each entry says what was not done and what it costs. Known before execution:
 
-- **A project with sub-projects is analysed twice on opening.** Opening stamps the files the root's own includes name (ruling 5); a sub-project's files have no stamp from before, and the poll after the first analysis makes a second. The page says the findings are updating while it runs.
+- **A project with a sub-project or plugins is analysed twice on opening.**
+  - Opening stamps the files the root's own includes name (ruling 5). A sub-project's own files and the project's plugins have no stamp from before, so the revision the first analysis publishes asks for the second at once (`Session._finished`, Task 12b).
+  - The session says `analysing` from that revision until the second lands. Meanwhile the page shows its findings under "Updating the findings…", and whatever waits for the project to settle waits past both.
+  - A file an edit or a save from outside newly brings into the includes costs one analysis more the same way.
 - **A judged add or removal on the Files tab costs one analysis** of the project with its includes changed - `remove judged` in the figures. The analysis is not changed by this part (spec §3); a reader waits that long for the preview.
 - **An analysis that raises is retried at every poll**, the terminal printing why each time; before the project's first revision, the page says `Analysing the project…` until one succeeds.
 - **The analysis and the requests share one interpreter.** A request answered while an analysis runs waits for its share of it; the server figures are taken with none running, but for `edit analysed`.
@@ -2307,7 +2422,33 @@ Filled in as the work goes. Each entry says what was not done and what it costs.
 - **A tab's rows kept between an outside save and its analysis** show what was read before the save until the revision moves, when the page asks again.
 - **The Findings window counts its rows to a screen reader as the rows drawn**, not the table's: React Aria numbers the rows of its collection, which is the window.
 - **The Findings tab has no filter of its own.** `GET /api/findings` filters by severity, file and check (spec §5); only a component's page asks it to, by file.
-- **A chain of components deeper than dagre's stack** - about 1,500 - cannot be laid out; the canvas says so (Task 10) rather than drawing it.
+- **A chain of components deeper than dagre's stack in the worker is laid out in ranks only.** The stack runs out at about 908 components in a browser's worker, against about 1,772 on the main thread (Task 10's review). The ranks come from a breadth-first walk along the flows, each rank in path order, and the canvas says "Laid out in ranks only: the project is too large for the full layout." A layout that does not recurse per module would draw such a project as dagre does.
+
+- **Two of spec §3's budgets are missed on one project each** (*Against the budgets*):
+  - the first analysed screen of 35,000-mixed-clean, 3,131 ms against 2,058 ms;
+  - an Apply's own change showing on 100,000-large-clean, 836 ms against 500 ms.
+  Neither cause was measured.
+- **An Apply asks again for the plans it spent, at the same revision** (P8).
+  - For a plan touching many files, this costs the server the plan's own time again, beside the analysis. Task 11b measured a rename of a unit stated in all 1,166 component files at 35,000 declarations: it re-planned for 2.4 s and held the renamed unit's panel to about 7 s, where a replay without the re-ask answered in about 2 s. Task 11e has since made that plan faster.
+  - There are two ways out: re-ask only the applied action's own plan once its subject has moved; or refuse `analysing` before planning, where an endpoint knows its files from the index.
+- **The fast path covers only literals** (Ruling T11e-1). A batch adding members, or writing an object or an array, at many places of one file still reads the file once per operation. The language server's unit rename (`ddd.lsp.units._simultaneous`) still builds a document per operation.
+- **Keys spelled `""` or `x]` crash the engine on some batches**, on both its paths. This predates this part (`_unit_below` builds a pointer the scan never recorded), and was found by Task 11e's review.
+- **The Findings window's keyboard.**
+  - Home, End, PageUp, PageDown and typeahead act on the rows drawn, since React Aria's collection is the window (Task 7).
+  - After a wheel scroll moves the focus to the box, the arrow keys scroll the box until Tab re-enters the table (T7-6).
+- **What the page holds while an analysis catches up has edges** (Task 8):
+  - A panel whose entity moved, refused when a revision lands while still updating, shows the note alone until the next landing.
+  - The values grid's hold belongs to the open grid (T8-5).
+  - With the Undo strip open, the heading's note is not seen (T8-6).
+  - Rows built from the index lag one analysis (T6-1 (iii)): a moved entry's row shows empty fields (T8-7), and a moved type's kind reads "unknown" (T8-8).
+- **A type's uses and a shared entry's uses are drawn whole**, not virtualised (T9-1). No generated project makes them long.
+- **Column floors were measured on Linux and Docker fonts**, not Windows' Segoe UI. A name past its floor ends in an ellipsis; it never breaks (T9-6).
+- **The windows-latest journeys generate and analyse 20,000 declarations** (large.spec.ts), and their time there is not measured.
+- **A press held across a state that moves or redraws its button is lost.**
+  - The cause: Playwright hit-tests only a click's first event, and React Aria cancels a press released off its element.
+  - Task 12b removed the start-up state behind the journeys' failures.
+  - It can still happen when an analysis lands mid-press: 0 of 5 presses were kept when an outside save's analysis landed during them.
+- **`?offset=`, `?limit=` and `?after=` of more than 4,300 digits answer 500** (Task 7's review). This is left for the security part.
 
 ## Rulings taken
 
@@ -2331,3 +2472,72 @@ Taken while planning; execution adds its own below them.
 | 14 | **No commit leaves a gate red; a change of the contract lands with the page that reads it** | A red gate between tasks is a gate nobody runs | Larger commits for Tasks 6 and 7 |
 | 15 | **"Updating" is shown on the heading, the two summary lines and each panel's findings** - spec §6's "the findings counts" read as the lines that count them | A table's per-row counts sit under the heading that already says so | A reader looking only at a row's count does not see it is about to change |
 | 16 | **A revision's findings are indexed by file; a name's are the findings on its places' files, asked of the name's own predicate** - spec §5 indexes them "by file and by the name they are about" | An index by name would restate each of the four predicates - a variable's, a unit's, a type's, a shared entry's - as a second rule that could drift from the first; the candidates on a name's files are few, and the predicate answers for them as it answered for all | A unit stated on every file of a project - `rpm` in a generated one - still asks its predicate of every finding carrying a unit check |
+
+### Taken during execution
+
+Each as the execution's ledger recorded it - what was decided, why, and what it costs if wrong:
+
+- **P1**  Task 5 may change the expected revision numbers, and the helper `opened_and_settled` and its docstring, wherever an existing test pinned the second analysis opening a flat project cost - that cost is exactly what the task removes (spec §5 extended by the plan's ruling 5). Each such test is named in the implementer's report with its old and new expectation, and no assertion is loosened otherwise — why: the plan's "as written" sentence did not foresee that its own ruling 5 moves those numbers — cost if wrong: a test that pinned something else about those numbers loses it; the reviewer reads each change.
+- **P2**  Implementers write their full report into this git-ignored workspace (task-N-report.md), as part 16's execution in this session did; nothing is written into the repository; reviewers return findings as text. The plan's "Subagents do not write report files; they return findings as text" is read as: no report file in the repository — why: the report file is the skill's memory across fix rounds, and the precedent is part 16's own execution — cost if wrong: none to the repository; a workspace file the maintainer never sees.
+- **P3**  Task 1 runs now, before PR #73 merges, in the scratch worktree - it touches only tools/generate_project.py and tests/test_generate_project.py, neither of which #73 touches, and needs no Docker. Task 2 onward waits for the merge: its `remove judged` measure needs part 16's `GET /api/files-plan`, and the before-figures must be the merged tree's. The plan's "Do not start before it lands" is departed from for Task 1 alone — why: the maintainer chose execution, and the one independent task costs nothing to run while the merge is theirs to make — cost if wrong: Task 1 re-run on the merged tree if #73 changed something it relies on (it changes nothing under tools/).
+- **P4**  Task 5 does not touch tools/bench_gui.py - no api answer changes in Task 5 and the bench reads only answers - why: Task 2's sentence named Task 5 among those updating it — cost if wrong: none; Task 6 updates it.
+- **T1-1**  the LAYER docstring states what was measured - a chain of 1,200 components laid out, one of 1,800 overflowed dagre's stack (node 24, while planning) - not "about 1,500", which was my interpolation, not a measurement — why: prose true when read; an unmeasured figure stated as fact — cost if wrong: none.
+- **T1-2**  Minors 1 and 2 (SMALL's docstring, the id test's docstring) go into fix round 1 with the Important, though the rubric grades them Minor — both are sentences false as read, which this project's constraints treat as defects; Minor 3 (O(C²) prefix sum, 0.356 s at 100k) is deferred; Minor 4 needs nothing — cost if wrong: one more small fix round.
+- **T2-1**  `remove judged` removes the root's FIRST entry (a generated project's `units.ddd.json`), not its last - the last is the pattern bringing every component, whose removal is judged by analysing a project of one file and so measures nothing of what the judge costs; removing the units file is judged by analysing the whole project without it, the cost "What was left open" names — cost if wrong: a figure for a removal nobody makes; none of correctness.
+- **T2-2**  the edit's new unit is the next, in sorted order, of the project's own `revision.index.units` after the declaration's own unit - the bench then reads any project and does not import the generator's `UNITS` — cost if wrong: none; on a generated project it is the same choice.
+- **T4-1** (plan defect found by the before-figures) `unit` (GET /api/unit, a unit's panel) reads 2,687-2,894 ms on all six 100,000-declaration projects, clean ones included - not the per-finding cost Task 4 fixes: `places_of` asks `declarations_of` of every place, which parses every file stating the unit (every component states every unit in a generated project) and computes each declaration's full stated keys to keep one. Task 4 is extended: a unit's places take their component and role from what the revision already knows - spec §5's "what a per-name request needs is indexed once per revision" (e.g. the index recording each declaration's role and each file's component name as it is built, or an equivalent the implementer argues) - and a file changed since the analysis is read as `declarations_of` reads it today, so the answer is exactly today's list, pinned by the Step 7 oracle for every unit of the three examples. Measured by the bench's `unit` on 100000-many-clean before and after — cost if wrong: an index field or two more than needed; the oracle pins the answer.
+- **T9-1** (same finding, page side) the unit panel's "Where it is stated" is a plain HTML table of every place (UnitPanelView) - about 12,500 rows for one unit at 100,000 declarations, a 3.8 MB reply - so Task 9 virtualises it with the other long tables (React Aria's Table in a Virtualizer, as the rest). A type's uses and a shared entry's uses grow the same way but no generated project has a type or a shared entry, so they are unmeasured: left open, not virtualised on a guess — cost if wrong: a type used thousands of times draws slowly until a later part.
+- **T2-3**  Minor 1 enters fix round 1 - the plan's constraints ask for every data choice to be pinned by a named test (ablation), and Tasks 5-7 will edit this file; Minor 3 goes with Important 1 as the same kind of guard; Minor 2 is corrected in the report, no code — cost if wrong: one more small round.
+- **T3-1**  a crash is recorded distinctly (`crashed`, never `> 120000`) from now on, and the plan's before-table relabels each crashed cell from the run's own log - a capped value returned before the cap is only possible through the crash path, so no re-run is needed where the log shows it - and says how each was identified; the "reads `> 120000`" sentence is made true — cost if wrong: a cell relabelled on the log's evidence rather than re-measured.
+- **T3-2**  Minors 1-3 enter fix round 1 - two are sentences not true as read (the causation stated as fact; an elision unmarked), the third a comment on an unexercised path — cost if wrong: a slightly longer round.
+- **T4-2**  /api/files and /api/units answer on every request, never kept - both expand the includes on disk, which no revision records, so no key can say when they go stale; the graph, /api/types and /api/shared stay kept (they read only the revision and files it read, whose saves the poll notices and whose own edits move the key) — why: a Files tab that cannot show a file that appeared is worse than 17-92 ms per ask — cost if wrong: those two tabs pay their measured first-ask cost on every refetch.
+- **T4-3**  Minors 6, 7, 8 enter fix round 1 (sentences false as read: the threading docstrings, the tense and figures in `_memoised`', the two figures without machine and project); Minor 4 waits for Task 5, whose analysis runs outside the lock; Minor 9 deferred; Minors 2 and 3 recorded for the plan's What was left open at close-out.
+- **T5-1**  Important 4 is accepted for this task - the waits are the plan's own (Step 4) and Task 6 removes all four (the api's three and run's); Important 1's fix removes its permanent form — cost if wrong: between Task 5 and Task 6, never released, an edit under a continuous stream of saves waits for the saves to stop.
+- **T5-2**  Minors 1 (make the docstrings true - stamping plugins is not required) and 3 (patch Session.start in the five run tests) join fix round 1; Minors 4 and 5 go to Task 6, whose api reads `analysing` and answers an open at once; Minor 2 deferred; Minor 6 is report text, nothing in the repository.
+- **T5-3**  `_described` treats a path it cannot read for ValueError as it treats OSError (an empty read), so such a project's analysis completes and its revision carries what the loader reports - spec §7, "the revision it makes carries the failure as a revision does today" - instead of failing at every poll; one test (a NUL include opened on a started session settles with a revision) — goes in fix round 2 with whatever the scoped re-review finds — cost if wrong: one more small round.
+- **T5-4**  A15's hang in the existing run tests is accepted - the mutation is still detected (the suite does not pass), only not cleanly; every test this task added fails cleanly; bounding `stop()`'s join in production would let the process exit mid-analysis, a change for a later part — cost if wrong: an analyser that stops waking would show as a hung suite, not a failure line.
+- **T6-1** (amended after the review judged it) Task 8's extension covers an undo too - the values grid holds what the page's own edit or undo wrote until a revision including it arrives; and a tab's rows built from the index (the Units tab still listing a renamed unit, the Shared tab without an added constant) lag one analysis, accepted explicitly - the heading and the summary say "Updating…" meanwhile.
+- **T6-2** (concern 3) the journeys' fixture waiting on /api/state for the first analysis is setup, not a journey step - the rule "wait on what a reader sees" governs steps; a fixture has no page — cost if wrong: none to what a journey proves.
+- **T6-3**  Importants 1-2 and Minors 1-8 enter fix round 1 (Minors 2-6 are sentences false as read; 1 and 8 are pins the constraints ask for; 7 a fixture that hangs instead of failing); Minor 9 deferred (the plan's interface, harmless) — cost if wrong: a longer round.
+- **T7-1** (Task 6 carry) Task 7 deletes the unreachable `state === null` branches and narrows `state` to `State` in FindingsPage, ProjectPage and ComparePage - ComparePage too, though not in Task 7's files, since no later task's list includes it — cost if wrong: a one-line change outside the brief's file list.
+- **T7-2** (plan conflict found in pre-dispatch) Step 7 changes `findingCounts` to `(counts, updating)` but CompareView.tsx:101 counts its own reply's list with it; one function keeps the words for both tabs, Compare passing `countsOf(list)` (new, in lib/findings.ts) - its line and references unchanged — cost if wrong: a helper of four lines.
+- **P5** (supersedes the note above) merge origin/master (d61308c, PR #74) into this branch after Task 11 is complete and before Task 12 is dispatched - #74 changed CHANGELOG.md, docs/command_line_interface.rst and docs/developer_documentation.rst, the three files Task 12 edits, so Task 12 writes onto them and its docs gate runs on what will merge; the merge needs pyelftools>=0.32,<1 in .venv (#74 added it to the dev extra; the venv lacks it - `.venv/bin/python -m pip install 'pyelftools>=0.32,<1'`), then the full gate on the merge commit before Task 12 starts — cost if wrong: one merge commit earlier than needed.
+- **T7-3** (concern 1) P02 - repeats counted along the revision's order instead of `ranked` - is an equivalent mutant: equal content means equal severity, and a stable sort keeps equals in the revision's order, so the numbers are the same; the plan's Step 13 bullet is corrected at close-out — cost if wrong: none, the mutation changes no output.
+- **T7-4** (concern 2) `findingRows` has no caller left (the Compare tab uses `compareRows`; the brief's reason was false) - removed with its tests in the fix round — cost if wrong: a function to write back.
+- **T7-5**  fix round 1 takes Importants 1-3 (2 plan-mandated - the sentence is made true), T7-4, Minors 4, 5, 6, 8, 9, 10, 11, 12, and the ⚠️ keyboard check (reproduce in the built page; fix if the view is pulled back or focus is lost, the decision in lib); Minor 13 deferred to the security part (pre-existing, also /api/state?after=); Minor 14 not taken (negligible); Minor 7 goes to the plan's "What was left open" at close-out — cost if wrong: a longer round, or a keyboard gap documented rather than fixed.
+- **T7-6** (fix concern) after a scroll has moved the focus to the box, the arrow keys scroll the box until Tab re-enters the table - accepted: the reader mixed the wheel with the keyboard, the box is a scroll container behaving as one, and nothing is lost or pulled back; `stillReported` became `selectedNow` (Minor 5) - no later task consumes it — cost if wrong: one more keystroke for a keyboard reader who wheeled.
+- **T7-7**  the round ends here; the re-review's new Minors 1-4 and out-of-scope 1 go to Task 8, which owns the gap when an analysis lands and touches findings.ts, findingsWindow.ts and FindingsPage: part (iv) of its extension - the Findings window keeps drawing the last revision whose pages for the span have all arrived until the new revision's have, then switches at once (keys are stable across revisions, so React Aria keeps its focus), and the panel keeps the newest reported finding through the gap; Minors 2-4 with it. Out-of-scope 2 -> Task 13's plan corrections (`selectedNow` for `stillReported`) — cost if wrong: Task 8 grows by one decision in lib.
+- **T8-1** (concern 1) the Table tab's "1 error, 1 warning" for one is accepted - the brief's "one and many", findingCounts and the CLI all say the singular; "1 errors" was a slip — cost if wrong: a word.
+- **T8-2** (concern 3) before the first analysis the heading says "Analysing the project…" and must not also say "Updating the findings…" - no findings are on screen to update; `updating` is false while no analysed revision is held, the decision in lib, under test — fix round — cost if wrong: one condition.
+- **T8-3** (concern 2) the note must never change the heading's height - a table jumping 26 px at each analysis, under the reader's pointer after an Apply, is worse than a note cut short; give the note only the row's remaining space (e.g. `flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis`, the status region still reading it whole) and check by hand at 1280 px with a panel open — fix round — cost if wrong: a CSS rule.
+- **P6**  Task 11b is added to this part - the scanner by compiled regular expressions (identical answers, a differential test keeping today's scanner as the oracle), `hunks` trimming the shared head and tail before difflib, and a `rename plan` bench measure, before and after; after Task 11, before the master merge (P5) and Task 12 — why: spec §3 budgets "An Apply's own change showing" under 500 ms and this part exists to fix what is slow; a 1,167-file rename misses it ninefold, and both halves of the cost (plan 5.5 s, write 4.6 s) run through the same scan — cost if wrong: one more task (an hour or two of an implementer and a review). Brief written by the controller: task-11b-brief.md.
+- **T8-4**  fix round 1 takes Importants 1-2; Rulings T8-2 and T8-3; Minors 2, 3, 4, 5, 6, 7 and 8 - one live region per screen (the heading's, kept mounted and empty when not updating so its text arriving is announced; the panels' and lists' notes plain text), and the summary counting the revision the table draws; Minor 1 accepted (an edit written during a running analysis and a variable moved within its file) with refusals.ts:76-77 made true — cost if wrong: a longer round; a moved variable's panel under a second edit shows the note alone for one analysis.
+- **T8-5**  fix round 2 takes new Minors 1-4; out-of-scope 1 accepted (the hold belongs to the open grid; its sentences say so); out-of-scope 2 fixed here - the server refuses `unreadable` where the entry at the indexed pointer no longer names it, as `declarations_of` does for a variable, for every kind read so (constants, sections, rasters, units, and types if they are), each refusal tested whole, so Task 8's (i) shows the note — why: a neighbour's fields under an entry's name is a wrong answer, made reachable by Task 6's answer-before-analysis and the undo's immediate re-ask; it belongs with (i) — cost if wrong: a server change in a page task's round.
+- **T8-6** (round-2 concern 1) with the Undo strip open in the project heading the heading's note has no room and is not seen - accepted: it is still announced, and the Table and Findings lines and every panel still say updating; reordering the heading is a layout change for no reader who is not already looking at the strip — cost if wrong: a reader previewing an undo does not see the heading's note.
+- **T8-7** (round-2 concern 2) the Types and Shared files tab rows read at the indexed place with no name check too, so the rows below a removed entry show their neighbours' values for one analysis - wrong, not merely lagging (T6-1 (iii) accepted lag); fixed in round 2 as one more commit, before its re-review: a row whose indexed place no longer names it shows none of the file's fields (its name kept, its fields empty) until the analysis lands, with the same helpers, tested per tab — cost if wrong: one commit.
+- **T8-8** (addendum concern) a displaced type's kind answers "" and the Types page draws it as its existing, tested fallback "unknown" for one analysis - accepted; the heading says updating meanwhile, and an earlier part chose the word — cost if wrong: one word for one analysis.
+- **T9-2**  fix round 1 takes Importants 1-6 (the commit body's claims corrected in the fix commit's body and later the PR's) and Minors 1-6 - one `LongTable` in ui/Table.tsx holding the Virtualizer, the class and the shared props; ProjectPage's rows open their component on Enter (onRowAction), as the button does; the places table drawn as before (header, margin) — cost if wrong: a longer round.
+- **T9-3**  fix round 2 takes every open finding and new breakage, with the controller's direction: cells `display: block; align-content: center` (no flex); widths as fr shares with px floors - at full width no column clips the fixtures' or the generated projects' content, beside a panel the floors sum to at most 552 - 17 = 535 px (a headed browser's scrollbar) with the identifying column whole and the rest cut with an ellipsis, never a horizontal scrollbar at 1280 px, measured in the browser with the box at 535 px; scroll-padding-top pinned by the stylesheet test beside `.findings-window`'s and by a cheap journey (Ctrl+End then Ctrl+Home on Controller's 14 rows); the row press opening a component is accepted (a reader copies a path from the Files tab), its comment made true; the private `also` copies replaced by the export — cost if wrong: a third round.
+- **T9-4**  round 3 goes to a fresh implementer on opus now, not round 4 - the round-2 report's verification claims did not hold (its 535 px measurements are nowhere, the 64 re-descriptions were never written), each round has added untrue prose, and the implementer's context is past 890k tokens; the remaining work is measurement - widths checked live on examples/demo (the journeys' project) and a generated project in every table, beside a panel and full width — cost if wrong: a fresh agent's ramp-up.
+- **T9-5**  the Table tab's File column shows the path relative to the project's directory (a lib function, tested inside, beside and outside the directory, `../` kept), the absolute path in the cell's title - the Files tab already shows entries so, and one line cut at the end would hide the file's own name; an addendum to round 3, before its re-review — cost if wrong: a reader wanting the absolute path hovers.
+- **T9-6**  the places table's 4 px margin at a 535 px box and the unmeasured Windows font are accepted - a name past its floor gets an ellipsis, never a break - and named in the PR — cost if wrong: an ellipsis on Windows near a floor.
+- **P7**  a small Task 11c, after Task 9 and before Task 10 - followStates reports "stopped" on the first ServerUnreachable and waits retryMs (2 s): one transient refusal (seen right after an Apply, the server answering 3 ms later) shows "ddd gui has stopped" and disables Apply, which is the values-grid journey's flake; find why the poll was refused (GuiServer keeps ThreadingHTTPServer's default listen backlog of 5 while the page re-asks many queries at once after an Apply) and fix it there if that is the cause, and make the page say stopped only once a prompt retry fails too; the decision in src/state under Vitest; the values journey run 25 times clean — cost if wrong: a small task for a flake that was the machine's.
+- **T11c-1**  the journey's departure is accepted - it now waits on 30 painted frames offering the edit's undo with nothing updating (0 of 80 runs fail; still 10 of 10 fail with the hold taken out): it proves the hold without requiring a frame the page may never paint; the prompt retry stays as robustness the page should have — cost if wrong: none to what the journey proves.
+- **T11c-2**  the false sentence lives in a commit body, which cannot be amended - its correction goes in the PR body and the plan's close-out, as Task 9's corrections did; the late-landing guard is accepted on the code's reading (undoable comes only from a published state); the abort-in-prompt-retry test goes to the final review's fix wave — cost if wrong: one sentence in history read without the PR.
+- **T10-1** (Critical 1) when dagre throws a RangeError in the worker, the worker places the graph with a fallback that does not recurse - ranks by breadth-first distance along the flows from the modules nothing feeds (an unranked cycle starts from its smallest path), each rank ordered by path, dagre's node size and spacing; a pure lib function under Vitest (a chain of 5,000 laid out to prove no recursion; cycles; disconnected; any input order the same) - and the page says quietly that the project is laid out in ranks only; not the main thread, which would bring back a 2.4 s stall at 35,000 and still fail at 100,000 — why: it restores 35000-many-clean and gives 100,000 a canvas, off the main thread — cost if wrong: a plainer drawing at the largest sizes.
+- **T10-2**  fix round 1 also takes Importants 1-3 (the worker echoes the shape it laid out; which answer to keep, and an answer clearing the error, a lib reducer under Vitest; the hook glue), and Minors 1-7: `measured` carried over in lib; shapeOf and visibleOnly in their own lib file with `import type` so dagre leaves the main bundle; a worker onerror shown as the error; shapeOf memoised by the graph; the screen choice in lib; the two sentences; and the bench's first screen counted when the canvas is laid out, not when a node exists - plus the first view of a graph that does not fit at the minimum zoom showing its first ranks, not an empty middle (a lib decision), since 10000-many-clean opens on no module before and after this task — cost if wrong: a longer round.
+- **T10-4**  fix round 2 takes all of it - the opening view computed in lib from the placement as drawn (saved positions in) and the canvas's size, applied as React Flow's defaultViewport or one setViewport once the size is known, never racing fitView, and the Fit control by the same rule; the fallback's trigger in lib, tested on a graph that overflows in Vitest's Node; every new value pinned by its literal and every sentence by its whole text; an unfed cycle's pass starting from a module of a source strongly connected component of the unranked modules (an iterative search, no recursion); dagre's own 50 px spacing; the three sentences; module nodes given `measured` and `handles` from the first build (lib, pinned) — cost if wrong: a third round.
+- **T10-5**  Task 10 closes; its four Minors and app.css:147-148 go to the final review's fix wave (one test, one boundary test, the content box, six sentences) — cost if wrong: none to a reader, a 1 px offset meanwhile.
+- **T11-1**  SharedAdd is in this task - spec §6 debounces a panel's plan request, and the brief's file list was a list of the screens the plan found, not a boundary; the review covers it as missing, the fix round adds it — cost if wrong: one more screen.
+- **T11-2**  fix round 1 takes all of it - one lib decision for what a screen shows and offers (a plan only when it answers the request the fields now say and is not placeholder data; pending otherwise), used by all ten screens, SharedAdd included; useDebounced compares by sameRequest so it comes to rest (commits counted at rest: 0); a null request and a discrete commit (a pick, Enter) take effect at once, decided in lib, so ValuesPage's gate holds and picks do not wait; PLAN_DELAY_MS pinned by its literal; every sentence true, 1ff3dff's body corrected in the next — cost if wrong: a second round.
+- **T11-3**  fix round 2 takes every open item and new Minor - which edit is a pick and which is typing decided in lib (a chooser's pick, Enter and a button at once, DeclarePanel's Enter included), tested; `keep` removed where nothing keeps (the consequence shows for the text as it stands, pending in between - accepted: a stale consequence was what let the typed-past Apply through); FilesPage's refusal order back in lib; every sentence named made true and 43b19dc's pick claim corrected in the next body — cost if wrong: a third round.
+- **T11b-1**  the brief's head-and-tail trim renumbers removals (lines 5-17 against 8-20 in the fixture), against its own "the same hunks with the same numbering" - the implementer's exact in-place path is the right reading; removals and insertions keep difflib's cost — cost if wrong: none to the answers.
+- **P8** (revised, supersedes the Task 11d ruling above) no Task 11d - the re-ask costs real time only for very large plans (a 1,167-file rename: the renamed panel 7.0 s against about 2 s without it), every plan's onSettled re-asks by design ("their fingerprints the edit spent"), and a safe fix needs its own design: a plan re-asked after an Apply for an untouched subject is still valid (suppressing all would slow unrelated edits), and the server computes a whole plan before it can refuse it `analysing` (the refusal needs the plan's edit set) — recorded in the plan's "What was left open" with Task 11b's measurements and two directions (re-ask only the applied action's own plan once its subject has moved; refuse `analysing` before planning where an endpoint knows its files from the index) — cost if wrong: a large rename's panel stays about 5 s slower than it could be at 35,000.
+- **T11b-2**  the run-condition sentences are corrected in the report (done by the controller) and in the PR body, the commit bodies standing; the five Minors go to the final review's fix wave (the bench's try/finally among them) — cost if wrong: a sentence in two commit bodies read without the PR.
+- **T12-1**  journey 1's substitution is accepted - the brief's premise was false of the generator and of a settle; the journey keeps every other step and shows the findings following an edit — cost if wrong: none to what it proves.
+- **P9**  a journey-flake investigation (Task 12b) after Task 12's review and before Task 13's benches - three journeys have each failed once, only in whole-suite runs on this loaded machine (declarations.spec in Task 11; values.spec "shows at once" in Task 9, traced and fixed in 11c; values.spec:130 in Task 12): run the whole suite repeatedly with traces kept on failure, and for each failure decide load or a race from this part's changes (the edit answered before its analysis, the debounce, plans refused `analysing`), fixing what is real; CI runs these journeys on ubuntu and windows — cost if wrong: an hour or two spent on load.
+- **T12-2**  fix round 1 takes all of it; every figure measured on the page as a reader sees it, with machine, project and run named, or the sentence says what happens without a figure; the CHANGELOG line moves to `## Unreleased` (0.11.0 is tagged); "the page never waits" says what is true - an edit is answered before its analysis, and a request answered during an analysis shares the interpreter with it — cost if wrong: a longer round.
+- **T12-3**  the Files-tab sentence states what the code does and no figure - the row a New file or an Add makes reads "not read by the last analysis" between the tab's next list (asked once the edit answers) and the analysis after it; the three choosers that debounce a pick are fixed in code to go at once (T11-2's rule), not documented as an exception; the bench's teardown fixed (Task 13 runs it); the other Minors and both out-of-scope items in this round — cost if wrong: a third round.
+- **T12-4**  the three choosers' fixes are pinned by live measurement, not a test - every journey picks once and a field's first ask goes at once whatever the kind; the rule they pass to is tested in lib, the screens only name the kind — cost if wrong: a chooser could regress to waiting 250 ms unseen.
+- **T12b-1**  the panel's "Updating the findings…" note moving the offer (and Apply) down when updating starts is a layout shift under the reader's pointer - the final review's fix wave reserves the note's line in every panel, as T8-3 did for the heading; the values grid's 250 ms after a revision (the gate reopening, then the debounce) goes with it — cost if wrong: a press lost when an analysis lands mid-press.
+- **T12b-2**  fix round 1 takes Importants 1-2 and Minors 5, 7, 8; Important 3 and Minor 4 go into the plan's close-out (the controller's, Task 13 Step 7, the reviewer's wording); Minor 6 none; Minor 9 in the PR body — cost if wrong: none.

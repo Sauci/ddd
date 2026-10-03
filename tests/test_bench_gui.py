@@ -536,3 +536,18 @@ def test_a_refused_edit_ends_the_run_with_nothing_written(
     assert str(raised.value) == f"the benchmark's own edit was refused: {refusal}"
     assert len(edits) == 2
     assert {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))} == before
+
+
+def test_each_measure_under_load_is_asked_halfway_through_its_analysis(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each waited for once its analysis has begun for half of what the run's own ``analysis``
+    took: asked at the analysis's first moment, at 100,000 declarations the analysis was still
+    reading files and the poller's next round had not begun, which is not where a reader's
+    requests meet it. The wait is the clock's (``time.sleep``), nothing the session locks."""
+    made = generate(tmp_path / "p", 120, "many")
+    waited: list[float] = []
+    real = bench_gui.time.sleep
+    monkeypatch.setattr(bench_gui.time, "sleep", lambda seconds: waited.append(seconds) or real(0))
+    taken = {each.name: each for each in measure(made.project)}
+    assert waited == [taken["analysis"].milliseconds / 2_000] * 3

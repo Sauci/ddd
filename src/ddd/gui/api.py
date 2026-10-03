@@ -1093,11 +1093,12 @@ class Api:
         disk as it stands, which no revision records - a file appearing where a pattern matches
         starts no analysis. At a cost while an analysis runs: over a generated project of 100,000
         declarations, whose one pattern reaches 1,681 files, the request took 1,872 to 2,602 ms
-        asked halfway through an analysis and 24 ms otherwise, of which listing that directory
-        alone took 1,028 to 1,487 ms and under a millisecond - three askings each, on the Linux
-        development PC. Kept for a revision and the session's edits instead, it would list a
-        file saved where a pattern matches only once something else changed, and still be made
-        again after every edit - when the Files tab asks for it again, its own Apply written."""
+        asked halfway through an analysis and 24 ms otherwise, 141 ms the first time; listing
+        that directory alone took 1,028 to 1,487 ms and under a millisecond - three askings
+        each, on the Linux development PC. Kept for a revision and the session's edits instead,
+        it would list a file saved where a pattern matches only once something else changed,
+        and still be made again after every edit - when the Files tab asks for it again, its
+        own Apply written."""
         revision = self._opened()
         at_entry = self._derive(revision).at_entry
         cache: dict[Path, Document] = {}

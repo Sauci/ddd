@@ -365,8 +365,8 @@ class TestHunks:
         nowhere in the new text - as renaming a unit everywhere, to a spelling nothing uses,
         replaces its every statement.
         Before, difflib took 0.95 of the 0.97 ms ``hunks`` took over one such file - a component
-        of 455 lines of a generated project, one unit renamed in it - on the Linux development
-        PC."""
+        of 455 lines of a generated project, one unit renamed in it, the best of nine rounds of
+        two hundred calls each - on the Linux development PC."""
         reference = _reference_hunks(BASE, after)
 
         def refused(*arguments: object, **keywords: object) -> None:

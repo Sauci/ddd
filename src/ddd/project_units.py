@@ -229,7 +229,8 @@ def adoptable(built: Index | None, project: Callable[[], UnitProject]) -> int | 
     generated project of 100,000 declarations holding a vocabulary (``--shape mixed
     --missing-ids 1 --unread 0.5``, 1,683 files), the Units tab's request asked halfway through
     an analysis took 1,762 to 2,665 ms making it, and 54 to 161 ms since; 67 and 15 ms while
-    nothing else ran - three askings each, on the Linux development PC.
+    nothing else ran, 174 and 121 ms the first time - three askings each, on the Linux
+    development PC.
     """
     if built is None:
         return None

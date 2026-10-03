@@ -13,9 +13,10 @@ time and size once a second: the standard library has no file watcher. Re-checki
 of a generated project of 100,000 declarations (``--shape mixed --missing-ids 1 --unread 0.5``)
 took 2 to 6 ms a round with nothing else running, and 2.8 to 3.4 s a round while an analysis ran,
 every stat waiting out the analysis's turn of the interpreter - one run of four analyses on the
-Linux development PC, Python 3.14 - which is why a round holds no lock while it stamps
-(:meth:`Session.poll`). A file a wildcard include would match only once it exists is noticed when
-something else changes, which is a limit of the preview.
+Linux development PC, Python 3.14 at its default switch interval, which ``ddd gui`` keeps - which
+is why a round holds no lock while it stamps (:meth:`Session.poll`). A file a wildcard include
+would match only once it exists is noticed when something else changes, which is a limit of the
+preview.
 
 The analysis is the language server's, run the way ``ddd lsp`` runs it: under the severities of
 every build record naming the project, or under the defaults when none does.

@@ -4263,10 +4263,17 @@ class TestTheScanAnswersAsTheWalkDid:
         walk read, each called from the same depth of the stack. From four depths in a row: a
         frame spent more or less at the deepest point moves that limit at one depth of every
         two for a shape whose levels cost two frames, and at one of every four for one whose
-        levels cost four."""
-        assert deepest(
-            lower(frames, lambda text: Document(text).span_of("") is not None), nested
-        ) == deepest(lower(frames, lambda text: bool(_ReferenceScan(text)._spans)), nested)
+        levels cost four.
+
+        The walk's own limit is asserted to lie strictly inside the search's bounds first: a
+        walk that read every depth up to the last bound, or none past the first, would answer
+        the bound itself, and the two would agree without either having given up anywhere."""
+        walked = deepest(lower(frames, lambda text: bool(_ReferenceScan(text)._spans)), nested)
+        assert 1 < walked < 2_000
+        assert (
+            deepest(lower(frames, lambda text: Document(text).span_of("") is not None), nested)
+            == walked
+        )
 
 
 class TestServer:

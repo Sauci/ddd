@@ -521,11 +521,17 @@ The commands
        it is analysed, and the change shows where it was made; its findings follow once the
        project has been analysed again, the heading saying ``Updating the findings…`` until
        then, and every panel listing findings saying so too, in its own place. A request
-       answered while an analysis runs shares the interpreter with it and can therefore be
-       slower than either on its own. The server stopping is reported only once an ask that
-       failed outright - its connection refused or reset, never a slow answer alone, which
-       nothing here times out - is asked again and fails the same way, not after the first
-       failure by itself.
+       answered while an analysis runs shares one interpreter with it. Measured on a
+       developer's desktop over a generated project of 100,000 declarations, each asked
+       halfway through an analysis: an edit, a variable's plan and the state of a revision
+       just analysed were answered within a third of a second, while the Files tab, which
+       lists every file its patterns reach on disk at each request, and the panel of a unit
+       every component states, which reads each file stating it, each took about two seconds;
+       and an analysis took 5.1 to 6.0 s beside a page of findings asked every tenth of a
+       second, as scrolling the Findings tab asks them, against 3.8 to 4.5 s alone. The server
+       stopping is reported only once an ask that failed outright - its connection refused or
+       reset, never a slow answer alone, which nothing here times out - is asked again and
+       fails the same way, not after the first failure by itself.
        A plan that would change a file an edit wrote since the revision it is judged
        against was analysed is refused until that edit's own analysis has landed, naming
        the file - ``an edit that wrote pump.ddd.json has not been analysed yet, so this

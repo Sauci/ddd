@@ -68,8 +68,9 @@ _KEY: Final = _matcher(f'("({_CHARACTERS})"){_SPACE}:{_SPACE}')
 up to the member's value. Group 1 is the key in its quotes, group 2 its characters as written."""
 
 _AFTER_MEMBER: Final = _matcher(f'{_SPACE}(?:,{_SPACE}("({_CHARACTERS})"){_SPACE}:{_SPACE}|}})')
-"""Consumes what follows a member's value: whitespace, then either a comma and the next member's
-key as :data:`_KEY` consumes it, in the same two groups, or the closing brace, with no group."""
+"""Consumes what follows a member's value: whitespace, then either a comma, the whitespace after
+it and the next member's key as :data:`_KEY` consumes it, in the same two groups, or the closing
+brace, with no group."""
 
 _AFTER_ELEMENT: Final = _matcher(f"{_SPACE}(?:(,){_SPACE}|\\])")
 """Consumes what follows an element of an array: whitespace, then either a comma, group 1, and
@@ -96,9 +97,12 @@ class Document:
             # cannot surprise the scanner - except by being deeper than the stack it has left.
             # The scan is under the same guard as the parse because the two give up at
             # different depths: this walk spends two frames per level where ``json.loads``
-            # spends less, so a document between about five hundred and three thousand levels
-            # deep parses and then dies here, which ended ``ddd id --assign`` in a traceback
-            # and the editor's server on the first didOpen.
+            # spends less, so a document deeper than about five hundred levels parses and then
+            # dies here, which ended ``ddd id --assign`` in a traceback and the editor's server
+            # on the first didOpen. Measured with arrays on a main thread of the Linux
+            # development PC: the scan gave up past 495 to 497 levels on python 3.12 and 3.14
+            # alike, the parse past 9,994 to 9,997 on 3.12 and past about 58,000 on 3.14, whose
+            # parse only the thread's 8 MB stack bounds.
             scanner = _Scanner(text)
             scanner.value("")
         except (ValueError, RecursionError):

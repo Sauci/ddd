@@ -935,9 +935,11 @@ plain ``GET`` endpoints - ``/api/state``, ``/graph``, ``/units``, ``/types``, ``
 a unit's panel; judging a removal on the Files tab; one analysis; an edit answered and then
 analysed; and, once that analysis has landed, planning the rename of the unit stated in the most
 files. Then, over a second session polling once a second, as ``ddd gui``'s own does, three
-requests each asked halfway through an analysis - by the run's own measure of one - and so
+requests each asked halfway through an analysis - by the run's own measure of one - to be
 answered while it runs: ``/api/state``, the plan of that edit's own change (``GET /api/settle``,
-what a variable's panel asks while a reader picks a unit), and the edit itself. The page half
+what a variable's panel asks while a reader picks a unit), and the edit itself. One answered
+once its analysis had ended is no figure of that, and its row says so in the figure's place,
+the run going on to the next measure. The page half
 needs the pages built first, and a channel naming an installed browser:
 ``cd gui && npm run build && PLAYWRIGHT_CHANNEL=chrome npm run bench`` (``playwright test -c
 playwright.bench.config.ts``) times it the same way a reader would meet it, against a running

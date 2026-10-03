@@ -7,12 +7,13 @@ Files tab, one analysis, an edit's round trip, and planning the rename of the un
 most files - the server driven in process, over one :class:`~ddd.gui.session.Session` and one
 :class:`~ddd.gui.api.Api` (``docs/superpowers/specs/2026-09-30-gui-large-projects-design.md``
 §4). Then, over a second session polling at ``ddd gui``'s own interval, three requests each asked
-halfway through an analysis, and so answered while it runs: ``GET /api/state``, the plan of the
+halfway through an analysis, to be answered while it runs: ``GET /api/state``, the plan of the
 edit's own change - ``GET /api/settle``, what a variable's panel asks while a reader picks a
-unit - and the edit itself. Everything a measure needs to choose - the file, the variable, the
-unit, the entry to remove, the unit to rename - is read off the project's own analysed revision,
-sorted, so the same project measures the same things on every run; nothing here imports the
-generator.
+unit - and the edit itself. One answered once its analysis had ended is no such figure, and is
+written refused, a sentence in its figure's place. Everything a measure needs to choose - the
+file, the variable, the unit, the entry to remove, the unit to rename - is read off the project's
+own analysed revision, sorted, so the same project measures the same things on every run;
+nothing here imports the generator.
 
 Every measure but ``open``, ``analysis`` and ``edit analysed`` answers a reply whose body is
 timed serialised exactly as the server would send it, ``json.dumps(reply.body, allow_nan=False)``
@@ -37,7 +38,7 @@ import os
 import threading
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Final
 
@@ -93,6 +94,13 @@ a poll noticing the moved file asks for it at once, so only a session that notic
 this long."""
 
 
+_ENDED_FIRST: Final = (
+    "answered once its analysis had ended, so no figure of a request answered while one runs"
+)
+"""What a measure under load is refused with, in its figure's place: asked halfway through its
+analysis by the clock, it can still come back once that analysis has ended (Ruling F3)."""
+
+
 @dataclass(frozen=True, slots=True)
 class Measure:
     """One measure taken: how long it ran, and the bytes of its answer where it has one."""
@@ -102,20 +110,30 @@ class Measure:
     size: int | None
     """Bytes of ``reply.body`` serialised as the server sends it; ``None`` for a measure with no
     reply of its own (``open``, ``analysis``, ``edit analysed``)."""
+    refused: str | None = None
+    """Why the measure is no figure of what its name says, written in the figure's place
+    (:func:`main`): a measure under load answered once its analysis had ended. ``None`` for every
+    figure; its time and size are then what :func:`main` writes, and are never written
+    otherwise."""
 
 
 class _Watched(Session):
-    """A session that says when each of its analyses has begun: what each measure under load is
-    asked at, so that it is answered while an analysis runs rather than before one has started.
+    """A session that says when each of its analyses has begun, and when it has ended: what each
+    measure under load is asked at, so that it is answered while an analysis runs rather than
+    before one has started, and what it is checked against once answered (:func:`_answered`).
     Polling at the session's own default, as ``ddd gui``'s does."""
 
     def __init__(self, root: Path) -> None:
         super().__init__(root)
         self.begun = threading.Event()
+        self.ended = threading.Event()
 
     def _analysed(self, project: Path) -> Revision:
         self.begun.set()
-        return super()._analysed(project)
+        try:
+            return super()._analysed(project)
+        finally:
+            self.ended.set()
 
 
 @dataclass(frozen=True, slots=True)
@@ -266,7 +284,11 @@ def _under_load(session: _Watched, project: Path, chosen: _Chosen, into: float) 
     was asked, so its answer is made anew. ``GET /api/settle`` is what a variable's panel asks
     while a reader picks a unit for it, asked of a revision the state has derived already, as the
     page's long poll has by the time a reader picks anything. The edit is the first session's own,
-    undone once its analysis has landed."""
+    undone once its analysis has landed.
+
+    Each is checked as its answer comes back (:func:`_answered`): one answered once its analysis
+    had ended is kept in its place, refused, rather than reported as a figure of a request
+    answered while one runs."""
     api = Api(session, project, wait_seconds=0.0)
     session.open(project)
     session.settled(None)
@@ -274,7 +296,7 @@ def _under_load(session: _Watched, project: Path, chosen: _Chosen, into: float) 
 
     _analysing(session, chosen.target, into)
     elapsed, _, size = _get(api, "/api/state")
-    taken.append(Measure("state while analysing", elapsed, size))
+    taken.append(_answered(session, Measure("state while analysing", elapsed, size)))
     session.settled(None)
 
     api.handle("GET", "/api/state", {}, None)
@@ -283,15 +305,26 @@ def _under_load(session: _Watched, project: Path, chosen: _Chosen, into: float) 
     elapsed, reply, size = _get(api, "/api/settle", asked)
     if reply.status != 200:
         raise RuntimeError(f"the benchmark's own plan was refused: {reply.body}")
-    taken.append(Measure("plan while analysing", elapsed, size))
+    taken.append(_answered(session, Measure("plan while analysing", elapsed, size)))
     session.settled(None)
 
     _analysing(session, chosen.target, into)
-    taken.append(_edit(api, chosen, "edit while analysing")[0])
+    edited = _answered(session, _edit(api, chosen, "edit while analysing")[0])
+    taken.append(edited)
     try:
         session.settled(None)
     finally:
         _undo(api, session)
+    return taken
+
+
+def _answered(session: _Watched, taken: Measure) -> Measure:
+    """``taken``, a measure under load whose answer has just come back, as a figure while the
+    analysis :func:`_analysing` asked it beside still runs, and refused once that analysis has
+    ended (:data:`_ENDED_FIRST`). Read just after the answer rather than as it comes, so that an
+    analysis ending in between refuses a figure it need not have: never the other way round."""
+    if session.ended.is_set():
+        return replace(taken, refused=_ENDED_FIRST)
     return taken
 
 
@@ -328,8 +361,10 @@ def _analysing(session: _Watched, target: Path, into: float) -> None:
 
     Waited for by the clock alone once it has begun, never by anything the session holds a lock
     for, so that the measure is asked at that moment whatever the session is doing then. Asked
-    only once the session has settled, so the analysis said to have begun is this one."""
+    only once the session has settled, so the analysis said to have begun, and then to have
+    ended, is this one."""
     session.begun.clear()
+    session.ended.clear()
     forward = target.stat().st_mtime + _FORWARD_SECONDS
     os.utime(target, (forward, forward))
     session.poll()
@@ -437,9 +472,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     for project in arguments.projects:
         label = project.resolve().parent.name
         for taken in measure(project):
+            if taken.refused is not None:
+                print(f"| {label} | {taken.name} | {taken.refused} | |")
+                rows.append(
+                    {
+                        "project": label,
+                        "measure": taken.name,
+                        "ms": None,
+                        "bytes": None,
+                        "refused": taken.refused,
+                    }
+                )
+                continue
             ms = round(taken.milliseconds)
             print(f"| {label} | {taken.name} | {ms} | {'' if taken.size is None else taken.size} |")
-            rows.append({"project": label, "measure": taken.name, "ms": ms, "bytes": taken.size})
+            rows.append(
+                {
+                    "project": label,
+                    "measure": taken.name,
+                    "ms": ms,
+                    "bytes": taken.size,
+                    "refused": None,
+                }
+            )
     if arguments.json is not None:
         arguments.json.write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
     return 0

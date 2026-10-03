@@ -538,6 +538,126 @@ def test_a_refused_edit_ends_the_run_with_nothing_written(
     assert {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))} == before
 
 
+class _HeldUnderLoad(bench_gui._Watched, _Gate):
+    """The benchmark's own session, each analysis a measure under load is asked beside held at a
+    gate past the moment it says it has begun: the gate stands open for opening's analysis, is
+    closed as :func:`bench_gui._analysing` is called (:func:`held_under_load`'s wrapper), and is
+    opened again as the session is next asked to settle - so that, unless a test opens it
+    sooner, every such analysis is still running when its measure's answer comes back."""
+
+    def __init__(self, root: Path) -> None:
+        super().__init__(root)
+        self.gate = threading.Event()
+        self.gate.set()
+        self.entered = 0
+
+    def settled(self, timeout: float | None) -> Revision | None:
+        self.gate.set()
+        return super().settled(timeout)
+
+
+UNDER_LOAD = ("state while analysing", "plan while analysing", "edit while analysing")
+
+
+def held_under_load(monkeypatch: pytest.MonkeyPatch, late: str | None) -> None:
+    """``measure`` made over :class:`_HeldUnderLoad`: each measure under load answered while its
+    analysis is held, but for the one named ``late``, whose request lets its analysis go and
+    waits for it to land before it is answered."""
+    sessions: list[_HeldUnderLoad] = []
+
+    class Held(_HeldUnderLoad):
+        def __init__(self, root: Path) -> None:
+            super().__init__(root)
+            sessions.append(self)
+
+    armed: list[str] = []
+    order = iter(UNDER_LOAD)
+    analysing = bench_gui._analysing
+
+    def closing(session: _HeldUnderLoad, target: Path, into: float) -> None:
+        session.gate.clear()
+        analysing(session, target, into)
+        armed.append(next(order))
+
+    original = Api.handle
+
+    def handling(self, method, path, query, body):
+        if armed and armed.pop() == late:
+            sessions[0].gate.set()
+            landed(sessions[0])
+        return original(self, method, path, query, body)
+
+    monkeypatch.setattr(bench_gui, "_Watched", Held)
+    monkeypatch.setattr(bench_gui, "_analysing", closing)
+    monkeypatch.setattr(Api, "handle", handling)
+
+
+def test_a_measure_under_load_answered_while_its_analysis_runs_is_a_figure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each answered with its analysis held at the gate, so still running: none refused."""
+    made = generate(tmp_path / "p", 120, "many")
+    held_under_load(monkeypatch, None)
+    taken = {each.name: each for each in measure(made.project)}
+    assert [taken[name].refused for name in UNDER_LOAD] == [None, None, None]
+
+
+@pytest.mark.parametrize("late", UNDER_LOAD)
+def test_a_measure_under_load_answered_once_its_analysis_had_ended_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, late: str
+) -> None:
+    """Ruling F3: asked halfway through by the clock, a measure can still come back once its
+    analysis has landed, and its time would read as one taken while an analysis ran. Refused
+    with the sentence saying so, the other two kept, and the project left as it was found - the
+    edit's own refusal included, undone like the edit it is."""
+    made = generate(tmp_path / "p", 120, "many")
+    before = {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))}
+    held_under_load(monkeypatch, late)
+    taken = {each.name: each for each in measure(made.project)}
+    assert {name: taken[name].refused for name in UNDER_LOAD} == {
+        name: (
+            "answered once its analysis had ended, so no figure of a request answered while "
+            "one runs"
+            if name == late
+            else None
+        )
+        for name in UNDER_LOAD
+    }
+    assert {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))} == before
+
+
+def test_the_command_line_writes_a_refused_figure_as_its_sentence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """In the figure's place, in the table and in the json alike: never its time."""
+    made = generate(tmp_path / "p", 120, "many")
+    held_under_load(monkeypatch, "plan while analysing")
+    written = tmp_path / "rows.json"
+    assert main([str(made.project), "--json", str(written)]) == 0
+    sentence = (
+        "answered once its analysis had ended, so no figure of a request answered while one runs"
+    )
+    lines = capsys.readouterr().out.splitlines()
+    assert [line for line in lines if "| plan while analysing |" in line] == [
+        f"| p | plan while analysing | {sentence} | |"
+    ]
+    rows = json.loads(written.read_text(encoding="utf-8"))
+    assert [row for row in rows if row["measure"] == "plan while analysing"] == [
+        {
+            "project": "p",
+            "measure": "plan while analysing",
+            "ms": None,
+            "bytes": None,
+            "refused": sentence,
+        }
+    ]
+    assert all(
+        row["refused"] is None and isinstance(row["ms"], int)
+        for row in rows
+        if row["measure"] != "plan while analysing"
+    )
+
+
 def test_each_measure_under_load_is_asked_halfway_through_its_analysis(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

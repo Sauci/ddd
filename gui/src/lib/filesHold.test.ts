@@ -61,6 +61,13 @@ describe("what the Files tab holds of its own Apply", () => {
     });
   });
 
+  test("New file's key is the created file's path as the server names it, not the page's join", () => {
+    // A description reached through a link: the server names the file it creates by the
+    // directory the link leads to, and so keys the entry; the page's own join could not.
+    const applied = plan("project.includes[2]", '"bench.ddd.json"', "/real/p/bench.ddd.json");
+    expect(filesHoldOf(7, applied, PROJECT)?.entry.key).toBe("/real/p/bench.ddd.json");
+  });
+
   test("Add's: the entry as typed, keyed by the description's directory joined with it", () => {
     const applied = plan("project.includes[2]", '"added/a1.ddd.json"');
     expect(filesHoldOf(8, applied, PROJECT)).toEqual({

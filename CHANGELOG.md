@@ -27,7 +27,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   command runs without importing it.  No file format changes.
 
 * **`ddd gui` stays responsive on large projects.**  An edit shows at once and its findings
-  follow once the project has been analysed again; its Findings tab reads its findings a page
+  follow once the project has been analysed again; a change replacing many plain values in one
+  large file, as renaming a unit its declarations state does, is planned and written from one
+  reading of that file rather than one per value; its Findings tab reads its findings a page
   at a time as the reader scrolls it, rather than every one at once; and its component table,
   Types, Units, Shared files and Files tabs, a component's own declarations, a unit's own
   places and a variable's keys draw only the rows in view.

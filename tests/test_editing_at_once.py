@@ -134,7 +134,7 @@ def literal_leaves(value: Any, pointer: str = "") -> Iterator[tuple[str, Any]]:
 def another(value: Any, rng: random.Random) -> str:
     """A literal to set in place of ``value``, as json text: a string with a quote, a backslash
     and characters outside ascii added, written as themselves or as escapes; the other truth
-    value; or a number in one of several spellings."""
+    value; for a null, 0 or a string; or a number in one of several spellings."""
     if isinstance(value, str):
         return json.dumps(f'{value}"\\é😀', ensure_ascii=rng.random() < 0.5)
     if isinstance(value, bool):
@@ -231,6 +231,21 @@ class TestWhichBatchIsMadeAtOnce:
         )
         assert alike(text, operations, reads) == (3, 2)
 
+    def test_a_batch_that_reads_back_as_1_where_1_0_was_meant_is_refused(self, reads):
+        """Compared as the text each document dumps to, which tells ``1`` from ``1.0``. Here the
+        1.0 meant for ``a``'s ``b`` is written over the member spelled ``a.b``, as above, but each
+        held 1: compared with python's ``==``, which takes 1 and 1.0 for one value, the batch read
+        back as the document it was meant to leave, and the text it left was answered, to be
+        written into the file."""
+        text = '{"a": {"b": 1}, "a.b": 1, "c": 3}'
+        operations = [Operation("set", "a.b", "1.0"), Operation("set", "c", "4")]
+        assert at_once(text, operations)
+        assert answer(edit_text, text, operations) == (
+            UNVERIFIED,
+            "the edited file does not read back as the intended document",
+        )
+        assert alike(text, operations, reads) == (3, 2)
+
     def test_a_value_that_is_not_json_is_refused_as_one_at_a_time_refuses_it(self, reads):
         """Refused before the text it would have left is read, and made again one operation at a
         time, which reads the text the first operation leaves and refuses the second."""
@@ -243,6 +258,19 @@ class TestWhichBatchIsMadeAtOnce:
             "for it",
         )
         assert alike(text, operations, reads) == (2, 2)
+
+    def test_a_value_not_given_as_text_is_refused_as_one_at_a_time_refuses_it(self, reads):
+        """What is tried at once is decided by the value's text, and a value given as anything
+        else has none: the batch is made one operation at a time from the start, which refuses
+        it, rather than raising while the batch is looked at."""
+        operations = [Operation("set", "a.b", "2"), Operation("set", "d", 5)]
+        assert not at_once(self.TEXT, operations)
+        assert answer(edit_text, self.TEXT, operations) == (
+            INVALID,
+            "a value is given as json text",
+        )
+        made, by_oracle = alike(self.TEXT, operations, reads)
+        assert made == by_oracle
 
     @pytest.mark.parametrize(
         ("text", "operations", "made"),
@@ -263,10 +291,11 @@ class TestWhichBatchIsMadeAtOnce:
     def test_a_member_added_goes_where_the_sets_before_it_left_the_text(
         self, text, operations, made, reads
     ):
-        """Laid out to fit the lines around it, which a set beside it can change. Replacing the
-        value an object writes over several lines with a literal puts the object on one line,
-        which the member added then joins; and it moves the end of the member the new one follows
-        to another line, whose indentation the new one takes. Laid out from the lines as they were
+        """Laid out to fit the lines around it, which a set beside it can change. In the first,
+        the one value the object writes over several lines is replaced with a literal, which puts
+        the object on one line, and the member added then joins it; in the second, replacing it
+        moves the end of the member the new one follows to another line, whose indentation the new
+        one takes. Laid out from the lines as they were
         read, as a batch made at once would lay it out, either member went on a line of its own,
         indented like the replaced value's closing line."""
         assert not at_once(text, operations)

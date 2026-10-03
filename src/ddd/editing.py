@@ -344,16 +344,16 @@ def _independent(document: Document, operations: Sequence[Operation]) -> bool:
     """Whether every operation can be tried on the text as it was read, none depending on what
     another one writes: each a ``set`` of a value the document holds, at a pointer spelled the way
     the scan spells one, which is no other operation's pointer and nests within none of them, to
-    a value whose text opens neither an object nor an array - a literal, or text that is no json
-    at all and is refused when it is made.
+    a value given as text that opens neither an object nor an array - a literal, or text that is
+    no json at all and is refused when it is made.
 
     Anything else may depend on what another operation leaves. An ``insert`` or a ``remove``
     writes or takes a comma beside its neighbours, and in an array moves the elements after it to
     other indices; a ``move`` is both; and a set within a value another set replaces, and the same
     pointer set twice, answer otherwise in another order. A member added to an object, and an
     object or an array set in place of a value, are laid out to fit the lines around them, which
-    a set beside them can change: replacing the value an object writes over several lines with a
-    literal puts the object on one line, which a member added to it then joins, and the
+    a set beside them can change: replacing a value an object writes over several lines with a
+    literal can put the object on one line, which a member added to it then joins, and the
     indentation unit is read off the first entry the file writes on a line of its own, which may
     be inside a value another set replaces. A literal is written as it is spelled, whatever lines
     are around it.
@@ -362,7 +362,7 @@ def _independent(document: Document, operations: Sequence[Operation]) -> bool:
     if len(pointers) < len(operations):
         return False
     for operation in operations:
-        if operation.op != "set" or operation.raw is None:
+        if operation.op != "set" or not isinstance(operation.raw, str):
             return False
         if operation.raw.lstrip(_WHITESPACE)[:1] in _OPENING:
             return False

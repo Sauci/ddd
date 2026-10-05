@@ -9,7 +9,7 @@ from ddd.backends.a2l import (
     A2lOptions,
     ByteOrder,
     addressed_symbols,
-    load_address_map,
+    weigh_addresses,
 )
 from ddd.backends.base import (
     DICTIONARY_ARTEFACT,
@@ -43,7 +43,7 @@ __all__ = [
     "addressed_symbols",
     "describe_write_failure",
     "example_template_directory",
-    "load_address_map",
     "render",
+    "weigh_addresses",
     "write",
 ]

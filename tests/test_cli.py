@@ -1080,6 +1080,21 @@ class TestGenerate:
         assert code == EXIT_USAGE
         assert "address of 'ValueE' is 5368746008, outside the range" in capsys.readouterr().err
 
+    def test_an_address_no_a2l_field_could_hold_names_the_map_forward_slashed(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The range is weighed by the a2l backend, which is handed the map's path as every
+        path this tool prints is spelled; on Windows its str() carries backslashes."""
+        addresses = tmp_path / "addresses.json"
+        addresses.write_text('{"ValueE": "0x140009018"}', encoding="utf-8")
+        output = tmp_path / "gen"
+        arguments = ["generate", "a2l", str(DEMO), "-o", str(output), "--address-map"]
+        assert main([*arguments, str(addresses)]) == EXIT_USAGE
+        assert capsys.readouterr().err == (
+            f"ddd: {addresses.as_posix()}: address of 'ValueE' is 5368746008, outside the range "
+            "0 .. 0xFFFFFFFF that an a2l address can hold\n"
+        )
+
     def test_a_project_that_cannot_be_read_generates_nothing(self, tmp_path: Path) -> None:
         write_tree(tmp_path, {"broken.ddd.json": "{ not json"})
         code = main(

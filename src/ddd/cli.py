@@ -914,7 +914,7 @@ def _check_address_coverage(
     they are usually the other half of the same mistake - the old spelling of the symbol that
     has just gone missing - and reading them together is what identifies a rename. The
     symbols the recipe of the build page sweeps up along the way are in that note too,
-    including any whose address no ``ECU_ADDRESS`` could hold: the map reader weighs an
+    including any whose address no ``ECU_ADDRESS`` could hold: ``weigh_addresses`` weighs an
     address only for a symbol this list carries, because no other one is ever formatted into
     anything, and this note is where the rest are accounted for.
     """
@@ -1052,6 +1052,7 @@ def _dictionary_file(
 
 
 def _command_generate(args: argparse.Namespace) -> int:
+    from ddd.addresses import load_address_map
     from ddd.backends import (
         DICTIONARY_ARTEFACT,
         A2lBackend,
@@ -1063,8 +1064,8 @@ def _command_generate(args: argparse.Namespace) -> int:
         RemovalError,
         addressed_symbols,
         describe_write_failure,
-        load_address_map,
         render,
+        weigh_addresses,
         write,
     )
     from ddd.plugins import backend_of
@@ -1107,7 +1108,8 @@ def _command_generate(args: argparse.Namespace) -> int:
             # decide both which entries of the map are held to what an ECU_ADDRESS can hold
             # and which objects the map leaves uncovered.
             carried = addressed_symbols(dictionary)
-            addresses = load_address_map(args.address_map, carried=carried)
+            addresses = load_address_map(args.address_map)
+            weigh_addresses(addresses, carried, args.address_map.as_posix())
             # Before the gate below, so that a --strict build stops rather than writing a
             # file whose addresses it has just been told are incomplete.
             _check_address_coverage(carried, addresses, args.address_map, bag)

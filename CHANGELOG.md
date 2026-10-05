@@ -43,9 +43,11 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   the finding.  In cmake, `ddd_generate(... ADDRESSES_FROM_IMAGE)` writes the a2l in a step
   after the link, so that one build gives the complete a2l; `ADDRESS_MAP` and `--address-map`
   stay as they were, for an image without debug information.  The map's reader has moved,
-  from `ddd.backends` to `ddd.addresses`, and a map that is both malformed and out of range
-  for a symbol the a2l carries is now refused for the malformed entry, still exit 2.  No file
-  format changes.
+  `load_address_map` and its `ADDRESS_PATTERN`, from `ddd.backends` to `ddd.addresses`, and
+  takes no `carried` any more: the 32-bit range of the addresses the a2l carries is checked by
+  `ddd.backends.weigh_addresses`, which a caller reading a map calls itself; and a map that is
+  both malformed and out of range for a symbol the a2l carries is now refused for the
+  malformed entry, still exit 2.  No file format changes.
 
 ## 0.11.0
 

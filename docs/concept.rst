@@ -475,7 +475,7 @@ have the symbol names in the file:
    }
 
    component "ddd generate all" as ddd_first
-   component "ddd generate a2l\n--address-map" as ddd_second
+   component "ddd generate a2l\n--image or --address-map" as ddd_second
    component "compiler / linker" as toolchain
 
    artifact "ddd_globals.c, ddd_globals.h,\nddd_types.h, one header\nper component" as generated_c
@@ -495,17 +495,19 @@ have the symbol names in the file:
    generated_c --> toolchain
    c_sources --> toolchain: each component includes\nits own header only
    toolchain --> image
-   image --> address_map: symbol addresses taken\nfrom the linker output
+   image --> ddd_second: --image: every address read\nout of its debug information
+   image --> address_map: or a map extracted\nfrom the linker output
 
    project_file --> ddd_second
-   address_map --> ddd_second
+   address_map --> ddd_second: --address-map
    ddd_second --> final_a2l: the a2l alone is rewritten;\nthe c sources are not touched
    final_a2l --> mc_tool: measure and calibrate\nthe built software
 
 Neither run needs a compiler, a target or a calibration tool to be present, which is what makes
 the tool usable from a pipeline that only checks: :doc:`command_line_interface` describes the
-exit codes and the machine readable output a ci job consumes, and :doc:`build_integration`
-reduces the whole sequence above to two calls in a CMake project.
+exit codes and the machine readable output a ci job consumes, and with
+``ADDRESSES_FROM_IMAGE`` :doc:`build_integration` reduces the whole sequence above to two calls
+and one build in a CMake project.
 
 .. note::
 

@@ -509,9 +509,10 @@ Options
        image's debug information, so that one build gives the complete a2l: the run before the
        link leaves the a2l out, as ``NO_A2L`` does, and ``<stem>_ddd_a2l``, built by default,
        writes it after the link - again whenever the image relinks or a description changes,
-       and never otherwise. ``DDD_A2L`` names it as before, and ``STRICT``, ``SEVERITY`` and
-       ``BYTE_ORDER`` apply to it. The image has to be ELF with DWARF, built with ``-g``.
-       Refused together with ``ADDRESS_MAP`` or ``NO_A2L``.
+       and under Ninja never otherwise; under Make also at every build that follows a run
+       leaving the a2l unchanged. ``DDD_A2L`` names it as before, and ``STRICT``,
+       ``SEVERITY`` and ``BYTE_ORDER`` apply to it. The image has to be ELF with DWARF, built
+       with ``-g``. Refused together with ``ADDRESS_MAP`` or ``NO_A2L``.
    * - ``BYTE_ORDER little|big``
      - byte order reported in the a2l.
    * - ``SEVERITY <check=level>...``
@@ -584,11 +585,12 @@ The image has to be a linked ELF image whose DWARF describes the variables
 (:doc:`command_line_interface`), which a build with debug information writes: ``-g``, which
 CMake's ``Debug`` and ``RelWithDebInfo`` build types add. The step depends on the image and on
 what the project is read from, so it runs again when the image relinks or a description
-changes - a conversion's factor, which reaches the a2l and none of the c, included - and a
-build with nothing changed runs nothing at all. It writes the a2l into the directory the
-generation before the link wrote the c sources, the headers and the dictionary into, and takes
-none of them back (:ref:`what-a-run-owns`), so nothing is compiled again because the a2l was
-written.
+changes - a conversion's factor, which reaches the a2l and none of the c, included - and under
+Ninja a build with nothing changed runs nothing at all; under Make, every build that follows a
+run of the step leaving the a2l unchanged runs the step again. It writes the a2l into the
+directory the generation before the link wrote the c sources, the headers and the dictionary
+into, and takes none of them back (:ref:`what-a-run-owns`), so nothing is compiled again
+because the a2l was written.
 
 What the image cannot place keeps address 0 and is reported once, as ``address-missing``, each
 symbol's reason a note beneath it. The example above, built as ``RelWithDebInfo`` with the

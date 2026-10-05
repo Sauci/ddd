@@ -665,8 +665,8 @@ it is either a smell or a decision somebody should have taken consciously.
      - an object that reaches the a2l has no entry in the map ``--address-map`` was given, or
        the image ``--image`` was given does not place it, so its ``ECU_ADDRESS`` stays 0; with
        an image, why it does not is a note of the finding. A map produced from a linker output
-       legitimately lacks the objects that were not linked into this image, and an image the
-       objects a condition compiled out of it, which is why the run goes on; a post-link
+       legitimately lacks the objects that were not linked into this image, and an image lacks
+       the objects a condition compiled out of it, which is why the run goes on; a post-link
        build that wants an a2l with no hole in it runs with ``--strict``, which makes this an
        error and writes nothing.
 

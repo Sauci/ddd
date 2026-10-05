@@ -2277,13 +2277,14 @@ generation before the link leaves the A2L out, as `NO_A2L` does, and a second st
 link runs `ddd generate a2l --image` over the image, the A2L its output. The step depends on
 the image and on what the project is read from - its description, the files it is collected
 or included from, the `.py` plugins and the tool - so it runs again when the image relinks or
-a description changes and never otherwise, and a target `<stem>_ddd_a2l`, built by default,
-drives it. The A2L keeps its path and its `DDD_A2L` property, and the step writes it into the
-directory the generation before the link writes into, whose manifest keeps either run from
-taking back the other's files ([section 5](#5-generated-artefacts)). `STRICT`, `SEVERITY` and
-`BYTE_ORDER` apply to the step, so that under `STRICT` a symbol the image cannot place stops
-the build. `ADDRESSES_FROM_IMAGE` beside `ADDRESS_MAP` or beside `NO_A2L` is a configure
-error naming both.
+a description changes, and under Ninja never otherwise; under Make it also runs at every
+build that follows a run of it leaving the A2L unchanged. A target `<stem>_ddd_a2l`, built by
+default, drives it. The A2L keeps its path and its `DDD_A2L` property, and the step writes it
+into the directory the generation before the link writes into, whose manifest keeps either run
+from taking back the other's files ([section 5](#5-generated-artefacts)). `STRICT`,
+`SEVERITY` and `BYTE_ORDER` apply to the step, so that under `STRICT` a symbol the image
+cannot place stops the build. `ADDRESSES_FROM_IMAGE` beside `ADDRESS_MAP` or beside `NO_A2L`
+is a configure error naming both.
 
 The remaining keywords mirror the command line: `TEMPLATE_DIRECTORY` (required,
 `--template-dir`), `OUTPUT_DIRECTORY` (`-o`, defaulting into the build tree), `BYTE_ORDER`,

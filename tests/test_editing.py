@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import codecs
+import os
 import stat
 from pathlib import Path
 
@@ -664,6 +665,95 @@ class TestWritingFiles:
 
     def test_edits_stage_under_the_name_every_other_writer_stages_under(self):
         assert STAGING_SUFFIX == ARTEFACT_STAGING_SUFFIX
+
+    def test_a_file_a_reader_holds_open_is_written_once_the_reader_lets_go(
+        self, tmp_path, monkeypatch
+    ):
+        """Windows refuses to rename over a file another handle holds open - ``ddd gui``'s
+        analysis reading it on a thread of its own - and the read lets go within milliseconds:
+        the rename is tried again, rather than the edit refused."""
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"x": 1}')
+        real = Path.replace
+        tries = []
+
+        def held_twice(self, target):
+            tries.append(target)
+            if len(tries) < 3:
+                raise PermissionError(13, "Access is denied")
+            return real(self, target)
+
+        monkeypatch.setattr(editing, "REPLACE_TRIES", 3)
+        monkeypatch.setattr(editing, "REPLACE_PAUSE", 0)
+        monkeypatch.setattr(Path, "replace", held_twice)
+        apply_changes([change(path, Operation("set", "x", "2"))])
+        assert path.read_bytes() == b'{"x": 2}'
+        assert tries == [path, path, path]
+
+    def test_a_file_held_open_past_every_try_is_refused(self, tmp_path, monkeypatch):
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"x": 1}')
+        tries = []
+
+        def held(self, target):
+            tries.append(target)
+            raise PermissionError(13, "Access is denied")
+
+        monkeypatch.setattr(editing, "REPLACE_TRIES", 3)
+        monkeypatch.setattr(editing, "REPLACE_PAUSE", 0)
+        monkeypatch.setattr(Path, "replace", held)
+        with pytest.raises(EditError) as refused:
+            apply_changes([change(path, Operation("set", "x", "2"))])
+        assert refused.value.code == UNWRITABLE
+        assert tries == [path, path, path]
+        assert path.read_bytes() == b'{"x": 1}'
+        assert not list(tmp_path.glob(f"*{STAGING_SUFFIX}"))
+
+    def test_a_refusal_is_final_where_one_try_is_all(self, tmp_path, monkeypatch):
+        """Posix's own count: a rename there never waits on a reader, so it is not tried
+        again."""
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"x": 1}')
+        tries = []
+
+        def held(self, target):
+            tries.append(target)
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(editing, "REPLACE_TRIES", 1)
+        monkeypatch.setattr(Path, "replace", held)
+        with pytest.raises(EditError) as refused:
+            apply_changes([change(path, Operation("set", "x", "2"))])
+        assert refused.value.code == UNWRITABLE
+        assert tries == [path]
+
+    def test_a_created_file_held_open_is_taken_away_once_the_reader_lets_go(
+        self, tmp_path, monkeypatch
+    ):
+        """Putting back a file an edit created takes it away, which windows refuses too while
+        another handle holds it open."""
+        path = tmp_path / "units.ddd.json"
+        path.write_bytes(b"{}")
+        real = Path.unlink
+        tries = []
+
+        def held_once(self, missing_ok=False):
+            tries.append(self)
+            if len(tries) < 2:
+                raise PermissionError(13, "Access is denied")
+            return real(self, missing_ok)
+
+        monkeypatch.setattr(editing, "REPLACE_TRIES", 2)
+        monkeypatch.setattr(editing, "REPLACE_PAUSE", 0)
+        monkeypatch.setattr(Path, "unlink", held_once)
+        assert editing._put_back(path, None)
+        assert not path.exists()
+        assert tries == [path, path]
+
+    def test_a_file_is_tried_fifty_times_a_fiftieth_of_a_second_apart_on_windows_alone(self):
+        on_this_system = 50 if os.name == "nt" else 1
+        assert on_this_system == editing.REPLACE_TRIES
+        assert editing.REPLACE_PAUSE == 0.02
 
 
 def created(path: Path, raw: str, like: Path | None = None) -> FileChange:

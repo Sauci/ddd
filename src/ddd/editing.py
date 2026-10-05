@@ -34,7 +34,8 @@ import json
 import os
 import re
 import stat
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
@@ -63,6 +64,18 @@ UNWRITABLE: Final = "unwritable"
 STAGING_SUFFIX: Final = ".ddd-staging"
 """What a file's new bytes are staged under beside it: the name ``ddd id`` and the artefact
 writer stage under, which no project gives a file of its own."""
+
+REPLACE_TRIES: Final = 50 if os.name == "nt" else 1
+"""How many times a file is renamed into place, or taken away, before a refusal stands.
+
+Windows refuses both while another handle holds the file open, and ``ddd gui`` reads a
+project's files on a thread of its own while an edit writes one: on CI's windows runners the
+benchmark's own edits were refused ``[WinError 5] Access is denied`` renaming the staged file
+into place, during an analysis reading that file, where a read lets go within milliseconds.
+On posix neither waits on a reader, and a refusal is final at once."""
+
+REPLACE_PAUSE: Final = 0.02
+"""Seconds between two tries: fifty wait a second at most."""
 
 _WHITESPACE: Final = " \t\r\n"
 _STRUCTURE: Final = "{}[]:,"
@@ -878,11 +891,26 @@ def _stage_and_replace(path: Path, data: bytes, like: Path | None) -> None:
         staging.write_bytes(data)
         if like is not None:
             _keep_access(like, staging)
-        staging.replace(path)
+        _patiently(lambda: staging.replace(path))
     except OSError:
         with contextlib.suppress(OSError):
             staging.unlink()
         raise
+
+
+def _patiently(act: Callable[[], object]) -> None:
+    """``act``, tried again while the system refuses it access, :data:`REPLACE_TRIES` times in
+    all, :data:`REPLACE_PAUSE` apart; the last refusal is raised."""
+    tries = REPLACE_TRIES
+    while True:
+        try:
+            act()
+            return
+        except PermissionError:
+            tries -= 1
+            if tries == 0:
+                raise
+        time.sleep(REPLACE_PAUSE)
 
 
 def _keep_access(original: Path, staged: Path) -> None:
@@ -913,7 +941,7 @@ def _put_back(path: Path, data: bytes | None) -> bool:
     """
     try:
         if data is None:
-            path.unlink()
+            _patiently(path.unlink)
         else:
             _stage_and_replace(path, data, path if path.exists() else None)
     except OSError:

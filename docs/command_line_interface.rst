@@ -440,7 +440,9 @@ The commands
        row a New file or an Add makes is drawn once the edit answers, from the plan applied,
        before the tab's own next list of its entries carries it, and reads ``not read by the
        last analysis`` until the analysis after it, which is what the next list of entries
-       then reads instead. New file, Add a
+       then reads instead. The rows of the entries a Remove takes out go the same way, once
+       the edit answers and before the next list of entries leaves them out too; a pattern
+       keeping the file in keeps its own row, and the file's beneath it. New file, Add a
        file and Remove are its three actions, the first two above the table and the third
        opened by selecting a row. New file takes a
        kind - ``component``, ``types``, ``units``, ``constants``, ``sections`` or

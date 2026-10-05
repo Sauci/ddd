@@ -1,18 +1,29 @@
 """A build's address information: where each symbol of a dictionary sits in the target.
 
 Reading it is core rather than a backend's business: the a2l only consumes the result, and
-``SPEC.md`` gives address information a section of its own. What is read here is the map a
-build writes after the link, ``{"Symbol": "0x20000100"}``, and only how each address in it is
-written is checked: whether an address fits the field it is written into is the a2l's own
-question, which ``ddd.backends.a2l.options.weigh_addresses`` answers.
+``SPEC.md`` gives address information a section of its own. Two sources answer the one
+question: the map a build writes after the link, ``{"Symbol": "0x20000100"}``, which
+:func:`load_address_map` reads, and the linked image itself, whose DWARF
+:func:`addresses_from_image` reads through ``ddd.elf`` - objects by name, structure members by
+access path. Whether an address fits the field it is written into is the a2l's own question,
+which ``ddd.backends.a2l.options.weigh_addresses`` answers for both.
+
+``ddd.elf`` is imported where an image is read and nowhere else: ``generate`` imports this
+module on every run, and a broken installation that lacks pyelftools, which the reader needs,
+still reads a map.
 """
 
 from __future__ import annotations
 
 import json
 import re
+from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from ddd.elf import CType, Image, Variable
 
 ADDRESS_PATTERN: Final = re.compile(r"^(?:0[xX][0-9A-Fa-f]+|[0-9]+)$")
 """The two spellings an address may be written in: ``0x20000100`` or ``536871168``.
@@ -110,3 +121,139 @@ def _address(where: str, symbol: str, value: object) -> int:
         )
         raise ValueError(msg)
     return int(text, 16 if text.lower().startswith("0x") else 10)
+
+
+_ROOT: Final = re.compile(r"\w+")
+"""The name an access path starts with, the variable's."""
+_STEP: Final = re.compile(r"\.(\w+)|\[(\d+)\]")
+"""One step of an access path after its name: ``.member``, or ``[index]`` per dimension."""
+
+_UNKNOWN: Final = "where '{}' lies cannot be worked out from the image's debug information"
+
+
+@dataclass(frozen=True, slots=True)
+class Placed:
+    """Where an image puts each symbol it places, and why it places none of the others."""
+
+    addresses: dict[str, int]
+    """Every symbol placed, at its address."""
+
+    reasons: dict[str, str]
+    """Every symbol not placed, and why, in one sentence naming the part of it that failed."""
+
+
+def addresses_from_image(image: Image, symbols: Collection[str]) -> Placed:
+    """Place each symbol in ``image``: an object by its name, a member by its access path.
+
+    The variable is the one of that name with external linkage, since every object a dictionary
+    describes is a global: a ``static`` of the name never stands for it, and the units that
+    describe one variable at one address, as ``-fcommon`` makes them, describe one variable.
+    Each step of the path sees through typedefs and qualifiers first; ``.member`` adds the
+    member's offset within its structure, and ``[index]``, one per dimension, the index times
+    the size of the element, in C's row-major order. The type the path ends at is not compared
+    with the declaration.
+    """
+    named: dict[str, list[Variable]] = {}
+    for variable in image.variables:
+        named.setdefault(variable.name, []).append(variable)
+    addresses: dict[str, int] = {}
+    reasons: dict[str, str] = {}
+    for symbol in symbols:
+        placed = _placed(symbol, image, named)
+        if isinstance(placed, int):
+            addresses[symbol] = placed
+        else:
+            reasons[symbol] = placed
+    return Placed(addresses, reasons)
+
+
+def _placed(symbol: str, image: Image, named: Mapping[str, list[Variable]]) -> int | str:
+    """The address of ``symbol``, or why the image gives it none."""
+    root = _ROOT.match(symbol)
+    # The symbols of an a2l are those addressed_symbols lists: an object's identifier, or a
+    # member's path, which ddd.analysis writes starting with the variable's identifier.
+    assert root is not None
+    found = _variable(root.group(), image, named.get(root.group(), []))
+    if isinstance(found, str):
+        return found
+    address, ctype = found
+    return _walk(symbol, root.end(), address, ctype)
+
+
+def _variable(name: str, image: Image, named: Sequence[Variable]) -> tuple[int, CType] | str:
+    """The address and the type of the global ``name``, or why the image holds none."""
+    external = [variable for variable in named if variable.external]
+    if not external:
+        if named:
+            return (
+                f"the image holds '{name}' only as a static, and every object a dictionary "
+                f"describes is a global"
+            )
+        missing = f"the image's debug information holds no variable named '{name}'"
+        if name in image.symbols:
+            missing += (
+                "; the symbol table holds it, so the unit defining it was built without debug "
+                "information (-g)"
+            )
+        return missing
+    located: dict[int, Variable] = {}
+    for variable in external:
+        if variable.address is not None:
+            located.setdefault(variable.address, variable)
+    if not located:
+        return f"'{name}' has no address in the image: {external[0].missing}"
+    if len(located) > 1:
+        listed = ", ".join(f"0x{address:X}" for address in sorted(located))
+        return f"'{name}' names globals at {len(located)} addresses of the image, {listed}"
+    ((address, variable),) = located.items()
+    return address, variable.type
+
+
+def _walk(symbol: str, at: int, address: int, ctype: CType) -> int | str:
+    """``address`` moved along the steps of ``symbol`` from ``at``, or why it cannot be."""
+    from ddd.elf import Array, Struct, size_of
+
+    while at < len(symbol):
+        step = _STEP.match(symbol, at)
+        # ddd.analysis writes a member's path as identifiers joined by dots, an index per
+        # dimension after an array of structures (_element_paths), and nothing else.
+        assert step is not None
+        reached = symbol[:at]
+        at = step.end()
+        core = _seen_through(ctype)
+        member, index = step.groups()
+        if member is not None:
+            if not isinstance(core, Struct):
+                return f"'{reached}' is not a structure, so it has no member named '{member}'"
+            found = next((entry for entry in core.members if entry.name == member), None)
+            if found is None:
+                return f"'{reached}' has no member named '{member}' in the image"
+            if found.bit_size is not None:
+                return f"'{symbol[:at]}' is a bitfield, which an address cannot describe"
+            if found.bit_offset is None:
+                return _UNKNOWN.format(symbol[:at])
+            address += found.bit_offset // 8
+            ctype = found.type
+            continue
+        position = int(index)
+        if not isinstance(core, Array):
+            return f"'{reached}' is not an array, so it has no element [{position}]"
+        extent, *rest = core.dimensions
+        if position >= extent:
+            return f"'{reached}' has an extent of {extent}, so it has no element [{position}]"
+        element = Array(core.element, tuple(rest)) if rest else core.element
+        size = size_of(element)
+        if size is None:
+            return _UNKNOWN.format(symbol[:at])
+        address += position * size
+        ctype = element
+    return address
+
+
+def _seen_through(ctype: CType) -> CType:
+    """``ctype`` without the typedefs and qualifiers around it, as a step of a path sees it."""
+    from ddd.elf import Qualified, Typedef
+
+    while isinstance(ctype, Qualified | Typedef):
+        ctype = ctype.inner
+    return ctype

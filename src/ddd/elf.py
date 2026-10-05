@@ -191,6 +191,11 @@ class Variable:
     missing: str = ""
     """Why ``address`` is None, as one of the constants of this module says it."""
 
+    external: bool = True
+    """Whether the variable has external linkage, as ``DW_AT_external`` states: False for a
+    ``static``. True by default, so that a variable built by hand stands for a global, as an
+    object of a project is; the reader always states it."""
+
 
 @dataclass(frozen=True, slots=True)
 class Section:
@@ -608,7 +613,11 @@ def _variable(entry: Entry, unit: Unit, types: _Types, symbols: _Symbols) -> Var
         missing = THREAD_LOCAL
     else:
         missing = REMOVED
-    return Variable(name, unit.name, ctype, declared_at, address, missing)
+    # Read where the name is: gcc states DW_AT_external on the declaration a definition
+    # completes and not on the definition, clang on the one entry it writes (measured over the
+    # fixture matrix). DWARF 2 and 3 spell it as a flag byte, whose 0 says it is absent.
+    external = bool(_either(entry, named, "DW_AT_external"))
+    return Variable(name, unit.name, ctype, declared_at, address, missing, external)
 
 
 def _address(value: Any, unit: Unit) -> tuple[int | None, str]:

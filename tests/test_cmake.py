@@ -1278,11 +1278,20 @@ message(STATUS "DDD_A2L=${{a2l}}")
     ) -> None:
         """The definition file compiled without debug information, as a project's flags for
         generated code may have it: no symbol of the a2l has an address in the image, and the
-        build stops rather than ship an a2l whose every address is 0."""
+        build stops rather than ship an a2l whose every address is 0. A unit reading ``Cells``
+        through its component's header, as a consumer does, is compiled with it, so the image's
+        debug information declares ``Cells`` there, and the note still names -g."""
+        (tmp_path / "consumer.c").write_text(
+            '#include "Engine.h"\n\nunsigned consumed(void) { return Cells[0].raw; }\n',
+            encoding="utf-8",
+        )
         self.write(
             tmp_path,
             options="\n             STRICT",
-            tail="target_compile_options(img_ddd_globals PRIVATE -g0)",
+            tail=(
+                "target_compile_options(img_ddd_globals PRIVATE -g0)\n"
+                "target_sources(img PRIVATE consumer.c)"
+            ),
         )
         configure(tmp_path, tmp_path / "build", "-DCMAKE_BUILD_TYPE=RelWithDebInfo")
         run = cmake("--build", str(tmp_path / "build"), cwd=tmp_path)
@@ -1296,8 +1305,8 @@ message(STATUS "DDD_A2L=${{a2l}}")
             "error[address-missing]: the image has no address for 'Cells[0].raw', 'Cells[0].v', "
             "'Cells[1].raw', 'Cells[1].v', 'Cells[2].raw' and 41 others; they reach the a2l at "
             "address 0\n"
-            "    note: the image's debug information holds no variable named 'Cells'; the symbol "
-            "table holds it, so the unit defining it was built without debug information (-g)\n"
+            "    note: the image's debug information only declares 'Cells'; the symbol table "
+            "holds it, so the unit defining it was built without debug information (-g)\n"
         ) in output
 
     def test_a_byte_order_the_image_contradicts_stops_the_build(self, tmp_path: Path) -> None:

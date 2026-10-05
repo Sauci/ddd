@@ -307,6 +307,25 @@ class TestTheVariable:
             "information (-g)"
         )
 
+    def test_a_name_only_declared_where_the_symbol_table_holds_it_is_not_placed_naming_g(
+        self,
+    ) -> None:
+        """The definition file built without -g and a unit reading the global built with it:
+        gcc writes that unit's ``extern`` declaration into its debug information, and the
+        symbol table still holds the global."""
+        img = image(
+            stored("Gain", address=None, missing=DECLARED_ONLY), symbols=frozenset({"Gain"})
+        )
+        assert reason(img, "Gain") == (
+            "the image's debug information only declares 'Gain'; the symbol table holds it, so "
+            "the unit defining it was built without debug information (-g)"
+        )
+
+    def test_any_other_reason_of_a_name_the_symbol_table_holds_is_the_reader_s(self) -> None:
+        """Only a declaration says that no unit with debug information defines the global."""
+        img = image(stored("Gain", address=None, missing=FOLDED), symbols=frozenset({"Gain"}))
+        assert reason(img, "Gain") == f"'Gain' has no address in the image: {FOLDED}"
+
     @pytest.mark.parametrize(
         "missing", [DECLARED_ONLY, FOLDED, REMOVED, DISCARDED, THREAD_LOCAL, NOT_AN_ADDRESS]
     )

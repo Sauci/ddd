@@ -130,6 +130,12 @@ _STEP: Final = re.compile(r"\.(\w+)|\[(\d+)\]")
 
 _UNKNOWN: Final = "where '{}' lies cannot be worked out from the image's debug information"
 
+_WITHOUT_G: Final = (
+    "; the symbol table holds it, so the unit defining it was built without debug information (-g)"
+)
+"""The ending of a reason the symbol table answers: it holds a name whose definition the debug
+information does not describe, so the unit defining it was compiled without ``-g``."""
+
 
 @dataclass(frozen=True, slots=True)
 class Placed:
@@ -182,6 +188,8 @@ def _placed(symbol: str, image: Image, named: Mapping[str, list[Variable]]) -> i
 
 def _variable(name: str, image: Image, named: Sequence[Variable]) -> tuple[int, CType] | str:
     """The address and the type of the global ``name``, or why the image holds none."""
+    from ddd.elf import DECLARED_ONLY
+
     external = [variable for variable in named if variable.external]
     if not external:
         if named:
@@ -191,16 +199,17 @@ def _variable(name: str, image: Image, named: Sequence[Variable]) -> tuple[int, 
             )
         missing = f"the image's debug information holds no variable named '{name}'"
         if name in image.symbols:
-            missing += (
-                "; the symbol table holds it, so the unit defining it was built without debug "
-                "information (-g)"
-            )
+            missing += _WITHOUT_G
         return missing
     located: dict[int, Variable] = {}
     for variable in external:
         if variable.address is not None:
             located.setdefault(variable.address, variable)
     if not located:
+        # A unit compiled with -g and reading the global declares it, where the one defining
+        # it, compiled without, describes nothing: the reader keeps the declaration alone.
+        if external[0].missing == DECLARED_ONLY and name in image.symbols:
+            return f"the image's debug information only declares '{name}'{_WITHOUT_G}"
         return f"'{name}' has no address in the image: {external[0].missing}"
     if len(located) > 1:
         listed = ", ".join(f"0x{address:X}" for address in sorted(located))

@@ -2019,11 +2019,14 @@ address `0x00000000` and is reported by `address-missing`
 ([section 4](#4-consistency-checks)), why it is not placed a note of the finding: the image
 holds no variable of that name, or only a `static` of it; the variable has no storage -
 only declared, folded into a constant, removed by the compiler or discarded by the linker,
-thread-local, or at no fixed address; its type has no member of that name, the C code and
-the declaration disagreeing; a step indexes what is not an array, or names a member of what
-is not a structure; an index is out of range; or a step names a bitfield, whose bits an
-address cannot describe. An address outside `0 .. 0xFFFFFFFF` for a symbol the A2L states
-an address for is a usage error naming the symbol and the image, and nothing is written.
+thread-local, or at no fixed address; the image's debug information only declares it while
+the symbol table holds it, the unit defining it built without `-g`; the name names globals
+at several addresses; its type has no member of that name, the C code and the declaration
+disagreeing; a step indexes what is not an array, or names a member of what is not a
+structure; an index is out of range; where a step lies cannot be worked out from the image's
+debug information; or a step names a bitfield, whose bits an address cannot describe. An
+address outside `0 .. 0xFFFFFFFF` for a symbol the A2L states an address for is a usage
+error naming the symbol and the image, and nothing is written.
 
 `--address-map FILE` names one flat JSON object mapping each symbol to its address, for an
 image the build reads itself - one without debug information, say. A symbol **shall** be

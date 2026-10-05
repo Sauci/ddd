@@ -45,6 +45,7 @@ function FormStory({
       onRaw={setRaw}
       access={access}
       onAccess={setAccess}
+      onAccessPicked={setAccess}
       alignment={alignment}
       onAlignment={setAlignment}
       event={event}

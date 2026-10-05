@@ -15,8 +15,9 @@ test("a reader can ask whether this delivery replaces the last", async ({ page, 
   await page.getByRole("button", { name: "Compare" }).click();
 
   // The sanity case: a copy compared against a dump of itself is a drop-in replacement, and
-  // says so in its own words, not merely by showing no rows.
-  const verdict = page.getByRole("status");
+  // says so in its own words, not merely by showing no rows. Picked out by its words: the
+  // heading's own status region, which says when the findings are updating, is a status too.
+  const verdict = page.getByRole("status").filter({ hasText: "replace the baseline" });
   await expect(verdict).toHaveText("This project can replace the baseline.");
   await expect(page.getByText("Nothing to report")).toBeVisible();
 

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { FilesReply, SourceFile } from "../api/types";
 import {
+  FILES_LONG,
+  FILES_LONG_SOURCES,
   FILES_SHARED_KEY,
   FILES_SOURCE_MISSING,
   FILES_WITH_MISSING,
@@ -77,3 +79,9 @@ export const ASelectedRow = () => <Files reply={FILES_SHARED_KEY} on={VOCABULARY
  * `empty-vocabulary` would route to) - the table draws exactly as TheProjectsOwnList does,
  * nothing marked and nothing thrown. */
 export const TheRouteNamesNoRow = () => <Files on={NOTHING_AT_THAT_PATH} />;
+
+/** A long table (part 17's task 9): "components/*.ddd.json" matching 3,000 files, as the "many"
+ * shape's own does, give or take, at 100,000 declarations - the pattern's own row, and its
+ * 3,000 children scrolling inside the box `.react-aria-Table.long` draws rather than growing the
+ * page to fit them. */
+export const ALongTable = () => <Files reply={FILES_LONG} files={FILES_LONG_SOURCES} />;

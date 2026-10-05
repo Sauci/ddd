@@ -7,6 +7,7 @@ import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { ComboBox } from "../ui/ComboBox";
 import { Panel } from "../ui/Panel";
+import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
 
 /** A change this panel applies: one of the section's three keys, a rename, or its removal - the
@@ -27,9 +28,12 @@ export interface Offer {
   plan: PlanReply | null;
   /** Why the plan was refused, or why applying it was; `null` when neither was. */
   refusal: string | null;
-  /** The plan shown is an earlier one's, kept on screen while this one is asked for: any of the
-   * three keys, each of which changes with every key typed - the access included, its chooser
-   * taking typed text like every other in this interface. It cannot be applied. */
+  /** Whether `plan` is `null` because there is none to trust yet: any of the three keys' own
+   * debounced request - the access included, its chooser taking typed text like every other in
+   * this interface - has not yet caught up with what the fields now say, or the server has not
+   * yet answered the one that has (`planShown`, `lib/typing.ts` - never an earlier request's
+   * answer, kept on screen in its place). `plan` is drawn, and Apply offered, only once this is
+   * `false`. */
   pending: boolean;
 }
 
@@ -38,6 +42,10 @@ export interface SectionPanelViewProps {
   /** What the Access field holds: what is being typed or was picked, else the entry's own word. */
   access: string;
   onAccess: (text: string) => void;
+  /** The chooser's own pick or Enter, apart from typing (`onAccess`): a discrete commit, which
+   * `SectionPanel.tsx` takes at once rather than waiting out a pause as it does for typing
+   * (spec §6, Ruling T12-3). */
+  onAccessPicked: (text: string) => void;
   /** What the Alignment field holds: what is being typed, else the entry's own whole number. */
   alignment: string;
   onAlignment: (text: string) => void;
@@ -67,6 +75,9 @@ export interface SectionPanelViewProps {
   /** Applying, or the server stopped: nothing can be changed or applied. */
   busy: boolean;
   onClose: () => void;
+  /** Whether the findings may be about to change (spec 6): the panel says so where it lists them,
+   * also while it lists none - an edit may be about to bring the first. */
+  updating?: boolean;
 }
 
 /** One section's panel (spec 5.2 as part 14 extends it), drawn from what the api answered: a
@@ -114,8 +125,8 @@ export function SectionPanelView(props: SectionPanelViewProps) {
               })),
             },
           ]}
-          onPick={props.onAccess}
-          onEnter={props.onAccess}
+          onPick={props.onAccessPicked}
+          onEnter={props.onAccessPicked}
           onClose={() => undefined}
           isDisabled={busy}
         />
@@ -177,6 +188,7 @@ export function SectionPanelView(props: SectionPanelViewProps) {
           </tbody>
         </table>
       )}
+      <UpdatingNote updating={props.updating === true} />
       {reply.findings.length > 0 && (
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(reply.findings)).map(([finding, key]) => (

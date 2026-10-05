@@ -15,7 +15,9 @@ never a hand-assembled ``dict`` - so the shape answered here and the shape
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping, Sequence
+import threading
+from collections import OrderedDict
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
@@ -35,7 +37,7 @@ from ddd.declaration_plans import (
     remove_declaration,
     scopes_for,
 )
-from ddd.diagnostics import CHECKS, Location
+from ddd.diagnostics import CHECKS, Severity
 from ddd.editing import (
     INVALID,
     STALE,
@@ -51,7 +53,6 @@ from ddd.editing import (
 from ddd.file_plans import (
     CREATABLE,
     FileRefusalError,
-    Pair,
     add_plan,
     create_plan,
     included_entries,
@@ -60,18 +61,23 @@ from ddd.file_plans import (
 )
 from ddd.finding_fixes import fixes_for
 from ddd.finding_routes import Route, route_of
+from ddd.findings_by_file import Pair
 from ddd.graph import Module, graph_of
 from ddd.gui import contract
 from ddd.gui.compare import BaselineCache, BaselineRefusedError, compared
+from ddd.gui.derived import Derived, derived, key_of
 from ddd.gui.session import KINDS as DESCRIPTION_KINDS
 from ddd.gui.session import (
     Filed,
     NoProjectError,
+    NotAnalysedError,
     NotInProjectError,
     Revision,
     Session,
+    Snapshot,
     SourceFile,
     Undoable,
+    _name_in,
     _read_json,
     _served,
     _source,
@@ -96,32 +102,35 @@ from ddd.lsp.units import (
     rename_unit,
     unit_project,
 )
-from ddd.object_values import ValueRefusalError, grid_of, set_cell, set_values
+from ddd.object_values import Grid, ValueRefusalError, grid_of, set_cell, set_values
 from ddd.project_shared import (
     CONSTANTS,
     RASTERS,
     SECTIONS,
     Vocabulary,
+    entry_findings,
+    entry_in_place,
     shared_rows,
     shown,
 )
-from ddd.project_shared import located_on as located_on_entry
 from ddd.project_shared import uses_of as uses_of_entry
 from ddd.project_types import (
     SCALAR_KEYS,
     fixed_by,
-    located_in_type,
     members_of,
     row_of,
+    type_findings,
+    type_in_place,
     type_rows,
     uses_of,
 )
 from ddd.project_units import (
     adoptable,
     description_of,
-    located_on_unit,
+    listed_in_place,
     places_of,
     previewed,
+    unit_findings,
     unit_rows,
 )
 from ddd.shared_plans import (
@@ -149,9 +158,24 @@ from ddd.variables import (
 )
 
 WAIT_SECONDS: Final = 25.0
-"""How long a request for a newer revision waits before answering with the current one."""
+"""How long a request for a newer state waits before answering with the current one."""
 
-REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED})
+MEMO: Final = 256
+"""How many answers the api keeps for the newest revision: the graph, the Types and Shared files
+tabs' rows, and the pages of findings a reader scrolls back to. A bound, the oldest dropped first:
+without one, every page of a findings-heavy project a reader scrolled through would be kept until
+its next analysis."""
+
+LISTED: Final = (Severity.ERROR, Severity.WARNING, Severity.INFO)
+"""The severities a finding is reported at, and so the ones ``GET /api/findings`` filters by:
+``ignore`` means a finding is not reported at all."""
+
+ANALYSING: Final = "analysing"
+"""The refusal of a request the analysis has not caught up with: asked of the open project before
+its first analysis has landed, or a plan changing a file an edit wrote that no analysis has read
+yet. Answered 409, and answered differently once the analysis lands."""
+
+REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED, ANALYSING})
 """The edit refusals a page can act on, answered 409; anything else an edit raises is a 500."""
 
 UNIT_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
@@ -281,6 +305,12 @@ class Api:
         self.project = None if project is None else project.resolve()
         self.wait_seconds = wait_seconds
         self._compare_cache: BaselineCache = {}
+        self._derived: Derived | None = None
+        self._deriving = threading.Lock()
+        self._memo: OrderedDict[tuple[object, ...], Reply] = OrderedDict()
+        # The state's answer and the version it was made at: what `GET /api/state` answers again
+        # until the version moves, every request of a page's long poll asking for it.
+        self._state_kept: tuple[int, Reply] | None = None
 
     def handle(self, method: str, path: str, query: Query, body: bytes | None) -> Reply:
         route = _ROUTES.get(path)
@@ -293,6 +323,8 @@ class Api:
             return answer(self, query, body)
         except NoProjectError as error:
             return _error(409, "no-project", str(error))
+        except NotAnalysedError as error:
+            return _error(409, ANALYSING, str(error))
         except NotInProjectError as error:
             return _error(404, "not-found", str(error))
 
@@ -329,44 +361,151 @@ class Api:
             self.session.open(wanted)
         except ValueError as error:
             return _error(409, "not-a-project", str(error))
+        # Answered at once, the project named: the page follows its first analysis from the
+        # state, which says it is being analysed until it lands.
         return Reply(200, self._session_body())
 
     def _state(self, query: Query, body: bytes | None) -> Reply:
+        """What the session says: at once, or as soon as its version is past ``?after=``, or
+        once the wait runs out.
+
+        Made once a version and kept, every request of a page's long poll asking for it: the
+        version moves at every change of what the answer says. Not guarded, unlike
+        :meth:`_derive`, which is what the making costs most: two requests of one version that
+        both find nothing kept both make it from the one derivation, and one made at an older
+        version can be kept over a newer one's, which the newer version's next request makes
+        again. Each answer is the one its own version says; only work is repeated."""
         after = _integer(query.get("after"))
         if after is None:
-            revision = self.session.revision
+            snapshot = self.session.snapshot()
         else:
-            revision = self.session.wait(after, self.wait_seconds)
-        if revision is None:
+            snapshot = self.session.wait(after, self.wait_seconds)
+        if snapshot.project is None:
             raise NoProjectError("no project is open")
-        top = self.session.undoable
-        sources = {file.path.resolve(): file for file in revision.files}
-        cache: dict[Path, Document] = {}
+        kept = self._state_kept
+        if kept is not None and kept[0] == snapshot.version:
+            return kept[1]
+        reply = self._state_of(snapshot, snapshot.project)
+        self._state_kept = (snapshot.version, reply)
+        return reply
+
+    def _state_of(self, snapshot: Snapshot, project: Path) -> Reply:
+        """The state ``snapshot`` says of ``project``, the one open: revision ``0``, no files and
+        every count ``0`` before its first analysis. The findings themselves are
+        ``GET /api/findings``'s, a page at a time; this counts them."""
+        revision = snapshot.revision
+        number = 0
+        edits = 0
+        files: list[dict[str, Any]] = []
+        counts = (0, 0, 0)
+        if revision is not None:
+            number = revision.number
+            edits = revision.edits
+            counts = self._derive(revision).counts
+            files = [
+                {
+                    "path": file.path.as_posix(),
+                    "kind": file.kind,
+                    "name": file.name,
+                    "loaded": file.loaded,
+                    "fingerprint": file.fingerprint,
+                    "findings": {
+                        "error": file.errors,
+                        "warning": file.warnings,
+                        "info": file.infos,
+                    },
+                }
+                for file in revision.files
+            ]
+        top = snapshot.undoable
         return Reply(
             200,
             contract.State(
-                revision=revision.number,
-                project=revision.project.as_posix(),
-                files=[
-                    {
-                        "path": file.path.as_posix(),
-                        "kind": file.kind,
-                        "name": file.name,
-                        "loaded": file.loaded,
-                        "fingerprint": file.fingerprint,
-                        "findings": {
-                            "error": file.errors,
-                            "warning": file.warnings,
-                            "info": file.infos,
-                        },
-                    }
-                    for file in revision.files
-                ],
-                findings=[
-                    _finding(filed, sources.get(filed.file.resolve()), cache)
-                    for filed in revision.findings
-                ],
+                revision=number,
+                version=snapshot.version,
+                project=project.as_posix(),
+                files=files,
+                counts={"error": counts[0], "warning": counts[1], "info": counts[2]},
                 undoable=None if top is None else {"at": top.at, "label": top.label},
+                analysing=snapshot.analysing,
+                edits=edits,
+            ).model_dump(mode="json"),
+        )
+
+    def _findings(self, query: Query, body: bytes | None) -> Reply:
+        """A page of the newest revision's findings: from ``?offset=`` - ``0`` when none is given -
+        at most ``?limit=`` of them, or every one from the offset on when no limit is given, of
+        those ``?severity=``, ``?file=`` (a file's path, however spelled) and ``?check=`` leave,
+        in the Findings tab's order, each with its key.
+
+        Kept for the revision (:meth:`_memoised`), one answer per page and filters: a reader
+        scrolling back to a page finds it made already."""
+        revision = self._opened()
+        offset: int | None = 0
+        given = query.get("offset")
+        if given is not None:
+            offset = _integer(given)
+        if offset is None:
+            return _error(400, "bad-request", "findings takes ?offset= as a whole number from 0")
+        limit: int | None = None
+        given = query.get("limit")
+        if given is not None:
+            limit = _integer(given)
+            if limit is None or limit < 1:
+                return _error(400, "bad-request", "findings takes ?limit= as a whole number from 1")
+        severity = _single(query.get("severity"))
+        if severity is not None and severity not in LISTED:
+            return _error(400, "bad-request", "findings takes ?severity= as error, warning or info")
+        file = _single(query.get("file"))
+        check = _single(query.get("check"))
+        return self._memoised(
+            revision,
+            ("findings", offset, limit, severity, file, check),
+            lambda: self._findings_of(revision, offset, limit, severity, file, check),
+        )
+
+    def _findings_of(
+        self,
+        revision: Revision,
+        offset: int,
+        limit: int | None,
+        severity: str | None,
+        file: str | None,
+        check: str | None,
+    ) -> Reply:
+        """:meth:`_findings`' answer: the positions the filters leave, in the tab's order - a
+        file's read from where its own findings stand, sorted by severity as stably as the whole
+        revision's were - and of them the page asked for, each finding listed with where it
+        leads, as a panel lists one, and with its key."""
+        derived = self._derive(revision)
+        findings = revision.findings
+        order: Sequence[int] = derived.ranked
+        if file is not None:
+            order = sorted(
+                derived.findings.positions(Path(file)),
+                key=lambda position: findings[position].diagnostic.severity.rank,
+            )
+        if severity is not None:
+            order = [at for at in order if findings[at].diagnostic.severity == severity]
+        if check is not None:
+            order = [at for at in order if findings[at].diagnostic.check == check]
+        page = order[offset:]
+        if limit is not None:
+            page = page[:limit]
+        cache: dict[Path, Document] = {}
+        return Reply(
+            200,
+            contract.FindingsReply(
+                revision=revision.number,
+                total=len(order),
+                offset=offset,
+                findings=[
+                    {
+                        **_finding(findings[at], derived.sources[at], cache),
+                        "key": key_of(findings[at], derived.repeats[at]),
+                    }
+                    for at in page
+                ],
             ).model_dump(mode="json"),
         )
 
@@ -386,9 +525,7 @@ class Api:
         )
 
     def _dictionary(self, query: Query, body: bytes | None) -> Reply:
-        revision = self.session.revision
-        if revision is None:
-            raise NoProjectError("no project is open")
+        revision = self._opened()
         dictionary = revision.dictionary
         return Reply(
             200,
@@ -402,9 +539,10 @@ class Api:
         )
 
     def _graph(self, query: Query, body: bytes | None) -> Reply:
-        revision = self.session.revision
-        if revision is None:
-            raise NoProjectError("no project is open")
+        revision = self._opened()
+        return self._memoised(revision, ("graph",), lambda: self._graph_of(revision))
+
+    def _graph_of(self, revision: Revision) -> Reply:
         modules = [_module(file) for file in revision.files if file.kind == "component"]
         findings = [(PurePosixPath(f.file.as_posix()), f.diagnostic) for f in revision.findings]
         built = graph_of(revision.dictionary, modules, findings)
@@ -472,15 +610,17 @@ class Api:
         if isinstance(request, Reply):
             return request
         try:
-            revision, written = self.session.edit(
+            at, written = self.session.edit(
                 [_file_change(c) for c in request.changes], request.label
             )
         except EditError as refusal:
             return _error(409 if refusal.code in REFUSALS else 500, refusal.code, str(refusal))
+        # Answered once written, before its analysis: the edit's own number is what says when a
+        # revision includes it.
         return Reply(
             200,
             contract.EditReply(
-                revision=revision.number,
+                edit=at,
                 files=[
                     {"path": file.path.as_posix(), "fingerprint": file.fingerprint}
                     for file in written
@@ -507,15 +647,16 @@ class Api:
         )
 
     def _apply_undo(self, query: Query, body: bytes | None) -> Reply:
-        """Put that edit back, and answer the revision it produced."""
+        """Put that edit back, and answer the number the undo took, once the files are back -
+        before its analysis."""
         request = _validated(contract.UndoRequest, body)
         if isinstance(request, Reply):
             return request
         try:
-            revision = self.session.undo(request.at)
+            number = self.session.undo(request.at)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(200, contract.UndoReply(revision=revision.number).model_dump(mode="json"))
+        return Reply(200, contract.UndoReply(edit=number).model_dump(mode="json"))
 
     def _variable(self, query: Query, body: bytes | None) -> Reply:
         revision = self._opened()
@@ -527,7 +668,7 @@ class Api:
         declared = () if built is None else declarations_of(built, name, cache)
         if built is None or not declared:
             return _undeclared(revision, name)
-        sources = {file.path.resolve(): file for file in revision.files}
+        derived = self._derive(revision)
         return Reply(
             200,
             contract.VariableReply(
@@ -535,7 +676,7 @@ class Api:
                 name=name,
                 declarations=[
                     {
-                        "path": entry.site.path.resolve().as_posix(),
+                        "path": derived.resolve(entry.site.path).as_posix(),
                         "pointer": entry.site.pointer,
                         "component": entry.component,
                         "role": entry.role,
@@ -549,32 +690,46 @@ class Api:
                 # field; the contract validates what comes out, so a name that drifts apart
                 # fails here rather than reaching the page.
                 keys=[asdict(offer) for offer in offers(built, declared)],
-                findings=[
-                    _finding(filed, sources.get(filed.file.resolve()), cache)
-                    for filed in revision.findings
-                    if located_on(declared, filed.file, filed.diagnostic)
-                ],
+                findings=_listed(
+                    derived,
+                    [
+                        (file, found)
+                        for file, found in derived.findings.on_any(
+                            entry.site.path for entry in declared
+                        )
+                        if located_on(declared, file, found, derived.resolve)
+                    ],
+                    cache,
+                ),
             ).model_dump(mode="json"),
         )
 
     def _units(self, query: Query, body: bytes | None) -> Reply:
+        """The vocabulary, the units in use, the Units tab's rows and whether adopting is offered.
+
+        Answered anew each time, never kept (:meth:`_memoised`): the offer reads the disk as it
+        stands - the includes expanded to find the units files, and whether ``units.ddd.json``
+        is there beside the description - which no revision records: neither a file appearing
+        where a pattern matches nor one no include names starts an analysis. Read only where the
+        offer can depend on it (:func:`ddd.project_units.adoptable`): a project holding a
+        vocabulary already is refused adopting by its index alone, and its includes are not
+        expanded at all."""
         revision = self._opened()
         cache: dict[Path, Document] = {}
         vocabulary = vocabulary_of(
             [read(file.path, cache) for file in revision.files if file.kind == "units"]
         )
         built = revision.index
-        # The project `_unit_plan` makes its plans in, built the same way: the offer asks the
-        # plan's own guards of it, so an Adopt this answers is one the plan will not refuse.
-        project = unit_project(
-            revision.project, [file.path for file in revision.files if not file.loaded], cache
-        )
+        unread = [file.path for file in revision.files if not file.loaded]
+
+        def project() -> UnitProject:
+            # The project `_unit_plan` makes its plans in, built the same way: the offer asks the
+            # plan's own guards of it, so an Adopt this answers is one the plan will not refuse.
+            return unit_project(revision.project, unread, cache)
+
         used = () if built is None else units_in_use(built)
-        rows = (
-            ()
-            if built is None
-            else unit_rows(built, [(f.file, f.diagnostic) for f in revision.findings], cache)
-        )
+        derived = self._derive(revision)
+        rows = () if built is None else unit_rows(built, derived.findings, cache)
         return Reply(
             200,
             contract.UnitsReply(
@@ -587,7 +742,7 @@ class Api:
                     {
                         "unit": row.unit,
                         "description": row.description,
-                        "files": [path.resolve().as_posix() for path in row.files],
+                        "files": [derived.resolve(path).as_posix() for path in row.files],
                         "variables": row.variables,
                         "types": row.types,
                         "members": row.members,
@@ -608,7 +763,11 @@ class Api:
         if built is None or (unit not in built.units and unit not in built.vocabulary):
             return _undeclared(revision, unit)
         cache: dict[Path, Document] = {}
-        sources = {file.path.resolve(): file for file in revision.files}
+        # Its description is read where the index recorded it listed: no neighbour's (`listed_in_
+        # place`), answered as a unit no unchanged file declares until the analysis reads it again.
+        if not listed_in_place(built, unit, cache):
+            return _undeclared(revision, unit)
+        derived = self._derive(revision)
         return Reply(
             200,
             contract.UnitReply(
@@ -616,25 +775,21 @@ class Api:
                 unit=unit,
                 description=description_of(built, unit, cache),
                 entries=[
-                    {"file": entry.path.resolve().as_posix(), "pointer": entry.pointer}
+                    {"file": derived.resolve(entry.path).as_posix(), "pointer": entry.pointer}
                     for entry in built.vocabulary.get(unit, ())
                 ],
                 sites=[
                     {
-                        "path": place.stated.site.path.resolve().as_posix(),
+                        "path": derived.resolve(place.stated.site.path).as_posix(),
                         "pointer": place.stated.site.pointer,
                         "kind": place.stated.kind,
                         "name": place.stated.name,
                         "component": place.component,
                         "role": place.role,
                     }
-                    for place in places_of(built, unit, cache)
+                    for place in places_of(built, unit, cache, _changed_in(derived))
                 ],
-                findings=[
-                    _finding(filed, sources.get(filed.file.resolve()), cache)
-                    for filed in revision.findings
-                    if located_on_unit(built, unit, filed.file, filed.diagnostic)
-                ],
+                findings=_listed(derived, unit_findings(built, unit, derived.findings), cache),
             ).model_dump(mode="json"),
         )
 
@@ -668,27 +823,27 @@ class Api:
         except UnitRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
-        stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
+        derived = self._derive(revision)
         try:
-            planned = previewed(plan.edits, stamps)
+            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
+            planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
             contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, planned)
+                revision=revision.number, changes=_planned_changes(revision, derived, planned)
             ).model_dump(mode="json"),
         )
 
     def _types(self, query: Query, body: bytes | None) -> Reply:
         revision = self._opened()
+        return self._memoised(revision, ("types",), lambda: self._types_of(revision))
+
+    def _types_of(self, revision: Revision) -> Reply:
         built = revision.index
         cache: dict[Path, Document] = {}
-        rows = (
-            ()
-            if built is None
-            else type_rows(built, [(f.file, f.diagnostic) for f in revision.findings], cache)
-        )
+        rows = () if built is None else type_rows(built, self._derive(revision).findings, cache)
         return Reply(
             200,
             contract.TypesReply(
@@ -715,18 +870,23 @@ class Api:
         if built is None or name not in built.types:
             return _undeclared(revision, name)
         cache: dict[Path, Document] = {}
+        # Every key below is read where the index recorded the type: none of a neighbour's
+        # (`type_in_place`), answered as a type no unchanged file declares until the analysis
+        # reads its file again.
+        if not type_in_place(built, name, cache):
+            return _undeclared(revision, name)
         site = built.types[name]
-        row = row_of(built, name, [(f.file, f.diagnostic) for f in revision.findings], cache)
+        derived = self._derive(revision)
+        row = row_of(built, name, derived.findings, cache)
         stated = fixed_by(built, name, cache)
         header = stated.get("header")
-        sources = {file.path.resolve(): file for file in revision.files}
         return Reply(
             200,
             contract.TypeReply(
                 revision=revision.number,
                 name=name,
                 kind=row.kind,
-                file=site.path.resolve().as_posix(),
+                file=derived.resolve(site.path).as_posix(),
                 pointer=site.pointer,
                 description=row.description,
                 header=None if header is None else json.loads(header),
@@ -738,7 +898,7 @@ class Api:
                 else [],
                 uses=[
                     {
-                        "path": use.site.path.resolve().as_posix(),
+                        "path": derived.resolve(use.site.path).as_posix(),
                         "pointer": use.site.pointer,
                         "kind": use.kind,
                         "name": use.name,
@@ -759,11 +919,7 @@ class Api:
                     }
                     for member in members_of(built, name, cache)
                 ],
-                findings=[
-                    _finding(filed, sources.get(filed.file.resolve()), cache)
-                    for filed in revision.findings
-                    if located_in_type(built, name, filed.file, filed.diagnostic)
-                ],
+                findings=_listed(derived, type_findings(built, name, derived.findings), cache),
             ).model_dump(mode="json"),
         )
 
@@ -795,27 +951,27 @@ class Api:
         except TypeRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
-        stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
+        derived = self._derive(revision)
         try:
-            planned = previewed(plan.edits, stamps)
+            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
+            planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
             contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, planned)
+                revision=revision.number, changes=_planned_changes(revision, derived, planned)
             ).model_dump(mode="json"),
         )
 
     def _shared(self, query: Query, body: bytes | None) -> Reply:
         revision = self._opened()
+        return self._memoised(revision, ("shared",), lambda: self._shared_of(revision))
+
+    def _shared_of(self, revision: Revision) -> Reply:
         built = revision.index
         cache: dict[Path, Document] = {}
-        rows = (
-            ()
-            if built is None
-            else shared_rows(built, [(f.file, f.diagnostic) for f in revision.findings], cache)
-        )
+        rows = () if built is None else shared_rows(built, self._derive(revision).findings, cache)
         return Reply(
             200,
             contract.SharedReply(
@@ -842,7 +998,13 @@ class Api:
         if built is None or name not in built.constants:
             return _undeclared(revision, name)
         cache: dict[Path, Document] = {}
+        # Its keys are read where the index recorded the entry: none of a neighbour's
+        # (`entry_in_place`), answered as an entry no unchanged file declares until the analysis
+        # reads its file again.
+        if not entry_in_place(CONSTANTS, built, name, cache):
+            return _undeclared(revision, name)
         site = built.constants[name]
+        derived = self._derive(revision)
         # The whole entry's display texts in one read, through the descriptor: `value` as the json
         # text its file spells and `description` as the string it holds, which is what
         # `CONSTANTS.strings` says of each. The panel names its keys because the reply does; a
@@ -855,10 +1017,10 @@ class Api:
                 name=name,
                 value=texts["value"],
                 description=texts["description"],
-                file=site.path.resolve().as_posix(),
+                file=derived.resolve(site.path).as_posix(),
                 pointer=site.pointer,
-                uses=_entry_uses(CONSTANTS, built, name, cache),
-                findings=_entry_findings(CONSTANTS, revision, built, name, cache),
+                uses=_entry_uses(CONSTANTS, derived, built, name, cache),
+                findings=_entry_findings(CONSTANTS, derived, built, name, cache),
             ).model_dump(mode="json"),
         )
 
@@ -871,7 +1033,11 @@ class Api:
         if built is None or name not in built.sections:
             return _undeclared(revision, name)
         cache: dict[Path, Document] = {}
+        # As a constant's: none of a neighbour's keys under this entry's name.
+        if not entry_in_place(SECTIONS, built, name, cache):
+            return _undeclared(revision, name)
         site = built.sections[name]
+        derived = self._derive(revision)
         texts = shown(SECTIONS, built, name, cache)
         return Reply(
             200,
@@ -881,10 +1047,10 @@ class Api:
                 access=texts["access"],
                 alignment=texts["alignment"],
                 description=texts["description"],
-                file=site.path.resolve().as_posix(),
+                file=derived.resolve(site.path).as_posix(),
                 pointer=site.pointer,
-                uses=_entry_uses(SECTIONS, built, name, cache),
-                findings=_entry_findings(SECTIONS, revision, built, name, cache),
+                uses=_entry_uses(SECTIONS, derived, built, name, cache),
+                findings=_entry_findings(SECTIONS, derived, built, name, cache),
             ).model_dump(mode="json"),
         )
 
@@ -897,7 +1063,11 @@ class Api:
         if built is None or name not in built.rasters:
             return _undeclared(revision, name)
         cache: dict[Path, Document] = {}
+        # As a constant's: none of a neighbour's keys under this entry's name.
+        if not entry_in_place(RASTERS, built, name, cache):
+            return _undeclared(revision, name)
         site = built.rasters[name]
+        derived = self._derive(revision)
         texts = shown(RASTERS, built, name, cache)
         return Reply(
             200,
@@ -907,18 +1077,30 @@ class Api:
                 event=texts["event"],
                 cycle=texts["cycle"],
                 description=texts["description"],
-                file=site.path.resolve().as_posix(),
+                file=derived.resolve(site.path).as_posix(),
                 pointer=site.pointer,
-                uses=_entry_uses(RASTERS, built, name, cache),
-                findings=_entry_findings(RASTERS, revision, built, name, cache),
+                uses=_entry_uses(RASTERS, derived, built, name, cache),
+                findings=_entry_findings(RASTERS, derived, built, name, cache),
             ).model_dump(mode="json"),
         )
 
     def _files(self, query: Query, body: bytes | None) -> Reply:
         """The root's includes, each entry as the loader's own rule reads it, and what each
         brings - the files a row joins ``State.files`` on, and the findings at the entry
-        itself, which a row naming nothing has no file to carry."""
+        itself, which a row naming nothing has no file to carry.
+
+        Answered anew each time, never kept (:meth:`_memoised`): the includes are expanded on
+        disk as it stands, which no revision records - a file appearing where a pattern matches
+        starts no analysis. At a cost while an analysis runs: over a generated project of 100,000
+        declarations, whose one pattern reaches 1,681 files, the request took 1,872 to 2,602 ms
+        asked halfway through an analysis and 24 ms otherwise, 141 ms the first time; listing
+        that directory alone took 1,028 to 1,487 ms and under a millisecond - three askings
+        each, on the Linux development PC. Kept for a revision and the session's edits instead,
+        it would list a file saved where a pattern matches only once something else changed,
+        and still be made again after every edit - when the Files tab asks for it again, its
+        own Apply written."""
         revision = self._opened()
+        at_entry = self._derive(revision).at_entry
         cache: dict[Path, Document] = {}
         return Reply(
             200,
@@ -932,7 +1114,7 @@ class Api:
                         "names": entry.names,
                         "key": entry.key.as_posix(),
                         "files": [file.as_posix() for file in entry.files],
-                        "findings": _at_entry(revision, entry.index),
+                        "findings": at_entry.get(entry.index, 0),
                     }
                     for entry in included_entries(revision.project, cache)
                 ],
@@ -974,23 +1156,27 @@ class Api:
             )
         component = _single(query.get("component")) or None
         cache: dict[Path, Document] = {}
+
+        def refuse(paths: Iterable[Path]) -> None:
+            self._refuse_unanalysed(revision, paths)
+
         try:
-            plan = _files_plan_of(action, revision, given, component, cache)
+            plan = _files_plan_of(action, revision, given, component, cache, refuse)
         except FileRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
+        derived = self._derive(revision)
         try:
-            made = previewed(plan.edits, stamps)
+            made = previewed(plan.edits, derived.stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
             contract.FilesPlanReply(
                 revision=revision.number,
-                changes=_planned_changes(revision, made),
+                changes=_planned_changes(revision, derived, made),
                 unjudged=plan.unjudged,
                 brings=[
                     {"file": path.as_posix(), "check": found.check, "message": found.message}
@@ -1066,15 +1252,16 @@ class Api:
         except SharedRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
-        stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
+        derived = self._derive(revision)
         try:
-            made = previewed(plan.edits, stamps)
+            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
+            made = previewed(plan.edits, derived.stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
             contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, made)
+                revision=revision.number, changes=_planned_changes(revision, derived, made)
             ).model_dump(mode="json"),
         )
 
@@ -1106,15 +1293,16 @@ class Api:
         if settlement.unsettled:
             code, message = refusal(settlement.unsettled[0], name, key)
             return _error(409, code, message)
-        stamps = {file.path.resolve(): file.fingerprint for file in revision.files}
+        derived = self._derive(revision)
         try:
-            planned = preview(settlement, key, stamps)
+            self._refuse_unanalysed(revision, (change.site.path for change in settlement.changes))
+            planned = preview(settlement, key, derived.stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
             contract.SettleReply(
-                revision=revision.number, changes=_planned_changes(revision, planned)
+                revision=revision.number, changes=_planned_changes(revision, derived, planned)
             ).model_dump(mode="json"),
         )
 
@@ -1125,11 +1313,11 @@ class Api:
         if not file or not check or pointer is None:
             return _error(400, "bad-request", "fix takes ?file=, ?pointer= and ?check=")
         wanted = Path(file).resolve()
-        source = next((f for f in revision.files if f.path.resolve() == wanted), None)
+        derived = self._derive(revision)
+        source = next((f for f in revision.files if derived.resolve(f.path) == wanted), None)
         if source is None:
             return _error(404, "not-found", f"{file} is not a file of the open project")
         cache: dict[Path, Document] = {}
-        stamps = {f.path.resolve(): f.fingerprint for f in revision.files}
         built = revision.index
         if built is None:
             # No index, no declarations - a revision whose project did not load has nothing to
@@ -1138,10 +1326,13 @@ class Api:
         offered = []
         for fix in fixes_for(check, source.path, pointer, cache, built):
             try:
-                made = [planned(edit.path, edit.operations, stamps) for edit in fix.changes]
+                self._refuse_unanalysed(revision, (edit.path for edit in fix.changes))
+                made = [planned(edit.path, edit.operations, derived.stamps) for edit in fix.changes]
             except EditError as refused:
                 return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-            offered.append({"title": fix.title, "changes": _planned_changes(revision, made)})
+            offered.append(
+                {"title": fix.title, "changes": _planned_changes(revision, derived, made)}
+            )
         return Reply(
             200,
             contract.FixReply(revision=revision.number, fixes=offered).model_dump(mode="json"),
@@ -1218,15 +1409,16 @@ class Api:
         except DeclarationRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
-        stamps = {entry.path.resolve(): entry.fingerprint for entry in revision.files}
+        derived = self._derive(revision)
         try:
-            planned = previewed(plan.edits, stamps)
+            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
+            planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
             contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, planned)
+                revision=revision.number, changes=_planned_changes(revision, derived, planned)
             ).model_dump(mode="json"),
         )
 
@@ -1248,7 +1440,7 @@ class Api:
             if refused.code == "not-found":
                 return _error(404, refused.code, refused.message)
             return _error(409, refused.code, refused.message)
-        sources = {file.path.resolve(): file for file in revision.files}
+        derived = self._derive(revision)
         cache: dict[Path, Document] = {}
         return Reply(
             200,
@@ -1276,14 +1468,7 @@ class Api:
                 ],
                 owner=grid.owner,
                 file=grid.file,
-                findings=[
-                    _finding(filed, sources.get(filed.file.resolve()), cache)
-                    for filed in revision.findings
-                    if grid.pointer is not None
-                    and filed.file.resolve().as_posix() == grid.file
-                    and filed.diagnostic.location is not None
-                    and filed.diagnostic.location.pointer == f"{grid.pointer}.definition.init"
-                ],
+                findings=_listed(derived, _grid_findings(derived, grid), cache),
             ).model_dump(mode="json"),
         )
 
@@ -1308,15 +1493,16 @@ class Api:
             if refused.code == "not-found":
                 return _error(404, refused.code, refused.message)
             return _error(409, refused.code, refused.message)
-        stamps = {entry.path.resolve(): entry.fingerprint for entry in revision.files}
+        derived = self._derive(revision)
         try:
-            planned = previewed(plan.edits, stamps)
+            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
+            planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
             contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, planned)
+                revision=revision.number, changes=_planned_changes(revision, derived, planned)
             ).model_dump(mode="json"),
         )
 
@@ -1338,15 +1524,16 @@ class Api:
             if refused.code == "not-found":
                 return _error(404, refused.code, refused.message)
             return _error(409, refused.code, refused.message)
-        stamps = {entry.path.resolve(): entry.fingerprint for entry in revision.files}
+        derived = self._derive(revision)
         try:
-            planned = previewed(plan.edits, stamps)
+            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
+            planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
             contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, planned)
+                revision=revision.number, changes=_planned_changes(revision, derived, planned)
             ).model_dump(mode="json"),
         )
 
@@ -1361,7 +1548,7 @@ class Api:
             result = compared(revision, Path(path), self.session.root, self._compare_cache)
         except BaselineRefusedError as refused:
             return _error(400, "bad-request", str(refused))
-        sources = {file.path.resolve(): file for file in revision.files}
+        derived = self._derive(revision)
         cache: dict[Path, Document] = {}
         findings = sorted(result.findings, key=lambda filed: filed.file.as_posix())
         baseline_findings = sorted(
@@ -1373,7 +1560,8 @@ class Api:
                 revision=revision.number,
                 verdict=result.verdict,
                 findings=[
-                    _finding(filed, sources.get(filed.file.resolve()), cache) for filed in findings
+                    _finding(filed, derived.files.get(derived.resolve(filed.file)), cache)
+                    for filed in findings
                 ],
                 # Never a source for one of these, whatever file it resolves to: a baseline given
                 # as a project description can share files, ids and even paths with the open
@@ -1393,17 +1581,110 @@ class Api:
         )
 
     def _opened(self) -> Revision:
-        revision = self.session.revision
-        if revision is None:
-            raise NoProjectError("no project is open")
-        return revision
+        """The open project's newest revision, or the refusal :meth:`handle` answers: no project
+        open, or none of its analyses landed yet."""
+        return self.session.current()
+
+    def _refuse_unanalysed(self, revision: Revision, paths: Iterable[Path]) -> None:
+        """Refuse a plan changing a file an edit wrote since ``revision``'s analysis began.
+
+        Computed all the same, it would carry the fingerprint the analysis read that file at, and
+        the edit engine would refuse its Apply as stale; and where it points into the file comes
+        from an index of bytes no longer on disk. A plan changing only files nobody wrote since is
+        made against ``revision`` at once, never waiting for the analysis (spec §5)."""
+        waiting = self.session.unanalysed(revision)
+        derived = self._derive(revision)
+        named: list[str] = []
+        for path in paths:
+            resolved = derived.resolve(path)
+            if resolved in waiting and resolved.name not in named:
+                named.append(resolved.name)
+        if named:
+            raise EditError(
+                ANALYSING,
+                f"an edit that wrote {', '.join(named)} has not been analysed yet, "
+                "so this change can be planned once it has",
+            )
+
+    def _derive(self, revision: Revision) -> Derived:
+        """What the api derives from ``revision`` (:func:`ddd.gui.derived.derived`): the one kept
+        where it is that revision's, else derived now and kept in place of an older revision's,
+        the answers :meth:`_memoised` kept beside the last one emptied with it.
+
+        Once per revision: derived behind a lock of its own, never the session's, so that a
+        request of a revision another is deriving waits for that derivation and answers from it,
+        rather than deriving it again beside it - the page's first requests of a revision each
+        derived it, six at once each the slower for the five beside it. A request still holding a
+        revision older than the one kept derives its own and keeps nothing, so that the newer
+        revision's derivation and kept answers stay. Each answer is made from the revision its
+        own request holds."""
+        kept = self._derived
+        if kept is not None and kept.number == revision.number:
+            return kept
+        with self._deriving:
+            kept = self._derived
+            if kept is not None and kept.number == revision.number:
+                return kept
+            made = derived(revision)
+            if kept is None or kept.number < revision.number:
+                self._derived = made
+                self._memo = OrderedDict()
+            return made
+
+    def _memoised(
+        self, revision: Revision, key: tuple[object, ...], make: Callable[[], Reply]
+    ) -> Reply:
+        """The answer ``key`` names - ``("graph",)``, ``("types",)`` - for ``revision``, made by
+        ``make`` once and kept beside what :meth:`_derive` keeps for the newest revision, emptied
+        with it.
+
+        Kept only where all it reads is the revision and the files the revision read: a save to
+        one of those is what the poll notices, making a new revision, so the revision's number
+        says when the answer has gone stale. The Files and the Units tabs are not kept for that
+        reason: both expand the includes on disk as it stands, which no revision records, and a
+        file appearing where a pattern matches starts no analysis.
+
+        Keyed by the edits the session has written as well as by the revision: an edit is written
+        at once and answered then, its analysis following, so an answer reading its files as they
+        stand - a type's description - changes before the revision does, which the count of
+        edits covers, an undo's as well, each taking a number of its own.
+
+        At most :data:`MEMO` answers are kept, the one kept longest dropped first: a reader of a
+        findings-heavy project scrolling through its Findings tab asks a page per hundred
+        findings, every one of them a new answer.
+
+        Not guarded: requests are answered on threads of their own. Two requests of one revision
+        that both find nothing kept both make it, and an answer made for a revision a newer one
+        has since replaced can be kept beside the newer revision's - under its own revision's
+        number, so it answers for no other, and goes at the next derivation. Each answer stays
+        what it would be; only work is repeated, where a lock around the making would hold every
+        other request for a kept answer behind the one being made. Dropping is one call no other
+        thread interrupts, :meth:`collections.OrderedDict.popitem`: requests dropping at once can
+        leave fewer answers kept than the bound, and never fail.
+        """
+        self._derive(revision)
+        keyed = (key, revision.number, self.session.edits)
+        kept = self._memo.get(keyed)
+        if kept is None:
+            kept = make()
+            memo = self._memo
+            memo[keyed] = kept
+            while len(memo) > MEMO:
+                memo.popitem(last=False)
+        return kept
 
     def _session_body(self) -> dict[str, Any]:
-        revision = self.session.revision
+        """The session's answer: the project open named from its description as it stands, so
+        that a project being analysed is named at once; the builds its newest revision ran,
+        none before its first.
+
+        One snapshot for both, so that the project and the revision are read at one moment."""
+        snapshot = self.session.snapshot()
         project = None
-        if revision is not None:
-            name = next((f.name for f in revision.files if f.path == revision.project), None)
-            project = {"path": revision.project.as_posix(), "name": name}
+        if snapshot.project is not None:
+            name = _name_in(_read_json(snapshot.project), "project")
+            project = {"path": snapshot.project.as_posix(), "name": name}
+        revision = snapshot.revision
         return contract.SessionInfo(
             version=__version__,
             preview=True,
@@ -1425,6 +1706,7 @@ _ROUTES: Final[dict[str, dict[str, Answer]]] = {
     "/api/projects": {"GET": Api._projects},
     "/api/open": {"POST": Api._open},
     "/api/state": {"GET": Api._state},
+    "/api/findings": {"GET": Api._findings},
     "/api/file": {"GET": Api._file},
     "/api/dictionary": {"GET": Api._dictionary},
     "/api/graph": {"GET": Api._graph},
@@ -1553,18 +1835,6 @@ def _undeclared(revision: Revision, name: str) -> Reply:
     return _error(404, "not-found", f"'{name}' is not declared in the open project")
 
 
-def _at_entry(revision: Revision, index: int) -> int:
-    """How many of the revision's findings, of every severity, are filed on the project
-    description at exactly ``project.includes[index]``.
-
-    Compared as a whole :class:`~ddd.diagnostics.Location`, the description's own path with the
-    entry's pointer, so that a sub-project's finding at its own entry of that index is not the
-    root's, and a finding placed nowhere - filed on the description, with no location - is no
-    entry's either."""
-    at = Location(revision.project, f"project.includes[{index}]")
-    return sum(1 for filed in revision.findings if filed.diagnostic.location == at)
-
-
 def _appeared_since(revision: Revision) -> list[str]:
     """The name of every file an entry of the tree reaches now that the revision never read, each
     once: description by description in the order ``revision.files`` has them, which is by path,
@@ -1599,6 +1869,18 @@ def _appeared_since(revision: Revision) -> list[str]:
                 read.add(reached)
                 appeared.append(reached.name)
     return appeared
+
+
+def _changed_in(derived: Derived) -> Callable[[Path], bool]:
+    """Whether a file no longer reads as the revision ``derived`` came from read it: one the
+    revision did not read at all, or one :func:`_changed_since` finds changed - read afresh and
+    fingerprinted, against the revision's own fingerprint of it."""
+
+    def changed(path: Path) -> bool:
+        source = derived.files.get(derived.resolve(path))
+        return source is None or _changed_since(source)
+
+    return changed
 
 
 def _changed_since(file: SourceFile) -> bool:
@@ -1805,13 +2087,17 @@ def _json_texts(vocabulary: Vocabulary, given: Mapping[str, str], raw: str | Non
 
 
 def _entry_uses(
-    vocabulary: Vocabulary, built: Index, name: str, cache: dict[Path, Document]
+    vocabulary: Vocabulary,
+    derived: Derived,
+    built: Index,
+    name: str,
+    cache: dict[Path, Document],
 ) -> list[dict[str, Any]]:
     """Every shape naming that entry of ``vocabulary``, as the page reads one: a constant's
     dimensions and axis sizes, a section's placements, whichever the descriptor reads."""
     return [
         {
-            "path": use.site.path.resolve().as_posix(),
+            "path": derived.resolve(use.site.path).as_posix(),
             "pointer": use.site.pointer,
             "kind": use.kind,
             "name": use.name,
@@ -1823,18 +2109,39 @@ def _entry_uses(
 
 def _entry_findings(
     vocabulary: Vocabulary,
-    revision: Revision,
+    derived: Derived,
     built: Index,
     name: str,
     cache: dict[Path, Document],
 ) -> list[dict[str, Any]]:
     """Every finding of the revision that entry of ``vocabulary`` owns: filed inside its own
     record, or at a shape naming it - a constant's dimension, a section's placement."""
-    sources = {file.path.resolve(): file for file in revision.files}
+    return _listed(derived, entry_findings(vocabulary, built, name, derived.findings), cache)
+
+
+def _listed(
+    derived: Derived, found: Iterable[Pair], cache: dict[Path, Document]
+) -> list[dict[str, Any]]:
+    """Findings of the revision as a panel lists them, in the order given, each with where it
+    leads: its file's description looked up among the revision's own."""
     return [
-        _finding(filed, sources.get(filed.file.resolve()), cache)
-        for filed in revision.findings
-        if located_on_entry(vocabulary, built, name, filed.file, filed.diagnostic)
+        _finding(Filed(file, diagnostic), derived.files.get(derived.resolve(file)), cache)
+        for file, diagnostic in found
+    ]
+
+
+def _grid_findings(derived: Derived, grid: Grid) -> list[Pair]:
+    """The findings about a grid's own ``init``, filed at its declaration's ``definition.init``:
+    asked only of the findings on the file the grid is read from, which is resolved already.
+    None for a grid that not exactly one declaration produces, which has no file and no place of
+    its own to hold one."""
+    if grid.pointer is None or grid.file is None:
+        return []
+    at = f"{grid.pointer}.definition.init"
+    return [
+        (file, found)
+        for file, found in derived.findings.on(Path(grid.file))
+        if found.location is not None and found.location.pointer == at
     ]
 
 
@@ -1855,17 +2162,25 @@ def _files_plan_of(
     given: Mapping[str, str],
     component: str | None,
     cache: dict[Path, Document],
+    refuse: Callable[[Iterable[Path]], None],
 ) -> _FilesPlanned:
     """The plan ``action`` names, over the parameters :data:`FILE_PLANS` says it takes. A row's
     key is passed on as it arrived: :func:`ddd.file_plans.remove_plan` resolves it to compare, as
     :func:`ddd.file_plans.included_entries` made it, and names it as it was sent. Resolved here
     instead, a key ending in a link would be named by what the link leads to, which may lie
-    outside what is served."""
+    outside what is served.
+
+    ``refuse`` is asked of the files each plan's edits change, once the plan's own refusals have
+    been asked and before anything is judged (:meth:`Api._refuse_unanalysed`): judged, a
+    description an edit wrote and no analysis has read yet would be refused ``stale`` instead,
+    for the very write the reader made."""
     if action == "create":
-        return _FilesPlanned(_creation(revision, given["kind"], given["name"], component, cache))
+        edits = _creation(revision, given["kind"], given["name"], component, cache)
+        refuse(edit.path for edit in edits)
+        return _FilesPlanned(edits)
     if action == "add":
-        return _addition(revision, given["path"], cache)
-    return _removal(revision, Path(given["path"]), cache)
+        return _addition(revision, given["path"], cache, refuse)
+    return _removal(revision, Path(given["path"]), cache, refuse)
 
 
 def _creation(
@@ -1908,7 +2223,12 @@ def _creation(
     )
 
 
-def _addition(revision: Revision, entry: str, cache: dict[Path, Document]) -> _FilesPlanned:
+def _addition(
+    revision: Revision,
+    entry: str,
+    cache: dict[Path, Document],
+    refuse: Callable[[Iterable[Path]], None],
+) -> _FilesPlanned:
     """An existing file appended to the includes, and the errors it is counted to bring -
     previewed, never refused for them.
 
@@ -1917,7 +2237,8 @@ def _addition(revision: Revision, entry: str, cache: dict[Path, Document]) -> _F
     then :func:`ddd.file_plans.add_plan`'s own, which the disk and the description answer;
     then a file :func:`ddd.gui.session.kind_of` - the rule ``State.files`` shows a kind by -
     finds no kind of description in: a python file, which a project names among its plugins,
-    or one the loader could not read as a description of any kind.
+    or one the loader could not read as a description of any kind; then by ``refuse``, a
+    description an edit wrote that no analysis has read yet.
 
     Judged where every run of the revision analysed the project, and otherwise answered with
     the sentence saying why it could not be, true of both ways a run stops short: its read
@@ -1955,6 +2276,7 @@ def _addition(revision: Revision, entry: str, cache: dict[Path, Document]) -> _F
             f"top level holds none of {', '.join(DESCRIPTION_KINDS[:-1])} and "
             f"{DESCRIPTION_KINDS[-1]}",
         )
+    refuse(edit.path for edit in plan.edits)
     if not revision.analysed:
         return _FilesPlanned(
             plan.edits,
@@ -1964,12 +2286,18 @@ def _addition(revision: Revision, entry: str, cache: dict[Path, Document]) -> _F
     return _FilesPlanned(plan.edits, brings=_judged(revision, plan.includes))
 
 
-def _removal(revision: Revision, path: Path, cache: dict[Path, Document]) -> _FilesPlanned:
+def _removal(
+    revision: Revision,
+    path: Path,
+    cache: dict[Path, Document],
+    refuse: Callable[[Iterable[Path]], None],
+) -> _FilesPlanned:
     """Every entry whose key ``path`` resolves to taken out, refused where the project without
     them would have an error more than it has now at its place.
 
-    :func:`ddd.file_plans.remove_plan`'s own refusals first. Then judged only where every run of
-    the revision analysed the project: a project any run of which stopped at its read, or at a
+    :func:`ddd.file_plans.remove_plan`'s own refusals first, then ``refuse``'s, a description an
+    edit wrote that no analysis has read yet. Then judged only where every run of the revision
+    analysed the project: a project any run of which stopped at its read, or at a
     plugin raising, has no complete "now" to compare with, and judged, removing the very file
     that stopped it would be refused for errors of an analysis the reader never saw. It is
     allowed then, with the sentence saying why it was not judged, true of both ways a run stops
@@ -1988,6 +2316,7 @@ def _removal(revision: Revision, path: Path, cache: dict[Path, Document]) -> _Fi
     link to a directory, a path no entry spells."""
     plan = remove_plan(revision.project, path, cache)
     removing = plan.removed[0]
+    refuse(edit.path for edit in plan.edits)
     if not revision.analysed:
         return _FilesPlanned(
             plan.edits,
@@ -2072,7 +2401,9 @@ def _declaration_plan_of(
     return declare_object(built, file, given["scope"], definition, cache)
 
 
-def _planned_changes(revision: Revision, planned: Sequence[Planned]) -> list[dict[str, Any]]:
+def _planned_changes(
+    revision: Revision, derived: Derived, planned: Sequence[Planned]
+) -> list[dict[str, Any]]:
     """A preview's files as the page reads them: the edit of each - posted to ``POST /api/edit``
     as it stands - beside the lines it changes.
 
@@ -2087,10 +2418,10 @@ def _planned_changes(revision: Revision, planned: Sequence[Planned]) -> list[dic
     made since can have written a file outside, being resolved through :func:`_source`.
     """
     for entry in planned:
-        _served(revision, entry.path.resolve())
+        _served(revision, derived.resolve(entry.path))
     return [
         {
-            "file": entry.path.resolve().as_posix(),
+            "file": derived.resolve(entry.path).as_posix(),
             "fingerprint": entry.fingerprint,
             "operations": [
                 {"op": o.op, "pointer": o.pointer, "raw": o.raw} for o in entry.operations

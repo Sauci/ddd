@@ -11,6 +11,8 @@ import { baseName, consequence, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
+import { also, Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
+import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
 import { UnitPicker } from "./UnitPicker";
 
@@ -23,8 +25,11 @@ export interface Offer {
   plan: PlanReply | null;
   /** Why the plan was refused, or why applying it was; `null` when neither was. */
   refusal: string | null;
-  /** The plan shown is an earlier one's, kept on screen while this one is asked for: a
-   * description's, which changes with every key typed. It cannot be applied. */
+  /** Whether `plan` is `null` because there is none to trust yet: a description's own debounced
+   * request (spec §6) has not yet caught up with what the fields now say, or the server has not
+   * yet answered the one that has (`planShown`, `lib/typing.ts` - never an earlier request's
+   * answer, kept on screen in its place). `plan` is drawn, and Apply offered, only once this is
+   * `false`. */
   pending: boolean;
 }
 
@@ -61,6 +66,9 @@ export interface UnitPanelViewProps {
   /** Applying, or the server stopped: nothing can be changed or applied. */
   busy: boolean;
   onClose: () => void;
+  /** Whether the findings may be about to change (spec 6): the panel says so where it lists them,
+   * also while it lists none - an edit may be about to bring the first. */
+  updating?: boolean;
 }
 
 /** One unit's panel (spec 5.2), drawn from what the api answered: a picture of its props. */
@@ -89,6 +97,7 @@ export function UnitPanelView(props: UnitPanelViewProps) {
   const files = (plan: PlanReply) => consequence(plan.changes);
   return (
     <Panel title={unit.unit} meta={unitMeta(unit, reply, hasVocabulary)} onClose={props.onClose}>
+      <UpdatingNote updating={props.updating === true} />
       {reply.findings.length > 0 && (
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(reply.findings)).map(([finding, key]) => (
@@ -103,24 +112,48 @@ export function UnitPanelView(props: UnitPanelViewProps) {
       {reply.sites.length === 0 ? (
         <p className="quiet">Nothing in the project states {unit.unit}.</p>
       ) : (
-        <table className="panel-declarations">
-          <thead>
-            <tr>
-              <th scope="col">Where</th>
-              <th scope="col">File</th>
-              <th scope="col">What</th>
-            </tr>
-          </thead>
-          <tbody>
-            {reply.sites.map((site) => (
-              <tr key={`${site.path} ${site.pointer}`}>
-                <td>{site.name}</td>
-                <td className="quiet">{baseName(site.path)}</td>
-                <td>{placeRole(site)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        // Ruling T9-1: a unit stated 12,500 times over (100,000 declarations, one unit) makes
+        // this table as long as the brief's own seven, so it is virtualised the same way.
+        // `.panel-declarations` beside `.long`, for this table alone: it draws in a panel
+        // already, the one place a plain `<table>` of the same class once stood, and keeps that
+        // look - its header's own size, the margin above the table - rather than `.long`'s own,
+        // smaller, unmargined one (fix round 1, Minor 5).
+        //
+        // Widths measured in Chrome (fix round 3) on scratch copies of examples/demo, of a
+        // generated project of 10,000 declarations and of examples/vocabulary. The table draws only
+        // inside this panel, whose box is 472px in a 1280px window and 456px when the table beside
+        // the panel measures 535px. What is fixed at 140px: its words are `placeRole`'s, "structure
+        // member" the widest at 136px. File and Where share the rest, 1fr each, and a column never
+        // goes below its `minWidth`: File keeps 180px, which holds the demo's widest file name
+        // (user_interface.ddd.json, 169px), and Where, whose names are short - the demo's widest is
+        // ParameterA at 96px, the generated project's C00000_O0005 at 115px, examples/vocabulary's
+        // ManifoldPressure at 132px - takes what is left, 152px in the 472px box and 136px in the
+        // 456px one, above a floor of 125px. A name longer than its column - ManifoldPressure is
+        // about 4px short of the 136px - is cut with an ellipsis, never wrapped; Windows' own font
+        // was not measured. The floors sum to 445px: the panel's box holds them down to a window
+        // about 1043px wide - 1089px where a browser draws the box's own vertical scrollbar and the
+        // page's, 15px each - and narrower, until the panel moves under the table it stands beside
+        // at 900px and takes the window's whole width, the box scrolls sideways.
+        <LongTable aria-label={`Where ${unit.unit} is stated`} className="panel-declarations">
+          <TableHeader>
+            <Column isRowHeader width="1fr" minWidth={125}>
+              Where
+            </Column>
+            <Column width="1fr" minWidth={180}>
+              File
+            </Column>
+            <Column width={140}>What</Column>
+          </TableHeader>
+          <TableBody items={reply.sites}>
+            {(site) => (
+              <Row id={`${site.path} ${site.pointer}`}>
+                <Cell>{site.name}</Cell>
+                <Cell className={also("quiet")}>{baseName(site.path)}</Cell>
+                <Cell>{placeRole(site)}</Cell>
+              </Row>
+            )}
+          </TableBody>
+        </LongTable>
       )}
       {offered.describe && (
         <section className="panel-offer" aria-label="Description">

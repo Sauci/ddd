@@ -33,6 +33,7 @@ function row(fields: Partial<CompareRow> = {}): CompareRow {
 /** The Findings tab's own fixture: the open project as the session published it. */
 const STATE: State = {
   revision: 7,
+  version: 14,
   project: "C:/work/demo/demo.ddd.json",
   files: [
     {
@@ -44,8 +45,10 @@ const STATE: State = {
       findings: { error: 0, warning: 0, info: 0 },
     },
   ],
-  findings: [],
+  counts: { error: 0, warning: 0, info: 0 },
   undoable: null,
+  analysing: false,
+  edits: 0,
 };
 
 test("a baseline's own finding is answered before the state is ever asked", () => {

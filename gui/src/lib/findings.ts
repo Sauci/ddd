@@ -1,4 +1,12 @@
-import type { Changes, Finding, FixReply, State } from "../api/types";
+import type {
+  Changes,
+  Finding,
+  FindingCounts,
+  FindingsReply,
+  FixReply,
+  ListedFinding,
+  State,
+} from "../api/types";
 import { hrefOf, type Route } from "./route";
 import { baseName } from "./units";
 
@@ -49,25 +57,13 @@ export function distinctFindings(findings: readonly Finding[]): Finding[] {
   });
 }
 
-/** One row of the Findings tab: a finding, a key stable in the list, and the file's own name. */
+/** One row of a table of findings drawn whole, as the Compare tab draws its own: a finding, a key
+ * stable in the list, and what its File column says - the file's own name, or for a finding the
+ * baseline itself reports, "the baseline's" before it (`compareRows`). */
 export interface FindingRow {
   finding: Finding;
   key: string;
   file: string;
-}
-
-/** Worst first, and within a severity in the order they were filed - which groups them by file
- * for a revision's own (`GET /api/state` answers in that order), and by file for a comparison's
- * own too (`GET /api/compare` sorts its own the same way). A stable sort is what keeps the second
- * half of that sentence true. `ignore` never reaches this list - that severity means a finding is
- * not reported at all - but `Record` still needs it named to index by severity. Takes the list
- * itself rather than a `State`, so a comparison's `CompareReply.findings` - which is not one -
- * files into the very same rows the Findings tab does. */
-export function findingRows(findings: readonly Finding[]): FindingRow[] {
-  const rank: Record<Finding["severity"], number> = { error: 0, warning: 1, info: 2, ignore: 3 };
-  return keyedFindings(findings)
-    .map(([finding, key]) => ({ finding, key, file: baseName(finding.file) }))
-    .sort((one, other) => rank[one.finding.severity] - rank[other.finding.severity]);
 }
 
 /** Each severity's word, singular then plural, and the noun `findingCounts` says it under. */
@@ -75,18 +71,74 @@ const COUNTED = [
   ["error", "error", "errors"],
   ["warning", "warning", "warnings"],
   ["info", "note", "notes"],
-] as const satisfies readonly [Finding["severity"], string, string][];
+] as const satisfies readonly [keyof FindingCounts, string, string][];
 
-/** The tab's line above the table. */
-export function findingCounts(findings: readonly Finding[]): string {
-  if (findings.length === 0) return "Nothing to report";
-  const of = (severity: Finding["severity"]) =>
-    findings.filter((finding) => finding.severity === severity).length;
-  const parts = COUNTED.map(([severity, one, many]) => [of(severity), one, many] as const)
-    .filter(([count]) => count > 0)
-    .map(([count, one, many]) => `${count} ${count === 1 ? one : many}`);
-  const total = `${findings.length} finding${findings.length === 1 ? "" : "s"}`;
-  return `${total} · ${parts.join(", ")}`;
+/** How many findings the counts count, of every severity together. */
+export function findingsTotal(counts: FindingCounts): number {
+  return counts.error + counts.warning + counts.info;
+}
+
+/** How many findings of a list there are of each severity: what the Compare tab counts its own
+ * reply's list by, as the state counts a revision's. One at `ignore` - which the server never
+ * reports - is counted under none. */
+export function countsOf(findings: readonly Finding[]): FindingCounts {
+  const counts = { error: 0, warning: 0, info: 0 };
+  for (const finding of findings) {
+    if (finding.severity !== "ignore") counts[finding.severity] += 1;
+  }
+  return counts;
+}
+
+/** How a line counting findings ends while they may be about to change (spec 6): an edit is
+ * waiting for its analysis, or an analysis runs. */
+const UPDATING = " · updating";
+
+/** A count and its noun, singular for one and plural otherwise - none included. */
+function counted(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+/** The line above a table of findings, from how many there are of each severity: the Findings
+ * tab's from the state's counts, the Compare tab's from its own list's. Where `updating` - the
+ * counts may be about to change - it ends by saying so; the Compare tab's, counting a reply of its
+ * own rather than the revision, never does. */
+export function findingCounts(counts: FindingCounts, updating: boolean): string {
+  const total = findingsTotal(counts);
+  const parts = COUNTED.filter(([severity]) => counts[severity] > 0).map(([severity, one, many]) =>
+    counted(counts[severity], one, many),
+  );
+  const line =
+    total === 0
+      ? "Nothing to report"
+      : `${counted(total, "finding", "findings")} · ${parts.join(", ")}`;
+  return updating ? `${line}${UPDATING}` : line;
+}
+
+/** The Table tab's line above its components: the project's errors and its warnings, each counted
+ * even at none, as the table's own two columns count them; and, where `updating`, the same ending
+ * as `findingCounts`'. */
+export function tableLine(counts: FindingCounts, updating: boolean): string {
+  const errors = counted(counts.error, "error", "errors");
+  const warnings = counted(counts.warning, "warning", "warnings");
+  return updating ? `${errors}, ${warnings}${UPDATING}` : `${errors}, ${warnings}`;
+}
+
+/** What the Findings tab keeps as its selected finding once `reply` - the findings of its file and
+ * its check, asked of the newest revision - has come: the reply's own report of it, its notes and
+ * its route that revision's, kept as the selection so that while the next revision's reply is
+ * asked for the panel goes on showing it, never the finding as it was first selected; `selected`
+ * itself while no reply has come; and nothing, `gone`, once the reply no longer reports its key -
+ * the panel closes, saying so. Its key is the one thing a page of findings and a selection hold in
+ * common. */
+export function selectionAfter(
+  selected: ListedFinding | undefined,
+  reply: FindingsReply | undefined,
+): { selected: ListedFinding | undefined; gone: boolean } {
+  if (selected === undefined || reply === undefined) return { selected, gone: false };
+  const reported = reply.findings.find((finding) => finding.key === selected.key);
+  return reported === undefined
+    ? { selected: undefined, gone: true }
+    : { selected: reported, gone: false };
 }
 
 /** What the button that follows a finding says, or `null` when it leads nowhere. */

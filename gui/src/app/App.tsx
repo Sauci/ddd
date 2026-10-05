@@ -18,6 +18,8 @@ import { ValuesPage } from "../screens/ValuesPage";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { LinkTabs } from "../ui/LinkTabs";
+import { UpdatingStatus } from "../ui/UpdatingNote";
+import { UpdatingContext } from "./updating";
 import { useProjectState } from "./useProjectState";
 import { useRoute } from "./useRoute";
 
@@ -62,7 +64,7 @@ export function App() {
   const [route, navigate] = useRoute();
   const session = useQuery({ queryKey: ["session"], queryFn: () => getSession() });
   const opened = session.data?.project ?? null;
-  const { state, stopped, failure } = useProjectState(opened !== null);
+  const { state, updating, stopped, failure } = useProjectState(opened !== null);
   // One identity for the whole life of the page: the canvas hands this to every module it draws,
   // and a new function each render would lay the canvas out again each render.
   const openComponent = useCallback(
@@ -157,6 +159,8 @@ export function App() {
         <div className="heading">
           <h1>{opened.name ?? opened.path}</h1>
           <UndoStrip state={state} stopped={stopped} />
+          {/* Last in the row, so that none of the controls before it ever moves. */}
+          <UpdatingStatus updating={updating} />
         </div>
         <LinkTabs
           label="Project views"
@@ -167,7 +171,11 @@ export function App() {
             onFollow: () => navigate(BARE_ROUTES[view]),
           }))}
         />
-        {route.view === "graph" ? (
+        {/* No tab asks the server anything before the project's first analysis has landed: each
+            would be refused, and the graph would be asked for once more with no revision. */}
+        {state === null ? (
+          <p className="quiet">Analysing the project…</p>
+        ) : route.view === "graph" ? (
           <GraphPage
             project={opened.path}
             state={state}
@@ -208,6 +216,17 @@ export function App() {
         ) : (
           <ProjectPage state={state} onComponent={openComponent} />
         )}
+      </section>
+    );
+  } else if (state === null) {
+    // A component's page, or its values, before the project's first analysis: named by the
+    // project, the one name known yet, and nothing of the file asked for until there is one.
+    page = (
+      <section>
+        <div className="heading">
+          <h1>{opened.name ?? opened.path}</h1>
+        </div>
+        <p className="quiet">Analysing the project…</p>
       </section>
     );
   } else if ("view" in route) {
@@ -271,7 +290,11 @@ export function App() {
         </Banner>
       )}
       {failure !== null && <Banner tone="error">{failure}</Banner>}
-      <main>{page}</main>
+      {/* Every screen reads whether the findings may be about to change from here, and says so
+          where its findings are (spec 6). */}
+      <UpdatingContext value={updating}>
+        <main>{page}</main>
+      </UpdatingContext>
     </div>
   );
 }

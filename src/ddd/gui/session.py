@@ -2,11 +2,21 @@
 
 The GUI holds no data of its own: the description files are the project, and a revision is one
 analysis of them - the findings, the files it read with a fingerprint of each, and the
-dictionary it resolved to. A new revision is made after every edit and whenever a file of the
-project changes on disk, which a thread notices by comparing each file's modification time and
-size once a second: the standard library has no file watcher, and re-checking a project of
-thousands of declarations takes well under a second. A file a wildcard include would match only
-once it exists is noticed when something else changes, which is a limit of the preview.
+dictionary it resolved to. A new revision is made after every edit and undo and whenever a file
+of the project changes on disk, by one analysis at a time on a thread of its own: an edit is
+written at once and answered as soon as it is, its analysis following, and the edits landing
+while one analysis runs are all analysed by the one after it. What the session says - the newest
+revision, whether an analysis is asked for or running, the undo entry - is read whole as a
+:class:`Snapshot`, numbered by a version that moves at every change of it, which is what a page
+waits past. A change on disk is noticed by another thread, comparing each file's modification
+time and size once a second: the standard library has no file watcher. Re-checking the 1,683 files
+of a generated project of 100,000 declarations (``--shape mixed --missing-ids 1 --unread 0.5``)
+took 2 to 6 ms a round with nothing else running, and 2.8 to 3.4 s a round while an analysis ran,
+every stat waiting out the analysis's turn of the interpreter - one run of four analyses on the
+Linux development PC, Python 3.14 at its default switch interval, which ``ddd gui`` keeps - which
+is why a round holds no lock while it stamps (:meth:`Session.poll`). A file a wildcard include
+would match only once it exists is noticed when something else changes, which is a limit of the
+preview.
 
 The analysis is the language server's, run the way ``ddd lsp`` runs it: under the severities of
 every build record naming the project, or under the defaults when none does.
@@ -14,10 +24,11 @@ every build record naming the project, or under the defaults when none does.
 
 from __future__ import annotations
 
+import contextlib
 import sys
 import threading
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Final
@@ -37,7 +48,7 @@ from ddd.editing import (
     restore,
 )
 from ddd.ir import DataDictionary
-from ddd.loading import parse_json_text, resolve_path
+from ddd.loading import included_files, parse_json_text, resolve_path
 from ddd.lsp.diagnostics import Run, group_findings, run_build, run_project
 from ddd.lsp.discovery import BUILD_DIRECTORY_PATTERNS, discover
 from ddd.lsp.navigation import LOAD_CHECKS, Index
@@ -51,7 +62,9 @@ SEARCH_DEPTH: Final = 4
 
 UNKNOWN: Final = (-1, -1)
 """The stamp of a file whose modification time and size were not taken before an analysis read
-it: a size no file has, so the next poll finds the file changed and analyses once more."""
+it: a size no file has, so a poll finds the file changed. A revision published with one asks for
+the next analysis itself (:meth:`Session._finished`); an analysis that raised leaves every file
+it stamped so, and the next poll asks again."""
 
 MAX_UNDO: Final = 50
 """How many edits the stack keeps, the oldest falling off: a session that runs all day does not
@@ -150,6 +163,19 @@ class Revision:
     ``ddd check`` reports; its contents are neither read, written, nor shown in a preview.
     """
 
+    edits: int = 0
+    """The last edit or undo on disk when this revision's analysis began: every one numbered up
+    to it was written before the analysis read a file. ``0`` where the session has written
+    none."""
+
+    resolved_paths: Mapping[Path, Path] = field(default_factory=dict)
+    """Each path this revision names - each file's and each finding's - and what it resolves to
+    by the loader's own rule (:func:`ddd.loading.resolve_path`), resolved once, by the analysis
+    that made it: a request about the revision looks a path up here rather than resolving it
+    again, a system call for each directory of the path, each of which waits out any busy
+    thread's turn of the interpreter. Empty for a revision made any other way - a test's - whose
+    paths are resolved when they are first asked about (:func:`ddd.gui.derived.derived`)."""
+
     @property
     def dictionary(self) -> DataDictionary | None:
         """What the analysis resolved to, or ``None`` when it did not get that far."""
@@ -181,8 +207,29 @@ class FileContent:
     error: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class Snapshot:
+    """What the session says at one moment, every part of it read at once: what
+    ``GET /api/state`` answers."""
+
+    version: int
+    """Counts up at every change of anything else here - an analysis asked for, one published
+    or failed, an edit or an undo written: what a long poll waits past."""
+
+    project: Path | None
+    revision: Revision | None
+    analysing: bool
+    """Whether an analysis is asked for or running: the findings may be about to change."""
+
+    undoable: Undoable | None
+
+
 class NoProjectError(RuntimeError):
     """Asked about the open project while none is open."""
+
+
+class NotAnalysedError(RuntimeError):
+    """Asked about the open project before any analysis of it has finished."""
 
 
 class NotInProjectError(LookupError):
@@ -206,8 +253,41 @@ def find_projects(root: Path, build_directories: Sequence[Path] = ()) -> Found:
     return Found(base, projects, tuple(sorted(refused.items())))
 
 
+@dataclass(frozen=True, slots=True)
+class _Begun:
+    """An analysis begun: the project it reads, the stamps its revision is published with -
+    taken before it read a file - and the last edit already on disk."""
+
+    project: Path
+    stamps: dict[Path, tuple[int, int] | None]
+    edits: int
+
+
 class Session:
-    """One open project at a time, analysed into numbered revisions."""
+    """One open project at a time, analysed into numbered revisions by one analysis at a time.
+
+    Everything that asks for an analysis - opening a project, an edit, an undo, the poll noticing
+    that a file changed, a revision that read a file it had no stamp for - asks it the same way,
+    and one asked for while another runs is merged with any other: one analysis follows, of the
+    disk as it then stands, never a queue. Once :meth:`start` has started the analyser, it runs
+    them on a thread of its own and whatever asked answers at once; where nothing started it -
+    every test not about it, and a session nobody started - whatever asked makes the analysis
+    itself before it answers, and the one its revision asks for in turn, and a failure of either
+    is raised to it.
+
+    One lock guards the project, its newest revision, the undo stack, the counters, the request,
+    the stamps and the files written since an analysis began, and every write of them is made
+    holding it. An analysis runs without it, which is what lets an edit be written while one
+    runs. Nothing on disk is touched holding it but the files an edit or an undo writes, so that
+    the number it takes, the stack and the files waiting for an analysis move with the write: the
+    poll stamps the files without it (:meth:`poll`), an analysis stamps those it is about to read
+    without it (:meth:`_next`), and opening reads what a project includes before taking it
+    (:meth:`open`). While another thread computes, every system call waits out that thread's
+    turn of the interpreter, and a lock held across a project's thousands of files held every
+    edit, state and plan behind them: edits asked 0.2 to 3.0 s into an analysis of a generated
+    project of 100,000 declarations answered in 2 to 3,363 ms while the poll stamped holding it,
+    and in 2 to 129 ms since - one run each, seven edits, on the Linux development PC.
+    """
 
     def __init__(
         self, root: Path, build_directories: Sequence[Path] = (), *, poll_interval: float = 1.0
@@ -216,45 +296,139 @@ class Session:
         self.build_directories = tuple(build_directories)
         self.poll_interval = poll_interval
         self._lock = threading.Lock()
-        self._published = threading.Condition()
+        self._changed = threading.Condition(self._lock)
+        self._project: Path | None = None
         self._revision: Revision | None = None
+        self._numbered = 0
+        self._version = 0
         self._stack: list[Undoable] = []
         self._edits = 0
+        # Each edit and undo by its number, with the files it wrote: what no analysis has read
+        # yet, until a published revision's `edits` reaches that number.
+        self._written: list[tuple[int, frozenset[Path]]] = []
         self._signature: dict[Path, tuple[int, int] | None] = {}
+        self._fresh: set[Path] = set()
+        self._asked: Path | None = None
+        self._running = False
         self._stopping = threading.Event()
         self._poller: threading.Thread | None = None
+        self._analyser: threading.Thread | None = None
+
+    @property
+    def project(self) -> Path | None:
+        """The project open, analysed yet or not; ``None`` while none is."""
+        return self._project
 
     @property
     def revision(self) -> Revision | None:
-        """The newest revision, or ``None`` while no project is open."""
+        """The open project's newest revision, or ``None`` while it has none yet."""
         return self._revision
 
-    def open(self, project: Path) -> Revision:
-        """Open a project description, replacing the project open before it."""
+    @property
+    def edits(self) -> int:
+        """How many edits and undos this session has written: the number the last of them took,
+        an edit's being what an undo names it by. One refused before anything was written counts
+        none."""
+        with self._lock:
+            return self._edits
+
+    def open(self, project: Path) -> None:
+        """Open a project description, replacing the project open before it, and ask for its
+        first analysis.
+
+        What its own includes name (:func:`_named_by`) is read before the lock is taken, as
+        whether it is a project description at all is: the description read and its patterns
+        expanded on disk, system calls each of which waits out any busy thread's turn. Sound,
+        because what it names is only which files are stamped as the first analysis begins, the
+        stamps themselves taken then (:meth:`_next`): a description changed in between names a
+        file with no stamp from before, which costs the one analysis more any such file costs
+        (:meth:`_finished`).
+        """
         path = project.resolve()
         if not _is_project(path):
             raise ValueError(f"{project} is not a project description")
+        named = _named_by(path)
         with self._lock:
+            self._project = path
+            self._revision = None
             self._stack = []
-            return self._publish(self._analysed(path), {})
+            self._written = []
+            self._signature = {}
+            self._fresh = named
+            self._request()
+        self._analyse_here()
 
-    def wait(self, after: int, timeout: float) -> Revision | None:
-        """The newest revision as soon as it is newer than ``after``, or after ``timeout``."""
-        with self._published:
-            self._published.wait_for(
-                lambda: self._revision is not None and self._revision.number > after, timeout
-            )
+    def settled(self, timeout: float | None) -> Revision | None:
+        """The newest revision once no analysis is asked for or running, or once ``timeout``
+        seconds have passed; ``None`` waits as long as that takes."""
+        with self._changed:
+            self._changed.wait_for(lambda: self._asked is None and not self._running, timeout)
             return self._revision
 
-    def poll(self) -> bool:
-        """Analyse the open project again if a file of it changed on disk; say whether one did."""
+    def snapshot(self) -> Snapshot:
+        """What the session says now, every part of it read at once."""
         with self._lock:
-            revision = self._revision
-            stamps = stamped(self._signature)
-            if revision is None or stamps == self._signature:
+            return self._snapshot()
+
+    def wait(self, after: int, timeout: float) -> Snapshot:
+        """What the session says as soon as its version is past ``after``, or after
+        ``timeout``."""
+        with self._changed:
+            self._changed.wait_for(lambda: self._version > after, timeout)
+            return self._snapshot()
+
+    def current(self) -> Revision:
+        """The open project's newest revision, refusing where there is none: no project open, or
+        no analysis of it finished yet."""
+        with self._lock:
+            return self._required()
+
+    def unanalysed(self, revision: Revision) -> frozenset[Path]:
+        """Every file an edit or an undo wrote after ``revision``'s analysis began: numbered past
+        its ``edits``. A revision older than the newest may miss some the newest already
+        includes; the engine's own fingerprint check still refuses a plan made against it."""
+        with self._lock:
+            waiting: set[Path] = set()
+            for number, paths in self._written:
+                if number > revision.edits:
+                    waiting |= paths
+            return frozenset(waiting)
+
+    def poll(self) -> bool:
+        """Ask for an analysis if a file of the open project changed on disk since its stamps
+        were taken; say whether one did.
+
+        The files are stamped without the lock, which is held only to read the stamps to compare
+        with and then to compare and ask: one stat a file, each waiting out any busy thread's
+        turn, held every edit, state and plan behind a round of them for seconds. Stamps replaced
+        in between - an analysis begun or published, a project opened, each of which rebinds them
+        whole and never changes them in place - make this reading moot, and the round passes
+        asking for nothing: whatever replaced them took stamps of its own, from before its
+        analysis reads a file, and the next round compares with those. Two statements rather than
+        one condition, so that coverage counts a branch for each.
+        """
+        with self._lock:
+            if self._project is None:
                 return False
-            self._publish(self._analysed(revision.project), stamps)
-            return True
+            signature = self._signature
+        now = stamped(signature)
+        with self._lock:
+            if self._signature is not signature:
+                return False
+            if now == signature:
+                return False
+            self._request()
+        self._analyse_here()
+        return True
+
+    def start(self) -> None:
+        """Analyse on a thread of its own from now on, and poll on another, until :meth:`stop`."""
+        if self._analyser is None:
+            self._analyser = threading.Thread(
+                target=self._analyse_until_stopped, name="ddd-gui-analyse", daemon=True
+            )
+            self._analyser.start()
+        self.start_polling()
 
     def start_polling(self) -> None:
         """Poll every ``poll_interval`` seconds on a thread of its own, until :meth:`stop`."""
@@ -265,9 +439,13 @@ class Session:
             self._poller.start()
 
     def stop(self) -> None:
+        """End the analyser and the poller, each once its current round is done."""
         self._stopping.set()
-        if self._poller is not None:
-            self._poller.join()
+        with self._changed:
+            self._changed.notify_all()
+        for thread in (self._poller, self._analyser):
+            if thread is not None:
+                thread.join()
 
     def read_file(self, path: Path) -> FileContent:
         """A description file of the open project, parsed, with the fingerprint it was read at.
@@ -287,10 +465,9 @@ class Session:
             return FileContent(target, fingerprint(data), None, f"{target} is not json: {error}")
         return FileContent(target, fingerprint(data), parsed, None)
 
-    def edit(
-        self, changes: Sequence[FileChange], label: str
-    ) -> tuple[Revision, tuple[Written, ...]]:
-        """Make an edit of description files of the open project, then analyse it again.
+    def edit(self, changes: Sequence[FileChange], label: str) -> tuple[int, tuple[Written, ...]]:
+        """Make an edit of description files of the open project, ask for its analysis, and
+        answer the number it took and what it wrote.
 
         A change without a fingerprint creates its file, and only the kind of file adopting a
         vocabulary writes: one beside the project description, in an edit whose change of that
@@ -306,13 +483,19 @@ class Session:
             self._edits += 1
             self._stack.append(Undoable(self._edits, label, written))
             del self._stack[:-MAX_UNDO]
-            # After the edit's own write, so the next poll does not take it for somebody else's,
-            # and before the analysis, so a save landing while that runs is not taken for seen.
-            stamps = stamped(self._signature)
-            return self._publish(self._analysed(revision.project), stamps), written
+            self._written.append((self._edits, frozenset(file.path for file in written)))
+            # Stamped when its analysis begins, after this write, so that the poll does not take
+            # the write for somebody else's. A file of the last revision is stamped again then
+            # in any case; a file this edit created is not, having no stamp yet, but for this.
+            self._fresh |= {file.path for file in written}
+            self._request()
+            at = self._edits
+        self._analyse_here()
+        return at, written
 
-    def undo(self, at: int) -> Revision:
-        """Put the edit numbered ``at`` back, then analyse the project again and pop it.
+    def undo(self, at: int) -> int:
+        """Put the edit numbered ``at`` back, pop it, ask for an analysis, and answer the number
+        the undo took.
 
         Only the top of the stack: an ``at`` that is not it is refused as stale, which is what
         keeps a second window from putting back an edit this one never saw. A refusal - a file
@@ -320,16 +503,21 @@ class Session:
         reader may put that file back and ask again.
         """
         with self._lock:
-            revision = self._required()
+            self._required()
             top = self._stack[-1] if self._stack else None
             if top is None or top.at != at:
                 raise EditError(STALE, f"edit {at} is not the one to undo any more")
             restore(top.files)
-            # Stamped before the analysis, as an edit's own write is, and popped only once the
-            # files are back: a refused restore leaves the entry where it was.
-            stamps = stamped(self._signature)
+            # Popped only once the files are back: a refused restore leaves the entry where it
+            # was.
             self._stack.pop()
-            return self._publish(self._analysed(revision.project), stamps)
+            self._edits += 1
+            self._written.append((self._edits, frozenset(file.path for file in top.files)))
+            self._fresh |= {file.path for file in top.files}
+            self._request()
+            number = self._edits
+        self._analyse_here()
+        return number
 
     @property
     def undoable(self) -> Undoable | None:
@@ -350,9 +538,21 @@ class Session:
                 # says why: the one line is that reason, and the next poll tries again.
                 print(f"ddd gui: checking the project again failed: {error}", file=sys.stderr)
 
+    def _snapshot(self) -> Snapshot:
+        """What the session says, read holding the lock."""
+        return Snapshot(
+            self._version,
+            self._project,
+            self._revision,
+            self._asked is not None or self._running,
+            self._stack[-1] if self._stack else None,
+        )
+
     def _required(self) -> Revision:
-        if self._revision is None:
+        if self._project is None:
             raise NoProjectError("no project is open")
+        if self._revision is None:
+            raise NotAnalysedError("the open project has not been analysed yet")
         return self._revision
 
     def _analysed(self, project: Path) -> Revision:
@@ -372,12 +572,15 @@ class Session:
         served: tuple[Path, ...] = (self.root,)
         if not project.parent.is_relative_to(self.root):
             served = (self.root, project.parent)
+        files = tuple(_described(path, grouped.get(path, ())) for path in sorted(covered))
+        findings = _filed(grouped)
         return Revision(
-            number=1 if self._revision is None else self._revision.number + 1,
+            # Numbered when it is published (`_finished`): an analysis thrown away takes none.
+            number=0,
             project=project,
             builds=builds,
-            files=tuple(_described(path, grouped.get(path, ())) for path in sorted(covered)),
-            findings=_filed(grouped),
+            files=files,
+            findings=findings,
             # One run's whole answer, never a field picked from each: the plugins a comparison
             # runs the rules of and the dictionary it compares have to be the same read's, and
             # two `next()` calls over the same list would only agree by coincidence.
@@ -386,24 +589,141 @@ class Session:
             checks=tuple(registered.values()),
             index=next((run.index for run in runs if run.index is not None), None),
             served=served,
+            resolved_paths=_resolved_paths(files, findings),
         )
 
-    def _publish(
-        self, revision: Revision, stamps: Mapping[Path, tuple[int, int] | None]
-    ) -> Revision:
-        """Make ``revision`` the newest, its files stamped as they were before it read them.
+    def _request(self) -> None:
+        """Ask for an analysis of the open project. Holding the lock, with a project open, once
+        whatever asked has changed what it changes: the version moves with it."""
+        self._asked = self._project
+        self._version += 1
+        self._changed.notify_all()
+
+    def _analyse_here(self) -> None:
+        """Make the analyses asked for on this thread, where no analyser was started."""
+        if self._analyser is not None:
+            return
+        begun = self._next(wait=False)
+        while begun is not None:
+            self._run(begun, raising=True)
+            begun = self._next(wait=False)
+
+    def _analyse_until_stopped(self) -> None:
+        while not self._stopping.is_set():
+            begun = self._next(wait=True)
+            if begun is not None:
+                # Nothing raised outside the analysis may end this thread, which would leave
+                # every page waiting for an analysis that never comes. `_run` publishes and prints
+                # a failure of the analysis itself; what can still raise is that print, on a
+                # stderr nothing can be written to, and the line is lost with it.
+                with contextlib.suppress(Exception):
+                    self._run(begun, raising=False)
+
+    def _next(self, *, wait: bool) -> _Begun | None:
+        """The analysis to make next, begun - its stamps taken before it reads a file - or
+        ``None`` where there is none to make; after waiting for one, where asked to, until the
+        session stops.
+
+        Taken up holding the lock - the request, the files to stamp and the edits already on
+        disk, every one of which this analysis reads - and stamped without it, as :meth:`poll`
+        stamps. An edit written while the files are stamped is numbered past the edits taken up,
+        so it is the next analysis's, which its own request asks for, however this one's stamps
+        caught its write: stamped after it, the write is what this analysis reads; stamped
+        before, the poll after this revision finds the file changed, and asks for the analysis
+        that edit asked for already.
+
+        While they are stamped the stamps stand empty, so that a poll compares nothing then: an
+        edit's own write, made before this analysis took its request up, is not a change it
+        missed, being about to be read. Put in place once taken, unless something replaced the
+        empty ones meanwhile: only opening a project can, whose own stamps they then are.
+        """
+        with self._changed:
+            if wait:
+                self._changed.wait_for(
+                    lambda: (
+                        self._stopping.is_set() or (self._asked is not None and not self._running)
+                    )
+                )
+            project = self._asked
+            if project is None or self._running or self._stopping.is_set():
+                return None
+            self._asked = None
+            self._running = True
+            paths = set(self._signature) | self._fresh
+            self._fresh = set()
+            edits = self._edits
+            stamping: dict[Path, tuple[int, int] | None] = {}
+            self._signature = stamping
+        # Raising nothing: `stamped` stamps a path the system refuses even to look at as one that
+        # is not there, and an exception here would leave `_running` set for good.
+        stamps = stamped(paths)
+        with self._changed:
+            # Standing in for the last revision's while this one runs, so that the poll does not
+            # take an edit's own write, stamped here, for a change this analysis missed.
+            if self._signature is stamping:
+                self._signature = dict(stamps)
+        return _Begun(project, stamps, edits)
+
+    def _run(self, begun: _Begun, *, raising: bool) -> None:
+        """Make the analysis ``begun`` and publish what it made; one that raises is raised to
+        the caller where ``raising``, and printed otherwise."""
+        revision: Revision | None = None
+        try:
+            revision = self._analysed(begun.project)
+        except Exception as error:
+            if raising:
+                raise
+            # A thread that dies here leaves a page that never updates again, and nothing says
+            # why: the one line is that reason, and the next poll asks again. Printed before the
+            # failure is published, so that whatever waits for it finds the line written.
+            print(f"ddd gui: analysing the project failed: {error}", file=sys.stderr)
+        finally:
+            with self._changed:
+                self._finished(begun, revision)
+
+    def _finished(self, begun: _Begun, revision: Revision | None) -> None:
+        """What an analysis leaves once it has ended, made holding the lock: nothing, where the
+        project it read is no longer the one open. Otherwise what it made becomes the newest
+        revision, its files stamped as they were before it read them - a file with no stamp from
+        before :data:`UNKNOWN` - and where it raised instead, ``revision`` being ``None``,
+        nothing is published and every file it stamped is stamped unknown, so that the next poll
+        asks again.
 
         Before, never after: stamped after the analysis, a save landing while it ran was already
         in the stamps, so no poll ever saw it and the page kept the findings of bytes no longer
-        on disk. A file with no stamp from before - every file of a project just opened, a file
-        the analysis found newly included - is stamped :data:`UNKNOWN`, which costs one analysis
-        more and catches a save made to that file while this one ran.
+        on disk. A file with no stamp from before - a sub-project's file or a plugin, when the
+        project was just opened, or a file the analysis found newly included - is stamped
+        :data:`UNKNOWN`, and the revision is published asking for the next analysis: one
+        analysis more, which catches a save made to that file while this one ran. Asked here
+        rather than left to the next poll, which asked for it up to ``poll_interval`` later, so
+        that the session says it is analysing until that analysis lands, rather than that it is
+        done and then, a poll later, that it is analysing again.
+
+        A revision published lets go of the files every edit it includes wrote: none of them is
+        waiting for an analysis any more. Whatever it leaves, the version moves, since what the
+        session says may have changed with it: the newest revision, where one is published, and
+        ``analysing``, which turns false unless another analysis is asked for by then - the one
+        this revision asks for, or one asked while this analysis ran.
         """
-        with self._published:
-            self._revision = revision
-            self._signature = {file.path: stamps.get(file.path, UNKNOWN) for file in revision.files}
-            self._published.notify_all()
-        return revision
+        self._running = False
+        if begun.project == self._project:
+            if revision is None:
+                self._signature = dict.fromkeys(begun.stamps, UNKNOWN)
+            else:
+                self._numbered += 1
+                self._revision = replace(revision, number=self._numbered, edits=begun.edits)
+                self._signature = {
+                    file.path: begun.stamps.get(file.path, UNKNOWN) for file in revision.files
+                }
+                waiting: list[tuple[int, frozenset[Path]]] = []
+                for number, paths in self._written:
+                    if number > begun.edits:
+                        waiting.append((number, paths))
+                self._written = waiting
+                if UNKNOWN in self._signature.values():
+                    self._request()
+        self._version += 1
+        self._changed.notify_all()
 
 
 def findings_with(revision: Revision, includes: Sequence[str]) -> tuple[Filed, ...]:
@@ -459,6 +779,18 @@ def _grouped(runs: Sequence[Run], project: Path) -> tuple[dict[Path, list[Diagno
     for run in runs:
         covered |= run.covered | group_findings(run.bag, project, grouped)
     return grouped, covered
+
+
+def _resolved_paths(files: Iterable[SourceFile], findings: Iterable[Filed]) -> dict[Path, Path]:
+    """Each path ``files`` and ``findings`` name, resolved once each by the loader's own rule:
+    :attr:`Revision.resolved_paths`. That rule hands back as it is a path the system refuses even
+    to look at, where :meth:`pathlib.Path.resolve` raised for it, and the state of a project
+    including one answered a server error."""
+    resolved: dict[Path, Path] = {}
+    for path in (*(file.path for file in files), *(filed.file for filed in findings)):
+        if path not in resolved:
+            resolved[path] = resolve_path(path)
+    return resolved
 
 
 def _filed(grouped: Mapping[Path, Sequence[Diagnostic]]) -> tuple[Filed, ...]:
@@ -545,7 +877,9 @@ def _described(path: Path, findings: Iterable[Diagnostic]) -> SourceFile:
     listed = list(findings)
     try:
         data = path.read_bytes()
-    except OSError:
+    except (OSError, ValueError):
+        # Read as empty, a path the system refuses even to look at - a NUL byte - as much as one
+        # that cannot be read: the loader has said why already, and the revision carries it.
         data = b""
     parsed = None if path.suffix == ".py" else _parsed(data)
     kind = kind_of(path, parsed)
@@ -618,6 +952,28 @@ def _is_project(path: Path) -> bool:
     return isinstance(data, dict) and isinstance(data.get("project"), dict)
 
 
+def _named_by(project: Path) -> set[Path]:
+    """The project description and every file its own ``includes`` name now, by the loader's own
+    rule: the descriptions the first analysis of a project is about to read, stamped before it
+    reads them so that opening a flat project naming no plugin analyses it once. Neither a
+    sub-project's ``includes`` nor the project's ``plugins`` are read: those files have no stamp
+    from before, and cost opening the one analysis more it always cost, which the first revision
+    asks for as it is published.
+
+    Read again after :func:`_is_project` judged the file, so the two conditional expressions
+    guard a description changed in between; an ``includes`` that is not a list names nothing,
+    the loader refusing it with a ``schema`` error.
+    """
+    named = {project}
+    data = _read_json(project)
+    block = data.get("project") if isinstance(data, dict) else None
+    listed = block.get("includes") if isinstance(block, dict) else None
+    if isinstance(listed, list):
+        for entry in listed:
+            named.update(included_files(project, entry))
+    return named
+
+
 def _name_in(data: Any, kind: str) -> str | None:
     block = data.get(kind) if isinstance(data, dict) else None
     name = block.get("name") if isinstance(block, dict) else None
@@ -625,7 +981,10 @@ def _name_in(data: Any, kind: str) -> str | None:
 
 
 def stamped(paths: Iterable[Path]) -> dict[Path, tuple[int, int] | None]:
-    """The modification time and size of each path, ``None`` for one that is not there.
+    """The modification time and size of each path, ``None`` for one that is not there - or that
+    the system refuses even to look at: one holding a NUL byte, on every system, or one holding a
+    character the encoding of a path to bytes cannot write, where paths are so encoded, as on
+    Linux - U+D800 is one. No analysis can read either.
 
     How this session decides a file has changed, without a file watcher the standard library
     does not have: taken again and compared with what was taken before. Shared with
@@ -638,7 +997,7 @@ def stamped(paths: Iterable[Path]) -> dict[Path, tuple[int, int] | None]:
     for path in paths:
         try:
             status = path.stat()
-        except OSError:
+        except (OSError, ValueError):
             signature[path] = None
         else:
             signature[path] = (status.st_mtime_ns, status.st_size)

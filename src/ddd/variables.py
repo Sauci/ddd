@@ -13,12 +13,13 @@ from __future__ import annotations
 
 import codecs
 import difflib
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
 from ddd.diagnostics import Diagnostic
+from ddd.difflib_lock import ONE_THREAD_IN_DIFFLIB
 from ddd.editing import UNREADABLE, EditError, Operation, edit_text
 from ddd.lsp.edits import PROPAGATED_KEYS, Settlement, Unsettled
 from ddd.lsp.navigation import Index, Site
@@ -94,7 +95,7 @@ def declarations_of(built: Index, name: str, cache: dict[Path, Document]) -> tup
             Declared(
                 site=site,
                 component=component_of(document, site.path),
-                role=_role_of(document.value_at(f"{_entry(site)}.scope")),
+                role=role_of(document.value_at(f"{_entry(site)}.scope")),
                 stated=_stated(document, site.pointer, ("kind", *sorted(PROPAGATED_KEYS))),
                 type_name=type_name,
                 fixed=_fixed(built, type_name, cache),
@@ -103,15 +104,24 @@ def declarations_of(built: Index, name: str, cache: dict[Path, Document]) -> tup
     return tuple(found)
 
 
-def located_on(declared: Sequence[Declared], file: Path, diagnostic: Diagnostic) -> bool:
+def located_on(
+    declared: Sequence[Declared],
+    file: Path,
+    diagnostic: Diagnostic,
+    resolve: Callable[[Path], Path] = Path.resolve,
+) -> bool:
     """Whether a finding shown on ``file`` is located on one of these declarations: on its entry
-    of the interface or anywhere under it, which is how the page puts a finding on a row."""
+    of the interface or anywhere under it, which is how the page puts a finding on a row.
+
+    ``resolve`` resolves both paths compared: ``ddd gui`` passes one answering from what its
+    revision's analysis resolved already (:meth:`ddd.gui.derived.Derived.resolve`), so that
+    asking this of every finding on a declaration's files resolves none of them again."""
     location = diagnostic.location
     if location is None:
         return False
-    shown = file.resolve()
+    shown = resolve(file)
     return any(
-        shown == entry.site.path.resolve() and _within(location.pointer, _entry(entry.site))
+        shown == resolve(entry.site.path) and _within(location.pointer, _entry(entry.site))
         for entry in declared
     )
 
@@ -204,8 +214,15 @@ def planned(
     The file carries the fingerprint the analysis read it at, from ``fingerprints`` (keyed by
     resolved path): a file the analysis did not read, or that can no longer be read as utf-8,
     is refused as unreadable rather than previewed from bytes nobody analysed.
+
+    Looked up as it is spelled first, and resolved only where that finds nothing: a path spelled
+    as a key is that resolved path already, as every path of an analysis's own index is, and a
+    plan renaming a unit stated in every file of a large project resolved every one of them
+    again.
     """
-    stamp = fingerprints.get(path.resolve())
+    stamp = fingerprints.get(path)
+    if stamp is None:
+        stamp = fingerprints.get(path.resolve())
     if stamp is None:
         raise EditError(UNREADABLE, f"{path} is not a file the last analysis read")
     try:
@@ -216,13 +233,63 @@ def planned(
 
 
 def hunks(before: str, after: str) -> tuple[Hunk, ...]:
-    """The lines a change replaces in a text, each run of them numbered as the text stood."""
+    """The lines a change replaces in a text, each run of them numbered as the text stood: what
+    ``difflib.SequenceMatcher`` answers over the lines of the two texts.
+
+    Answered without difflib for a change made in place (:func:`_replaced_in_place`): renaming a
+    unit to a spelling nothing used made such a change of every file it touched, all 1,167, in a
+    generated project of 35,000 declarations. Any other change goes to difflib over both texts
+    whole: matching the lines the two share at their start and at their end first would number
+    some of them otherwise. Where the lines taken out are spelled like the lines beside them,
+    which of those difflib names depends on the text all around - taking the first of six
+    declarations out of a component, it answers lines 5 to 17, where the head matched first
+    would answer lines 8 to 20 (``tests/test_variables.py``). That one call into difflib holds
+    :data:`ddd.difflib_lock.ONE_THREAD_IN_DIFFLIB`, for this file alone.
+    """
     old, new = before.splitlines(), after.splitlines()
-    matcher = difflib.SequenceMatcher(a=old, b=new, autojunk=False)
+    in_place = _replaced_in_place(old, new)
+    if in_place is not None:
+        return in_place
+    with ONE_THREAD_IN_DIFFLIB:
+        opcodes = difflib.SequenceMatcher(a=old, b=new, autojunk=False).get_opcodes()
     return tuple(
         Hunk(first + 1, tuple(old[first:last]), tuple(new[start:end]))
-        for tag, first, last, start, end in matcher.get_opcodes()
+        for tag, first, last, start, end in opcodes
         if tag != "equal"
+    )
+
+
+def _replaced_in_place(old: list[str], new: list[str]) -> tuple[Hunk, ...] | None:
+    """The hunks of a change made in place, or ``None`` for any other: the two texts as long as
+    each other, and each line that differs replaced by a line the old text holds nowhere, itself
+    held nowhere in the new text.
+
+    What difflib answers then, found by comparing the lines at each place. No changed line has an
+    equal in the other text, so every block of equal lines difflib can match is of unchanged
+    lines on both sides, and an unchanged line stands at the same place in both texts. Of the
+    longest blocks, difflib takes the one earliest in the old text and then in the new, and that
+    one is at the same place in both: a block at place i of the old text and j of the new is of
+    unchanged lines at both places, so the lines at i, and those at j, form a block as long at
+    the same place in both - and one of those two comes before it. The block taken is then a
+    whole run of unchanged lines, no run being longer than the longest block, and difflib goes on
+    alike on each side of it, taking every run whole. Between two runs lies a run of changed
+    lines, replaced by the new text's.
+    """
+    if len(old) != len(new):
+        return None
+    changed = [index for index, (was, now) in enumerate(zip(old, new, strict=True)) if was != now]
+    held, holding = set(old), set(new)
+    for index in changed:
+        if old[index] in holding or new[index] in held:
+            return None
+    runs: list[list[int]] = []
+    for index in changed:
+        if runs and runs[-1][1] == index:
+            runs[-1][1] = index + 1
+        else:
+            runs.append([index, index + 1])
+    return tuple(
+        Hunk(first + 1, tuple(old[first:last]), tuple(new[first:last])) for first, last in runs
     )
 
 
@@ -260,7 +327,9 @@ def component_of(document: Document, path: Path) -> str:
     return named if isinstance(named, str) else path.name.removesuffix(".ddd.json")
 
 
-def _role_of(scope: Any) -> str:
+def role_of(scope: Any) -> str:
+    """What a declaration's scope says its component does with the variable, by :data:`ROLES`:
+    ``produces``, ``reads`` or ``local``, and ``reads`` for a scope it does not name."""
     return next((role for spelled, role in ROLES if spelled == scope), "reads")
 
 

@@ -23,6 +23,15 @@ export function scopesOf(typed: string, reply: DeclarableReply): string[] {
   return [...(chosenName(typed, reply.names)?.scopes ?? reply.scopes)];
 }
 
+/** The scope the form keeps once the name it scopes changes, or the answer the name is read
+ * against does - `scopes` being what the name may take now (`scopesOf`): the scope chosen while
+ * the name still takes it, else the first the name does, else none. It only ever moves forward:
+ * typing between two names that both take the scope chosen leaves it as it was, never back onto
+ * a scope let go of for a name typed in between. */
+export function followedScope(current: string, scopes: readonly string[]): string {
+  return scopes.includes(current) ? current : (scopes[0] ?? "");
+}
+
 /** The keys a kind asks for when it is declared new: what a *loadable* declaration needs, not
  * everything the kind accepts. `unit`, `limits` and a composed `conversion` are left for the key
  * chooser to add afterwards, the way part 3 already leaves them for any other declaration - no

@@ -2,7 +2,7 @@ import type { SharedReply } from "../api/types";
 import { rowKey, type SharedSelection, selectionAt, tabTitle, vocabularyOf } from "../lib/shared";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
-import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
+import { Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
 
 export interface SharedTableViewProps {
   reply: SharedReply;
@@ -71,7 +71,7 @@ export function SharedTableView({
           Declare an entry
         </Button>
       ) : (
-        <Table
+        <LongTable
           aria-label="Shared files"
           selectionMode="single"
           selectedKeys={selected === undefined ? [] : [rowKey(selected.kind, selected.name)]}
@@ -81,8 +81,25 @@ export function SharedTableView({
           }}
         >
           <TableHeader>
-            <Column isRowHeader>Name</Column>
-            <Column>Vocabulary</Column>
+            {/* Widths measured in Chrome (fix round 3) on this table's stories and on a scratch
+                copy of examples/vocabulary - neither examples/demo nor a generated project declares
+                a shared entry. Vocabulary is fixed at 95px, its header the widest of its words at
+                90px. The other four share the rest - Name and States 2fr each, Used by and Findings
+                1fr each - in a 1280px window 324px for Name and 325px for States, which hold the
+                widest name (PRESSURE_CELLS, 128px) and the longest states ("read-write, align 4",
+                135px). A panel beside the table leaves it a box of about 552px, 537px once a
+                browser draws the box's own vertical scrollbar; a column never goes below its
+                `minWidth`, so Used by and Findings keep 80px there and Name and States share what
+                is left - 140px each in a 535px box, which still holds both; a longer name is cut
+                with an ellipsis, never wrapped. The floors sum to 495px: beside a panel they fit a
+                window down to about 991px wide - 1034px where a browser draws the box's own
+                vertical scrollbar and the page's, 15px each - and narrower, until the panel moves
+                under the table at 900px, the box scrolls sideways; with no panel the table fits a
+                window down to about 527px (557px). */}
+            <Column isRowHeader width="2fr" minWidth={140}>
+              Name
+            </Column>
+            <Column width={95}>Vocabulary</Column>
             {/* No Description column, unlike TypesTableView: an entry's description is a full
                 sentence - the shipped example's is "sample slots of a pressure trend buffer, a
                 device wide size no single component owns" - which would dominate every row, where
@@ -92,9 +109,15 @@ export function SharedTableView({
                 section's ("read-only, align 4"), which Value does not - the same call as the
                 Vocabulary rename above, from PR #68: cheap before a second vocabulary ships into
                 the word, expensive after. */}
-            <Column>States</Column>
-            <Column>Used by</Column>
-            <Column>Findings</Column>
+            <Column width="2fr" minWidth={100}>
+              States
+            </Column>
+            <Column width="1fr" minWidth={80}>
+              Used by
+            </Column>
+            <Column width="1fr" minWidth={80}>
+              Findings
+            </Column>
           </TableHeader>
           <TableBody items={rows}>
             {/* Keyed by vocabulary and name, not by name alone: a section's name is a linker
@@ -111,7 +134,7 @@ export function SharedTableView({
               </Row>
             )}
           </TableBody>
-        </Table>
+        </LongTable>
       )}
     </>
   );

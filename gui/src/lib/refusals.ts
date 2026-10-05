@@ -33,7 +33,11 @@ export function isStale(error: Error): boolean {
 /**
  * The one refusal an action shows, of the three it can have: an Apply refused as stale, while the
  * revision it was refused at stands; else an Apply refused for another reason; else why its plan
- * was refused when asked for, in the server's own words.
+ * was refused when asked for, in the server's own words - `asked` reads that straight off
+ * `planShown`'s own `refusal` (`lib/typing.ts`) at every call site now, never an `Error` of its
+ * own: the one thing that could still be asked for once Task 11 debounced every plan is whether
+ * the debounced request is trusted at all, which `planShown` has already judged by the time this
+ * runs.
  *
  * The precedence the other panels already have, kept rather than argued afresh: `UnitsPage`'s
  * adoption banner writes this very expression, and `ConstantPanel`'s own `offer` asks in the same
@@ -43,8 +47,62 @@ export function isStale(error: Error): boolean {
 export function refusalShown(
   stale: Refused | null,
   refused: string | null,
-  asked: Error | null,
+  asked: string | null,
   revision: number | undefined,
 ): string | null {
-  return shownRefusal(stale, revision) ?? refused ?? asked?.message ?? null;
+  return shownRefusal(stale, revision) ?? refused ?? asked ?? null;
+}
+
+/** What a panel about one entity shows of the server's answer about it: the answer, a refusal in
+ * its place, "Updating the findings…" alone, or that it is reading. */
+export type PanelShows<T> =
+  | { shown: "reply"; reply: T }
+  | { shown: "refusal"; refusal: string }
+  | { shown: "updating" }
+  | { shown: "reading" };
+
+/** Whether an answer was refused because a file it is built from did not load, or changed since
+ * the analysis read it - the server's own code, `ddd.editing.UNREADABLE`. */
+function isUnreadable(error: Error): boolean {
+  return error instanceof ApiError && error.code === "unreadable";
+}
+
+/**
+ * What the panel open on one entity - a variable, a unit, a type, a constant, a section or a
+ * raster, which `about` names an answer by - shows of the answer about it, while the findings are
+ * `updating` or not.
+ *
+ * An edit is answered once its files are written and analysed after (spec 5), and these answers
+ * are built from what the last analysis indexed: an entity an edit renamed or added - or moved
+ * within its file, an entry above it taken out or put back - is refused `unreadable` until the
+ * analysis reading that file lands. Each route reads an entity only at a place the index recorded
+ * that still names it, and refuses it where none is left (`ddd.variables.declarations_of` for a
+ * variable; `ddd.project_shared.entry_in_place`, `ddd.project_types.type_in_place` and
+ * `ddd.project_units.listed_in_place` for the others): "'RPM' is not declared in any file that
+ * has not changed since, and pump.ddd.json, units.ddd.json changed since it was read". While the
+ * findings are updating, that refusal is not shown: the panel says "Updating the findings…" in its
+ * place, over what its query still holds of its own entity, and alone where it holds nothing of
+ * it - a renamed or an added entity's panel. What a query holds is the last answer of its own key:
+ * a revision that lands while the page is still updating starts a new key, and where that key's
+ * first answer is refused, the panel says the note alone, its content gone until an answer comes.
+ * That is accepted. It never shows another entity's answer under this one's name, which a query
+ * carries from one key to the next (`placeholderData`) and could carry from a name before. Every
+ * other refusal, and an `unreadable` one once nothing is updating, is shown as it always was.
+ *
+ * The moment the analysis lands asks nothing of its own: the state's revision moves before the
+ * panel's next answer comes, and the panel's query, keyed by that revision, starts again with no
+ * refusal - the panel shows the answer it kept meanwhile, or that it is reading.
+ */
+export function panelShows<T>(
+  answer: { data: T | undefined; error: Error | null },
+  about: (reply: T) => string,
+  name: string,
+  updating: boolean,
+): PanelShows<T> {
+  const own = answer.data !== undefined && about(answer.data) === name ? answer.data : undefined;
+  if (answer.error !== null && !(updating && isUnreadable(answer.error))) {
+    return { shown: "refusal", refusal: answer.error.message };
+  }
+  if (own !== undefined) return { shown: "reply", reply: own };
+  return answer.error === null ? { shown: "reading" } : { shown: "updating" };
 }

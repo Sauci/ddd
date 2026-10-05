@@ -90,6 +90,8 @@ interface Props {
    * out for a story that shows no removal offer at all - the way a screen with no component in
    * view never offers one either. */
   removal?: { from: string; offer: Offer };
+  /** The findings may be about to change: an edit waits for its analysis, or one runs. */
+  updating?: boolean;
 }
 
 /** The panel over one scenario's fixtures, with its own selection, choice, draft and Show
@@ -108,6 +110,7 @@ function View({
   changesShown: initialChangesShown = false,
   pickerOpen = false,
   removal,
+  updating = false,
 }: Props) {
   const [selected, setSelected] = useState<string | undefined>(initialSelected);
   const [chosen, setChosen] = useState<string | null | undefined>(initialChosen);
@@ -193,6 +196,7 @@ function View({
             }
       }
       onClose={() => undefined}
+      updating={updating}
     />
   );
 }
@@ -285,4 +289,10 @@ export const WithARemovalAndNothingLeft = () => (
       offer: { plan: REMOVAL_WITH_NOTHING_LEFT, refusal: null, pending: false },
     }}
   />
+);
+
+/** An edit waits for its analysis: the panel says its findings are updating where it lists them,
+ * and lists them below as they were. */
+export const FindingsUpdating = () => (
+  <View variable={DISAGREEING} units={FREE_UNITS} preview={null} updating />
 );

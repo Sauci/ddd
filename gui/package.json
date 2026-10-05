@@ -16,6 +16,7 @@
     "watch": "vite build --watch",
     "e2e": "playwright test",
     "screenshots": "playwright test -c playwright.screenshots.config.ts",
+    "bench": "playwright test -c playwright.bench.config.ts",
     "ladle": "ladle serve",
     "ladle:build": "ladle build"
   },

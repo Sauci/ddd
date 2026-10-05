@@ -8,12 +8,16 @@ import {
   postEdit,
   type UnitPlanRequest,
 } from "../api/client";
+import { useUpdating } from "../app/updating";
+import { useDebounced } from "../app/useDebounced";
 import { type Offer, type UnitAction, UnitPanelView } from "../components/UnitPanelView";
 import { offers, planEdit } from "../lib/projectUnits";
-import { type Refused, shownRefusal } from "../lib/refusals";
+import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
+import { planShown } from "../lib/typing";
 import { unitLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
+import { UpdatingNote } from "../ui/UpdatingNote";
 
 interface Props {
   name: string;
@@ -38,30 +42,31 @@ export function refusalOf(error: Error): string {
  * One plan, asked for again at every revision - an Apply spends the fingerprints it carries - and
  * not asked for at all while `request` is `null`.
  *
- * `keep` leaves the last plan on screen while the next is asked for, marked as a placeholder, for
- * a description: its plan changes with every key typed, and only in the text it writes, so the
- * line saying which file it changes would otherwise blink at every key.
+ * Keeps no placeholder while the next is asked for: a description is debounced before `request`
+ * ever reaches this hook (`useDebounced`, spec §6), and `planShown` (`lib/typing.ts`) never
+ * trusts a placeholder's own answer, so one kept here would never be drawn - a `keep` option once
+ * did exactly that (fix round 2's own finding), which is why there is none now.
  */
-export function usePlan(
-  request: UnitPlanRequest | null,
-  revision: number | undefined,
-  keep = false,
-) {
+export function usePlan(request: UnitPlanRequest | null, revision: number | undefined) {
   return useQuery({
     queryKey: ["unit-plan", request, revision],
     queryFn: request === null ? skipToken : () => getUnitPlan(request),
-    placeholderData: (previous) => (keep ? previous : undefined),
   });
 }
 
 /** One unit's panel: where it is stated, its vocabulary entry, and a spelling to rename it to. */
 export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }: Props) {
   const queries = useQueryClient();
+  const updating = useUpdating();
   const reply = useQuery({
     queryKey: ["unit", name, revision],
     queryFn: () => getUnit(name),
     placeholderData: (previous) => previous,
   });
+  // What the panel shows of that answer (`panelShows`): a unit just renamed to this spelling is
+  // refused until the rename is analysed, and the panel says the findings are updating meanwhile.
+  const answer = panelShows(reply, (shown) => shown.unit, name, updating);
+  const shownReply = answer.shown === "reply" ? answer.reply : undefined;
   const units = useQuery({
     queryKey: ["units", revision],
     queryFn: () => getUnits(),
@@ -116,11 +121,24 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
     remove: offered?.remove ? { action: "remove", unit: name } : null,
     rename: to === null ? null : { action: "rename", unit: name, to },
   };
+  // Description is the one field here typed into directly (a plain field, committing on every
+  // keystroke), so it is the one debounced (spec §6): a panel's first ask of it is immediate, and
+  // only a later one waits. Add and remove are never typed into - `offers` offers each outright
+  // once the unit's own state says so - and the rename picker commits only on a spelling picked
+  // or typed and confirmed with Enter (`UnitPanelView`'s own `UnitPicker`), never on a keystroke
+  // of its own: `to` only ever holds a whole, deliberate choice, so there is no keystroke for any
+  // of the three to wait on, and `asked`'s own entries for them are `requests`' outright.
+  const asked: Record<UnitAction, UnitPlanRequest | null> = {
+    describe: useDebounced(requests.describe),
+    add: requests.add,
+    remove: requests.remove,
+    rename: requests.rename,
+  };
   const plans = {
-    describe: usePlan(requests.describe, revision, true),
-    add: usePlan(requests.add, revision),
-    remove: usePlan(requests.remove, revision),
-    rename: usePlan(requests.rename, revision),
+    describe: usePlan(asked.describe, revision),
+    add: usePlan(asked.add, revision),
+    remove: usePlan(asked.remove, revision),
+    rename: usePlan(asked.rename, revision),
   };
   const apply = useMutation({
     mutationFn: (action: UnitAction) => {
@@ -171,27 +189,43 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
       if (error === null && action === "describe") setDescription(undefined);
     },
   });
-  /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for. */
-  const offer = (action: UnitAction): Offer => ({
-    plan: plans[action].data ?? null,
-    refusal:
-      staleFailed?.action === action
-        ? shownRefusal(staleFailed, revision)
-        : failed?.action === action
-          ? failed.message
-          : (plans[action].error?.message ?? null),
-    pending: plans[action].isPlaceholderData,
-  });
+  /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for.
+   * `plan`/`refusal`/`pending` are `planShown`'s own, `lib/typing.ts` (review fix round 1):
+   * `null`/`null`/pending while the debounced request has not caught up with what the fields now
+   * say, or while the answer is an earlier request's kept as a placeholder - never a plan, nor
+   * its own fetch refusal, for text the reader has since typed past. A stale or a plain apply
+   * failure takes precedence, as it always did. Never held back for `add`/`remove`/`rename`
+   * beyond their own query settling, whose `asked` entries are never behind `requests`'. */
+  const offer = (action: UnitAction): Offer => {
+    const shown = planShown(asked[action], requests[action], plans[action]);
+    return {
+      plan: shown.plan,
+      refusal:
+        staleFailed?.action === action
+          ? shownRefusal(staleFailed, revision)
+          : failed?.action === action
+            ? failed.message
+            : shown.refusal,
+      pending: shown.pending,
+    };
+  };
 
   if (gone) return null;
-  if (reply.isError) {
+  if (answer.shown === "refusal") {
     return (
       <Panel title={name} onClose={onClose}>
-        <Banner tone="error">{reply.error.message}</Banner>
+        <Banner tone="error">{answer.refusal}</Banner>
       </Panel>
     );
   }
-  if (reply.data === undefined || units.data === undefined || row === undefined) {
+  if (answer.shown === "updating") {
+    return (
+      <Panel title={name} onClose={onClose}>
+        <UpdatingNote updating />
+      </Panel>
+    );
+  }
+  if (shownReply === undefined || units.data === undefined || row === undefined) {
     return (
       <Panel title={name} onClose={onClose}>
         <p className="quiet">Reading {name}…</p>
@@ -201,8 +235,9 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
   return (
     <UnitPanelView
       unit={row}
-      reply={reply.data}
+      reply={shownReply}
       units={units.data}
+      updating={updating}
       description={description ?? row.description ?? ""}
       onDescription={(text) => {
         setDescription(text);
@@ -220,8 +255,11 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
       }}
       onPickerClosed={() => setTyped(undefined)}
       to={to}
-      // Nothing is said of a description left as it is: the plan kept for the last key typed
-      // (usePlan) would otherwise still show once the text is the vocabulary's again.
+      // Nothing is said of a description left as it is: `offer("describe")` already draws
+      // nothing once `requests.describe` is `null` (`planShown` answers `plan: null`), so this
+      // `null` is not load-bearing for what is drawn - kept for the same reason `ConstantPanel`'s
+      // own `valueOffer`/`describeOffer` are gated on their own draft, so a reader of either file
+      // finds the same shape.
       describing={draft === null ? null : offer("describe")}
       adding={offer("add")}
       removing={offer("remove")}

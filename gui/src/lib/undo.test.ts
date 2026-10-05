@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from "vitest";
 import type { Finding, PlanReply, UndoneChange } from "../api/types";
 import {
+  askedAgainAfterUndo,
   constantLabel,
   declareLabel,
   filesLabel,
@@ -217,7 +218,15 @@ const CREATED: UndoneChange = {
   hunks: [{ line: 1, before: ["{", '  "units": []', "}"], after: [] }],
 };
 
-const STATE = { revision: 4, project: "C:/work/demo/demo.ddd.json", files: [], findings: [] };
+const STATE = {
+  revision: 4,
+  version: 8,
+  project: "C:/work/demo/demo.ddd.json",
+  files: [],
+  counts: { error: 0, warning: 0, info: 0 },
+  analysing: false,
+  edits: 3,
+};
 
 describe("the undo control", () => {
   it("says what it would undo", () => {
@@ -245,5 +254,61 @@ describe("the undo control", () => {
       { file: CHANGED.file, hunks: CHANGED.hunks, note: null },
       { file: CREATED.file, hunks: CREATED.hunks, note: "removed" },
     ]);
+  });
+});
+
+describe("what an undo asks again", () => {
+  // An undo is answered once its files are back, and the revision moves only once they are
+  // analysed: what draws a file as it stands, and a plan whose fingerprints the undo spent, is
+  // asked for again at once; what an analysis made waits for the revision every key holds.
+  it("asks again for whatever draws a file as it stands, a tab's rows, an entry's panel or a plan", () => {
+    const drawn = [
+      ["file", "C:/work/demo/components/controller.ddd.json", 7],
+      ["variable", "ValueA", 7],
+      ["units", 7],
+      ["unit", "rpm", 7],
+      ["types", 7],
+      ["type", "Sensor_t", 7],
+      ["shared", 7],
+      ["constant", "TREND_SAMPLES", 7],
+      ["section", ".calib", 7],
+      ["raster", "10ms", 7],
+      ["files", 7],
+      ["declarable", "C:/work/demo/components/controller.ddd.json", 7],
+      ["unit-plan", { action: "describe", unit: "rpm", description: "speed" }, 7],
+      ["type-plan", { action: "set", name: "Sensor_t", key: "unit", raw: '"rpm"' }, 7],
+      ["constant-plan", { action: "remove", name: "TREND_SAMPLES" }, 7],
+      ["section-plan", { action: "remove", name: ".calib" }, 7],
+      ["raster-plan", { action: "remove", name: "10ms" }, 7],
+      ["files-plan", { action: "add", path: "extra.ddd.json" }, 7],
+      ["declaration-plan", "remove", "C:/work/demo/components/controller.ddd.json", "ValueA", 7],
+      ["settle", "ValueA", "unit", '"rpm"', 7],
+      ["value-plan", "CurveA", { at: [0, 1], raw: 900 }, 7],
+      ["values-plan", "CurveA", [[1200, 900]], 7],
+      ["fix", "C:/work/demo/components/controller.ddd.json", "", "missing-id", 7],
+    ];
+    expect(drawn.filter((key) => !askedAgainAfterUndo(key))).toEqual([]);
+  });
+
+  it("leaves to the analysis the graph, a comparison, the findings and an object's values", () => {
+    // The final review's fix wave: a component's whole-file findings were asked again at every
+    // undo, 3.4 MB at 100000-large-heavy, and none of them can change before the undo's own
+    // analysis lands - when the revision their key holds moves, and they are asked for anew.
+    const left = [
+      ["graph", "C:/work/demo/demo.ddd.json", 7],
+      ["compare", "C:/b.json", 7],
+      ["findings", 7, "file", "C:/work/demo/components/controller.ddd.json"],
+      ["findings", 7, 0],
+      ["findings", 7, "reported", "C:/work/demo/components/controller.ddd.json", "missing-id"],
+      ["values", "CurveA", 7],
+    ];
+    expect(left.filter((key) => askedAgainAfterUndo(key))).toEqual([]);
+  });
+
+  it("leaves the strip's own preview, and the session and the projects found", () => {
+    // The undo closes the strip, and the entry it previews next is the one the next state
+    // names, under a key of its own: asked again, the entry just put back answers 404.
+    const left = [["undo", 3, 7], ["session"], ["projects"]];
+    expect(left.filter((key) => askedAgainAfterUndo(key))).toEqual([]);
   });
 });

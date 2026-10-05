@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { PlanReply, ValuesReply } from "../api/types";
+import { holdOf } from "../lib/valuesHold";
 import {
   CURVE_CELL_PLAN,
   VALUES_AXIS,
@@ -10,6 +11,7 @@ import {
   VALUES_SOFTWARE_LABEL,
   VALUES_VALUE_D,
 } from "../stories/fixtures";
+import { UndoStripView } from "./UndoStripView";
 import { ValuesGridView } from "./ValuesGridView";
 import { ValuesPlotView } from "./ValuesPlotView";
 
@@ -101,6 +103,46 @@ export const ARefusedCell = () => (
     refusal="200 does not fit into sint8 (-128 .. 127)"
   />
 );
+
+// Part 17's own: ACellMidChange's 7.5 ms applied, its edit written and answered, its analysis not
+// landed yet. The server still answers the values from before it, and the grid holds what it wrote
+// (`holdOf`, `valuesShown`) - the undo offered beside the name, the findings said to be updating
+// where they are listed.
+export function AnAppliedValueHeld() {
+  const [physical, setPhysical] = useState(true);
+  return (
+    <ValuesGridView
+      reply={holdOf(2, VALUES_CURVE, { cell: { row: 0, column: 2 }, raw: 750 }).after}
+      updating
+      backTo="Controller"
+      undoStrip={
+        <UndoStripView
+          label="Undo element 3 of CurveA"
+          open={false}
+          onOpen={() => {}}
+          preview={null}
+          changesShown={false}
+          onChangesShown={() => {}}
+          onUndo={() => {}}
+          refusal={null}
+          busy={false}
+        />
+      }
+      physical={physical}
+      editing={null}
+      plan={null}
+      refusal={null}
+      changesShown={false}
+      busy={false}
+      onPhysical={setPhysical}
+      onEditing={() => {}}
+      onChangesShown={() => {}}
+      onApply={() => {}}
+      onBack={() => {}}
+      onPaste={() => {}}
+    />
+  );
+}
 
 // Spec 6's own list, beyond the brief's: an absent init greyed, and a grid nothing produces.
 

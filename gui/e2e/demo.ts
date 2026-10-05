@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 
@@ -101,6 +101,85 @@ export async function openPanel(
   return page.getByRole("complementary", { name: variable });
 }
 
+/** Opens a variable's values grid from its component's table, the way a reader reaches it: the
+ * Shape cell's own button - CurveA's and MapA's own among Controller's fourteen declarations,
+ * past the box's edge at this viewport (part 17's task 9: the declarations table is virtualised).
+ * Wheeled into view first, the mouse over the table, rather than left to the click's own
+ * auto-scroll: React Aria's own ScrollView sets `pointer-events: none` on a long table's content
+ * while it scrolls and for 300 ms after (`private/virtualizer/ScrollView.mjs`), and Playwright's
+ * own actionability check hit-tests only a click's first event - so a click sent mid-scroll can
+ * pass that check against a target already back under the pointer, and still open nothing,
+ * `usePress` itself cancelling a press made while `pointer-events` read `none` partway through
+ * (measured: `Show the values of CurveA` clicked at the box's own reported, visible position
+ * still opened nothing, the page left on Controller's own heading - and the same click, the box
+ * already wheeled to rest first, opened CurveA's grid every time). Never enlarges the box: this
+ * is the wheel a reader's own hand would turn over it. */
+export async function openValues(
+  page: Page,
+  address: string,
+  variable: string,
+  component = "Controller",
+): Promise<void> {
+  await page.goto(address);
+  await page.getByRole("button", { name: component, exact: true }).click();
+  const button = page.getByRole("button", { name: `Show the values of ${variable}` });
+  await scrolledIntoView(page, `Declarations of ${component}`, button);
+  await button.click();
+}
+
+/** Wheels a long table's own box, the mouse over its middle, until `target` sits inside the
+ * box's own bounds top to bottom - stopping as soon as it does, so a row already in view is
+ * never scrolled past. Not `target.isVisible()`: that reads true for a row the virtualiser has
+ * already drawn past the box's own visible bottom - idle or scrolling down, its own overscan
+ * extends a third of the box's own visible height below what is on screen, and the same third
+ * above it only while actively scrolling up (`private/virtualizer/OverscanManager.mjs`'s own
+ * `getOverscannedRect`, read by its own velocity) - and nothing about a drawn row's own CSS says
+ * the box's own scroll position clips it; visible and displayed is all that check ever meant, on
+ * a row a reader could not actually see (measured: true before any wheel at all, for a row the
+ * overscan had already drawn past the box's own last visible one). Bounded at forty steps: a
+ * target that never comes within the box's own bounds fails here, in words that say why, rather
+ * than at whatever assertion happens to be next. */
+export async function scrolledIntoView(page: Page, label: string, target: Locator): Promise<void> {
+  const box = page.getByRole("grid", { name: label });
+  const container = await box.boundingBox();
+  if (container === null) throw new Error(`no table labelled "${label}" to scroll`);
+  // Settles on the box's own `scrollTop` rather than a fixed pause: a wheel's own scroll is still
+  // animating, or the virtualiser still catching rows up to it, for longer than any one guess
+  // would cover on a slow run, and longer than it need wait on a fast one.
+  const settled = async () => {
+    let last: number | null = null;
+    for (let tries = 0; tries < 20; tries += 1) {
+      const current = await box.evaluate((element) => element.scrollTop);
+      if (current === last) return;
+      last = current;
+      await page.waitForTimeout(16);
+    }
+  };
+  await page.mouse.move(container.x + container.width / 2, container.y + container.height / 2);
+  for (let step = 0; step < 40 && !(await withinBox(page, label, target)); step += 1) {
+    await page.mouse.wheel(0, 200);
+    await settled();
+  }
+  if (!(await withinBox(page, label, target))) {
+    throw new Error(`scrolling "${label}" never brought its target row within the box`);
+  }
+}
+
+/** Whether `target` sits whole inside the box of the long table labelled `label`, top to bottom:
+ * what a reader can see of it, which `target.isVisible()` does not say (`scrolledIntoView`'s own
+ * doc says why). The box and the target are both measured on each call, so the answer holds
+ * wherever the page itself stands. */
+export async function withinBox(page: Page, label: string, target: Locator): Promise<boolean> {
+  const container = await page.getByRole("grid", { name: label }).boundingBox();
+  const rect = await target.boundingBox();
+  return (
+    container !== null &&
+    rect !== null &&
+    rect.y >= container.y &&
+    rect.y + rect.height <= container.y + container.height
+  );
+}
+
 /** A table pasted into the grid the way a browser delivers one: a `DataTransfer` built in the
  * page and dispatched as a `paste` event, because Playwright cannot put a table on the system
  * clipboard. Dispatched on the grid's own `<section>` - the one `ValuesGridView` binds `onPaste`
@@ -146,44 +225,70 @@ function driftNumber(
 ): Buffer {
   const path = join(directory, file);
   const before = readFileSync(path);
-  const text = before
-    .toString("utf8")
-    .replace(new RegExp(`("name": "${variable}"[\\s\\S]*?"${key}": )[0-9.]+`), `$1${value}`);
-  writeFileSync(path, text, "utf8");
+  writeFileSync(path, drifted(before, variable, key, value), "utf8");
   return before;
 }
 
-/** `path`'s modification time, read now so a write about to be made to it can be hidden from
- * the session's own file watcher afterwards - call the function this returns once that write is
- * made. The session decides a file changed by `(st_mtime_ns, st_size)` alone (`stamped`,
- * `session.py`), never by reading it, so a write whose bytes change but whose stamp does not
- * is invisible to the watcher while still being a different file to anyone who reads it fresh -
- * which is what an Apply's own staleness check does. Used where a test means the second and not
- * the first, the way `keys.spec.ts`'s "a change refused as stale..." does.
- *
- * The restore is made through python's own `os.utime(path, ns=(...))`, not `fs.utimesSync`:
- * `utimesSync` takes the time through a JS `number`, which is a handful of nanoseconds off for
- * an epoch this large - close enough to fool a human but not the exact-tuple comparison
- * `stamped` makes, so the write would still have been visible to it. Reached through
- * `DDD_PYTHON` rather than a shell tool, the way `dump` above is, so this needs nothing this
- * repository does not already depend on and is exact on every platform the suite runs on. */
-export function preserveStampOf(path: string): () => void {
-  const mtimeNs = statSync(path, { bigint: true }).mtimeNs;
-  return () => {
-    const result = spawnSync(process.env.DDD_PYTHON ?? "python", [
-      "-c",
-      "import os, sys\nos.utime(sys.argv[1], ns=(int(sys.argv[2]), int(sys.argv[2])))",
-      path,
-      mtimeNs.toString(),
-    ]);
-    if (result.status !== 0) {
-      throw new Error(
-        `restoring ${path}'s modification time exited with ${String(result.status)}: ` +
-          `${result.stderr.toString("utf8")}`,
-      );
-    }
-  };
+/** `text` with the first number one variable's key holds replaced by `value`. */
+function drifted(text: Buffer, variable: string, key: string, value: number): string {
+  return text
+    .toString("utf8")
+    .replace(new RegExp(`("name": "${variable}"[\\s\\S]*?"${key}": )[0-9.]+`), `$1${value}`);
 }
+
+/** One variable's greatest limit drifted as `driftMax` drifts it, but unseen by the session's own
+ * file watcher - which decides a file changed by `(st_mtime_ns, st_size)` alone (`stamped`,
+ * `session.py`), never by reading it - while a different file to anyone who reads it fresh,
+ * which is what an Apply's own staleness check does. Used where a test means the second and not
+ * the first, the way `keys.spec.ts`'s "a change refused as stale..." does; `max` must be as wide
+ * as the number it replaces, so that the size does not move either. Answers the file as it was.
+ *
+ * The new bytes are written beside the file, given the file's own times through python's
+ * `os.utime(path, ns=(...))` - exact to the nanosecond, where `fs.utimesSync` takes a JS `number`
+ * a handful of nanoseconds off for an epoch this large - and renamed over it in one step, so no
+ * moment shows the watcher a stamp of their own. Written in place and its stamp put back after,
+ * by a python started for it, the write stood visible for that start-up, and a poll landing then
+ * re-analysed the project and left nothing stale to refuse (CI, PR #77, on ubuntu and windows).
+ * The rename is tried again while windows refuses it access, as `ddd.editing` does. */
+export function driftMaxUnseen(
+  directory: string,
+  file: string,
+  variable: string,
+  max: number,
+): Buffer {
+  const path = join(directory, file);
+  const before = readFileSync(path);
+  const result = spawnSync(process.env.DDD_PYTHON ?? "python", ["-c", UNSEEN, path], {
+    input: drifted(before, variable, "max", max),
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `writing ${path} unseen exited with ${String(result.status)}: ` +
+        `${result.stderr.toString("utf8")}`,
+    );
+  }
+  return before;
+}
+
+/** `driftMaxUnseen`'s python: stdin's bytes beside `argv[1]`, under its times, then renamed over
+ * it. */
+const UNSEEN = [
+  "import os, sys, time",
+  "path = sys.argv[1]",
+  "staged = path + '.unseen'",
+  "status = os.stat(path)",
+  "with open(staged, 'wb') as file:",
+  "    file.write(sys.stdin.buffer.read())",
+  "os.utime(staged, ns=(status.st_atime_ns, status.st_mtime_ns))",
+  "for attempt in range(49):",
+  "    try:",
+  "        os.replace(staged, path)",
+  "        break",
+  "    except PermissionError:",
+  "        time.sleep(0.02)",
+  "else:",
+  "    os.replace(staged, path)",
+].join("\n");
 
 /** A producing declaration's id taken away from outside, the way a description written before
  * `ddd id` adopted ids states it - which is what `missing-id` reports; answers the file as it
@@ -276,4 +381,40 @@ export function dump(directory: string, project: string, output: string): void {
         `${result.stderr.toString("utf8")}`,
     );
   }
+}
+
+/** One frame as a reader saw it: what a field read, whether the page said "Updating the
+ * findings…" anywhere, and whether it offered the undo of one edit. */
+export type Frame = readonly [value: string | null, updating: boolean, undoOffered: boolean];
+
+/** Records, from now on and at every frame the page paints, what the field named `label` reads,
+ * whether the page says its findings are updating, and whether it offers to undo the edit named
+ * `edit` - its button, "Undo " and the edit's name - what a reader sees at each paint, which a
+ * wait on any one moment can step over: on examples/demo an analysis lands within a few frames.
+ * Read back with `framesWatched`. */
+export async function watchFrames(page: Page, label: string, edit: string): Promise<void> {
+  await page.evaluate(
+    ([name, undo]) => {
+      const frames: [string | null, boolean, boolean][] = [];
+      (window as unknown as { watched: typeof frames }).watched = frames;
+      const each = () => {
+        const field = document.querySelector<HTMLInputElement>(`input[aria-label="${name}"]`);
+        const said = [...document.querySelectorAll('[role="status"]')].some(
+          (status) => status.textContent === "Updating the findings…",
+        );
+        const offered = [...document.querySelectorAll("button")].some(
+          (button) => button.textContent === undo,
+        );
+        frames.push([field?.value ?? null, said, offered]);
+        requestAnimationFrame(each);
+      };
+      requestAnimationFrame(each);
+    },
+    [label, `Undo ${edit}`],
+  );
+}
+
+/** Every frame `watchFrames` has recorded so far, in order. */
+export function framesWatched(page: Page): Promise<Frame[]> {
+  return page.evaluate(() => (window as unknown as { watched: Frame[] }).watched);
 }

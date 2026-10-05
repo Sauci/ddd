@@ -1,16 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import type { MouseEvent } from "react";
-import { useState } from "react";
-import { getFile } from "../api/client";
-import type { State } from "../api/types";
-import { keyedFindings, leadsElsewhere, routeHref, routeOf } from "../lib/findings";
+import { useMemo, useState } from "react";
+import { getFile, getFindings } from "../api/client";
+import type { ListedFinding, State } from "../api/types";
+import { useUpdating } from "../app/updating";
+import { leadsElsewhere, routeHref, routeOf } from "../lib/findings";
+import { findingsByRow } from "../lib/findingsByRow";
 import type { ComponentFile } from "../lib/formats";
-import { pointerOf, valueAt, within } from "../lib/pointer";
+import { pointerOf, valueAt } from "../lib/pointer";
 import { asList, asText } from "../lib/values";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
-import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
+import { Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
+import { UpdatingNote, UpdatingStatus } from "../ui/UpdatingNote";
 import { DeclarePanel } from "./DeclarePanel";
 import { UndoStrip } from "./UndoStrip";
 import { VariablePanel } from "./VariablePanel";
@@ -18,7 +21,7 @@ import { VariablePanel } from "./VariablePanel";
 interface Props {
   file: string;
   variable: string | undefined;
-  state: State | null;
+  state: State;
   stopped: boolean;
   onVariable: (variable: string | undefined) => void;
   /** Opening the values grid of a shaped declaration - its own page, not a panel this screen
@@ -33,6 +36,10 @@ interface Props {
   onOpenConstant: (name: string) => void;
 }
 
+/** No findings, while this file's own have not come: one array for every such render, so that
+ * the rows grouped from them (`byRow`, below) are grouped once rather than again each render. */
+const NONE: readonly ListedFinding[] = [];
+
 /** The kinds whose definition states no `dimensions` at all and reads its own word instead - a
  * curve or a map over its axis or axes, or an axis itself. */
 const SHAPED_BY_KIND = new Set(["curve", "map", "axis"]);
@@ -44,8 +51,8 @@ function shapedByKind(kind: string | undefined): kind is string {
 }
 
 /** The Shape column's text for one declaration, read from the file already open rather than
- * asked of the server: `State` carries no dictionary, only `revision`, `project`, `files`,
- * `findings` and `undoable`, so there is no second source and no request per row.
+ * asked of the server: `State` carries no dictionary - the revision, the project, its files and
+ * how many findings there are - so there is no second source and no request per row.
  *
  * A `dimensions` on the definition is spelled the way the file spells each entry - `16`, or
  * `4 × 2` for more than one - exactly as a type member's own dimensions are (`projectTypes.ts`).
@@ -67,6 +74,7 @@ export function ComponentPage({
   onOpenType,
   onOpenConstant,
 }: Props) {
+  const updating = useUpdating();
   // A new number on every unit cell press, even a second press of the same cell, so the
   // picker's focus request always changes; null when a row selects its variable without one.
   const [focusPicker, setFocusPicker] = useState<number | null>(null);
@@ -80,7 +88,7 @@ export function ComponentPage({
   const [adding, setAdding] = useState(false);
   if (undeclared !== null && undeclared.file !== file) setUndeclared(null);
   const content = useQuery({
-    queryKey: ["file", file, state?.revision],
+    queryKey: ["file", file, state.revision],
     queryFn: () => getFile(file),
     // The table stays up while this file is read again for a newer revision: swapped for
     // "Reading the file…", it lost the open panel's own draft and the scroll position on every
@@ -90,6 +98,76 @@ export function ComponentPage({
     placeholderData: (previous, previousQuery) =>
       previousQuery?.queryKey[1] === file ? previous : undefined,
   });
+  // Every finding of this file, worst first - each declaration's chips and the list below - asked
+  // again for every revision, the last revision's kept up meanwhile as the file's own is.
+  const listed = useQuery({
+    queryKey: ["findings", state.revision, "file", file],
+    queryFn: () => getFindings({ file }),
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[3] === file ? previous : undefined,
+  });
+
+  // `null` while the file is pending, errored, or failed its schema check - the three cases the
+  // early returns below show their own message for instead of this page's table - so that the
+  // two memos just below, like every hook, run the same on every render, those three included
+  // (Rules of Hooks: a hook after an early return would run on some renders and not others).
+  const loaded = !content.isPending && !content.isError && content.data.error === null;
+  const data = loaded ? content.data.data : null;
+  const findings = listed.data?.findings ?? NONE;
+  // Grouped once per findings answer, not refiltered per row on every render (part 17's task
+  // 11f): on a file of 3,334 declarations and 4,167 findings, a row's own `findings.filter(...)`
+  // cost 13.9 million `within` calls a render, three renders an Apply. `data` and `findings` are
+  // the very object the queries' own `placeholderData` above keeps up across a revision's own
+  // refetch, so those three renders share this one computation rather than repeating it.
+  const byRow = useMemo(() => {
+    const pointers =
+      data === null
+        ? []
+        : asList(valueAt(data, "component.interface")).map((_, index) =>
+            pointerOf(["component", "interface", index]),
+          );
+    return findingsByRow(pointers, findings);
+  }, [data, findings]);
+  // The rows themselves, once per file content and the map just grouped - never over the
+  // findings again.
+  const rows = useMemo(() => {
+    if (data === null) return [];
+    return asList(valueAt(data, "component.interface")).map((_, index) => {
+      const at = pointerOf(["component", "interface", index]);
+      const text = (pointer: string) => asText(valueAt(data, `${at}.${pointer}`));
+      const kind = text("definition.kind");
+      const datatype = text("definition.datatype");
+      const dimensions = asList(valueAt(data, `${at}.definition.dimensions`));
+      return {
+        id: at,
+        name: text("definition.name") ?? `declaration ${index + 1}`,
+        scope: text("scope"),
+        kind,
+        type: datatype ?? text("definition.typename"),
+        unit: text("definition.unit") ?? "",
+        shape: shapeOf(kind, dimensions),
+        // The shape is offered as a button only where the grid can draw what it opens, and
+        // shown as plain text otherwise: a button that refused the moment it was pressed would
+        // be a button that lies (spec 5.1). A curve, a map or an axis is a numeric table
+        // whatever type it names - measured, a curve naming a scalar type resolves exactly as
+        // one stating its own storage does - so its kind alone is enough. Anything else has to
+        // state both a `dimensions` and a `datatype` of its own: `dimensions` beside a
+        // `typename` is a structured declaration, which `DataDictionary.objects` does not hold
+        // at all, so the grid would answer that the project declares no such object. A
+        // structure cannot be a numeric table, which is why every `typename` declaration of
+        // examples/ is a measurement or a parameter. More dimensions than two is more than a
+        // grid draws, whichever way in. A text init in this very file is text and not a grid; a
+        // consumer's declaration cannot see its producer's init, so a text one elsewhere is
+        // offered anyway, and the grid it opens says so itself (`ValuesGridView`,
+        // `reply.stated`).
+        offered:
+          typeof valueAt(data, `${at}.definition.init`) !== "string" &&
+          dimensions.length <= 2 &&
+          (shapedByKind(kind) || (dimensions.length > 0 && datatype !== undefined)),
+        own: byRow.get(at) ?? [],
+      };
+    });
+  }, [data, byRow]);
 
   if (content.isPending) return <p className="quiet">Reading the file…</p>;
   if (content.isError) return <Banner tone="error">{content.error.message}</Banner>;
@@ -111,45 +189,10 @@ export function ComponentPage({
       onVariable(name);
     };
 
-  const data = content.data.data;
   // The file parsed but is only checked against the schema here: it need not match
   // ComponentFile (spec 6.10), so `component` may be absent on disk though the type requires it.
-  const name = (data as ComponentFile).component?.name ?? "Unnamed component";
-  const findings = (state?.findings ?? []).filter((finding) => finding.file === file);
-  const rows = asList(valueAt(data, "component.interface")).map((_, index) => {
-    const at = pointerOf(["component", "interface", index]);
-    const text = (pointer: string) => asText(valueAt(data, `${at}.${pointer}`));
-    const kind = text("definition.kind");
-    const datatype = text("definition.datatype");
-    const dimensions = asList(valueAt(data, `${at}.definition.dimensions`));
-    return {
-      id: at,
-      name: text("definition.name") ?? `declaration ${index + 1}`,
-      scope: text("scope"),
-      kind,
-      type: datatype ?? text("definition.typename"),
-      unit: text("definition.unit") ?? "",
-      shape: shapeOf(kind, dimensions),
-      // The shape is offered as a button only where the grid can draw what it opens, and shown
-      // as plain text otherwise: a button that refused the moment it was pressed would be a
-      // button that lies (spec 5.1). A curve, a map or an axis is a numeric table whatever type
-      // it names - measured, a curve naming a scalar type resolves exactly as one stating its
-      // own storage does - so its kind alone is enough. Anything else has to state both a
-      // `dimensions` and a `datatype` of its own: `dimensions` beside a `typename` is a
-      // structured declaration, which `DataDictionary.objects` does not hold at all, so the
-      // grid would answer that the project declares no such object. A structure cannot be a
-      // numeric table, which is why every `typename` declaration of examples/ is a measurement
-      // or a parameter. More dimensions than two is more than a grid draws, whichever way in.
-      // A text init in this very file is text and not a grid; a consumer's declaration cannot
-      // see its producer's init, so a text one elsewhere is offered anyway, and the grid it
-      // opens says so itself (`ValuesGridView`, `reply.stated`).
-      offered:
-        typeof valueAt(data, `${at}.definition.init`) !== "string" &&
-        dimensions.length <= 2 &&
-        (shapedByKind(kind) || (dimensions.length > 0 && datatype !== undefined)),
-      own: findings.filter((finding) => within(finding.pointer, at)),
-    };
-  });
+  // `data` is the very answer read above, past the three returns that leave it `null`.
+  const name = (data as ComponentFile | null)?.component?.name ?? "Unnamed component";
   const selected = new Set(rows.filter((row) => row.name === variable).map((row) => row.id));
 
   return (
@@ -168,13 +211,15 @@ export function ComponentPage({
           >
             Add a declaration
           </Button>
+          {/* Last in the row, so that none of the controls before it ever moves. */}
+          <UpdatingStatus updating={updating} />
         </div>
         {undeclared !== null && (
           <Banner tone="warning">
             {undeclared.name} is no longer declared in the open project.
           </Banner>
         )}
-        <Table
+        <LongTable
           aria-label={`Declarations of ${name}`}
           selectionMode="single"
           selectedKeys={selected}
@@ -187,13 +232,45 @@ export function ComponentPage({
           }}
         >
           <TableHeader>
-            <Column>Scope</Column>
-            <Column isRowHeader>Name</Column>
-            <Column>Kind</Column>
-            <Column>Type</Column>
-            <Column>Shape</Column>
-            <Column>Unit</Column>
-            <Column>Findings</Column>
+            {/* Widths measured in Chrome (fix round 3) on scratch copies of examples/demo, of a
+                generated project of 10,000 declarations and of examples/vocabulary. Scope and Kind
+                are fixed, their words the schema's own: "output" takes 63px of Scope's 70px
+                (`minWidth` repeats it, as React Aria floors a column with none of its own at 75px),
+                "measurement" 109px of Kind's 115px. The other five share the rest - Name and Type
+                3fr each, Shape 2fr, Unit 1fr, Findings 4fr - in a 1280px window 204px each for Name
+                and Type, 135px for Shape and 272px for Findings, which hold the widest name
+                (examples/vocabulary's ManifoldPressure, 132px), the widest type (the demo's
+                SensorDiagnosis_t, 137px), the widest shape (a dimension naming a constant,
+                examples/vocabulary's PRESSURE_CELLS, 120px) and a row's two chips (the generated
+                project's unused-output and missing-id, 200px). A panel beside the table leaves it a
+                box of about 552px, 537px once a browser draws the box's own vertical scrollbar; a
+                column never goes below its `minWidth`, so Name keeps 140px there, every name of the
+                three projects whole - a longer one is cut with an ellipsis, never wrapped - and
+                Unit 55px, which holds "degC" and "none", while Type, Shape and Findings share what
+                is left - 49px, 40px and 66px in a 535px box - each cut where it runs longer. The
+                floors sum to 515px: beside a panel they fit a window down to about 1029px wide -
+                1072px where a browser draws the box's own vertical scrollbar and the page's, 15px
+                each - and narrower, until the panel moves under the table at 900px, the box scrolls
+                sideways; with no panel the table fits a window down to about 547px (577px). */}
+            <Column width={70} minWidth={70}>
+              Scope
+            </Column>
+            <Column isRowHeader width="3fr" minWidth={140}>
+              Name
+            </Column>
+            <Column width={115}>Kind</Column>
+            <Column width="3fr" minWidth={45}>
+              Type
+            </Column>
+            <Column width="2fr" minWidth={40}>
+              Shape
+            </Column>
+            <Column width="1fr" minWidth={55}>
+              Unit
+            </Column>
+            <Column width="4fr" minWidth={50}>
+              Findings
+            </Column>
           </TableHeader>
           <TableBody items={rows}>
             {(row) => (
@@ -240,8 +317,11 @@ export function ComponentPage({
                   </Button>
                 </Cell>
                 <Cell>
-                  {keyedFindings(row.own).map(([finding, key]) => (
-                    <Chip key={key} tone={finding.severity === "error" ? "error" : "warning"}>
+                  {row.own.map((finding) => (
+                    <Chip
+                      key={finding.key}
+                      tone={finding.severity === "error" ? "error" : "warning"}
+                    >
                       {finding.check}
                     </Chip>
                   ))}
@@ -249,13 +329,16 @@ export function ComponentPage({
               </Row>
             )}
           </TableBody>
-        </Table>
+        </LongTable>
         <h2>Findings in this component</h2>
-        {findings.length === 0 ? (
-          <p className="quiet">None.</p>
-        ) : (
+        {/* Said also while there are none: an edit may be about to bring the first. */}
+        <UpdatingNote updating={updating} />
+        {listed.isError && <Banner tone="error">{listed.error.message}</Banner>}
+        {listed.isPending && <p className="quiet">Reading the findings…</p>}
+        {listed.isSuccess && findings.length === 0 && <p className="quiet">None.</p>}
+        {findings.length > 0 && (
           <ul className="findings">
-            {keyedFindings(findings).map(([finding, key]) => {
+            {findings.map((finding) => {
               const href = leadsElsewhere(finding, file) ? routeHref(finding) : null;
               const route = href === null ? null : routeOf(finding);
               // A variable named by this very file's own route opens in place via
@@ -273,7 +356,7 @@ export function ComponentPage({
                   : null;
               const onClick = inThisFile === null ? undefined : followVariable(inThisFile);
               return (
-                <li key={key} className={finding.severity}>
+                <li key={finding.key} className={finding.severity}>
                   <span className="check">{finding.check}</span>{" "}
                   {href === null ? (
                     <span className="message">{finding.message}</span>
@@ -293,7 +376,7 @@ export function ComponentPage({
           key={variable}
           name={variable}
           file={file}
-          revision={state?.revision}
+          revision={state.revision}
           stopped={stopped}
           focusPicker={focusPicker}
           onClose={() => onVariable(undefined)}
@@ -309,7 +392,7 @@ export function ComponentPage({
         <DeclarePanel
           file={file}
           component={name}
-          revision={state?.revision}
+          revision={state.revision}
           stopped={stopped}
           onClose={() => setAdding(false)}
           onDeclared={(declared) => {

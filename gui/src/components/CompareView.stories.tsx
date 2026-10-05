@@ -18,7 +18,7 @@ interface Props {
   refusal?: string | null;
   busy?: boolean;
   /** Opens with the baseline's own finding already selected, so its row's possessive File
-   * column and its own reason line are both in the picture beside `FindingsTableView` and
+   * column and its own reason line are both in the picture beside `CompareTableView` and
    * `FindingPanelView`'s pairing - found among the reply's own rows the same structural way
    * `compareRows` itself tells the two sides apart, never a key spelled out by hand. */
   openBaseline?: boolean;

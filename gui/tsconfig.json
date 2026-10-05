@@ -24,6 +24,8 @@
     "vite.config.ts",
     "playwright.config.ts",
     "screenshots",
-    "playwright.screenshots.config.ts"
+    "playwright.screenshots.config.ts",
+    "bench",
+    "playwright.bench.config.ts"
   ]
 }

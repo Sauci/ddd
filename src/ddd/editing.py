@@ -34,7 +34,8 @@ import json
 import os
 import re
 import stat
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
@@ -63,6 +64,18 @@ UNWRITABLE: Final = "unwritable"
 STAGING_SUFFIX: Final = ".ddd-staging"
 """What a file's new bytes are staged under beside it: the name ``ddd id`` and the artefact
 writer stage under, which no project gives a file of its own."""
+
+REPLACE_TRIES: Final = 50 if os.name == "nt" else 1
+"""How many times a file is renamed into place, or taken away, before a refusal stands.
+
+Windows refuses both while another handle holds the file open, and ``ddd gui`` reads a
+project's files on a thread of its own while an edit writes one: on CI's windows runners the
+benchmark's own edits were refused ``[WinError 5] Access is denied`` renaming the staged file
+into place, during an analysis reading that file, where a read lets go within milliseconds.
+On posix neither waits on a reader, and a refusal is final at once."""
+
+REPLACE_PAUSE: Final = 0.02
+"""Seconds between two tries: fifty wait a second at most."""
 
 _WHITESPACE: Final = " \t\r\n"
 _STRUCTURE: Final = "{}[]:,"
@@ -315,15 +328,101 @@ def removal(document: Document, pointer: str) -> TextEdit:
 
 
 def edit_text(text: str, operations: Sequence[Operation]) -> str:
-    """The text with every operation made in order, each verified against the parsed document.
+    """The text with every operation made in order, verified against the parsed document.
 
-    Verified after every operation rather than once at the end. The next operation is checked
-    against the text the last one left and made on the document that one was meant to leave, so
-    the two have to be one document before it starts: when they were not, an operation that
-    passed its checks on the text reached into the document for a value it did not hold.
+    Verified after every operation rather than once at the end, wherever one operation can
+    depend on what another left. The next operation is checked against the text the last one
+    left and made on the document that one was meant to leave, so the two have to be one document
+    before it starts: when they were not, an operation that passed its checks on the text reached
+    into the document for a value it did not hold.
+
+    A batch none of whose operations can depend on another (:func:`_independent`) is made from
+    the one reading instead, and the text it leaves is read once and compared as the text one
+    operation leaves is. A unit is renamed by a set at every declaration stating it, hundreds of
+    places in one component file of a large project, and the file was read again after each of
+    them. A batch made at once that is refused, or does not read back as the document it was
+    meant to leave, is made again one operation at a time, which answers what it always has: the
+    same text, or the same refusal.
     """
     unreadable = "the file is not json DDD reads, so no pointer names a place in it"
     document = _read(text, UNREADABLE, unreadable)
+    if _independent(document, operations):
+        made = _made_at_once(document, operations)
+        if made is not None:
+            return made
+    return _made_in_turn(document, operations)
+
+
+def _independent(document: Document, operations: Sequence[Operation]) -> bool:
+    """Whether every operation can be tried on the text as it was read, none depending on what
+    another one writes: each a ``set`` of a value the document holds, at a pointer spelled the way
+    the scan spells one, which is no other operation's pointer and nests within none of them, to
+    a value given as text that opens neither an object nor an array - a literal, or text that is
+    no json at all and is refused when it is made.
+
+    Anything else may depend on what another operation leaves. An ``insert`` or a ``remove``
+    writes or takes a comma beside its neighbours, and in an array moves the elements after it to
+    other indices; a ``move`` is both; and a set within a value another set replaces, and the same
+    pointer set twice, answer otherwise in another order. A member added to an object, and an
+    object or an array set in place of a value, are laid out to fit the lines around them, which
+    a set beside them can change: replacing a value an object writes over several lines with a
+    literal can put the object on one line, which a member added to it then joins, and the
+    indentation unit is read off the first entry the file writes on a line of its own, which may
+    be inside a value another set replaces. A literal is written as it is spelled, whatever lines
+    are around it.
+    """
+    pointers = {operation.pointer for operation in operations}
+    if len(pointers) < len(operations):
+        return False
+    for operation in operations:
+        if operation.op != "set" or not isinstance(operation.raw, str):
+            return False
+        if operation.raw.lstrip(_WHITESPACE)[:1] in _OPENING:
+            return False
+        if not _spelled(operation.pointer) or not _holds(document, operation.pointer):
+            return False
+        within = operation.pointer
+        while within:
+            within = parent_pointer(within)
+            if within in pointers:
+                return False
+    return True
+
+
+def _made_at_once(document: Document, operations: Sequence[Operation]) -> str | None:
+    """The operations made on the text as it was read, and the text they leave read once - or
+    ``None`` when one of them is refused, or that text does not read back as the document every
+    operation was meant to leave, for :func:`_made_in_turn` to answer as it answers any batch.
+
+    Only for a batch :func:`_independent` lets through, each of whose edits is a literal as
+    spelled, over where the value it replaces sits. :func:`replacement` measures the lines around
+    the value first, which a literal never reads, copying the text from the value's line to its
+    end for every operation.
+    """
+    expected = copy.deepcopy(document.data)
+    edits: list[TextEdit] = []
+    try:
+        for operation in operations:
+            raw = _raw_of(operation)
+            start, end = _span(document.value_span_of(operation.pointer))
+            # A literal is the one token it is spelled as, so the layout given here is never read.
+            literal = lay_out(raw, one_line=True, indent="", unit=DEFAULT_INDENT_UNIT, newline="\n")
+            edits.append(TextEdit(start, end, literal))
+            expected = _set_value(expected, operation.pointer, parse_raw(raw))
+        made = _read(
+            _all_applied(document.text, edits), UNVERIFIED, "an edit left the file unreadable"
+        )
+    except EditError:
+        return None
+    if _canonical(made.data) != _canonical(expected):
+        return None
+    return made.text
+
+
+def _made_in_turn(document: Document, operations: Sequence[Operation]) -> str:
+    """The operations made one after another, starting from the document as it was read, each
+    verified before the next (:func:`edit_text`)."""
+    text = document.text
     expected = copy.deepcopy(document.data)
     for operation in operations:
         text, expected = _made(document, operation, expected)
@@ -333,6 +432,19 @@ def edit_text(text: str, operations: Sequence[Operation]) -> str:
                 UNVERIFIED, "the edited file does not read back as the intended document"
             )
     return text
+
+
+def _all_applied(text: str, edits: Sequence[TextEdit]) -> str:
+    """The text with every edit made, each where the text as it stands puts it, none overlapping
+    another: made from the last back, so that making one moves none of those before it, and
+    joined once rather than copying the whole text for each."""
+    pieces: list[str] = []
+    end = len(text)
+    for edit in sorted(edits, key=lambda edit: edit.start, reverse=True):
+        pieces += (text[edit.end : end], edit.text)
+        end = edit.start
+    pieces.append(text[:end])
+    return "".join(reversed(pieces))
 
 
 def _read(text: str, code: str, refusal: str) -> Document:
@@ -779,11 +891,26 @@ def _stage_and_replace(path: Path, data: bytes, like: Path | None) -> None:
         staging.write_bytes(data)
         if like is not None:
             _keep_access(like, staging)
-        staging.replace(path)
+        _patiently(lambda: staging.replace(path))
     except OSError:
         with contextlib.suppress(OSError):
             staging.unlink()
         raise
+
+
+def _patiently(act: Callable[[], object]) -> None:
+    """``act``, tried again while the system refuses it access, :data:`REPLACE_TRIES` times in
+    all, :data:`REPLACE_PAUSE` apart; the last refusal is raised."""
+    tries = REPLACE_TRIES
+    while True:
+        try:
+            act()
+            return
+        except PermissionError:
+            tries -= 1
+            if tries == 0:
+                raise
+        time.sleep(REPLACE_PAUSE)
 
 
 def _keep_access(original: Path, staged: Path) -> None:
@@ -814,7 +941,7 @@ def _put_back(path: Path, data: bytes | None) -> bool:
     """
     try:
         if data is None:
-            path.unlink()
+            _patiently(path.unlink)
         else:
             _stage_and_replace(path, data, path if path.exists() else None)
     except OSError:

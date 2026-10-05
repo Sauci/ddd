@@ -34,7 +34,7 @@ export function FileActionsView({ onNewFile, onAddFile }: FileActionsViewProps) 
  * Where one of the three actions stands: its plan once it has come, and why it cannot be applied -
  * the two facts `ConstantPanelView`'s own `Offer` keeps for each of a constant's changes, less its
  * `pending`: these plans are never kept on screen while the next is asked for, as `SharedAdd`'s
- * own form keeps none of its per-keystroke plans either.
+ * own three - debounced the same way (spec §6) - keep none of theirs either (fix round 2).
  */
 export interface FileOffer {
   /** The plan; `null` while it is being asked for, when it was refused, and while the form does
@@ -55,6 +55,10 @@ export interface NewFileViewProps {
    * what is picked - the server refuses a kind it creates no file of, in its own words. */
   kind: string;
   onKind: (text: string) => void;
+  /** The chooser's own pick or Enter, apart from typing (`onKind`): a discrete commit, which
+   * `FilesPage.tsx` takes at once rather than waiting out a pause as it does for typing (spec
+   * §6, Ruling T12-3). */
+  onKindPicked: (text: string) => void;
   /** What the File name field holds: the name before `.ddd.json`, which the server adds. */
   name: string;
   onName: (text: string) => void;
@@ -72,8 +76,9 @@ export interface NewFileViewProps {
 
 /**
  * New file (design §3): a kind, a name, and a component's name for a component - then the plan
- * the server makes of them, or its refusal, asked for again as each is typed; applied the way
- * every other panel applies its own. Nothing here judges a name: a name with a dot, a file there
+ * the server makes of them, or its refusal, asked for again once the reader pauses (debounced,
+ * spec §6 - `FilesPage.tsx`'s own concern, not this picture of props); applied the way every
+ * other panel applies its own. Nothing here judges a name: a name with a dot, a file there
  * already, a component's name taken are each the server's to refuse, in its words.
  */
 export function NewFileView(props: NewFileViewProps) {
@@ -93,9 +98,11 @@ export function NewFileView(props: NewFileViewProps) {
           ]}
           // The choice's own id is the word the field holds, so picking one from the list and
           // typing it out by hand leave the form in the very same state - `SharedAddView`'s own
-          // chooser takes a vocabulary the same way.
-          onPick={props.onKind}
-          onEnter={props.onKind}
+          // chooser takes a vocabulary the same way. `onPick` and `onEnter` go to `onKindPicked`,
+          // never `onKind`: both are a discrete commit, not typing, however the field reads
+          // afterwards.
+          onPick={props.onKindPicked}
+          onEnter={props.onKindPicked}
           onClose={() => undefined}
           isDisabled={props.busy}
         />
@@ -156,11 +163,11 @@ export interface AddFileViewProps {
 }
 
 /**
- * Add a file (design §3): a path, then the plan the server makes of it, asked for again as it is
- * typed - with the errors the server counts the file bringing, listed as it lists them, and never
- * refused for them: the spec's "informs rather than refuses". Where the server could not judge
- * what the file brings, its own sentence says so, drawn as it comes; nothing here says it in other
- * words.
+ * Add a file (design §3): a path, then the plan the server makes of it, asked for again once the
+ * reader pauses (debounced, spec §6 - `FilesPage.tsx`'s own concern, not this picture of props) -
+ * with the errors the server counts the file bringing, listed as it lists them, and never refused
+ * for them: the spec's "informs rather than refuses". Where the server could not judge what the
+ * file brings, its own sentence says so, drawn as it comes; nothing here says it in other words.
  */
 export function AddFileView(props: AddFileViewProps) {
   return (

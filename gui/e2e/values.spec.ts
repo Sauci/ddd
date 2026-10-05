@@ -1,7 +1,20 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator } from "@playwright/test";
-import { CONTROLLER, paste, SENSOR_HUB, typeCurveA, widenBlockA, writeBlockAInit } from "./demo";
+import {
+  CONTROLLER,
+  type Frame,
+  framesWatched,
+  openValues,
+  paste,
+  SENSOR_HUB,
+  scrolledIntoView,
+  typeCurveA,
+  watchFrames,
+  widenBlockA,
+  withinBox,
+  writeBlockAInit,
+} from "./demo";
 import { expect, test } from "./fixtures";
 
 /** A declaration's own definition, read back from a file of the copy - the same untyped shape
@@ -23,9 +36,7 @@ async function expectRow(grid: Locator, values: readonly string[]): Promise<void
 }
 
 test("a curve is read against its axis, raw and physical", async ({ page, gui }) => {
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   const grid = page.getByRole("grid", { name: "Values of CurveA" });
   // Spec 5.2's own sketch, labels and all: `AxisA (Hz)` over the breakpoints, `CurveA (ms)`
@@ -63,9 +74,7 @@ test("a curve is read against its axis, raw and physical", async ({ page, gui })
 // renders it, but neither drives a served reply through a browser - so neither can tell a
 // `<polyline>` built from `reply.rows` apart from one that only looks like it was.
 test("a curve is drawn from the numbers it holds", async ({ page, gui }) => {
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   // `role="img"`'s own name drops "(Hz)" and "(ms)" in Raw the way the grid's own headers do
   // (spec 5.2, `ValuesPlotView.tsx`), so matching the fragment both keep - "plotted against
@@ -119,9 +128,7 @@ test("a curve is drawn from the numbers it holds", async ({ page, gui }) => {
 });
 
 test("a cell changed is written to the producer's file", async ({ page, gui }) => {
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   await page.getByRole("textbox", { name: "element 3" }).fill("7.5");
   await expect(page.getByText("Sets element 3 of CurveA to 7.5 ms")).toBeVisible();
@@ -138,14 +145,49 @@ test("a cell changed is written to the producer's file", async ({ page, gui }) =
     .toContain('"init": [1200, 900, 750, 750, 700, 650]');
 });
 
+/** Whether the page has taken in the analysis of its own edit and stood on it for the last thirty
+ * frames watched - half a second at sixty frames a second: in each, it offers to undo the edit,
+ * which only a state from after the edit does, and says nothing is updating, which with such a
+ * state it says once the analysis including the edit has come. Not whether it was seen to say
+ * "Updating the findings…" first: that can come and go between two frames (below). */
+function settledAfterTheEdit(frames: readonly Frame[]): boolean {
+  const last = frames.slice(-30);
+  return last.length === 30 && last.every(([, updating, offered]) => offered && !updating);
+}
+
+// Spec 6: an edit is answered once written and analysed after, and `GET /api/values` answers what
+// the last analysis read - for one analysis after an Apply it still answers the value from before,
+// as though the Apply had failed. The grid holds what it wrote meanwhile. Waited on as a reader
+// sees it, frame by frame: element 3 reads 7.5 from Apply on - while the grid says its findings are
+// updating, and after - and never the 8 it was. With the hold taken out, on the Linux development
+// PC in headless Chrome, ten runs: the note stood four frames (five in one), and element 3 read 8
+// in three of them in every run. The wait is for the analysis to have come, not for the note to
+// have been seen: on the same PC, in 80 runs of these steps, the edit's analysis took 2.5 to 6.1
+// ms, and in 8 runs the note stood 3.6 to 12.2 ms in the page, between two frames, and no frame
+// painted it.
+test("a value applied in the grid shows at once, and stays while its findings update", async ({
+  page,
+  gui,
+}) => {
+  await openValues(page, gui.address, "CurveA");
+  const cell = page.getByRole("textbox", { name: "element 3" });
+  await expect(cell).toHaveValue("8");
+  await cell.fill("7.5");
+  await expect(page.getByText("Sets element 3 of CurveA to 7.5 ms")).toBeVisible();
+
+  await watchFrames(page, "element 3", "element 3 of CurveA");
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect.poll(async () => settledAfterTheEdit(await framesWatched(page))).toBe(true);
+  const read = new Set((await framesWatched(page)).map(([value]) => value));
+  expect(read).toEqual(new Set(["7.5"]));
+});
+
 test("a reader's page names the producer's file, not its own", async ({ page, gui }) => {
   // Spec 5.3's own example: ValueB on Controller is an `input`, its numbers live in SensorHub,
   // and the preview names sensor_hub.ddd.json. Nothing is applied here - the sentence before
   // Apply is the whole subject.
   const before = readFileSync(join(gui.directory, SENSOR_HUB));
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of ValueB" }).click();
+  await openValues(page, gui.address, "ValueB");
 
   await page.getByRole("textbox", { name: "element 1" }).fill("1");
   await expect(page.getByText("Sets element 1 of ValueB to 1 V")).toBeVisible();
@@ -154,9 +196,7 @@ test("a reader's page names the producer's file, not its own", async ({ page, gu
 });
 
 test("a map's cell names its row and its column", async ({ page, gui }) => {
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of MapA" }).click();
+  await openValues(page, gui.address, "MapA");
 
   const grid = page.getByRole("grid", { name: "Values of MapA" });
   await expect(grid.getByRole("rowheader")).toHaveText(["0", "30", "70", "100"]);
@@ -175,9 +215,7 @@ test("a map's cell names its row and its column", async ({ page, gui }) => {
 });
 
 test("a physical value no raw count represents shows what was stored", async ({ page, gui }) => {
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   await page.getByRole("textbox", { name: "element 1" }).fill("12.004");
   await expect(page.getByText("Sets element 1 of CurveA to 12 ms")).toBeVisible();
@@ -192,9 +230,7 @@ test("a value the datatype cannot hold is refused, and nothing is written", asyn
   gui,
 }) => {
   const before = readFileSync(join(gui.directory, CONTROLLER));
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
   await page.getByRole("button", { name: "Raw" }).click();
 
   // Not a number at all first: a decimal comma is what half the world types, and reading the
@@ -217,9 +253,7 @@ test("Enter settles what was typed and writes nothing", async ({ page, gui }) =>
   // ever pressing Apply. The preview still standing afterwards is itself the evidence: an
   // apply clears the cell being edited, and the offer with it.
   const before = readFileSync(join(gui.directory, CONTROLLER));
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   const cell = page.getByRole("textbox", { name: "element 3" });
   await cell.fill("7.5");
@@ -238,9 +272,7 @@ test("Enter settles what was typed and writes nothing", async ({ page, gui }) =>
 
 test("a cell changed is put back", async ({ page, gui }) => {
   const before = readFileSync(join(gui.directory, CONTROLLER));
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   await page.getByRole("textbox", { name: "element 3" }).fill("7.5");
   await page.getByRole("button", { name: "Apply to 1 file" }).click();
@@ -296,9 +328,7 @@ const MAP_A_OVER_RANGE = [
 // only way left is a mechanism of its own (an unwritable file, say), which is not reusing this
 // one - left untried rather than invented.
 test("a pasted curve replaces every value in one edit", async ({ page, gui }) => {
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   await paste(page, "12.004\t9.5\t8.5\t8\t7.5\t7");
   await expect(page.getByText("Replaces every value of CurveA")).toBeVisible();
@@ -316,9 +346,7 @@ test("a pasted curve replaces every value in one edit", async ({ page, gui }) =>
 });
 
 test("a pasted map takes its header row and column", async ({ page, gui }) => {
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of MapA" }).click();
+  await openValues(page, gui.address, "MapA");
   await page.getByRole("button", { name: "Raw" }).click();
 
   await paste(page, MAP_A_PASTE);
@@ -332,9 +360,7 @@ test("a pasted map takes its header row and column", async ({ page, gui }) => {
 
 test("a block of the wrong shape is refused and nothing is written", async ({ page, gui }) => {
   const before = readFileSync(join(gui.directory, CONTROLLER));
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   await paste(page, ["1\t2\t3\t4\t5\t6", "7\t8\t9\t10\t11\t12"].join("\n"));
   await expect(
@@ -347,9 +373,7 @@ test("a block of the wrong shape is refused and nothing is written", async ({ pa
 
 test("a value the datatype cannot hold names every offender", async ({ page, gui }) => {
   const before = readFileSync(join(gui.directory, CONTROLLER));
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of MapA" }).click();
+  await openValues(page, gui.address, "MapA");
   await page.getByRole("button", { name: "Raw" }).click();
 
   await paste(page, MAP_A_OVER_RANGE);
@@ -368,9 +392,7 @@ test("a value the datatype cannot hold names every offender", async ({ page, gui
 
 test("a pasted table is put back", async ({ page, gui }) => {
   const before = readFileSync(join(gui.directory, CONTROLLER));
-  await page.goto(gui.address);
-  await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await openValues(page, gui.address, "CurveA");
 
   await paste(page, "13\t9.5\t8.5\t8\t7.5\t7");
   await page.getByRole("button", { name: "Apply to 1 file" }).click();
@@ -450,11 +472,65 @@ test("a curve naming a scalar type keeps its button, and its grid", async ({ pag
   await page.goto(gui.address);
   await page.getByRole("button", { name: "Controller", exact: true }).click();
 
+  // CurveA is the thirteenth of Controller's fourteen declarations: its own row is inside the
+  // box's own visible rect at this viewport (measured, its own top 3px above the box's own
+  // bottom), but the Shape button inside it is not - clipped by the box's own overflow a few
+  // pixels further down the row than its own top is (fix round 1, Important 5; fix round 2
+  // corrected this - the row is not drawn "only through overscan", whole or at all). Scrolled to
+  // before either cell of its row is asked for, not after.
+  const button = page.getByRole("button", { name: "Show the values of CurveA" });
+  await scrolledIntoView(page, "Declarations of Controller", button);
   // The Type cell reads the type, since there is no datatype of its own to read.
   await expect(page.getByRole("gridcell", { name: "Millis_t" })).toBeVisible();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  await button.click();
 
   const grid = page.getByRole("grid", { name: "Values of CurveA" });
   await expect(grid.getByRole("rowheader")).toHaveText(["CurveA (ms)"]);
   await expectRow(grid, ["12", "9", "8", "7.5", "7", "6.5"]);
+});
+
+// `scroll-padding-top` pinned a second way (fix round 2, New Minor 4): the stylesheet test beside
+// `.findings-window`'s own (findingsWindow.test.ts) checks the rule is written; this walks it with
+// the keyboard. At this viewport the box is 432px tall, and Controller's header and fourteen rows
+// 495px, so Control+End leaves the box scrolled to its end, 63px: the second row, ValueB, whose
+// top is at 66px, is then drawn 3px below the box's own top - inside the scrolled view, under the
+// 33px sticky header. Twelve ArrowUps walk the focus from the fourteenth row (MapA) to it. Every
+// row on the way is clear of the header, so React Aria's scroll to the focused row moves the box
+// for ValueB alone, and only with the rule: `scroll-padding-top` moves the top of the box's scroll
+// port down below the header, so ValueB counts as out of view and is scrolled to just below the
+// header (to 33px); without it, ValueB counts as in view and stays under the header. Not
+// Control+Home: that scrolls the box to 0, where the first row sits below the header, rule or no
+// rule.
+test("a row walked back up near the top stops below the sticky header, not under it", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const grid = page.getByRole("grid", { name: "Declarations of Controller" });
+  const header = grid.getByRole("columnheader").first();
+  const lastRow = grid.getByRole("row").last();
+  const walkedRow = page.getByRole("row", { name: /ValueB/ });
+  // Focused, not clicked: a click would also select the row, opening its own panel, which
+  // narrows the table and races the walk below over the same frame.
+  await lastRow.evaluate((node) => (node as HTMLElement).focus());
+  await page.keyboard.press("Control+End");
+  // Control+End moves the box by Chrome's own smooth scroll, about 150ms long: React Aria leaves
+  // End's default alone in a table that selects by toggling, and a key held with Control never
+  // sets its keyboard modality, so it scrolls nothing itself. MapA is drawn - the Virtualizer's
+  // overscan - before that scroll even starts, so the walk waits instead for MapA to sit whole
+  // inside the box, which it does only once the box stands at its end. Started sooner, the
+  // ArrowUps race the smooth scroll, which can carry ValueB under the header after the walk has
+  // reached it.
+  await expect.poll(() => withinBox(page, "Declarations of Controller", lastRow)).toBe(true);
+  for (let step = 0; step < 12; step += 1) await page.keyboard.press("ArrowUp");
+  // Polled, not read once: React Aria scrolls a newly focused row into view in an animation frame
+  // after the key that focused it, not while it handles the key.
+  await expect
+    .poll(async () => {
+      const headerBottom = await header.evaluate((node) => node.getBoundingClientRect().bottom);
+      const rowTop = await walkedRow.evaluate((node) => node.getBoundingClientRect().top);
+      return rowTop - headerBottom;
+    })
+    .toBeGreaterThanOrEqual(-1);
 });

@@ -197,10 +197,11 @@ export function asksComponentName(kind: string): boolean {
  * - a mistake about the request, not a refusal a reader could act on, as `constantAdd`'s own doc
  * (`lib/shared.ts`) says of `add`'s.
  *
- * Everything else is sent as typed, and the server judges it on every keystroke: a kind it
- * creates no file of, a name `FILE_NAME` does not take, a file there already, a component's name
- * unusable or taken - each refused in its own words, none of them restated here. Nothing is
- * trimmed, since "  " is a name the server refuses in words where the page would say nothing.
+ * Everything else is sent as typed, and the server judges it once the reader pauses (debounced,
+ * spec §6, `FilesPage.tsx`'s own `useDebounced`): a kind it creates no file of, a name
+ * `FILE_NAME` does not take, a file there already, a component's name unusable or taken - each
+ * refused in its own words, none of them restated here. Nothing is trimmed, since "  " is a name
+ * the server refuses in words where the page would say nothing.
  *
  * `component` travels for a component alone (`asksComponentName`), and travels empty too: the
  * server answers an empty one with "a new component needs a name, besides its file's", which is

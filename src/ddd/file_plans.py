@@ -4,9 +4,9 @@ itself says.
 
 Transport-neutral, like :mod:`ddd.shared_plans`: nothing here knows about http or the session,
 and nothing here imports :mod:`ddd.gui`. It is for the gui to call and never calls the gui, so
-findings arrive as ``(path, diagnostic)`` pairs - the shape
-:func:`ddd.project_shared.shared_rows` takes for the same reason - rather than as the session's
-own ``Filed``.
+findings arrive as ``(path, diagnostic)`` pairs - :data:`ddd.findings_by_file.Pair`, the shape
+:class:`ddd.findings_by_file.FindingsByFile` groups for the same reason - rather than as the
+session's own ``Filed``.
 
 The entries are read by the loader's own rule, :func:`ddd.loading.included_files`, so that the
 list a reader is shown and the files a run checks cannot come to two answers. A plan is the
@@ -35,6 +35,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from ddd.diagnostics import Diagnostic, Location, Severity
 from ddd.editing import Operation
+from ddd.findings_by_file import Pair
 from ddd.loading import included_files, resolve_path
 from ddd.lsp.diagnostics import finding_identity
 from ddd.lsp.navigation import Index
@@ -42,9 +43,6 @@ from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit, UnitProject, created_beside, entry_appended
 from ddd.models.common import Identifier
 from ddd.models.reserved import is_reserved_identifier
-
-type Pair = tuple[Path, Diagnostic]
-"""A finding and the file it is shown on, as :func:`ddd.project_shared.shared_rows` takes them."""
 
 
 def new_errors(before: Sequence[Pair], after: Sequence[Pair]) -> tuple[Pair, ...]:

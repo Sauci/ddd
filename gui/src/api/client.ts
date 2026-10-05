@@ -1,3 +1,4 @@
+import { type OwnEdits, ownEdits } from "../state/edits";
 import type {
   Changes,
   CompareReply,
@@ -7,6 +8,7 @@ import type {
   FileContent,
   FilesPlanReply,
   FilesReply,
+  FindingsReply,
   FixReply,
   Found,
   GraphReply,
@@ -94,12 +96,41 @@ export const getProjects = (fetchImpl: Fetch = fetch) =>
 export const openProject = (path: string, fetchImpl: Fetch = fetch) =>
   request<SessionInfo>("/api/open", post({ path }), fetchImpl);
 
+/** The open project's state: at once where `after` is `null`; else as soon as its version is past
+ * `after` - a version, which moves at every change the state can say, not a revision - or once
+ * the server has waited as long as it waits. */
 export const getState = (after: number | null, signal?: AbortSignal, fetchImpl: Fetch = fetch) =>
   request<State>(
     after === null ? "/api/state" : `/api/state?after=${after}`,
     signal === undefined ? {} : { signal },
     fetchImpl,
   );
+
+/** Which of the newest revision's findings `GET /api/findings` answers: from `offset` - the first
+ * when left out - at most `limit` of them, or every one from it when left out, of those
+ * `severity`, `file` and `check` leave. */
+export interface FindingsQuery {
+  offset?: number;
+  limit?: number;
+  severity?: string;
+  file?: string;
+  check?: string;
+}
+
+export const getFindings = (query: FindingsQuery, fetchImpl: Fetch = fetch) =>
+  request<FindingsReply>(`/api/findings${findingsQuery(query)}`, {}, fetchImpl);
+
+/** A page's query: each parameter given, encoded, in a fixed order; nothing for one left out. */
+function findingsQuery(query: FindingsQuery): string {
+  const parts: [string, string][] = [];
+  if (query.offset !== undefined) parts.push(["offset", String(query.offset)]);
+  if (query.limit !== undefined) parts.push(["limit", String(query.limit)]);
+  if (query.severity !== undefined) parts.push(["severity", query.severity]);
+  if (query.file !== undefined) parts.push(["file", query.file]);
+  if (query.check !== undefined) parts.push(["check", query.check]);
+  if (parts.length === 0) return "";
+  return `?${parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&")}`;
+}
 
 export const getFile = (path: string, fetchImpl: Fetch = fetch) =>
   request<FileContent>(`/api/file?path=${encodeURIComponent(path)}`, {}, fetchImpl);
@@ -355,14 +386,32 @@ function declarationQuery(plan: DeclarationPlanRequest): string {
   return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
 }
 
-export const postEdit = (changes: Changes, fetchImpl: Fetch = fetch) =>
-  request<EditReply>("/api/edit", post(changes), fetchImpl);
+/** An edit, answered once written: its number is noted into `edits`, the page's own by default, as
+ * soon as the answer arrives - a refused edit notes nothing. */
+export const postEdit = async (
+  changes: Changes,
+  fetchImpl: Fetch = fetch,
+  edits: OwnEdits = ownEdits,
+): Promise<EditReply> => {
+  const reply = await request<EditReply>("/api/edit", post(changes), fetchImpl);
+  edits.wrote(reply.edit);
+  return reply;
+};
 
 export const getUndo = (fetchImpl: Fetch = fetch) =>
   request<UndoPreview>("/api/undo", {}, fetchImpl);
 
-export const postUndo = (at: number, fetchImpl: Fetch = fetch) =>
-  request<UndoReply>("/api/undo", post({ at }), fetchImpl);
+/** An undo of the edit numbered `at`, answered once the files are back: its number is noted into
+ * `edits` as an edit's is, with the edit it put back. */
+export const postUndo = async (
+  at: number,
+  fetchImpl: Fetch = fetch,
+  edits: OwnEdits = ownEdits,
+): Promise<UndoReply> => {
+  const reply = await request<UndoReply>("/api/undo", post({ at }), fetchImpl);
+  edits.undid(at, reply.edit);
+  return reply;
+};
 
 export const getValues = (name: string, fetchImpl: Fetch = fetch) =>
   request<ValuesReply>(`/api/values?name=${encodeURIComponent(name)}`, {}, fetchImpl);

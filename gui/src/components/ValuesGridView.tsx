@@ -21,6 +21,7 @@ import { shortValue } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
+import { UpdatingNote, UpdatingStatus } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
 import { ValuesPlotView } from "./ValuesPlotView";
 
@@ -51,6 +52,9 @@ export interface ValuesGridViewProps {
   /** The clipboard's text, from a paste anywhere in the grid. The component reads the event and
    * hands over its text; what the text means is the screen's and `pasted`'s business. */
   onPaste: (text: string) => void;
+  /** Whether the findings may be about to change (spec 6): the grid says so where it lists them,
+   * also while it lists none - an edit may be about to bring the first. */
+  updating?: boolean;
 }
 
 /** One column of the header row: the corner above the row labels, or one of
@@ -156,6 +160,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
         <Button variant="link" onPress={props.onBack}>
           Back to {backTo}
         </Button>
+        <UpdatingStatus updating={props.updating === true} />
       </div>
       <p className="values-meta">{meta}</p>
       {reply.stated === "text" ? (
@@ -237,6 +242,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
           <ValuesPlotView reply={reply} physical={physical} />
         </>
       )}
+      <UpdatingNote updating={props.updating === true} />
       {reply.findings.length > 0 && (
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(reply.findings)).map(([finding, key]) => (

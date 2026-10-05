@@ -1,11 +1,11 @@
 import type { CompareReply, State } from "../api/types";
 import { compareRouteReason, compareRows } from "../lib/compare";
-import { findingCounts, routeHref, routeLabel, routeOf } from "../lib/findings";
+import { countsOf, findingCounts, routeHref, routeLabel, routeOf } from "../lib/findings";
 import type { Route } from "../lib/route";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
+import { CompareTableView } from "./CompareTableView";
 import { FindingPanelView } from "./FindingPanelView";
-import { FindingsTableView } from "./FindingsTableView";
 
 export interface CompareViewProps {
   /** The open project as the session last published it: what a finding that names a place in it
@@ -27,8 +27,8 @@ export interface CompareViewProps {
   refusal: string | null;
   /** Asking, or the server stopped: the field and its button take no input. */
   busy: boolean;
-  /** The key of the finding row whose panel is open, or `undefined` - `FindingsTableView` and
-   * `FindingPanelView`'s own pairing, exactly as the Findings tab holds it (`FindingsPage`). */
+  /** The key of the finding row whose panel is open, or `undefined` - `CompareTableView` and
+   * `FindingPanelView`'s own pairing, as the Findings tab holds its own (`FindingsPage`). */
   selected: string | undefined;
   onSelect: (key: string | undefined) => void;
 }
@@ -98,10 +98,12 @@ export function CompareView(props: CompareViewProps) {
               ? "This project can replace the baseline."
               : "This project cannot replace the baseline."}
           </p>
-          <p className="summary">{findingCounts(rows.map((entry) => entry.finding))}</p>
+          <p className="summary">
+            {findingCounts(countsOf(rows.map((entry) => entry.finding)), false)}
+          </p>
           <div className={row !== undefined ? "with-panel" : undefined}>
             <div>
-              <FindingsTableView rows={rows} selected={props.selected} onSelect={props.onSelect} />
+              <CompareTableView rows={rows} selected={props.selected} onSelect={props.onSelect} />
             </div>
             {row !== undefined && (
               <div key={props.selected}>

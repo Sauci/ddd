@@ -7,6 +7,7 @@ import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
+import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
 import { KeyChooser } from "./KeyChooser";
 
@@ -40,6 +41,9 @@ export interface TypePanelViewProps {
   refusal: string | null;
   busy: boolean;
   onClose: () => void;
+  /** Whether the findings may be about to change (spec 6): the panel says so where it lists them,
+   * also while it lists none - an edit may be about to bring the first. */
+  updating?: boolean;
 }
 
 /** What a kind is called on the page: the file says `struct`, a reader reads "structure" - the
@@ -243,6 +247,7 @@ export function TypePanelView(props: TypePanelViewProps) {
           </table>
         </>
       )}
+      <UpdatingNote updating={props.updating === true} />
       {type.findings.length > 0 && (
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(type.findings)).map(([finding, key]) => {

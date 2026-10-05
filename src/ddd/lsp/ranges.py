@@ -24,13 +24,60 @@ from __future__ import annotations
 
 import bisect
 import json
+import re
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from ddd.pointers import parent_pointer, segments
 
-_WHITESPACE: Final = " \t\n\r"
-_LITERAL_END: Final = ",}] \t\n\r"
+_SPACE: Final = "[ \t\n\r]*"
+"""Whitespace: any run of space, tab, line feed and carriage return, the four characters json
+allows between its tokens - or none at all."""
+
+_CHARACTERS: Final = r'[^"\\]*(?:\\.[^"\\]*)*'
+"""A string's characters, up to its closing quote and not including it: runs of anything but a
+quote or a backslash, a backslash taking the character after it along, so that an escaped quote
+does not end the string. That character is never a line feed, which ``.`` would not take: json
+escapes one as ``\\n``, and the scan reads only text that has parsed."""
+
+
+def _matcher(pattern: str) -> Callable[[str, int], re.Match[str]]:
+    """``pattern`` matched at a position of a text, typed as finding a match there.
+
+    It does wherever the scan asks: every text it walks has parsed already, and each pattern
+    takes what json allows at the place it is asked about. ``None`` is not looked for, because
+    a document that has parsed cannot surprise the scanner (``Document.__init__``).
+    """
+    return cast(Callable[[str, int], re.Match[str]], re.compile(pattern).match)
+
+
+_WHITESPACE: Final = _matcher(_SPACE)
+"""Consumes whitespace (:data:`_SPACE`), possibly none."""
+
+_STRING: Final = _matcher(_CHARACTERS)
+"""Consumes a string's characters (:data:`_CHARACTERS`), from just past its opening quote to its
+closing one, which it leaves."""
+
+_LITERAL: Final = _matcher(r"[^,}\] \t\n\r]*")
+"""Consumes a number, ``true``, ``false`` or ``null``: everything up to what can follow one - a
+comma, a closing bracket or whitespace - or up to the end of the text."""
+
+_KEY: Final = _matcher(f'("({_CHARACTERS})"){_SPACE}:{_SPACE}')
+"""Consumes a member's key from its opening quote, then the colon and the whitespace around it,
+up to the member's value. Group 1 is the key in its quotes, group 2 its characters as written."""
+
+_AFTER_MEMBER: Final = _matcher(f'{_SPACE}(?:,{_SPACE}("({_CHARACTERS})"){_SPACE}:{_SPACE}|}})')
+"""Consumes what follows a member's value: whitespace, then either a comma, the whitespace after
+it and the next member's key as :data:`_KEY` consumes it, in the same two groups, or the closing
+brace, with no group."""
+
+_AFTER_ELEMENT: Final = _matcher(f"{_SPACE}(?:(,){_SPACE}|\\])")
+"""Consumes what follows an element of an array: whitespace, then either a comma, group 1, and
+the whitespace before the next element, or the closing bracket, with no group."""
+
+_LINE_FEED: Final = re.compile("\n")
+"""Consumes one line feed: a line ends at each, and the next starts just past it."""
 
 
 class Document:
@@ -50,9 +97,12 @@ class Document:
             # cannot surprise the scanner - except by being deeper than the stack it has left.
             # The scan is under the same guard as the parse because the two give up at
             # different depths: this walk spends two frames per level where ``json.loads``
-            # spends less, so a document between about five hundred and three thousand levels
-            # deep parses and then dies here, which ended ``ddd id --assign`` in a traceback
-            # and the editor's server on the first didOpen.
+            # spends less, so a document deeper than about five hundred levels parses and then
+            # dies here, which ended ``ddd id --assign`` in a traceback and the editor's server
+            # on the first didOpen. Measured with arrays on a main thread of the Linux
+            # development PC: the scan gave up past 495 to 497 levels on python 3.12 and 3.14
+            # alike, the parse past 9,994 to 9,997 on 3.12 and past about 58,000 on 3.14, whose
+            # parse only the thread's 8 MB stack bounds.
             scanner = _Scanner(text)
             scanner.value("")
         except (ValueError, RecursionError):
@@ -203,9 +253,8 @@ def _range(start: dict[str, int], end: dict[str, int]) -> dict[str, Any]:
 
 
 def _line_starts(text: str) -> list[int]:
-    starts = [0]
-    starts.extend(index + 1 for index, character in enumerate(text) if character == "\n")
-    return starts
+    """Where each line of ``text`` starts: at the text's start, and just past each line feed."""
+    return [0, *(feed.end() for feed in _LINE_FEED.finditer(text))]
 
 
 def read(path: Path, cache: dict[Path, Document]) -> Document:
@@ -249,7 +298,21 @@ def _decoded(key: str) -> str:
 
 
 class _Scanner:
-    """A recursive descent walk over known-good json, recording where each value sits."""
+    """A recursive descent walk over known-good json, recording where each value sits.
+
+    Each step matches one of the regular expressions above at the walk's position, consuming in
+    one call what the walk once consumed in one python step per character. The plans and edits of
+    ``ddd gui`` change a file through ``ddd.editing.edit_text``, which reads it once and then
+    again after each operation it makes - or, for a batch of sets none of which can depend on
+    another, once after all of them.
+
+    A level of nesting costs the stack what it cost the character walk: a frame for ``value`` and
+    one for ``_object`` or ``_array``, each making, one frame further down, calls the walk made in
+    the same place - ``_skip_whitespace`` first in a container, ``_string`` or ``_literal`` for a
+    value, ``_decoded`` for a key. The stack runs deepest where it ran deepest for the walk, and a
+    document too deep for the scan is one that was too deep for the walk (``tests/test_lsp.py``
+    compares the two).
+    """
 
     def __init__(self, text: str) -> None:
         self.text = text
@@ -280,55 +343,43 @@ class _Scanner:
     def _object(self, pointer: str) -> None:
         self.pos += 1
         self._skip_whitespace()
-        if self.text[self.pos] == "}":
+        text = self.text
+        if text[self.pos] == "}":
             self.pos += 1
             return
+        prefix = f"{pointer}." if pointer else ""
+        member = _KEY(text, self.pos)
         while True:
-            self._skip_whitespace()
-            key_start = self.pos
-            key = _decoded(self._string())
-            self._skip_whitespace()
-            self.pos += 1  # the ':'
-            self._skip_whitespace()
-            # The key is part of the span, so that the underline says which key is meant.
-            self.value(f"{pointer}.{key}" if pointer else key, key_start)
-            self._skip_whitespace()
-            if self.text[self.pos] == ",":
-                self.pos += 1
-                continue
-            self.pos += 1  # the '}'
-            return
+            # The key is part of the span, from its opening quote, so that the underline says
+            # which key is meant. Taken as written and decoded here, which builds a pointer out
+            # of it rather than a span.
+            key = _decoded(member.group(2))
+            self.pos = member.end()
+            self.value(prefix + key, member.start(1))
+            member = _AFTER_MEMBER(text, self.pos)
+            if member.lastindex is None:  # the '}'
+                self.pos = member.end()
+                return
 
     def _array(self, pointer: str) -> None:
         self.pos += 1
         self._skip_whitespace()
-        if self.text[self.pos] == "]":
+        text = self.text
+        if text[self.pos] == "]":
             self.pos += 1
             return
         index = 0
         while True:
-            self._skip_whitespace()
             self.value(f"{pointer}[{index}]")
             index += 1
-            self._skip_whitespace()
-            if self.text[self.pos] == ",":
-                self.pos += 1
-                continue
-            self.pos += 1  # the ']'
-            return
+            after = _AFTER_ELEMENT(text, self.pos)
+            self.pos = after.end()
+            if after.lastindex is None:  # the ']'
+                return
 
-    def _string(self) -> str:
-        self.pos += 1  # the opening quote
-        start = self.pos
-        while self.text[self.pos] != '"':
-            # A backslash consumes whatever follows it, so an escaped quote does not end the
-            # string. What comes back is the raw source text, because the offsets have to
-            # stay offsets into it; a key is decoded by the caller, which builds a pointer
-            # out of it rather than a span.
-            self.pos += 2 if self.text[self.pos] == "\\" else 1
-        text = self.text[start : self.pos]
-        self.pos += 1  # the closing quote
-        return text
+    def _string(self) -> None:
+        """A string, from its opening quote to just past its closing one."""
+        self.pos = _STRING(self.text, self.pos + 1).end() + 1
 
     def _literal(self) -> None:
         """A number, ``true``, ``false`` or ``null``: everything up to what can follow one.
@@ -338,9 +389,7 @@ class _Scanner:
         json, if not a legal description - has nothing after it, and walking off the end took
         the whole server down with it.
         """
-        while self.pos < len(self.text) and self.text[self.pos] not in _LITERAL_END:
-            self.pos += 1
+        self.pos = _LITERAL(self.text, self.pos).end()
 
     def _skip_whitespace(self) -> None:
-        while self.pos < len(self.text) and self.text[self.pos] in _WHITESPACE:
-            self.pos += 1
+        self.pos = _WHITESPACE(self.text, self.pos).end()

@@ -7,13 +7,17 @@ import {
   postEdit,
   type SectionPlanRequest,
 } from "../api/client";
+import { useUpdating } from "../app/updating";
+import { useDebounced } from "../app/useDebounced";
 import { type Offer, type SectionAction, SectionPanelView } from "../components/SectionPanelView";
-import { type Refused, shownRefusal } from "../lib/refusals";
+import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planEdit, sectionSet } from "../lib/shared";
+import { planShown } from "../lib/typing";
 import { sectionLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
+import { UpdatingNote } from "../ui/UpdatingNote";
 import { refusalOf } from "./UnitPanel";
 
 interface Props {
@@ -38,20 +42,16 @@ interface Props {
  * one vocabulary's plans on an edit does not throw away the other's, and a generic wide enough for
  * both requests would be a bigger change than one more hook.
  *
- * `keep` leaves the last plan on screen while the next is asked for, marked as a placeholder, for
- * each of the section's three keys - the access among them, its chooser taking typed text as well
- * as a pick: all three change with every key typed, and only in the text they write, so the line
- * saying which file it changes would otherwise blink at every key.
+ * Keeps no placeholder while the next is asked for: each of the section's three keys - the
+ * access among them, its chooser taking typed text as well as a pick - is debounced before
+ * `request` ever reaches this hook (`useDebounced`, spec §6), and `planShown` (`lib/typing.ts`)
+ * never trusts a placeholder's own answer, so one kept here would never be drawn - a `keep`
+ * option once did exactly that (fix round 2's own finding), which is why there is none now.
  */
-export function useSectionPlan(
-  request: SectionPlanRequest | null,
-  revision: number | undefined,
-  keep = false,
-) {
+export function useSectionPlan(request: SectionPlanRequest | null, revision: number | undefined) {
   return useQuery({
     queryKey: ["section-plan", request, revision],
     queryFn: request === null ? skipToken : () => getSectionPlan(request),
-    placeholderData: (previous) => (keep ? previous : undefined),
   });
 }
 
@@ -59,6 +59,7 @@ export function useSectionPlan(
  * definition placing data in it, its findings, and a spelling to rename it to (spec 5.2). */
 export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved, onOpen }: Props) {
   const queries = useQueryClient();
+  const updating = useUpdating();
   const reply = useQuery({
     queryKey: ["section", name, revision],
     queryFn: () => getSection(name),
@@ -79,6 +80,9 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
   // What the reader has chosen or typed into the three fields, `undefined` until they do: each
   // field then reads the entry's own text.
   const [access, setAccess] = useState<string | undefined>(undefined);
+  // Which kind of change `access` last held, a pick or typing - never inferred from the value
+  // itself, which both can leave in the very same shape (Ruling T12-3).
+  const [typedAccess, setTypedAccess] = useState(true);
   const [alignment, setAlignment] = useState<string | undefined>(undefined);
   const [description, setDescription] = useState<string | undefined>(undefined);
   // The spelling chosen to rename the section to, `null` until one is typed.
@@ -93,7 +97,10 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
     null,
   );
 
-  const entry = reply.data;
+  // What the panel shows of that answer (`panelShows`): a section just added or renamed is refused
+  // until its file is analysed again, and the panel says the findings are updating meanwhile.
+  const answer = panelShows(reply, (shown) => shown.name, name, updating);
+  const entry = answer.shown === "reply" ? answer.reply : undefined;
   const draftAccess = access !== undefined && access !== entry?.access ? access : null;
   const draftAlignment =
     alignment !== undefined && alignment !== entry?.alignment ? alignment : null;
@@ -130,12 +137,25 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
     rename: Extract<SectionPlanRequest, { action: "rename" }> | null;
     remove: Extract<SectionPlanRequest, { action: "remove" }> | null;
   };
+  // Alignment, description and rename are always typed, and each is debounced on its own (spec
+  // §6): a field's first ask is immediate, and only one asked of before waits. Access is typed
+  // just as readily, through its own chooser, but a pick of it takes effect at once instead
+  // (Ruling T12-3) - `typedAccess` says which the latest change was. Remove is never typed into
+  // - it is offered outright once nothing places data in the section any longer - so
+  // `asked.remove` is `requests.remove` itself.
+  const asked: Record<SectionAction, SectionPlanRequest | null> = {
+    access: useDebounced(requests.access, typedAccess),
+    alignment: useDebounced(requests.alignment),
+    describe: useDebounced(requests.describe),
+    rename: useDebounced(requests.rename),
+    remove: requests.remove,
+  };
   const plans = {
-    access: useSectionPlan(requests.access, revision, true),
-    alignment: useSectionPlan(requests.alignment, revision, true),
-    describe: useSectionPlan(requests.describe, revision, true),
-    rename: useSectionPlan(requests.rename, revision),
-    remove: useSectionPlan(requests.remove, revision),
+    access: useSectionPlan(asked.access, revision),
+    alignment: useSectionPlan(asked.alignment, revision),
+    describe: useSectionPlan(asked.describe, revision),
+    rename: useSectionPlan(asked.rename, revision),
+    remove: useSectionPlan(asked.remove, revision),
   };
   const apply = useMutation({
     mutationFn: (action: SectionAction) => {
@@ -188,23 +208,38 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
       if (error === null && action === "describe") setDescription(undefined);
     },
   });
-  /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for. */
-  const offer = (action: SectionAction): Offer => ({
-    plan: plans[action].data ?? null,
-    refusal:
-      staleFailed?.action === action
-        ? shownRefusal(staleFailed, revision)
-        : failed?.action === action
-          ? failed.message
-          : (plans[action].error?.message ?? null),
-    pending: plans[action].isPlaceholderData,
-  });
+  /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for.
+   * `plan`/`refusal`/`pending` are `planShown`'s own, `lib/typing.ts` (review fix round 1):
+   * `null`/`null`/pending while the debounced request has not caught up with what the fields now
+   * say, or while the answer is an earlier request's kept as a placeholder - never a plan, nor
+   * its own fetch refusal, for text the reader has since typed past. A stale or a plain apply
+   * failure takes precedence, as it always did. */
+  const offer = (action: SectionAction): Offer => {
+    const shown = planShown(asked[action], requests[action], plans[action]);
+    return {
+      plan: shown.plan,
+      refusal:
+        staleFailed?.action === action
+          ? shownRefusal(staleFailed, revision)
+          : failed?.action === action
+            ? failed.message
+            : shown.refusal,
+      pending: shown.pending,
+    };
+  };
 
   if (gone) return null;
-  if (reply.isError) {
+  if (answer.shown === "refusal") {
     return (
       <Panel title={name} onClose={onClose}>
-        <Banner tone="error">{reply.error.message}</Banner>
+        <Banner tone="error">{answer.refusal}</Banner>
+      </Panel>
+    );
+  }
+  if (answer.shown === "updating") {
+    return (
+      <Panel title={name} onClose={onClose}>
+        <UpdatingNote updating />
       </Panel>
     );
   }
@@ -218,9 +253,16 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
   return (
     <SectionPanelView
       reply={entry}
+      updating={updating}
       access={access ?? entry.access}
       onAccess={(text) => {
         setAccess(text);
+        setTypedAccess(true);
+        setFailed(null);
+      }}
+      onAccessPicked={(text) => {
+        setAccess(text);
+        setTypedAccess(false);
         setFailed(null);
       }}
       alignment={alignment ?? entry.alignment}

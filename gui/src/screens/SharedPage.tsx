@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { getShared, postEdit } from "../api/client";
 import type { State } from "../api/types";
+import { useDebounced } from "../app/useDebounced";
 import { SharedAddView } from "../components/SharedAddView";
 import { SharedTableView } from "../components/SharedTableView";
 import { unreadable } from "../lib/findings";
@@ -17,6 +18,7 @@ import {
   sectionAdd,
   vocabularyOf,
 } from "../lib/shared";
+import { planShown } from "../lib/typing";
 import { constantLabel, rasterLabel, sectionLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { ConstantPanel, useConstantPlan } from "./ConstantPanel";
@@ -247,6 +249,9 @@ function SharedAdd({
   const [typed, setTyped] = useState(seed);
   const [raw, setRaw] = useState("");
   const [access, setAccess] = useState("");
+  // Which kind of change `access` last held, a pick or typing - never inferred from the value
+  // itself, which both can leave in the very same shape (Ruling T12-3).
+  const [typedSection, setTypedSection] = useState(true);
   const [alignment, setAlignment] = useState("");
   const [event, setEvent] = useState("");
   const [changesShown, setChangesShown] = useState(false);
@@ -261,10 +266,28 @@ function SharedAdd({
   const constantRequest = kind === "constant" ? constantAdd(typed, raw) : null;
   const sectionRequest = kind === "section" ? sectionAdd(typed, access, alignment) : null;
   const rasterRequest = kind === "raster" ? rasterAdd(typed, event) : null;
-  const constantPlan = useConstantPlan(constantRequest, revision);
-  const sectionPlan = useSectionPlan(sectionRequest, revision);
-  const rasterPlan = useRasterPlan(rasterRequest, revision);
+  // Every field but Access is plain, committing on every keystroke (`SharedAddView`'s own), so
+  // each of the three requests is debounced (spec §6, review fix round 1, Ruling T11-1: missing
+  // from this screen the first time round). Access, within the section request, is typed just
+  // as readily through its own chooser, but a pick of it takes effect at once instead (Ruling
+  // T12-3) - `typedSection` says which the latest change to that request was. Only one of the
+  // three is ever non-null at once (`kind` picks the vocabulary), so only one is ever actually
+  // waiting.
+  const askedConstant = useDebounced(constantRequest);
+  const askedSection = useDebounced(sectionRequest, typedSection);
+  const askedRaster = useDebounced(rasterRequest);
+  const constantPlan = useConstantPlan(askedConstant, revision);
+  const sectionPlan = useSectionPlan(askedSection, revision);
+  const rasterPlan = useRasterPlan(askedRaster, revision);
   const plan = kind === "section" ? sectionPlan : kind === "raster" ? rasterPlan : constantPlan;
+  const asked = kind === "section" ? askedSection : kind === "raster" ? askedRaster : askedConstant;
+  const request =
+    kind === "section" ? sectionRequest : kind === "raster" ? rasterRequest : constantRequest;
+  // The plan to draw, and why its own fetch was refused if it was - `planShown`'s own,
+  // `lib/typing.ts`: `null`/`null` while the debounced request has not caught up with what the
+  // fields now say, or while the answer is an earlier request's kept as a placeholder - never a
+  // plan, nor its own fetch refusal, for text the reader has since typed past.
+  const shown = planShown(asked, request, plan);
   // The vocabulary being declared into travels with the change rather than being read again when
   // it lands: what is invalidated and which panel opens are then the same choice the plan was
   // made under, and cannot be a later reading of the chooser.
@@ -307,6 +330,7 @@ function SharedAdd({
       typed={typed}
       onTyped={(text) => {
         setTyped(text);
+        setTypedSection(true);
         setRefusal(null);
       }}
       raw={raw}
@@ -317,11 +341,18 @@ function SharedAdd({
       access={access}
       onAccess={(text) => {
         setAccess(text);
+        setTypedSection(true);
+        setRefusal(null);
+      }}
+      onAccessPicked={(text) => {
+        setAccess(text);
+        setTypedSection(false);
         setRefusal(null);
       }}
       alignment={alignment}
       onAlignment={(text) => {
         setAlignment(text);
+        setTypedSection(true);
         setRefusal(null);
       }}
       event={event}
@@ -329,8 +360,8 @@ function SharedAdd({
         setEvent(text);
         setRefusal(null);
       }}
-      plan={plan.data ?? null}
-      refusal={refusal ?? plan.error?.message ?? null}
+      plan={shown.plan}
+      refusal={refusal ?? shown.refusal}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => {

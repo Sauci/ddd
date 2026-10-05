@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { OwnEdits, ownEdits } from "../state/edits";
 import {
   ApiError,
   getCompare,
@@ -9,6 +10,7 @@ import {
   getFile,
   getFiles,
   getFilesPlan,
+  getFindings,
   getFix,
   getGraph,
   getProjects,
@@ -37,6 +39,7 @@ import {
   request,
   ServerUnreachable,
 } from "./client";
+import type { Changes } from "./types";
 
 function answering(status: number, body: string) {
   return vi.fn(async (_path: string, _init?: RequestInit) => new Response(body, { status }));
@@ -193,15 +196,17 @@ describe("requests to the server", () => {
       { action: "declare", file: "/tmp/c.ddd.json", scope: "output", definition: '{"name":"P"}' },
       fetchImpl,
     );
+    // Noted into an instance of their own: this fetch answers `{}`, which carries no number.
     await postEdit(
       {
         changes: [{ file: "a", fingerprint: "x", operations: [{ op: "remove", pointer: "a" }] }],
         label: "the unit of ValueA",
       },
       fetchImpl,
+      new OwnEdits(),
     );
     await getUndo(fetchImpl);
-    await postUndo(3, fetchImpl);
+    await postUndo(3, fetchImpl, new OwnEdits());
     await getValues("CurveA", fetchImpl);
     await getValuePlan({ name: "CurveA", at: "[2]", raw: 750 }, fetchImpl);
     expect(fetchImpl.mock.calls).toEqual([
@@ -339,6 +344,30 @@ describe("requests to the server", () => {
     ]);
   });
 
+  test("getFindings asks for a page, each of its parameters encoded and none it was not given", async () => {
+    const calls = recorded();
+    await getFindings({}, calls.fetch);
+    await getFindings({ offset: 0, limit: 100 }, calls.fetch);
+    await getFindings({ offset: 300 }, calls.fetch);
+    await getFindings({ file: "C:/p/sensors/a b.ddd.json" }, calls.fetch);
+    await getFindings({ file: "C:/p/a.ddd.json", check: "missing-id" }, calls.fetch);
+    await getFindings(
+      { offset: 100, limit: 100, severity: "error", file: "/p/a&b.ddd.json", check: "a/b" },
+      calls.fetch,
+    );
+    expect(calls.urls).toEqual([
+      ["/api/findings", { credentials: "same-origin" }],
+      ["/api/findings?offset=0&limit=100", { credentials: "same-origin" }],
+      ["/api/findings?offset=300", { credentials: "same-origin" }],
+      ["/api/findings?file=C%3A%2Fp%2Fsensors%2Fa%20b.ddd.json", { credentials: "same-origin" }],
+      ["/api/findings?file=C%3A%2Fp%2Fa.ddd.json&check=missing-id", { credentials: "same-origin" }],
+      [
+        "/api/findings?offset=100&limit=100&severity=error&file=%2Fp%2Fa%26b.ddd.json&check=a%2Fb",
+        { credentials: "same-origin" },
+      ],
+    ]);
+  });
+
   test("getValuesPlan asks for a whole table's plan", async () => {
     const calls = recorded();
     await getValuesPlan({ name: "CurveA", raw: [1300, 950, 850, 800, 750, 700] }, calls.fetch);
@@ -362,5 +391,45 @@ describe("requests to the server", () => {
         "of address, and ddd gui reads at most 65521",
     );
     expect(calls.urls).toEqual([]);
+  });
+});
+
+/** An edit as the page posts one: what it changes matters to none of the tests below. */
+const CHANGES: Changes = {
+  changes: [{ file: "a", fingerprint: "x", operations: [{ op: "remove", pointer: "a" }] }],
+  label: "the unit of ValueA",
+};
+
+const REFUSED = '{"error": "stale", "message": "a.ddd.json changed on disk"}';
+
+describe("the page's own edits", () => {
+  test("an edit answered notes the number the server gave it", async () => {
+    const edits = new OwnEdits();
+    await postEdit(CHANGES, answering(200, '{"edit": 4, "files": []}'), edits);
+    expect(edits.newest()).toBe(4);
+  });
+
+  test("an undo answered notes the number the server gave it, and the edit it put back", async () => {
+    const edits = new OwnEdits();
+    await postUndo(3, answering(200, '{"edit": 5}'), edits);
+    expect(edits.newest()).toBe(5);
+    expect(edits.undone()).toEqual(new Map([[3, 5]]));
+  });
+
+  test("an edit or an undo refused notes nothing", async () => {
+    const edits = new OwnEdits();
+    await expect(postEdit(CHANGES, answering(409, REFUSED), edits)).rejects.toBeInstanceOf(
+      ApiError,
+    );
+    await expect(postUndo(3, answering(409, REFUSED), edits)).rejects.toBeInstanceOf(ApiError);
+    expect(edits.newest()).toBe(0);
+    expect(edits.undone()).toEqual(new Map());
+  });
+
+  test("by default each is noted into the page's own", async () => {
+    await postEdit(CHANGES, answering(200, '{"edit": 2, "files": []}'));
+    expect(ownEdits.newest()).toBe(2);
+    await postUndo(2, answering(200, '{"edit": 3}'));
+    expect(ownEdits.newest()).toBe(3);
   });
 });

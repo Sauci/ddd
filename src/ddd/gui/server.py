@@ -49,10 +49,10 @@ MAX_BODY: Final = 1024 * 1024
 IDLE_SECONDS: Final = 30
 """How long a connection that carries nothing is kept open before it is closed.
 
-Longer than any gap a page of this server leaves: the slowest thing it does is wait for a
-revision, and the connection that waits is never idle - the server is holding the answer, and
-the page asks again the moment it arrives. A tab that has gone away leaves its connections
-behind, and this is what takes their threads back."""
+Longer than any gap a page of this server leaves: the slowest thing it does is wait for the
+state to change, and the connection that waits is never idle - the server is holding the
+answer, and the page asks again the moment it arrives. A tab that has gone away leaves its
+connections behind, and this is what takes their threads back."""
 
 CONTENT_TYPES: Final = {
     ".css": "text/css; charset=utf-8",
@@ -180,11 +180,11 @@ class _Handler(BaseHTTPRequestHandler):
         """Answer a request, and answer it as json even when answering it fails.
 
         Left to the base class, a failure printed its traceback and dropped the connection, and
-        the page then said the server was not answering - or, waiting for a revision, that it
-        had stopped - about a server that was running. The traceback still goes to the terminal,
-        where whoever reads the page's message is sent. A page that went away mid-answer is let
-        go as before: there is nobody left to answer, and nothing worth printing, whether it
-        closed the connection or only stopped reading it.
+        the page then said the server was not answering - or, waiting for the state to change,
+        that it had stopped - about a server that was running. The traceback still goes to the
+        terminal, where whoever reads the page's message is sent. A page that went away
+        mid-answer is let go as before: there is nobody left to answer, and nothing worth
+        printing, whether it closed the connection or only stopped reading it.
         """
         try:
             self._route(method)
@@ -238,7 +238,9 @@ class _Handler(BaseHTTPRequestHandler):
         if not hmac.compare_digest(given.encode("utf-8"), self._gui.token.encode("utf-8")):
             self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"])
             return
-        target = "/project" if self._gui.api.session.revision is not None else "/"
+        # A project open goes to its page, analysed yet or not: the page says it is being
+        # analysed until its first analysis lands.
+        target = "/project" if self._gui.api.session.project is not None else "/"
         cookie = f"{self._gui.cookie}={self._gui.token}; HttpOnly; SameSite=Strict; Path=/"
         self._send(303, b"", CONTENT_TYPES[".txt"], {"Location": target, "Set-Cookie": cookie})
 
@@ -363,36 +365,42 @@ def run(
         )
         return EXIT_USAGE
     session = Session(Path.cwd(), build_directories)
-    if project is not None:
+    # Started before the project is opened, so that its first analysis runs on the analyser's
+    # own thread while the address is printed and served, and stopped on every way out of here,
+    # which ends that thread and the poller's.
+    session.start()
+    try:
+        if project is not None:
+            try:
+                session.open(project)
+            except ValueError as error:
+                print(f"ddd: {error}", file=sys.stderr)
+                return EXIT_USAGE
         try:
-            session.open(project)
-        except ValueError as error:
-            print(f"ddd: {error}", file=sys.stderr)
-            return EXIT_USAGE
-    try:
-        server = GuiServer(Api(session, project), pages, port, address)
-    except OSError as error:
-        return _refused(address, port, error)
-    print(f"ddd gui (preview) serving {server.address}", flush=True)
-    if beyond_loopback:
-        # No browser to open in a container, and nothing left to protect this with either:
-        # the Host and Origin allow-lists above still only admit 127.0.0.1 and localhost, so
-        # a client that merely reaches the port could forge both. The token in the address
-        # this just printed is what is left, hence publishing the port on the host's loopback
-        # alone rather than trusting the network between here and there.
-        print(
-            f"ddd gui: listening on {address}:{server.port}, beyond this computer's loopback; "
-            f"publish it on the host's loopback only, -p 127.0.0.1:{server.port}:{server.port}, "
-            "since the token in the address is what keeps others out",
-            file=sys.stderr,
-        )
-    elif open_browser:
-        webbrowser.open(server.address)
-    session.start_polling()
-    try:
-        with contextlib.suppress(KeyboardInterrupt):
-            server.serve_forever()
+            server = GuiServer(Api(session, project), pages, port, address)
+        except OSError as error:
+            return _refused(address, port, error)
+        print(f"ddd gui (preview) serving {server.address}", flush=True)
+        if beyond_loopback:
+            # No browser to open in a container, and nothing left to protect this with either:
+            # the Host and Origin allow-lists above still only admit 127.0.0.1 and localhost,
+            # so a client that merely reaches the port could forge both. The token in the
+            # address this just printed is what is left, hence publishing the port on the
+            # host's loopback alone rather than trusting the network between here and there.
+            print(
+                f"ddd gui: listening on {address}:{server.port}, beyond this computer's "
+                "loopback; publish it on the host's loopback only, "
+                f"-p 127.0.0.1:{server.port}:{server.port}, since the token in the address is "
+                "what keeps others out",
+                file=sys.stderr,
+            )
+        elif open_browser:
+            webbrowser.open(server.address)
+        try:
+            with contextlib.suppress(KeyboardInterrupt):
+                server.serve_forever()
+        finally:
+            server.server_close()
     finally:
         session.stop()
-        server.server_close()
     return EXIT_OK

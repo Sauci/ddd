@@ -5,6 +5,7 @@ import {
   declareSentence,
   definitionOf,
   dimensionsRaw,
+  followedScope,
   keysOf,
   modeOf,
   removalSentence,
@@ -72,6 +73,26 @@ describe("which scopes a name may take", () => {
 
   test("a new name may take all three", () => {
     expect(scopesOf("Pressure", REPLY)).toEqual(["output", "input", "local"]);
+  });
+});
+
+// Moved out of DeclarePanel.tsx's own effect (the final review's fix wave, Task 11's parked
+// minor): the scope the form keeps as the name it scopes changes.
+describe("which scope the form keeps as the name changes", () => {
+  test("a scope the name still takes is kept as chosen", () => {
+    expect(followedScope("local", scopesOf("Pressure", REPLY))).toBe("local");
+  });
+
+  test("a scope the name does not take moves forward onto the first it does", () => {
+    expect(followedScope("local", scopesOf("ValueC", REPLY))).toBe("input");
+  });
+
+  test("none chosen yet starts on the first the name takes", () => {
+    expect(followedScope("", scopesOf("Orphan", REPLY))).toBe("output");
+  });
+
+  test("a name taking no scope at all leaves none", () => {
+    expect(followedScope("local", [])).toBe("");
   });
 });
 

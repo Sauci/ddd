@@ -295,7 +295,10 @@ The commands
      - preview: serve a browser interface over one project's description files, on this
        computer by default, and open the browser on it. The project opens on a graph
        of its modules, an arrow per pair coloured by the worst disagreement between
-       them, with the component table, a Units tab - listing the project's units and
+       them, laid out in a worker rather than on the page's own thread, falling back to
+       ranks alone when the layout overflows its own stack on a chain too long for it -
+       ``Laid out in ranks only: the project is too large for the full layout.`` -
+       with the component table, a Units tab - listing the project's units and
        maintaining its vocabulary - a Findings tab of every finding, worst first, and a
        Compare tab asking whether the open project can replace a baseline delivery the
        reader names, one tab away. A variable's panel shows every key its declarations
@@ -439,11 +442,15 @@ The commands
        ``not read by the last analysis`` for a file an entry names that the revision the
        page holds has not read. Among the causes of that last: the root's own schema failing
        before its includes are read, a plugin's model raising while the project is read, a
-       pattern matching a file created since, or an entry the description gained since,
-       which the tab's own New file and Add show until the revision after them arrives:
-       measured, never on a copy of ``examples/vocabulary``, and for about a second on a
-       project of 18000 findings. New file, Add a file and Remove are its three actions, the
-       first two above the table and the third opened by selecting a row. New file takes a
+       pattern matching a file created since, or an entry the description gained since: the
+       row a New file or an Add makes is drawn once the edit answers, from the plan applied,
+       before the tab's own next list of its entries carries it, and reads ``not read by the
+       last analysis`` until the analysis after it, which is what the next list of entries
+       then reads instead. The rows of the entries a Remove takes out go the same way, once
+       the edit answers and before the next list of entries leaves them out too; a pattern
+       keeping the file in keeps its own row, and the file's beneath it. New file, Add a
+       file and Remove are its three actions, the first two above the table and the third
+       opened by selecting a row. New file takes a
        kind - ``component``, ``types``, ``units``, ``constants``, ``sections`` or
        ``rasters``, offered as ``GET /api/files`` sends the list, the page keeping no copy of
        its own - and a name, creating the file beside the project description and adding it
@@ -519,6 +526,41 @@ The commands
        by the findings on it, but is not opened, edited or drawn into a preview here: the
        refusal names the directories served, and starting ``ddd gui`` in one that holds them all
        opens them together.
+       Large projects stay responsive. An edit is answered once its files are written, before
+       it is analysed, and the change shows where it was made; its findings follow once the
+       project has been analysed again, the heading saying ``Updating the findings…`` until
+       then, and every panel listing findings saying so too, in its own place. A request
+       answered while an analysis runs shares one interpreter with it. Measured on a
+       developer's desktop over a generated project of 100,000 declarations, each asked
+       halfway through an analysis: an edit and a variable's plan were answered within a
+       tenth of a second, and the state of a revision just analysed in 0.19 to 0.61 s, while
+       the Files tab, which lists every file its patterns reach on disk at each request, and
+       the panel of a unit every component states, which reads each file stating it, each took
+       about two seconds; and an analysis took 5.1 to 6.0 s beside a page of findings asked
+       every tenth of a second, as scrolling the Findings tab asks them, against 3.8 to 4.5 s
+       alone. A plan can take longer where the file it changes is large: over a generated
+       project of 35,000 declarations, the plan of a variable declared in a component of 1,166
+       of them, 16,331 lines, took 1.3 s asked the same way and 0.8 s with no analysis
+       running, nearly all of it spent finding which of that file's lines the change replaces.
+       The server stopping is reported only once an ask that failed outright - its connection
+       refused or reset, never a slow answer alone, which nothing here times out - is asked
+       again and fails the same way, not after the first failure by itself.
+       A plan that would change a file an edit wrote since the revision it is judged
+       against was analysed is refused until that edit's own analysis has landed, naming
+       the file - ``an edit that wrote pump.ddd.json has not been analysed yet, so this
+       change can be planned once it has``. Opening a project answers at once with its
+       name, read from its description as it stands and kept in the heading from then on;
+       ``Analysing the project…`` stands where the tab's own content goes, until the first
+       analysis lands, and every answer needing a revision is refused until then, in the
+       same words - ``the open project has not been analysed yet``. A panel's own plan
+       request goes out at once the first time a field asks for one; typed text asks
+       again only after a pause in the reader's typing; a pick from a list, or Enter,
+       always goes out at once, first time or later. The
+       Findings tab asks for its findings a page at a time as the reader scrolls it,
+       rather than every one at once, and every long table - the component table, the
+       Types, Units, Shared files and Files tabs' own, a component's own declarations, a
+       unit's own places and a variable's keys - draws only the rows in view, in a box of
+       its own.
        ``-b DIR`` names a build directory as for ``ddd lsp``, ``--host ADDRESS``
        listens beyond this computer for a container, ``--port N`` fixes the port and
        ``--no-browser`` only prints the address. It serves until interrupted, and its

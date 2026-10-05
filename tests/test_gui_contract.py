@@ -91,3 +91,126 @@ class TestRawIsNeverParsed:
         )
         assert operation.raw == "1.0"
         assert isinstance(operation.raw, str)
+
+
+def _described(model: str) -> dict[str, str]:
+    """Each field of ``model`` as the page's types describe it: its docstring, as one line."""
+    properties = contract.api_schema()["$defs"][model]["properties"]
+    return {
+        name: " ".join(field.get("description", "").split()) for name, field in properties.items()
+    }
+
+
+class TestThePageFollowsTheAnalyser:
+    """What ``npm run schemas`` turns into the page's own types: the fields an edit and the state
+    answer now that an edit is answered once written and its analysis follows."""
+
+    def test_the_state_says_its_version_whether_it_analyses_and_the_edits_it_includes(
+        self,
+    ) -> None:
+        state = contract.api_schema()["$defs"]["State"]
+        assert list(state["properties"]) == [
+            "revision",
+            "version",
+            "project",
+            "files",
+            "counts",
+            "undoable",
+            "analysing",
+            "edits",
+        ]
+        assert state["required"] == list(state["properties"])
+        typed = {name: state["properties"][name]["type"] for name in ("version", "analysing")}
+        assert typed == {"version": "integer", "analysing": "boolean"}
+        assert state["properties"]["edits"]["type"] == "integer"
+        described = _described("State")
+        assert described["version"] == (
+            "Counts up at every change of what this reply says - an analysis asked for, "
+            "published or failed, an edit or an undo written: what a later ``?after=`` waits "
+            "past."
+        )
+        assert described["analysing"] == (
+            "Whether an analysis is asked for or running: the findings may be about to change."
+        )
+        assert described["edits"] == (
+            "The last edit or undo this revision's analysis includes - every one numbered up to "
+            "it was on disk when the analysis read the files - ``0`` where there is none."
+        )
+
+    def test_the_revision_is_nought_before_the_open_projects_first_analysis(self) -> None:
+        described = _described("State")
+        assert described["revision"] == (
+            "Counts up from 1 at every analysis this session publishes; ``0`` before the open "
+            "project's first analysis, when ``files`` is empty and every count ``0``."
+        )
+        assert described["project"] == (
+            "Absolute, posix-separated path of the open project's description: the one this "
+            "revision analysed, or the one its first analysis is reading while ``revision`` is "
+            "``0``."
+        )
+
+    @pytest.mark.parametrize(
+        ("model", "fields"), [("EditReply", ["edit", "files"]), ("UndoReply", ["edit"])]
+    )
+    def test_an_edit_and_an_undo_answer_the_number_each_took(
+        self, model: str, fields: list[str]
+    ) -> None:
+        reply = contract.api_schema()["$defs"][model]
+        assert list(reply["properties"]) == fields
+        assert reply["properties"]["edit"]["type"] == "integer"
+        taken = "edit" if model == "EditReply" else "undo"
+        assert _described(model)["edit"] == (
+            f"The number the session gave this {taken}: a revision whose ``edits`` has reached "
+            "it includes it."
+        )
+
+
+class TestFindingsComeAPageAtATime:
+    """What the page reads of a revision's findings now that ``GET /api/state`` counts them and
+    ``GET /api/findings`` answers them a page at a time, each with a key of its own."""
+
+    def test_the_state_counts_the_findings_of_each_severity_and_carries_none(self) -> None:
+        state = contract.api_schema()["$defs"]["State"]
+        assert "findings" not in state["properties"]
+        assert _described("State")["counts"] == (
+            "How many findings of each severity the revision has, in all."
+        )
+        assert contract.State.model_fields["counts"].annotation is contract.FindingCounts
+
+    def test_a_count_says_nothing_of_a_file_it_may_not_be_about(self) -> None:
+        """One model counts a file's findings, a module's and a whole revision's: its words are
+        true of each, and the field holding it says which."""
+        schema = contract.api_schema()["$defs"]["FindingCounts"]
+        assert " ".join(schema["description"].split()) == (
+            "How many findings of each severity there are - on a file, a module or a whole "
+            "revision: the field holding the counts says which."
+        )
+        assert _described("FindingCounts") == {
+            "error": "How many are errors.",
+            "warning": "How many are warnings.",
+            "info": "How many are informational.",
+        }
+
+    def test_a_listed_finding_is_a_finding_with_a_key(self) -> None:
+        defs = contract.api_schema()["$defs"]
+        assert list(defs["ListedFinding"]["properties"]) == [*defs["Finding"]["properties"], "key"]
+        assert defs["ListedFinding"]["required"] == list(defs["ListedFinding"]["properties"])
+        assert _described("ListedFinding")["key"] == (
+            "Its file, severity, check, place and words, and which repeat of those it is, "
+            "counted over the whole revision in the Findings tab's order: a finding keeps its "
+            "key on every page, under every filter, and into the next revision where it stays."
+        )
+
+    def test_a_page_says_its_revision_how_many_the_filters_leave_and_where_it_starts(
+        self,
+    ) -> None:
+        reply = contract.api_schema()["$defs"]["FindingsReply"]
+        assert list(reply["properties"]) == ["revision", "total", "offset", "findings"]
+        assert reply["required"] == list(reply["properties"])
+        assert reply["properties"]["findings"]["items"] == {"$ref": "#/$defs/ListedFinding"}
+        assert _described("FindingsReply")["total"] == (
+            "How many findings the filters leave, in all."
+        )
+
+    def test_both_are_published_beside_every_other_model(self) -> None:
+        assert {"FindingsReply", "ListedFinding"} <= set(contract.__all__)

@@ -7,17 +7,21 @@ import {
   getConstantPlan,
   postEdit,
 } from "../api/client";
+import { useUpdating } from "../app/updating";
+import { useDebounced } from "../app/useDebounced";
 import {
   type ConstantAction,
   ConstantPanelView,
   type Offer,
 } from "../components/ConstantPanelView";
-import { type Refused, shownRefusal } from "../lib/refusals";
+import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planEdit } from "../lib/shared";
+import { planShown } from "../lib/typing";
 import { constantLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
+import { UpdatingNote } from "../ui/UpdatingNote";
 import { refusalOf } from "./UnitPanel";
 
 interface Props {
@@ -43,19 +47,16 @@ interface Props {
  * invalidating one tab's plans on an edit does not throw away the other's, and a generic wide
  * enough for both requests would be a bigger change than one more tab's own hook.
  *
- * `keep` leaves the last plan on screen while the next is asked for, marked as a placeholder, for
- * a value or a description: both change with every key typed, and only in the text they write, so
- * the line saying which file it changes would otherwise blink at every key.
+ * Keeps no placeholder while the next is asked for: a value and a description are both debounced
+ * before `request` ever reaches this hook (`useDebounced`, spec §6), and `planShown`
+ * (`lib/typing.ts`) never trusts a placeholder's own answer, so one kept here would never be
+ * drawn - a `keep` option once did exactly that (fix round 2's own finding), which is why there
+ * is none now.
  */
-export function useConstantPlan(
-  request: ConstantPlanRequest | null,
-  revision: number | undefined,
-  keep = false,
-) {
+export function useConstantPlan(request: ConstantPlanRequest | null, revision: number | undefined) {
   return useQuery({
     queryKey: ["constant-plan", request, revision],
     queryFn: request === null ? skipToken : () => getConstantPlan(request),
-    placeholderData: (previous) => (keep ? previous : undefined),
   });
 }
 
@@ -71,6 +72,7 @@ export function ConstantPanel({
   onOpen,
 }: Props) {
   const queries = useQueryClient();
+  const updating = useUpdating();
   const reply = useQuery({
     queryKey: ["constant", name, revision],
     queryFn: () => getConstant(name),
@@ -104,7 +106,10 @@ export function ConstantPanel({
     null,
   );
 
-  const entry = reply.data;
+  // What the panel shows of that answer (`panelShows`): a constant just added or renamed is refused
+  // until its file is analysed again, and the panel says the findings are updating meanwhile.
+  const answer = panelShows(reply, (shown) => shown.name, name, updating);
+  const entry = answer.shown === "reply" ? answer.reply : undefined;
   const draftValue = value !== undefined && value !== entry?.value ? value : null;
   const draftDescription =
     description !== undefined && description !== entry?.description ? description : null;
@@ -141,11 +146,23 @@ export function ConstantPanel({
     rename: Extract<ConstantPlanRequest, { action: "rename" }> | null;
     remove: Extract<ConstantPlanRequest, { action: "remove" }> | null;
   };
+  // Value, description and rename each commit on every keystroke - plain fields, rename's with
+  // no chooser of its own - so each is debounced on its own (spec §6): a panel's first ask of a
+  // field is immediate, and only a field asked of before waits. Remove is never typed into - it
+  // is offered outright once there is nothing left naming the constant - so there is no keystroke
+  // for it to wait on, and `asked.remove` is `requests.remove` itself, asked for as soon as it is
+  // offered.
+  const asked: Record<ConstantAction, ConstantPlanRequest | null> = {
+    value: useDebounced(requests.value),
+    describe: useDebounced(requests.describe),
+    rename: useDebounced(requests.rename),
+    remove: requests.remove,
+  };
   const plans = {
-    value: useConstantPlan(requests.value, revision, true),
-    describe: useConstantPlan(requests.describe, revision, true),
-    rename: useConstantPlan(requests.rename, revision),
-    remove: useConstantPlan(requests.remove, revision),
+    value: useConstantPlan(asked.value, revision),
+    describe: useConstantPlan(asked.describe, revision),
+    rename: useConstantPlan(asked.rename, revision),
+    remove: useConstantPlan(asked.remove, revision),
   };
   const apply = useMutation({
     mutationFn: (action: ConstantAction) => {
@@ -197,23 +214,38 @@ export function ConstantPanel({
       if (error === null && action === "describe") setDescription(undefined);
     },
   });
-  /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for. */
-  const offer = (action: ConstantAction): Offer => ({
-    plan: plans[action].data ?? null,
-    refusal:
-      staleFailed?.action === action
-        ? shownRefusal(staleFailed, revision)
-        : failed?.action === action
-          ? failed.message
-          : (plans[action].error?.message ?? null),
-    pending: plans[action].isPlaceholderData,
-  });
+  /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for.
+   * `plan`/`refusal`/`pending` are `planShown`'s own, `lib/typing.ts` (review fix round 1):
+   * `null`/`null`/pending while the debounced request has not caught up with what the fields now
+   * say, or while the answer is an earlier request's kept as a placeholder - never a plan, nor
+   * its own fetch refusal, for text the reader has since typed past. A stale or a plain apply
+   * failure takes precedence, as it always did. */
+  const offer = (action: ConstantAction): Offer => {
+    const shown = planShown(asked[action], requests[action], plans[action]);
+    return {
+      plan: shown.plan,
+      refusal:
+        staleFailed?.action === action
+          ? shownRefusal(staleFailed, revision)
+          : failed?.action === action
+            ? failed.message
+            : shown.refusal,
+      pending: shown.pending,
+    };
+  };
 
   if (gone) return null;
-  if (reply.isError) {
+  if (answer.shown === "refusal") {
     return (
       <Panel title={name} onClose={onClose}>
-        <Banner tone="error">{reply.error.message}</Banner>
+        <Banner tone="error">{answer.refusal}</Banner>
+      </Panel>
+    );
+  }
+  if (answer.shown === "updating") {
+    return (
+      <Panel title={name} onClose={onClose}>
+        <UpdatingNote updating />
       </Panel>
     );
   }
@@ -227,6 +259,7 @@ export function ConstantPanel({
   return (
     <ConstantPanelView
       reply={entry}
+      updating={updating}
       value={value ?? entry.value}
       onValue={(text) => {
         setValue(text);

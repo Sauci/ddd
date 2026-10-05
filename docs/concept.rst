@@ -475,7 +475,7 @@ have the symbol names in the file:
    }
 
    component "ddd generate all" as ddd_first
-   component "ddd generate a2l\n--image or --address-map" as ddd_second
+   component "ddd generate a2l\n~--image or ~--address-map" as ddd_second
    component "compiler / linker" as toolchain
 
    artifact "ddd_globals.c, ddd_globals.h,\nddd_types.h, one header\nper component" as generated_c

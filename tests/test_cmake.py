@@ -1239,11 +1239,15 @@ message(STATUS "DDD_A2L=${{a2l}}")
         self, story: FromTheImage
     ) -> None:
         """A conversion's factor reaches the a2l and none of the c: the c is left as it was, so
-        nothing compiles or links, and the step reads the image again all the same."""
+        nothing compiles or links, and the step reads the image again all the same. It updates
+        the a2l rather than creating it: the run before the link, which the factor reran for
+        the dictionary, left the a2l the step had written where it was."""
         if not story.linked_elf():
             return
         redescribed = story.builds[3]
         assert "Reading the addresses of the a2l out of img" in redescribed.output
+        a2l = (story.generated / "AddressFixture.a2l").as_posix()
+        assert f"wrote       {a2l} (updated)\n" in redescribed.output
         assert "Linking" not in redescribed.output
         assert "      COEFFS 0 1 40 0 0 0.2\n" in redescribed.a2l
 

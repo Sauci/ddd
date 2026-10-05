@@ -6,12 +6,17 @@ import {
   fadedNodes,
   firstMatch,
   flowTitle,
+  MIN_ZOOM,
   nodesOf,
   objectsInDisagreement,
+  openingViewport,
   STROKE,
   shownEdges,
   stateOf,
+  withSavedPositions,
 } from "./canvas";
+import type { Placed } from "./layout";
+import { NODE_WIDTH } from "./nodeSize";
 
 const graphModule = (path: string, name: string, errors = 0, warnings = 0): GraphModule => ({
   path,
@@ -38,6 +43,8 @@ const A = graphModule("/a.ddd.json", "Alpha", 2);
 const B = graphModule("/b.ddd.json", "Beta", 0, 1);
 const C = graphModule("/c.ddd.json", "Gamma");
 
+const placedAt = (module: GraphModule, x: number, y: number): Placed => ({ module, x, y });
+
 /** A handler React Flow calls with a DOM event these tests have no need to build. */
 function fire(handler: ((event: never) => void) | undefined): void {
   if (handler === undefined) throw new Error("the arrow carries no such handler");
@@ -53,16 +60,28 @@ test("a severity the arrow paints with, and every other one leaving it plain", (
 });
 
 test("every module becomes a node carrying what its box draws", () => {
-  const nodes = nodesOf(reply([A, B], []), {}, () => undefined);
+  const nodes = nodesOf([placedAt(A, 0, 0), placedAt(B, 10, 10)], [A, B], () => undefined);
   expect(nodes.map((node) => node.id)).toEqual([A.path, B.path]);
   expect(nodes[0]?.data).toMatchObject({ name: "Alpha", loaded: true, errors: 2, warnings: 0 });
   expect(nodes[1]?.data).toMatchObject({ name: "Beta", errors: 0, warnings: 1 });
   expect(nodes.every((node) => node.type === "module" && !node.data.faded)).toBe(true);
 });
 
-test("a node opens its own module's page, and sits where the reader left it", () => {
+// Review fix round 2, Finding 7: a node without these is mounted at least once to be measured
+// regardless of whether it was ever in view. Pinned by the literal numbers the re-review read
+// off the real DOM: target (-3, 21), source (177, 21), each 6×6.
+test("every node carries its own measured size and both handles from the start", () => {
+  const [node] = nodesOf([placedAt(A, 0, 0)], [A], () => undefined);
+  expect(node?.measured).toEqual({ width: 180, height: 48 });
+  expect(node?.handles).toEqual([
+    { type: "target", position: "left", x: -3, y: 21, width: 6, height: 6 },
+    { type: "source", position: "right", x: 177, y: 21, width: 6, height: 6 },
+  ]);
+});
+
+test("a node opens its own module's page, and sits at its placed position", () => {
   const opened: string[] = [];
-  const nodes = nodesOf(reply([A, B], []), { [B.path]: { x: 7, y: 9 } }, (path) => {
+  const nodes = nodesOf([placedAt(A, 0, 0), placedAt(B, 7, 9)], [A, B], (path) => {
     opened.push(path);
   });
   const beta = nodes[1];
@@ -70,6 +89,59 @@ test("a node opens its own module's page, and sits where the reader left it", ()
   beta.data.onOpen(beta.id);
   expect(opened).toEqual([B.path]);
   expect(beta.position).toEqual({ x: 7, y: 9 });
+});
+
+test("a node's data comes from the modules given now, never from when it was placed", () => {
+  const placedWhenQuiet = placedAt(graphModule(A.path, "Alpha", 0, 0), 5, 5);
+  const busyNow = graphModule(A.path, "Alpha", 3, 1);
+  const nodes = nodesOf([placedWhenQuiet], [busyNow], () => undefined);
+  expect(nodes[0]?.data).toMatchObject({ errors: 3, warnings: 1 });
+  expect(nodes[0]?.position).toEqual({ x: 5, y: 5 });
+});
+
+test("a module the given modules no longer carry draws no node", () => {
+  const nodes = nodesOf([placedAt(A, 0, 0), placedAt(B, 1, 1)], [A], () => undefined);
+  expect(nodes.map((node) => node.id)).toEqual([A.path]);
+});
+
+test("a module not yet placed draws no node, until the layout that places it arrives", () => {
+  const nodes = nodesOf([placedAt(A, 0, 0)], [A, B], () => undefined);
+  expect(nodes.map((node) => node.id)).toEqual([A.path]);
+});
+
+// Review fix round 1, Important 2: the two tests above pin only the findings counts, which left
+// `loaded` and `name` free to be read from the placement's own (possibly stale) module instead
+// of the current one, unnoticed.
+test("a node's loaded flag comes from the modules given now, never from when it was placed", () => {
+  const placedWhileLoaded: Placed = { module: { ...A, loaded: true }, x: 0, y: 0 };
+  const unloadedNow: GraphModule = { ...A, loaded: false };
+  const nodes = nodesOf([placedWhileLoaded], [unloadedNow], () => undefined);
+  expect(nodes[0]?.data.loaded).toBe(false);
+});
+
+test("a node's name comes from the modules given now, never from when it was placed", () => {
+  const placedAsAlpha: Placed = { module: { ...A, name: "Alpha" }, x: 0, y: 0 };
+  const renamedNow: GraphModule = { ...A, name: "Omega" };
+  const nodes = nodesOf([placedAsAlpha], [renamedNow], () => undefined);
+  expect(nodes[0]?.data.name).toBe("Omega");
+});
+
+test("a saved position wins for its module, and leaves the others as they were placed", () => {
+  const placed = [placedAt(A, 10, 20), placedAt(B, 30, 40)];
+  expect(withSavedPositions(placed, { [B.path]: { x: 999, y: 111 } })).toEqual([
+    placedAt(A, 10, 20),
+    placedAt(B, 999, 111),
+  ]);
+});
+
+test("no saved position leaves every module exactly as it was placed", () => {
+  const placed = [placedAt(A, 10, 20), placedAt(B, 30, 40)];
+  expect(withSavedPositions(placed, {})).toEqual(placed);
+});
+
+test("a saved position for a module the placement does not carry changes nothing", () => {
+  const placed = [placedAt(A, 10, 20)];
+  expect(withSavedPositions(placed, { [B.path]: { x: 1, y: 1 } })).toEqual(placed);
 });
 
 test("every flow becomes an arrow announced as one sentence, coloured by its severity", () => {
@@ -217,7 +289,7 @@ test("the first match is the first module whose name contains the text", () => {
 });
 
 test("a node outside the bright set is faded, and one whose state did not change is left alone", () => {
-  const nodes = nodesOf(reply([A, B], []), {}, () => undefined);
+  const nodes = nodesOf([placedAt(A, 0, 0), placedAt(B, 10, 10)], [A, B], () => undefined);
   const faded = fadedNodes(nodes, new Set([A.path]));
   expect(faded.map((node) => node.data.faded)).toEqual([false, true]);
   expect(faded[0]).toBe(nodes[0]);
@@ -237,4 +309,57 @@ test("an arrow is bright only while both of its ends are, and open only while it
     [true, false],
   ]);
   expect(shownEdges(edges, null, null)).toEqual(edges);
+});
+
+// Review fix round 2, New Important 2: MIN_ZOOM pinned by the literal 0.5, not by comparing the
+// constant against itself the way passing it as openingViewport's own minZoom argument would.
+test("MIN_ZOOM is React Flow's own default, 0.5", () => {
+  expect(MIN_ZOOM).toBe(0.5);
+});
+
+test("openingViewport shows nothing when nothing is placed", () => {
+  expect(openingViewport([], { width: 1280, height: 800 }, MIN_ZOOM)).toBeNull();
+});
+
+test("openingViewport shows nothing when the canvas has not been measured yet", () => {
+  const placed = [placedAt(A, 0, 0)];
+  expect(openingViewport(placed, { width: 0, height: 0 }, MIN_ZOOM)).toBeNull();
+});
+
+test("openingViewport fits the whole placement when it already fits, uncapped", () => {
+  // Three modules spread so the zoom needed to fit them all lands strictly between MIN_ZOOM and
+  // React Flow's own default maxZoom (2) - neither clamp applies, so this is fitView's own
+  // result, computed directly rather than left to it.
+  const placed = [placedAt(A, 0, 0), placedAt(B, 400, 0), placedAt(C, 800, 0)];
+  const result = openingViewport(placed, { width: 1280, height: 800 }, MIN_ZOOM);
+  expect(result).toEqual({ x: 58, y: 371.49387755102043, zoom: 1.1877551020408164 });
+});
+
+test("openingViewport fits the whole placement capped at maxZoom when it fits with room to spare", () => {
+  const placed = [placedAt(A, 0, 0), placedAt(B, 300, 0)];
+  const result = openingViewport(placed, { width: 1280, height: 800 }, MIN_ZOOM);
+  // Uncapped this would zoom to 2.425 - capped at React Flow's own default maxZoom, 2, the same
+  // ceiling fitView itself would apply.
+  expect(result).toEqual({ x: 160, y: 352, zoom: 2 });
+});
+
+// The final review's fix wave (Ruling T10-5, Minor 2): the boundary itself is the fit's. Two
+// modules 2,148 px apart make bounds 2,328 px wide; 1,280 px less React Flow's own padding at 0.1
+// (58 px each side, floored) leaves 1,164 px, so the zoom that fits them is exactly MIN_ZOOM - the
+// fit, centred at x 58, where the first rank alone would open at x 595.
+test("openingViewport fits the whole placement when it fits at exactly minZoom", () => {
+  const placed = [placedAt(A, 0, 0), placedAt(B, 2148, 0)];
+  const result = openingViewport(placed, { width: 1280, height: 800 }, MIN_ZOOM);
+  expect(result).toEqual({ x: 58, y: 388, zoom: 0.5 });
+});
+
+test("openingViewport centres the first rank at minZoom when the whole graph would not fit", () => {
+  // Fifty ranks spread along x, ranked's own spacing (NODE_WIDTH + 50): fitting all fifty into
+  // 1280px needs a zoom below MIN_ZOOM, leaving the fitted middle - around rank 25 - the only
+  // thing in view were this the fit instead.
+  const placed = Array.from({ length: 50 }, (_, rank) =>
+    placedAt(graphModule(`/m${rank}.ddd.json`, `M${rank}`), rank * (NODE_WIDTH + 50), 0),
+  );
+  const result = openingViewport(placed, { width: 1280, height: 800 }, MIN_ZOOM);
+  expect(result).toEqual({ x: 595, y: 388, zoom: 0.5 });
 });

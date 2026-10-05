@@ -954,7 +954,7 @@ class TestDeclaringOne:
         ]
         session = Session(tmp_path)
         session.open(root)
-        revision, _ = session.edit(
+        session.edit(
             [
                 FileChange(
                     edit.path,
@@ -965,6 +965,8 @@ class TestDeclaringOne:
             ],
             "the entry declared",
         )
+        revision = session.revision
+        assert revision is not None
         assert [
             (filed.file.name, filed.diagnostic.check)
             for filed in revision.findings

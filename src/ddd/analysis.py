@@ -23,6 +23,7 @@ from ddd.compare import (
     spell_out,
 )
 from ddd.diagnostics import CHECKS, DiagnosticBag, Location, index_order
+from ddd.difflib_lock import ONE_THREAD_IN_DIFFLIB
 from ddd.ir import (
     ComponentDeclaration,
     DataDictionary,
@@ -3628,11 +3629,12 @@ def close_units(unit: str, vocabulary: Sequence[str]) -> tuple[str, ...]:
     wrong case is the likeliest near miss of all - and scored as written, ``RPM`` and ``rpm``
     share no character. Case still counts in the vocabulary, so every spelling of a close unit
     is answered: ``mV`` and ``MV`` alike. A unit is a short spelling and matches loosely, at
-    0.5; ``unit`` itself is never answered.
+    0.5; ``unit`` itself is never answered. Each spelling is compared in a call into difflib
+    of its own (:func:`_closeness`), never the whole vocabulary in one.
     """
     wanted = unit.lower()
     scores = {
-        spelling: difflib.SequenceMatcher(None, spelling.lower(), wanted).ratio()
+        spelling: _closeness(spelling.lower(), wanted)
         for spelling in vocabulary
         if spelling != unit
     }
@@ -3643,13 +3645,24 @@ def close_units(unit: str, vocabulary: Sequence[str]) -> tuple[str, ...]:
     return tuple(close[:3])
 
 
+def _closeness(spelling: str, wanted: str) -> float:
+    """How close two spellings are, as difflib scores them: one comparison, holding
+    :data:`ddd.difflib_lock.ONE_THREAD_IN_DIFFLIB` for itself alone."""
+    with ONE_THREAD_IN_DIFFLIB:
+        return difflib.SequenceMatcher(None, spelling, wanted).ratio()
+
+
 def _did_you_mean(name: str, candidates: Sequence[str], *, cutoff: float) -> str:
     """The suggestion suffix for ``name``, from the candidates at least ``cutoff`` close to it.
 
     The cutoff stays with the caller: a unit or section is a short spelling and matches
-    loosely at 0.5, a type name is longer and wants the stricter 0.6.
+    loosely at 0.5, a type name is longer and wants the stricter 0.6. The candidates are
+    compared in one call into difflib, holding :data:`ddd.difflib_lock.ONE_THREAD_IN_DIFFLIB`
+    for that call alone.
     """
-    return _suggesting(tuple(difflib.get_close_matches(name, candidates, n=3, cutoff=cutoff)))
+    with ONE_THREAD_IN_DIFFLIB:
+        matches = difflib.get_close_matches(name, candidates, n=3, cutoff=cutoff)
+    return _suggesting(tuple(matches))
 
 
 def _suggesting(matches: tuple[str, ...]) -> str:

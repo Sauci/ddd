@@ -2,18 +2,33 @@
 
 from __future__ import annotations
 
+import io
 import json
 import re
 import shutil
 import stat
+import sys
 import threading
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 import ddd.gui.session as session_module
-from conftest import EXAMPLES, build_record, component, declare, project, write_tree
+from conftest import (
+    EXAMPLES,
+    Gated,
+    begun,
+    build_record,
+    component,
+    declare,
+    first_revision,
+    landed,
+    project,
+    stopped,
+    write_tree,
+)
 from ddd.diagnostics import Severity, SeverityPolicy, UnknownCheckError
 from ddd.editing import (
     INVALID,
@@ -29,8 +44,11 @@ from ddd.gui.session import (
     MAX_UNDO,
     Filed,
     NoProjectError,
+    NotAnalysedError,
     NotInProjectError,
+    Revision,
     Session,
+    Snapshot,
     find_projects,
     findings_with,
 )
@@ -109,11 +127,29 @@ def mismatches(session: Session) -> int:
 
 
 def opened_and_settled(project_file: Path, poll_interval: float = 1.0) -> Session:
-    """A session on the project, past the one analysis more that opening it costs."""
+    """A session on the project, past any analysis more that opening it costs - one, where a
+    sub-project's files had no stamp before the first analysis read them, which its revision asks
+    for at once, and none for a flat project, whose files opening stamps - and polled once, which
+    finds nothing then."""
     session = Session(project_file.parent, poll_interval=poll_interval)
     session.open(project_file)
     session.poll()
     return session
+
+
+def with_a_sub_project(base: Path) -> Path:
+    """A project including a sub-project, whose own ``includes`` name its one component - files
+    opening does not stamp, since it reads no sub-project's ``includes``; returns the project
+    file."""
+    write_tree(
+        base,
+        {
+            "p.ddd.json": project("P", "sub/s.ddd.json"),
+            "sub/s.ddd.json": project("S", "c.ddd.json"),
+            "sub/c.ddd.json": component("C", declare("output", "Speed", unit="rpm")),
+        },
+    )
+    return base / "p.ddd.json"
 
 
 def saving_while_analysing(file: Path, unit: bytes) -> Callable[..., Run]:
@@ -128,6 +164,35 @@ def saving_while_analysing(file: Path, unit: bytes) -> Callable[..., Run]:
         return answer
 
     return run
+
+
+NUL_ENTRY = "b\u0000.ddd.json"
+"""An include entry naming a path no system lets a program even look at: it holds a NUL byte."""
+
+
+def unreachable(base: Path) -> Path:
+    """A project including a component and :data:`NUL_ENTRY`; returns the project file."""
+    write_tree(
+        base,
+        {
+            "p.ddd.json": project("P", "a.ddd.json", NUL_ENTRY),
+            "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+        },
+    )
+    return base / "p.ddd.json"
+
+
+def unreadable(project_file: Path) -> tuple[str, str, str]:
+    """The one finding a revision of :func:`unreachable`'s project carries - its file, its check
+    and its words - the reason given in Python's own words, which are the platform's."""
+    path = project_file.resolve().parent / NUL_ENTRY
+    with pytest.raises(ValueError) as refused:
+        path.read_text(encoding="utf-8-sig")
+    return ("p.ddd.json", "file-not-found", f"cannot read '{path.as_posix()}': {refused.value}")
+
+
+def findings_of(revision: Revision) -> list[tuple[str, str, str]]:
+    return [(f.file.name, f.diagnostic.check, f.diagnostic.message) for f in revision.findings]
 
 
 class TestFindingProjects:
@@ -180,7 +245,7 @@ class TestOpening:
     def test_a_revision_describes_every_file_and_resolves_the_dictionary(
         self, shared: Path
     ) -> None:
-        revision = Session(shared.parent).open(shared)
+        revision = first_revision(shared.parent, shared)
         described = {f.path.name: (f.kind, f.name, f.loaded) for f in revision.files}
         assert described == {
             "p.ddd.json": ("project", "P", True),
@@ -196,7 +261,7 @@ class TestOpening:
             (shared.parent / "b.ddd.json").read_text(encoding="utf-8").replace("rpm", "Hz"),
             encoding="utf-8",
         )
-        revision = Session(shared.parent).open(shared)
+        revision = first_revision(shared.parent, shared)
         filed = {
             f.file.name for f in revision.findings if f.diagnostic.check == "definition-mismatch"
         }
@@ -207,7 +272,8 @@ class TestOpening:
     def test_opening_again_makes_a_newer_revision(self, shared: Path) -> None:
         session = Session(shared.parent)
         session.open(shared)
-        assert session.open(shared).number == 2
+        session.open(shared)
+        assert session.revision is not None and session.revision.number == 2
 
     def test_a_build_records_severities_and_plugin_checks_apply(self, tmp_path: Path) -> None:
         write_tree(
@@ -219,7 +285,7 @@ class TestOpening:
             },
         )
         build_record(tmp_path, tmp_path / "p.ddd.json", severity=["unused-output=error"])
-        revision = Session(tmp_path).open(tmp_path / "p.ddd.json")
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
         assert [b.image for b in revision.builds] == ["firmware.elf"]
         unused = [f.diagnostic for f in revision.findings if f.diagnostic.check == "unused-output"]
         assert [d.severity.value for d in unused] == ["error"]
@@ -232,7 +298,7 @@ class TestOpening:
         self, shared: Path, content: str
     ) -> None:
         (shared.parent / "b.ddd.json").write_text(content, encoding="utf-8")
-        revision = Session(shared.parent).open(shared)
+        revision = first_revision(shared.parent, shared)
         broken = next(f for f in revision.files if f.path.name == "b.ddd.json")
         assert (broken.kind, broken.name, broken.loaded) == ("unknown", None, False)
         assert revision.dictionary is None
@@ -254,8 +320,7 @@ def test_a_revision_keeps_the_index_its_analysis_built(tmp_path: Path) -> None:
             "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
         },
     )
-    session = Session(tmp_path)
-    revision = session.open(tmp_path / "p.ddd.json")
+    revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
     assert revision.index is not None
     assert len(revision.index.declarations["Speed"]) == 2
 
@@ -264,17 +329,6 @@ class TestFollowingTheDisk:
     def test_nothing_is_polled_while_no_project_is_open(self, tmp_path: Path) -> None:
         assert Session(tmp_path).poll() is False
 
-    def test_after_the_one_analysis_more_opening_costs_an_unchanged_project_is_left_alone(
-        self, shared: Path
-    ) -> None:
-        """Opening learns which files the project has from the analysis that reads them, so none
-        of them was stamped before it was read, and the first poll analyses once more."""
-        session = Session(shared.parent)
-        session.open(shared)
-        assert session.poll() is True
-        assert session.poll() is False
-        assert session.revision is not None and session.revision.number == 2
-
     def test_a_file_changed_on_disk_makes_a_new_revision(self, shared: Path) -> None:
         session = opened_and_settled(shared)
         (shared.parent / "b.ddd.json").write_text(
@@ -282,7 +336,7 @@ class TestFollowingTheDisk:
             encoding="utf-8",
         )
         assert session.poll() is True
-        assert session.revision is not None and session.revision.number == 3
+        assert session.revision is not None and session.revision.number == 2
 
     def test_a_file_removed_from_disk_makes_a_new_revision(self, shared: Path) -> None:
         session = opened_and_settled(shared)
@@ -331,44 +385,65 @@ class TestFollowingTheDisk:
         assert session.poll() is True
         assert mismatches(session) == 0
 
-    def test_a_save_made_to_a_file_the_analysis_brought_in_is_picked_up_by_the_next_poll(
+    def test_a_save_made_to_a_file_the_analysis_brought_in_is_picked_up_by_the_analysis_it_asks(
         self, shared: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A file the project did not have when the poll stamped its files has no stamp of its
-        own, so the next poll analyses once more - which is what catches a save made to it while
-        the analysis that brought it in ran."""
-        session = opened_and_settled(shared)
-        write_tree(
-            shared.parent,
-            {
-                "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
-                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
-            },
-        )
-        newcomer = shared.parent / "c.ddd.json"
-        monkeypatch.setattr(module, "run_project", saving_while_analysing(newcomer, b'"Hz"'))
-        assert session.poll() is True
-        monkeypatch.undo()
-        assert mismatches(session) == 0
-        assert session.poll() is True
-        assert mismatches(session) == 2
+        own, so the revision that read it asks for one analysis more at once - which is what
+        catches a save made to it while the analysis that brought it in ran, with no poll after
+        it: this session polls an hour apart. The analysis it asks for is held while revision 2 is
+        read, whose lack of any disagreement shows that the analysis bringing the file in read it
+        before the save."""
+        session = Stepped(shared.parent)
+        opening, bringing, asked = session.goes
+        opening.set()
+        bringing.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+            write_tree(
+                shared.parent,
+                {
+                    "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
+                    "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                },
+            )
+            newcomer = shared.parent / "c.ddd.json"
+            monkeypatch.setattr(module, "run_project", saving_while_analysing(newcomer, b'"Hz"'))
+            assert session.poll() is True
+            begun(session)  # the analysis bringing c.ddd.json in, saving it once it has read it
+            begun(session)  # the one its revision asks for, held
+            monkeypatch.undo()
+            brought = session.revision
+            assert brought is not None and brought.number == 2
+            assert mismatches(session) == 0
+            asked.set()
+            caught = landed(session).revision
+            assert caught is not None and caught.number == 3
+            assert mismatches(session) == 2
+        finally:
+            for go in session.goes:
+                go.set()
+            stopped(session)
 
-    def test_a_waiting_request_gets_the_newer_revision_as_soon_as_it_exists(
+    def test_a_waiting_request_gets_what_the_session_says_as_soon_as_it_changes(
         self, shared: Path
     ) -> None:
         session = Session(shared.parent)
         session.open(shared)
         threading.Timer(0.05, session.open, args=(shared,)).start()
-        revision = session.wait(1, timeout=5)
-        assert revision is not None and revision.number == 2
+        assert session.wait(2, timeout=5).version > 2
 
-    def test_a_waiting_request_gets_the_current_revision_when_nothing_changes(
+    def test_a_waiting_request_gets_what_the_session_says_when_nothing_changes(
         self, shared: Path
     ) -> None:
         session = Session(shared.parent)
         session.open(shared)
-        revision = session.wait(1, timeout=0.05)
-        assert revision is not None and revision.number == 1
+        snapshot = session.wait(2, timeout=0.05)
+        assert snapshot.version == 2
+        assert snapshot.revision is not None and snapshot.revision.number == 1
 
     def test_the_polling_thread_notices_a_change(self, shared: Path) -> None:
         session = opened_and_settled(shared, poll_interval=0.02)
@@ -376,8 +451,9 @@ class TestFollowingTheDisk:
         session.start_polling()  # a second start keeps the one thread
         try:
             (shared.parent / "a.ddd.json").write_text("{}", encoding="utf-8")
-            revision = session.wait(2, timeout=5)
-            assert revision is not None and revision.number == 3
+            assert session.wait(2, timeout=5).version > 2
+            revision = landed(session).revision
+            assert revision is not None and revision.number == 2
         finally:
             session.stop()
 
@@ -402,6 +478,1039 @@ class TestFollowingTheDisk:
 
     def test_stopping_a_session_that_never_polled_is_harmless(self, tmp_path: Path) -> None:
         Session(tmp_path).stop()
+
+
+class Stepped(Session):
+    """A session whose analyses announce that they have begun, as a :class:`Gated` one's do, and
+    each wait for a go of its own: what lets a test let one analysis finish while the next one
+    waits."""
+
+    def __init__(self, root: Path) -> None:
+        super().__init__(root, poll_interval=3600)
+        self.begun = threading.Semaphore(0)
+        self.goes = (threading.Event(), threading.Event(), threading.Event())
+        self.analyses = 0
+
+    def _analysed(self, project: Path) -> Revision:
+        go = self.goes[self.analyses]
+        self.analyses += 1
+        self.begun.release()
+        assert go.wait(timeout=10), "the test never let this analysis go"
+        return super()._analysed(project)
+
+
+class Recording(Session):
+    """A session that keeps what it says at the end of each analysis, read in the same hold of the
+    lock that published what the analysis left: what it says from that moment, since no reader -
+    a page's long poll, the journeys' fixture - can read it in between, every one holding the lock
+    to read."""
+
+    def __init__(self, root: Path) -> None:
+        super().__init__(root, poll_interval=3600)
+        self.left: list[Snapshot] = []
+
+    def _finished(self, begun: module._Begun, revision: Revision | None) -> None:
+        super()._finished(begun, revision)
+        self.left.append(self._snapshot())
+
+
+class SecondFails(Gated):
+    """A gated session whose second analysis raises ``boom``."""
+
+    def _analysed(self, project: Path) -> Revision:
+        revision = super()._analysed(project)
+        if self.analyses == 2:
+            raise RuntimeError("boom")
+        return revision
+
+
+class TestTheAnalyser:
+    def test_an_edit_answers_before_its_analysis_and_the_next_revision_includes_it(
+        self, shared: Path
+    ) -> None:
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+            session.gate.clear()
+            at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            revision = session.revision
+            assert revision is not None and revision.edits < at and mismatches(session) == 0
+            session.gate.set()
+            settled = session.settled(timeout=10)
+            assert settled is not None and settled.edits == at and mismatches(session) == 2
+        finally:
+            session.gate.set()
+            stopped(session)
+
+    def test_edits_landing_while_an_analysis_runs_make_one_analysis_more_not_one_each(
+        self, shared: Path
+    ) -> None:
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            session.settled(timeout=10)
+            session.gate.clear()
+            session.edit([unit_of_b(shared, "Hz")], "one")
+            begun(session)
+            last = 0
+            for unit in ("kPa", "Nm", "rpm"):
+                last, _ = session.edit([unit_of_b(shared, unit)], unit)
+            session.gate.set()
+            settled = session.settled(timeout=10)
+            assert settled is not None and settled.edits == last
+            assert session.analyses == 3  # opening, the first edit, and the three after it
+        finally:
+            session.gate.set()
+            stopped(session)
+
+    def test_a_revision_counts_the_edits_on_disk_when_its_analysis_began(
+        self, shared: Path
+    ) -> None:
+        """Not those written while it ran, whatever it happened to read: the analysis of the
+        first edit here reads the disk after the second is written, and still counts only the
+        first. The one after it counts the second."""
+        session = Stepped(shared.parent)
+        opening, first, second = session.goes
+        opening.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+            at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            later, _ = session.edit([unit_of_b(shared, "kPa")], "the unit of Speed")
+            first.set()
+            begun(session)  # the second edit's analysis, begun once the first edit's is in
+            revision = session.revision
+            assert revision is not None and (revision.number, revision.edits) == (2, at)
+            second.set()
+            settled = session.settled(timeout=10)
+            assert settled is not None and (settled.number, settled.edits) == (3, later)
+        finally:
+            for go in session.goes:
+                go.set()
+            stopped(session)
+
+    def test_the_poll_does_not_take_an_edits_own_write_for_a_change_its_analysis_missed(
+        self, shared: Path
+    ) -> None:
+        """While an analysis runs, the stamps it took before it read a file - after the edit's
+        write - stand in for the last revision's."""
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+            session.gate.clear()
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            assert session.poll() is False
+            session.gate.set()
+            landed(session)
+            assert session.analyses == 2
+        finally:
+            session.gate.set()
+            stopped(session)
+
+    def test_another_project_opened_answers_for_none_of_the_last_ones_files(
+        self, shared: Path
+    ) -> None:
+        """Until its own first analysis lands it has no revision, so that an edit of a file of
+        the project open before it is refused as not analysed yet rather than written; and its
+        stamps are its own, so that a save of such a file is no change of the project open."""
+        write_tree(shared.parent, {"q.ddd.json": project("Q", "a.ddd.json")})
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+            session.gate.clear()
+            session.open(shared.parent / "q.ddd.json")
+            begun(session)
+            assert session.revision is None
+            b = shared.parent / "b.ddd.json"
+            before = b.read_bytes()
+            with pytest.raises(NotAnalysedError):
+                session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            assert b.read_bytes() == before
+            b.write_bytes(before + b" ")
+            assert session.poll() is False
+        finally:
+            session.gate.set()
+            stopped(session)
+
+    def test_a_project_opened_while_another_is_analysed_throws_that_analysis_away(
+        self, shared: Path
+    ) -> None:
+        write_tree(shared.parent, {"q.ddd.json": project("Q", "a.ddd.json")})
+        other = shared.parent / "q.ddd.json"
+        session = Gated(shared.parent)
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            session.open(other)
+            session.gate.set()
+            settled = session.settled(timeout=10)
+            assert settled is not None and settled.project == other.resolve()
+            assert (settled.number, session.analyses) == (1, 2)
+        finally:
+            session.gate.set()
+            stopped(session)
+
+    def test_an_analysis_failing_on_the_thread_is_printed_and_asked_for_again(
+        self, shared: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        class Failing(Gated):
+            def _analysed(self, project: Path) -> Revision:
+                revision = super()._analysed(project)
+                if self.analyses == 2:
+                    raise RuntimeError("boom")
+                return revision
+
+        session = Failing(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            first = session.settled(timeout=10)
+            at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            assert session.settled(timeout=10) is first
+            assert capsys.readouterr().err.splitlines()[-1] == (
+                "ddd gui: analysing the project failed: boom"
+            )
+            assert session.poll() is True
+            settled = session.settled(timeout=10)
+            assert settled is not None and settled.edits == at and mismatches(session) == 2
+        finally:
+            stopped(session)
+
+    def test_where_no_analyser_runs_a_failing_analysis_is_raised_to_the_call_that_asked(
+        self, shared: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A session nobody started makes the analysis in the call that asked for it, as every
+        call did before the analyser: the failure is that call's to report, printed by nothing
+        here, and leaves no analysis running - the next poll asks again."""
+
+        class Failing(Session):
+            analyses = 0
+
+            def _analysed(self, project: Path) -> Revision:
+                self.analyses += 1
+                if self.analyses == 2:
+                    raise RuntimeError("boom")
+                return super()._analysed(project)
+
+        session = Failing(shared.parent)
+        session.open(shared)
+        first = session.revision
+        with pytest.raises(RuntimeError, match=r"^boom$"):
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+        assert session.revision is first
+        assert capsys.readouterr().err == ""
+        assert session.poll() is True
+        revision = session.revision
+        assert revision is not None and revision.edits == 1 and mismatches(session) == 2
+
+    def test_a_second_start_keeps_the_one_analyser(self, shared: Path) -> None:
+        session = Gated(shared.parent)
+        session.start()
+        analyser = session._analyser
+        try:
+            session.start()
+            assert analyser is not None and session._analyser is analyser
+        finally:
+            stopped(session)
+
+    def test_a_failure_on_the_thread_is_printed_before_it_is_published(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """While the analysis that failed still runs, so that whatever waits for the failure to
+        be published finds its line already written."""
+
+        class Recording(io.StringIO):
+            def __init__(self) -> None:
+                super().__init__()
+                self.running: list[bool] = []
+
+            def write(self, text: str) -> int:
+                if text.strip():
+                    self.running.append(session._running)
+                return super().write(text)
+
+        session = SecondFails(shared.parent)
+        recording = Recording()
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+            monkeypatch.setattr(sys, "stderr", recording)
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            landed(session)
+        finally:
+            stopped(session)
+        assert recording.running == [True]
+        assert recording.getvalue() == "ddd gui: analysing the project failed: boom\n"
+
+    def test_a_failure_the_analyser_cannot_print_ends_nothing(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Nothing raised outside the analysis ends the analyser - the line it could not print
+        included: the next poll's analysis is made all the same."""
+
+        class Unwritable(io.StringIO):
+            def write(self, text: str) -> int:
+                raise OSError("standard error is closed")
+
+        session = SecondFails(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            first = session.settled(timeout=10)
+            monkeypatch.setattr(sys, "stderr", Unwritable())
+            at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            assert session.settled(timeout=10) is first
+            monkeypatch.undo()
+            assert session.poll() is True
+            begun(session)
+            settled = session.settled(timeout=10)
+            assert settled is not None and settled.edits == at and mismatches(session) == 2
+        finally:
+            stopped(session)
+
+    def test_a_project_including_a_path_no_system_reads_is_analysed_to_its_end(
+        self, tmp_path: Path
+    ) -> None:
+        """A path holding a NUL byte is stamped as a file that is not there and read as an empty
+        one, so the analysis goes to its end and its revision carries what the loader reports of
+        the path, with the analyser still there; stamped ``None`` again by every poll, the path
+        asks for no analysis more."""
+        project_file = unreachable(tmp_path)
+        session = Gated(tmp_path)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(project_file)
+            begun(session)
+            revision = session.settled(timeout=10)
+            assert revision is not None and findings_of(revision) == [unreadable(project_file)]
+            assert session._analyser is not None and session._analyser.is_alive()
+            assert session.poll() is False
+            assert session.poll() is False
+            assert (session.revision, session.analyses) == (revision, 1)
+        finally:
+            stopped(session)
+
+    def test_where_no_analyser_runs_a_project_including_a_path_no_system_reads_opens_all_the_same(
+        self, tmp_path: Path
+    ) -> None:
+        """Opening answers with the revision, the path listed as an empty file of no kind and its
+        refusal filed where the project names it, which leaves the project not loaded."""
+        project_file = unreachable(tmp_path)
+        session = Session(tmp_path)
+        session.open(project_file)
+        revision = session.revision
+        assert revision is not None and findings_of(revision) == [unreadable(project_file)]
+        described = {f.path.name: (f.kind, f.loaded, f.fingerprint) for f in revision.files}
+        assert described == {
+            "p.ddd.json": ("project", False, fingerprint(project_file.read_bytes())),
+            "a.ddd.json": ("component", True, fingerprint((tmp_path / "a.ddd.json").read_bytes())),
+            NUL_ENTRY: ("unknown", True, fingerprint(b"")),
+        }
+        (filed,) = revision.findings
+        assert filed.diagnostic.location is not None
+        assert filed.diagnostic.location.pointer == "project.includes[1]"
+        assert session.poll() is False
+
+    def test_a_file_named_for_one_analysis_is_not_watched_by_the_ones_after(
+        self, shared: Path
+    ) -> None:
+        """What an edit or an undo wrote is carried into the stamps of the one analysis after it,
+        and watched after that only while the project includes it: the units file an undone
+        adoption took away, written again while a later edit's analysis runs, is no file of the
+        project, and asks for nothing."""
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+            at, _ = session.edit(adoption(shared), "the vocabulary adopted")
+            begun(session)
+            landed(session)
+            session.undo(at)
+            begun(session)
+            landed(session)
+            units = shared.parent / "units.ddd.json"
+            assert not units.exists()
+            session.gate.clear()
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            units.write_text('{"units": []}', encoding="utf-8")
+            assert session.poll() is False
+        finally:
+            session.gate.set()
+            stopped(session)
+
+    def test_stopping_ends_the_analyser_and_the_poller(self, shared: Path) -> None:
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        session.open(shared)
+        session.settled(timeout=10)
+        stopped(session)
+        assert session._analyser is not None and not session._analyser.is_alive()
+        assert session._poller is not None and not session._poller.is_alive()
+
+    def test_the_project_open_is_known_before_its_first_analysis_lands(self, shared: Path) -> None:
+        session = Gated(shared.parent)
+        assert session.project is None
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            assert (session.project, session.revision) == (shared.resolve(), None)
+        finally:
+            session.gate.set()
+            stopped(session)
+
+    def test_settled_answers_after_its_timeout_while_an_analysis_waits(self, shared: Path) -> None:
+        session = Gated(shared.parent)
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            assert session.settled(timeout=0.01) is None
+        finally:
+            session.gate.set()
+            stopped(session)
+
+
+def unit_of_a(path: Path, unit: str) -> FileChange:
+    target = path.parent / "a.ddd.json"
+    pointer = "component.interface[0].definition.unit"
+    return FileChange(
+        target, fingerprint(target.read_bytes()), (Operation("set", pointer, f'"{unit}"'),)
+    )
+
+
+class TestWhatTheSessionSays:
+    """What one ``GET /api/state`` answers, read at once - the version, the project, the newest
+    revision, whether an analysis is asked for or running and the undo entry - and the files an
+    edit wrote that no analysis has read yet."""
+
+    def test_a_session_with_nothing_open_says_so_at_version_nought(self, tmp_path: Path) -> None:
+        assert Session(tmp_path).snapshot() == Snapshot(0, None, None, False, None)
+
+    def test_a_snapshot_reads_the_undo_entry_with_the_stack_empty_and_with_one(
+        self, shared: Path
+    ) -> None:
+        """``_snapshot`` reads the top of the stack in a conditional expression, which coverage
+        counts no branch in: this is what pins both of its arms."""
+        session = Session(shared.parent)
+        session.open(shared)
+        assert session.snapshot().undoable is None
+        session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+        top = session.snapshot().undoable
+        assert top is not None and top is session.undoable
+        assert (top.at, top.label) == (1, "the unit of Speed")
+
+    def test_the_version_counts_each_analysis_asked_for_and_each_one_ended(
+        self, shared: Path
+    ) -> None:
+        """Where no analyser runs, a call asks for its analysis and ends it before it answers: two
+        versions a call. A poll finding nothing changed asks for nothing, and moves nothing."""
+        session = Session(shared.parent)
+        session.open(shared)
+        assert session.snapshot().version == 2
+        at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+        assert session.snapshot().version == 4
+        session.undo(at)
+        assert session.snapshot().version == 6
+        assert session.poll() is False
+        assert session.snapshot().version == 6
+        (shared.parent / "a.ddd.json").write_text("{}", encoding="utf-8")
+        assert session.poll() is True
+        assert session.snapshot().version == 8
+
+    def test_an_analysis_that_failed_moves_the_version_as_one_published_does(
+        self, shared: Path
+    ) -> None:
+        class Failing(Session):
+            analyses = 0
+
+            def _analysed(self, project: Path) -> Revision:
+                self.analyses += 1
+                if self.analyses == 2:
+                    raise RuntimeError("boom")
+                return super()._analysed(project)
+
+        session = Failing(shared.parent)
+        session.open(shared)
+        with pytest.raises(RuntimeError, match=r"^boom$"):
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+        snapshot = session.snapshot()
+        assert (snapshot.version, snapshot.analysing) == (4, False)
+        assert snapshot.revision is not None and snapshot.revision.number == 1
+
+    def test_an_edit_written_says_analysing_until_its_analysis_lands(self, shared: Path) -> None:
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            first = landed(session)
+            assert first.revision is not None and first.revision.number == 1
+            session.gate.clear()
+            at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            during = session.snapshot()
+            assert (during.version, during.analysing) == (first.version + 1, True)
+            assert during.revision is first.revision
+            assert during.undoable is not None and during.undoable.at == at
+            session.gate.set()
+            after = landed(session)
+            assert after.version == during.version + 1
+            assert after.revision is not None
+            assert (after.revision.number, after.revision.edits) == (2, at)
+        finally:
+            session.gate.set()
+            stopped(session)
+
+    def test_an_analysis_asked_for_is_analysing_before_any_runs(self, shared: Path) -> None:
+        """Asked for counts as running does: the version moves when an edit asks, not when the
+        analyser takes the request up, so a second window hearing of the edit has to hear
+        ``analysing`` then. With the analyser stopped, nothing takes the request up and nothing
+        runs - only the request says so."""
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+        finally:
+            stopped(session)
+        session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+        snapshot = session.snapshot()
+        assert (snapshot.analysing, session.analyses) == (True, 1)
+
+    def test_a_wait_answers_as_soon_as_the_version_moves_past_it(self, shared: Path) -> None:
+        """An edit written while its analysis waits at the gate is answered at once, not when the
+        analysis lands; the analysis landing moves the version once more, and answers the next
+        wait."""
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            first = landed(session)
+            session.gate.clear()
+            answers: list[Snapshot] = []
+
+            def waiting(after: int) -> threading.Thread:
+                thread = threading.Thread(
+                    target=lambda: answers.append(session.wait(after, timeout=30)), daemon=True
+                )
+                thread.start()
+                return thread
+
+            written = waiting(first.version)
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            written.join(timeout=10)
+            assert not written.is_alive(), "the wait did not answer the edit written"
+            (seen,) = answers
+            assert (seen.version, seen.analysing) == (first.version + 1, True)
+            assert seen.revision is first.revision
+            answers.clear()
+            analysed = waiting(seen.version)
+            begun(session)
+            session.gate.set()
+            analysed.join(timeout=10)
+            assert not analysed.is_alive(), "the wait did not answer the analysis landing"
+            (seen,) = answers
+            assert (seen.version, seen.analysing) == (first.version + 2, False)
+            assert seen.revision is not None and seen.revision.number == 2
+        finally:
+            session.gate.set()
+            stopped(session)
+
+    def test_a_wait_answers_what_the_session_says_once_its_timeout_has_passed(
+        self, shared: Path
+    ) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        now = session.snapshot()
+        assert session.wait(now.version, timeout=0.01) == now
+
+    def test_the_newest_revision_is_refused_before_a_project_and_before_its_first_analysis(
+        self, shared: Path
+    ) -> None:
+        session = Gated(shared.parent)
+        with pytest.raises(NoProjectError) as nothing:
+            session.current()
+        assert str(nothing.value) == "no project is open"
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            snapshot = session.snapshot()
+            assert (snapshot.project, snapshot.revision, snapshot.analysing) == (
+                shared.resolve(),
+                None,
+                True,
+            )
+            with pytest.raises(NotAnalysedError) as waiting:
+                session.current()
+            assert str(waiting.value) == "the open project has not been analysed yet"
+            with pytest.raises(NotAnalysedError):
+                session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            session.gate.set()
+            landed(session)
+            assert session.current() is session.revision
+        finally:
+            session.gate.set()
+            stopped(session)
+
+    def test_another_project_opened_goes_on_counting_the_edits(self, shared: Path) -> None:
+        """A page compares the number its own last edit took with the edits a revision includes,
+        whatever project it shows: the numbers go on across projects, so that the first revision
+        of the next one includes every edit made before it."""
+        write_tree(shared.parent, {"q.ddd.json": project("Q", "a.ddd.json")})
+        session = Session(shared.parent)
+        session.open(shared)
+        at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+        session.open(shared.parent / "q.ddd.json")
+        revision = session.revision
+        assert revision is not None and revision.edits == at == 1
+
+    def test_the_files_an_edit_wrote_wait_for_the_analysis_including_them(
+        self, shared: Path
+    ) -> None:
+        """Until a revision includes an edit, the files it wrote are unanalysed by every revision
+        before it; once a revision includes it, it is let go - and so no longer named for an
+        older revision either, which a plan made against one cannot be helped by."""
+        session = Stepped(shared.parent)
+        opening, first, second = session.goes
+        opening.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            oldest = landed(session).revision
+            assert oldest is not None and session.unanalysed(oldest) == frozenset()
+            a = (shared.parent / "a.ddd.json").resolve()
+            b = (shared.parent / "b.ddd.json").resolve()
+            session.edit([unit_of_b(shared, "Hz")], "the unit of B's Speed")
+            begun(session)
+            assert session.unanalysed(oldest) == {b}
+            later, _ = session.edit([unit_of_a(shared, "Hz")], "the unit of A's Speed")
+            assert session.unanalysed(oldest) == {a, b}
+            first.set()
+            begun(session)  # the second edit's analysis, begun once the first edit's landed
+            middle = session.revision
+            assert middle is not None and (middle.number, middle.edits) == (2, 1)
+            assert session.unanalysed(middle) == {a}
+            assert session.unanalysed(oldest) == {a}
+            second.set()
+            newest = landed(session).revision
+            assert newest is not None and newest.edits == later
+            assert session.unanalysed(newest) == frozenset()
+        finally:
+            for go in session.goes:
+                go.set()
+            stopped(session)
+
+    def test_a_revision_including_an_edit_names_none_of_its_files(self, shared: Path) -> None:
+        """The files named are those numbered past the revision's own ``edits``, whatever else
+        lets them go. No revision this session publishes holds an edit still waiting - each
+        analysis landing lets go of what it includes - so the revision asked of here is the
+        newest one as an analysis including the edit would make it."""
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            oldest = landed(session).revision
+            assert oldest is not None
+            session.gate.clear()
+            at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            assert session.unanalysed(oldest) == {(shared.parent / "b.ddd.json").resolve()}
+            assert session.unanalysed(replace(oldest, edits=at)) == frozenset()
+        finally:
+            session.gate.set()
+            stopped(session)
+
+    def test_the_files_an_undo_put_back_wait_as_an_edits_do(self, shared: Path) -> None:
+        session = Stepped(shared.parent)
+        opening, first, second = session.goes
+        opening.set()
+        first.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+            at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            edited = landed(session).revision
+            assert edited is not None and session.unanalysed(edited) == frozenset()
+            session.undo(at)
+            begun(session)
+            assert session.unanalysed(edited) == {(shared.parent / "b.ddd.json").resolve()}
+            second.set()
+            undone = landed(session).revision
+            assert undone is not None and session.unanalysed(undone) == frozenset()
+        finally:
+            for go in session.goes:
+                go.set()
+            stopped(session)
+
+    def test_opening_forgets_the_files_written_before(self, shared: Path) -> None:
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            oldest = landed(session).revision
+            assert oldest is not None
+            session.gate.clear()
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            begun(session)
+            assert session.unanalysed(oldest) == {(shared.parent / "b.ddd.json").resolve()}
+            session.open(shared)
+            assert session.unanalysed(oldest) == frozenset()
+        finally:
+            session.gate.set()
+            stopped(session)
+
+
+class TestStamps:
+    def test_opening_a_project_analyses_it_once(self, shared: Path) -> None:
+        """Opening stamps the description and every file its own includes name before the
+        analysis reads one, so the first poll finds nothing changed. Opening used to learn which
+        files the project has from the analysis that read them, none of them stamped before it
+        was read, and the first poll analysed the whole project once more."""
+        session = Session(shared.parent)
+        session.open(shared)
+        assert session.poll() is False
+        assert session.revision is not None and session.revision.number == 1
+
+    def test_a_sub_projects_files_cost_opening_one_analysis_more_asked_at_once(
+        self, tmp_path: Path
+    ) -> None:
+        """Opening reads no sub-project's own ``includes``, so the first analysis reads its files
+        with no stamp from before: the revision it publishes asks for the next analysis itself,
+        and opening ends with both made, leaving the poll nothing to find."""
+        session = Session(tmp_path)
+        session.open(with_a_sub_project(tmp_path))
+        assert session.revision is not None and session.revision.number == 2
+        assert session.poll() is False
+
+    def test_a_revision_that_read_a_file_with_no_stamp_is_published_analysing(
+        self, tmp_path: Path
+    ) -> None:
+        """Said in the hold of the lock that publishes the revision, so that no reader ever hears
+        the first one with nothing analysing: whatever waits for the project to be analysed - a
+        page, or the journeys' own fixture - waits for the second too, rather than hearing that
+        the findings have settled and then that they are updating again. Asked in a hold of its
+        own after that one, the request would leave a moment in which the session said so."""
+        session = Recording(tmp_path)
+        session.open(with_a_sub_project(tmp_path))
+        first, second = session.left
+        assert first.revision is not None and first.revision.number == 1
+        assert first.analysing is True
+        assert second.revision is not None and second.revision.number == 2
+        assert second.analysing is False
+
+    def test_a_file_an_edit_created_costs_no_second_analysis(self, shared: Path) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        session.edit(adoption(shared), "the vocabulary")
+        assert session.poll() is False
+
+    def test_an_undo_bringing_back_a_file_its_edit_wrote_and_left_out_costs_no_second_analysis(
+        self, shared: Path
+    ) -> None:
+        """A file an edit both wrote and left out of the project left the stamps with it; the
+        undo that brings it back is what stamps it again, before its analysis reads it."""
+        session = Session(shared.parent)
+        session.open(shared)
+        left_out = FileChange(
+            shared,
+            fingerprint(shared.read_bytes()),
+            (Operation("set", "project.includes", '["a.ddd.json"]'),),
+        )
+        at, _ = session.edit([left_out, unit_of_b(shared, "Hz")], "b changed and left out")
+        revision = session.revision
+        assert revision is not None and "b.ddd.json" not in {f.path.name for f in revision.files}
+        session.undo(at)
+        revision = session.revision
+        assert revision is not None and "b.ddd.json" in {f.path.name for f in revision.files}
+        assert session.poll() is False
+
+    @pytest.mark.parametrize("entry", [NUL_ENTRY, "\ud800.ddd.json"])
+    def test_a_path_the_system_refuses_to_look_at_is_stamped_as_not_there(
+        self, tmp_path: Path, entry: str
+    ) -> None:
+        """A NUL byte is refused on every system. U+D800 is refused where a path is encoded to
+        bytes, as on Linux, and names a file that is simply not there on Windows: ``None`` on
+        both."""
+        path = tmp_path / entry
+        assert module.stamped([path]) == {path: None}
+
+    def test_an_undo_takes_a_number_of_its_own_and_the_revision_includes_it(
+        self, shared: Path
+    ) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+        undone = session.undo(at)
+        assert undone == at + 1
+        assert session.revision is not None and session.revision.edits == undone
+
+
+class TestEachPathResolvedOnce:
+    def test_a_revision_names_each_of_its_paths_resolved_by_the_loaders_rule(
+        self, tmp_path: Path
+    ) -> None:
+        """Every file it read and every file a finding is filed on, resolved once by the analysis,
+        as the loader resolves one: examples/demo's sub-project's files included."""
+        shutil.copytree(EXAMPLES / "demo", tmp_path / "demo")
+        revision = first_revision(tmp_path / "demo", tmp_path / "demo" / "demo.ddd.json")
+        named = {file.path for file in revision.files} | {f.file for f in revision.findings}
+        assert revision.resolved_paths == {path: path.resolve() for path in named}
+        assert len(named) == 6
+
+    def test_a_path_no_system_reads_is_named_as_it_is(self, tmp_path: Path) -> None:
+        """The loader's rule hands such a path back unresolved, where resolving it raised."""
+        project_file = unreachable(tmp_path)
+        revision = first_revision(tmp_path, project_file)
+        nul = project_file.resolve().parent / NUL_ENTRY
+        assert revision.resolved_paths[nul] == nul
+        assert set(revision.resolved_paths) == {file.path for file in revision.files}
+
+
+class Held:
+    """A stand-in for a function of the session module that, called on the thread named
+    ``thread``, says so and waits there until the test lets it go - the first such call alone;
+    every other call is the real one's."""
+
+    def __init__(self, real: Callable[..., object], thread: str) -> None:
+        self.real = real
+        self.thread = thread
+        self.inside = threading.Event()
+        self.going = threading.Event()
+        self.held = False
+
+    def __call__(self, *arguments: object) -> object:
+        if threading.current_thread().name == self.thread and not self.held:
+            self.held = True
+            self.inside.set()
+            assert self.going.wait(timeout=10), "the test never let the call go"
+        return self.real(*arguments)
+
+
+def finished[T](call: Callable[[], T]) -> T:
+    """What ``call`` answers, called on a thread of its own, failing the test where five seconds
+    pass first: what a call waiting for a lock held across a held call would do. Five, so that it
+    fails before the held call gives up waiting (:class:`Held`, ten) and lets the lock go."""
+    answers: list[T] = []
+    thread = threading.Thread(target=lambda: answers.append(call()), name="asking", daemon=True)
+    thread.start()
+    thread.join(timeout=5)
+    assert not thread.is_alive(), "the call waited for the session's lock"
+    (answer,) = answers
+    return answer
+
+
+class TestNothingIsReadHoldingTheLock:
+    """The poll stamps the files without the session's lock, an analysis stamps those it is about
+    to read without it, and opening reads what a project includes before taking it: while another
+    thread computes, every system call waits for that thread's turn, and one of these held across
+    a project's thousands of files held every edit, every state and every plan behind it for
+    seconds. Each is held here mid-way, on its own thread, while another thread's call is
+    answered."""
+
+    def test_a_poll_stamps_the_files_without_holding_the_lock(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """While the poll stamps, the session says what it says and an edit is written and
+        analysed. The edit's analysis replaced the stamps the poll was comparing with, so that
+        round passes rather than taking the edit's own write for a change: the edit's analysis
+        read it, and the next poll compares with the stamps it took."""
+        session = opened_and_settled(shared)
+        held = Held(module.stamped, "polling")
+        monkeypatch.setattr(module, "stamped", held)
+        polled: list[bool] = []
+        polling = threading.Thread(
+            target=lambda: polled.append(session.poll()), name="polling", daemon=True
+        )
+        polling.start()
+        try:
+            assert held.inside.wait(timeout=10), "the poll never stamped"
+            assert finished(session.snapshot).analysing is False
+            at, _ = finished(lambda: session.edit([unit_of_b(shared, "Hz")], "the unit of Speed"))
+        finally:
+            held.going.set()
+            polling.join(timeout=10)
+        assert not polling.is_alive()
+        assert polled == [False]
+        revision = session.revision
+        assert revision is not None and (revision.number, revision.edits) == (2, at)
+        assert mismatches(session) == 2
+        assert session.poll() is False
+
+    def test_an_analysis_stamps_the_files_it_reads_without_holding_the_lock(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """While the analysis an edit asked for stamps the files it is about to read, the session
+        says it is analysing and another edit is written. The analysis counts the edits on disk
+        when it took its request up, before it stamped: the edit written while it stamped is the
+        next analysis's, as one written while it read the files is."""
+        session = Stepped(shared.parent)
+        opening, first, second = session.goes
+        opening.set()
+        session.start()
+        held = Held(module.stamped, "ddd-gui-analyse")
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+            monkeypatch.setattr(module, "stamped", held)
+            at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of B's Speed")
+            assert held.inside.wait(timeout=10), "the analysis never stamped"
+            assert finished(session.snapshot).analysing is True
+            later, _ = finished(
+                lambda: session.edit([unit_of_a(shared, "Hz")], "the unit of A's Speed")
+            )
+            held.going.set()
+            begun(session)
+            first.set()
+            begun(session)  # the second edit's analysis, begun once the first edit's landed
+            revision = session.revision
+            assert revision is not None and (revision.number, revision.edits) == (2, at)
+            second.set()
+            settled = landed(session).revision
+            assert settled is not None and (settled.number, settled.edits) == (3, later)
+        finally:
+            held.going.set()
+            for go in session.goes:
+                go.set()
+            stopped(session)
+
+    def test_a_poll_while_an_analysis_stamps_asks_for_nothing(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """While an analysis's stamps are being taken there are none to compare with, and the poll
+        finds nothing - as it finds nothing once they are taken
+        (``test_the_poll_does_not_take_an_edits_own_write_for_a_change_its_analysis_missed``):
+        the edit's own write, made before that analysis took its request up, is one it is about
+        to read."""
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        held = Held(module.stamped, "ddd-gui-analyse")
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+            monkeypatch.setattr(module, "stamped", held)
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            assert held.inside.wait(timeout=10), "the analysis never stamped"
+            assert session.poll() is False
+            held.going.set()
+            begun(session)
+            landed(session)
+            assert session.analyses == 2
+        finally:
+            held.going.set()
+            session.gate.set()
+            stopped(session)
+
+    def test_a_project_opened_while_an_analysis_stamps_keeps_stamps_of_its_own(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The analysis of the project open before is thrown away when it ends, as one the opening
+        found reading the files is
+        (``test_a_project_opened_while_another_is_analysed_throws_that_analysis_away``), and what
+        it stamped is not taken for the new project's stamps: a save of a file the new project
+        does not have asks for nothing."""
+        write_tree(shared.parent, {"q.ddd.json": project("Q", "a.ddd.json")})
+        other = shared.parent / "q.ddd.json"
+        session = Gated(shared.parent)
+        session.gate.set()
+        session.start()
+        held = Held(module.stamped, "ddd-gui-analyse")
+        try:
+            session.open(shared)
+            begun(session)
+            landed(session)
+            monkeypatch.setattr(module, "stamped", held)
+            session.gate.clear()
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            assert held.inside.wait(timeout=10), "the analysis never stamped"
+            session.open(other)
+            held.going.set()
+            begun(session)  # the edit's analysis, of the project open before, held at the gate
+            b = shared.parent / "b.ddd.json"
+            b.write_bytes(b.read_bytes() + b" ")
+            assert session.poll() is False
+            session.gate.set()
+            settled = landed(session).revision
+            assert settled is not None and settled.project == other.resolve()
+        finally:
+            held.going.set()
+            session.gate.set()
+            stopped(session)
+
+    def test_opening_reads_what_a_project_includes_without_holding_the_lock(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Opening reads the description and expands its includes to know which files to stamp
+        before the first analysis reads them; meanwhile the session answers for what was open
+        before."""
+        session = Session(shared.parent)
+        session.open(shared)
+        before = session.snapshot()
+        held = Held(module._named_by, "opening")
+        monkeypatch.setattr(module, "_named_by", held)
+        opening = threading.Thread(target=lambda: session.open(shared), name="opening", daemon=True)
+        opening.start()
+        try:
+            assert held.inside.wait(timeout=10), "opening never read what the project includes"
+            assert finished(session.snapshot) == before
+        finally:
+            held.going.set()
+            opening.join(timeout=10)
+        assert not opening.is_alive()
+        assert session.revision is not None and session.revision.number == 2
+        assert session.poll() is False
 
 
 class TestReadingAndEditing:
@@ -480,7 +1589,9 @@ class TestReadingAndEditing:
     def test_an_edit_is_written_and_analysed_again(self, shared: Path) -> None:
         session = Session(shared.parent)
         session.open(shared)
-        revision, written = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        _, written = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        revision = session.revision
+        assert revision is not None
         assert revision.number == 2
         assert [file.path for file in written] == [(shared.parent / "b.ddd.json").resolve()]
         assert {f.diagnostic.check for f in revision.findings} >= {"definition-mismatch"}
@@ -512,6 +1623,23 @@ class TestReadingAndEditing:
         with pytest.raises(NoProjectError):
             Session(shared.parent).edit([unit_of_b(shared, "Hz")], "the unit of Torque")
 
+    def test_the_edits_written_are_counted_and_a_refused_one_is_not(self, shared: Path) -> None:
+        """What a kept answer is keyed by beside its revision: each edit written counts one, the
+        number an undo of it names, and one refused before anything was written counts none."""
+        session = Session(shared.parent)
+        session.open(shared)
+        assert session.edits == 0
+        session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        stale = unit_of_b(shared, "rad")
+        session.edit([unit_of_b(shared, "rad")], "the unit of Torque")
+        assert session.edits == 2
+        top = session.undoable
+        assert top is not None
+        assert top.at == session.edits
+        with pytest.raises(EditError):
+            session.edit([stale], "the unit of Torque")
+        assert session.edits == 2
+
 
 def adoption(project_file: Path, name: str = "units.ddd.json") -> list[FileChange]:
     """What adopting a vocabulary posts: a units file created beside the project, and its name
@@ -536,7 +1664,9 @@ class TestCreatingAFile:
         session = Session(shared.parent)
         session.open(shared)
         units = (shared.parent / "units.ddd.json").resolve()
-        revision, written = session.edit(adoption(shared), "the vocabulary adopted")
+        _, written = session.edit(adoption(shared), "the vocabulary adopted")
+        revision = session.revision
+        assert revision is not None
         assert units.read_bytes() == b'{"units": ["rpm"]}'
         assert {file.path for file in written} == {units, shared.resolve()}
         described = {f.path.name: (f.kind, f.loaded) for f in revision.files}
@@ -613,7 +1743,9 @@ class TestUndoing:
         b = shared.parent / "b.ddd.json"
         before = b.read_bytes()
         session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
-        revision = session.undo(1)
+        session.undo(1)
+        revision = session.revision
+        assert revision is not None
         assert b.read_bytes() == before
         assert revision.number == 3
         assert session.undoable is None
@@ -898,7 +2030,7 @@ class TestEveryRunAnalysed:
 
 def test_the_demo_opens_clean() -> None:
     demo = EXAMPLES / "demo" / "demo.ddd.json"
-    revision = Session(demo.parent).open(demo)
+    revision = first_revision(demo.parent, demo)
     assert not [f for f in revision.findings if f.diagnostic.severity.value == "error"]
     assert {f.name for f in revision.files if f.kind == "component"} == {
         "Controller",

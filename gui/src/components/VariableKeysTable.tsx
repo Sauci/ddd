@@ -1,7 +1,7 @@
 import { Fragment, type MouseEvent } from "react";
 import type { SettleReply, VariableReply } from "../api/types";
 import { keyColumns, keyRows } from "../lib/variableKeys";
-import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
+import { also, Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
 
 export interface VariableKeysTableProps {
   variable: VariableReply;
@@ -45,7 +45,7 @@ export function VariableKeysTable({
     })),
   ];
   return (
-    <Table
+    <LongTable
       aria-label={`Keys of ${variable.name}`}
       selectionMode="single"
       selectedKeys={new Set(selected === undefined ? [] : [selected])}
@@ -58,7 +58,31 @@ export function VariableKeysTable({
       }}
     >
       <TableHeader columns={columns}>
-        {(column) => <Column isRowHeader={column.id === "key"}>{column.name}</Column>}
+        {(column) => {
+          const isKey = column.id === "key";
+          // The key column alone is given a width: the table has one column per declaration, so
+          // their count grows with however many components declare this variable, and a fixed
+          // width could not fit them all - left unset (never `width={undefined}`, which
+          // `exactOptionalPropertyTypes` tells apart from unset), each takes the equal share of
+          // what the key column leaves that `TableColumnLayout` gives a column without one, down
+          // to the 75px floor it gives one with neither a width nor a `minWidth` of its own
+          // (react-stately's own TableColumnLayout.mjs; spec §6, task 9 brief). 115px, measured
+          // in Chrome (fix round 3): the widest key, "conversion" or "dimensions" in the key
+          // column's monospace, takes 101px. The table draws inside the variable's panel, whose
+          // box is 472px in a 1280px window and 456px when the table beside the panel measures
+          // 535px; there, three declarations share 341px, 113px each, and in either box no value
+          // is cut in the keys of any variable of examples/demo or examples/vocabulary, nor of
+          // the first variable of each component of a generated project of 10,000 declarations.
+          // Three declarations' floors and the key column's sum to 340px, which the panel's box
+          // holds at every window down to 900px, where the panel moves under the table it stands
+          // beside (measured, the demo's ValueE, with a browser's scrollbars drawn or not); a
+          // fourth adds 75px, and a box narrower than its floors scrolls sideways.
+          return (
+            <Column isRowHeader={isKey} {...(isKey ? { width: 115 } : {})}>
+              {column.name}
+            </Column>
+          );
+        }}
       </TableHeader>
       <TableBody items={rows}>
         {(row) => (
@@ -118,8 +142,8 @@ export function VariableKeysTable({
                   {type !== null && href !== null && (
                     <>
                       {/* Coloured and sized to match the link right after it - `.button.link`'s
-                          own rule - so a screen reader announces the type's name alone, not the
-                          punctuation introducing it, without moving a single rendered pixel. */}
+                            own rule - so a screen reader announces the type's name alone, not the
+                            punctuation introducing it, without moving a single rendered pixel. */}
                       <span className="cell-from">{", from "}</span>
                       <a
                         className="button link"
@@ -145,13 +169,6 @@ export function VariableKeysTable({
           </Row>
         )}
       </TableBody>
-    </Table>
+    </LongTable>
   );
-}
-
-/** React Aria's own class with this table's beside it, since ui.css selects on both: a string
- * would replace React Aria's. */
-function also(name: string) {
-  return ({ defaultClassName }: { defaultClassName: string | undefined }) =>
-    `${defaultClassName ?? ""} ${name}`.trim();
 }

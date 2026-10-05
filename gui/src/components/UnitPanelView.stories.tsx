@@ -27,12 +27,22 @@ interface Props {
   /** The spelling chosen to rename the unit to, and where its rename stands. */
   rename?: { to: string; offer: Offer };
   shown?: UnitAction;
+  /** The findings may be about to change: an edit waits for its analysis, or one runs. */
+  updating?: boolean;
 }
 
 /** The panel over one scenario's fixtures, with its own draft, spelling and Show changes, kept
  * as UnitPanel.tsx keeps them: the picker's field reads what is typed, else the spelling chosen,
  * else the unit's own, and its sections are narrowed only by what is typed. */
-function View({ unit, reply, draft, vocabulary, rename, shown: initiallyShown }: Props) {
+function View({
+  unit,
+  reply,
+  draft,
+  vocabulary,
+  rename,
+  shown: initiallyShown,
+  updating = false,
+}: Props) {
   const [description, setDescription] = useState(draft?.description);
   const [typed, setTyped] = useState<string | undefined>(undefined);
   const [to, setTo] = useState<string | null>(rename?.to ?? null);
@@ -68,6 +78,7 @@ function View({ unit, reply, draft, vocabulary, rename, shown: initiallyShown }:
       onApply={() => undefined}
       busy={false}
       onClose={() => undefined}
+      updating={updating}
     />
   );
 }
@@ -118,4 +129,10 @@ export const Refused = () => (
       },
     }}
   />
+);
+
+/** An edit waits for its analysis: the panel says its findings are updating where it lists them,
+ * and lists them below as they were. */
+export const FindingsUpdating = () => (
+  <View unit={UNKNOWN_RPM} reply={UNKNOWN_RPM_PANEL} vocabulary={ADDITION} updating />
 );

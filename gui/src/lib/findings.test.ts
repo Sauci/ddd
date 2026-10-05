@@ -1,9 +1,10 @@
 import { describe, expect, test } from "vitest";
-import type { Finding, FixReply, State } from "../api/types";
+import type { Finding, FindingsReply, FixReply, ListedFinding, State } from "../api/types";
 import {
+  countsOf,
   distinctFindings,
   findingCounts,
-  findingRows,
+  findingsTotal,
   fixEdit,
   keyedFindings,
   leadsElsewhere,
@@ -12,6 +13,8 @@ import {
   routeHref,
   routeLabel,
   routeOf,
+  selectionAfter,
+  tableLine,
   unreadable,
 } from "./findings";
 import { SHARED_KINDS } from "./shared";
@@ -48,9 +51,11 @@ function fileRow(path: string, kind: string, loaded: boolean) {
   };
 }
 
+/** A state whose findings are these: counted, as `GET /api/state` counts a revision's. */
 function state(findings: Finding[]): State {
   return {
     revision: 7,
+    version: 14,
     project: "C:/work/demo/demo.ddd.json",
     files: [
       {
@@ -70,8 +75,10 @@ function state(findings: Finding[]): State {
         findings: { error: 1, warning: 0, info: 0 },
       },
     ],
-    findings,
+    counts: countsOf(findings),
     undoable: null,
+    analysing: false,
+    edits: 0,
   };
 }
 
@@ -115,31 +122,38 @@ test("findings that differ in severity, check or message are each kept, in order
   expect(distinctFindings(listed)).toEqual(listed);
 });
 
-describe("the rows of the findings tab", () => {
-  test("errors come before warnings, and warnings before information", () => {
-    const rows = findingRows([
-      finding({ severity: "info", check: "missing-id" }),
-      finding({ severity: "error" }),
-      finding({ severity: "warning", check: "storage-mismatch" }),
-    ]);
-    expect(rows.map((row) => row.finding.severity)).toEqual(["error", "warning", "info"]);
-  });
-
-  test("within a severity the analysis's own order is kept, which groups them by file", () => {
-    const rows = findingRows([
-      finding({ file: TYPES, check: "duplicate-type", route: null }),
-      finding({ file: SENSOR_HUB }),
-    ]);
-    expect(rows.map((row) => row.file)).toEqual(["types.ddd.json", "sensor_hub.ddd.json"]);
-  });
-
-  test("each row has a key that tells two findings of one wording apart", () => {
-    const rows = findingRows([finding(), finding()]);
-    expect(new Set(rows.map((row) => row.key)).size).toBe(2);
-  });
-});
-
 describe("what the tab says about how many there are", () => {
+  test.each([
+    [{ error: 0, warning: 0, info: 0 }, "Nothing to report"],
+    [{ error: 1, warning: 0, info: 0 }, "1 finding · 1 error"],
+    [{ error: 1, warning: 1, info: 1 }, "3 findings · 1 error, 1 warning, 1 note"],
+    [{ error: 2, warning: 0, info: 0 }, "2 findings · 2 errors"],
+    [{ error: 0, warning: 0, info: 2 }, "2 findings · 2 notes"],
+    [{ error: 0, warning: 1, info: 0 }, "1 finding · 1 warning"],
+    [{ error: 3, warning: 0, info: 1 }, "4 findings · 3 errors, 1 note"],
+  ])("%#: from the state's counts", (counts, says) => {
+    expect(findingCounts(counts, false)).toBe(says);
+  });
+
+  // Spec 6: while an edit waits for its analysis, or one runs, the counts may be about to change,
+  // and the line ends by saying so.
+  test.each([
+    [{ error: 0, warning: 0, info: 0 }, "Nothing to report · updating"],
+    [{ error: 1, warning: 0, info: 0 }, "1 finding · 1 error · updating"],
+    [{ error: 0, warning: 0, info: 1 }, "1 finding · 1 note · updating"],
+    [{ error: 2, warning: 3, info: 0 }, "5 findings · 2 errors, 3 warnings · updating"],
+    [{ error: 1, warning: 1, info: 2 }, "4 findings · 1 error, 1 warning, 2 notes · updating"],
+  ])("%#: about to change, it says so at its end", (counts, says) => {
+    expect(findingCounts(counts, true)).toBe(says);
+  });
+
+  test("every severity counted together is how many there are in all", () => {
+    expect(findingsTotal({ error: 1, warning: 2, info: 3 })).toBe(6);
+    expect(findingsTotal({ error: 0, warning: 0, info: 0 })).toBe(0);
+  });
+
+  // The Compare tab's line: its findings come in one reply, which it counts itself, and the words
+  // are the ones it said before the Findings tab's came from the state's counts.
   test.each([
     [[], "Nothing to report"],
     [[finding()], "1 finding · 1 error"],
@@ -148,8 +162,87 @@ describe("what the tab says about how many there are", () => {
       "3 findings · 1 error, 1 warning, 1 note",
     ],
     [[finding(), finding()], "2 findings · 2 errors"],
-  ])("%#", (findings, says) => {
-    expect(findingCounts(findings)).toBe(says);
+  ])("%#: from a list of its own", (findings, says) => {
+    expect(findingCounts(countsOf(findings), false)).toBe(says);
+  });
+
+  // The Table tab's line: errors and warnings, each counted even at none, as the table's own two
+  // columns count them - a note has no column, and the line says nothing of notes.
+  test.each([
+    [{ error: 0, warning: 0, info: 0 }, "0 errors, 0 warnings"],
+    [{ error: 1, warning: 1, info: 0 }, "1 error, 1 warning"],
+    [{ error: 2, warning: 3, info: 4 }, "2 errors, 3 warnings"],
+    [{ error: 1, warning: 12, info: 1 }, "1 error, 12 warnings"],
+  ])("%#: the Table tab's line, current", (counts, says) => {
+    expect(tableLine(counts, false)).toBe(says);
+  });
+
+  test.each([
+    [{ error: 0, warning: 0, info: 0 }, "0 errors, 0 warnings · updating"],
+    [{ error: 1, warning: 1, info: 0 }, "1 error, 1 warning · updating"],
+    [{ error: 3, warning: 1, info: 7 }, "3 errors, 1 warning · updating"],
+  ])("%#: the Table tab's line, about to change", (counts, says) => {
+    expect(tableLine(counts, true)).toBe(says);
+  });
+
+  test("a list is counted by severity, and a finding nobody reports under none", () => {
+    expect(
+      countsOf([
+        finding({ severity: "info" }),
+        finding({ severity: "error" }),
+        finding({ severity: "info" }),
+        finding({ severity: "warning" }),
+        finding({ severity: "ignore" }),
+      ]),
+    ).toEqual({ error: 1, warning: 1, info: 2 });
+  });
+});
+
+describe("what the Findings tab keeps of a selected finding", () => {
+  const listed = (key: string, fields: Partial<Finding> = {}): ListedFinding => ({
+    ...finding(fields),
+    key,
+  });
+  const reply = (...findings: ListedFinding[]): FindingsReply => ({
+    revision: 8,
+    total: findings.length,
+    offset: 0,
+    findings,
+  });
+  const selected = listed("b");
+
+  test("nothing, with nothing selected", () => {
+    expect(selectionAfter(undefined, reply(listed("b")))).toEqual({
+      selected: undefined,
+      gone: false,
+    });
+  });
+
+  test("the finding as it is kept, until a reply about it has come", () => {
+    expect(selectionAfter(selected, undefined).selected).toBe(selected);
+    expect(selectionAfter(selected, undefined).gone).toBe(false);
+  });
+
+  test("the reply's own report of it, kept: what the panel shows until the next reply comes", () => {
+    // Its notes and its route the newest revision's - and kept as the selection, so that while
+    // the next revision's reply is asked for the panel goes on showing this report, never the
+    // finding as it was first selected.
+    const moved = listed("b", {
+      notes: [{ message: "reference declaration", file: TYPES, pointer: "types[1]" }],
+      route: null,
+    });
+    const kept = selectionAfter(selected, reply(listed("a"), moved));
+    expect(kept.selected).toBe(moved);
+    expect(kept.gone).toBe(false);
+    expect(selectionAfter(kept.selected, undefined).selected).toBe(moved);
+  });
+
+  test("nothing, and gone, where the reply no longer reports its key - however alike another reads", () => {
+    expect(selectionAfter(selected, reply(listed("a"), listed("c")))).toEqual({
+      selected: undefined,
+      gone: true,
+    });
+    expect(selectionAfter(selected, reply())).toEqual({ selected: undefined, gone: true });
   });
 });
 

@@ -145,7 +145,8 @@ input:focus-visible {
   color: var(--warning);
 }
 /* The canvas's own controls, above it: find a module by name, lay the modules out again, and
-   bring the whole project back into view. */
+   return to the view the canvas opened on (`openingViewport`) - the whole project where it fits
+   at the least zoom, its first rank where it does not. */
 .canvas-tools {
   display: flex;
   gap: var(--space-2);

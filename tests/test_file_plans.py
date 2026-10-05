@@ -21,6 +21,7 @@ from conftest import (
     component,
     declare,
     directory_link,
+    first_revision,
     project,
     scalar_type,
     types,
@@ -265,7 +266,9 @@ class TestAMirrorIsNotCounted:
             },
         )
         root = tmp_path / "p.ddd.json"
-        listed = [(filed.file, filed.diagnostic) for filed in Session(tmp_path).open(root).findings]
+        listed = [
+            (filed.file, filed.diagnostic) for filed in first_revision(tmp_path, root).findings
+        ]
         reported = run_project(root).bag
         assert len(listed) > len(reported)
         counted = Counter(
@@ -290,7 +293,7 @@ def judged(
     severity = [f"{check}=error" for check in raised] + [f"{check}=warning" for check in relaxed]
     if severity:
         build_record(base, base / "p.ddd.json", severity=severity)
-    revision = Session(base).open(base / "p.ddd.json")
+    revision = first_revision(base, base / "p.ddd.json")
     assert revision.analysed is True
     listed = json.loads((base / "p.ddd.json").read_text(encoding="utf-8"))["project"]["includes"]
     without = [entry for entry in listed if entry != remove]
@@ -950,7 +953,9 @@ def applied(root: Path, edits: Sequence[PlannedEdit]) -> Revision:
         )
         for edit in edits
     ]
-    revision, _ = session.edit(changes, "the files of the project")
+    session.edit(changes, "the files of the project")
+    revision = session.revision
+    assert revision is not None
     return revision
 
 
@@ -1620,7 +1625,7 @@ class TestCreate:
             },
         )
         root = tmp_path / "p.ddd.json"
-        before = Session(tmp_path).open(root)
+        before = first_revision(tmp_path, root)
         assert errors_of(before) == []
         units = unit_project(root, [], {})
         planned = create_plan(

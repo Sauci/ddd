@@ -14,7 +14,15 @@ from pathlib import Path
 
 import pytest
 
-from conftest import EXAMPLES, build_record, component, declare, project, write_tree
+from conftest import (
+    EXAMPLES,
+    build_record,
+    component,
+    declare,
+    first_revision,
+    project,
+    write_tree,
+)
 from ddd.cli import EXIT_OK, main
 from ddd.deliveries import Refusal
 from ddd.diagnostics import Severity
@@ -543,7 +551,7 @@ class TestThePluginsComparisonRules:
         dump = tmp_path / "baseline.json"
         _dumped(description, dump)
         _moved_key(tmp_path)
-        revision = Session(tmp_path).open(description)
+        revision = first_revision(tmp_path, description)
         result = compared(revision, dump, tmp_path, {})
         assert result.verdict is False
         assert [f.diagnostic.check for f in result.findings] == ["layout/key-changed"]
@@ -560,7 +568,7 @@ class TestThePluginsComparisonRules:
         dump = tmp_path / "baseline.json"
         _dumped(description, dump)
         _moved_key(tmp_path)
-        revision = Session(tmp_path).open(description)
+        revision = first_revision(tmp_path, description)
         result = compared(revision, dump, tmp_path, {})
         (filed,) = result.findings
         assert filed.file == (tmp_path / "layout" / "storage.ddd.json").resolve()
@@ -578,7 +586,7 @@ class TestThePluginsComparisonRules:
         dump = tmp_path / "baseline.json"
         _dumped(description, dump)
         _unstamped(tmp_path)
-        revision = Session(tmp_path).open(description)
+        revision = first_revision(tmp_path, description)
         result = compared(revision, dump, tmp_path, {})
         missing = [f.diagnostic for f in result.findings if f.diagnostic.check == "missing-plugin"]
         assert len(missing) == 1
@@ -597,7 +605,7 @@ class TestThePluginsComparisonRules:
         _dumped(description, dump)
         _moved_key(tmp_path)
         build_record(tmp_path, description, severity=["layout/key-changed=warning"])
-        revision = Session(tmp_path).open(description)
+        revision = first_revision(tmp_path, description)
         assert [build.image for build in revision.builds] == ["firmware.elf"]
         result = compared(revision, dump, tmp_path, {})
         assert [f.diagnostic.severity.value for f in result.findings] == ["warning"]

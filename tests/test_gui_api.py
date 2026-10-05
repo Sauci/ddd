@@ -7,18 +7,25 @@ import json
 import re
 import shutil
 import threading
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from typing import Any, Final
 
 import pytest
 
+import ddd.gui.api as api_module
 from conftest import (
     EXAMPLES,
+    Gated,
+    begun,
+    build_record,
     component,
     declare,
     directory_link,
+    landed,
     project,
     scalar_type,
+    stopped,
     struct_type,
     types,
     value_member,
@@ -26,21 +33,33 @@ from conftest import (
 )
 from ddd import __version__
 from ddd.cli import EXIT_OK, main
-from ddd.diagnostics import CHECKS
+from ddd.diagnostics import CHECKS, Location, Severity
 from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
 from ddd.file_plans import CREATABLE
+from ddd.findings_by_file import FindingsByFile
 from ddd.gui.api import (
+    MEMO,
     RASTER_PLANS,
     SECTION_PLANS,
     Api,
     Reply,
+    _changed_in,
     _declared,
+    _finding,
     _json_texts,
     _required_keys,
 )
-from ddd.gui.session import Session
-from ddd.project_shared import RASTERS, SECTIONS
+from ddd.gui.derived import Derived
+from ddd.gui.session import Filed, Revision, Session
+from ddd.lsp.navigation import Index, Site
+from ddd.lsp.ranges import Document
+from ddd.object_values import grid_of
+from ddd.project_shared import CONSTANTS, RASTERS, SECTIONS, Vocabulary
+from ddd.project_shared import located_on as located_on_entry
+from ddd.project_types import located_in_type
+from ddd.project_units import located_on_unit
 from ddd.variable_keys import KEY_ORDER
+from ddd.variables import declarations_of, located_on
 
 UNIT = "component.interface[0].definition.unit"
 
@@ -398,6 +417,16 @@ def get(api: Api, path: str, /, **query: str) -> Reply:
     return api.handle("GET", path, {key: [value] for key, value in query.items()}, None)
 
 
+def every_finding(api: Api) -> list[dict[str, Any]]:
+    """Every finding of the newest revision, in the Findings tab's order, each without its
+    ``key`` - what ``State.findings`` answered before findings came a page at a time, though in
+    the revision's own order, which the tab sorted by severity."""
+    return [
+        {name: value for name, value in listed.items() if name != "key"}
+        for listed in get(api, "/api/findings").body["findings"]
+    ]
+
+
 def post(api: Api, path: str, body: object) -> Reply:
     raw = body if isinstance(body, bytes) else json.dumps(body).encode("utf-8")
     return api.handle("POST", path, {}, raw)
@@ -521,7 +550,9 @@ class TestProjects:
 
 
 class TestState:
-    def test_the_state_lists_every_file_and_finding(self, api: Api, root: Path) -> None:
+    def test_the_state_lists_every_file_and_counts_every_finding(
+        self, api: Api, root: Path
+    ) -> None:
         body = get(api, "/api/state").body
         assert body["revision"] == 1
         assert body["project"] == (root / "p.ddd.json").resolve().as_posix()
@@ -530,15 +561,12 @@ class TestState:
         assert files["a.ddd.json"]["name"] == "A"
         assert files["a.ddd.json"]["loaded"] is True
         assert files["a.ddd.json"]["findings"] == {"error": 0, "warning": 0, "info": 1}
-        assert {f["check"] for f in body["findings"]} == {"missing-id"}
+        assert body["counts"] == {"error": 0, "warning": 0, "info": 1}
+        assert {f["check"] for f in every_finding(api)} == {"missing-id"}
 
     def test_a_disagreement_carries_its_pointer_and_its_note(self, api: Api, root: Path) -> None:
         assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
-        findings = [
-            f
-            for f in get(api, "/api/state").body["findings"]
-            if f["check"] == "definition-mismatch"
-        ]
+        findings = [f for f in every_finding(api) if f["check"] == "definition-mismatch"]
         assert {Path(f["file"]).name for f in findings} == {"a.ddd.json", "b.ddd.json"}
         assert all(f["pointer"] == "component.interface[0].definition" for f in findings)
         noted = [f for f in findings if f["notes"]]
@@ -557,15 +585,17 @@ class TestState:
         # A file the analysis did not list has no kind to route by, so the finding leads nowhere.
         assert _finding(filed, None, {})["route"] is None
 
-    def test_asking_for_a_newer_revision_waits_for_one(self, api: Api, root: Path) -> None:
+    def test_asking_for_a_newer_version_waits_for_one(self, api: Api, root: Path) -> None:
+        version = get(api, "/api/state").body["version"]
         threading.Timer(0.01, api.session.open, args=(root / "p.ddd.json",)).start()
         api.wait_seconds = 5
-        assert get(api, "/api/state", after="1").body["revision"] == 2
+        assert get(api, "/api/state", after=str(version)).body["version"] > version
 
-    def test_asking_for_a_newer_revision_answers_with_the_current_one_after_waiting(
+    def test_asking_for_a_newer_version_answers_with_the_current_one_after_waiting(
         self, api: Api
     ) -> None:
-        assert get(api, "/api/state", after="1").body["revision"] == 1
+        body = get(api, "/api/state", after=str(api.session.snapshot().version)).body
+        assert (body["revision"], body["version"]) == (1, 2)
 
     @pytest.mark.parametrize("after", ["", "-1", "one", "٣"])
     def test_an_after_that_is_not_a_number_does_not_wait(self, api: Api, after: str) -> None:
@@ -579,17 +609,15 @@ class TestState:
     def test_every_finding_says_where_it_leads(self, api: Api) -> None:
         # The root fixture's two components declare Speed, and `a.ddd.json` states no id: every
         # finding this project reports is about that declaration, and each says so.
-        findings = get(api, "/api/state").body["findings"]
+        findings = every_finding(api)
         assert findings
         assert all(
             finding["route"] == {"kind": "variable", "name": "Speed"} for finding in findings
         )
 
     def test_a_finding_on_a_file_that_did_not_load_leads_nowhere(self, tmp_path: Path) -> None:
-        state = get(opened(tmp_path, HALF_SAVED), "/api/state").body
-        half = next(
-            finding for finding in state["findings"] if finding["file"].endswith("b.ddd.json")
-        )
+        findings = every_finding(opened(tmp_path, HALF_SAVED))
+        half = next(finding for finding in findings if finding["file"].endswith("b.ddd.json"))
         assert half["route"] is None
 
     def test_an_unknown_unit_leads_to_its_unit(self, tmp_path: Path) -> None:
@@ -605,11 +633,349 @@ class TestState:
         # uses), which is the same thing under a different name.
         assert api.session.poll() is True
         unknown = next(
-            finding
-            for finding in get(api, "/api/state").body["findings"]
-            if finding["check"] == "unknown-unit"
+            finding for finding in every_finding(api) if finding["check"] == "unknown-unit"
         )
         assert unknown["route"] == {"kind": "unit", "name": "KPA"}
+
+
+def unkeyed(listed: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Listed findings, each without its ``key``: what a finding was before it carried one."""
+    return [{name: value for name, value in found.items() if name != "key"} for found in listed]
+
+
+def in_the_tabs_order(api: Api) -> list[dict[str, Any]]:
+    """Every finding of the newest revision as ``GET /api/state`` listed it before findings came
+    a page at a time - in the revision's order, each with where it leads - sorted as the page then
+    sorted that list for the Findings tab: by severity, worst first, keeping the revision's order
+    within a severity."""
+    revision, _ = analysed(api)
+    return as_listed(
+        api, sorted(revision.findings, key=lambda filed: filed.diagnostic.severity.rank)
+    )
+
+
+def every_severity(tmp_path: Path, *, two_builds: bool = False) -> Api:
+    """``ddd gui`` over a copy of examples/demo under ``real``, which reports nothing as it ships,
+    drifted until it reports seven findings of every severity, filed on four files in another
+    order than the tab lists them, and checks whose names do not sort as their severities do:
+    ``ValueE`` read in kHz by both its readers against its producer's Hz - a
+    ``definition-mismatch`` error on each reader, and one on the producer for each - ``ValueB``
+    presented in the a2l as ``%6.3`` by its reader controller.ddd.json against its producer's
+    ``%6.2`` - a ``storage-mismatch`` warning on each of the two files - and controller.ddd.json's
+    ``ValueH`` without its id - a ``missing-id`` note.
+
+    ``two_builds``: the copy built for two images, the first lowering ``storage-mismatch`` to a
+    note, so that the revision files controller.ddd.json's two notes before its warning - each
+    build's run files a file's findings worst first, and the second build's come after the
+    first's.
+
+    Opened at revision 2, as every copy of examples/demo is: opening does not stamp the logging
+    sub-project's own event_logger.ddd.json before the first analysis reads it, and the revision
+    that analysis publishes asks for one more."""
+    root = copied_example(tmp_path / "real", "demo")
+
+    def controller(document: dict[str, Any]) -> None:
+        definition_of(document, "ValueB")["a2l"] = {"format": "%6.3"}
+        definition_of(document, "ValueH").pop("id")
+
+    for reader in (
+        "components/user_interface.ddd.json",
+        "subsystems/logging/event_logger.ddd.json",
+    ):
+        changed(root, reader, lambda document: definition_of(document, "ValueE").update(unit="kHz"))
+    changed(
+        root,
+        "components/sensor_hub.ddd.json",
+        lambda document: definition_of(document, "ValueB").update(a2l={"format": "%6.2"}),
+    )
+    changed(root, "components/controller.ddd.json", controller)
+    if two_builds:
+        lowered = ["storage-mismatch=info"]
+        build_record(root, root / "demo.ddd.json", image="a.elf", severity=lowered)
+        build_record(root, root / "demo.ddd.json", image="b.elf")
+    session = Session(root)
+    session.open(root / "demo.ddd.json")
+    return Api(session, root / "demo.ddd.json", wait_seconds=0.05)
+
+
+DEMO_FILES: Final = {
+    "controller": "components/controller.ddd.json",
+    "user_interface": "components/user_interface.ddd.json",
+    "sensor_hub": "components/sensor_hub.ddd.json",
+    "event_logger": "subsystems/logging/event_logger.ddd.json",
+    "logging": "subsystems/logging/logging.ddd.json",
+}
+"""The files of examples/demo a filter by file names, by their own name."""
+
+
+class TestFindingsAPageAtATime:
+    """``GET /api/findings``: the newest revision's findings a page at a time, those a filter by
+    severity, file or check leaves, in the Findings tab's order - worst first, and within a
+    severity in the revision's own order - each with a key it keeps on every page, under every
+    filter, and into the next revision where it stays."""
+
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> Api:
+        return every_severity(tmp_path)
+
+    def test_the_copy_reports_every_severity_in_another_order_than_the_tab_s(
+        self, demo: Api
+    ) -> None:
+        revision, _ = analysed(demo)
+        severities = [filed.diagnostic.severity for filed in revision.findings]
+        assert set(severities) == {Severity.ERROR, Severity.WARNING, Severity.INFO}
+        assert severities != sorted(severities, key=lambda severity: severity.rank)
+
+    def test_the_pages_of_every_size_laid_end_to_end_are_the_tab_s_whole_list(
+        self, demo: Api
+    ) -> None:
+        expected = in_the_tabs_order(demo)
+        assert len(expected) == 7
+        for size in range(1, 8):
+            laid: list[dict[str, Any]] = []
+            for offset in range(0, len(expected), size):
+                body = get(demo, "/api/findings", offset=str(offset), limit=str(size)).body
+                assert (body["revision"], body["total"], body["offset"]) == (2, 7, offset)
+                assert len(body["findings"]) == min(size, len(expected) - offset)
+                laid.extend(body["findings"])
+            assert unkeyed(laid) == expected, size
+
+    def test_every_key_is_its_finding_s_own_on_every_page(self, demo: Api) -> None:
+        whole = [found["key"] for found in get(demo, "/api/findings").body["findings"]]
+        assert len(set(whole)) == len(whole) == 7
+        for size in range(1, 8):
+            paged = [
+                found["key"]
+                for offset in range(0, len(whole), size)
+                for found in get(demo, "/api/findings", offset=str(offset), limit=str(size)).body[
+                    "findings"
+                ]
+            ]
+            assert paged == whole, size
+
+    def test_two_findings_of_equal_content_on_one_file_have_keys_of_their_own(
+        self, demo: Api, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The same check, severity, place and words filed twice on one file - as a check
+        reporting one disagreement for two of its readers in one sentence would - told apart by
+        which repeat each is, the first keeping the key it has alone."""
+        revision, _ = analysed(demo)
+        alone = get(Api(demo.session, demo.project), "/api/findings").body["findings"]
+        twice = revision.findings[0]
+        monkeypatch.setattr(
+            demo.session,
+            "_revision",
+            dataclasses.replace(revision, findings=(twice, *revision.findings)),
+        )
+        listed = get(demo, "/api/findings").body["findings"]
+        keys = [found["key"] for found in listed]
+        assert len(set(keys)) == len(keys) == 8
+        same = [found for found in listed if unkeyed([found]) == unkeyed([alone[0]])]
+        assert len(same) == 2
+        assert same[0]["key"] == alone[0]["key"]
+        assert json.loads(same[1]["key"]) == [*json.loads(alone[0]["key"])[:-1], 1]
+
+    def test_a_key_is_the_finding_s_file_severity_check_place_words_and_repeat(
+        self, demo: Api
+    ) -> None:
+        for found in get(demo, "/api/findings").body["findings"]:
+            content = [found[name] for name in ("file", "severity", "check", "pointer", "message")]
+            assert found["key"] == json.dumps([*content, 0], separators=(",", ":"))
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            {"severity": "error"},
+            {"severity": "warning"},
+            {"severity": "info"},
+            {"check": "definition-mismatch"},
+            {"check": "storage-mismatch"},
+            {"check": "missing-id"},
+            {"check": "unknown-unit"},
+            {"file": "controller"},
+            {"file": "sensor_hub"},
+            {"file": "event_logger"},
+            {"file": "logging"},
+            {"severity": "error", "file": "controller"},
+            {"severity": "info", "check": "missing-id"},
+            {"check": "storage-mismatch", "file": "sensor_hub"},
+            {"severity": "warning", "check": "definition-mismatch", "file": "event_logger"},
+        ],
+        ids=lambda query: "&".join(f"{name}={value}" for name, value in query.items()),
+    )
+    def test_a_filter_leaves_what_it_leaves_of_the_whole_list_keys_and_all(
+        self, demo: Api, tmp_path: Path, query: dict[str, str]
+    ) -> None:
+        """A file is named through a link to the directory the copy is in: a second spelling
+        of the path the analysis filed its findings by."""
+        link = tmp_path / "link"
+        directory_link(link, tmp_path / "real")
+        asked = dict(query)
+        if "file" in asked:
+            asked["file"] = (link / "demo" / DEMO_FILES[asked["file"]]).as_posix()
+
+        def kept(found: dict[str, Any]) -> bool:
+            for name, value in query.items():
+                if name == "file":
+                    real = tmp_path / "real" / "demo" / DEMO_FILES[value]
+                    if Path(found["file"]).resolve() != real.resolve():
+                        return False
+                elif found[name] != value:
+                    return False
+            return True
+
+        whole = get(demo, "/api/findings").body["findings"]
+        body = get(demo, "/api/findings", **asked).body
+        assert body["findings"] == [found for found in whole if kept(found)]
+        assert body["total"] == len(body["findings"])
+        assert body["offset"] == 0
+
+    def test_a_filter_by_file_answers_its_findings_and_no_other(
+        self, demo: Api, tmp_path: Path
+    ) -> None:
+        """What a component's page asks: its own file's findings, every one, worst first."""
+        controller = tmp_path / "real" / "demo" / DEMO_FILES["controller"]
+        body = get(demo, "/api/findings", file=controller.as_posix()).body
+        assert [(found["severity"], found["check"]) for found in body["findings"]] == [
+            ("error", "definition-mismatch"),
+            ("error", "definition-mismatch"),
+            ("warning", "storage-mismatch"),
+            ("info", "missing-id"),
+        ]
+
+    def test_a_file_s_findings_come_worst_first_where_two_builds_file_them_otherwise(
+        self, tmp_path: Path
+    ) -> None:
+        """A file's own findings are put in the tab's order too, not merely kept in the revision's:
+        the order each build's run files them in, worst first, holds for one build alone."""
+        api = every_severity(tmp_path, two_builds=True)
+        revision, _ = analysed(api)
+        controller = (tmp_path / "real" / "demo" / DEMO_FILES["controller"]).resolve()
+        filed = [
+            found.diagnostic.severity
+            for found in revision.findings
+            if found.file.resolve() == controller
+        ]
+        assert filed == [
+            Severity.ERROR,
+            Severity.ERROR,
+            Severity.INFO,
+            Severity.INFO,
+            Severity.WARNING,
+        ]
+        body = get(api, "/api/findings", file=controller.as_posix()).body
+        assert [(found["severity"], found["check"]) for found in body["findings"]] == [
+            ("error", "definition-mismatch"),
+            ("error", "definition-mismatch"),
+            ("warning", "storage-mismatch"),
+            ("info", "storage-mismatch"),
+            ("info", "missing-id"),
+        ]
+        whole = get(api, "/api/findings").body["findings"]
+        assert body["findings"] == [
+            found for found in whole if Path(found["file"]).resolve() == controller
+        ]
+
+    def test_the_state_counts_what_the_findings_answer_severity_by_severity(
+        self, demo: Api
+    ) -> None:
+        """What the Findings tab sizes its window by: the state's counts, which add up to the
+        endpoint's whole list, and each to what a filter by its severity leaves."""
+        counts = get(demo, "/api/state").body["counts"]
+        assert counts == {"error": 4, "warning": 2, "info": 1}
+        assert sum(counts.values()) == get(demo, "/api/findings").body["total"]
+        for severity, count in counts.items():
+            assert get(demo, "/api/findings", severity=severity).body["total"] == count
+
+    def test_without_a_limit_every_finding_from_the_offset_is_answered(self, demo: Api) -> None:
+        whole = get(demo, "/api/findings").body
+        assert (whole["offset"], whole["total"], len(whole["findings"])) == (0, 7, 7)
+        body = get(demo, "/api/findings", offset="2").body
+        assert body["findings"] == whole["findings"][2:]
+        assert (body["offset"], body["total"]) == (2, 7)
+
+    @pytest.mark.parametrize(("offset", "limit"), [("7", "3"), ("8", "1"), ("1000", None)])
+    def test_an_offset_past_the_end_answers_none_with_how_many_there_are(
+        self, demo: Api, offset: str, limit: str | None
+    ) -> None:
+        asked = {"offset": offset} if limit is None else {"offset": offset, "limit": limit}
+        body = get(demo, "/api/findings", **asked).body
+        assert (body["findings"], body["total"], body["offset"]) == ([], 7, int(offset))
+        filtered = get(demo, "/api/findings", severity="warning", offset="2").body
+        assert (filtered["findings"], filtered["total"]) == ([], 2)
+
+    @pytest.mark.parametrize(
+        ("query", "sentence"),
+        [
+            ({"offset": "-1"}, "findings takes ?offset= as a whole number from 0"),
+            ({"offset": "1.5"}, "findings takes ?offset= as a whole number from 0"),
+            ({"offset": ""}, "findings takes ?offset= as a whole number from 0"),
+            (
+                {"offset": "\N{ARABIC-INDIC DIGIT THREE}"},
+                "findings takes ?offset= as a whole number from 0",
+            ),
+            ({"limit": "0"}, "findings takes ?limit= as a whole number from 1"),
+            ({"limit": "-2"}, "findings takes ?limit= as a whole number from 1"),
+            ({"limit": "all"}, "findings takes ?limit= as a whole number from 1"),
+            ({"limit": ""}, "findings takes ?limit= as a whole number from 1"),
+            ({"severity": "ignore"}, "findings takes ?severity= as error, warning or info"),
+            ({"severity": "Error"}, "findings takes ?severity= as error, warning or info"),
+            ({"severity": ""}, "findings takes ?severity= as error, warning or info"),
+        ],
+    )
+    def test_a_query_it_cannot_read_is_refused_by_its_whole_sentence(
+        self, api: Api, query: dict[str, str], sentence: str
+    ) -> None:
+        assert get(api, "/api/findings", **query) == Reply(
+            400, {"error": "bad-request", "message": sentence}
+        )
+
+    def test_a_page_asked_twice_is_the_reply_made_first_and_a_new_revision_s_a_new_one(
+        self, api: Api, root: Path
+    ) -> None:
+        first = get(api, "/api/findings", offset="0", limit="1")
+        assert first.status == 200
+        assert get(api, "/api/findings", offset="0", limit="1") is first
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        newer = get(api, "/api/findings", offset="0", limit="1")
+        assert newer is not first
+        assert newer.body["revision"] == 2
+
+    def test_a_finding_keeps_its_key_into_the_next_revision_where_it_stays(
+        self, demo: Api, tmp_path: Path
+    ) -> None:
+        """The two warnings taken out by an edit of the reader's a2l format: every other finding
+        stays, and keeps its key though the note after the warnings moves up two places."""
+        before = get(demo, "/api/findings").body["findings"]
+        controller = tmp_path / "real" / "demo" / DEMO_FILES["controller"]
+        edit = {
+            "changes": [
+                {
+                    "file": controller.as_posix(),
+                    "fingerprint": fingerprint(controller.read_bytes()),
+                    "operations": [
+                        {"op": "remove", "pointer": "component.interface[1].definition.a2l"}
+                    ],
+                }
+            ],
+            "label": "the a2l format of ValueB",
+        }
+        assert post(demo, "/api/edit", edit).status == 200
+        after = get(demo, "/api/findings").body
+        assert after["revision"] == 3
+        assert after["findings"] == [
+            found for found in before if found["check"] != "storage-mismatch"
+        ]
+        assert len(after["findings"]) == 5
+
+    def test_at_most_memo_answers_are_kept_the_oldest_dropped_first(self, api: Api) -> None:
+        first = get(api, "/api/findings", offset="0", limit="1")
+        second = get(api, "/api/findings", offset="1", limit="1")
+        for offset in range(2, MEMO + 1):
+            get(api, "/api/findings", offset=str(offset), limit="1")
+        assert len(api._memo) == MEMO
+        assert get(api, "/api/findings", offset="1", limit="1") is second
+        assert get(api, "/api/findings", offset="0", limit="1") is not first
 
 
 class TestFiles:
@@ -847,7 +1213,8 @@ class TestGraph:
 
     @pytest.fixture
     def demo(self, tmp_path: Path) -> tuple[Api, Path]:
-        """``ddd gui``'s api over a copy of examples/demo, and where the copy is."""
+        """``ddd gui``'s api over a copy of examples/demo, and where the copy is: at revision 2,
+        its sub-project's own component costing opening one analysis more."""
         root = tmp_path / "demo"
         shutil.copytree(EXAMPLES / "demo", root)
         session = Session(root)
@@ -859,7 +1226,7 @@ class TestGraph:
     ) -> None:
         api, root = demo
         body = get(api, "/api/graph").body
-        assert body["revision"] == 1
+        assert body["revision"] == 2
         modules = {m["path"]: m for m in body["modules"]}
         assert set(modules) == {(root / suffix).as_posix() for suffix in self.COMPONENTS}
         for suffix, name in self.COMPONENTS.items():
@@ -941,10 +1308,10 @@ class TestGraph:
 
 
 class TestEdit:
-    def test_an_edit_is_written_and_the_new_revision_answered(self, api: Api, root: Path) -> None:
+    def test_an_edit_is_written_and_its_number_answered(self, api: Api, root: Path) -> None:
         reply = post(api, "/api/edit", unit_edit(api, root, "Hz"))
         assert reply.status == 200
-        assert reply.body["revision"] == 2
+        assert reply.body["edit"] == 1
         target = (root / "b.ddd.json").resolve()
         assert reply.body["files"] == [
             {"path": target.as_posix(), "fingerprint": fingerprint(target.read_bytes())}
@@ -1255,7 +1622,7 @@ class TestUndoing:
         reply = get(api, "/api/undo")
         assert (reply.status, reply.body["error"]) == (500, "unwritable")
 
-    def test_an_undo_puts_the_files_back_and_answers_the_new_revision(
+    def test_an_undo_puts_the_files_back_and_answers_its_own_number(
         self, api: Api, root: Path
     ) -> None:
         b = root / "b.ddd.json"
@@ -1263,7 +1630,7 @@ class TestUndoing:
         assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
         reply = post(api, "/api/undo", {"at": 1})
         assert reply.status == 200
-        assert reply.body == {"revision": 3}
+        assert reply.body == {"edit": 2}
         assert b.read_bytes() == before
         assert get(api, "/api/state").body["undoable"] is None
 
@@ -1296,6 +1663,543 @@ class TestUndoing:
         reply = api.handle("DELETE", "/api/undo", {}, None)
         assert (reply.status, reply.body["error"]) == (405, "method-not-allowed")
         assert reply.body["message"] == "/api/undo takes GET or POST"
+
+
+NOT_ANALYSED: Final = Reply(
+    409, {"error": "analysing", "message": "the open project has not been analysed yet"}
+)
+"""What every answer needing a revision is before the open project's first analysis lands."""
+
+WAITING_WRITE: Final = '"written while its analysis waits"'
+"""What :func:`touching` writes, as json text."""
+
+
+def waiting_for(*names: str) -> Reply:
+    """The refusal of a plan changing the files ``names`` an edit wrote and no analysis has read
+    yet, in the order the plan's own edits name them."""
+    return Reply(
+        409,
+        {
+            "error": "analysing",
+            "message": f"an edit that wrote {', '.join(names)} has not been analysed yet, so "
+            "this change can be planned once it has",
+        },
+    )
+
+
+def touching(path: Path, pointer: str) -> dict[str, Any]:
+    """An edit of ``path`` alone, setting the text at ``pointer`` - a description of the file's
+    own, which moves no declaration of it."""
+    return {
+        "changes": [
+            {
+                "file": path.as_posix(),
+                "fingerprint": fingerprint(path.read_bytes()),
+                "operations": [{"op": "set", "pointer": pointer, "raw": WAITING_WRITE}],
+            }
+        ],
+        "label": f"the description of {path.name}",
+    }
+
+
+@pytest.fixture
+def gated() -> Iterator[Callable[[Path], Api]]:
+    """Opening a project description over a started, gated session, its first analysis landed and
+    the gate closed behind it: an edit posted then is answered, and its analysis waits at the
+    gate for as long as the test asks what it likes."""
+    sessions: list[Gated] = []
+
+    def opening(description: Path) -> Api:
+        session = Gated(description.parent)
+        sessions.append(session)
+        session.gate.set()
+        session.start()
+        session.open(description)
+        begun(session)
+        landed(session)
+        session.gate.clear()
+        return Api(session, description, wait_seconds=0.05)
+
+    yield opening
+    for session in sessions:
+        session.gate.set()
+        stopped(session)
+
+
+def left_waiting(api: Api, edit: dict[str, Any]) -> dict[str, Any]:
+    """``edit`` posted and answered, its analysis begun and waiting at the gate."""
+    reply = post(api, "/api/edit", edit)
+    assert reply.status == 200, reply.body
+    begun(api.session)
+    return reply.body
+
+
+class Window:
+    """A second window's long poll, ``GET /api/state?after=``, asked on a thread of its own."""
+
+    def __init__(self, api: Api, after: int) -> None:
+        self.answers: list[Reply] = []
+        self.thread = threading.Thread(
+            target=lambda: self.answers.append(get(api, "/api/state", after=str(after))),
+            daemon=True,
+        )
+        self.thread.start()
+
+    def answer(self) -> dict[str, Any]:
+        """What it answered, within ten seconds: with the api waiting thirty, an answer means the
+        version moved, not that the wait ran out."""
+        self.thread.join(timeout=10)
+        assert not self.thread.is_alive(), "the long poll did not answer"
+        (reply,) = self.answers
+        assert reply.status == 200, reply.body
+        return reply.body
+
+
+def copied_example(tmp_path: Path, example: str) -> Path:
+    """A copy of one of the shipped examples, which a test may edit; returns its directory."""
+    shutil.copytree(EXAMPLES / example, tmp_path / example)
+    return tmp_path / example
+
+
+class TestBeforeTheFirstAnalysis:
+    """Opening a project answers at once, naming it; until its first analysis lands the state
+    says it is being analysed, and every answer needing a revision is refused."""
+
+    @pytest.fixture
+    def opening(self, root: Path) -> Iterator[Api]:
+        """``POST /api/open`` over a started session whose first analysis waits at the gate."""
+        session = Gated(root)
+        session.start()
+        try:
+            api = Api(session, wait_seconds=0.05)
+            reply = post(api, "/api/open", {"path": (root / "p.ddd.json").as_posix()})
+            assert (reply.status, reply.body["project"]) == (
+                200,
+                {"path": posix(root, "p.ddd.json"), "name": "P"},
+            )
+            begun(session)
+            yield api
+        finally:
+            session.gate.set()
+            stopped(session)
+
+    def test_the_session_names_the_project_before_its_first_analysis(
+        self, opening: Api, root: Path
+    ) -> None:
+        assert get(opening, "/api/session").body == {
+            "version": __version__,
+            "preview": True,
+            "root": root.resolve().as_posix(),
+            "project": {"path": posix(root, "p.ddd.json"), "name": "P"},
+            "builds": [],
+        }
+
+    def test_the_state_says_the_project_is_being_analysed(self, opening: Api, root: Path) -> None:
+        assert get(opening, "/api/state") == Reply(
+            200,
+            {
+                "revision": 0,
+                "version": 1,
+                "project": posix(root, "p.ddd.json"),
+                "files": [],
+                "counts": {"error": 0, "warning": 0, "info": 0},
+                "undoable": None,
+                "analysing": True,
+                "edits": 0,
+            },
+        )
+
+    def test_what_needs_no_revision_is_answered_at_once(self, opening: Api) -> None:
+        for path in ("/api/session", "/api/projects", "/api/checks", "/api/state"):
+            assert get(opening, path).status == 200, path
+
+    @pytest.mark.parametrize(
+        ("method", "path", "query"),
+        [
+            ("GET", "/api/file", {"path": "a.ddd.json"}),
+            ("GET", "/api/dictionary", {}),
+            ("GET", "/api/findings", {}),
+            ("GET", "/api/findings", {"offset": "0", "limit": "100", "severity": "error"}),
+            ("GET", "/api/graph", {}),
+            ("POST", "/api/edit", {}),
+            ("GET", "/api/undo", {}),
+            ("POST", "/api/undo", {}),
+            ("GET", "/api/variable", {"name": "Speed"}),
+            ("GET", "/api/units", {}),
+            ("GET", "/api/settle", {"name": "Speed", "key": "unit", "raw": '"Hz"'}),
+            ("GET", "/api/fix", {"file": "a.ddd.json", "pointer": "", "check": "missing-id"}),
+            ("GET", "/api/unit", {"name": "rpm"}),
+            ("GET", "/api/unit-plan", {"action": "adopt"}),
+            ("GET", "/api/types", {}),
+            ("GET", "/api/type", {"name": "Speed_t"}),
+            ("GET", "/api/type-plan", {"action": "rename", "name": "Speed_t", "to": "S_t"}),
+            ("GET", "/api/shared", {}),
+            ("GET", "/api/constant", {"name": "SIZE"}),
+            ("GET", "/api/constant-plan", {"action": "remove", "name": "SIZE"}),
+            ("GET", "/api/section", {"name": ".ram"}),
+            ("GET", "/api/section-plan", {"action": "remove", "name": ".ram"}),
+            ("GET", "/api/raster", {"name": "10ms"}),
+            ("GET", "/api/raster-plan", {"action": "remove", "name": "10ms"}),
+            ("GET", "/api/files", {}),
+            ("GET", "/api/files-plan", {"action": "add", "path": "c.ddd.json"}),
+            ("GET", "/api/declarable", {"file": "a.ddd.json"}),
+            (
+                "GET",
+                "/api/declaration-plan",
+                {"action": "remove", "file": "a.ddd.json", "name": "Speed"},
+            ),
+            ("GET", "/api/values", {"name": "Speed"}),
+            ("GET", "/api/value-plan", {"name": "Speed", "at": "[0]", "raw": "1"}),
+            ("GET", "/api/values-plan", {"name": "Speed", "raw": "1"}),
+            ("GET", "/api/compare", {"baseline": "p.ddd.json"}),
+        ],
+    )
+    def test_every_answer_needing_a_revision_is_refused_until_the_first_lands(
+        self, opening: Api, root: Path, method: str, path: str, query: dict[str, str]
+    ) -> None:
+        asked = {
+            key: [posix(root, value) if key in {"path", "file", "baseline"} else value]
+            for key, value in query.items()
+        }
+        body = None
+        if (method, path) == ("POST", "/api/edit"):
+            body = json.dumps(unit_edit(opening, root, "Hz")).encode("utf-8")
+        elif method == "POST":
+            body = b'{"at": 1}'
+        assert opening.handle(method, path, asked, body) == NOT_ANALYSED
+
+
+class TestAnsweredOnceWritten:
+    """An edit and an undo are answered as soon as they are written, each with its own number;
+    the state says an analysis is coming, and a second window hears of the write at once and of
+    its analysis when it lands."""
+
+    def test_an_edit_answers_its_number_while_its_analysis_waits(
+        self, gated: Callable[[Path], Api], root: Path
+    ) -> None:
+        api = gated(root / "p.ddd.json")
+        before = get(api, "/api/state").body
+        assert (before["revision"], before["analysing"], before["edits"]) == (1, False, 0)
+        target = (root / "b.ddd.json").resolve()
+        edited = left_waiting(api, unit_edit(api, root, "Hz"))
+        assert edited == {
+            "edit": 1,
+            "files": [{"path": target.as_posix(), "fingerprint": fingerprint(target.read_bytes())}],
+        }
+        waiting = get(api, "/api/state").body
+        assert (waiting["revision"], waiting["analysing"], waiting["edits"]) == (1, True, 0)
+        assert waiting["undoable"] == {"at": 1, "label": "the unit of Speed"}
+        assert "definition-mismatch" not in {finding["check"] for finding in every_finding(api)}
+        api.session.gate.set()
+        landed(api.session)
+        after = get(api, "/api/state").body
+        assert (after["revision"], after["analysing"], after["edits"]) == (2, False, 1)
+        assert "definition-mismatch" in {finding["check"] for finding in every_finding(api)}
+
+    def test_an_undo_answers_its_number_while_its_analysis_waits(
+        self, gated: Callable[[Path], Api], root: Path
+    ) -> None:
+        api = gated(root / "p.ddd.json")
+        edited = left_waiting(api, unit_edit(api, root, "Hz"))
+        api.session.gate.set()
+        landed(api.session)
+        api.session.gate.clear()
+        undone = post(api, "/api/undo", {"at": edited["edit"]})
+        assert (undone.status, undone.body) == (200, {"edit": 2})
+        begun(api.session)
+        waiting = get(api, "/api/state").body
+        assert (waiting["revision"], waiting["analysing"], waiting["edits"]) == (2, True, 1)
+        assert waiting["undoable"] is None
+        api.session.gate.set()
+        landed(api.session)
+        after = get(api, "/api/state").body
+        assert (after["revision"], after["analysing"], after["edits"]) == (3, False, 2)
+
+    def test_a_second_window_hears_of_an_edit_once_written_and_again_once_analysed(
+        self, gated: Callable[[Path], Api], root: Path
+    ) -> None:
+        api = gated(root / "p.ddd.json")
+        api.wait_seconds = 30
+        first = get(api, "/api/state").body
+        window = Window(api, first["version"])
+        edited = left_waiting(api, unit_edit(api, root, "Hz"))
+        heard = window.answer()
+        assert (heard["version"], heard["revision"], heard["analysing"]) == (
+            first["version"] + 1,
+            1,
+            True,
+        )
+        assert heard["undoable"] == {"at": edited["edit"], "label": "the unit of Speed"}
+        window = Window(api, heard["version"])
+        api.session.gate.set()
+        analysed = window.answer()
+        assert (analysed["version"], analysed["revision"]) == (first["version"] + 2, 2)
+        assert (analysed["analysing"], analysed["edits"]) == (False, edited["edit"])
+
+    def test_the_state_is_made_once_a_version(self, api: Api, root: Path) -> None:
+        first = get(api, "/api/state")
+        assert get(api, "/api/state") is first
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        after = get(api, "/api/state")
+        assert after is not first
+        assert after.body["version"] == first.body["version"] + 2
+        assert get(api, "/api/state") is after
+
+
+class TestAPlanWhileAnEditWaits:
+    """A plan changing a file an edit wrote that no analysis has read yet is refused, naming the
+    file - computed, it would carry the fingerprint the analysis read the file at, and be refused
+    stale on Apply - while a plan changing only other files is made at once (spec §5). Each plan
+    below changes one file, or the files named; the edit waiting writes that file, or another."""
+
+    @pytest.mark.parametrize(
+        ("touched", "pointer", "refused"),
+        [
+            ("units.ddd.json", "units[3].description", True),
+            ("pump.ddd.json", "component.description", False),
+        ],
+    )
+    def test_a_unit_plan(
+        self,
+        gated: Callable[[Path], Api],
+        tmp_path: Path,
+        touched: str,
+        pointer: str,
+        refused: bool,
+    ) -> None:
+        root = copied_example(tmp_path, "vocabulary")
+        api = gated(root / "project.ddd.json")
+        left_waiting(api, touching(root / touched, pointer))
+        reply = get(api, "/api/unit-plan", action="describe", unit="Nm", description="torque")
+        if refused:
+            assert reply == waiting_for("units.ddd.json")
+        else:
+            assert reply.status == 200, reply.body
+            assert [Path(change["file"]).name for change in reply.body["changes"]] == [
+                "units.ddd.json"
+            ]
+
+    @pytest.mark.parametrize(
+        ("vocabulary", "name", "file", "pointer"),
+        [
+            ("constant", "TREND_SAMPLES", "constants.ddd.json", "constants[0].description"),
+            ("section", ".calib", "sections.ddd.json", "sections[0].description"),
+            ("raster", "100ms", "rasters.ddd.json", "rasters[0].description"),
+        ],
+    )
+    @pytest.mark.parametrize("refused", [True, False])
+    def test_a_shared_plan(
+        self,
+        gated: Callable[[Path], Api],
+        tmp_path: Path,
+        vocabulary: str,
+        name: str,
+        file: str,
+        pointer: str,
+        refused: bool,
+    ) -> None:
+        root = copied_example(tmp_path, "vocabulary")
+        api = gated(root / "project.ddd.json")
+        if refused:
+            left_waiting(api, touching(root / file, pointer))
+        else:
+            left_waiting(api, touching(root / "pump.ddd.json", "component.description"))
+        reply = get(
+            api,
+            f"/api/{vocabulary}-plan",
+            action="set",
+            name=name,
+            key="description",
+            raw='"planned while an edit waits"',
+        )
+        if refused:
+            assert reply == waiting_for(file)
+        else:
+            assert reply.status == 200, reply.body
+            assert [Path(change["file"]).name for change in reply.body["changes"]] == [file]
+
+    @pytest.mark.parametrize(
+        ("touched", "pointer", "refused"),
+        [
+            ("types.ddd.json", "types[1].description", True),
+            ("sensing.ddd.json", "component.description", False),
+        ],
+    )
+    def test_a_type_plan(
+        self,
+        gated: Callable[[Path], Api],
+        tmp_path: Path,
+        touched: str,
+        pointer: str,
+        refused: bool,
+    ) -> None:
+        root = copied_example(tmp_path, "structures")
+        api = gated(root / "project.ddd.json")
+        left_waiting(api, touching(root / touched, pointer))
+        reply = get(
+            api,
+            "/api/type-plan",
+            action="set",
+            name="Temperature_t",
+            key="description",
+            raw='"planned while an edit waits"',
+        )
+        if refused:
+            assert reply == waiting_for("types.ddd.json")
+        else:
+            assert reply.status == 200, reply.body
+            assert [Path(change["file"]).name for change in reply.body["changes"]] == [
+                "types.ddd.json"
+            ]
+
+    @pytest.mark.parametrize(
+        ("touched", "refused"),
+        [("controller.ddd.json", True), ("user_interface.ddd.json", False)],
+    )
+    def test_a_settlement(
+        self, gated: Callable[[Path], Api], tmp_path: Path, touched: str, refused: bool
+    ) -> None:
+        """Settling ValueA's unit changes both its declarations: the controller's and the sensor
+        hub's."""
+        root = copied_example(tmp_path, "demo")
+        api = gated(root / "demo.ddd.json")
+        left_waiting(api, touching(root / "components" / touched, "component.description"))
+        reply = get(api, "/api/settle", name="ValueA", key="unit", raw='"rpm"')
+        if refused:
+            assert reply == waiting_for("controller.ddd.json")
+        else:
+            assert reply.status == 200, reply.body
+            assert [Path(change["file"]).name for change in reply.body["changes"]] == [
+                "controller.ddd.json",
+                "sensor_hub.ddd.json",
+            ]
+
+    @pytest.mark.parametrize(("touched", "refused"), [("a.ddd.json", True), ("b.ddd.json", False)])
+    def test_a_fix(
+        self, gated: Callable[[Path], Api], root: Path, touched: str, refused: bool
+    ) -> None:
+        """The one finding of the project: Speed's producer in ``a.ddd.json`` states no id, and
+        the fix it carries gives it one there."""
+        api = gated(root / "p.ddd.json")
+        left_waiting(api, touching(root / touched, "component.description"))
+        reply = get(
+            api,
+            "/api/fix",
+            file=posix(root, "a.ddd.json"),
+            pointer="component.interface[0].definition.name",
+            check="missing-id",
+        )
+        if refused:
+            assert reply == waiting_for("a.ddd.json")
+        else:
+            assert reply.status == 200, reply.body
+            (fix,) = reply.body["fixes"]
+            assert [Path(change["file"]).name for change in fix["changes"]] == ["a.ddd.json"]
+
+    @pytest.mark.parametrize(
+        ("touched", "refused"),
+        [("controller.ddd.json", True), ("sensor_hub.ddd.json", False)],
+    )
+    @pytest.mark.parametrize(
+        ("path", "query"),
+        [
+            ("/api/declaration-plan", {"action": "remove", "name": "ValueH"}),
+            ("/api/value-plan", {"name": "CurveA", "at": "[2]", "raw": "750"}),
+            ("/api/values-plan", {"name": "CurveA", "raw": "1300,950,850,800,750,700"}),
+        ],
+    )
+    def test_a_plan_of_a_component(
+        self,
+        gated: Callable[[Path], Api],
+        tmp_path: Path,
+        touched: str,
+        refused: bool,
+        path: str,
+        query: dict[str, str],
+    ) -> None:
+        """Removing ValueH from the controller, and one value or all of CurveA, which the
+        controller produces: each changes the controller's file alone."""
+        root = copied_example(tmp_path, "demo")
+        api = gated(root / "demo.ddd.json")
+        left_waiting(api, touching(root / "components" / touched, "component.description"))
+        asked = dict(query)
+        if path == "/api/declaration-plan":
+            asked["file"] = posix(root, "components/controller.ddd.json")
+        reply = get(api, path, **asked)
+        if refused:
+            assert reply == waiting_for("controller.ddd.json")
+        else:
+            assert reply.status == 200, reply.body
+            assert [Path(change["file"]).name for change in reply.body["changes"]] == [
+                "controller.ddd.json"
+            ]
+
+    @pytest.mark.parametrize(
+        ("touched", "pointer", "refused"),
+        [
+            ("p.ddd.json", "project.description", True),
+            ("b.ddd.json", "component.description", False),
+        ],
+    )
+    def test_a_files_plan(
+        self,
+        gated: Callable[[Path], Api],
+        root: Path,
+        touched: str,
+        pointer: str,
+        refused: bool,
+    ) -> None:
+        """A new units file, created beside the description and added to its includes: refused
+        naming the description, the one file of the two an edit could have written."""
+        api = gated(root / "p.ddd.json")
+        left_waiting(api, touching(root / touched, pointer))
+        reply = get(api, "/api/files-plan", action="create", kind="units", name="units")
+        if refused:
+            assert reply == waiting_for("p.ddd.json")
+        else:
+            assert reply.status == 200, reply.body
+            assert [Path(change["file"]).name for change in reply.body["changes"]] == [
+                "p.ddd.json",
+                "units.ddd.json",
+            ]
+
+    def test_the_files_tabs_judge_answers_stale_while_an_edit_of_a_component_waits(
+        self, gated: Callable[[Path], Api], root: Path
+    ) -> None:
+        """The removal changes the description alone, which nobody wrote, so it is not refused
+        for waiting; judged, it is refused in the words it answers today, for the component the
+        waiting edit wrote (spec §5)."""
+        api = gated(root / "p.ddd.json")
+        left_waiting(api, touching(root / "b.ddd.json", "component.description"))
+        reply = get(api, "/api/files-plan", action="remove", path=posix(root, "a.ddd.json"))
+        assert reply == Reply(
+            409,
+            {
+                "error": "stale",
+                "message": "b.ddd.json changed since the project was analysed, so the change "
+                "cannot be judged until the project is analysed again",
+            },
+        )
+
+    def test_the_files_tabs_judge_is_not_asked_while_an_edit_of_the_description_waits(
+        self, gated: Callable[[Path], Api], root: Path
+    ) -> None:
+        api = gated(root / "p.ddd.json")
+        left_waiting(api, touching(root / "p.ddd.json", "project.description"))
+        reply = get(api, "/api/files-plan", action="remove", path=posix(root, "a.ddd.json"))
+        assert reply == waiting_for("p.ddd.json")
+
+    def test_an_addition_is_refused_while_an_edit_of_the_description_waits(
+        self, gated: Callable[[Path], Api], root: Path
+    ) -> None:
+        """Adding a file appends to the description's includes, as a removal takes from them:
+        refused, not judged, while an edit of the description waits for its analysis."""
+        write_tree(root, {"c.ddd.json": component("C", declare("input", "Speed", unit="rpm"))})
+        api = gated(root / "p.ddd.json")
+        assert get(api, "/api/files-plan", action="add", path="c.ddd.json").status == 200
+        left_waiting(api, touching(root / "p.ddd.json", "project.description"))
+        reply = get(api, "/api/files-plan", action="add", path="c.ddd.json")
+        assert reply == waiting_for("p.ddd.json")
 
 
 class TestVariable:
@@ -2090,9 +2994,9 @@ def with_unit(data: bytes, name: str, unit: str | None) -> bytes:
     return changed.encode("utf-8")
 
 
-def findings_of(state: dict[str, Any]) -> set[tuple[str, str, str, str]]:
-    """What a state reports, each finding by its file, check, place and sentence."""
-    return {(f["file"], f["check"], f["pointer"], f["message"]) for f in state["findings"]}
+def findings_of(api: Api) -> set[tuple[str, str, str, str]]:
+    """What the open project reports, each finding by its file, check, place and sentence."""
+    return {(f["file"], f["check"], f["pointer"], f["message"]) for f in every_finding(api)}
 
 
 class TestTheDemo:
@@ -2103,6 +3007,8 @@ class TestTheDemo:
 
     @pytest.fixture
     def demo(self, tmp_path: Path) -> tuple[Api, Path]:
+        """At revision 2: the demo's sub-project's own component costs opening one analysis
+        more."""
         return copied(tmp_path, "demo", "demo.ddd.json")
 
     def test_a_variable_is_answered_with_each_file_declaring_it(
@@ -2160,7 +3066,7 @@ class TestTheDemo:
     ) -> None:
         api, _ = demo
         assert picked(get(api, "/api/units").body) == {
-            "revision": 1,
+            "revision": 2,
             "vocabulary": None,
             "used": [
                 {"unit": "%", "variables": 5},
@@ -2232,7 +3138,7 @@ class TestTheDemo:
     ) -> None:
         api, root = demo
         before = contents(root)
-        reported = findings_of(get(api, "/api/state").body)
+        reported = findings_of(api)
         preview = get(api, "/api/unit-plan", action="adopt").body
         assert contents(root) == before
         described, created = preview["changes"]
@@ -2256,7 +3162,7 @@ class TestTheDemo:
             ),
             "units.ddd.json": text.encode("utf-8"),
         }
-        assert findings_of(get(api, "/api/state").body) <= reported
+        assert findings_of(api) <= reported
         units = get(api, "/api/units").body
         assert units["adoptable"] is None
         assert {u["unit"]: u["files"] for u in units["units"]}["Hz"] == [
@@ -2491,7 +3397,7 @@ class TestTheVocabulary:
                 last, last + b',\n    { "unit": "bar", "description": "" }'
             ),
         }
-        assert "unknown-unit" not in {f["check"] for f in get(api, "/api/state").body["findings"]}
+        assert "unknown-unit" not in {f["check"] for f in every_finding(api)}
 
     def test_a_unit_nothing_states_is_removed_from_the_vocabulary(
         self, vocabulary: tuple[Api, Path]
@@ -2521,6 +3427,25 @@ class TestTheVocabulary:
 
 class TestUnitsTab:
     """The rows ``GET /api/units`` adds for the Units tab, and what adopting would list."""
+
+    def test_a_project_with_a_vocabulary_is_refused_adopting_with_no_include_expanded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The first of adopting's guards reads the index alone, and refuses a project with a
+        vocabulary already: the units files among its includes, which only the guards after it
+        read, are not looked for on disk at all - every include expanded and every file read,
+        which while an analysis runs took the request seconds at 100,000 declarations."""
+        api = opened(tmp_path, LISTED)
+        asked: list[object] = []
+        real = api_module.unit_project
+
+        def counted(*arguments: Any) -> Any:
+            asked.append(arguments)
+            return real(*arguments)
+
+        monkeypatch.setattr(api_module, "unit_project", counted)
+        assert get(api, "/api/units").body["adoptable"] is None
+        assert asked == []
 
     def test_each_unit_in_use_is_a_row_and_adopting_would_list_it(self, api: Api) -> None:
         body = get(api, "/api/units").body
@@ -2665,6 +3590,48 @@ class TestUnit:
         write_tree(root, {"b.ddd.json": component("B", declare("input", "Torque", unit="rpm"))})
         sites = get(api, "/api/unit", name="rpm").body["sites"]
         assert [(s["component"], s["name"]) for s in sites] == [("A", "Speed")]
+
+    def test_a_place_on_a_file_unchanged_since_the_analysis_is_named_unread(
+        self, api: Api, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Its component and role are the index's record of what the analysis loaded there:
+        nothing reads a declaration again, where every file stating the unit was parsed."""
+
+        def unread(*_: object) -> None:
+            raise AssertionError("a declaration was read again from a file the analysis read")
+
+        monkeypatch.setattr("ddd.project_units.declarations_of", unread)
+        sites = get(api, "/api/unit", name="rpm").body["sites"]
+        assert [(s["component"], s["name"], s["role"]) for s in sites] == [
+            ("A", "Speed", "produces"),
+            ("B", "Speed", "reads"),
+        ]
+
+    def test_a_place_on_a_file_changed_since_the_analysis_is_read_as_it_now_stands(
+        self, api: Api, root: Path
+    ) -> None:
+        """Its component and its role as the file states them now, not as the analysis loaded
+        them: the file's bytes are not the ones the revision fingerprinted."""
+        write_tree(root, {"b.ddd.json": component("Bee", declare("output", "Speed", unit="rpm"))})
+        sites = get(api, "/api/unit", name="rpm").body["sites"]
+        assert [(s["component"], s["name"], s["role"]) for s in sites] == [
+            ("A", "Speed", "produces"),
+            ("Bee", "Speed", "produces"),
+        ]
+
+    def test_a_file_has_changed_since_unless_it_reads_as_the_revision_read_it(
+        self, api: Api, root: Path
+    ) -> None:
+        """However the file is spelled; and a file the revision did not read at all has changed,
+        having no reading to compare with."""
+        revision = api.session.revision
+        assert revision is not None
+        changed = _changed_in(api._derive(revision))
+        (root / "sub").mkdir()
+        assert not changed(root / "sub" / ".." / "a.ddd.json")
+        assert changed(root / "other" / "q.ddd.json")
+        write_tree(root, {"b.ddd.json": component("B", declare("input", "Speed", unit="Hz"))})
+        assert changed(root / "b.ddd.json")
 
     def test_a_unit_listed_twice_has_its_findings_on_both_entries(self, tmp_path: Path) -> None:
         body = get(opened(tmp_path, LISTED_TWICE), "/api/unit", name="rpm").body
@@ -2942,7 +3909,7 @@ class TestTheTypesTab:
         api.session.poll()
         routes = {
             finding["check"]: finding["route"]
-            for finding in get(api, "/api/state").body["findings"]
+            for finding in every_finding(api)
             if finding["route"] is not None and finding["route"]["kind"] == "type"
         }
         assert routes == {"type-kind": {"kind": "type", "name": "DriverStatus_t"}}
@@ -3199,8 +4166,7 @@ class TestConstant:
         assert applied(api, preview, "SOLE removed").status == 200
         written = json.loads((tmp_path / "c.ddd.json").read_text(encoding="utf-8"))
         assert written == {"constants": []}
-        state = get(api, "/api/state").body
-        assert [(f["check"], f["severity"], f["pointer"]) for f in state["findings"]] == [
+        assert [(f["check"], f["severity"], f["pointer"]) for f in every_finding(api)] == [
             ("empty-vocabulary", "info", "constants")
         ]
         assert get(api, "/api/constant", name="SOLE").status == 404
@@ -3220,7 +4186,7 @@ class TestConstant:
         assert applied(api, preview, "SOLE removed").status == 200
         written = json.loads((tmp_path / "a.ddd.json").read_text(encoding="utf-8"))
         assert "constants" not in written["component"]
-        assert "schema" not in {f["check"] for f in get(api, "/api/state").body["findings"]}
+        assert "schema" not in {f["check"] for f in every_finding(api)}
         assert get(api, "/api/variable", name="Speed").status == 200
         assert get(api, "/api/constant", name="SOLE").status == 404
 
@@ -3513,17 +4479,17 @@ class TestSection:
         row = {e["name"]: e for e in get(api, "/api/shared").body["entries"]}[".ram"]
         assert (row["uses"], row["findings"]) == (2, 0)
         assert get(api, "/api/section", name=".ram").body["findings"] == []
-        assert {f["check"]: f["route"] for f in get(api, "/api/state").body["findings"]}[
-            "consumer-storage"
-        ] == {"kind": "variable", "name": "Gain"}
+        assert {f["check"]: f["route"] for f in every_finding(api)}["consumer-storage"] == {
+            "kind": "variable",
+            "name": "Gain",
+        }
 
     def test_an_unknown_section_leads_to_the_name_the_definition_names(
         self, tmp_path: Path
     ) -> None:
         """The route the page turns into a pre-filled add form: the name is in no index, so the
         panel would answer 404 and the route carries it anyway."""
-        state = get(opened(tmp_path, PLACED_NOWHERE), "/api/state").body
-        routes = {f["check"]: f["route"] for f in state["findings"]}
+        routes = {f["check"]: f["route"] for f in every_finding(opened(tmp_path, PLACED_NOWHERE))}
         assert routes["unknown-section"] == {"kind": "section", "name": ".nvm"}
 
     def test_a_section_is_asked_for_by_name(self, tmp_path: Path) -> None:
@@ -3731,8 +4697,7 @@ class TestSection:
         assert applied(api, preview, ".sole removed").status == 200
         written = json.loads((tmp_path / "s.ddd.json").read_text(encoding="utf-8"))
         assert written == {"sections": []}
-        state = get(api, "/api/state").body
-        assert [(f["check"], f["severity"], f["pointer"]) for f in state["findings"]] == [
+        assert [(f["check"], f["severity"], f["pointer"]) for f in every_finding(api)] == [
             ("empty-vocabulary", "info", "sections")
         ]
         assert get(api, "/api/section", name=".sole").status == 404
@@ -4064,8 +5029,7 @@ class TestRaster:
     def test_an_unknown_raster_leads_to_the_name_the_definition_names(self, tmp_path: Path) -> None:
         """The route the page turns into a pre-filled add form: the name is in no index, so the
         panel would answer 404 and the route carries it anyway."""
-        state = get(opened(tmp_path, MEASURED_NOWHERE), "/api/state").body
-        routes = {f["check"]: f["route"] for f in state["findings"]}
+        routes = {f["check"]: f["route"] for f in every_finding(opened(tmp_path, MEASURED_NOWHERE))}
         assert routes["unknown-raster"] == {"kind": "raster", "name": "50ms"}
 
     def test_a_consumers_stray_raster_key_is_neither_counted_nor_listed_on_the_raster(
@@ -4084,9 +5048,10 @@ class TestRaster:
         row = {e["name"]: e for e in get(api, "/api/shared").body["entries"]}["10ms"]
         assert (row["uses"], row["findings"]) == (2, 0)
         assert get(api, "/api/raster", name="10ms").body["findings"] == []
-        assert {f["check"]: f["route"] for f in get(api, "/api/state").body["findings"]}[
-            "consumer-raster"
-        ] == {"kind": "variable", "name": "X"}
+        assert {f["check"]: f["route"] for f in every_finding(api)}["consumer-raster"] == {
+            "kind": "variable",
+            "name": "X",
+        }
 
     def test_a_raster_on_a_calibration_object_is_not_counted_on_the_raster_either(
         self, tmp_path: Path
@@ -4098,9 +5063,10 @@ class TestRaster:
         row = {e["name"]: e for e in get(api, "/api/shared").body["entries"]}["10ms"]
         assert (row["uses"], row["findings"]) == (1, 0)
         assert get(api, "/api/raster", name="10ms").body["findings"] == []
-        assert {f["check"]: f["route"] for f in get(api, "/api/state").body["findings"]}[
-            "raster-kind"
-        ] == {"kind": "variable", "name": "Gain"}
+        assert {f["check"]: f["route"] for f in every_finding(api)}["raster-kind"] == {
+            "kind": "variable",
+            "name": "Gain",
+        }
 
     @pytest.mark.parametrize("query", [{}, {"name": ""}])
     def test_a_raster_is_asked_for_by_name(self, tmp_path: Path, query: dict[str, str]) -> None:
@@ -4345,8 +5311,7 @@ class TestRaster:
         assert applied(api, preview, "10ms removed").status == 200
         written = json.loads((tmp_path / "r.ddd.json").read_text(encoding="utf-8"))
         assert written == {"rasters": []}
-        state = get(api, "/api/state").body
-        assert [(f["check"], f["severity"], f["pointer"]) for f in state["findings"]] == [
+        assert [(f["check"], f["severity"], f["pointer"]) for f in every_finding(api)] == [
             ("empty-vocabulary", "info", "rasters")
         ]
         assert get(api, "/api/raster", name="10ms").status == 404
@@ -4451,6 +5416,347 @@ class TestRaster:
     def test_raster_plan_needs_an_open_project(self, root: Path) -> None:
         reply = get(Api(Session(root)), "/api/raster-plan", action="remove", name="10ms")
         assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+
+class TestAnEntryMovedSinceTheAnalysis:
+    """An entry's panel, and a tab's rows, asked after its file changed and before the analysis
+    reading it again.
+
+    The index recorded each entry where its file's list held it, and an entry above it taken out -
+    or put back by an undo, which asks every open panel again at once - leaves another entry, or
+    none, at that place. Each panel's route first checks that the entry there still names the one
+    asked for, as :func:`ddd.variables.declarations_of` checks a variable's declaration, and where
+    it does not, answers what it answers for an entry no unchanged file declares: never a
+    neighbour's fields under this entry's name. Over copies of examples/vocabulary and, for types,
+    examples/structures, on a session never started, so a file written after the analysis stays
+    unread by it.
+
+    A tab lists every entry the index recorded - the one taken out too, until the analysis lands -
+    with the uses and the findings the analysis counted, and reads what each entry says of itself
+    where the index recorded it. A row whose place no longer names its entry keeps its name and
+    shows none of its file's fields, empty, until the analysis lands. The Shared files and the
+    Units tabs are asked around the page's own Remove, over a gated session, so between the edit
+    and its analysis; no edit takes a type out, so the Types tab's file is saved from outside, and
+    the tab asked before the poll notices.
+    """
+
+    @staticmethod
+    def opened(root: Path, project_file: str) -> Api:
+        session = Session(root)
+        session.open(root / project_file)
+        return Api(session, root / project_file)
+
+    @staticmethod
+    def listed(root: Path, file: str, key: str, entries: list[Any]) -> None:
+        """``file`` of the copy, its list under ``key`` replaced by ``entries``."""
+        path = root / file
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data[key] = entries
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    @staticmethod
+    def refused(name: str, file: str) -> dict[str, str]:
+        return {
+            "error": "unreadable",
+            "message": (
+                f"'{name}' is not declared in any file that has not changed since, "
+                f"and {file} changed since it was read"
+            ),
+        }
+
+    def test_a_constant(self, tmp_path: Path) -> None:
+        root = copied_example(tmp_path, "vocabulary")
+        trend = json.loads((root / "constants.ddd.json").read_text(encoding="utf-8"))["constants"]
+        kept = {"name": "KEPT", "value": 2, "description": "stays where it is"}
+        spare = {"name": "SPARE", "value": 3, "description": "taken out after the analysis"}
+        last = {"name": "LAST", "value": 4, "description": "comes up into the place above"}
+        self.listed(root, "constants.ddd.json", "constants", [kept, spare, *trend, last])
+        api = self.opened(root, "project.ddd.json")
+        assert get(api, "/api/constant", name="TREND_SAMPLES").body["value"] == "16"
+        self.listed(root, "constants.ddd.json", "constants", [kept, *trend, last])
+        # Where the index recorded TREND_SAMPLES, the file now holds LAST.
+        reply = get(api, "/api/constant", name="TREND_SAMPLES")
+        assert (reply.status, reply.body) == (
+            409,
+            self.refused("TREND_SAMPLES", "constants.ddd.json"),
+        )
+        still = get(api, "/api/constant", name="KEPT")
+        assert (still.status, still.body["value"], still.body["description"]) == (
+            200,
+            "2",
+            "stays where it is",
+        )
+
+    def test_a_section(self, tmp_path: Path) -> None:
+        root = copied_example(tmp_path, "vocabulary")
+        fast, calib = json.loads((root / "sections.ddd.json").read_text(encoding="utf-8"))[
+            "sections"
+        ]
+        spare = {"section": ".spare", "access": "read-write", "alignment": 8}
+        last = {"section": ".last", "access": "read-only", "alignment": 2}
+        self.listed(root, "sections.ddd.json", "sections", [fast, spare, calib, last])
+        api = self.opened(root, "project.ddd.json")
+        assert get(api, "/api/section", name=".calib").body["access"] == "read-only"
+        self.listed(root, "sections.ddd.json", "sections", [fast, calib, last])
+        reply = get(api, "/api/section", name=".calib")
+        assert (reply.status, reply.body) == (409, self.refused(".calib", "sections.ddd.json"))
+        still = get(api, "/api/section", name=".fast_ram")
+        assert (still.status, still.body["access"], still.body["alignment"]) == (
+            200,
+            "read-write",
+            "4",
+        )
+
+    def test_a_raster(self, tmp_path: Path) -> None:
+        root = copied_example(tmp_path, "vocabulary")
+        shipped = json.loads((root / "rasters.ddd.json").read_text(encoding="utf-8"))["rasters"]
+        fast, control, diagnostic = shipped
+        last = {"raster": "1000ms", "event": 3, "cycle": "1000ms"}
+        self.listed(root, "rasters.ddd.json", "rasters", [fast, control, diagnostic, last])
+        api = self.opened(root, "project.ddd.json")
+        assert get(api, "/api/raster", name="100ms").body["event"] == "2"
+        self.listed(root, "rasters.ddd.json", "rasters", [fast, diagnostic, last])
+        reply = get(api, "/api/raster", name="100ms")
+        assert (reply.status, reply.body) == (409, self.refused("100ms", "rasters.ddd.json"))
+        still = get(api, "/api/raster", name="1ms")
+        assert (still.status, still.body["event"], still.body["description"]) == (
+            200,
+            "0",
+            "fast control task",
+        )
+
+    def test_a_unit(self, tmp_path: Path) -> None:
+        # Every shape the place can hold: the same spelling, the same entry, another spelling,
+        # another entry, and nothing - past the list's new end.
+        root = copied_example(tmp_path, "vocabulary")
+        rpm = {"unit": "rpm", "description": "rotational speed, revolutions per minute"}
+        hpa = {"unit": "hPa", "description": "taken out after the analysis"}
+        degc = {"unit": "degC", "description": "temperature"}
+        self.listed(root, "units.ddd.json", "units", ["Nm", rpm, hpa, "kPa", "bar", degc])
+        api = self.opened(root, "project.ddd.json")
+        assert get(api, "/api/unit", name="degC").body["description"] == "temperature"
+        self.listed(root, "units.ddd.json", "units", ["Nm", rpm, "kPa", "bar", degc])
+        for moved in ("kPa", "bar", "degC"):
+            reply = get(api, "/api/unit", name=moved)
+            assert (reply.status, reply.body) == (409, self.refused(moved, "units.ddd.json"))
+        spelled = get(api, "/api/unit", name="Nm")
+        assert (spelled.status, spelled.body["description"]) == (200, None)
+        described = get(api, "/api/unit", name="rpm")
+        assert (described.status, described.body["description"]) == (
+            200,
+            "rotational speed, revolutions per minute",
+        )
+        # The Units tab reads each description the same way: a moved entry's is none of its
+        # neighbour's - bar's place now holds degC's entry, and its description.
+        rows = {row["unit"]: row["description"] for row in get(api, "/api/units").body["units"]}
+        assert (rows["rpm"], rows["bar"], rows["degC"]) == (
+            "rotational speed, revolutions per minute",
+            None,
+            None,
+        )
+
+    def test_a_type(self, tmp_path: Path) -> None:
+        root = copied_example(tmp_path, "structures")
+        types = json.loads((root / "types.ddd.json").read_text(encoding="utf-8"))["types"]
+        api = self.opened(root, "project.ddd.json")
+        assert get(api, "/api/type", name="Sample_t").body["kind"] == "struct"
+        # DriverStatus_t taken out: where the index recorded Sample_t, the file now holds Status_t.
+        self.listed(root, "types.ddd.json", "types", [types[0], *types[2:]])
+        reply = get(api, "/api/type", name="Sample_t")
+        assert (reply.status, reply.body) == (409, self.refused("Sample_t", "types.ddd.json"))
+        still = get(api, "/api/type", name="Temperature_t")
+        assert (still.status, still.body["kind"], still.body["description"]) == (
+            200,
+            "scalar",
+            "A temperature as every component of this project agrees to see it",
+        )
+
+    @staticmethod
+    def removing(api: Api, plan: str, **asked: str) -> dict[str, Any]:
+        """The edit the page posts for a Remove ``plan`` previews: each change without its hunks,
+        as :func:`applied` posts one."""
+        preview = get(api, plan, action="remove", **asked)
+        assert preview.status == 200, preview.body
+        changes = [
+            {key: change[key] for key in ("file", "fingerprint", "operations")}
+            for change in preview.body["changes"]
+        ]
+        return {"changes": changes, "label": "the entry removed"}
+
+    # Per vocabulary of the Shared files tab: its file and list, the list written before the
+    # analysis - an entry that keeps its place, the one taken out after the analysis, and those
+    # below it, each of which moves up a place - the entry taken out, and each row's States as
+    # analysed, between the Remove and its analysis, and once the analysis has landed.
+    SHARED_TAB: Final[dict[str, tuple[Any, ...]]] = {
+        "constant": (
+            "constants.ddd.json",
+            "constants",
+            lambda shipped: [
+                {"name": "KEPT", "value": 2, "description": "stays where it is"},
+                {"name": "SPARE", "value": 3, "description": "taken out after the analysis"},
+                *shipped,
+                {"name": "LAST", "value": 4, "description": "comes up into the place above"},
+            ],
+            "SPARE",
+            {"KEPT": "2", "SPARE": "3", "TREND_SAMPLES": "16", "LAST": "4", "PRESSURE_CELLS": "8"},
+            {"KEPT": "2", "SPARE": "", "TREND_SAMPLES": "", "LAST": "", "PRESSURE_CELLS": "8"},
+            {"KEPT": "2", "TREND_SAMPLES": "16", "LAST": "4", "PRESSURE_CELLS": "8"},
+        ),
+        "section": (
+            "sections.ddd.json",
+            "sections",
+            lambda shipped: [
+                shipped[0],
+                {"section": ".spare", "access": "read-write", "alignment": 8},
+                *shipped[1:],
+                {"section": ".last", "access": "read-only", "alignment": 2},
+            ],
+            ".spare",
+            {
+                ".fast_ram": "read-write, align 4",
+                ".spare": "read-write, align 8",
+                ".calib": "read-only, align 4",
+                ".last": "read-only, align 2",
+            },
+            {".fast_ram": "read-write, align 4", ".spare": "", ".calib": "", ".last": ""},
+            {
+                ".fast_ram": "read-write, align 4",
+                ".calib": "read-only, align 4",
+                ".last": "read-only, align 2",
+            },
+        ),
+        "raster": (
+            "rasters.ddd.json",
+            "rasters",
+            lambda shipped: [
+                shipped[0],
+                {"raster": "1000ms", "event": 3, "cycle": "1000ms"},
+                *shipped[1:],
+            ],
+            "1000ms",
+            {
+                "1ms": "event 0, 1ms",
+                "1000ms": "event 3, 1000ms",
+                "10ms": "event 1, 10ms",
+                "100ms": "event 2, 100ms",
+            },
+            {"1ms": "event 0, 1ms", "1000ms": "", "10ms": "", "100ms": ""},
+            {"1ms": "event 0, 1ms", "10ms": "event 1, 10ms", "100ms": "event 2, 100ms"},
+        ),
+    }
+
+    @pytest.mark.parametrize("kind", list(SHARED_TAB))
+    def test_the_shared_files_tab(
+        self, gated: Callable[[Path], Api], tmp_path: Path, kind: str
+    ) -> None:
+        file, key, written, removed, analysed, between, landed_rows = self.SHARED_TAB[kind]
+        root = copied_example(tmp_path, "vocabulary")
+        shipped = json.loads((root / file).read_text(encoding="utf-8"))[key]
+        self.listed(root, file, key, written(shipped))
+        api = gated(root / "project.ddd.json")
+
+        def rows() -> tuple[int, dict[str, dict[str, Any]]]:
+            body = get(api, "/api/shared").body
+            return body["revision"], {e["name"]: e for e in body["entries"] if e["kind"] == kind}
+
+        def states(asked: tuple[int, dict[str, dict[str, Any]]]) -> tuple[int, dict[str, str]]:
+            return asked[0], {name: row["states"] for name, row in asked[1].items()}
+
+        # Asked before the Remove, so that what it is asked after is made anew - kept by the edits
+        # the session has written - rather than this answer kept.
+        assert states(rows()) == (1, analysed)
+        left_waiting(api, self.removing(api, f"/api/{kind}-plan", name=removed))
+        between_rows = rows()
+        assert states(between_rows) == (1, between)
+        # The entry taken out is still the index's, until the analysis lands: listed, its place
+        # holding the entry that was below it, with the uses and the findings it was analysed with.
+        assert between_rows[1][removed] == {
+            "kind": kind,
+            "name": removed,
+            "states": "",
+            "uses": 0,
+            "findings": 0,
+        }
+        api.session.gate.set()
+        landed(api.session)
+        assert states(rows()) == (2, landed_rows)
+
+    def test_the_types_tab(self, tmp_path: Path) -> None:
+        root = copied_example(tmp_path, "structures")
+        types = json.loads((root / "types.ddd.json").read_text(encoding="utf-8"))["types"]
+        api = self.opened(root, "project.ddd.json")
+        # DriverStatus_t taken out from outside: its place and each one below it hold the type
+        # that was below, and the last one holds nothing.
+        self.listed(root, "types.ddd.json", "types", [types[0], *types[2:]])
+        body = get(api, "/api/types").body
+        said = {row["name"]: (row["kind"], row["description"]) for row in body["types"]}
+        assert (body["revision"], said) == (
+            1,
+            {
+                "Temperature_t": ("scalar", types[0]["description"]),
+                **{entry["name"]: ("", "") for entry in types[1:]},
+            },
+        )
+        removed = next(row for row in body["types"] if row["name"] == "DriverStatus_t")
+        assert removed == {
+            "name": "DriverStatus_t",
+            "kind": "",
+            "description": "",
+            "uses": 1,
+            "findings": 0,
+        }
+        assert api.session.poll()
+        after = get(api, "/api/types").body
+        assert (
+            after["revision"],
+            {row["name"]: (row["kind"], row["description"]) for row in after["types"]},
+        ) == (
+            2,
+            {
+                entry["name"]: (entry["type"], entry["description"])
+                for entry in [types[0], *types[2:]]
+            },
+        )
+
+    def test_the_units_tab(self, gated: Callable[[Path], Api], tmp_path: Path) -> None:
+        root = copied_example(tmp_path, "vocabulary")
+        rpm = {"unit": "rpm", "description": "rotational speed, revolutions per minute"}
+        hpa = {"unit": "hPa", "description": "taken out after the analysis"}
+        degc = {"unit": "degC", "description": "temperature"}
+        self.listed(root, "units.ddd.json", "units", ["Nm", rpm, hpa, "kPa", "bar", degc])
+        api = gated(root / "project.ddd.json")
+
+        def rows() -> tuple[int, dict[str, dict[str, Any]]]:
+            body = get(api, "/api/units").body
+            return body["revision"], {row["unit"]: row for row in body["units"]}
+
+        def described(asked: tuple[int, dict[str, dict[str, Any]]]) -> tuple[int, dict[str, Any]]:
+            return asked[0], {unit: row["description"] for unit, row in asked[1].items()}
+
+        listed = {
+            "Nm": None,
+            "rpm": rpm["description"],
+            "kPa": None,
+            "bar": None,
+            "degC": "temperature",
+        }
+        assert described(rows()) == (1, {**listed, "hPa": hpa["description"]})
+        left_waiting(api, self.removing(api, "/api/unit-plan", unit="hPa"))
+        # hPa's place now holds "kPa", kPa's "bar", bar's degC's entry, and degC's nothing.
+        between = rows()
+        assert described(between) == (1, {**listed, "hPa": None, "degC": None})
+        assert between[1]["hPa"] == {
+            "unit": "hPa",
+            "description": None,
+            "files": [posix(root, "units.ddd.json")],
+            "variables": 0,
+            "types": 0,
+            "members": 0,
+            "findings": 0,
+        }
+        api.session.gate.set()
+        landed(api.session)
+        assert described(rows()) == (2, listed)
 
 
 class TestWhatAComponentMayAdd:
@@ -5177,7 +6483,7 @@ class TestTheFilesTab:
         api = opened(tmp_path, ENTRIES_OF_EVERY_SHAPE)
         at_entries = {
             (finding["check"], finding["pointer"])
-            for finding in get(api, "/api/state").body["findings"]
+            for finding in every_finding(api)
             if finding["file"] == posix(tmp_path, "p.ddd.json")
         }
         assert at_entries == {
@@ -5206,7 +6512,7 @@ class TestTheFilesTab:
         )
         filed = [
             (finding["file"], finding["check"], finding["pointer"])
-            for finding in get(api, "/api/state").body["findings"]
+            for finding in every_finding(api)
         ]
         assert filed == [
             (posix(tmp_path, "sub/project.ddd.json"), "include-empty", "project.includes[0]")
@@ -5226,7 +6532,7 @@ class TestTheFilesTab:
         api = Api(session, tmp_path / "p.ddd.json", wait_seconds=0.05)
         at_entries = [
             (finding["check"], finding["severity"], finding["pointer"])
-            for finding in get(api, "/api/state").body["findings"]
+            for finding in every_finding(api)
             if finding["file"] == posix(tmp_path, "p.ddd.json")
         ]
         assert at_entries == [("include-empty", "warning", "project.includes[1]")]
@@ -5274,10 +6580,7 @@ class TestTheFilesTab:
         joins: the pattern's `include-empty` to the pattern's row, the vocabulary's
         `empty-vocabulary` to its own."""
         api = opened(tmp_path, FINDINGS_ABOUT_FILES)
-        routes = {
-            finding["check"]: finding["route"]
-            for finding in get(api, "/api/state").body["findings"]
-        }
+        routes = {finding["check"]: finding["route"] for finding in every_finding(api)}
         keys = [entry["key"] for entry in get(api, "/api/files").body["entries"]]
         assert routes == {
             "include-empty": {"kind": "file", "name": keys[1]},
@@ -5291,7 +6594,7 @@ class TestTheFilesTab:
         api = opened(tmp_path, ENTRIES_OF_EVERY_SHAPE)
         routes = {
             finding["check"]: finding["route"]
-            for finding in get(api, "/api/state").body["findings"]
+            for finding in every_finding(api)
             if finding["file"] == posix(tmp_path, "p.ddd.json")
         }
         assert routes == {"file-not-found": None, "include-empty": None}
@@ -5322,7 +6625,7 @@ def errors_in(api: Api) -> list[tuple[str, str, str]]:
     """Every error the open project reports now, by file name, check and message."""
     return [
         (Path(finding["file"]).name, finding["check"], finding["message"])
-        for finding in get(api, "/api/state").body["findings"]
+        for finding in every_finding(api)
         if finding["severity"] == "error"
     ]
 
@@ -6356,3 +7659,973 @@ class TestRemovingAFile:
         (tmp_path / "a.ddd.json").write_bytes((tmp_path / "a.ddd.json").read_bytes() + b"\n")
         body = files_plan(api, "remove", path=posix(tmp_path, "lib/b.ddd.json")).body
         assert (body["unjudged"], body["brings"]) == (UNJUDGED_REMOVING, [])
+
+
+LOWERED: Final = tuple(
+    f"{check}=warning"
+    for check in (
+        "duplicate-unit",
+        "duplicate-constant",
+        "duplicate-type",
+        "duplicate-section",
+        "duplicate-event",
+        "include-empty",
+    )
+)
+"""The load checks the drifted examples below report, lowered by their build record: each is an
+error that stops a run at its read, and lowered, the analysis goes on, so that one revision
+carries what the read and the analysis say alike."""
+
+
+def definition_of(document: dict[str, Any], name: str) -> dict[str, Any]:
+    """The definition a component's document declares ``name`` by."""
+    return next(
+        entry["definition"]
+        for entry in document["component"]["interface"]
+        if entry["definition"]["name"] == name
+    )
+
+
+def changed(root: Path, name: str, change: Callable[[dict[str, Any]], object]) -> None:
+    """``root / name`` read as json, ``change`` made to it, and written back."""
+    path = root / name
+    document = json.loads(path.read_text(encoding="utf-8"))
+    change(document)
+    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+
+
+def unnamed(value: Any) -> Any:
+    """``value`` with every ``id`` taken out, however deep: each producing declaration is then a
+    ``missing-id``."""
+    if isinstance(value, dict):
+        return {key: unnamed(entry) for key, entry in value.items() if key != "id"}
+    if isinstance(value, list):
+        return [unnamed(entry) for entry in value]
+    return value
+
+
+def drift_demo(root: Path) -> None:
+    """The sub-project read first, so that the index lists `event_logger.ddd.json`'s
+    declarations before the components' while the revision files them last; a vocabulary
+    listing `%` twice and leaving `V`, `degC` and `ms` out; `ValueE` read as `V` against its
+    producer's `Hz`; a structure member stating `degC`; an `init` no `uint16` holds; and an
+    include matching nothing."""
+    changed(
+        root,
+        "demo.ddd.json",
+        lambda document: document["project"].update(
+            includes=[
+                "subsystems/logging/logging.ddd.json",
+                "components/*.ddd.json",
+                "units.ddd.json",
+                "missing/*.ddd.json",
+            ]
+        ),
+    )
+    write_tree(root, {"units.ddd.json": {"units": ["%", "%", {"unit": "Hz"}]}})
+    changed(
+        root,
+        "subsystems/logging/event_logger.ddd.json",
+        lambda document: definition_of(document, "ValueE").update(unit="V"),
+    )
+    changed(
+        root,
+        "components/sensor_hub.ddd.json",
+        lambda document: document["component"]["types"][1]["members"][1].update(unit="degC"),
+    )
+    changed(
+        root,
+        "components/controller.ddd.json",
+        lambda document: definition_of(document, "ParameterA").update(init=999999),
+    )
+
+
+def drift_pump(document: dict[str, Any]) -> None:
+    """A unit the vocabulary does not list, a measurement placed in read-only memory, an `init` no
+    `uint16` holds on a parameter naming a raster, a constant no shape can be sized by, and
+    limits the type's own datatype cannot reach."""
+    definition_of(document, "PumpSpeed")["unit"] = "bar"
+    definition_of(document, "ManifoldPressure")["section"] = ".calib"
+    definition_of(document, "TorqueLimit").update(init=99999999, raster="10ms")
+    document["component"]["constants"][0]["value"] = 0
+    document["component"]["types"][0]["limits"] = {"min": 0, "max": 99999999}
+
+
+def drift_vocabulary(root: Path) -> None:
+    """Every vocabulary of the example given a finding: `pump.ddd.json` drifted as
+    :func:`drift_pump` says, a unit, a constant and a section each declared twice, two rasters
+    claiming one event, and an include matching nothing."""
+    changed(root, "pump.ddd.json", drift_pump)
+    changed(root, "units.ddd.json", lambda document: document["units"].append("rpm"))
+    changed(
+        root,
+        "rasters.ddd.json",
+        lambda document: document["rasters"].append({"raster": "5ms", "event": 1}),
+    )
+    changed(
+        root,
+        "sections.ddd.json",
+        lambda document: document["sections"].append(
+            {"section": ".calib", "access": "read-only", "alignment": 4}
+        ),
+    )
+    changed(
+        root,
+        "constants.ddd.json",
+        lambda document: document["constants"].append({"name": "TREND_SAMPLES", "value": 16}),
+    )
+    changed(
+        root,
+        "project.ddd.json",
+        lambda document: document["project"]["includes"].insert(1, "missing/*.ddd.json"),
+    )
+
+
+def drift_structures(root: Path) -> None:
+    """A vocabulary listing `ms` twice and `degC` not at all, `Temperature_t` declared a second
+    time by the component producing `Inlet`, `Inlet` read as another type than it is written as -
+    `sensing.ddd.json`, which the index lists first, filed after `monitoring.ddd.json` - and an
+    include matching nothing."""
+    changed(
+        root,
+        "project.ddd.json",
+        lambda document: document["project"].update(
+            includes=["units.ddd.json", *document["project"]["includes"], "missing/*.ddd.json"]
+        ),
+    )
+    write_tree(root, {"units.ddd.json": {"units": ["ms", "ms"]}})
+    changed(
+        root,
+        "sensing.ddd.json",
+        lambda document: document["component"].update(
+            types=[scalar_type("Temperature_t", "uint8", unit="degC")]
+        ),
+    )
+    changed(
+        root,
+        "monitoring.ddd.json",
+        lambda document: definition_of(document, "Inlet").update(typename="Sample_t"),
+    )
+
+
+DRIFTED: Final[dict[str, tuple[str, Callable[[Path], None]]]] = {
+    "demo": ("demo.ddd.json", drift_demo),
+    "vocabulary": ("project.ddd.json", drift_vocabulary),
+    "structures": ("project.ddd.json", drift_structures),
+}
+"""Each example the answers are checked on, with its description and how it is drifted."""
+
+
+def through(path: Path, real: Path, link: Path) -> Path:
+    """``path``, under ``real``, spelled through ``link`` instead."""
+    return link / path.relative_to(real)
+
+
+def respelled(filed: Filed, real: Path, link: Path) -> Filed:
+    """A finding shown on the same file and place, both spelled through ``link``: a second
+    spelling of every path, as a plugin filing its findings by a path of its own would give."""
+    found = filed.diagnostic
+    location = found.location
+    if location is not None:
+        found = dataclasses.replace(
+            found, location=dataclasses.replace(location, path=through(location.path, real, link))
+        )
+    return Filed(through(filed.file, real, link), found)
+
+
+def drifted(
+    tmp_path: Path, example: str, monkeypatch: pytest.MonkeyPatch, *, spelled_again: bool
+) -> Api:
+    """``ddd gui``'s api over a copy of one of the examples, every id taken out and the rest
+    drifted until the analysis reports findings on every kind of name the panels list - under
+    :data:`LOWERED`, so the analysis runs to its end. ``spelled_again``: every finding of the
+    revision filed through a link to the directory the copy is in, before any request."""
+    description, drift = DRIFTED[example]
+    real = tmp_path / "real"
+    root = real / example
+    shutil.copytree(EXAMPLES / example, root)
+    for path in root.rglob("*.ddd.json"):
+        document = unnamed(json.loads(path.read_text(encoding="utf-8")))
+        path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    drift(root)
+    build_record(root, root / description, severity=list(LOWERED))
+    session = Session(root)
+    session.open(root / description)
+    revision = session.revision
+    assert revision is not None
+    assert revision.analysed
+    if spelled_again:
+        link = tmp_path / "link"
+        directory_link(link, real)
+        findings = tuple(respelled(filed, real.resolve(), link) for filed in revision.findings)
+        monkeypatch.setattr(session, "_revision", dataclasses.replace(revision, findings=findings))
+    return Api(session, root / description, wait_seconds=0.05)
+
+
+def analysed(api: Api) -> tuple[Revision, Index]:
+    revision = api.session.revision
+    assert revision is not None
+    assert revision.index is not None
+    return revision, revision.index
+
+
+def as_listed(api: Api, found: Iterable[Filed]) -> list[dict[str, Any]]:
+    """Findings as a panel lists them, each with where it leads: what the api answered for the
+    findings a predicate kept, before it indexed a revision's findings by file."""
+    revision, _ = analysed(api)
+    sources = {file.path.resolve(): file for file in revision.files}
+    cache: dict[Path, Document] = {}
+    return [_finding(filed, sources.get(filed.file.resolve()), cache) for filed in found]
+
+
+def places_as_read(built: Index, unit: str) -> list[dict[str, Any]]:
+    """Every place stating ``unit`` as ``GET /api/unit`` answered it before this part: a
+    variable's component and role read by :func:`ddd.variables.declarations_of`, and one its file
+    no longer declares left out."""
+    cache: dict[Path, Document] = {}
+    sites = []
+    for stated in built.units.get(unit, ()):
+        component_name = role = None
+        if stated.kind == "variable":
+            definition = Site(stated.site.path, stated.site.pointer.removesuffix(".unit"))
+            declared = next(
+                (d for d in declarations_of(built, stated.name, cache) if d.site == definition),
+                None,
+            )
+            if declared is None:
+                continue
+            component_name, role = declared.component, declared.role
+        sites.append(
+            {
+                "path": stated.site.path.resolve().as_posix(),
+                "pointer": stated.site.pointer,
+                "kind": stated.kind,
+                "name": stated.name,
+                "component": component_name,
+                "role": role,
+            }
+        )
+    return sites
+
+
+BY_KIND: Final[dict[str, tuple[Vocabulary, str]]] = {
+    "constant": (CONSTANTS, "/api/constant"),
+    "section": (SECTIONS, "/api/section"),
+    "raster": (RASTERS, "/api/raster"),
+}
+"""Each kind of row of the Shared files tab, with its vocabulary and its panel's route."""
+
+
+@pytest.mark.parametrize("spelled_again", [False, True], ids=["as-filed", "through-a-link"])
+class TestEachAnswerIsEveryFindingAskedAlone:
+    """Every name's panel and every tab's count, against what the api computed before it indexed
+    a revision's findings: every finding of the revision asked the name's own predicate, in the
+    revision's order - which is file by file in path order, and not the order the index lists a
+    name's places in. Each example is drifted so that the two orders differ where a name's
+    findings lie on several files, and asked once as the analysis filed it and once with every
+    finding filed through a link, a second spelling of every path."""
+
+    @pytest.mark.parametrize("example", list(DRIFTED))
+    def test_the_findings_list_every_finding_with_where_it_leads(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, example: str, spelled_again: bool
+    ) -> None:
+        """In the Findings tab's order: the revision's sorted by severity, keeping its order
+        within a severity."""
+        api = drifted(tmp_path, example, monkeypatch, spelled_again=spelled_again)
+        listed = every_finding(api)
+        assert listed == in_the_tabs_order(api)
+        assert listed
+
+    @pytest.mark.parametrize("example", list(DRIFTED))
+    def test_every_variable_s_panel_lists_its_findings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, example: str, spelled_again: bool
+    ) -> None:
+        api = drifted(tmp_path, example, monkeypatch, spelled_again=spelled_again)
+        revision, built = analysed(api)
+        answered = 0
+        for name in sorted(built.declarations):
+            declared = declarations_of(built, name, {})
+            expected = as_listed(
+                api,
+                [
+                    filed
+                    for filed in revision.findings
+                    if located_on(declared, filed.file, filed.diagnostic)
+                ],
+            )
+            assert get(api, "/api/variable", name=name).body["findings"] == expected, name
+            answered += len(expected)
+        assert answered
+
+    @pytest.mark.parametrize("example", list(DRIFTED))
+    def test_every_unit_s_panel_lists_its_places_and_findings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, example: str, spelled_again: bool
+    ) -> None:
+        api = drifted(tmp_path, example, monkeypatch, spelled_again=spelled_again)
+        revision, built = analysed(api)
+        answered = 0
+        for unit in sorted(built.units.keys() | built.vocabulary.keys()):
+            body = get(api, "/api/unit", name=unit).body
+            expected = as_listed(
+                api,
+                [
+                    filed
+                    for filed in revision.findings
+                    if located_on_unit(built, unit, filed.file, filed.diagnostic)
+                ],
+            )
+            assert body["findings"] == expected, unit
+            assert body["sites"] == places_as_read(built, unit), unit
+            answered += len(expected)
+        assert answered
+
+    @pytest.mark.parametrize("example", list(DRIFTED))
+    def test_every_type_s_panel_lists_its_findings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, example: str, spelled_again: bool
+    ) -> None:
+        api = drifted(tmp_path, example, monkeypatch, spelled_again=spelled_again)
+        revision, built = analysed(api)
+        answered = 0
+        for name in sorted(built.types):
+            expected = as_listed(
+                api,
+                [
+                    filed
+                    for filed in revision.findings
+                    if located_in_type(built, name, filed.file, filed.diagnostic)
+                ],
+            )
+            assert get(api, "/api/type", name=name).body["findings"] == expected, name
+            answered += len(expected)
+        assert answered
+
+    def test_every_constant_section_and_raster_s_panel_lists_its_findings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spelled_again: bool
+    ) -> None:
+        """The vocabulary example alone declares entries of the three vocabularies."""
+        api = drifted(tmp_path, "vocabulary", monkeypatch, spelled_again=spelled_again)
+        revision, built = analysed(api)
+        answered = 0
+        for vocabulary, route in BY_KIND.values():
+            for name in sorted(vocabulary.entries(built)):
+                expected = as_listed(
+                    api,
+                    [
+                        filed
+                        for filed in revision.findings
+                        if located_on_entry(vocabulary, built, name, filed.file, filed.diagnostic)
+                    ],
+                )
+                assert get(api, route, name=name).body["findings"] == expected, name
+                answered += len(expected)
+        assert answered
+
+    @pytest.mark.parametrize("example", ["demo", "vocabulary"])
+    def test_every_grid_lists_the_findings_about_its_init(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, example: str, spelled_again: bool
+    ) -> None:
+        """The two examples that state an `init` a grid shows a finding about. A name with no grid
+        - one the dictionary holds no object of - is refused before any finding is read."""
+        api = drifted(tmp_path, example, monkeypatch, spelled_again=spelled_again)
+        revision, built = analysed(api)
+        assert revision.dictionary is not None
+        answered = 0
+        for name in sorted(built.declarations):
+            reply = get(api, "/api/values", name=name)
+            if reply.status != 200:
+                continue
+            grid = grid_of(revision.dictionary, built, name)
+            at = f"{grid.pointer}.definition.init"
+            expected = as_listed(
+                api,
+                [
+                    filed
+                    for filed in revision.findings
+                    if grid.pointer is not None
+                    and filed.file.resolve().as_posix() == grid.file
+                    and filed.diagnostic.location is not None
+                    and filed.diagnostic.location.pointer == at
+                ],
+            )
+            assert reply.body["findings"] == expected, name
+            answered += len(expected)
+        assert answered
+
+    @pytest.mark.parametrize("example", list(DRIFTED))
+    def test_the_units_and_types_tabs_count_what_each_panel_lists(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, example: str, spelled_again: bool
+    ) -> None:
+        api = drifted(tmp_path, example, monkeypatch, spelled_again=spelled_again)
+        revision, built = analysed(api)
+        units = get(api, "/api/units").body["units"]
+        assert [row["unit"] for row in units] == sorted(built.units.keys() | built.vocabulary)
+        assert [row["findings"] for row in units] == [
+            sum(
+                1
+                for filed in revision.findings
+                if located_on_unit(built, row["unit"], filed.file, filed.diagnostic)
+            )
+            for row in units
+        ]
+        types_listed = get(api, "/api/types").body["types"]
+        assert [row["name"] for row in types_listed] == sorted(built.types)
+        assert [row["findings"] for row in types_listed] == [
+            sum(
+                1
+                for filed in revision.findings
+                if located_in_type(built, row["name"], filed.file, filed.diagnostic)
+            )
+            for row in types_listed
+        ]
+        assert any(row["findings"] for row in units)
+        assert any(row["findings"] for row in types_listed)
+
+    def test_the_shared_files_tab_counts_what_each_panel_lists(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spelled_again: bool
+    ) -> None:
+        api = drifted(tmp_path, "vocabulary", monkeypatch, spelled_again=spelled_again)
+        revision, built = analysed(api)
+        rows = get(api, "/api/shared").body["entries"]
+        assert [(row["kind"], row["name"]) for row in rows] == sorted(
+            (vocabulary.kind, name)
+            for vocabulary, _ in BY_KIND.values()
+            for name in vocabulary.entries(built)
+        )
+        assert [row["findings"] for row in rows] == [
+            sum(
+                1
+                for filed in revision.findings
+                if located_on_entry(
+                    BY_KIND[row["kind"]][0], built, row["name"], filed.file, filed.diagnostic
+                )
+            )
+            for row in rows
+        ]
+        assert any(row["findings"] for row in rows)
+
+    @pytest.mark.parametrize("example", list(DRIFTED))
+    def test_the_files_tab_counts_the_findings_at_each_entry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, example: str, spelled_again: bool
+    ) -> None:
+        """Compared as a whole location, the description's own path and the entry's pointer, as
+        the tab always compared them - so an entry's finding filed through the link is no entry's,
+        and the tab counts none where the analysis filed one."""
+        api = drifted(tmp_path, example, monkeypatch, spelled_again=spelled_again)
+        revision, _ = analysed(api)
+        entries = get(api, "/api/files").body["entries"]
+        counted = [
+            sum(
+                1
+                for filed in revision.findings
+                if filed.diagnostic.location
+                == Location(revision.project, f"project.includes[{entry['index']}]")
+            )
+            for entry in entries
+        ]
+        assert [entry["findings"] for entry in entries] == counted
+        assert any(counted) is not spelled_again
+
+
+# A vocabulary of two units, and one variable read as it is written: an edit of the reader's unit
+# to one the vocabulary does not list brings an `unknown-unit`, which the Units tab counts.
+LISTED = {
+    "p.ddd.json": project("P", "units.ddd.json", "a.ddd.json", "b.ddd.json"),
+    "units.ddd.json": {"units": ["rpm", "Hz"]},
+    "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+    "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+}
+
+KEPT: Final = ("/api/graph", "/api/types", "/api/shared", "/api/findings")
+"""The answers made once per revision and kept for as long as it is the newest: each reads only
+the revision and the files it read."""
+
+# A root including a pattern, one file of which is there to be matched: a file appearing where the
+# pattern matches is one no revision read, so the poll never notices it.
+PATTERNED = {
+    "p.ddd.json": project("P", "a.ddd.json", "lib/*.ddd.json"),
+    "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+    "lib/b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+}
+
+
+class TestAnswersKeptForARevision:
+    """What the api makes of one revision it makes once: the findings grouped by file, and the
+    graph, the Types and the Shared files tabs and each page of findings, each kept until a new
+    revision - or an edit - is written. The Files and the Units tabs are answered anew each time:
+    each reads what no revision records."""
+
+    @pytest.mark.parametrize("path", KEPT)
+    def test_one_revision_answers_with_the_very_reply_it_made_first(
+        self, api: Api, path: str
+    ) -> None:
+        first = get(api, path)
+        assert first.status == 200
+        assert get(api, path) is first
+
+    def test_a_new_revision_answers_the_graph_anew_showing_the_change(
+        self, api: Api, root: Path
+    ) -> None:
+        before = get(api, "/api/graph")
+        assert [flow["disagreements"] for flow in before.body["flows"]] == [[]]
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        after = get(api, "/api/graph")
+        assert after is not before
+        assert after.body["revision"] == 2
+        (flow,) = after.body["flows"]
+        assert [d["check"] for d in flow["disagreements"]] == ["definition-mismatch"]
+
+    def test_a_new_revision_counts_its_own_findings_on_the_tabs_rows(self, tmp_path: Path) -> None:
+        """The rows count the findings the newest revision groups, never the last one's: the
+        unit the edit brings is counted with the finding it brings."""
+        api = opened(tmp_path, LISTED)
+        before = get(api, "/api/units").body["units"]
+        assert [(row["unit"], row["findings"]) for row in before] == [("Hz", 0), ("rpm", 0)]
+        assert post(api, "/api/edit", unit_edit(api, tmp_path, "Nm")).status == 200
+        after = get(api, "/api/units").body
+        assert after["revision"] == 2
+        assert [(row["unit"], row["findings"]) for row in after["units"]] == [
+            ("Hz", 0),
+            ("Nm", 1),
+            ("rpm", 0),
+        ]
+
+    def test_an_edit_written_before_its_analysis_shows_on_the_rows_kept(
+        self, gated: Callable[[Path], Api], tmp_path: Path
+    ) -> None:
+        """A type's description, changed by an edit whose analysis has not landed: the Types
+        tab's rows read it as it stands, and are kept by the edits written as well as by the
+        revision, so the change shows before the revision moves."""
+        root = copied_example(tmp_path, "structures")
+        api = gated(root / "project.ddd.json")
+        before = get(api, "/api/types").body
+        described = {row["name"]: row["description"] for row in before["types"]}
+        assert described["Temperature_t"] != json.loads(WAITING_WRITE)
+        left_waiting(api, touching(root / "types.ddd.json", "types[0].description"))
+        after = get(api, "/api/types").body
+        assert after["revision"] == before["revision"] == 1
+        assert get(api, "/api/state").body["analysing"] is True
+        assert {row["name"]: row["description"] for row in after["types"]} == {
+            **described,
+            "Temperature_t": json.loads(WAITING_WRITE),
+        }
+
+    def test_the_files_tab_lists_a_file_appearing_where_a_pattern_matches(
+        self, tmp_path: Path
+    ) -> None:
+        """A file appearing where a root pattern matches starts no analysis - the poll compares
+        the files the revision read - so no revision could say a kept answer had gone stale: the
+        tab is answered anew, and lists the file at the next request."""
+        api = opened(tmp_path, PATTERNED)
+        assert not api.session.poll()
+        before = get(api, "/api/files").body
+        write_tree(tmp_path, {"lib/c.ddd.json": component("C")})
+        assert not api.session.poll()
+        after = get(api, "/api/files").body
+        assert (before["revision"], after["revision"]) == (1, 1)
+        assert [Path(file).name for file in before["entries"][1]["files"]] == ["b.ddd.json"]
+        assert [Path(file).name for file in after["entries"][1]["files"]] == [
+            "b.ddd.json",
+            "c.ddd.json",
+        ]
+        assert after == get(Api(api.session, api.project), "/api/files").body
+
+    def test_the_units_tab_offers_adopting_as_the_disk_now_allows(self, tmp_path: Path) -> None:
+        """Whether adopting may write units.ddd.json beside the description, and which units file
+        it would fill instead, are read from the disk as it stands, and neither a file no include
+        names nor one a root pattern has come to match starts an analysis: the offer is answered
+        anew, as the plan would be made."""
+        api = opened(tmp_path, PATTERNED)
+        assert not api.session.poll()
+        assert get(api, "/api/units").body["adoptable"] == 1
+        write_tree(tmp_path, {"units.ddd.json": {"units": []}})
+        assert not api.session.poll()
+        assert get(api, "/api/units").body["adoptable"] is None
+        write_tree(tmp_path, {"lib/units.ddd.json": {"units": ["rpm"]}})
+        assert not api.session.poll()
+        body = get(api, "/api/units").body
+        assert (body["revision"], body["adoptable"]) == (1, 1)
+        assert body == get(Api(api.session, api.project), "/api/units").body
+
+    def test_a_revision_is_derived_once_and_its_successor_anew(self, api: Api, root: Path) -> None:
+        revision = api.session.revision
+        assert revision is not None
+        kept = api._derive(revision)
+        assert api._derive(revision) is kept
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        newer = api.session.revision
+        assert newer is not None
+        assert api._derive(newer) is not kept
+        assert api._derive(newer).number == newer.number
+
+    def test_each_kept_answer_is_the_one_its_own_route_makes(self, api: Api) -> None:
+        """Kept side by side, each under its own name: asked again after every other, each route
+        answers what an api that has kept nothing answers it - a new one for each route, so that
+        what it keeps while answering one cannot answer the next."""
+        for path in KEPT:
+            get(api, path)
+        for path in KEPT:
+            fresh = Api(api.session, api.project, wait_seconds=0.05)
+            assert get(api, path).body == get(fresh, path).body, path
+
+    def test_the_answers_kept_are_the_newest_revision_s_alone(self, api: Api, root: Path) -> None:
+        """A revision's kept answers go with it: the graph asked first of the next revision, the
+        one answer that reads nothing derived, is kept in place of every answer of the last."""
+        for path in KEPT:
+            get(api, path)
+        assert {key[1] for key in api._memo} == {1}
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        get(api, "/api/graph")
+        assert sorted(api._memo) == [(("graph",), 2, 1)]
+
+
+def resolving(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+    """Every path :meth:`pathlib.Path.resolve` is asked of from now on, in order: each one a system
+    call per directory of its path, which while an analysis runs waits out the analysis's turn of
+    the interpreter."""
+    asked: list[Path] = []
+    real = Path.resolve
+
+    def counted(self: Path, strict: bool = False) -> Path:
+        asked.append(self)
+        return real(self, strict)
+
+    monkeypatch.setattr(Path, "resolve", counted)
+    return asked
+
+
+PLANS: Final = (
+    (
+        "vocabulary",
+        "project.ddd.json",
+        "/api/unit-plan",
+        {"action": "describe", "unit": "Nm", "description": "torque"},
+    ),
+    (
+        "vocabulary",
+        "project.ddd.json",
+        "/api/constant-plan",
+        {"action": "set", "name": "TREND_SAMPLES", "key": "description", "raw": '"planned"'},
+    ),
+    (
+        "vocabulary",
+        "project.ddd.json",
+        "/api/section-plan",
+        {"action": "set", "name": ".calib", "key": "description", "raw": '"planned"'},
+    ),
+    (
+        "vocabulary",
+        "project.ddd.json",
+        "/api/raster-plan",
+        {"action": "set", "name": "100ms", "key": "description", "raw": '"planned"'},
+    ),
+    (
+        "structures",
+        "project.ddd.json",
+        "/api/type-plan",
+        {"action": "set", "name": "Temperature_t", "key": "description", "raw": '"planned"'},
+    ),
+    ("demo", "demo.ddd.json", "/api/settle", {"name": "ValueA", "key": "unit", "raw": '"rpm"'}),
+    (
+        "demo",
+        "demo.ddd.json",
+        "/api/declaration-plan",
+        {"action": "remove", "name": "ValueH", "file": "components/controller.ddd.json"},
+    ),
+    ("demo", "demo.ddd.json", "/api/value-plan", {"name": "CurveA", "at": "[2]", "raw": "750"}),
+    (
+        "demo",
+        "demo.ddd.json",
+        "/api/values-plan",
+        {"name": "CurveA", "raw": "1300,950,850,800,750,700"},
+    ),
+    (
+        "vocabulary",
+        "project.ddd.json",
+        "/api/files-plan",
+        {"action": "create", "kind": "units", "name": "more"},
+    ),
+)
+"""A plan of every endpoint that makes one, over the shipped example it is answered for, each
+changing at least one file the revision read - ``files-plan``'s the description it appends to."""
+
+
+def _a_variable(tmp_path: Path) -> tuple[Api, str, dict[str, str]]:
+    """ValueE of the drifted demo, read in kHz by both its readers against its producer's Hz."""
+    return every_severity(tmp_path), "/api/variable", {"name": "ValueE"}
+
+
+def _a_unit(tmp_path: Path) -> tuple[Api, str, dict[str, str]]:
+    """Nm, stated by a reader its vocabulary does not list: an ``unknown-unit`` of its own."""
+    files = {**LISTED, "b.ddd.json": component("B", declare("input", "Speed", unit="Nm"))}
+    return opened(tmp_path, files), "/api/unit", {"name": "Nm"}
+
+
+def _a_type(tmp_path: Path) -> tuple[Api, str, dict[str, str]]:
+    """The external DriverStatus_t named directly by a declaration of examples/structures: a
+    ``type-kind`` whose note's copy is filed inside the type's own entry."""
+    api = opened_example(tmp_path, "structures", "project.ddd.json")
+    sensing = tmp_path / "structures" / "sensing.ddd.json"
+    text = sensing.read_text(encoding="utf-8")
+    replaced = text.replace('"typename": "Sensor_t"', '"typename": "DriverStatus_t"', 1)
+    sensing.write_text(replaced, encoding="utf-8")
+    assert api.session.poll()
+    return api, "/api/type", {"name": "DriverStatus_t"}
+
+
+def _a_constant(tmp_path: Path) -> tuple[Api, str, dict[str, str]]:
+    """TREND_SAMPLES of examples/vocabulary set to 0, a dimension no shape may take: a
+    ``dimension-value`` at the shape naming it."""
+    api = opened_example(tmp_path, "vocabulary", "project.ddd.json")
+    constants = tmp_path / "vocabulary" / "constants.ddd.json"
+    text = constants.read_text(encoding="utf-8")
+    constants.write_text(text.replace('"value": 16', '"value": 0'), encoding="utf-8")
+    assert api.session.poll()
+    return api, "/api/constant", {"name": "TREND_SAMPLES"}
+
+
+def _a_section(tmp_path: Path) -> tuple[Api, str, dict[str, str]]:
+    """.calib declared twice: a ``duplicate-section`` at its entry."""
+    sections = [
+        {"section": ".calib", "access": "read-only", "alignment": 4},
+        {"section": ".calib", "access": "read-write", "alignment": 8},
+    ]
+    files = {"p.ddd.json": project("P", "s.ddd.json"), "s.ddd.json": {"sections": sections}}
+    return opened(tmp_path, files), "/api/section", {"name": ".calib"}
+
+
+def _a_raster(tmp_path: Path) -> tuple[Api, str, dict[str, str]]:
+    """10ms declared twice: a ``duplicate-raster`` at its entry."""
+    return opened(tmp_path, DECLARED_TWICE), "/api/raster", {"name": "10ms"}
+
+
+PANELS: Final = (_a_variable, _a_unit, _a_type, _a_constant, _a_section, _a_raster)
+"""A panel of every kind that lists findings, each over a project carrying one of its own."""
+
+
+class TestEachRevisionIsResolvedOnce:
+    """Every path a revision names - its files', its findings' - is resolved once, by the
+    analysis that made it, and what the api derives of a revision is derived once, behind a lock
+    of its own: nothing answering a request about it resolves one of them again. While an analysis
+    runs, each system call waits out the analysis's turn of the interpreter, and at 100,000
+    declarations the first state of a revision made 45,403 of them, a plan resolved every file
+    again for its stamps, and a unit's panel 199,024 (counted on the Linux development PC over
+    100000-mixed-heavy, idle)."""
+
+    def test_the_first_state_of_a_revision_resolves_none_of_its_paths(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        api = opened_example(tmp_path, "demo", "demo.ddd.json")
+        asked = resolving(monkeypatch)
+        assert get(api, "/api/state").status == 200
+        assert asked == []
+
+    @pytest.mark.parametrize("panel", PANELS, ids=lambda panel: panel.__name__)
+    def test_a_panel_resolves_none_of_the_revisions_paths(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        panel: Callable[[Path], tuple[Api, str, dict[str, str]]],
+    ) -> None:
+        """Every file it names and every finding it lists is a path the revision names, resolved
+        already; once the revision is derived, as the first state of it derives it, a panel
+        resolves none again - the findings it keeps among those on its files included."""
+        api, path, query = panel(tmp_path)
+        assert get(api, "/api/state").status == 200
+        asked = resolving(monkeypatch)
+        reply = get(api, path, **query)
+        assert reply.status == 200, reply.body
+        assert reply.body["findings"]
+        assert asked == []
+
+    @pytest.mark.parametrize(("example", "description", "path", "query"), PLANS)
+    def test_each_plan_carries_the_revisions_own_stamps(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        example: str,
+        description: str,
+        path: str,
+        query: dict[str, str],
+    ) -> None:
+        """The very map the revision's derivation made, never one made again for the request: made
+        again, it resolved every file of the revision, each a system call per directory."""
+        api = opened_example(tmp_path, example, description)
+        revision = api.session.revision
+        assert revision is not None
+        carried: list[object] = []
+
+        def carrying(name: str) -> None:
+            real = getattr(api_module, name)
+
+            def spied(*arguments: Any) -> Any:
+                carried.append(arguments[-1])
+                return real(*arguments)
+
+            monkeypatch.setattr(api_module, name, spied)
+
+        for name in ("previewed", "preview", "planned"):
+            carrying(name)
+        asked = dict(query)
+        if "file" in asked:
+            asked["file"] = posix(tmp_path / example, asked["file"])
+        reply = get(api, path, **asked)
+        assert reply.status == 200, reply.body
+        stamps = api._derive(revision).stamps
+        assert carried
+        assert all(each is stamps for each in carried)
+
+    @pytest.mark.parametrize("example", ["demo", "structures", "vocabulary"])
+    def test_the_plan_stamps_are_each_files_fingerprint_by_resolved_path_as_they_were(
+        self, tmp_path: Path, example: str
+    ) -> None:
+        description = "demo.ddd.json" if example == "demo" else "project.ddd.json"
+        api = opened_example(tmp_path, example, description)
+        revision = api.session.revision
+        assert revision is not None
+        assert api._derive(revision).stamps == {
+            file.path.resolve(): file.fingerprint for file in revision.files
+        }
+
+    def test_the_stamps_of_a_project_reached_through_a_link_are_as_they_were(
+        self, tmp_path: Path
+    ) -> None:
+        """Opened through a second spelling of its directory, every file of the project is named
+        the way the loader resolves it, and the stamps are keyed so, as they were."""
+        write_tree(
+            tmp_path / "real",
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        directory_link(tmp_path / "link", tmp_path / "real")
+        session = Session(tmp_path / "link")
+        session.open(tmp_path / "link" / "p.ddd.json")
+        api = Api(session, tmp_path / "link" / "p.ddd.json", wait_seconds=0.05)
+        revision = session.revision
+        assert revision is not None
+        stamps = api._derive(revision).stamps
+        assert stamps == {file.path.resolve(): file.fingerprint for file in revision.files}
+        assert set(stamps) == {
+            (tmp_path / "real" / name).resolve() for name in ("p.ddd.json", "a.ddd.json")
+        }
+
+    def test_the_findings_are_grouped_by_file_as_they_were(self, tmp_path: Path) -> None:
+        """Every file of the drifted demo, spelled as the revision names it and spelled through
+        ``..``: the findings each is asked for are those it was asked for when each finding's
+        file was resolved as it was grouped."""
+        api = every_severity(tmp_path)
+        revision = api.session.revision
+        assert revision is not None
+        grouped = api._derive(revision).findings
+        before = FindingsByFile((filed.file, filed.diagnostic) for filed in revision.findings)
+        for file in revision.files:
+            through = file.path.parent / ".." / file.path.parent.name / file.path.name
+            for spelled in (file.path, through):
+                assert grouped.positions(spelled) == before.positions(spelled)
+                assert grouped.on(spelled) == before.on(spelled)
+        assert sum(1 for file in revision.files if grouped.positions(file.path)) == 4
+
+    def test_a_revision_is_derived_once_under_concurrent_first_requests(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The page's first requests of a revision, asked at once: the first derives it, held
+        there, and each other arrives at the derivation's lock - or at the derivation itself,
+        where nothing guards it - before the first is let go. Counted: one derivation, and every
+        answer the one a fresh api gives alone."""
+        api = opened_example(tmp_path, "demo", "demo.ddd.json")
+        paths = (
+            "/api/state",
+            "/api/findings",
+            "/api/graph",
+            "/api/types",
+            "/api/shared",
+            "/api/files",
+        )
+        arrived = threading.Semaphore(0)
+        going = threading.Event()
+        made: list[int] = []
+        real = api_module.derived
+
+        def held(revision: Revision) -> Derived:
+            made.append(revision.number)
+            arrived.release()
+            assert going.wait(timeout=10), "the test never let the derivation go"
+            return real(revision)
+
+        class Arriving:
+            """The derivation's lock, saying when a request arrives at it."""
+
+            def __init__(self, lock: Any) -> None:
+                self.lock = lock
+
+            def __enter__(self) -> None:
+                arrived.release()
+                self.lock.acquire()
+
+            def __exit__(self, *raised: object) -> None:
+                self.lock.release()
+
+        monkeypatch.setattr(api_module, "derived", held)
+        monkeypatch.setattr(api, "_deriving", Arriving(api._deriving))
+        answers: dict[str, Reply] = {}
+        threads = [
+            threading.Thread(
+                target=lambda path=path: answers.update({path: get(api, path)}), daemon=True
+            )
+            for path in paths
+        ]
+        try:
+            for thread in threads:
+                thread.start()
+            # Each request arrives at the lock, and the first at the derivation as well.
+            for _ in range(len(paths) + 1):
+                assert arrived.acquire(timeout=10), "a request never arrived"
+        finally:
+            going.set()
+            for thread in threads:
+                thread.join(timeout=10)
+        assert not any(thread.is_alive() for thread in threads)
+        assert made == [api.session.revision.number]
+        fresh = Api(api.session, api.project, wait_seconds=0.05)
+        assert {path: answers[path] for path in paths} == {path: get(fresh, path) for path in paths}
+
+    def test_a_request_holding_an_older_revision_derives_it_and_keeps_the_newer(
+        self, api: Api, root: Path
+    ) -> None:
+        """Answered from the revision it holds, as every request is, and keeping nothing: the
+        newer revision's derivation and the answers kept beside it stay."""
+        older = api.session.revision
+        assert older is not None
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        newer = api.session.revision
+        assert newer is not None and newer.number > older.number
+        kept = api._derive(newer)
+        graph = get(api, "/api/graph")
+        made = api._derive(older)
+        assert made.number == older.number and made is not kept
+        assert api._derive(newer) is kept
+        assert get(api, "/api/graph") is graph
+
+    def test_a_project_including_a_path_no_system_reads_is_answered(self, tmp_path: Path) -> None:
+        """Its state, and its findings: the path is resolved by the loader's own rule, which hands
+        such a path back as it is, where resolving it raised and the state answered a server
+        error."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b\u0000.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        state = get(api, "/api/state")
+        assert state.status == 200, state.body
+        assert [Path(file["path"]).name for file in state.body["files"]] == [
+            "a.ddd.json",
+            "b\u0000.ddd.json",
+            "p.ddd.json",
+        ]
+        findings = get(api, "/api/findings").body["findings"]
+        assert [(Path(found["file"]).name, found["check"]) for found in findings] == [
+            ("p.ddd.json", "file-not-found")
+        ]

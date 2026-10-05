@@ -4,9 +4,9 @@ import {
   CONTROLLER,
   driftFactor,
   driftMax,
+  driftMaxUnseen,
   openPanel,
   PUMP,
-  preserveStampOf,
   SENSOR_HUB,
 } from "./demo";
 import { expect, test } from "./fixtures";
@@ -30,13 +30,15 @@ test("a conversion drifted from outside is carried back from the producer", asyn
   // The server checks the disk for a change once a second (Session.poll_interval); the row
   // below already disagrees, since the panel reads it live from disk regardless, but a plan's
   // own fingerprint only carries the drifted bytes once the server has reanalysed - the same
-  // hazard project-units.spec.ts's "an apply made from a panel that is out of date" names, and
-  // this waits for it the same way, so the Apply below lands on a fingerprint it can act on.
-  const reanalysed = page.waitForResponse((response) =>
-    response.url().includes("/api/state?after="),
-  );
+  // hazard project-units.spec.ts's "an apply made from a panel that is out of date" names. The
+  // panel says when it has: the disagreement is then among its findings, which it lists from the
+  // revision it holds, and every plan it asks for after carries that revision's fingerprints,
+  // so the Apply below lands on one it can act on - whether that analysis landed before the page
+  // opened or after.
   const panel = await openPanel(page, gui.address, "ValueA");
-  await reanalysed;
+  await expect(
+    panel.getByRole("listitem").filter({ hasText: "definition-mismatch" }),
+  ).toBeVisible();
   await panel.getByRole("row", { name: /^conversion/ }).click();
   const field = panel.getByRole("combobox", { name: "Conversion of ValueA" });
   await expect(field).toHaveValue("linear ×0.5");
@@ -76,15 +78,15 @@ test("a limits row the panel opens by itself settles on the producer's range", a
   // table and the canvas both take, where no chooser is asked for by name.
   driftMax(gui.directory, CONTROLLER, "ValueA", 50);
   // As in the conversion journey: an Apply carries the fingerprint the analysis read the file
-  // at, so wait for the server to have reanalysed the drift before pressing it.
-  const reanalysed = page.waitForResponse((response) =>
-    response.url().includes("/api/state?after="),
-  );
+  // at, so wait until the panel lists the disagreement the drift brought - the revision it holds
+  // has read the drifted bytes then - before pressing it.
   await page.goto(gui.address);
   await page.getByRole("button", { name: "Controller", exact: true }).click();
   await page.getByRole("rowheader", { name: "ValueA" }).click();
-  await reanalysed;
   const panel = page.getByRole("complementary", { name: "ValueA" });
+  await expect(
+    panel.getByRole("listitem").filter({ hasText: "definition-mismatch" }),
+  ).toBeVisible();
 
   // The producer's own range, in the field and in the two fields under it - not the removal
   // two empty fields would ask for.
@@ -136,20 +138,16 @@ test("a change refused as stale can be applied again once the analysis has caugh
   await expect(apply).toBeEnabled();
 
   // The file changes under the page, between the preview it is holding and the press that sends
-  // it, so that preview is against the old bytes - made so deterministically now, rather than by
-  // racing the click: the write below is made without moving controller.ddd.json's modification
-  // time, so the session's own watcher (`stamped`, `session.py:518` - keyed on `(st_mtime_ns,
-  // st_size)`) never sees it, however long the run is between here and the click. Only a fresh
-  // read of the bytes does, which is the check an Apply itself makes: the fingerprint is the
-  // authority and the watcher only a convenience, which this pins rather than merely relying on
-  // - it used to fail this way on a slow CI runner and never here, the watcher having caught the
-  // change first and left nothing stale to refuse by the time the click above was processed.
-  // `driftMax` is asked for a replacement the same three digits wide as the value it replaces,
-  // so that the one part of the write left unstamped - the file's size - does not move either.
+  // it, so that preview is against the old bytes - made so deterministically, rather than by
+  // racing the click: the session's own watcher (`stamped`, `session.py` - keyed on
+  // `(st_mtime_ns, st_size)`) never sees the write `driftMaxUnseen` makes, which keeps both, so
+  // only a fresh read of the bytes does, which is the check an Apply itself makes: the
+  // fingerprint is the authority and the watcher only a convenience, which this pins rather than
+  // merely relying on. Written in place with its stamp put back after, the write stood visible
+  // for as long as putting the stamp back took, and a poll landing then re-analysed the project
+  // and left nothing stale to refuse - on a slow CI runner, never here.
   const path = join(gui.directory, CONTROLLER);
-  const restoreStamp = preserveStampOf(path);
-  driftMax(gui.directory, CONTROLLER, "ValueA", 999);
-  restoreStamp();
+  driftMaxUnseen(gui.directory, CONTROLLER, "ValueA", 999);
   await apply.click();
   await expect(panel.getByText("A file changed on disk")).toBeVisible();
 

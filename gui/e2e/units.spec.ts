@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONTROLLER, chooseUnit, drift, renameValueA } from "./demo";
+import { CONTROLLER, chooseUnit, drift, renameValueA, scrolledIntoView } from "./demo";
 import { expect, test } from "./fixtures";
 
 test("a disagreement written from outside is resolved from the component page", async ({
@@ -322,7 +322,9 @@ test("no page reports a violation of its content security policy", async ({ page
   // Types above, while the project's own tabs are still there to follow it from.
   await page.getByRole("link", { name: "Table" }).click();
   await page.getByRole("button", { name: "Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Show the values of CurveA" }).click();
+  const curveButton = page.getByRole("button", { name: "Show the values of CurveA" });
+  await scrolledIntoView(page, "Declarations of Controller", curveButton);
+  await curveButton.click();
   await expect(page.getByRole("textbox", { name: "element 1" })).toHaveValue("12");
   await page.getByRole("button", { name: "Back to Controller" }).click();
 

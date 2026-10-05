@@ -55,6 +55,7 @@ __all__ = [
     "Finding",
     "FindingCounts",
     "FindingRoute",
+    "FindingsReply",
     "FixOffered",
     "FixReply",
     "Found",
@@ -67,6 +68,7 @@ __all__ = [
     "Hunk",
     "IncludedEntryReply",
     "KindForm",
+    "ListedFinding",
     "Note",
     "OpenProject",
     "OpenRequest",
@@ -169,7 +171,8 @@ class SessionInfo(_Frozen):
     """The open project, or ``None`` while none is."""
 
     builds: tuple[BuildSummary, ...]
-    """The build records analysing the open project; empty while none names it or none is open."""
+    """The build records analysing the open project; empty while none names it, none is open, or
+    before its first analysis."""
 
 
 # --- GET /api/projects -------------------------------------------------------------------------
@@ -215,16 +218,17 @@ class Found(_Frozen):
 
 
 class FindingCounts(_Frozen):
-    """How many findings of each severity a file has."""
+    """How many findings of each severity there are - on a file, a module or a whole revision:
+    the field holding the counts says which."""
 
     error: int
-    """How many errors are filed on the file."""
+    """How many are errors."""
 
     warning: int
-    """How many warnings are filed on the file."""
+    """How many are warnings."""
 
     info: int
-    """How many informational findings are filed on the file."""
+    """How many are informational."""
 
 
 class SourceFile(_Frozen):
@@ -323,23 +327,69 @@ class UndoableEdit(_Frozen):
 
 
 class State(_Frozen):
-    """What ``GET /api/state`` answers: one revision of the open project."""
+    """What ``GET /api/state`` answers: the open project's newest revision, and whether an
+    analysis of it is asked for or running."""
 
     revision: int
-    """Counts up from 1 at every analysis; what a later ``?after=`` waits past."""
+    """Counts up from 1 at every analysis this session publishes; ``0`` before the open
+    project's first analysis, when ``files`` is empty and every count ``0``."""
+
+    version: int
+    """Counts up at every change of what this reply says - an analysis asked for, published or
+    failed, an edit or an undo written: what a later ``?after=`` waits past."""
 
     project: str
-    """Absolute, posix-separated path of the project description this revision analysed."""
+    """Absolute, posix-separated path of the open project's description: the one this revision
+    analysed, or the one its first analysis is reading while ``revision`` is ``0``."""
 
     files: tuple[SourceFile, ...]
     """Every file the analysis read, sorted by path."""
 
-    findings: tuple[Finding, ...]
-    """Every finding of the analysis, grouped by the file it is filed on."""
+    counts: FindingCounts
+    """How many findings of each severity the revision has, in all."""
 
     undoable: UndoableEdit | None
     """The last edit the interface made and has not put back, or ``None`` when it has made
     none: what makes the Undo control appear without a request of its own."""
+
+    analysing: bool
+    """Whether an analysis is asked for or running: the findings may be about to change."""
+
+    edits: int
+    """The last edit or undo this revision's analysis includes - every one numbered up to it was
+    on disk when the analysis read the files - ``0`` where there is none."""
+
+
+# --- GET /api/findings ---------------------------------------------------------------------
+
+
+class ListedFinding(Finding):
+    """A finding as ``GET /api/findings`` lists it: a page of a revision's findings comes
+    without the rest, so each says which it is."""
+
+    key: str
+    """Its file, severity, check, place and words, and which repeat of those it is, counted over
+    the whole revision in the Findings tab's order: a finding keeps its key on every page, under
+    every filter, and into the next revision where it stays."""
+
+
+class FindingsReply(_Frozen):
+    """What ``GET /api/findings`` answers: a page of the newest revision's findings, those the
+    filters leave, in the Findings tab's order - worst first, and within a severity in the
+    revision's own order."""
+
+    revision: int
+    """The revision these findings are of."""
+
+    total: int
+    """How many findings the filters leave, in all."""
+
+    offset: int
+    """Where among those this page starts: ``?offset=``, ``0`` when none was given."""
+
+    findings: tuple[ListedFinding, ...]
+    """The page: at most ``?limit=`` findings from ``offset`` on, or every one from it when no
+    limit was given - none where ``offset`` is past the last."""
 
 
 # --- GET /api/file -------------------------------------------------------------------------
@@ -604,8 +654,10 @@ class ProjectUnit(_Frozen):
     """The spelling, exactly: ``rpm`` and ``RPM`` are two units."""
 
     description: str | None
-    """What the vocabulary says it means, or ``None`` outside the vocabulary, without one, or
-    for an entry that is a spelling alone."""
+    """What the vocabulary says it means, or ``None`` outside the vocabulary, without one, for an
+    entry that is a spelling alone, and where no entry the analysis recorded listing it still lists
+    it there - an entry above taken out or put back since - until the analysis reads the file
+    again."""
 
     files: tuple[str, ...]
     """Absolute, posix-separated paths of the units files listing it; empty outside the
@@ -813,10 +865,14 @@ class ProjectType(_Frozen):
     """The type's name, as its entry spells it."""
 
     kind: str
-    """``scalar``, ``external`` or ``struct``; ``""`` for an entry whose file has drifted."""
+    """``scalar``, ``external`` or ``struct``; ``""`` for an entry whose file has drifted since the
+    analysis read it: one that no longer says its kind, and one whose place the analysis recorded
+    no longer names it - an entry above taken out or put back since - until the analysis reads the
+    file again."""
 
     description: str
-    """What the entry says it is; ``""`` where it says nothing."""
+    """What the entry says it is; ``""`` where it says nothing, and where its place no longer names
+    it, as for ``kind``."""
 
     uses: int
     """How many declarations and structure members name it."""
@@ -927,7 +983,10 @@ class SharedEntry(_Frozen):
     Composed per vocabulary on the server, by
     :attr:`ddd.project_shared.Vocabulary.states`, so the table learns nothing about what any one
     kind holds. ``value`` was the name while constants were alone in the tab and described a
-    section's cell wrongly on both counts - it is neither one value nor json text."""
+    section's cell wrongly on both counts - it is neither one value nor json text.
+
+    ``""`` where the place the analysis recorded no longer names the entry - an entry above taken
+    out or put back since - until the analysis reads its file again."""
 
     uses: int
     """How many shapes name it."""
@@ -1192,12 +1251,14 @@ class IncludedEntryReply(_Frozen):
     entry does: one naming a file a sub-project includes already brings a file that was read.
 
     The tab's own edit leaves such a row where the page asks for the entries again before a
-    revision made after the edit reaches it: ``POST /api/edit`` answers once the edit's own
-    revision is made, the page asks on that answer, and revisions come through
-    ``GET /api/state``, whose reply is built finding by finding. Measured, driving the built page
-    on a running ``ddd gui``: never, in eighteen creates and eighteen adds, on a copy of
-    ``examples/vocabulary``; every time, for 0.86 to 1.42 seconds, in eight creates and eight adds
-    on a project of 300 components and 18000 findings."""
+    revision made after the edit reaches it - as it can: ``POST /api/edit`` answers once the
+    edit's files are written, before their analysis, the page asks on that answer, and the
+    revision that analysis makes reaches the page through ``GET /api/state`` once it lands.
+    Measured while ``POST /api/edit`` still answered once the edit's own revision was made, and
+    ``GET /api/state`` carried every finding, driving the built page on a running ``ddd gui``:
+    never, in eighteen creates and eighteen adds, on a copy of ``examples/vocabulary``; every
+    time, for 0.86 to 1.42 seconds, in eight creates and eight adds on a project of 300 components
+    and 18000 findings."""
 
     findings: int
     """How many of the revision's findings, of every severity, are filed on the project
@@ -1496,9 +1557,12 @@ class UndoRequest(_Request):
 
 
 class UndoReply(_Frozen):
-    """What ``POST /api/undo`` answers: the revision the undo produced."""
+    """What ``POST /api/undo`` answers as soon as the files are put back, before any analysis of
+    them: the undo's own number."""
 
-    revision: int
+    edit: int
+    """The number the session gave this undo: a revision whose ``edits`` has reached it includes
+    it."""
 
 
 # --- GET /api/checks -----------------------------------------------------------------------
@@ -1610,10 +1674,12 @@ class EditedFile(_Frozen):
 
 
 class EditReply(_Frozen):
-    """What ``POST /api/edit`` answers: the new revision, and each file it wrote."""
+    """What ``POST /api/edit`` answers as soon as the edit is written, before any analysis of it:
+    its number, and each file it wrote."""
 
-    revision: int
-    """The revision the edit produced."""
+    edit: int
+    """The number the session gave this edit: a revision whose ``edits`` has reached it includes
+    it."""
 
     files: tuple[EditedFile, ...]
     """Every file the edit wrote."""
@@ -1643,6 +1709,7 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (Found, "serialization"),
     (OpenRequest, "validation"),
     (State, "serialization"),
+    (FindingsReply, "serialization"),
     (FileContent, "serialization"),
     (DictionaryReply, "serialization"),
     (GraphReply, "serialization"),

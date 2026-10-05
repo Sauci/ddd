@@ -8,11 +8,29 @@
  * and the wiring, which Playwright covers.
  */
 
-import { type Edge, MarkerType, type Node } from "@xyflow/react";
+import {
+  type Edge,
+  getViewportForBounds,
+  MarkerType,
+  type Node,
+  type NodeHandle,
+  Position,
+  type Viewport,
+} from "@xyflow/react";
 import type { KeyboardEvent } from "react";
 import type { GraphDisagreement, GraphFlow, GraphModule, GraphReply } from "../api/types";
-import { laidOut } from "./layout";
+import type { Placed } from "./layout";
 import { neighboursOf } from "./neighbours";
+import { NODE_HEIGHT, NODE_WIDTH } from "./nodeSize";
+
+/** React Flow's own default, given explicitly to `<ReactFlow>` so `openingViewport` always
+ * agrees with what it is deciding against (review fix round 1, Ruling T10-2). Pinned by the
+ * literal 0.5 in canvas.test.ts (review fix round 2, New Important 2). */
+export const MIN_ZOOM = 0.5;
+/** React Flow's own default `maxZoom`, which `<ReactFlow>` is left to use: `openingViewport` caps
+ * its fit at the same, so the view it opens on is one React Flow itself would allow. Pinned by
+ * the zoom of 2 in canvas.test.ts's capped fit. */
+const MAX_ZOOM = 2;
 
 /**
  * Everything the canvas hands one module's node.
@@ -68,25 +86,182 @@ export const STROKE: Record<ReturnType<typeof stateOf>, string> = {
   agreed: "var(--rule)",
 };
 
-/** Every module as a node, where the layout puts it, with what its box has to draw. */
+/**
+ * A layout's positions with the reader's saved ones laid over them: a saved position wins for
+ * its module, and every other one is left exactly where it was placed - the same substitution
+ * `laidOut` makes when it is given the saved positions directly (spec 5.1), done here instead
+ * because the worker that makes the layout (`gui/src/app/layoutWorker.ts`) always asks `laidOut`
+ * with none, so that its answer does not depend on which browser asks and can be reused for it
+ * unchanged. A saved position for a module the placement does not carry changes nothing, the
+ * same way `laidOut` itself ignores one for a module that no longer exists.
+ */
+export function withSavedPositions(
+  placed: readonly Placed[],
+  saved: Readonly<Record<string, { x: number; y: number }>>,
+): Placed[] {
+  return placed.map((at) => {
+    const position = saved[at.module.path];
+    return position === undefined ? at : { ...at, x: position.x, y: position.y };
+  });
+}
+
+/** A handle's own size, React Flow's own default for the `Handle` `ModuleNode.tsx` draws (its
+ * CSS, `@xyflow/react/dist/style.css`'s `.react-flow__handle`, not this page's own - nothing
+ * here can read that file's `width`/`height` back as a value, so this states it instead, the
+ * same way `.module`'s own CSS states `NODE_WIDTH`/`NODE_HEIGHT` back in a comment). Pinned by
+ * the literal 6 in canvas.test.ts. */
+const HANDLE_SIZE = 6;
+
+/**
+ * The two handles every module node carries from the moment it is first built - a target on the
+ * left, a source on the right, `ModuleNode.tsx`'s own two `<Handle>`s - derived from the node's
+ * own size and the handle's: centred on each vertical edge, `HANDLE_SIZE` square. Review fix
+ * round 2, Finding 7: without these (and `measured`, `nodesOf`'s own doc), React Flow cannot
+ * compute a node's `handleBounds` without first mounting it to measure the DOM - which it does
+ * for every node still missing them, regardless of `onlyRenderVisibleElements`, the one render
+ * `onlyRenderVisibleElements` is meant to spare a reader at all above `VISIBLE_ONLY_ABOVE`.
+ */
+function handlesOf(): NodeHandle[] {
+  const y = (NODE_HEIGHT - HANDLE_SIZE) / 2;
+  return [
+    {
+      type: "target",
+      position: Position.Left,
+      x: -HANDLE_SIZE / 2,
+      y,
+      width: HANDLE_SIZE,
+      height: HANDLE_SIZE,
+    },
+    {
+      type: "source",
+      position: Position.Right,
+      x: NODE_WIDTH - HANDLE_SIZE / 2,
+      y,
+      width: HANDLE_SIZE,
+      height: HANDLE_SIZE,
+    },
+  ];
+}
+
+/**
+ * Every placed module as a node, its data taken from `modules` as they are now rather than as
+ * they were when `placed` was made: a revision whose shape is unchanged keeps its placement
+ * (`shapeOf`, `gui/src/lib/shape.ts`) while its nodes still take the new counts and `loaded`, so
+ * a module never moves on screen because only its findings changed. A module `modules` no longer
+ * carries draws no node; one `placed` does not carry yet - a shape just grown, its fresh layout
+ * still being made - draws none either, until the layout that places it arrives.
+ *
+ * `measured` and `handles` are given from the start, every box the same known size
+ * (`NODE_WIDTH`/`NODE_HEIGHT`, `.module`'s own CSS) and the same two handles
+ * (`handlesOf`) - review fix round 2, Finding 7: without them, React Flow mounts every node at
+ * least once to measure it regardless of whether `onlyRenderVisibleElements` would otherwise
+ * have culled it, which at 3,333 modules peaked the DOM at all of them and cost two long tasks
+ * over 100 ms; with them, confirmed by hand, the peak falls to the few actually in view and
+ * neither task remains.
+ */
 export function nodesOf(
-  graph: GraphReply,
-  positions: Readonly<Record<string, { x: number; y: number }>>,
+  placed: readonly Placed[],
+  modules: readonly GraphModule[],
   onOpen: (path: string) => void,
 ): ModuleNodeType[] {
-  return laidOut(graph.modules, graph.flows, positions).map((at) => ({
-    id: at.module.path,
-    type: "module",
-    position: { x: at.x, y: at.y },
-    data: {
-      name: at.module.name,
-      loaded: at.module.loaded,
-      errors: at.module.findings.error,
-      warnings: at.module.findings.warning,
-      onOpen,
-      faded: false,
-    },
-  }));
+  const byPath = new Map(modules.map((module) => [module.path, module]));
+  return placed.flatMap((at) => {
+    const module = byPath.get(at.module.path);
+    if (module === undefined) return [];
+    return [
+      {
+        id: module.path,
+        type: "module" as const,
+        position: { x: at.x, y: at.y },
+        measured: { width: NODE_WIDTH, height: NODE_HEIGHT },
+        handles: handlesOf(),
+        data: {
+          name: module.name,
+          loaded: module.loaded,
+          errors: module.findings.error,
+          warnings: module.findings.warning,
+          onOpen,
+          faded: false,
+        },
+      },
+    ];
+  });
+}
+
+/** How far apart, as a fraction of the viewport, a fitted graph is left from its own edge - the
+ * same padding React Flow's own `fitView` would otherwise default to, so `openingViewport`
+ * decides in the same terms it does. Pinned by the literal 0.1 in canvas.test.ts. */
+const FIT_PADDING = 0.1;
+
+/** The smallest rectangle containing every placed module's own box. */
+function boundsOf(placed: readonly Placed[]): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  const left = Math.min(...placed.map((at) => at.x));
+  const top = Math.min(...placed.map((at) => at.y));
+  const right = Math.max(...placed.map((at) => at.x + NODE_WIDTH));
+  const bottom = Math.max(...placed.map((at) => at.y + NODE_HEIGHT));
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+/**
+ * Where the canvas should open, and what `Fit` returns it to - review fix round 2, item 1
+ * (continuing round 1's Ruling T10-2, which this replaces): applied as `defaultViewport` on React
+ * Flow's first mount, with `fitView` never asked for (`GraphPage`'s `fitView={false}`), rather
+ * than raced against it: `fitView` does not resolve until a `ResizeObserver` delivers every
+ * node's own measured size - a later task, not a guarantee about which of the two runs first
+ * (confirmed by hand: with another page brought to the front right after the click, the order
+ * reversed in most openings on a fresh server).
+ *
+ * `placed` is the placement *as drawn* - the reader's saved positions already laid over it
+ * (`withSavedPositions`), not the bare layout - so a module the reader moved is where this
+ * decides from, the same placement the canvas itself draws. `null` only when there is truly
+ * nothing to show: no module placed yet, or the canvas not yet measured.
+ *
+ * It is either the fit - every module in view, centred, `fitView`'s own result had it run - when
+ * the whole placement fits at `minZoom` or above, or, when it would not, the first rank instead:
+ * the modules at the lowest x anyone in `placed` sits at, the leftmost column the layout makes,
+ * centred at exactly `minZoom`. A layout wide enough for the first to fail (confirmed on
+ * 10000-many-clean, a long, shallow chain) leaves the *fitted*, clamped middle with no module in
+ * it at all - every module sits along one edge, not spread through the centre - which the first
+ * rank, by construction, never can.
+ *
+ * `size` is the canvas element's own measured box; `getViewportForBounds` is React Flow's own
+ * arithmetic for fitting a rectangle of world units into one of screen pixels, reused here so
+ * this answers in the same coordinate space `fitView` itself would, rather than a second,
+ * independently written formula that could disagree with it.
+ */
+export function openingViewport(
+  placed: readonly Placed[],
+  size: { width: number; height: number },
+  minZoom: number,
+): Viewport | null {
+  if (placed.length === 0 || size.width <= 0 || size.height <= 0) return null;
+  const bounds = boundsOf(placed);
+  const natural = getViewportForBounds(
+    bounds,
+    size.width,
+    size.height,
+    0,
+    Number.POSITIVE_INFINITY,
+    FIT_PADDING,
+  );
+  if (natural.zoom >= minZoom) {
+    return getViewportForBounds(bounds, size.width, size.height, minZoom, MAX_ZOOM, FIT_PADDING);
+  }
+  const leftmost = Math.min(...placed.map((at) => at.x));
+  const firstRank = placed.filter((at) => at.x === leftmost);
+  return getViewportForBounds(
+    boundsOf(firstRank),
+    size.width,
+    size.height,
+    minZoom,
+    minZoom,
+    FIT_PADDING,
+  );
 }
 
 /**

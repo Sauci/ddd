@@ -8,10 +8,13 @@ import {
   getVariable,
   postEdit,
 } from "../api/client";
+import { useUpdating } from "../app/updating";
+import { useDebounced } from "../app/useDebounced";
 import type { Offer } from "../components/UnitPanelView";
 import { VariablePanelView } from "../components/VariablePanelView";
 import { planEdit } from "../lib/projectUnits";
-import { type Refused, shownRefusal } from "../lib/refusals";
+import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
+import { planShown } from "../lib/typing";
 import { removeLabel, settleLabel } from "../lib/undo";
 import { editOf, outsideVocabulary, textOf } from "../lib/units";
 import {
@@ -24,6 +27,15 @@ import {
 } from "../lib/variableKeys";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
+import { UpdatingNote } from "../ui/UpdatingNote";
+
+/** What a settle's preview is asked for: the key, and the json text to settle it on - a unit's
+ * spelling, for one (`variableKeys.ts`'s own `startingRaw`) - `null` for "go from every
+ * declaration", a value in its own right rather than "nothing to ask" (spec 5.1). */
+interface SettleRequest {
+  selected: string;
+  target: string | null;
+}
 
 interface Props {
   name: string;
@@ -62,11 +74,17 @@ export function VariablePanel({
   onOpenConstant,
 }: Props) {
   const queries = useQueryClient();
+  const updating = useUpdating();
   const variable = useQuery({
     queryKey: ["variable", name, revision],
     queryFn: () => getVariable(name),
     placeholderData: (previous) => previous,
   });
+  // What the panel shows of that answer (`panelShows`): refused because a file an edit wrote has
+  // not been analysed yet, it says the findings are updating rather than the refusal, over the
+  // variable as it showed it, and never another variable's answer under this name.
+  const answer = panelShows(variable, (shown) => shown.name, name, updating);
+  const reply = answer.shown === "reply" ? answer.reply : undefined;
   // Spec 5.5: a variable renamed or removed on disk - or named by an address no file declares,
   // such as an old bookmark - is not declared any longer, and its panel closes. It says why on
   // the page it was beside rather than in a panel of its own, which is about to go. While a file
@@ -93,7 +111,7 @@ export function VariablePanel({
   // the variable's declarations - for the offer's sentence and the label its undo would carry.
   // `undefined` before the variable has loaded, or on the project screen, where `file` matches
   // none of them because there is none to match.
-  const from = variable.data?.declarations.find((entry) => entry.path === file)?.component;
+  const from = reply?.declarations.find((entry) => entry.path === file)?.component;
   // The reader's own choice of key, kept as a tri-state the way `chosen` below is: `undefined`
   // until they choose, `null` once they let a row go, a string for the key they picked.
   const [picked, setPicked] = useState<string | null | undefined>(undefined);
@@ -108,6 +126,13 @@ export function VariablePanel({
   // value the chooser starts on. Two empty fields are a removal, and a removal is something
   // the reader asks for, never where a row opens.
   const [edited, setEdited] = useState<{ min: string; max: string } | undefined>(undefined);
+  // Whether `edited`'s own value came from typing into Min or Max, rather than a pick from the
+  // list: `onChosen` below writes `edited` too, for a range picked outright or "state nothing"
+  // chosen, so `edited !== undefined` alone cannot tell a pick from typing (fix round 2's own
+  // finding - that read every limits pick as typing, and waited `PLAN_DELAY_MS` for one that
+  // should go through at once, the same as every other pick on this screen already does). Reset
+  // wherever `edited` itself is, so it never outlives the row it was made for.
+  const [typedLimits, setTypedLimits] = useState(false);
   const [changesShown, setChangesShown] = useState(false);
   // A refusal for a reason other than staleness - a type fixing this key, a kind that cannot
   // carry one, the engine's own rule - cleared whenever the reader chooses again, exactly as
@@ -128,8 +153,7 @@ export function VariablePanel({
   const [removalStale, setRemovalStale] = useState<Refused | null>(null);
   // What the table actually offers to settle (`kind` aside): what a key remembered from a
   // previous variable, or forced by `focusPicker`, has to be checked against before it is shown.
-  const rows =
-    variable.data === undefined ? [] : keyRows(variable.data, null).filter((row) => row.settleable);
+  const rows = reply === undefined ? [] : keyRows(reply, null).filter((row) => row.settleable);
   // The key actually shown: the reader's own choice, once made and still one the table lists;
   // else the first row that disagrees - spec 5.1's own order, and what a red arrow on the canvas
   // is about, since it opens this panel because something disagrees and a reader could settle it
@@ -147,23 +171,41 @@ export function VariablePanel({
   // the chooser says so instead of previewing something the reader did not ask for.
   const range =
     edited ??
-    (selected === undefined || variable.data === undefined
+    (selected === undefined || reply === undefined
       ? { min: "", max: "" }
-      : limitsOf(startingRaw(variable.data, selected)));
+      : limitsOf(startingRaw(reply, selected)));
   const broken = selected === "limits" ? limitsNote(range.min, range.max) : null;
   const target =
-    selected === undefined || variable.data === undefined || broken !== null
+    selected === undefined || reply === undefined || broken !== null
       ? null
       : selected === "limits"
         ? limitsRaw(range.min, range.max)
         : chosen === undefined
-          ? startingRaw(variable.data, selected)
+          ? startingRaw(reply, selected)
           : chosen;
+  // `target` is typed into directly while `selected` is `limits` (the two range fields commit on
+  // every keystroke, like every other plain field on this screen) and otherwise set discretely by
+  // a chooser's pick or Enter. `typedLimits` says which this one is (fix round 2: `selected` and
+  // `chosen`/`edited` alone cannot - a pick, including the first moment a `limits` row opens and
+  // reads its starting range, takes effect at once; only typing into Min or Max waits). `null`
+  // while there is nothing to ask for yet (`settleRequest`'s own doc); once there is, `target` on
+  // its own can still legitimately be `null` - "go from every declaration" - so the gate is
+  // `settleRequest` itself, never `target`.
+  const settleRequest: SettleRequest | null =
+    reply === undefined || selected === undefined || broken !== null ? null : { selected, target };
+  const askedSettle = useDebounced(settleRequest, typedLimits);
   const preview = useQuery({
-    queryKey: ["settle", name, selected, target, revision],
-    queryFn: () => getSettle(name, selected as string, target),
-    enabled: variable.data !== undefined && selected !== undefined && broken === null,
+    queryKey: ["settle", name, askedSettle, revision],
+    queryFn:
+      askedSettle === null
+        ? skipToken
+        : () => getSettle(name, askedSettle.selected, askedSettle.target),
   });
+  // The settle plan to draw, why its own fetch was refused if it was, and whether it may still
+  // change - `planShown`'s own, `lib/typing.ts` (review fix round 1): this screen has no
+  // separate `pending` flag of its own (unlike `UnitPanel`'s `Offer`), so `preview`/`refusal`
+  // below read `shownSettle` directly.
+  const shownSettle = planShown(askedSettle, settleRequest, preview);
   // Selecting a row starts that key afresh - what was chosen for the last one means nothing for
   // this one. Letting a row go is a choice too, not a blank: it must show the table alone even
   // while a row still disagrees, not hand the reader straight back to it.
@@ -172,6 +214,7 @@ export function VariablePanel({
     setChosen(undefined);
     setTyped(undefined);
     setEdited(undefined);
+    setTypedLimits(false);
     setChangesShown(false);
     setRefused(null);
   };
@@ -186,6 +229,7 @@ export function VariablePanel({
   // applied in its place.
   const onRange = (next: { min: string; max: string }) => {
     setEdited(next);
+    setTypedLimits(true);
     setTyped(undefined);
     setRefused(null);
   };
@@ -286,25 +330,38 @@ export function VariablePanel({
       ]),
   });
   // What the removal offers, drawn the same way `UnitPanel`'s own actions are: the plan asked
-  // for, why it - or applying it - was refused, and whether the plan shown is a placeholder.
+  // for, and why it - or applying it - was refused. Never pending: the plan is asked anew for
+  // each revision with nothing kept in its place (the query has no `placeholderData`), so a plan
+  // drawn - and Remove is drawn only beside one - is always this revision's own. While a
+  // revision's plan is asked for the first time there is none, and nothing to offer. Asked again
+  // after the panel's own Apply or Remove, the old one stays drawn while the panel is busy -
+  // until every query that edit asks again has answered - and the answer replaces it: refused,
+  // where the edit wrote this file, until that edit's analysis has landed.
   const removalOffer: Offer = {
     plan: removal.data ?? null,
     refusal:
       removalStale !== null
         ? shownRefusal(removalStale, revision)
         : (removalRefused ?? removal.error?.message ?? null),
-    pending: removal.isPlaceholderData,
+    pending: false,
   };
 
   if (undeclared) return null;
-  if (variable.isError) {
+  if (answer.shown === "refusal") {
     return (
       <Panel title={name} onClose={onClose}>
-        <Banner tone="error">{variable.error.message}</Banner>
+        <Banner tone="error">{answer.refusal}</Banner>
       </Panel>
     );
   }
-  if (variable.data === undefined || units.data === undefined) {
+  if (answer.shown === "updating") {
+    return (
+      <Panel title={name} onClose={onClose}>
+        <UpdatingNote updating />
+      </Panel>
+    );
+  }
+  if (reply === undefined || units.data === undefined) {
     return (
       <Panel title={name} onClose={onClose}>
         <p className="quiet">Reading {name}…</p>
@@ -313,8 +370,9 @@ export function VariablePanel({
   }
   return (
     <VariablePanelView
-      variable={variable.data}
+      variable={reply}
       units={units.data}
+      updating={updating}
       selected={selected}
       onSelect={select}
       onOpenType={onOpenType}
@@ -323,9 +381,7 @@ export function VariablePanel({
       // the note says why, rather than naming a value nothing would be settled on.
       typed={
         typed ??
-        (selected === undefined || broken !== null
-          ? ""
-          : labelOfRaw(variable.data, selected, target))
+        (selected === undefined || broken !== null ? "" : labelOfRaw(reply, selected, target))
       }
       // Never the target: opening the list on the producer's value must still list everything,
       // not just the entries that happen to contain it (spec 5.3, and part 1's own journey).
@@ -336,9 +392,14 @@ export function VariablePanel({
         setTyped(undefined);
         setRefused(null);
         // A range chosen from the list - one in play, or "state nothing", which empties them -
-        // is settled on by writing it into the two fields, since they are what is applied.
-        // It is the reader's own choice, so it counts as an edit of the fields.
-        if (selected === "limits") setEdited(limitsOf(raw));
+        // is settled on by writing it into the two fields, since they are what is applied. It is
+        // the reader's own choice, so it counts as an edit of the fields - a picked one, not a
+        // typed one: `typedLimits` stays `false`, so this takes effect at once, the same as
+        // every other pick here.
+        if (selected === "limits") {
+          setEdited(limitsOf(raw));
+          setTypedLimits(false);
+        }
       }}
       onPickerClosed={() => setTyped(undefined)}
       range={range}
@@ -350,14 +411,17 @@ export function VariablePanel({
           : undefined)
       }
       // Nothing is previewed while the fields say nothing to apply, whatever this key was
-      // previewed on before: the query is not asked, and an answer it kept is not shown.
-      preview={broken === null ? (preview.data ?? null) : null}
+      // previewed on before: the query is not asked, and an answer it kept is not shown. Nor is
+      // the debounced request's own answer, while it is not yet what `target` now says
+      // (`shownSettle.plan`) - that answer is an earlier target's, same as while any plan loads.
+      preview={broken === null ? shownSettle.plan : null}
       // A settlement refused is about the value that was asked for; while the fields make no
-      // value, nothing was asked, and the note is the whole of what the panel has to say.
+      // value, nothing was asked, and the note is the whole of what the panel has to say - nor
+      // once the fields have moved past the target this refusal was about (`shownSettle.refusal`).
       refusal={
         (stale !== null && stale.key === selected ? shownRefusal(stale, revision) : null) ??
         refused ??
-        (broken !== null || preview.error === null ? null : preview.error.message)
+        (broken !== null ? null : shownSettle.refusal)
       }
       changesShown={changesShown}
       onChangesShown={setChangesShown}

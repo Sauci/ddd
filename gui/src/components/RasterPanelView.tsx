@@ -6,6 +6,7 @@ import { baseName, consequence, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
+import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
 
 /** A change this panel applies: one of the raster's three keys, a rename, or its removal - the
@@ -45,8 +46,11 @@ export interface Offer {
   plan: PlanReply | null;
   /** Why the plan was refused, or why applying it was; `null` when neither was. */
   refusal: string | null;
-  /** The plan shown is an earlier one's, kept on screen while this one is asked for: any of the
-   * three keys, each of which changes with every key typed. It cannot be applied. */
+  /** Whether `plan` is `null` because there is none to trust yet: any of the three keys' own
+   * debounced request has not yet caught up with what the fields now say, or the server has not
+   * yet answered the one that has (`planShown`, `lib/typing.ts` - never an earlier request's
+   * answer, kept on screen in its place). `plan` is drawn, and Apply offered, only once this is
+   * `false`. */
   pending: boolean;
 }
 
@@ -86,6 +90,9 @@ export interface RasterPanelViewProps {
   /** Applying, or the server stopped: nothing can be changed or applied. */
   busy: boolean;
   onClose: () => void;
+  /** Whether the findings may be about to change (spec 6): the panel says so where it lists them,
+   * also while it lists none - an edit may be about to bring the first. */
+  updating?: boolean;
 }
 
 /** One raster's panel (spec 5.2 as this part extends it), drawn from what the api answered: a
@@ -211,6 +218,7 @@ export function RasterPanelView(props: RasterPanelViewProps) {
           </tbody>
         </table>
       )}
+      <UpdatingNote updating={props.updating === true} />
       {reply.findings.length > 0 && (
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(reply.findings)).map(([finding, key]) => (

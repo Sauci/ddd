@@ -7,13 +7,17 @@ import {
   postEdit,
   type RasterPlanRequest,
 } from "../api/client";
+import { useUpdating } from "../app/updating";
+import { useDebounced } from "../app/useDebounced";
 import { type Offer, type RasterAction, RasterPanelView } from "../components/RasterPanelView";
-import { type Refused, shownRefusal } from "../lib/refusals";
+import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planEdit, rasterRemovable, rasterSet } from "../lib/shared";
+import { planShown } from "../lib/typing";
 import { rasterLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
+import { UpdatingNote } from "../ui/UpdatingNote";
 import { refusalOf } from "./UnitPanel";
 
 interface Props {
@@ -41,19 +45,16 @@ interface Props {
  * bigger change than one more hook. `SharedPage`'s own add form relies on that spelling too - it
  * invalidates `` [`${declared}-plan`] `` from the kind itself, which is this key exactly.
  *
- * `keep` leaves the last plan on screen while the next is asked for, marked as a placeholder, for
- * each of the raster's three keys: all three change with every key typed, and only in the text
- * they write, so the line saying which file it changes would otherwise blink at every key.
+ * Keeps no placeholder while the next is asked for: each of the raster's three keys is debounced
+ * before `request` ever reaches this hook (`useDebounced`, spec §6), and `planShown`
+ * (`lib/typing.ts`) never trusts a placeholder's own answer, so one kept here would never be
+ * drawn - a `keep` option once did exactly that (fix round 2's own finding), which is why there
+ * is none now.
  */
-export function useRasterPlan(
-  request: RasterPlanRequest | null,
-  revision: number | undefined,
-  keep = false,
-) {
+export function useRasterPlan(request: RasterPlanRequest | null, revision: number | undefined) {
   return useQuery({
     queryKey: ["raster-plan", request, revision],
     queryFn: request === null ? skipToken : () => getRasterPlan(request),
-    placeholderData: (previous) => (keep ? previous : undefined),
   });
 }
 
@@ -62,6 +63,7 @@ export function useRasterPlan(
  * its findings, and a spelling to rename it to (spec 5.2). */
 export function RasterPanel({ name, revision, stopped, onClose, onGone, onMoved, onOpen }: Props) {
   const queries = useQueryClient();
+  const updating = useUpdating();
   const reply = useQuery({
     queryKey: ["raster", name, revision],
     queryFn: () => getRaster(name),
@@ -94,7 +96,10 @@ export function RasterPanel({ name, revision, stopped, onClose, onGone, onMoved,
   // until a later revision arrives, exactly as `SectionPanel`'s own `staleFailed`.
   const [staleFailed, setStaleFailed] = useState<({ action: RasterAction } & Refused) | null>(null);
 
-  const entry = reply.data;
+  // What the panel shows of that answer (`panelShows`): a raster just added or renamed is refused
+  // until its file is analysed again, and the panel says the findings are updating meanwhile.
+  const answer = panelShows(reply, (shown) => shown.name, name, updating);
+  const entry = answer.shown === "reply" ? answer.reply : undefined;
   const draftEvent = event !== undefined && event !== entry?.event ? event : null;
   const draftCycle = cycle !== undefined && cycle !== entry?.cycle ? cycle : null;
   const draftDescription =
@@ -129,12 +134,23 @@ export function RasterPanel({ name, revision, stopped, onClose, onGone, onMoved,
     rename: Extract<RasterPlanRequest, { action: "rename" }> | null;
     remove: Extract<RasterPlanRequest, { action: "remove" }> | null;
   };
+  // Event, cycle, description and rename each commit on every keystroke - plain fields, every
+  // one - so each is debounced on its own (spec §6): a field's first ask is immediate, and only
+  // one asked of before waits. Remove is never typed into - it is offered outright once nothing
+  // names the raster any longer - so `asked.remove` is `requests.remove` itself.
+  const asked: Record<RasterAction, RasterPlanRequest | null> = {
+    event: useDebounced(requests.event),
+    cycle: useDebounced(requests.cycle),
+    describe: useDebounced(requests.describe),
+    rename: useDebounced(requests.rename),
+    remove: requests.remove,
+  };
   const plans = {
-    event: useRasterPlan(requests.event, revision, true),
-    cycle: useRasterPlan(requests.cycle, revision, true),
-    describe: useRasterPlan(requests.describe, revision, true),
-    rename: useRasterPlan(requests.rename, revision),
-    remove: useRasterPlan(requests.remove, revision),
+    event: useRasterPlan(asked.event, revision),
+    cycle: useRasterPlan(asked.cycle, revision),
+    describe: useRasterPlan(asked.describe, revision),
+    rename: useRasterPlan(asked.rename, revision),
+    remove: useRasterPlan(asked.remove, revision),
   };
   const apply = useMutation({
     mutationFn: (action: RasterAction) => {
@@ -187,23 +203,38 @@ export function RasterPanel({ name, revision, stopped, onClose, onGone, onMoved,
       if (error === null && action === "describe") setDescription(undefined);
     },
   });
-  /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for. */
-  const offer = (action: RasterAction): Offer => ({
-    plan: plans[action].data ?? null,
-    refusal:
-      staleFailed?.action === action
-        ? shownRefusal(staleFailed, revision)
-        : failed?.action === action
-          ? failed.message
-          : (plans[action].error?.message ?? null),
-    pending: plans[action].isPlaceholderData,
-  });
+  /** Where a change stands: its plan, and why it was refused - on Apply, else when asked for.
+   * `plan`/`refusal`/`pending` are `planShown`'s own, `lib/typing.ts` (review fix round 1):
+   * `null`/`null`/pending while the debounced request has not caught up with what the fields now
+   * say, or while the answer is an earlier request's kept as a placeholder - never a plan, nor
+   * its own fetch refusal, for text the reader has since typed past. A stale or a plain apply
+   * failure takes precedence, as it always did. */
+  const offer = (action: RasterAction): Offer => {
+    const shown = planShown(asked[action], requests[action], plans[action]);
+    return {
+      plan: shown.plan,
+      refusal:
+        staleFailed?.action === action
+          ? shownRefusal(staleFailed, revision)
+          : failed?.action === action
+            ? failed.message
+            : shown.refusal,
+      pending: shown.pending,
+    };
+  };
 
   if (gone) return null;
-  if (reply.isError) {
+  if (answer.shown === "refusal") {
     return (
       <Panel title={name} onClose={onClose}>
-        <Banner tone="error">{reply.error.message}</Banner>
+        <Banner tone="error">{answer.refusal}</Banner>
+      </Panel>
+    );
+  }
+  if (answer.shown === "updating") {
+    return (
+      <Panel title={name} onClose={onClose}>
+        <UpdatingNote updating />
       </Panel>
     );
   }
@@ -217,6 +248,7 @@ export function RasterPanel({ name, revision, stopped, onClose, onGone, onMoved,
   return (
     <RasterPanelView
       reply={entry}
+      updating={updating}
       event={event ?? entry.event}
       onEvent={(text) => {
         setEvent(text);

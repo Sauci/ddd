@@ -35,6 +35,7 @@ function PanelStory({ reply, renameTo: renameSeed = null, renameRefusal, removeP
       reply={reply}
       access={access}
       onAccess={setAccess}
+      onAccessPicked={setAccess}
       alignment={alignment}
       onAlignment={setAlignment}
       description={description}

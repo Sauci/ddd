@@ -172,6 +172,45 @@ tr.changing td {
   padding: 0;
   list-style: none;
 }
+/* "Updating the findings…" (spec 6), said quietly where a panel or the values grid lists its
+   findings, and above a component's. Its line is always held - a space of no width before its
+   words, as the heading's own below - and its words are cut short rather than wrapped onto a
+   second: their coming and going never move what is below them, an offer and its Apply among it
+   (Ruling T12b-1). */
+.updating-note {
+  margin: var(--space-2) 0 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
+.updating-note::before {
+  content: "\200b";
+}
+/* The heading's own (`UpdatingStatus`), last in the heading's row. It needs no room on its line:
+   its basis and its least width are nothing, and a margin gives back the row's gap before it, its
+   words indented by as much - so it never starts a line of its own, empty or not, beside the open
+   Undo strip's own line too, or after a line its items filled. It takes what room its line has
+   left, cut short rather than wrapped, and always holds a line - a space of no width before its
+   words - so it sits on the baseline the same way empty as with them: their coming and going
+   never change the heading's height, or move what is below it. */
+.heading > .updating-status {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 1.5em;
+  margin: 0 0 0 calc(-1 * var(--space-3));
+  overflow: hidden;
+  text-indent: var(--space-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+  line-height: 1.5;
+}
+.heading > .updating-status::before {
+  content: "\200b";
+}
 .panel-refusal {
   margin: var(--space-2) 0 0;
   color: var(--warning);
@@ -366,6 +405,121 @@ tr.changing td {
   padding-left: calc(10px + var(--space-4));
 }
 
+/* Every long table but the Findings one (part 17's task 9, design §6; fix rounds 1 and 2 corrected
+   the prose below): wrapped in React Aria's own Virtualizer and TableLayout, which positions each
+   row and cell itself at ROW_HEIGHT (lib/findingsWindow.ts) rather than leaving them to normal
+   document flow - so, unlike a plain table, this box has to say it scrolls, and a cell has to
+   clip what overflows its one line (the next rule but one's own doc says what actually clips it).
+   A short table stays no taller than its rows; `max-height` only bites once a long one's rows
+   exceed it. A row brought into view from above - the keyboard walking up past the box's own top -
+   used to stop exactly under the sticky header, hidden behind it rather than below it; the same
+   `scroll-padding-top` as `.findings-window`'s own (further down this file), one row tall, now
+   keeps it clear. */
+.react-aria-Table.long {
+  display: block;
+  max-height: 60vh;
+  overflow: auto;
+  scroll-padding-top: 33px;
+}
+/* `isVirtualized` (react-aria-components' Table.mjs) draws a `div` for every row, column and cell
+   here rather than a `tr`/`td`/`th` - position and sizing are not this table's own doing but each
+   div's own wrapper's (the next rule's own doc) - so centring a line the way `.findings-window`
+   does, with `vertical-align` on a real table cell, has nothing to act on. `height: 100%` of the
+   wrapper's own, fixed by the layout, is what makes a cell as tall as its row rather than only as
+   tall as the one line inside it - without it, a cell's own rule sits under its text rather than
+   at the row's own foot, and the selected tint stops short of the row's own edge (fix round 1,
+   Important 1 - filestableview--a-pattern-with-its-matched-files, typestableview--selected and
+   others each showed it). `display: block; align-content: center` centres that one line instead
+   of `display: flex` (fix round 2, Important 1): a flex container puts its text in an anonymous
+   flex item, which neither shrinks nor takes `text-overflow`, so a cell's own ellipsis became a
+   hard clip, `.stated`'s own `text-align: right` (below) stopped applying, and the space in a
+   `<span>` beside a link - "rpm, from Speed_t" - was dropped between flex items ("rpm,
+   fromSpeed_t"). `align-content` centres a block container's own content along the block axis in
+   Chromium 123+ (probed headless, kept the centring and all three of the above) - every browser
+   this page's own gates run under, Chromium or a channel of it (`gui/playwright.config.ts`). */
+.react-aria-Table.long .react-aria-Column,
+.react-aria-Table.long .react-aria-Cell {
+  height: 100%;
+  padding-block: 0;
+  display: block;
+  align-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* Each row and each cell is wrapped by React Aria's own VirtualizerItem in a div of its own
+   (react-aria's own private/virtualizer/VirtualizerItem.mjs), positioned absolutely (or sticky for
+   the header) and sized to the layout's rect - that wrapper, not `Table.mjs`, is what is
+   positioned out of flow here; `isVirtualized` only decides there that a `div` is drawn rather
+   than a `tr`/`td`. The wrapper does not clip, though: `TableLayout` builds every row and cell
+   through `ListLayout`'s own `buildChild` (react-stately's own private/layout/ListLayout.mjs),
+   which sets `allowOverflow = true` on each one regardless, and `VirtualizerItem` reads that into
+   `overflow: visible` on the wrapper. What clips a cell's own text to its one line is the cell's
+   own `overflow: hidden`, in the rule just above (fix round 2, Important 6b) - only the header
+   group's and the body rowgroup's own wrappers clip, built directly rather than through
+   `buildChild`, so `allowOverflow` is never set on them. A row given no height of its own still
+   draws at zero height itself, since an absolutely positioned child - every cell's own wrapper -
+   does not count toward it: invisible to anything that asks the row for its own box rather than a
+   cell's, which is what left this undiscovered until a journey tried to click one by its row
+   (`getByRole("row", ...).click()`, Playwright's own actionability check, measured failing
+   "element is not visible" against a row whose `getBoundingClientRect()` read `h: 0`) - a
+   screenshot alone never would have, since a screenshot shows the cells, each sized by its own
+   wrapper regardless of the row's own height, not the row's own box. `[role="row"]`, not
+   `.react-aria-Row`: the header's own row carries no class at all (`useTableHeaderRow.mjs` sets
+   `role: 'row'` and nothing else), so a selector naming only the body's class would leave it at
+   zero height too. */
+.react-aria-Table.long [role="row"] {
+  height: 100%;
+}
+/* The header group - not the header row itself - is `isSticky` in the layout TableLayout itself
+   builds (`buildTableHeader`, react-stately's own TableLayout.mjs: the `'header'` node, one per
+   table, not the `'headerrow'` nodes under it) - pinned at the box's own top through a scroll,
+   exactly the way `.findings-window`'s hand-built one is kept, but a sticky element occludes
+   nothing behind it unless it is given a background of its own: without one, a row scrolled to the
+   top painted straight through the header's own words (measured, by hand, scrolling the Table
+   tab's 3,333 rows - a screenshot never would have, since no story here is ever scrolled). */
+.react-aria-Table.long .react-aria-Column {
+  background: var(--surface);
+}
+/* Fix round 1, Important 2: each cell is the only child of its own wrapper (the doc two rules up),
+   so `:first-child` above - right for every other table here, whose cells are real siblings in one
+   row - holds for all of a long table's cells, not only the first column's. Reset it here and
+   match the first column again by `aria-colindex`, which React Aria sets on every cell regardless
+   of how many wrap it (react-aria's own private/grid/useGridCell.mjs). */
+.react-aria-Table.long .react-aria-Cell:first-child {
+  box-shadow: none;
+  padding-left: 10px;
+}
+.react-aria-Table.long .react-aria-Row.has-error .react-aria-Cell[aria-colindex="1"] {
+  box-shadow: inset 3px 0 var(--error);
+}
+.react-aria-Table.long .react-aria-Row.child .react-aria-Cell[aria-colindex="1"] {
+  padding-left: calc(10px + var(--space-4));
+}
+/* A name longer than its column is cut with an ellipsis, never wrapped (Ruling T9-6): a long
+   table's cells do that to their own text (the cell rule further up). A row header holding its name
+   as a button - the Table tab's Component, the one long table that does - needs the same said to
+   the button: a button is an inline-block, which a cell's ellipsis does not cut, so Chrome left an
+   overlong name clipped at the cell's edge with no ellipsis at all (measured, in a 110px cell).
+   Measured too: a name that fits stands exactly where it stood before this rule. */
+.react-aria-Table.long .react-aria-Cell[role="rowheader"] > button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The unit panel's own places table draws through `LongTable` now (fix round 1, Minor 5),
+   `.panel-declarations` merged onto `.long` for this margin above and this look - but
+   `.react-aria-Column` is a div, never a `th`, so `.panel-declarations th`'s own rule above never
+   reaches its text; put back here, at the body's own size rather than `.react-aria-Column`'s
+   smaller default. Five other tables (SectionPanelView, ConstantPanelView, TypePanelView,
+   RasterPanelView, CompareView) still draw `.panel-declarations` on a plain, unvirtualised
+   `<table>` of their own, where `.panel-declarations th`'s own rule already reaches a real `<th>`
+   and still draws its header at this same size - this rule is only for a `.react-aria-Column`
+   `.panel-declarations` was never written for. */
+.long.panel-declarations .react-aria-Column {
+  font-size: var(--text-body);
+}
+
 /* The Units tab (docs/superpowers/specs/2026-09-19-gui-units-project-design.md, 5): the table's
    spelling in bold and its count to the right; a unit's panel - its sub-heading, each change it
    offers set apart, the Description field and the line under the rename; and the adoption
@@ -437,13 +591,56 @@ tr.changing td {
   margin: var(--space-2) 0 0;
 }
 
-/* The Findings tab (spec 5.1, 5.2): the table has no fixed column widths, so pinning the file
-   column - quiet already - to one line, beside the chip's own rule above, leaves the message
-   column the only one that can still shrink; that is what makes it take the width the other two
-   leave and wrap there instead of overflowing. A note in a finding's panel indents under the
-   message it is about. */
+/* The Compare tab's table of findings (CompareTableView): it has no fixed column widths, so
+   pinning the file column - quiet already - to one line, beside the chip's own rule above, leaves
+   the message column the only one that can still shrink; that is what makes it take the width
+   the other two leave and wrap there instead of overflowing. A note in a finding's panel indents
+   under the message it is about. */
 .react-aria-Table[aria-label="Findings"] .react-aria-Cell.quiet {
   white-space: nowrap;
+}
+/* The Findings tab's table (spec 5.1; part 17's ruling 1): a window of its rows in a box of its
+   own, which the page's arithmetic places by ROW_HEIGHT and reckons at BOX_HEIGHT
+   (lib/findingsWindow.ts, whose test reads these two numbers here) - so every row is one line of
+   exactly that height, at a width set per column, its words cut short with an ellipsis where they
+   run over, since the panel shows a finding in full. The header stays at the top of the box, and
+   a row the keyboard brings into view stops below it rather than under it. The box does not
+   anchor its scrolling to a row: the rows drawn change as it scrolls, and the space above them
+   already stands for every row before them. */
+.findings-window {
+  max-height: 495px;
+  overflow-y: auto;
+  overflow-anchor: none;
+  scroll-padding-top: 33px;
+}
+.findings-window .react-aria-Table {
+  table-layout: fixed;
+}
+.findings-window .react-aria-TableHeader {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.findings-window .react-aria-Row,
+.findings-window .react-aria-TableHeader tr {
+  height: 33px;
+}
+.findings-window .react-aria-TableHeader .react-aria-Column,
+.findings-window .react-aria-Row .react-aria-Cell {
+  padding-block: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+.findings-window .react-aria-TableHeader .react-aria-Column {
+  background: var(--surface);
+}
+.findings-window .react-aria-Column.check {
+  width: 10.5rem;
+}
+.findings-window .react-aria-Column.file {
+  width: 11rem;
 }
 .panel-notes {
   display: flex;

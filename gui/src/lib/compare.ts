@@ -43,10 +43,9 @@ export interface CompareRow extends FindingRow {
 }
 
 /** The Compare tab's own rows: `reply.findings` and `reply.baseline_findings` combined, worst
- * first, each carrying which one it came from. `findingRows` cannot build these - a `State`'s
- * own findings are only ever the open project's, one field, no second kind to tell apart - so
- * this reasons the same way (`keyedFindings`, then the Findings tab's own severity order) rather
- * than reusing it. The File column names a baseline row as the baseline's own, plainly: its file
+ * first, each carrying which one it came from - keyed by `keyedFindings`, in the Findings tab's
+ * own severity order, the order `GET /api/findings` answers the open project's own findings in.
+ * The File column names a baseline row as the baseline's own, plainly: its file
  * can display with the very name one of the candidate's own files has (comparing a project
  * against itself is legal), and `sensor_hub.ddd.json` alone would then read as the reader's own
  * file rather than the baseline's. */

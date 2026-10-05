@@ -17,14 +17,14 @@ from urllib.parse import quote
 import pytest
 
 import ddd
-from conftest import EXAMPLES, component, declare, project, write_tree
+from conftest import EXAMPLES, Gated, begun, component, declare, project, stopped, write_tree
 from ddd.cli import EXIT_OK, EXIT_USAGE
 from ddd.editing import fingerprint
 from ddd.gui import api as api_module
 from ddd.gui import server as module
 from ddd.gui.api import Api, Reply
 from ddd.gui.server import MAX_BODY, GuiServer, is_loopback, run, static_directory
-from ddd.gui.session import Session
+from ddd.gui.session import Revision, Session
 
 FOREIGN_COOKIES = ('prefs={"lang":"en"}', "arr[0]=1", "user@site=1", "lonely")
 """Cookies other apps on 127.0.0.1 leave in a browser, which sends them to every port."""
@@ -56,6 +56,28 @@ def project_file(tmp_path: Path) -> Path:
         },
     )
     return tmp_path / "project" / "p.ddd.json"
+
+
+def bounded_run(*arguments: Any, **keywords: Any) -> int:
+    """``run``, on a thread of its own joined with a timeout: where it starts the analyser, it
+    stops by joining that thread without one, and an analysis that never ends fails the test
+    rather than hanging the suite."""
+    outcome: list[int | BaseException] = []
+
+    def running() -> None:
+        try:
+            outcome.append(run(*arguments, **keywords))
+        except BaseException as error:  # handed to the test's own thread, which raises it
+            outcome.append(error)
+
+    thread = threading.Thread(target=running, name="run", daemon=True)
+    thread.start()
+    thread.join(timeout=10)
+    assert not thread.is_alive(), "run did not return"
+    (answer,) = outcome
+    if isinstance(answer, BaseException):
+        raise answer
+    return answer
 
 
 def serving(api: Api, static: Path) -> Iterator[GuiServer]:
@@ -113,6 +135,22 @@ class TestSigningIn:
         assert response.getheader("Set-Cookie") == (
             f"ddd-gui-{server.port}={server.token}; HttpOnly; SameSite=Strict; Path=/"
         )
+
+    def test_a_project_being_analysed_signs_in_to_its_own_page(
+        self, project_file: Path, pages: Path
+    ) -> None:
+        session = Gated(project_file.parent)
+        session.start()
+        try:
+            session.open(project_file)
+            begun(session)
+            for server in serving(Api(session, project_file), pages):
+                response, _ = ask(server, "GET", f"/open?token={server.token}", signed_in=False)
+                assert (response.status, response.getheader("Location")) == (303, "/project")
+                assert session.revision is None
+        finally:
+            session.gate.set()
+            stopped(session)
 
     def test_without_an_open_project_the_redirect_is_to_the_start_page(
         self, project_file, pages
@@ -471,7 +509,9 @@ def answered(
 
 @pytest.fixture
 def demo(tmp_path: Path, pages: Path) -> Iterator[tuple[GuiServer, Path]]:
-    """ddd gui serving a copy of examples/demo, and where the copy is."""
+    """ddd gui serving a copy of examples/demo, and where the copy is: at revision 2, opening
+    making two analyses of the demo, since it does not stamp its sub-project's own component
+    before the first reads it."""
     root = tmp_path / "demo"
     shutil.copytree(EXAMPLES / "demo", root)
     session = Session(root)
@@ -504,7 +544,7 @@ class TestEveryEndpointOnTheDemo:
         server, root = demo
         body = answered(server, "POST", "/api/open", {"path": f"{root.as_posix()}/demo.ddd.json"})
         assert body["project"]["name"] == "DemoDevice"
-        assert answered(server, "GET", "/api/state")["revision"] == 2
+        assert answered(server, "GET", "/api/state")["revision"] == 4
 
     def test_the_state_lists_the_components_loaded_and_clean(self, demo) -> None:
         server, _ = demo
@@ -512,9 +552,11 @@ class TestEveryEndpointOnTheDemo:
         components = [f for f in body["files"] if f["kind"] == "component"]
         assert {f["name"] for f in components} == self.COMPONENTS
         assert all(f["loaded"] and f["findings"]["error"] == 0 for f in components)
-        assert not [f for f in body["findings"] if f["severity"] == "error"]
-        waited = answered(server, "GET", f"/api/state?after={body['revision']}")
-        assert waited["revision"] == body["revision"]
+        assert body["counts"]["error"] == 0
+        findings = answered(server, "GET", "/api/findings")["findings"]
+        assert not [f for f in findings if f["severity"] == "error"]
+        waited = answered(server, "GET", f"/api/state?after={body['version']}")
+        assert (waited["version"], waited["revision"]) == (body["version"], body["revision"])
 
     def test_a_component_is_read_with_its_fingerprint(self, demo) -> None:
         server, root = demo
@@ -526,7 +568,7 @@ class TestEveryEndpointOnTheDemo:
     def test_the_dictionary_is_the_demos(self, demo) -> None:
         server, _ = demo
         body = answered(server, "GET", "/api/dictionary")
-        assert (body["revision"], body["dictionary"]["name"]) == (1, "DemoDevice")
+        assert (body["revision"], body["dictionary"]["name"]) == (2, "DemoDevice")
 
     def test_the_checks_are_listed(self, demo) -> None:
         server, _ = demo
@@ -565,12 +607,12 @@ class TestEveryEndpointOnTheDemo:
         after = controller.read_bytes()
         assert after == before.replace(b'"unit": "%"', b'"unit": "rpm"', 1)
         assert body == {
-            "revision": 2,
+            "edit": 1,
             "files": [{"path": controller.as_posix(), "fingerprint": fingerprint(after)}],
         }
-        state = answered(server, "GET", "/api/state")
+        findings = answered(server, "GET", "/api/findings")["findings"]
         disagreeing = {
-            Path(f["file"]).name for f in state["findings"] if f["check"] == "definition-mismatch"
+            Path(f["file"]).name for f in findings if f["check"] == "definition-mismatch"
         }
         assert disagreeing == {"controller.ddd.json", "sensor_hub.ddd.json"}
 
@@ -693,8 +735,22 @@ class TestAProjectWithAFileThatDoesNotParse:
         files = {Path(f["path"]).name: f for f in body["files"]}
         assert (files["a.ddd.json"]["loaded"], files["b.ddd.json"]["loaded"]) == (True, False)
         assert files["b.ddd.json"]["findings"]["error"] == 1
-        why = [f for f in body["findings"] if f["file"] == (root / "b.ddd.json").as_posix()]
+        findings = answered(server, "GET", "/api/findings")["findings"]
+        why = [f for f in findings if f["file"] == (root / "b.ddd.json").as_posix()]
         assert [f["check"] for f in why] == ["json-syntax"]
+
+    def test_its_findings_are_asked_a_page_at_a_time_through_the_address(self, broken) -> None:
+        """The query read off the request line - a file's path encoded as the page encodes it -
+        and a query the endpoint refuses, refused in its own sentence."""
+        server, root = broken
+        b = quote((root / "b.ddd.json").as_posix(), safe="")
+        page = answered(server, "GET", f"/api/findings?offset=0&limit=1&file={b}")
+        assert (page["total"], [f["check"] for f in page["findings"]]) == (1, ["json-syntax"])
+        refused = answered(server, "GET", "/api/findings?limit=0", status=400)
+        assert refused == {
+            "error": "bad-request",
+            "message": "findings takes ?limit= as a whole number from 1",
+        }
 
     def test_the_file_is_answered_as_the_reason_it_does_not_parse(self, broken) -> None:
         server, root = broken
@@ -842,6 +898,7 @@ class TestRunning:
             created.append(self)
 
         monkeypatch.setattr(GuiServer, "__init__", binds_loopback_but_reports_beyond_it)
+        monkeypatch.setattr(Session, "start", lambda self: None)
         monkeypatch.setattr(Session, "start_polling", lambda self: None)
         monkeypatch.setattr(Session, "stop", lambda self: None)
         monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
@@ -878,6 +935,7 @@ class TestRunning:
             return [(family, kind, 0, "", ("127.0.0.1", port))]
 
         monkeypatch.setattr(module.socket, "getaddrinfo", getaddrinfo)
+        monkeypatch.setattr(Session, "start", lambda self: None)
         monkeypatch.setattr(Session, "start_polling", lambda self: None)
         monkeypatch.setattr(Session, "stop", lambda self: None)
         monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
@@ -947,6 +1005,7 @@ class TestRunning:
 
         monkeypatch.setattr(module.socket, "getaddrinfo", getaddrinfo)
         monkeypatch.setattr(GuiServer, "__init__", binds_loopback_for_real)
+        monkeypatch.setattr(Session, "start", lambda self: None)
         monkeypatch.setattr(Session, "start_polling", lambda self: None)
         monkeypatch.setattr(Session, "stop", lambda self: None)
         monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
@@ -967,6 +1026,7 @@ class TestRunning:
         opened: list[str] = []
         stopped: list[bool] = []
         monkeypatch.setattr(module.webbrowser, "open", opened.append)
+        monkeypatch.setattr(Session, "start", lambda self: None)
         monkeypatch.setattr(Session, "start_polling", lambda self: None)
         monkeypatch.setattr(Session, "stop", lambda self: stopped.append(True))
 
@@ -984,6 +1044,56 @@ class TestRunning:
     def test_a_server_shut_down_from_elsewhere_also_ends_cleanly(self, pages, monkeypatch) -> None:
         monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
         assert run(None, [], 0, open_browser=False, static=pages) == EXIT_OK
+
+    def test_every_way_out_ends_the_analyser_and_the_poller(
+        self, project_file, pages, monkeypatch, capsys
+    ) -> None:
+        """Both are started before the project is opened, so a way out before anything is served
+        - a file that is no project, an address that cannot be bound - has them to end as much
+        as the server shutting down has."""
+
+        def running() -> list[str]:
+            names = ("ddd-gui-analyse", "ddd-gui-poll")
+            return sorted(thread.name for thread in threading.enumerate() if thread.name in names)
+
+        before = running()
+        not_a_project = project_file.parent / "a.ddd.json"
+        assert bounded_run(not_a_project, [], 0, open_browser=False, static=pages) == EXIT_USAGE
+        assert running() == before
+
+        def refuses_the_address(self, api, static, port=0, host="127.0.0.1"):
+            raise OSError("Cannot assign requested address")
+
+        with monkeypatch.context() as refusing:
+            refusing.setattr(GuiServer, "__init__", refuses_the_address)
+            assert bounded_run(project_file, [], 8123, open_browser=False, static=pages) == (
+                EXIT_USAGE
+            )
+        assert running() == before
+
+        monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
+        assert bounded_run(project_file, [], 0, open_browser=False, static=pages) == EXIT_OK
+        assert running() == before
+
+    def test_it_serves_while_the_projects_first_analysis_runs(
+        self, project_file, pages, monkeypatch, capsys
+    ) -> None:
+        """The first analysis runs on the analyser's thread, and the address is printed and
+        served at once: the project open, no revision of it yet, its analysis still running."""
+        monkeypatch.setattr(module, "Session", Gated)
+        served: list[tuple[Path | None, Revision | None, bool]] = []
+
+        def serve(self, poll_interval=0.5):
+            session = self.api.session
+            begun(session)
+            served.append((session.project, session.revision, session.snapshot().analysing))
+            session.gate.set()
+
+        monkeypatch.setattr(GuiServer, "serve_forever", serve)
+        assert bounded_run(project_file, [], 0, open_browser=False, static=pages) == EXIT_OK
+        assert served == [(project_file.resolve(), None, True)]
+        (line,) = capsys.readouterr().out.splitlines()
+        assert line.startswith("ddd gui (preview) serving http://127.0.0.1:")
 
 
 def test_the_windows_server_does_not_share_a_port() -> None:

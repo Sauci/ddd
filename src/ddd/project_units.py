@@ -12,16 +12,17 @@ with the lines it changes, computed without writing anything.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from ddd.diagnostics import Diagnostic
 from ddd.finding_routes import UNIT_CHECKS
+from ddd.findings_by_file import FindingsByFile, Pair
 from ddd.lsp.navigation import Index, Site, UnitSite
 from ddd.lsp.ranges import Document, read
-from ddd.lsp.units import PlannedEdit, UnitProject, UnitRefusalError, adoption
-from ddd.variables import Planned, declarations_of, hunks, planned
+from ddd.lsp.units import PlannedEdit, UnitProject, UnitRefusalError, adoption, listing_files
+from ddd.variables import Planned, declarations_of, hunks, planned, role_of
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,7 +31,10 @@ class UnitRow:
 
     unit: str
     description: str | None
-    """What the vocabulary says it means, or ``None`` outside it or for a spelling alone."""
+    """What the vocabulary says it means, or ``None`` outside it, for a spelling alone, and where no
+    entry the index recorded listing it still lists it there (:func:`description_of`) - an entry
+    above taken out or put back since the analysis read the file - until the analysis reads it
+    again."""
 
     files: tuple[Path, ...]
     """The units files listing it, each once, in the index's order; empty outside the
@@ -56,15 +60,19 @@ class Place:
 
 
 def unit_rows(
-    built: Index, findings: Iterable[tuple[Path, Diagnostic]], cache: dict[Path, Document]
+    built: Index, findings: FindingsByFile, cache: dict[Path, Document]
 ) -> tuple[UnitRow, ...]:
     """Every unit the project states or its vocabulary lists, by spelling, with how many
     variables, types and structure members state it and how many of its own findings are filed.
 
     Counted from the index's record as it stands, the way the picker counts the units in use:
-    a variable several components declare counts once, and so does a type or a member.
+    a variable several components declare counts once, and so does a type or a member. The
+    findings are walked once, whole, for the ``unknown-unit`` and ``duplicate-unit`` among them,
+    rather than asked file by file: the two checks are what is kept, and one unit may be stated
+    in every file of a project.
     """
     own = [(file, finding) for file, finding in findings if finding.check in UNIT_CHECKS]
+    resolve = findings.resolve
     return tuple(
         UnitRow(
             unit=unit,
@@ -73,37 +81,82 @@ def unit_rows(
             variables=_stating(built, unit, "variable"),
             types=_stating(built, unit, "type"),
             members=_stating(built, unit, "member"),
-            findings=sum(1 for file, finding in own if located_on_unit(built, unit, file, finding)),
+            findings=sum(
+                1 for file, finding in own if located_on_unit(built, unit, file, finding, resolve)
+            ),
         )
         for unit in sorted(built.units.keys() | built.vocabulary.keys())
     )
 
 
+def _lists(document: Document, site: Site, unit: str) -> bool:
+    """Whether the place ``site`` names in ``document`` still lists ``unit``: a spelling alone, or
+    an entry whose ``unit`` it is."""
+    listed: object = document.value_at(site.pointer)
+    if isinstance(listed, dict):
+        spelled: object = listed.get("unit")
+        return spelled == unit
+    return listed == unit
+
+
+def listed_in_place(built: Index, unit: str, cache: dict[Path, Document]) -> bool:
+    """Whether some entry the index recorded listing ``unit`` still lists it where it was
+    recorded, its file read as it now stands - or the vocabulary does not list it at all, and no
+    entry is read for it.
+
+    An entry above taken out of a units file's list, or put back by an undo, moves every entry
+    after it, and until the analysis reads the file again, the place recorded holds another unit,
+    or none. Asked by the unit's panel before it reads a description, as
+    :func:`ddd.variables.declarations_of` checks a declaration's name.
+    """
+    sites = built.vocabulary.get(unit, ())
+    if not sites:
+        return True
+    return any(_lists(read(site.path, cache), site, unit) for site in sites)
+
+
 def description_of(built: Index, unit: str, cache: dict[Path, Document]) -> str | None:
     """What the vocabulary says ``unit`` means: the description of the first entry listing it,
-    read from its file; ``None`` outside the vocabulary and for an entry that is a spelling
-    alone."""
-    first = next(iter(built.vocabulary.get(unit, ())), None)
-    if first is None:
-        return None
-    described = read(first.path, cache).value_at(f"{first.pointer}.description")
-    return described if isinstance(described, str) else None
+    read from its file; ``None`` outside the vocabulary, for an entry that is a spelling alone,
+    and where no entry recorded listing it still lists it there - an entry above moved since the
+    analysis read the file, and the place holds another unit's description, or none."""
+    for site in built.vocabulary.get(unit, ()):
+        document = read(site.path, cache)
+        if _lists(document, site, unit):
+            described = document.value_at(f"{site.pointer}.description")
+            return described if isinstance(described, str) else None
+    return None
 
 
-def places_of(built: Index, unit: str, cache: dict[Path, Document]) -> tuple[Place, ...]:
+def places_of(
+    built: Index, unit: str, cache: dict[Path, Document], changed: Callable[[Path], bool]
+) -> tuple[Place, ...]:
     """Every place the index recorded stating ``unit``, in the order it recorded them.
 
-    A variable comes with its component and its role as :func:`ddd.variables.declarations_of`
-    reads them, and a variable its file no longer declares where the index recorded it is left
-    out, as that function leaves it out: the file changed since the analysis, and the next
-    revision lists it where it went.
+    A variable comes with its component and its role. On a file ``changed`` answers still reads
+    as the analysis read it, both are what the analysis loaded there, the index's
+    :attr:`~ddd.lsp.navigation.Index.components` and :attr:`~ddd.lsp.navigation.Index.scopes`,
+    and the file is not parsed: read as :func:`ddd.variables.declarations_of` reads them, the
+    12,500 places of ``A`` in a generated project of 100,000 declarations in 3,333 components,
+    clean, took 2,822 ms, and 91 ms this way (Linux development PC, one run each). On a file
+    changed since, the variable is read as that function reads it, and one its file no longer
+    declares where the index recorded it is left out, as that function leaves it out: the next
+    revision lists it where it went. ``changed`` is asked once of each file holding a variable
+    stating the unit.
     """
     found: list[Place] = []
+    since: dict[Path, bool] = {}
     for stated in built.units.get(unit, ()):
         if stated.kind != "variable":
             found.append(Place(stated, None, None))
             continue
-        definition = Site(stated.site.path, stated.site.pointer.removesuffix(".unit"))
+        path = stated.site.path
+        definition = Site(path, stated.site.pointer.removesuffix(".unit"))
+        if path not in since:
+            since[path] = changed(path)
+        if not since[path]:
+            found.append(Place(stated, built.components[path], role_of(built.scopes[definition])))
+            continue
         declared = next(
             (d for d in declarations_of(built, stated.name, cache) if d.site == definition), None
         )
@@ -112,23 +165,54 @@ def places_of(built: Index, unit: str, cache: dict[Path, Document]) -> tuple[Pla
     return tuple(found)
 
 
-def located_on_unit(built: Index, unit: str, file: Path, finding: Diagnostic) -> bool:
+def located_on_unit(
+    built: Index,
+    unit: str,
+    file: Path,
+    finding: Diagnostic,
+    resolve: Callable[[Path], Path] = Path.resolve,
+) -> bool:
     """Whether a finding shown on ``file`` is one of ``unit``'s own: an ``unknown-unit`` or a
-    ``duplicate-unit`` filed on a place stating it or on an entry listing it."""
+    ``duplicate-unit`` filed on a place stating it or on an entry listing it.
+
+    ``resolve`` resolves both paths compared; :func:`unit_rows` and :func:`unit_findings` pass
+    their findings' own (:meth:`ddd.findings_by_file.FindingsByFile.resolve`), which resolves no
+    path a revision's analysis resolved already."""
     location = finding.location
     if location is None or finding.check not in UNIT_CHECKS:
         return False
-    shown = file.resolve()
+    shown = resolve(file)
     return any(
-        site.pointer == location.pointer and site.path.resolve() == shown
-        for site in (
-            *(stated.site for stated in built.units.get(unit, ())),
-            *built.vocabulary.get(unit, ()),
-        )
+        site.pointer == location.pointer and resolve(site.path) == shown
+        for site in _sites(built, unit)
     )
 
 
-def adoptable(built: Index | None, project: UnitProject) -> int | None:
+def unit_findings(built: Index, unit: str, findings: FindingsByFile) -> list[Pair]:
+    """Every finding that is ``unit``'s own, in the order given: what :func:`located_on_unit`
+    keeps of every finding, asked only of the findings on the files its places and its entries
+    are in, which are the only ones it can keep. Each file is named once, however many places it
+    holds, each name being a path resolved."""
+    files = dict.fromkeys(site.path for site in _sites(built, unit))
+    return [
+        (file, found)
+        for file, found in findings.on_any(files)
+        if located_on_unit(built, unit, file, found, findings.resolve)
+    ]
+
+
+def _sites(built: Index, unit: str) -> tuple[Site, ...]:
+    """Everywhere a finding of ``unit``'s own can be filed: each place stating it, then each entry
+    of the vocabulary listing it. What :func:`located_on_unit` compares a finding against, and so
+    the files :func:`unit_findings` asks the findings of - one list, so that the files asked and
+    the places compared cannot come to name different places."""
+    return (
+        *(stated.site for stated in built.units.get(unit, ())),
+        *built.vocabulary.get(unit, ()),
+    )
+
+
+def adoptable(built: Index | None, project: Callable[[], UnitProject]) -> int | None:
     """How many units adopting a vocabulary would list - every unit in use, none where the
     project states none - or ``None`` where adopting is refused.
 
@@ -137,11 +221,23 @@ def adoptable(built: Index | None, project: UnitProject) -> int | None:
     "nothing to adopt" answers ``None``, and that one answers ``0``, for which the banner says
     there is nothing to adopt and draws no Adopt. A project the analysis could not read has no
     index, and so no plan either.
+
+    ``project`` makes the project the plan would be made in - its units files found by expanding
+    every include on disk and reading the files it reaches - and is called only where the answer
+    can depend on it: the first of the guards, a vocabulary held already
+    (:func:`ddd.lsp.units.listing_files`), reads the index alone, and refuses without it. Over a
+    generated project of 100,000 declarations holding a vocabulary (``--shape mixed
+    --missing-ids 1 --unread 0.5``, 1,683 files), the Units tab's request asked halfway through
+    an analysis took 1,762 to 2,665 ms making it, and 54 to 161 ms since; 67 and 15 ms while
+    nothing else ran, 174 and 121 ms the first time - three askings each, on the Linux
+    development PC.
     """
     if built is None:
         return None
+    if listing_files(built):
+        return None
     try:
-        planned = adoption(built, project)
+        planned = adoption(built, project())
     except UnitRefusalError:
         return None
     if planned is None:

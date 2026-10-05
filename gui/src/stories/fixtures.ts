@@ -7,10 +7,12 @@ import type {
   FilesPlanReply,
   FilesReply,
   Finding,
+  FindingsReply,
   FixReply,
   GridAxis,
   IncludedEntryReply,
   KindForm,
+  ListedFinding,
   PlannedChange,
   PlanReply,
   ProjectUnit,
@@ -910,13 +912,14 @@ export const DID_NOT_LOAD: Finding = {
 };
 
 /** The project of spec 6's screenshots: every severity, every route a finding can lead to, and
- * one whose file did not load - pump.ddd.json, still listed as the analysis last read it. In the
- * order `GET /api/state` answers, which is by file: controller's `unknown-unit` (error) and
- * `storage-mismatch` (warning), pump's `schema` (error), sensor_hub's `missing-id` (info), and
- * user_interface's `unknown-raster` (error) - each check's own default severity,
- * `src/ddd/diagnostics.py`. The tab sorts them worst first. */
+ * one whose file did not load - pump.ddd.json, still listed as the analysis last read it. Its
+ * findings, in the revision's own order, which is by file: controller's `unknown-unit` (error)
+ * and `storage-mismatch` (warning), pump's `schema` (error), sensor_hub's `missing-id` (info),
+ * and user_interface's `unknown-raster` (error) - each check's own default severity,
+ * `src/ddd/diagnostics.py`. The state counts them; `PROJECT_FINDINGS_PAGE` lists them. */
 export const PROJECT_FINDINGS: State = {
   revision: 7,
+  version: 14,
   project: DEMO,
   files: [
     {
@@ -952,8 +955,30 @@ export const PROJECT_FINDINGS: State = {
       findings: { error: 1, warning: 0, info: 0 },
     },
   ],
-  findings: [UNKNOWN_RPM_FINDING, STORAGE_MISMATCH, DID_NOT_LOAD, MISSING_ID, UNKNOWN_RASTER],
+  counts: { error: 3, warning: 1, info: 1 },
   undoable: null,
+  analysing: false,
+  edits: 0,
+};
+
+/** A finding as `GET /api/findings` lists it, its key made as the server makes one: its file,
+ * severity, check, place and words, and which repeat of those it is, as a compact json array
+ * (`ddd.gui.derived.key_of`). */
+function listed(finding: Finding, repeat = 0): ListedFinding {
+  const { file, severity, check, pointer, message } = finding;
+  return { ...finding, key: JSON.stringify([file, severity, check, pointer, message, repeat]) };
+}
+
+/** PROJECT_FINDINGS' findings as `GET /api/findings` answers them, all on one page: worst first,
+ * and within a severity in the revision's order - the three errors by file, then the warning,
+ * then the note. */
+export const PROJECT_FINDINGS_PAGE: FindingsReply = {
+  revision: 7,
+  total: 5,
+  offset: 0,
+  findings: [UNKNOWN_RPM_FINDING, DID_NOT_LOAD, UNKNOWN_RASTER, STORAGE_MISMATCH, MISSING_ID].map(
+    (finding) => listed(finding),
+  ),
 };
 
 /** A second rasters file the project includes, whose only raster - nothing sampled on it - was
@@ -976,7 +1001,8 @@ export const EMPTY_RASTERS: Finding = {
 };
 
 /** PROJECT_FINDINGS with bench.ddd.json among its files - a rasters file that loaded, with one
- * info - and its finding among the rest, both first, since `GET /api/state` answers by file. */
+ * info - first, since `GET /api/state` sorts its files by path, and that info counted with the
+ * rest. */
 export const EMPTIED_FINDINGS: State = {
   ...PROJECT_FINDINGS,
   files: [
@@ -990,7 +1016,7 @@ export const EMPTIED_FINDINGS: State = {
     },
     ...PROJECT_FINDINGS.files,
   ],
-  findings: [EMPTY_RASTERS, ...PROJECT_FINDINGS.findings],
+  counts: { error: 3, warning: 1, info: 2 },
 };
 
 /** The one fix the tab offers: `missing-id`, previewed onto SensorHub's ValueA. */
@@ -1158,6 +1184,7 @@ export const KIND_MISMATCH: Finding = {
 /** A project with nothing to report. */
 export const NO_FINDINGS: State = {
   revision: 7,
+  version: 14,
   project: DEMO,
   files: [
     {
@@ -1177,8 +1204,66 @@ export const NO_FINDINGS: State = {
       findings: { error: 0, warning: 0, info: 0 },
     },
   ],
-  findings: [],
+  counts: { error: 0, warning: 0, info: 0 },
   undoable: null,
+  analysing: false,
+  edits: 0,
+};
+
+/** How many findings a long table has: those of the project `tools/generate_project.py` writes for
+ * 4,000 declarations in its many shape with half its input slots unread
+ * (`generate(directory, 4000, "many", unread=0.5)`): 133 components, the first five of 32
+ * declarations and the rest of 30, and 2,000 `unused-output` warnings, its only findings. */
+export const LONG_TOTAL = 2000;
+
+/** That project's findings, the first `count` of them as `GET /api/findings` answers them, its file
+ * paths spelled as these fixtures spell paths. The generator numbers the project's outputs from 0
+ * across its components, each component's own `_O` outputs first in its interface, then one entry
+ * per input slot, numbered the same way: an odd-numbered slot is written as an output `_X` that
+ * nobody reads, and an even-numbered one reads an even-numbered output - so every odd-numbered
+ * `_O` output is read by nobody either. In each component's file, its unread `_O` outputs, then its
+ * `_X` ones; and the files in order. Checked against a run of the generator: the first hundred are
+ * the hundred that run's first page answered. */
+function longFindings(count: number): ListedFinding[] {
+  const found: ListedFinding[] = [];
+  let numbered = 0;
+  for (let component = 0; found.length < count; component += 1) {
+    const half = component < 5 ? 16 : 15;
+    const name = `C${String(component).padStart(5, "0")}`;
+    const unread: [number, string][] = [];
+    for (let at = 0; at < half; at += 1) {
+      if ((numbered + at) % 2 === 1) unread.push([at, `${name}_O${String(at).padStart(4, "0")}`]);
+    }
+    for (let slot = 0; slot < half; slot += 1) {
+      if ((numbered + slot) % 2 === 1) {
+        unread.push([half + slot, `${name}_X${String(slot).padStart(4, "0")}`]);
+      }
+    }
+    for (const [at, output] of unread.slice(0, count - found.length)) {
+      found.push(
+        listed({
+          file: `C:/work/heavy/components/${name.toLowerCase()}.ddd.json`,
+          check: "unused-output",
+          severity: "warning",
+          message: `'${output}' is written by component '${name}' but read by nobody`,
+          pointer: `component.interface[${at}]`,
+          notes: [],
+          route: { kind: "variable", name: output },
+        }),
+      );
+    }
+    numbered += half;
+  }
+  return found;
+}
+
+/** The first page of a long table's findings: that project's first hundred, at its first
+ * revision. */
+export const LONG_FIRST_PAGE: FindingsReply = {
+  revision: 1,
+  total: LONG_TOTAL,
+  offset: 0,
+  findings: longFindings(100),
 };
 
 /** What `GET /api/undo` answers for an adoption: the project description put back a line, and
@@ -2735,6 +2820,40 @@ export const FILES_SHARED_KEY: FilesReply = {
  * the plan's What was left open, "Routes that lead nowhere") - selecting it marks nothing, which
  * is not an error. */
 export const NOTHING_AT_THAT_PATH = "C:/work/demo/subsystem/nested.ddd.json";
+
+// A long table (part 17's task 9, brief step 3): "components/*.ddd.json" - spelled exactly as
+// tools/generate_project.py writes it - matching 3,000 files, a round number standing for the
+// "many" shape's own component count at 100,000 declarations (30 declarations a component, so
+// 100,000 / 30 is 3,333 or 3,334, measured). The same imagined project `longFindings` above
+// draws its own long table from, its components numbered and spelled the same way, each one as
+// clean as `PROJECT_FILES`' own five - a table this long is the story, not a finding on it.
+
+const LONG_PATTERN_COUNT = 3000;
+
+const LONG_PATTERN_FILES: string[] = Array.from({ length: LONG_PATTERN_COUNT }, (_, at) => {
+  const name = `C${String(at).padStart(5, "0")}`;
+  return `C:/work/heavy/components/${name.toLowerCase()}.ddd.json`;
+});
+
+const LONG_PATTERN: IncludedEntryReply = {
+  index: 0,
+  entry: "components/*.ddd.json",
+  names: false,
+  key: "C:/work/heavy/components/*.ddd.json",
+  files: LONG_PATTERN_FILES,
+  findings: 0,
+};
+
+export const FILES_LONG: FilesReply = {
+  revision: 1,
+  project: "C:/work/heavy/project.ddd.json",
+  entries: [LONG_PATTERN],
+  creatable: FILES_CREATABLE,
+};
+
+export const FILES_LONG_SOURCES: readonly SourceFile[] = LONG_PATTERN_FILES.map((path, at) =>
+  cleanFile(path, "component", `C${String(at).padStart(5, "0")}`, String(at)),
+);
 
 // --- FileActionsView (part 16, design §3) ------------------------------------------------------
 //

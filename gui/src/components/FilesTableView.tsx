@@ -1,6 +1,6 @@
 import type { FilesReply, SourceFile } from "../api/types";
 import { cellsOf, rowsOf, selectedIndices } from "../lib/files";
-import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
+import { also, Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
 
 export interface FilesTableViewProps {
   reply: FilesReply;
@@ -29,7 +29,7 @@ export function FilesTableView({ reply, files, selected, onSelect }: FilesTableV
   const rows = rowsOf(reply, files);
   return (
     rows.length > 0 && (
-      <Table
+      <LongTable
         aria-label="Files"
         selectionMode="single"
         selectedKeys={selected === undefined ? [] : selectedIndices(rows, selected)}
@@ -40,10 +40,30 @@ export function FilesTableView({ reply, files, selected, onSelect }: FilesTableV
         }}
       >
         <TableHeader>
-          <Column isRowHeader>Entry</Column>
-          <Column>Kind</Column>
-          <Column>State</Column>
-          <Column>Findings</Column>
+          {/* Widths measured in Chrome (fix round 3) on scratch copies of examples/demo and of a
+              generated project of 10,000 declarations, and on this table's stories. Kind and
+              Findings are fixed: Kind's words are the file kinds the server's `kind_of` answers,
+              "component" the widest at 93px, and Findings a count, six digits taking 66px of its
+              80px. Entry and State share the rest, 3fr to 2fr - in a 1280px window, 533px and
+              355px, which hold the demo's widest entry (components/user_interface.ddd.json, 270px)
+              and State's longest sentence (lib/files.ts's `stateOf`, 196px). A panel beside the
+              table leaves it a box of about 552px, 537px once a browser draws the box's own
+              vertical scrollbar; a column never goes below its `minWidth`, so Entry keeps 280px
+              there, every entry of both projects whole, and State takes what is left - 75px in a
+              535px box - its sentences cut with an ellipsis. An entry longer than its column is cut
+              with an ellipsis too, never wrapped. The floors sum to 520px: beside a panel they fit
+              a window down to about 1038px wide - 1082px where a browser draws the box's own
+              vertical scrollbar and the page's, 15px each - and narrower, until the panel moves
+              under the table at 900px, the box scrolls sideways; with no panel the table fits a
+              window down to about 552px (582px). */}
+          <Column isRowHeader width="3fr" minWidth={280}>
+            Entry
+          </Column>
+          <Column width={100}>Kind</Column>
+          <Column width="2fr" minWidth={60}>
+            State
+          </Column>
+          <Column width={80}>Findings</Column>
         </TableHeader>
         <TableBody>
           {rows.map((row, index) => {
@@ -59,14 +79,7 @@ export function FilesTableView({ reply, files, selected, onSelect }: FilesTableV
             );
           })}
         </TableBody>
-      </Table>
+      </LongTable>
     )
   );
-}
-
-/** React Aria's own class with this table's beside it, since ui.css selects on both (as
- * `FindingsTableView`'s own `also` already does). */
-function also(name: string) {
-  return ({ defaultClassName }: { defaultClassName: string | undefined }) =>
-    `${defaultClassName ?? ""} ${name}`.trim();
 }

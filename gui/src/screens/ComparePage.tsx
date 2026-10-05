@@ -7,7 +7,7 @@ import { compareRows } from "../lib/compare";
 import type { Route } from "../lib/route";
 
 interface Props {
-  state: State | null;
+  state: State;
   stopped: boolean;
   /** Following a finding that names a place in the open project, which the app navigates to -
    * `FindingsPage`'s own prop, wired the same way from `App`. */
@@ -20,13 +20,13 @@ interface Props {
  * `CompareView` draws all three, holding none of them itself.
  *
  * Re-asks whenever the revision changes: `revision` sits in the query's own key beside the
- * baseline last asked for, exactly as `FindingsPage` reads `state?.revision` into its own `fix`
+ * baseline last asked for, exactly as `FindingsPage` reads `state.revision` into its own `fix`
  * query, so that fixing what the verdict complained about turns it while the tab is open (spec
  * 2026-09-26-gui-compare-design.md §4) - and typing in the field, which never touches `asked`,
  * cannot itself trigger a request.
  */
 export function ComparePage({ state, stopped, onOpen }: Props) {
-  const revision = state?.revision;
+  const revision = state.revision;
   // What the field shows, typed freely.
   const [baseline, setBaseline] = useState("");
   // The baseline last asked for, or `null` before the reader has asked at all - what keys the
@@ -50,9 +50,6 @@ export function ComparePage({ state, stopped, onOpen }: Props) {
   ) {
     setSelected(undefined);
   }
-  // After every hook, as `FindingsPage`'s own is: a finding that names a place in the project is
-  // routed against the state, so there is nothing honest to draw until one has arrived.
-  if (state === null) return <p className="quiet">Reading the project…</p>;
   return (
     <CompareView
       state={state}

@@ -1,0 +1,348 @@
+{
+  "$schema": "../../../../schemas/ddd_types.schema.json",
+  "types": [
+    {
+      "type": "scalar",
+      "name": "Temperature_t",
+      "description": "A temperature as the sensors report it",
+      "datatype": "uint16",
+      "unit": "degC",
+      "conversion": {
+        "factor": 0.1,
+        "offset": -40
+      }
+    },
+    {
+      "type": "struct",
+      "name": "Sample_t",
+      "description": "One reading and the instant it was taken",
+      "members": [
+        {
+          "name": "value",
+          "member": "value",
+          "description": "The reading itself",
+          "typename": "Temperature_t"
+        },
+        {
+          "name": "timestamp",
+          "member": "value",
+          "description": "Milliseconds since the last reset",
+          "datatype": "uint32",
+          "conversion": {
+            "kind": "identity"
+          }
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "Cell_t",
+      "description": "One cell of a grid: two flags between two values",
+      "members": [
+        {
+          "name": "raw",
+          "member": "value",
+          "description": "The cell's raw reading",
+          "datatype": "uint16",
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "valid",
+          "member": "bits",
+          "description": "Set once the reading is trusted",
+          "datatype": "uint8",
+          "bits": 1,
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "bias",
+          "member": "bits",
+          "description": "A signed correction, in counts",
+          "datatype": "sint8",
+          "bits": 3,
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "v",
+          "member": "value",
+          "description": "The corrected reading, after the flags",
+          "datatype": "sint16",
+          "conversion": {
+            "kind": "identity"
+          }
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "Sensor_t",
+      "description": "A sensor: a nested structure, an array of values and an array of structures",
+      "members": [
+        {
+          "name": "latest",
+          "member": "value",
+          "description": "The most recent reading",
+          "typename": "Sample_t"
+        },
+        {
+          "name": "history",
+          "member": "value",
+          "description": "The last four readings, oldest first",
+          "datatype": "uint16",
+          "conversion": {
+            "kind": "identity"
+          },
+          "dimensions": [
+            4
+          ]
+        },
+        {
+          "name": "cells",
+          "member": "value",
+          "description": "The sensor's two cells",
+          "typename": "Cell_t",
+          "dimensions": [
+            2
+          ]
+        },
+        {
+          "name": "state",
+          "member": "value",
+          "description": "The sensor's state machine",
+          "datatype": "uint8",
+          "conversion": {
+            "kind": "identity"
+          }
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "Status_t",
+      "description": "Bitfields in units of one, two and four bytes, each group followed by a value",
+      "members": [
+        {
+          "name": "ready",
+          "member": "bits",
+          "description": "Bit 0 of a byte",
+          "datatype": "uint8",
+          "bits": 1,
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "trim",
+          "member": "bits",
+          "description": "Four signed bits after it",
+          "datatype": "sint8",
+          "bits": 4,
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "mode",
+          "member": "bits",
+          "description": "Five bits, which would cross the byte and so start the next one",
+          "datatype": "uint8",
+          "bits": 5,
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "level",
+          "member": "value",
+          "description": "A byte after the byte bitfields",
+          "datatype": "uint8",
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "count",
+          "member": "bits",
+          "description": "Nine bits, which would cross a two byte unit after level",
+          "datatype": "uint16",
+          "bits": 9,
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "delta",
+          "member": "bits",
+          "description": "Seven signed bits after them",
+          "datatype": "sint16",
+          "bits": 7,
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "word",
+          "member": "value",
+          "description": "Two bytes after the two byte bitfields",
+          "datatype": "uint16",
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "wide",
+          "member": "bits",
+          "description": "Twenty bits of a four byte unit",
+          "datatype": "uint32",
+          "bits": 20,
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "drift",
+          "member": "bits",
+          "description": "Twelve signed bits filling it",
+          "datatype": "sint32",
+          "bits": 12,
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "tail",
+          "member": "value",
+          "description": "A byte after the four byte bitfields",
+          "datatype": "uint8",
+          "conversion": {
+            "kind": "identity"
+          }
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "Mixed_t",
+      "description": "Values inside a bitfield's unit, and bitfields of an eight byte unit",
+      "members": [
+        {
+          "name": "flags",
+          "member": "bits",
+          "description": "Three bits of a four byte unit",
+          "datatype": "uint32",
+          "bits": 3,
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "after",
+          "member": "value",
+          "description": "A byte right after the three bits, inside their unit",
+          "datatype": "uint8",
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "next",
+          "member": "value",
+          "description": "Two bytes after it, still inside the unit",
+          "datatype": "uint16",
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "big",
+          "member": "bits",
+          "description": "Forty bits, which would cross an eight byte unit after next",
+          "datatype": "uint64",
+          "bits": 40,
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "small",
+          "member": "bits",
+          "description": "Seven signed bits after them",
+          "datatype": "sint64",
+          "bits": 7,
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "last",
+          "member": "value",
+          "description": "Four bytes after the eight byte bitfields",
+          "datatype": "uint32",
+          "conversion": {
+            "kind": "identity"
+          }
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "Tuning_t",
+      "description": "What the calibration tool may change: values around two bitfields",
+      "members": [
+        {
+          "name": "gain",
+          "member": "value",
+          "description": "The loop gain",
+          "datatype": "float32",
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "shift",
+          "member": "value",
+          "description": "A signed offset, in counts",
+          "datatype": "sint16",
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "enable",
+          "member": "bits",
+          "description": "Whether the loop runs",
+          "datatype": "uint8",
+          "bits": 1,
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "retries",
+          "member": "bits",
+          "description": "How many times a failed step is tried again",
+          "datatype": "uint8",
+          "bits": 3,
+          "conversion": {
+            "kind": "identity"
+          }
+        },
+        {
+          "name": "timeout",
+          "member": "value",
+          "description": "Milliseconds before a step fails, after the bitfields",
+          "datatype": "uint16",
+          "conversion": {
+            "kind": "identity"
+          }
+        }
+      ]
+    }
+  ]
+}

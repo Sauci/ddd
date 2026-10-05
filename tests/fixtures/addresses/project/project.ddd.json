@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../../schemas/ddd_project.schema.json",
+  "project": {
+    "name": "AddressFixture",
+    "description": "Every shape of variable whose address ddd generate a2l --image reads out of a linked image",
+    "includes": [
+      "types.ddd.json",
+      "engine.ddd.json"
+    ]
+  }
+}

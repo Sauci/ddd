@@ -108,6 +108,9 @@ extension, so ``firmware.elf`` gives ``firmware_ddd_generation``. It has to be c
 ``CMakeLists.txt`` that defines the image, and after the components have been added, because
 it hands ``<stem>_ddd_headers`` to the components registered up to that point - which settles
 both which components get the generated headers and whose compile usage travels with them.
+The a2l is the one artefact that cannot be complete before the link, which decides every
+address it carries: with ``ADDRESSES_FROM_IMAGE`` the module writes it after the link instead,
+out of the linked image, and one build gives it whole (see *The a2l's addresses* below).
 
 Besides the image it needs one thing: ``TEMPLATE_DIRECTORY``, the directory of jinja2 templates
 the generated c code is rendered from. It is required and has no default, because the
@@ -406,14 +409,20 @@ including the ones this image happens not to link.
        table straight to the console: the project names the plugins its components' blocks
        belong to and knows every producer and consumer, which a component listed on its own
        with ``ddd list --standalone`` cannot.
+   * - ``<stem>_ddd_a2l``
+     - with ``ADDRESSES_FROM_IMAGE``, built by default: writes the a2l once the image is
+       linked, every address it carries read out of the image (see below). It depends on the
+       image, on the project description and the files collected into it, on a ``.py`` plugin
+       the call names and on the tool, and on nothing the c alone is rendered from.
    * - ``<component>.ddd``
      - one per registered component, checking that component alone (see above).
 
 The outputs declared for the generator are the files the template names already give away, plus
-the a2l and the dictionary. The per-component headers are written next to them, but their names
-come from inside the description files and are therefore unknown at configure time - which is
-precisely why a consumer depends on ``<stem>_ddd_headers`` rather than on an individual header
-path.
+the a2l and the dictionary - the a2l being the output of ``<stem>_ddd_a2l``'s step instead
+where ``ADDRESSES_FROM_IMAGE`` gives it one. The per-component headers are written next to
+them, but their names come from inside the description files and are therefore unknown at
+configure time - which is precisely why a consumer depends on ``<stem>_ddd_headers`` rather
+than on an individual header path.
 
 That leaves the build system unable to clean a header whose component has left the image, which
 is why ``ddd generate`` cleans it itself: it owns its output directory, records what it wrote
@@ -554,15 +563,59 @@ the wanted ``<stem>_ddd_headers`` into each component explicitly - opting out of
 the two would leave the same ambiguity in place, because the automatic set still reaches every
 registered component rather than only the ones that image links.
 
+The a2l's addresses
+~~~~~~~~~~~~~~~~~~~
+
+The address of every object the a2l carries is decided by the linker, so the a2l is the one
+artefact a build cannot finish before the link. ``ADDRESSES_FROM_IMAGE`` gives it a step of its
+own after the link: the generation before the link leaves the a2l out, as ``NO_A2L`` does, and
+``<stem>_ddd_a2l``, built by default, runs ``ddd generate a2l --image`` over the linked image,
+which reads every address the a2l carries out of the image's debug information - an object by
+its name, a structure member by its access path, at the offset the compiler gave it. One build
+gives the complete a2l, with no map to extract and no member offset to work out by hand:
+
+.. code-block:: cmake
+
+   ddd_generate(firmware.elf
+                TEMPLATE_DIRECTORY "${templates}"
+                ADDRESSES_FROM_IMAGE)
+
+The image has to be a linked ELF image whose DWARF describes the variables
+(:doc:`command_line_interface`), which a build with debug information writes: ``-g``, which
+CMake's ``Debug`` and ``RelWithDebInfo`` build types add. The step depends on the image and on
+what the project is read from, so it runs again when the image relinks or a description
+changes - a conversion's factor, which reaches the a2l and none of the c, included - and a
+build with nothing changed runs nothing at all. It writes the a2l into the directory the
+generation before the link wrote the c sources, the headers and the dictionary into, and takes
+none of them back (:ref:`what-a-run-owns`), so nothing is compiled again because the a2l was
+written.
+
+What the image cannot place keeps address 0 and is reported once, as ``address-missing``, each
+symbol's reason a note beneath it. The example above, built as ``RelWithDebInfo`` with the
+keyword added, places every object of the demo but ``ValueG``, which a condition compiles out
+of this image:
+
+.. code-block:: text
+
+   firmware.elf: warning[address-missing]: the image has no address for 'ValueG'; it reaches the a2l at address 0
+       note: the image's debug information holds no variable named 'ValueG'
+   1 warning
+
+Under ``STRICT`` that is an error, and the build stops rather than ship an a2l with an address
+of 0. ``BYTE_ORDER`` is held to the byte order the image states: one that contradicts it stops
+the build as well. So does an image the reader cannot read, in the reader's own words - one
+built without ``-g`` is told to be, and one that is not ELF at all, as a host build on Windows
+links, is refused as such. A build like that keeps the address map below.
+
 Where the address map comes from
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``ADDRESS_MAP`` names a file; writing it is the project's step. DDD ships no extractor and
-runs no toolchain tool of its own - it reads no build output at all - which is what lets the
-generator run before anything has been compiled, and what leaves this half of the two-run flow
-to the build. What it needs is the json :doc:`generated_artefacts` describes, one flat object
-of symbol to address; where that comes from is the project's business, so a toolchain without
-``nm`` costs nothing but the recipe below.
+runs no toolchain tool of its own, and the generation before the link reads no build output at
+all, which is what lets it run before anything has been compiled; with a map, reading the
+linked image is left to the build. What it needs is the json :doc:`generated_artefacts`
+describes, one flat object of symbol to address; where that comes from is the project's
+business, so a toolchain without ``nm`` costs nothing but the recipe below.
 
 The step belongs after the link, so it is a ``POST_BUILD`` command on the image, writing into
 the very path ``ADDRESS_MAP`` names:
@@ -618,7 +671,8 @@ the map one symbol at two addresses, which ``load_address_map`` refuses.
 Two things such a script has to get right. A structured object's members are addressed under
 their access path, ``Inlet.latest`` rather than ``Inlet``, which a symbol lister does not
 print: a project with structured objects adds the member offsets itself, from the type
-description or from the debug information. And the addresses of the objects DDD *does* know
+description or from the debug information - which is what ``ADDRESSES_FROM_IMAGE`` reads, for an
+image that carries it. And the addresses of the objects DDD *does* know
 have to fit the ``0 .. 0xFFFFFFFF`` of an ``ECU_ADDRESS``, which a host build of an embedded
 project runs into first: a 64 bit image is based above 4 GB, and no a2l can describe it. An
 entry for a symbol DDD does not know is neither weighed that way nor written anywhere, so

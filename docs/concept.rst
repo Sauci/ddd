@@ -425,9 +425,10 @@ The second run happens after linking, and it exists because of one piece of info
 does not exist before then: the address of every object in the target. A measurement and
 calibration tool reaches a variable over the debug or xcp interface by address, so an a2l
 without addresses describes the software correctly but cannot be used to measure it. The
-addresses are decided by the linker, so DDD is handed a symbol to address map extracted from
-the linker output and rewrites the a2l with the real values. The map is a flat json object,
-with the addresses written in decimal or hexadecimal:
+addresses are decided by the linker, so DDD reads them out of the linked image's debug
+information (``--image``), or is handed a symbol to address map extracted from the linker
+output (``--address-map``), and rewrites the a2l with the real values. The map is a flat json
+object, with the addresses written in decimal or hexadecimal:
 
 .. code-block:: json
 

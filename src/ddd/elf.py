@@ -1,8 +1,9 @@
 """The C variables of a linked ELF image, read from its DWARF debug information.
 
 This module knows nothing of DDD. It imports pyelftools and the standard library and nothing
-else, so that reading an address map straight out of an image - planned in section 6 of
-``SPEC.md`` - can use it without the toolbox; ``tests/test_backends.py`` holds it to that.
+else, so that :mod:`ddd.addresses`, which places the symbols of an a2l in an image (section 6
+of ``SPEC.md``), reads images with it without the toolbox; ``tests/test_backends.py`` holds
+it to that.
 
 What it offers is a small model of C types - :class:`Base`, :class:`Enum`, :class:`Struct`,
 :class:`Array`, :class:`Qualified`, :class:`Typedef` and :class:`Unsupported` - and the

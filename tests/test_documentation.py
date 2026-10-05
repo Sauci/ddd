@@ -310,6 +310,14 @@ class TestTheCheckReference:
         without joining it, so the tool and the pages disagreed on what the check covers."""
         assert "raster" in CHECKS["changed-storage"].description
 
+    def test_the_registry_describes_address_missing_as_the_pages_do(self) -> None:
+        """``ddd checks`` prints the registry's one-liner, and since ``--image`` the check is
+        about a symbol the image does not place as much as one the map leaves out: a line naming
+        the map alone told a user of the image that the check was not about them."""
+        description = CHECKS["address-missing"].description
+        assert "address map" in description
+        assert "image" in description
+
     @pytest.mark.parametrize("page", sorted(PAGES))
     def test_the_fixed_checks_are_counted_as_the_registry_counts_them(self, page: str) -> None:
         """ "The five checks whose severity cannot be changed" went stale when two more joined.
@@ -467,6 +475,49 @@ class TestTheCommandPage:
         )
         assert listed is not None, "the readme no longer says which commands take it"
         assert sorted(re.findall(r"`([a-z-]+)`", listed.group(1))) == expected
+
+
+def generate_options(artefact: str) -> set[str]:
+    """The long options ``ddd generate ARTEFACT`` takes."""
+    parser = _build_parser()
+    commands = next(
+        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
+    )
+    artefacts = next(
+        action
+        for action in commands.choices["generate"]._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+    return {
+        option
+        for action in artefacts.choices[artefact]._actions
+        for option in action.option_strings
+        if option.startswith("--")
+    }
+
+
+class TestTheA2lOptions:
+    """The options the a2l takes and the c does not say where its addresses and its byte order
+    come from, so every document that says how to run ``generate`` names each of them."""
+
+    OWN = sorted(generate_options("a2l") - generate_options("c"))
+
+    def test_they_are_the_two_sources_of_the_addresses_and_the_byte_order(self) -> None:
+        """The positive control: what the test below is parametrized over is not nothing."""
+        assert self.OWN == ["--address-map", "--byte-order", "--image"]
+
+    @pytest.mark.parametrize("option", OWN)
+    @pytest.mark.parametrize(
+        ("document", "spelling"),
+        [
+            ("docs/command_line_interface.rst", "``{}``"),
+            ("README.md", "`{}"),
+            ("SPEC.md", "`{}"),
+        ],
+    )
+    def test_every_one_is_named(self, option: str, document: str, spelling: str) -> None:
+        text = SPEC if document == "SPEC.md" else PAGES[document]
+        assert spelling.format(option) in text
 
 
 class TestTheDocumentationSite:
@@ -1635,6 +1686,16 @@ class TestTheBuildIntegrationPage:
     def test_every_option_of_ddd_generate_is_named_in_the_readme(self) -> None:
         named = set(re.findall(r"`([A-Z0-9_]+)`", README))
         assert self.parsed_options() <= named, sorted(self.parsed_options() - named)
+
+    def test_every_target_ddd_generate_creates_has_a_row_on_the_page(self) -> None:
+        """The module's header lists what the call creates, and the page's table is where a
+        reader looks a target up: one listed in either alone is one somebody misses."""
+        created = re.findall(r"^# \* (<stem>_ddd_\w+)", self.CMAKE_MODULE, re.M)
+        rows = re.findall(
+            r"^   \* - ``(<stem>_ddd_\w+)``", PAGES["docs/build_integration.rst"], re.M
+        )
+        assert created, "the module's header no longer lists the targets it creates"
+        assert sorted(rows) == sorted(created)
 
     def test_the_generated_project_names_its_plugins(self) -> None:
         """The project the module writes has to carry what the call declared, plugins included."""

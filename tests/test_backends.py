@@ -132,9 +132,9 @@ class TestLayering:
         assert not [module for module in imports if module.startswith("ddd.backends")], imports
 
     def test_the_elf_reader_knows_nothing_of_ddd(self) -> None:
-        """ddd.elf serves the toolbox today and, as SPEC.md section 6 plans, the reading of an
-        address map straight out of an image tomorrow: it imports no ddd module, so that
-        neither has to take the other with it."""
+        """ddd.elf serves the toolbox and ddd.addresses, which places the symbols of an a2l in
+        an image (SPEC.md section 6): it imports no ddd module, so that neither has to take the
+        other with it."""
         assert imported_modules(SOURCE / "elf.py") == set()
 
     def test_a_build_s_addresses_reach_no_backend_and_no_command_line(self) -> None:

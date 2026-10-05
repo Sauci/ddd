@@ -144,9 +144,9 @@ their axes.
 DDD is run once per build to generate the artefacts, the A2L among them. Without address
 information, every object in the A2L carries address zero, and `SYMBOL_LINK` names the
 symbol in every case ([section 6](#6-address-information)). A build that requires the A2L
-to carry the real addresses, which exist only after linking, runs DDD a second time with a
-map taken from the linker output. A build that does not require them stops after the first
-run.
+to carry the real addresses, which exist only after linking, runs DDD a second time, after
+the link, reading them out of the linked image or out of a map taken from the linker output.
+A build that does not require them stops after the first run.
 
 ## 2 Concepts
 
@@ -1450,15 +1450,19 @@ Warnings:
 - `point-counts-mismatch`: a curve or a map stores its point counts one way and one of its
   axes the other. The A2L describes each as resolved; an interpolation routine is unlikely
   to read both.
-- `address-missing`: an object the A2L carries has no entry in the address map the run was
-  given. It fires only when a map with at least one entry is supplied: without a map, or
-  with an empty one, every address is zero by construction, which is the run a build makes
+- `address-missing`: an object the A2L carries gets no address from the address map or the
+  image the run was given. It fires for a map only when the map has at least one entry:
+  without a map, or with an empty one, every address is zero by construction, which is the
+  run a build makes
   before it has linked anything ([section 7.1](#71-build-system-integration)). With one, a
   symbol the map omits is written at address zero, and a calibration tool reads and writes
   there as readily as anywhere else. It is one finding per run, naming up to five of the
   uncovered objects and counting the rest, with a note naming, the same way, the entries of
   the map that name nothing the A2L carries, because those are usually the old spellings of
-  the same objects.
+  the same objects. Given an image instead ([section 6](#6-address-information)), it fires
+  for every object the image does not place, located at the image, and its notes say why:
+  one per reason, said once however many of the objects named share it, for the objects the
+  finding names.
 
 Information:
 
@@ -1990,15 +1994,44 @@ in the document depends on the machine that wrote it.
 
 ## 6 Address information
 
-The addresses of the generated objects are only known after linking. DDD accepts a symbol
-to address map in JSON form (`--address-map` of `ddd generate a2l` and `all`): one flat JSON object mapping
-each symbol to its address. The key is the C identifier of an object or, for the member of
-a structured object, its access path, for example `Inlet.latest` or `Inlet[2].raw`, exactly
-as the A2L names it ([section 5.2](#52-a2l)). A symbol **shall** be stated once: a map
-naming one twice is a usage error rather than the last of the two addresses silently
-winning. The address is a JSON integer, or a string read as hexadecimal with a `0x` prefix
-and as decimal without one - those two spellings exactly, whatever whitespace surrounds
-them. The address of a symbol the project carries **must** fit an unsigned 32 bit
+The addresses of the generated objects are only known after linking. DDD takes them from
+one of two sources, each an option of `ddd generate a2l` and `all`: the linked image itself
+(`--image`), or a symbol to address map the build writes (`--address-map`). Both are a
+usage error, as is either given to a run that does not write the A2L. A symbol is the C
+identifier of an object or, for the member of a structured object, its access path, for
+example `Inlet.latest` or `Inlet[2].raw`, exactly as the A2L names it
+([section 5.2](#52-a2l)).
+
+`--image FILE` reads a linked ELF image, `ET_EXEC` or `ET_DYN`, and its DWARF debug
+information, versions 2 to 5: the images the reader of `ddd tool from-elf` reads
+([section 7.3](#73-toolbox)), any other being a usage error in that reader's words. Each
+symbol the A2L states an address for is placed on its own. An object is the image's
+variable of that name with external linkage: the units describing one variable at one
+address, as `-fcommon` makes them, describe one variable, and a `static` of the same name
+never stands for it, every object a dictionary describes being a global. A member is found
+along its access path, typedefs and qualifiers seen through before each step: `.name` adds
+the member's offset within its structure, and `[i]`, one per dimension, `i` times the size
+of what the index steps over, so that an array of several dimensions is indexed row-major,
+as C lays it out. The type a path ends at is not compared with the declaration. The A2L
+takes the byte order the image states: a `--byte-order` that agrees is accepted, and one
+that contradicts the image is a usage error. A symbol the image does not place keeps
+address `0x00000000` and is reported by `address-missing`
+([section 4](#4-consistency-checks)), why it is not placed a note of the finding: the image
+holds no variable of that name, or only a `static` of it; the variable has no storage -
+only declared, folded into a constant, removed by the compiler or discarded by the linker,
+thread-local, or at no fixed address; its type has no member of that name, the C code and
+the declaration disagreeing; a step indexes what is not an array, or names a member of what
+is not a structure; an index is out of range; or a step names a bitfield, whose bits an
+address cannot describe. An address outside `0 .. 0xFFFFFFFF` for a symbol the A2L states
+an address for is a usage error naming the symbol and the image, and nothing is written.
+
+`--address-map FILE` names one flat JSON object mapping each symbol to its address, for an
+image the build reads itself - one without debug information, say. A symbol **shall** be
+stated once: a map naming one twice is a usage error rather than the last of the two
+addresses silently winning. The address is a JSON integer, or a string read as hexadecimal
+with a `0x` prefix and as decimal without one - those two spellings exactly, whatever
+whitespace surrounds them. The address of a symbol the project carries **must** fit an
+unsigned 32 bit
 `ECU_ADDRESS`: a map that is not a JSON
 object, a value that is neither of those two spellings, or an address outside
 `0 .. 0xFFFFFFFF` **for a symbol the A2L states an address for**, is a usage error and
@@ -2012,18 +2045,16 @@ a build step, and on Windows that is exactly where one comes from. A key the pro
 not know is ignored, and an object the map does not
 cover keeps address `0x00000000` rather than failing the run: a map extracted from a linker
 output legitimately omits the objects a condition compiled away, and `SYMBOL_LINK` lets a
-downstream tool resolve those it cares about. A map with entries that leaves an object of
-the A2L uncovered is `address-missing`
-([section 4](#4-consistency-checks)): a warning by default, an error under `--strict`, and
-a run that reports it as an error writes nothing rather than a file whose addresses it has
-just been told are incomplete, unless `--force` asks for the file anyway
-([section 7](#7-tool-interface)). `ddd generate a2l` writes the A2L
-alone - no C is rendered and no template directory is accepted - so the post-link run
-regenerates the A2L without touching the sources the image was built from. Reading the
-linker output directly (ELF/DWARF, IEEE-695) and cross-checking the linked symbols against
-the declarations is *planned*. The reader `ddd tool from-elf` uses
-([section 7.3](#73-toolbox)) reads ELF images and their DWARF already, and imports nothing
-of DDD, so that reading the address map can use it.
+downstream tool resolve those it cares about.
+
+A map with entries, or an image, that leaves an object of the A2L uncovered is
+`address-missing` ([section 4](#4-consistency-checks)): a warning by default, an error under
+`--strict`, and a run that reports it as an error writes nothing rather than a file whose
+addresses it has just been told are incomplete, unless `--force` asks for the file anyway
+([section 7](#7-tool-interface)). `ddd generate a2l` writes the A2L alone - no C is rendered
+and no template directory is accepted - so the post-link run regenerates the A2L without
+touching the sources the image was built from. Reading IEEE-695 images, and cross-checking
+the type of each linked variable against its declaration, is *planned*.
 
 ## 7 Tool interface
 
@@ -2038,6 +2069,8 @@ the two built-in artefacts and the artefact of every plugin the project names th
 one, in one run, or the name of such a plugin for its artefact alone, each carrying only the
 options of what it produces - a plugin's artefact takes the output directory, `--dry-run`,
 `--force` and the severity and format options, and none of the built-in artefacts' own;
+`a2l` and `all` take `--byte-order` and one source of the addresses, `--image` or
+`--address-map` ([section 6](#6-address-information));
 `all` additionally takes a repeatable `--without c|a2l`, which leaves that built-in
 artefact out of the run while still producing the plugins'. What it subtracts it subtracts
 entirely: the options of an artefact left out are refused rather than accepted and ignored,
@@ -2150,8 +2183,8 @@ not this run's error. Every long option **must** be spelled in full; no abbrevia
 is accepted, so that adding an option cannot change what an existing command line means. A
 usage error raised by a step that follows the analysis - a plugin hook
 that raises, an override naming a plugin check that no loaded plugin registers, which
-is held until the project is read ([section 3.11](#311-plugins)), an address map that
-cannot be read, a `--renames` file, a dumped dictionary or an artefact that cannot be
+is held until the project is read ([section 3.11](#311-plugins)), an address map or an
+image that cannot be read, a `--renames` file, a dumped dictionary or an artefact that cannot be
 written, an output path naming a file the run itself read - `ddd dump -o`,
 `ddd compare --renames` and `ddd generate --dictionary` each refuse one, naming it, since
 nothing DDD writes is ever a file it read - a `ddd compare --plugin` refused beside a
@@ -2234,6 +2267,20 @@ link can produce; an empty map raises no `address-missing`
 ([section 4](#4-consistency-checks)), so that first build passes under `STRICT` as well.
 With `NO_A2L` the map is neither seeded nor a dependency, the A2L being the only artefact
 that reads it.
+
+`ADDRESSES_FROM_IMAGE` takes the addresses out of the linked image instead
+([section 6](#6-address-information)), so that one build gives the complete A2L: the
+generation before the link leaves the A2L out, as `NO_A2L` does, and a second step after the
+link runs `ddd generate a2l --image` over the image, the A2L its output. The step depends on
+the image and on what the project is read from - its description, the files it is collected
+or included from, the `.py` plugins and the tool - so it runs again when the image relinks or
+a description changes and never otherwise, and a target `<stem>_ddd_a2l`, built by default,
+drives it. The A2L keeps its path and its `DDD_A2L` property, and the step writes it into the
+directory the generation before the link writes into, whose manifest keeps either run from
+taking back the other's files ([section 5](#5-generated-artefacts)). `STRICT`, `SEVERITY` and
+`BYTE_ORDER` apply to the step, so that under `STRICT` a symbol the image cannot place stops
+the build. `ADDRESSES_FROM_IMAGE` beside `ADDRESS_MAP` or beside `NO_A2L` is a configure
+error naming both.
 
 The remaining keywords mirror the command line: `TEMPLATE_DIRECTORY` (required,
 `--template-dir`), `OUTPUT_DIRECTORY` (`-o`, defaulting into the build tree), `BYTE_ORDER`,

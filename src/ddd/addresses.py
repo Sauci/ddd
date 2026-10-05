@@ -195,7 +195,7 @@ def _variable(name: str, image: Image, named: Sequence[Variable]) -> tuple[int, 
         if named:
             return (
                 f"the image holds '{name}' only as a static, and every object a dictionary "
-                f"describes is a global"
+                "describes is a global"
             )
         missing = f"the image's debug information holds no variable named '{name}'"
         if name in image.symbols:
@@ -220,7 +220,7 @@ def _variable(name: str, image: Image, named: Sequence[Variable]) -> tuple[int, 
 
 def _walk(symbol: str, at: int, address: int, ctype: CType) -> int | str:
     """``address`` moved along the steps of ``symbol`` from ``at``, or why it cannot be."""
-    from ddd.elf import Array, Struct, size_of
+    from ddd.elf import Array, Struct, core_of, size_of
 
     while at < len(symbol):
         step = _STEP.match(symbol, at)
@@ -229,7 +229,7 @@ def _walk(symbol: str, at: int, address: int, ctype: CType) -> int | str:
         assert step is not None
         reached = symbol[:at]
         at = step.end()
-        core = _seen_through(ctype)
+        core = core_of(ctype)
         member, index = step.groups()
         if member is not None:
             if not isinstance(core, Struct):
@@ -257,12 +257,3 @@ def _walk(symbol: str, at: int, address: int, ctype: CType) -> int | str:
         address += position * size
         ctype = element
     return address
-
-
-def _seen_through(ctype: CType) -> CType:
-    """``ctype`` without the typedefs and qualifiers around it, as a step of a path sees it."""
-    from ddd.elf import Qualified, Typedef
-
-    while isinstance(ctype, Qualified | Typedef):
-        ctype = ctype.inner
-    return ctype

@@ -723,7 +723,7 @@ class _Types:
         """An enum's sign: its underlying type's, else its encoding's, else whether an
         enumerator is negative - which an old producer states and nothing else."""
         if "DW_AT_type" in entry.attributes:
-            underlying = _core(self.inner(entry, unit))
+            underlying = core_of(self.inner(entry, unit))
             if isinstance(underlying, Base):
                 return underlying.encoding in _SIGNED_ENCODINGS
         encoding = _value(entry, "DW_AT_encoding")
@@ -831,7 +831,8 @@ def _enumerator(entry: Entry, *, signed: bool) -> tuple[str, int]:
     return _text(entry.attributes.get("DW_AT_name")) or "", value
 
 
-def _core(ctype: CType) -> CType:
+def core_of(ctype: CType) -> CType:
+    """``ctype`` without the typedefs and qualifiers around it."""
     while isinstance(ctype, Qualified | Typedef):
         ctype = ctype.inner
     return ctype

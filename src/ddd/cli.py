@@ -681,7 +681,7 @@ def _add_generate_arguments(
             default=None,
             help=(
                 f"byte order reported in the a2l file, default: {BYTE_ORDERS[0]}, or the "
-                f"image's with --image"
+                "image's with --image"
             ),
         )
         parser.add_argument(

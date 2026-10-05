@@ -384,6 +384,25 @@ async function openFindingsTab(page: Page): Promise<void> {
   });
 }
 
+/** Whether the heading says nothing is updating - `UpdatingStatus`'s own empty line (spec 6), the
+ * same element `findingsCurrent` below reads as the first half of its own one-frame check: what a
+ * reader sees as the page caught all the way up with whatever it was last asked to do, never a
+ * network reply this script could instead await. Handed to `page.waitForFunction` whole, so it
+ * reads nothing from outside its own body - the same reason `findingsCurrent` repeats this check
+ * rather than calling this function, since `waitForFunction` serialises only the one function it
+ * is given, not one this could call out to.
+ *
+ * Waited for before every Apply press below (`apply shows`, `findings current`), so each starts
+ * timing from a page that already says it is up to date rather than one still catching up on an
+ * earlier measure's own leftover analysis - the problem fix D names, confirmed in the figures its
+ * own commit records - and again after Undo in `undoLastEditIfAny`, so every measure in turn
+ * leaves the project analysed exactly as it found it, not merely put back with its own analysis
+ * still running on. */
+function pageUpToDate(): boolean {
+  const status = document.querySelector(".heading > .updating-status");
+  return status !== null && status.textContent === "";
+}
+
 /** How long `undoLastEditIfAny` waits for the Undo button before deciding there is truly nothing
  * to put back - a wait, not an instant, one-shot `isVisible()` read: `state.undoable`, which the
  * button depends on, reaches the page through the continuous `GET /api/state` long poll, a
@@ -397,9 +416,11 @@ const UNDO_TIMEOUT = 30_000;
 
 /** Puts back whatever this test's own edit changed, if anything landed at all - `UNDO_TIMEOUT`'s
  * own doc says why this waits rather than checking once. Leaves the project as generated for
- * whichever test opens it next (brief: "so the project is as generated for the next run" - needed
- * after both `apply shows` and `findings current`, since each presses Apply on its own fresh page
- * and the second would otherwise find nothing left to change).
+ * whichever test opens it next, its analysis settled too, not only its files (brief: "so the
+ * project is as generated for the next run"; fix D sharpens that to "analysed as it found it" -
+ * needed after both `apply shows` and `findings current`, since each presses Apply on its own
+ * fresh page and would otherwise either find nothing left to change or start timing against a
+ * heading still catching up on this very function's own undo).
  *
  * Called unconditionally after `apply shows`'s and `findings current`'s own measured
  * `elapsedCapped` span, whether that span read a real number, `CAPPED` or `CRASHED` - in every
@@ -419,7 +440,10 @@ const UNDO_TIMEOUT = 30_000;
  *     also uses or finds nothing there to click. Not proven race-free, only reasoned through: the
  *     safer alternative - skipping this step whenever the measured span did not settle cleanly -
  *     risks the exact "left dirty" failure fix round 1 already found once (a missing `undo.click()`
- *     there, not this one), which seemed the worse default to design around. */
+ *     there, not this one), which seemed the worse default to design around. The last wait below
+ *     (`pageUpToDate`) is no different from the first in this respect: one more read of the
+ *     heading, settling only once it itself says there is nothing left running, never a write of
+ *     its own. */
 async function undoLastEditIfAny(page: Page): Promise<void> {
   const undo = page.getByRole("button", { name: /^Undo / });
   const appeared = await expect(undo)
@@ -435,6 +459,11 @@ async function undoLastEditIfAny(page: Page): Promise<void> {
     await expect(confirm).toBeVisible({ timeout: LONG_TIMEOUT });
     await confirm.click();
     await expect(undo).toBeHidden({ timeout: LONG_TIMEOUT });
+    // The button hiding says the undo was accepted, not that its own analysis has landed (fix D's
+    // own problem statement: "the undo's analysis runs on") - waited out here too, so this
+    // function's own promise, the project analysed as it found it, is true by the time it returns
+    // rather than merely under way.
+    await page.waitForFunction(pageUpToDate, undefined, { polling: "raf", timeout: LONG_TIMEOUT });
   } catch (error) {
     if (!isPageCrash(error)) throw error;
   }
@@ -619,6 +648,11 @@ test("apply shows", async ({ page }) => {
   await combobox.press("Enter");
   const apply = page.getByRole("button", { name: /^Apply to \d+ files?$/ });
   await expect(apply).toBeVisible({ timeout: LONG_TIMEOUT });
+  // Outside the timed span (fix D): the heading may still say it is updating here - the previous
+  // test's own undo settling, or this picker's own filtering - so this measure starts its clock
+  // only once it says nothing is, the page up to date the way a reader pressing Apply would
+  // actually find it, never a network reply this script could await instead.
+  await page.waitForFunction(pageUpToDate, undefined, { polling: "raf", timeout: LONG_TIMEOUT });
   const ms = await elapsedCapped(async () => {
     await apply.click();
     await expect(cell).toHaveText("BenchUnit", { timeout: LONG_TIMEOUT });
@@ -639,7 +673,9 @@ const BENCH_UNIT_FINDING = "'BenchUnit' is not a unit this project declares";
  * heading's status (`UpdatingStatus`) no longer says "Updating the findings…", and the edit's own
  * `unknown-unit` finding is drawn in "Findings in this component", the list a reader of the
  * component's page sees (`ul.findings`, an error's item first, worst first). Handed to
- * `page.waitForFunction` whole, so it reads nothing from outside its own body.
+ * `page.waitForFunction` whole, so it reads nothing from outside its own body - `pageUpToDate`
+ * above reads the same heading element for its own, simpler wait before Apply, repeated rather
+ * than shared for that same reason.
  */
 function findingsCurrent(message: string): boolean {
   const status = document.querySelector(".heading > .updating-status");
@@ -664,6 +700,11 @@ test("findings current", async ({ page }) => {
   await combobox.press("Enter");
   const apply = page.getByRole("button", { name: /^Apply to \d+ files?$/ });
   await expect(apply).toBeVisible({ timeout: LONG_TIMEOUT });
+  // Outside the timed span (fix D): the heading may still say it is updating here - the previous
+  // test's own undo settling, or this picker's own filtering - so this measure starts its clock
+  // only once it says nothing is, the page up to date the way a reader pressing Apply would
+  // actually find it, never a network reply this script could await instead.
+  await page.waitForFunction(pageUpToDate, undefined, { polling: "raf", timeout: LONG_TIMEOUT });
   const ms = await elapsedCapped(async () => {
     await apply.click();
     // What a reader sees, never a reply (the final review, Important 2): the heading done

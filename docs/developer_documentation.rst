@@ -948,7 +948,11 @@ after opening, the first analysed screen and, apart, the layout worker's own lay
 graph, each tab's own first drawing but the Compare tab's, typing in a panel, scrolling a long
 table, and an Apply until its own change shows and until the findings are current: the heading
 no longer saying they are updating, and the edit's own finding drawn in its component's list.
-Every measure's own row is printed and, where ``DDD_BENCH_OUT`` names a file, appended to it
+Each of those last two starts timing only once that heading already says the page is up to
+date, not while it may still be catching up on an earlier measure's own analysis, and each is
+followed by an Undo that puts the edit back and waits for the same heading before it returns,
+so the project it leaves behind is analysed, not merely restored, for whichever measure runs
+next. Every measure's own row is printed and, where ``DDD_BENCH_OUT`` names a file, appended to it
 too. The server half is checked by a smoke test on a small generated project
 (``tests/test_bench_gui.py``); nothing checks the page half beyond ``gui``'s own type checking
 and linting - nothing runs ``gui/bench/page.bench.ts`` outside ``npm run bench`` itself. The

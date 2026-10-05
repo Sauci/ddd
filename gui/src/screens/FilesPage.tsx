@@ -42,10 +42,11 @@ interface Props {
  * `GET /api/files` itself and re-reads it on each new revision, the way every other tab's own
  * screen does.
  *
- * The row its own New file or Add makes shows at once (spec §3, Ruling F2): the edit answered,
- * the tab holds the entry the applied plan appends (`filesHoldOf`) and draws it after the
- * answer's own (`filesShown`) until an answer carries it, the page's own undo puts it back, or an
- * answer of a revision including the edit comes (`filesHoldAfter`). */
+ * The row its own New file or Add makes shows at once, and the row its own Remove takes out goes
+ * at once (spec §3, Rulings F2 and F6): the edit answered, the tab holds what the applied plan
+ * changed (`filesHoldOf`) and draws the answer with it (`filesShown`) until an answer shows it,
+ * the page's own undo puts it back, or an answer of a revision including the edit comes
+ * (`filesHoldAfter`). An edit refused holds nothing, and its row stays as it was. */
 export function FilesPage({ state, path, onPath, stopped }: Props) {
   const revision = state?.revision;
   const files = useQuery({
@@ -60,7 +61,7 @@ export function FilesPage({ state, path, onPath, stopped }: Props) {
   // one lets the row selected go, and selecting a row closes it, so that one panel at a time
   // stands beside the table - `SharedPage`'s own rule for its add form and an entry's panel.
   const [form, setForm] = useState<"create" | "add" | null>(null);
-  // The entry the tab's own last New file or Add appended, held until an answer carries it, and
+  // What the tab's own last New file, Add or Remove changed, held until an answer shows it, and
   // the edits the page's undos put back - the Undo strip's, which end the hold.
   const [hold, setHold] = useState<FilesHold | null>(null);
   const undone = useSyncExternalStore(ownEdits.subscribe, ownEdits.undone);
@@ -104,6 +105,7 @@ export function FilesPage({ state, path, onPath, stopped }: Props) {
             revision={revision}
             stopped={stopped}
             onClose={() => onPath(undefined)}
+            onHeld={setHold}
           />
         ) : form === "create" ? (
           <NewFile
@@ -160,8 +162,8 @@ function useFilesPlan(request: FilesPlanRequest | null, revision: number | undef
  * `lib/typing.ts`) as the plan-fetch refusal it already takes a `string | null` for.
  * Once an Apply is answered, applied or refused, the tab's entries and every plan are asked for
  * again - each of the three edits the project description, whose fingerprint every plan carries -
- * and applied, `onApplied` closes the panel, and `onHeld`, where a form passes one, is handed the
- * entry the plan it posted appends (`filesHoldOf`), for the tab to draw until its entries carry it.
+ * and applied, `onApplied` closes the panel, and `onHeld` is handed what the plan it posted
+ * changed (`filesHoldOf`), for the tab to draw until its entries show it.
  */
 function useFilesApply(
   request: FilesPlanRequest | null,
@@ -173,7 +175,7 @@ function useFilesApply(
   plan: UseQueryResult<FilesPlanReply>,
   revision: number | undefined,
   onApplied: () => void,
-  onHeld?: (hold: FilesHold | null) => void,
+  onHeld: (hold: FilesHold | null) => void,
 ) {
   const queries = useQueryClient();
   const [refused, setRefused] = useState<string | null>(null);
@@ -184,23 +186,26 @@ function useFilesApply(
   // plan, nor its own fetch refusal, for text the reader has since typed past.
   const shown = planShown(asked, request, plan);
   const apply = useMutation({
-    // Answers the plan it posted beside the edit's own answer: what the tab holds is read off the
-    // very plan applied, whatever the query holds by the time the answer comes.
+    // Answers the plan it posted, and the request it was asked with, beside the edit's own
+    // answer: what the tab holds is read off the very plan applied, whatever the query holds by
+    // the time the answer comes.
     mutationFn: async () => {
       const applied = plan.data;
       const edit =
         request === null || applied === undefined
           ? null
           : planEdit(applied, filesLabel(request, applied, project));
-      if (edit === null || applied === undefined) throw new Error("there is nothing to change");
-      return { reply: await postEdit(edit), applied };
+      if (edit === null || request === null || applied === undefined) {
+        throw new Error("there is nothing to change");
+      }
+      return { reply: await postEdit(edit), applied, requested: request };
     },
     onMutate: () => setRefused(null),
     // A success is a definite answer, so it also clears a stale wait left over from an earlier
     // attempt; `onMutate` above only ever clears the other refusal.
-    onSuccess: ({ reply, applied }) => {
+    onSuccess: ({ reply, applied, requested }) => {
       setStale(null);
-      onHeld?.(filesHoldOf(reply.edit, applied, project));
+      onHeld(filesHoldOf(reply.edit, applied, project, requested));
       onApplied();
     },
     // Stale is the one refusal that waits for a later revision rather than clearing; setting one
@@ -359,25 +364,29 @@ function RemoveFile({
   revision,
   stopped,
   onClose,
+  onHeld,
 }: {
   removal: FileRemoval;
   project: string;
   revision: number | undefined;
   stopped: boolean;
   onClose: () => void;
+  /** Applied: the key taken out, whose entries the tab leaves out until its entries do. */
+  onHeld: (hold: FilesHold | null) => void;
 }) {
   const [changesShown, setChangesShown] = useState(false);
   const plan = useFilesPlan(removal.request, revision);
-  // Removed, the panel closes, the address going bare: the row is gone - and where a pattern
-  // keeps the file in all the same, the row left is the pattern's child, whose own Remove the
-  // server would refuse, naming the pattern, the moment it was selected again. Never debounced -
-  // `asked` and `request` are the same value - so `planShown` inside `useFilesApply` is always
-  // trusted the moment the query itself settles.
+  // Removed, the panel closes, the address going bare: the row is gone at once, the tab holding
+  // the key taken out until its entries leave it out too - and where a pattern keeps the file in
+  // all the same, the row left is the pattern's child, whose own Remove the server would refuse,
+  // naming the pattern, the moment it was selected again. Never debounced - `asked` and
+  // `request` are the same value - so `planShown` inside `useFilesApply` is always trusted the
+  // moment the query itself settles.
   const {
     apply,
     plan: offerPlan,
     refusal,
-  } = useFilesApply(removal.request, removal.request, project, plan, revision, onClose);
+  } = useFilesApply(removal.request, removal.request, project, plan, revision, onClose, onHeld);
   return (
     <RemoveFileView
       removal={removal}

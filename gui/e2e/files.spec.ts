@@ -132,3 +132,50 @@ test("the row a New file makes shows before the tab's next list of entries answe
   }
   await expect(page.getByRole("row", { name: "valve.ddd.json" })).toContainText("component");
 });
+
+/**
+ * The row the tab's own Remove takes out goes at once (spec §3, Ruling F6), held as New file's
+ * is: the edit answered, the tab leaves out every entry of the key it removed, before its next
+ * list of entries answers - held back here, from the press, for as long as the row takes to go.
+ * Released, the list no longer carries the entry, and the row stays gone; the page's own undo
+ * puts the entry back, and its row with it.
+ */
+test("the row a Remove takes out goes before the tab's next list of entries answers", async ({
+  page,
+  vocabularyGui,
+}) => {
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  const unitsRow = page.getByRole("row", { name: UNITS });
+  await unitsRow.click();
+  const removing = page
+    .getByRole("complementary", { name: UNITS })
+    .getByRole("region", { name: "Remove from the includes" });
+  const remove = removing.getByRole("button", { name: "Remove from the includes" });
+  await expect(remove).toBeVisible();
+
+  let release = (): void => undefined;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/files", async (route) => {
+    await released;
+    await route.continue();
+  });
+  const listed = page.waitForResponse((response) => response.url().endsWith("/api/files"));
+  try {
+    await remove.click();
+    await expect(unitsRow).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await listed;
+  await expect(unitsRow).toHaveCount(0);
+
+  await page.getByRole("button", { name: `Undo '${UNITS}' removed from the includes` }).click();
+  await page
+    .getByRole("region", { name: "Undo" })
+    .getByRole("button", { name: "Put back 1 file" })
+    .click();
+  await expect(unitsRow).toBeVisible();
+});

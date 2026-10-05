@@ -11,7 +11,7 @@
 **Spec:** `docs/superpowers/specs/2026-09-30-gui-large-projects-design.md`. Read it before any task. Where this plan departs from it, the departure is a ruling in *Rulings taken* at the end, with its reason and the measurement behind it.
 
 
-> **As built** (executed 2026-09-30 to 2026-10-03; the departures from the task texts, each a ruling under *Rulings taken*):
+> **As built** (executed 2026-09-30 to 2026-10-05; the departures from the task texts, each a ruling under *Rulings taken*):
 > - **Five tasks were added:**
 >   - **11b**, a large edit planned and written without re-scanning every file character by character (P6);
 >   - **11c**, the page says the server stopped only once a prompt retry fails too (P7);
@@ -25,6 +25,7 @@
 > - **Task 11's decision of what a screen shows and offers is one lib function**, `planShown`, used by all ten screens that ask a plan, SharedAdd included (T11-1, T11-2). A pick or an Enter goes through at once (T11-3, T12-3).
 > - **Task 7 kept the Compare tab's table** as `CompareTableView` (T7-2), and `stillReported` became `selectedNow` (T7-6).
 > - **Task 12's first journey** sets a unit outside the vocabulary rather than `Nm`, which a settle brings into agreement (T12-1).
+> - **The final review's fixes** (F1-F9) came as two waves and two small fixes: A, the server answering in its own time while an analysis runs (no file read under the session's lock, one resolve per revision, measures under load); B, the page measuring what a reader sees, its own Files rows held and the parked page items cleared; C, one thread in difflib at a time around a Python 3.14.4 fault, and the Files tab's Remove held; D, the bench's Apply measures starting from a settled page.
 
 ## Global Constraints
 
@@ -844,8 +845,8 @@ done; done
 | `Table`, `Units`, `Types`, `Shared files`, `Files`, `Findings` | the tab followed | the tab's table shows its first row, or its own sentence for having none - read each tab to know which |
 | `typing` | twelve characters typed into the unit field of a variable's panel, 50 ms apart | the longest long task while typing, in ms (`0` if none) |
 | `scrolling` | forty wheel steps of 600 px over the Findings table, 50 ms apart | the longest long task while scrolling |
-| `apply shows` | Apply pressed on that variable's new unit | the component table's unit cell shows it |
-| `findings current` | the same press | a `GET /api/state` answer whose `revision` is newer than the one before the press - a benchmark may wait on a response; a journey may not |
+| `apply shows` | Apply pressed on that variable's new unit (as built, since fix D: pressed once the heading says nothing is updating) | the component table's unit cell shows it |
+| `findings current` | the same press | a `GET /api/state` answer whose `revision` is newer than the one before the press - a benchmark may wait on a response; a journey may not (as built, since fix wave B: the heading's status saying nothing and the edit's own `unknown-unit` finding drawn, what a reader sees) |
 
 Long tasks are read with a `PerformanceObserver` for `longtask`, installed by `page.addInitScript` and read back with `page.evaluate`: a long task is reported only from 50 ms, so `0` means no stall of 50 ms or more. After `findings current`, press Undo, so the project is as generated for the next run.
 
@@ -2285,103 +2286,114 @@ these eight projects (260-4,141 ms) where the budget is "within one analysis plu
 
 Linux development PC as *Server, before* gives it (Intel Core i9-14900HX, 32 threads, 30 GiB
 memory, Ubuntu 26.04.1 LTS, kernel 7.0.0-34-generic, Python 3.14.4). `feature/gui-large-projects`
-at `778be23`, one run each, 2026-10-03 01:11-01:15 UTC: `tools/bench_gui.py --json
-server-after.json` over the eighteen projects Step 1 generated afresh. Beside the run, sampled
-every 30 s, were the run's own processes and the maintainer's desktop: GNOME Shell up to 36 % of
-one thread, GitKraken up to 18 %, Claude about 10 %. Since Task 6 `edit answered` and `edit
-analysed` are two spans - the edit's answer, and its analysis landing; `findings page`, `findings
-of a file` (Task 7) and `rename plan` (Task 11b) are this part's own measures.
+at `21b78f8`, after the final review's fixes, one run each, 2026-10-05 11:02-11:09 UTC:
+`tools/bench_gui.py --json` over each of the eighteen projects Step 1 generated afresh, one
+project per call (ruling F7). They replace the figures taken at `778be23` before the final review
+(this plan as `c689a19` left it). Beside the run, sampled every 30 s, were the run's own processes
+and the maintainer's desktop: the Claude desktop app up to 64 % of one thread, GNOME Shell up to
+20 %, Bambu Studio up to 18 %. Since Task 6 `edit answered` and `edit analysed` are two spans - the
+edit's answer, and its analysis landing; `findings page`, `findings of a file` (Task 7) and
+`rename plan` (Task 11b) are this part's own measures. `state while analysing`, `plan while
+analysing` and `edit while analysing` (fix wave A) are asked halfway through an analysis, by the
+clock, the poller at 1 s; one answered once its analysis had ended is written `refused` (ruling F3):
+`plan while analysing` on both 100,000-large projects, where the settle plan's difflib over a
+component of 3,333 declarations outlasts the analysis (*What was left open*).
 
 Milliseconds:
 
-| project | open | state | graph | units | types | shared | files | findings page | findings of a file | variable | unit | remove judged | analysis | edit answered | edit analysed | rename plan |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 10000-many-clean | 284 | 4 | 5 | 9 | 0 | 0 | 5 | 0 | 0 | 2 | 24 | 286 | 262 | 1 | 293 | 342 |
-| 10000-many-heavy | 352 | 20 | 10 | 10 | 0 | 0 | 5 | 3 | 1 | 4 | 26 | 375 | 363 | 2 | 342 | 324 |
-| 10000-large-clean | 246 | 0 | 3 | 4 | 0 | 0 | 1 | 0 | 0 | 8 | 17 | 228 | 237 | 9 | 252 | 288 |
-| 10000-large-heavy | 297 | 8 | 6 | 5 | 0 | 0 | 1 | 4 | 8 | 13 | 18 | 288 | 291 | 9 | 308 | 279 |
-| 10000-mixed-clean | 302 | 2 | 4 | 6 | 0 | 0 | 3 | 0 | 0 | 5 | 20 | 270 | 244 | 9 | 314 | 313 |
-| 10000-mixed-heavy | 337 | 13 | 7 | 7 | 0 | 0 | 3 | 4 | 8 | 19 | 22 | 342 | 355 | 9 | 339 | 305 |
-| 35000-many-clean | 1047 | 14 | 18 | 31 | 0 | 0 | 17 | 0 | 0 | 7 | 88 | 1032 | 1053 | 2 | 1042 | 1192 |
-| 35000-many-heavy | 1327 | 65 | 32 | 32 | 0 | 0 | 17 | 4 | 1 | 10 | 92 | 1418 | 1337 | 1 | 1343 | 1152 |
-| 35000-large-clean | 941 | 1 | 9 | 13 | 0 | 0 | 1 | 0 | 0 | 29 | 60 | 964 | 992 | 33 | 1002 | 1097 |
-| 35000-large-heavy | 1221 | 27 | 21 | 14 | 0 | 0 | 1 | 12 | 27 | 48 | 65 | 1307 | 1240 | 34 | 1453 | 1011 |
-| 35000-mixed-clean | 946 | 8 | 16 | 78 | 0 | 0 | 9 | 0 | 0 | 19 | 77 | 918 | 1058 | 32 | 1023 | 1106 |
-| 35000-mixed-heavy | 1255 | 49 | 29 | 26 | 0 | 0 | 9 | 12 | 27 | 65 | 79 | 1264 | 1335 | 31 | 1559 | 1082 |
-| 100000-many-clean | 2799 | 42 | 54 | 90 | 0 | 0 | 48 | 0 | 0 | 19 | 256 | 3205 | 3037 | 2 | 3393 | 3386 |
-| 100000-many-heavy | 4021 | 200 | 98 | 92 | 0 | 0 | 48 | 4 | 1 | 30 | 274 | 3956 | 4199 | 2 | 3993 | 3334 |
-| 100000-large-clean | 2953 | 1 | 27 | 39 | 0 | 0 | 1 | 0 | 0 | 90 | 271 | 2796 | 2927 | 95 | 3300 | 3084 |
-| 100000-large-heavy | 3633 | 79 | 65 | 41 | 0 | 0 | 1 | 36 | 84 | 139 | 262 | 3998 | 3832 | 94 | 3820 | 3482 |
-| 100000-mixed-clean | 2775 | 63 | 48 | 73 | 0 | 0 | 24 | 0 | 0 | 59 | 215 | 3132 | 3118 | 97 | 3095 | 3501 |
-| 100000-mixed-heavy | 3728 | 138 | 178 | 70 | 0 | 0 | 25 | 34 | 87 | 31 | 312 | 4171 | 3951 | 1 | 3844 | 3537 |
+| project | open | state | graph | units | types | shared | files | findings page | findings of a file | variable | unit | remove judged | analysis | edit answered | edit analysed | rename plan | state while analysing | plan while analysing | edit while analysing |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 10000-many-clean | 309 | 2 | 18 | 2 | 0 | 0 | 5 | 0 | 0 | 3 | 7 | 306 | 270 | 1 | 351 | 323 | 2 | 15 | 37 |
+| 10000-many-heavy | 382 | 10 | 10 | 2 | 0 | 0 | 5 | 3 | 1 | 3 | 8 | 391 | 399 | 1 | 381 | 316 | 21 | 2 | 117 |
+| 10000-large-clean | 291 | 0 | 3 | 1 | 0 | 0 | 1 | 0 | 0 | 8 | 5 | 272 | 265 | 10 | 305 | 288 | 0 | 333 | 22 |
+| 10000-large-heavy | 353 | 8 | 13 | 1 | 0 | 0 | 1 | 5 | 8 | 6 | 7 | 379 | 327 | 9 | 390 | 303 | 14 | 194 | 66 |
+| 10000-mixed-clean | 307 | 1 | 4 | 1 | 0 | 0 | 3 | 0 | 0 | 5 | 6 | 301 | 265 | 9 | 353 | 308 | 1 | 172 | 45 |
+| 10000-mixed-heavy | 363 | 9 | 8 | 1 | 0 | 0 | 3 | 4 | 8 | 6 | 8 | 390 | 367 | 9 | 368 | 308 | 15 | 205 | 68 |
+| 35000-many-clean | 1115 | 5 | 18 | 5 | 0 | 0 | 17 | 0 | 0 | 6 | 26 | 1074 | 1127 | 1 | 1081 | 1159 | 12 | 4 | 67 |
+| 35000-many-heavy | 1433 | 40 | 36 | 7 | 0 | 0 | 17 | 4 | 1 | 10 | 34 | 1379 | 1446 | 1 | 1392 | 1144 | 73 | 60 | 68 |
+| 35000-large-clean | 1070 | 0 | 10 | 5 | 0 | 0 | 1 | 0 | 0 | 32 | 20 | 982 | 1044 | 33 | 1148 | 1056 | 0 | 2439 | 137 |
+| 35000-large-heavy | 1294 | 30 | 23 | 5 | 0 | 0 | 1 | 13 | 29 | 21 | 24 | 1396 | 1307 | 33 | 1307 | 1146 | 61 | 1470 | 190 |
+| 35000-mixed-clean | 1061 | 3 | 15 | 5 | 0 | 0 | 9 | 0 | 0 | 18 | 23 | 1109 | 996 | 33 | 1146 | 1087 | 3 | 1340 | 83 |
+| 35000-mixed-heavy | 1406 | 35 | 31 | 7 | 0 | 0 | 9 | 13 | 28 | 23 | 29 | 1410 | 1353 | 34 | 1392 | 1215 | 73 | 1307 | 207 |
+| 100000-many-clean | 3350 | 15 | 51 | 14 | 0 | 0 | 50 | 0 | 0 | 18 | 78 | 3158 | 3222 | 2 | 3187 | 3318 | 39 | 91 | 109 |
+| 100000-many-heavy | 4076 | 118 | 329 | 24 | 0 | 0 | 49 | 4 | 1 | 27 | 103 | 4054 | 4021 | 2 | 4664 | 3255 | 234 | 48 | 109 |
+| 100000-large-clean | 3032 | 0 | 28 | 13 | 0 | 0 | 1 | 0 | 0 | 93 | 168 | 2854 | 2990 | 97 | 3406 | 3152 | 0 | refused | 329 |
+| 100000-large-heavy | 3967 | 88 | 65 | 16 | 0 | 0 | 1 | 37 | 85 | 64 | 98 | 4119 | 3943 | 96 | 4334 | 3328 | 176 | refused | 315 |
+| 100000-mixed-clean | 3120 | 7 | 88 | 13 | 0 | 0 | 25 | 0 | 0 | 53 | 66 | 3161 | 2898 | 97 | 3276 | 3306 | 14 | 8411 | 203 |
+| 100000-mixed-heavy | 4109 | 97 | 88 | 16 | 0 | 0 | 25 | 35 | 85 | 26 | 104 | 4302 | 3741 | 2 | 4063 | 3483 | 203 | 57 | 78 |
 
 Bytes, the reply serialised as the server sends it:
 
-| project | state | graph | units | types | shared | files | findings page | findings of a file | variable | unit | remove judged | edit answered | rename plan |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 10000-many-clean | 119,528 | 304,169 | 2,905 | 28 | 30 | 53,177 | 56 | 56 | 83,555 | 382,991 | 476 | 272 | 323,268 |
-| 10000-many-heavy | 120,200 | 264,453 | 2,913 | 28 | 30 | 53,177 | 70,388 | 32,073 | 123,488 | 384,866 | 476 | 272 | 323,227 |
-| 10000-large-clean | 11,693 | 110,689 | 2,913 | 28 | 30 | 5,640 | 56 | 56 | 83,560 | 385,494 | 477 | 273 | 241,851 |
-| 10000-large-heavy | 11,819 | 70,809 | 2,921 | 28 | 30 | 5,640 | 70,748 | 334,754 | 123,501 | 387,369 | 477 | 273 | 241,831 |
-| 10000-mixed-clean | 65,600 | 216,092 | 2,913 | 28 | 30 | 29,498 | 56 | 56 | 83,558 | 384,863 | 477 | 273 | 282,582 |
-| 10000-mixed-heavy | 65,998 | 176,484 | 2,921 | 28 | 30 | 29,498 | 70,748 | 334,754 | 124,040 | 386,737 | 477 | 273 | 282,550 |
-| 35000-many-clean | 416,076 | 1,034,201 | 2,921 | 28 | 30 | 183,958 | 56 | 56 | 283,559 | 1,339,457 | 476 | 272 | 1,130,284 |
-| 35000-many-heavy | 418,416 | 896,151 | 2,921 | 28 | 30 | 183,958 | 70,390 | 32,073 | 423,491 | 1,346,326 | 476 | 272 | 1,130,324 |
-| 35000-large-clean | 11,693 | 306,849 | 2,929 | 28 | 30 | 5,640 | 56 | 56 | 283,564 | 1,349,882 | 477 | 273 | 828,529 |
-| 35000-large-heavy | 11,821 | 163,129 | 2,929 | 28 | 30 | 5,640 | 70,748 | 1,175,655 | 423,500 | 1,356,754 | 477 | 273 | 828,527 |
-| 35000-mixed-clean | 214,469 | 888,697 | 2,929 | 28 | 30 | 95,384 | 56 | 56 | 283,562 | 1,346,859 | 477 | 273 | 979,999 |
-| 35000-mixed-heavy | 215,703 | 644,323 | 2,929 | 28 | 30 | 95,384 | 70,748 | 1,175,655 | 424,044 | 1,353,729 | 477 | 273 | 980,014 |
-| 100000-many-clean | 1,190,864 | 2,936,236 | 2,929 | 28 | 30 | 527,514 | 56 | 56 | 803,563 | 3,839,867 | 477 | 273 | 3,233,037 |
-| 100000-many-heavy | 1,197,538 | 2,542,518 | 2,937 | 28 | 30 | 527,514 | 70,589 | 32,153 | 1,203,495 | 3,858,617 | 477 | 273 | 3,232,436 |
-| 100000-large-clean | 11,726 | 823,119 | 2,937 | 28 | 30 | 5,674 | 56 | 56 | 803,570 | 3,877,372 | 478 | 274 | 2,364,577 |
-| 100000-large-heavy | 11,914 | 419,439 | 2,945 | 28 | 30 | 5,674 | 70,949 | 3,368,631 | 1,203,503 | 5,827,372 | 478 | 274 | 3,545,439 |
-| 100000-mixed-clean | 602,784 | 2,520,519 | 2,937 | 28 | 30 | 268,183 | 56 | 56 | 803,567 | 3,864,873 | 478 | 274 | 2,800,339 |
-| 100000-mixed-heavy | 606,214 | 2,121,625 | 2,945 | 28 | 30 | 268,183 | 70,949 | 3,368,631 | 1,203,496 | 5,808,623 | 478 | 274 | 3,968,776 |
+| project | state | graph | units | types | shared | files | findings page | findings of a file | variable | unit | remove judged | edit answered | rename plan | state while analysing | plan while analysing | edit while analysing |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 10000-many-clean | 119,528 | 304,169 | 2,905 | 28 | 30 | 53,177 | 56 | 56 | 83,555 | 382,991 | 476 | 272 | 323,268 | 119,527 | 958 | 272 |
+| 10000-many-heavy | 120,200 | 264,453 | 2,913 | 28 | 30 | 53,177 | 70,388 | 32,073 | 123,488 | 384,866 | 476 | 272 | 323,227 | 120,199 | 490 | 272 |
+| 10000-large-clean | 11,693 | 110,689 | 2,913 | 28 | 30 | 5,640 | 56 | 56 | 83,560 | 385,494 | 477 | 273 | 241,851 | 11,692 | 966 | 273 |
+| 10000-large-heavy | 11,819 | 70,809 | 2,921 | 28 | 30 | 5,640 | 70,748 | 334,754 | 123,501 | 387,369 | 477 | 273 | 241,831 | 11,818 | 498 | 273 |
+| 10000-mixed-clean | 65,600 | 216,092 | 2,913 | 28 | 30 | 29,498 | 56 | 56 | 83,558 | 384,863 | 477 | 273 | 282,582 | 65,599 | 962 | 273 |
+| 10000-mixed-heavy | 65,998 | 176,484 | 2,921 | 28 | 30 | 29,498 | 70,748 | 334,754 | 124,040 | 386,737 | 477 | 273 | 282,550 | 65,997 | 962 | 273 |
+| 35000-many-clean | 416,076 | 1,034,201 | 2,921 | 28 | 30 | 183,958 | 56 | 56 | 283,559 | 1,339,457 | 476 | 272 | 1,130,284 | 416,075 | 958 | 272 |
+| 35000-many-heavy | 418,416 | 896,151 | 2,921 | 28 | 30 | 183,958 | 70,390 | 32,073 | 423,491 | 1,346,326 | 476 | 272 | 1,130,324 | 418,415 | 489 | 272 |
+| 35000-large-clean | 11,693 | 306,849 | 2,929 | 28 | 30 | 5,640 | 56 | 56 | 283,564 | 1,349,882 | 477 | 273 | 828,529 | 11,692 | 966 | 273 |
+| 35000-large-heavy | 11,821 | 163,129 | 2,929 | 28 | 30 | 5,640 | 70,748 | 1,175,655 | 423,500 | 1,356,754 | 477 | 273 | 828,527 | 11,820 | 494 | 273 |
+| 35000-mixed-clean | 214,469 | 888,697 | 2,929 | 28 | 30 | 95,384 | 56 | 56 | 283,562 | 1,346,859 | 477 | 273 | 979,999 | 214,468 | 962 | 273 |
+| 35000-mixed-heavy | 215,703 | 644,323 | 2,929 | 28 | 30 | 95,384 | 70,748 | 1,175,655 | 424,044 | 1,353,729 | 477 | 273 | 980,014 | 215,702 | 962 | 273 |
+| 100000-many-clean | 1,190,864 | 2,936,236 | 2,929 | 28 | 30 | 527,514 | 56 | 56 | 803,563 | 3,839,867 | 477 | 273 | 3,233,037 | 1,190,863 | 952 | 273 |
+| 100000-many-heavy | 1,197,538 | 2,542,518 | 2,937 | 28 | 30 | 527,514 | 70,589 | 32,153 | 1,203,495 | 3,858,617 | 477 | 273 | 3,232,436 | 1,197,537 | 495 | 273 |
+| 100000-large-clean | 11,726 | 823,119 | 2,937 | 28 | 30 | 5,674 | 56 | 56 | 803,570 | 3,877,372 | 478 | 274 | 2,364,577 | 11,725 |  | 274 |
+| 100000-large-heavy | 11,914 | 419,439 | 2,945 | 28 | 30 | 5,674 | 70,949 | 3,368,631 | 1,203,503 | 5,827,372 | 478 | 274 | 3,545,439 | 11,913 |  | 274 |
+| 100000-mixed-clean | 602,784 | 2,520,519 | 2,937 | 28 | 30 | 268,183 | 56 | 56 | 803,567 | 3,864,873 | 478 | 274 | 2,800,339 | 602,783 | 958 | 274 |
+| 100000-mixed-heavy | 606,214 | 2,121,625 | 2,945 | 28 | 30 | 268,183 | 70,949 | 3,368,631 | 1,203,496 | 5,808,623 | 478 | 274 | 3,968,776 | 606,213 | 490 | 274 |
 
 ### Page, after
 
 As *Server, after* gives the machine. Browser: Google Chrome 153.0.8010.52
-(`PLAYWRIGHT_CHANNEL=chrome`). `feature/gui-large-projects` at `778be23`, one run each, 2026-10-03
-01:15-01:25 UTC: `npm run bench` over all eighteen projects (ruling 12), each project's own fresh
-`ddd gui` server. Three measures changed what they wait for since *Page, before*:
+(`PLAYWRIGHT_CHANNEL=chrome`). `feature/gui-large-projects` at `6a3abf7`, one run each, 2026-10-05
+12:23-12:35 UTC: `npm run bench` over all eighteen projects (ruling 12), each project's own fresh
+`ddd gui` server, the eighteen first checked byte for byte against a fresh generation. Beside the
+run, sampled every 30 s, were the run's own processes and the maintainer's desktop: the Claude
+desktop app up to 82 % of one thread, GitKraken up to 64 %, GNOME Shell up to 36 %. Five measures
+are new or changed since *Page, before*:
 - `first screen` waits for the canvas laid out, not a module node, which culling may never draw (Task 10);
+- `layout` is the worker's own layout of that first screen, the `performance.measure` made around `layoutOf` in the worker (fix wave B);
 - `Findings` waits for a row carrying a finding, not the first row (Task 7);
-- `typing` filters the unit picker on the page and asks no plan, so Task 11 cannot move it.
+- `typing` filters the unit picker on the page and asks no plan, so Task 11 cannot move it;
+- `findings current` waits for what a reader sees - the heading's status saying nothing and the edit's own `unknown-unit` finding drawn - not a `GET /api/state` reply (fix wave B); it and `apply shows` press Apply only once the heading says nothing, where the measure before's undo could otherwise still be analysed (fix D).
 Nothing capped and nothing crashed.
 
 Milliseconds:
 
-| project | answering | first screen | Table | Units | Types | Shared files | Files | Findings | typing | scrolling | apply shows | findings current |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 10000-many-clean | 306 | 937 | 85 | 61 | 73 | 54 | 93 | 43 | 0 | 0 | 148 | 415 |
-| 10000-many-heavy | 305 | 843 | 71 | 115 | 112 | 75 | 121 | 121 | 0 | 0 | 137 | 560 |
-| 10000-large-clean | 299 | 223 | 63 | 132 | 110 | 110 | 131 | 58 | 0 | 0 | 166 | 452 |
-| 10000-large-heavy | 306 | 248 | 62 | 118 | 126 | 113 | 131 | 123 | 0 | 0 | 152 | 566 |
-| 10000-mixed-clean | 310 | 239 | 89 | 116 | 98 | 93 | 68 | 45 | 0 | 0 | 162 | 449 |
-| 10000-mixed-heavy | 215 | 290 | 65 | 58 | 97 | 60 | 114 | 118 | 0 | 0 | 171 | 512 |
-| 35000-many-clean | 416 | 846 | 81 | 112 | 108 | 113 | 109 | 45 | 0 | 0 | 149 | 1366 |
-| 35000-many-heavy | 345 | 1632 | 80 | 122 | 111 | 111 | 104 | 122 | 0 | 0 | 178 | 1806 |
-| 35000-large-clean | 403 | 932 | 59 | 81 | 111 | 55 | 71 | 53 | 0 | 0 | 242 | 1353 |
-| 35000-large-heavy | 407 | 1031 | 61 | 117 | 79 | 113 | 78 | 91 | 0 | 0 | 264 | 1411 |
-| 35000-mixed-clean | 413 | 3131 | 77 | 95 | 117 | 113 | 84 | 43 | 0 | 0 | 277 | 1193 |
-| 35000-mixed-heavy | 405 | 1641 | 71 | 149 | 116 | 112 | 94 | 101 | 0 | 0 | 282 | 1553 |
-| 100000-many-clean | 616 | 3370 | 125 | 219 | 108 | 112 | 164 | 43 | 0 | 0 | 240 | 3961 |
-| 100000-many-heavy | 615 | 4909 | 129 | 261 | 113 | 74 | 144 | 88 | 0 | 0 | 273 | 5029 |
-| 100000-large-clean | 622 | 2945 | 75 | 136 | 60 | 123 | 109 | 44 | 0 | 0 | 836 | 3901 |
-| 100000-large-heavy | 624 | 4393 | 79 | 251 | 56 | 126 | 74 | 111 | 0 | 0 | 389 | 4562 |
-| 100000-mixed-clean | 617 | 3506 | 92 | 138 | 116 | 81 | 114 | 60 | 0 | 0 | 416 | 3906 |
-| 100000-mixed-heavy | 624 | 4388 | 106 | 130 | 111 | 78 | 125 | 106 | 0 | 0 | 483 | 4818 |
+| project | answering | first screen | layout | Table | Units | Types | Shared files | Files | Findings | typing | scrolling | apply shows | findings current |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 10000-many-clean | 312 | 909 | 540 | 89 | 72 | 73 | 112 | 129 | 61 | 0 | 0 | 172 | 446 |
+| 10000-many-heavy | 305 | 882 | 556 | 74 | 80 | 73 | 112 | 124 | 133 | 0 | 0 | 172 | 576 |
+| 10000-large-clean | 307 | 173 | 48 | 78 | 129 | 113 | 131 | 120 | 58 | 0 | 0 | 236 | 551 |
+| 10000-large-heavy | 297 | 237 | 45 | 78 | 109 | 126 | 128 | 123 | 95 | 0 | 0 | 186 | 661 |
+| 10000-mixed-clean | 311 | 228 | 68 | 85 | 126 | 60 | 80 | 86 | 120 | 0 | 0 | 284 | 520 |
+| 10000-mixed-heavy | 296 | 272 | 66 | 133 | 114 | 134 | 57 | 130 | 107 | 0 | 0 | 157 | 615 |
+| 35000-many-clean | 416 | 923 | 27 | 126 | 112 | 130 | 113 | 108 | 43 | 0 | 0 | 134 | 1370 |
+| 35000-many-heavy | 420 | 1440 | 35 | 81 | 113 | 72 | 82 | 104 | 103 | 0 | 0 | 188 | 1628 |
+| 35000-large-clean | 417 | 1027 | 17 | 62 | 110 | 118 | 75 | 128 | 60 | 0 | 0 | 280 | 1657 |
+| 35000-large-heavy | 406 | 1443 | 13 | 98 | 112 | 109 | 112 | 112 | 119 | 0 | 0 | 290 | 1913 |
+| 35000-mixed-clean | 430 | 2951 | 2064 | 75 | 64 | 114 | 124 | 106 | 64 | 0 | 0 | 250 | 1372 |
+| 35000-mixed-heavy | 419 | 1915 | 576 | 92 | 115 | 133 | 118 | 93 | 113 | 0 | 0 | 274 | 1891 |
+| 100000-many-clean | 625 | 3388 | 45 | 125 | 129 | 72 | 125 | 162 | 67 | 0 | 0 | 147 | 3688 |
+| 100000-many-heavy | 617 | 4460 | 46 | 131 | 129 | 127 | 75 | 179 | 113 | 0 | 0 | 225 | 5014 |
+| 100000-large-clean | 631 | 2928 | 24 | 87 | 93 | 118 | 121 | 121 | 63 | 0 | 0 | 835 | 4304 |
+| 100000-large-heavy | 628 | 3895 | 24 | 95 | 126 | 64 | 62 | 67 | 129 | 0 | 0 | 924 | 5086 |
+| 100000-mixed-clean | 622 | 3382 | 68 | 109 | 122 | 79 | 118 | 127 | 57 | 0 | 0 | 838 | 4214 |
+| 100000-mixed-heavy | 612 | 4472 | 87 | 106 | 127 | 111 | 117 | 173 | 142 | 0 | 0 | 515 | 5511 |
 
 ### Against the budgets
 
 Against spec §3, read off *Server, after* (each project's `analysis`) and *Page, after*:
 
-- **"The page answering after a project is opened, under 1 s"**: met on all eighteen, 215-624 ms.
-- **"The first analysed screen, within one analysis plus 1 s"**: met on seventeen. 35,000-mixed-clean misses it: 3,131 ms against 2,058 ms. Where its other 1.07 s goes was not measured; it is a row of *What was left open*. At 100,000 declarations the margin is 0.3-1.0 s; for example 100,000-many-heavy reads 4,909 against 5,199 ms.
-- **"Any tab or panel drawing, once analysed, under 1 s"**: met on all eighteen. The tabs draw in 43-261 ms. A component page with 3,334 declarations draws in 181-195 ms once analysed, as Task 11f's review measured.
+- **"The page answering after a project is opened, under 1 s"**: met on all eighteen, 296-631 ms.
+- **"The first analysed screen, within one analysis plus 1 s"**: met on seventeen. 35,000-mixed-clean misses it: 2,951 ms against 1,996 ms, of which the worker's layout took 2,064 ms (`layout`) - dagre's own, where every 100,000 project's graph falls back to ranks. At 100,000 declarations the margin is 0.27-1.06 s; 100,000-mixed-heavy reads 4,472 against 4,741 ms.
+- **"Any tab or panel drawing, once analysed, under 1 s"**: met on all eighteen. The tabs draw in 43-179 ms. A component page with 3,334 declarations draws in 181-195 ms once analysed, as Task 11f's review measured.
 - **"Typing or scrolling stalling, never over 100 ms"**: met on all eighteen, with no long task while typing or scrolling. The typing measure covers the unit picker. Plan requests wait for a pause (Task 11).
-- **"An Apply's own change showing, under 500 ms"**: met on seventeen, 137-483 ms. 100,000-large-clean misses it at 836 ms (839 ms in the first run); the cause was not measured. That is a row of *What was left open*. A rename across many files is not this measure: its plan takes 0.3-3.5 s and its write about as long.
-- **"The findings current after an edit, within one analysis plus 1 s, the page saying 'updating' until then"**: met on all eighteen. The narrowest margins are 100,000-many-clean (3,961 against 4,037 ms) and 100,000-large-clean (3,901 against 3,927 ms).
+- **"An Apply's own change showing, under 500 ms"**: met on fourteen, 134-290 ms. The four 100,000 projects whose components hold 3,333 declarations miss it: 100,000-large-clean 835 ms, -large-heavy 924, -mixed-clean 838, -mixed-heavy 515. It is longer the larger the cell's component - 147-225 ms at 100,000-many, whose components hold 30 - and on one project it falls in two groups: 100,000-mixed-clean read 349 and 439 ms in two of eight runs, 831-844 ms in the other six. The cell changes once `GET /api/file` has answered, asked as the state reply announces the edit's analysis; what puts a run in the slower group was not isolated. A rename across many files is not this measure: its plan takes 0.3-3.5 s and its write about as long.
+- **"The findings current after an edit, within one analysis plus 1 s, the page saying 'updating' until then"**: met on fourteen, measured since fix wave B to what a reader sees. The same four 100,000 projects miss it, by 143-770 ms: 100,000-large-clean 4,304 against 3,990 ms, -large-heavy 5,086 against 4,943, -mixed-clean 4,214 against 3,898, -mixed-heavy 5,511 against 4,741. 100,000-many-heavy meets it by 7 ms. On those four the edit's own analysis outlasts the `analysis` measure by 322-416 ms (`edit analysed`), and the component's findings and file are then asked again and drawn.
 
 ## Progress log
 
@@ -2405,7 +2417,13 @@ Against spec §3, read off *Server, after* (each project's `analysis`) and *Page
 | master merged (P5) | ab7b0a5 | every gate on the merge | #74, #75, #76 |
 | 12 journeys and documentation | fb54b1b 4fae603 c981168 | clean after 2 rounds | journey 1's unit (T12-1); the Files-tab sentence read off the code (T12-3) |
 | 12b journeys failing only in a suite (added, P9) | 0511ecb 5a43a31 | clean after 1 round | the second analysis asked as the first is published |
-| 13 figures after, the gate | this close-out | the final review follows | two budgets missed (*What was left open*) |
+| 13 figures after, the gate | c689a19 | the final review followed | the figures at 778be23; two budgets missed then |
+| the final review (opus) | - | with fixes: Critical 1, Important 2, five Minors | the server answered behind the analysis at 100,000 (F1) |
+| fix wave A, the server (added, F1) | d09528e 3b6190a b3438c4 4d4b6fe 2e42c9f c43d03f | re-reviewed with B: 26 of 26 addressed | an edit asked mid-analysis at 100,000 2.3-2.7 s -> 12-156 ms |
+| fix wave B, the page (added, F1-F3) | 1760393 b7665d4 4a7810d 5723f20 dbf7af8 5155504 | (with A) | findings current as drawn; the Files tab's own rows held |
+| fix C, the residuals (added, F5, F6) | d327ecc a135679 769db1d c338d4b 21b78f8 | clean | one thread in difflib at a time; Remove held |
+| fix D, the bench's settle (added, F8) | 6a3abf7 | read by the controller | no measure waits out the one before's undo |
+| 13 again, figures after the fixes | this close-out | - | *Against the budgets* |
 
 ## What was left open
 
@@ -2420,18 +2438,18 @@ Filled in as the work goes. Each entry says what was not done and what it costs.
 - **The analysis and the requests share one interpreter.** The final review found the server answering behind the analysis at 100,000 declarations (its Critical 1). Since fix wave A, the session's lock is held across no file but an edit's or an undo's own, every path a revision names is resolved once by its analysis, and a revision is derived once. On 100000-mixed-heavy, asked halfway through an analysis with the poller at 1 s (`tools/bench_gui.py`'s measures under load, three runs at `4d4b6fe`), an edit answered in 42-143 ms, a variable's plan in 18-88 ms and the first state of a revision in 191-227 ms, against 2,338-2,654, 1,587-2,159 and 2,513-2,809 ms before. Its other measures are still taken with no analysis running. What still waits, measured by fix wave A's probes on the same project unless another is named (its report):
   - **The Files tab expands the includes on disk at each request** (Ruling T4-2, kept by fix wave A's item 3): 1,872-2,602 ms asked halfway through an analysis, against 24 ms otherwise (141 ms the first time). Listing the 1,681-file directory alone took 1,028-1,487 ms then.
   - **A unit's panel reads every file stating the unit**, to check each place where the analysis recorded it (T8-7): 1,898-2,510 ms for a unit every component states, against 89-192 ms otherwise.
-  - **A plan's own work on a large component.** Settling the unit of a variable declared in a 1,166-declaration component of 35000-mixed-heavy (16,331 lines) takes 782-787 ms idle, nearly all of it in difflib (profiled): the line the change writes, `"unit": "rpm",`, is held elsewhere in the file already, so it is not a change `hunks` answers in place. It took 1,504-1,527 ms beside an analysis.
-  - **The analysis takes longer while requests are answered beside it**: 5,103-5,972 ms instead of 3,833-4,454 ms beside a page of findings asked every 100 ms, and 25,805-32,465 ms beside a request asked again and again without a pause, which the page does not do. A switch interval of 0.5 ms changed neither the analysis alone nor the paced cases, and roughly halved the last; it is not adopted (fix wave A's item 4).
+  - **A plan's own work on a large component.** Settling the unit of a variable declared in a 1,166-declaration component of 35000-mixed-heavy (16,331 lines) takes 782-787 ms idle, nearly all of it in difflib (profiled): the line the change writes, `"unit": "rpm",`, is held elsewhere in the file already, so it is not a change `hunks` answers in place. It took 1,504-1,527 ms beside an analysis, and 1,272-1,335 ms since its difflib and the analysis's suggestions take turns (fix C, ruling F5, three runs). At 100,000 declarations the large and mixed shapes' components hold 3,333 declarations: the settle plan of `plan while analysing` outlasted the analysis on both large projects (refused) and took 8,411 ms on 100,000-mixed-clean; and an undo's preview (`GET /api/undo`) opened as an Apply's cell changed on 100,000-mixed-heavy took 6.4-6.9 s - the page's state replies then came 7.3, 11.0, 11.4 and 16.7 s after the Apply, and "Updating the findings…" stood until 9.6 s after Put back (Task 13 Step 5 again, two runs with a HAR). Two ways out (ruling F9): diff only the lines between the head and the tail the two texts share, accepting another numbering than difflib's where runs of lines are alike; or take an undo's hunks from its edit's own.
+  - **The analysis takes longer while requests are answered beside it**: 5,103-5,972 ms beside a page of findings asked every 100 ms, against 3,833-4,454 ms alone in the same probe (fix wave A's paced probe, 100000-mixed-heavy at the default switch interval, four runs each, 2026-10-03 04:24-04:28 UTC), and 25,805-32,465 ms beside a request asked again and again without a pause, which the page does not do. A switch interval of 0.5 ms changed neither the analysis alone nor the paced cases, and roughly halved the last; it is not adopted (fix wave A's item 4).
 - **A plan made against a revision older than the newest** may not be refused `analysing` for a file the newest already read; the engine's own fingerprint check still refuses its Apply as stale.
 - **A tab's rows kept between an outside save and its analysis** show what was read before the save until the revision moves, when the page asks again.
 - **The Findings window counts its rows to a screen reader as the rows drawn**, not the table's: React Aria numbers the rows of its collection, which is the window.
 - **The Findings tab has no filter of its own.** `GET /api/findings` filters by severity, file and check (spec §5); only a component's page asks it to, by file.
 - **A chain of components deeper than dagre's stack in the worker is laid out in ranks only.** The stack runs out at about 908 components in a browser's worker, against about 1,772 on the main thread (Task 10's review). The ranks come from a breadth-first walk along the flows, each rank in path order, and the canvas says "Laid out in ranks only: the project is too large for the full layout." A layout that does not recurse per module would draw such a project as dagre does.
 
-- **Two of spec §3's budgets are missed on one project each** (*Against the budgets*):
-  - the first analysed screen of 35,000-mixed-clean, 3,131 ms against 2,058 ms;
-  - an Apply's own change showing on 100,000-large-clean, 836 ms against 500 ms.
-  Neither cause was measured.
+- **Three of spec §3's six budgets are missed somewhere** (*Against the budgets*):
+  - the first analysed screen of 35,000-mixed-clean, 2,951 ms against 1,996 ms, of which the worker's dagre layout took 2,064 ms. A canvas drawn in ranks first and laid out by dagre after would bring it in; it was not tried.
+  - an Apply's own change showing on the four 100,000 projects with 3,333-declaration components, 515-924 ms against 500 ms; what puts a run in its slower group was not isolated.
+  - the findings current after an edit on the same four, over by 143-770 ms.
 - **An Apply asks again for the plans it spent, at the same revision** (P8).
   - For a plan touching many files, this costs the server the plan's own time again, beside the analysis. Task 11b measured a rename of a unit stated in all 1,166 component files at 35,000 declarations: it re-planned for 2.4 s and held the renamed unit's panel to about 7 s, where a replay without the re-ask answered in about 2 s. Task 11e has since made that plan faster.
   - There are two ways out: re-ask only the applied action's own plan once its subject has moved; or refuse `analysing` before planning, where an endpoint knows its files from the index.
@@ -2451,7 +2469,10 @@ Filled in as the work goes. Each entry says what was not done and what it costs.
 - **A press held across a state that moves or redraws its button is lost.**
   - The cause: Playwright hit-tests only a click's first event, and React Aria cancels a press released off its element.
   - Task 12b removed the start-up state behind the journeys' failures.
-  - It can still happen when an analysis lands mid-press: 0 of 5 presses were kept when an outside save's analysis landed during them.
+  - It can still happen when an analysis lands mid-press: 0 of 5 presses were kept when an outside save's analysis landed during them. That was measured before fix wave B held the panels' updating line, so that its note appearing no longer moves the offer (T12b-1); not measured since.
+- **Python 3.14.4 has broken with two threads in difflib at once** (Ubuntu's 3.14.4-1ubuntu0.2, a GIL build, its JIT off): two plans asked during an analysis at 100,000 declarations answered 500 with an int argument of `find_longest_match` read as the matcher, and a two-thread probe of difflib alone segfaulted once and raised twice more in forty one-minute runs; 3.12.14 ran it clean ten times. ddd's three calls into difflib take one lock (`ddd.difflib_lock`, ruling F5), whose docstring keeps the evidence: every sighting had two threads in difflib at once. The cause is not known, and it is not reported upstream - the maintainer's call.
+- **The Files tab holds one of its own edits at a time** (fix C): a second Apply while one is held replaces the first's hold, so the first's row shows what the tab's last list says until the next list carries it; a second plan is refused `analysing` until the first edit is analysed. An Add's held row is keyed by the path joined, not resolved: a row selected while held where a link stands in its path finds no plan until the list carries it.
+- **A revision older than the newest is derived on every request holding it** (the final re-review): a memoised or plan request holding one derives it, and may derive it twice. It needs a publish between `_opened()` and `_derive`, so it is rare, and no answer depends on it.
 - **`?offset=`, `?limit=` and `?after=` of more than 4,300 digits answer 500** (Task 7's review). This is left for the security part.
 
 ## Rulings taken
@@ -2545,3 +2566,12 @@ Each as the execution's ledger recorded it - what was decided, why, and what it 
 - **T12-4**  the three choosers' fixes are pinned by live measurement, not a test - every journey picks once and a field's first ask goes at once whatever the kind; the rule they pass to is tested in lib, the screens only name the kind — cost if wrong: a chooser could regress to waiting 250 ms unseen.
 - **T12b-1**  the panel's "Updating the findings…" note moving the offer (and Apply) down when updating starts is a layout shift under the reader's pointer - the final review's fix wave reserves the note's line in every panel, as T8-3 did for the heading; the values grid's 250 ms after a revision (the gate reopening, then the debounce) goes with it — cost if wrong: a press lost when an analysis lands mid-press.
 - **T12b-2**  fix round 1 takes Importants 1-2 and Minors 5, 7, 8; Important 3 and Minor 4 go into the plan's close-out (the controller's, Task 13 Step 7, the reviewer's wording); Minor 6 none; Minor 9 in the PR body — cost if wrong: none.
+- **F1**  the final review's fixes go out as one fix wave run by two implementers one after the other - A the server (stamping outside the session's lock; one resolve per revision; the includes' expansion and a lower switch interval each decided by figures; bench measures under load; the sentences; Task 11b's five Minors), B the page (findings current as a reader sees it; the parked page Minors; the panels' updating line held) - then one scoped re-review of both — cost if wrong: a second wave.
+- **F2**  the Files tab's own Apply during its analysis goes to fix wave B, measured from press to row drawn; over spec §3's 500 ms, the page holds the row it applied until `/api/files` carries it (T6-1's hold) - the server side measured not to reach 500 ms while the directory listing itself waits behind the analysis — cost if wrong: one more hold in lib.
+- **F3**  fix wave A's departures stand - the analysis resolves the paths a revision names (`derived()` resolving them took 2.3-3.6 s during an analysis), `/api/files` expands the includes at each request (T4-2: a cache would miss after every edit, the one moment the tab asks again), `run()` keeps the default switch interval; the bench's wait by the clock is a measure's design, not a test coordinating by sleep, and each measure under load refuses a figure answered once its analysis had ended — cost if wrong: a figure labelled "while analysing" that was not, now refused.
+- **F4**  `tests/test_hardening.py`'s sentence about Python 3.14's parser depth (on master since 39f77ba) is outside this part - a task of its own — cost if wrong: one false sentence in a test until then.
+- **F5**  ddd's three calls into difflib take one lock, one thread in difflib at a time (`ddd.difflib_lock`), around a fault of Python 3.14.4 (Ubuntu's 3.14.4-1ubuntu0.2): five sightings, every one with two threads in difflib at once; the cause is not known and the lock is evidence-led, not a fix of the interpreter; reporting it upstream is the maintainer's call — cost if wrong: a lock that narrows nothing, its cost within the runs' spread.
+- **F6**  the Files tab's Remove is held as New file and Add are — cost if wrong: one more hold in lib.
+- **F7**  the re-review's residuals not fixed are left open with their figures (an Add's held key joined, not resolved; the 35,000-mixed-clean first screen's layout; findings current at 100,000; an older revision derived twice); Task 13's server half runs one project per call, so a failure costs one project's figures — cost if wrong: entries in *What was left open*.
+- **F8**  the bench's Apply-based measures start from a page that says it is up to date, and its undo leaves the project analysed as it found it (fix D): in the bench's own sequence `findings current` had waited out the measure before's undo, 11,037-11,949 ms in five of eight runs on two 100,000 projects against 5,117-5,243 ms alone — cost if wrong: one more page run.
+- **F9**  an undo's preview and a settle plan running difflib over a whole large component (6.4-6.9 s beside an analysis at 100,000-mixed-heavy) are left open with their figures and two ways out; either changes Task 11b's `hunks`, for a part of its own — cost if wrong: a reader at 100,000 declarations waits seconds for an undo's preview opened mid-analysis.

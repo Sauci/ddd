@@ -8,7 +8,9 @@ import functools
 import json
 import os
 import re
+import shutil
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -23,6 +25,7 @@ from conftest import (
     component,
     declare,
     project,
+    value_member,
     write_tree,
 )
 from ddd import identity
@@ -4462,3 +4465,315 @@ class TestToolFromElf:
         tool = subcommands(subcommands(_build_parser())["tool"])["from-elf"]
         (output_format,) = [action for action in tool._actions if action.dest == "format"]
         assert set(output_format.choices) == {"text", "json"}
+
+
+ADDRESS_FIXTURES = Path(__file__).parent / "fixtures" / "addresses"
+ADDRESS_PROJECT = ADDRESS_FIXTURES / "project" / "project.ddd.json"
+ADDRESS_ROWS = json.loads((ADDRESS_FIXTURES / "manifest.json").read_text(encoding="utf-8"))["rows"]
+"""Five images of one project, each beside what its own toolchain says of it: ``nm``'s address
+of every variable, the compiler's ``offsetof`` of every member, and the target's byte order."""
+X86_ADDRESSES = ADDRESS_FIXTURES / "x86_64.elf"
+
+
+def a2l_addresses(text: str) -> dict[str, int]:
+    """Every record of an a2l and the address it states, read back out of the file: a
+    measurement's on its ``ECU_ADDRESS`` line, a characteristic's on its ``VALUE`` or
+    ``VAL_BLK`` line."""
+    found: dict[str, int] = {}
+    record: str | None = None
+    for line in text.splitlines():
+        words = line.split()
+        if words[:2] in (["/begin", "MEASUREMENT"], ["/begin", "CHARACTERISTIC"]):
+            record = words[2]
+        elif record is not None and words[:1] in (["ECU_ADDRESS"], ["VALUE"], ["VAL_BLK"]):
+            found[record] = int(words[1], 16)
+            record = None
+    return found
+
+
+def edited_project(tmp_path: Path, file: str, edit: Callable[[dict[str, Any]], None]) -> Path:
+    """A copy of the address fixtures' project with one of its files edited, so that it says
+    something the images were not built from; ``edit`` changes the file's json in place."""
+    shutil.copytree(ADDRESS_PROJECT.parent, tmp_path / "project")
+    path = tmp_path / "project" / file
+    described = json.loads(path.read_text(encoding="utf-8"))
+    edit(described)
+    path.write_text(json.dumps(described, indent=2), encoding="utf-8")
+    return tmp_path / "project" / "project.ddd.json"
+
+
+def with_a_window(described: dict[str, Any]) -> None:
+    """``Tuning_t`` gains a member, ``window``, that the C of every image lacks."""
+    (tuning,) = [entry for entry in described["types"] if entry["name"] == "Tuning_t"]
+    tuning["members"].append(value_member("window", "uint16"))
+
+
+class TestGenerateFromAnImage:
+    """``ddd generate a2l --image``: every address the a2l carries, out of the linked image."""
+
+    def arguments(self, tmp_path: Path, project: Path = ADDRESS_PROJECT) -> list[str]:
+        return ["generate", "a2l", str(project), "-o", str(tmp_path / "gen")]
+
+    @pytest.mark.parametrize("row", sorted(ADDRESS_ROWS))
+    def test_every_row_writes_the_addresses_and_the_byte_order_of_its_image(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], row: str
+    ) -> None:
+        """Every object and member at the address ``nm`` and the compiler's own ``offsetof``
+        give it - the value members after bitfields included, and no bitfield anywhere (Review
+        Focus 1) - and the byte order the image states: two of the rows are big endian (Review
+        Focus 4), and ``i686`` lays the project out unlike the other four."""
+        expected = ADDRESS_ROWS[row]
+        a2l = tmp_path / "gen" / "AddressFixture.a2l"
+        image = ADDRESS_FIXTURES / f"{row}.elf"
+        assert main([*self.arguments(tmp_path), "--image", str(image)]) == EXIT_OK
+        assert capsys.readouterr().err == f"wrote       {a2l.as_posix()} (created)\n"
+        text = a2l.read_text(encoding="utf-8")
+        assert a2l_addresses(text) == expected["addresses"]
+        assert [path for path in expected["bitfields"] if path in text] == []
+        order = {"little": "MSB_LAST", "big": "MSB_FIRST"}[expected["byte_order"]]
+        assert f"      BYTE_ORDER {order}\n" in text
+
+    def test_generate_all_reads_the_image_as_generate_a2l_does(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        output = tmp_path / "gen"
+        arguments = [
+            "generate",
+            "all",
+            str(ADDRESS_PROJECT),
+            "-o",
+            str(output),
+            "-t",
+            str(TEMPLATES),
+        ]
+        assert main([*arguments, "--image", str(ADDRESS_FIXTURES / "powerpc.elf")]) == EXIT_OK
+        text = (output / "AddressFixture.a2l").read_text(encoding="utf-8")
+        assert a2l_addresses(text) == ADDRESS_ROWS["powerpc"]["addresses"]
+        assert (output / "ddd_globals.c").is_file()
+
+    def test_a_byte_order_the_image_agrees_with_is_accepted(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        image = ADDRESS_FIXTURES / "powerpc.elf"
+        arguments = [*self.arguments(tmp_path), "--image", str(image), "--byte-order", "big"]
+        assert main(arguments) == EXIT_OK
+        text = (tmp_path / "gen" / "AddressFixture.a2l").read_text(encoding="utf-8")
+        assert "      BYTE_ORDER MSB_FIRST\n" in text
+
+    @pytest.mark.parametrize("row", sorted(ADDRESS_ROWS))
+    def test_a_byte_order_the_image_contradicts_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], row: str
+    ) -> None:
+        """Review Focus 4: the image states the target's byte order, so an option saying the
+        other one is a mistake about the target, refused rather than obeyed into an a2l whose
+        every value a calibration tool would read byte-swapped."""
+        stated = ADDRESS_ROWS[row]["byte_order"]
+        other = {"little": "big", "big": "little"}[stated]
+        image = ADDRESS_FIXTURES / f"{row}.elf"
+        arguments = [*self.arguments(tmp_path), "--image", str(image), "--byte-order", other]
+        assert main(arguments) == EXIT_USAGE
+        assert capsys.readouterr().err == (
+            f"ddd: --byte-order {other} contradicts '{image.as_posix()}', which is {stated} "
+            f"endian\n"
+        )
+        assert not (tmp_path / "gen").exists()
+
+    def test_an_image_beside_an_address_map_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        addresses = tmp_path / "addresses.json"
+        addresses.write_text("{}", encoding="utf-8")
+        arguments = [*self.arguments(tmp_path), "--image", str(X86_ADDRESSES)]
+        assert main([*arguments, "--address-map", str(addresses)]) == EXIT_USAGE
+        assert capsys.readouterr().err == (
+            "ddd: --image and --address-map are two sources of the a2l's addresses; give one of "
+            "them\n"
+        )
+        assert not (tmp_path / "gen").exists()
+
+    def test_an_image_given_to_a_run_without_the_a2l_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """As the map is: a run that never writes the a2l has no use for its addresses."""
+        output = tmp_path / "gen"
+        arguments = [
+            "generate",
+            "all",
+            str(ADDRESS_PROJECT),
+            "-o",
+            str(output),
+            "-t",
+            str(TEMPLATES),
+        ]
+        assert main([*arguments, "--without", "a2l", "--image", str(X86_ADDRESSES)]) == EXIT_USAGE
+        assert capsys.readouterr().err == (
+            "ddd: --image belongs to the a2l artefact, left out by --without\n"
+        )
+
+    @pytest.mark.parametrize(
+        ("image", "said"),
+        [
+            (
+                FIXTURES / "stripped.elf",
+                "'{}' carries no DWARF debug information: build it with -g",
+            ),
+            (ADDRESS_FIXTURES / "missing.elf", "cannot read '{}': No such file or directory"),
+        ],
+    )
+    def test_an_image_the_reader_refuses_is_a_usage_error_in_its_words(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], image: Path, said: str
+    ) -> None:
+        assert main([*self.arguments(tmp_path), "--image", str(image)]) == EXIT_USAGE
+        assert capsys.readouterr().err == f"ddd: {said.format(image.as_posix())}\n"
+        assert not (tmp_path / "gen").exists()
+
+    def test_without_pyelftools_an_image_is_refused_saying_how_to_install_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """In the words ``ddd tool from-elf`` uses, through the same import. Every elftools
+        module an earlier test loaded is taken out, as that command's test explains."""
+        loaded = [name for name in sys.modules if name.partition(".")[0] == "elftools"]
+        for name in loaded:
+            monkeypatch.delitem(sys.modules, name)
+        monkeypatch.setitem(sys.modules, "elftools", None)
+        monkeypatch.delitem(sys.modules, "ddd.elf", raising=False)
+        assert main([*self.arguments(tmp_path), "--image", str(X86_ADDRESSES)]) == EXIT_USAGE
+        assert capsys.readouterr().err == (
+            "ddd: reading an ELF image needs pyelftools, which is not installed: "
+            "pip install 'pyelftools>=0.32,<1'\n"
+        )
+
+    def test_a_carried_address_beyond_32_bits_is_refused_naming_the_symbol_and_the_image(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A 64 bit target may place its data above 4 GB, where no ``ECU_ADDRESS`` reaches.
+        ``Speed`` is moved there in a copy of the x86_64 image: its DWARF locates it with an
+        expression of nine bytes, ``DW_OP_addr`` (3) and the address, which the copy rewrites."""
+        address = ADDRESS_ROWS["x86_64"]["addresses"]["Speed"]
+        moved = address + 0x1_0000_0000
+        data = X86_ADDRESSES.read_bytes()
+        located = bytes([9, 3]) + address.to_bytes(8, "little")
+        assert data.count(located) == 1, "the x86_64 image no longer locates Speed this way"
+        image = tmp_path / "above.elf"
+        image.write_bytes(data.replace(located, bytes([9, 3]) + moved.to_bytes(8, "little")))
+        assert main([*self.arguments(tmp_path), "--image", str(image)]) == EXIT_USAGE
+        assert capsys.readouterr().err == (
+            f"ddd: {image.as_posix()}: address of 'Speed' is {moved}, outside the range "
+            f"0 .. 0xFFFFFFFF that an a2l address can hold\n"
+        )
+
+    def test_a_member_the_image_lacks_reaches_the_a2l_at_0_and_the_finding_says_why(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A description edited after the image was built: the declarations name a member its
+        C did not have. The finding is located at the image, resolved as every location is -
+        named relative to the working directory here - and its note is the reason."""
+        project = edited_project(tmp_path, "types.ddd.json", with_a_window)
+        monkeypatch.chdir(ADDRESS_FIXTURES)
+        arguments = [*self.arguments(tmp_path, project), "--image", "x86_64.elf"]
+        assert main([*arguments, "--format", "json"]) == EXIT_OK
+        assert json.loads(capsys.readouterr().out)["diagnostics"] == [
+            {
+                "check": "address-missing",
+                "severity": "warning",
+                "message": (
+                    "the image has no address for 'Tuning.window'; it reaches the a2l at address 0"
+                ),
+                "location": {
+                    "path": X86_ADDRESSES.resolve().as_posix(),
+                    "pointer": None,
+                    "line": None,
+                    "column": None,
+                },
+                "notes": [
+                    {
+                        "message": "'Tuning' has no member named 'window' in the image",
+                        "location": None,
+                    }
+                ],
+            }
+        ]
+        text = (tmp_path / "gen" / "AddressFixture.a2l").read_text(encoding="utf-8")
+        assert a2l_addresses(text) == {**ADDRESS_ROWS["x86_64"]["addresses"], "Tuning.window": 0}
+
+    def test_a_symbol_the_image_cannot_place_fails_a_strict_run_which_writes_nothing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        project = edited_project(tmp_path, "types.ddd.json", with_a_window)
+        arguments = [*self.arguments(tmp_path, project), "--image", str(X86_ADDRESSES)]
+        assert main([*arguments, "--strict"]) == EXIT_FINDINGS
+        shown = where(X86_ADDRESSES).render(Path.cwd())
+        assert capsys.readouterr().err == (
+            f"{shown}: error[address-missing]: the image has no address for 'Tuning.window'; it "
+            f"reaches the a2l at address 0\n"
+            f"    note: 'Tuning' has no member named 'window' in the image\n"
+            f"1 error\n"
+        )
+        assert not (tmp_path / "gen").exists()
+
+    def test_the_notes_are_the_reasons_of_the_symbols_named_each_said_once(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """An image of the project before two renames, ``Cells`` to ``Bells`` and ``Speed`` to
+        ``Spool``: seven symbols it cannot place. The finding names five, the members of
+        ``Bells`` sharing one reason, and counts the rest, as it counts a map's: an image whose
+        definition file was compiled without ``-g`` misses every symbol of the project, and the
+        finding has to stay short. ``Spool``'s reason is not among the notes."""
+
+        def renamed(described: dict[str, Any]) -> None:
+            for entry in described["component"]["interface"]:
+                name = entry["definition"]["name"]
+                entry["definition"]["name"] = {"Cells": "Bells", "Speed": "Spool"}.get(name, name)
+
+        project = edited_project(tmp_path, "engine.ddd.json", renamed)
+        arguments = [*self.arguments(tmp_path, project), "--image", str(X86_ADDRESSES)]
+        assert main(arguments) == EXIT_OK
+        shown = where(X86_ADDRESSES).render(Path.cwd())
+        a2l = tmp_path / "gen" / "AddressFixture.a2l"
+        assert capsys.readouterr().err == (
+            f"{shown}: warning[address-missing]: the image has no address for 'Bells[0].raw', "
+            f"'Bells[0].v', 'Bells[1].raw', 'Bells[1].v', 'Bells[2].raw' and 2 others; they "
+            f"reach the a2l at address 0\n"
+            f"    note: the image's debug information holds no variable named 'Bells'\n"
+            f"1 warning\n"
+            f"wrote       {a2l.as_posix()} (created)\n"
+        )
+
+    def test_the_a2l_run_after_the_link_leaves_what_generate_all_wrote_untouched(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Review Focus 5 through the command line, as the cmake module runs it: ``generate all
+        --without a2l --dictionary`` before the link, then ``generate a2l --image`` into the same
+        directory. The second run produces the a2l alone, and the output directory's manifest
+        weighs only the a2l's files: the c sources, the headers and the dictionary of the first
+        are neither taken back nor written again. ``tests/test_cmake.py`` builds the same story
+        where the host's toolchain links ELF; this runs on every host."""
+        output = tmp_path / "gen"
+        dictionary = output / "AddressFixture.dictionary.json"
+        before = ["generate", "all", str(ADDRESS_PROJECT), "-o", str(output), "-t", str(TEMPLATES)]
+        assert main([*before, "--without", "a2l", "--dictionary", str(dictionary)]) == EXIT_OK
+        written = {
+            path.name: (path.read_bytes(), path.stat().st_mtime_ns)
+            for path in output.iterdir()
+            if path.name != MANIFEST_NAME
+        }
+        assert sorted(written) == [
+            "AddressFixture.dictionary.json",
+            "Engine.h",
+            "ddd_globals.c",
+            "ddd_globals.h",
+            "ddd_types.h",
+        ]
+        capsys.readouterr()
+        a2l = output / "AddressFixture.a2l"
+        assert main([*self.arguments(tmp_path), "--image", str(X86_ADDRESSES)]) == EXIT_OK
+        assert capsys.readouterr().err == f"wrote       {a2l.as_posix()} (created)\n"
+        kept = {
+            path.name: (path.read_bytes(), path.stat().st_mtime_ns)
+            for path in output.iterdir()
+            if path.name not in (MANIFEST_NAME, a2l.name)
+        }
+        assert kept == written

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 
@@ -225,44 +225,70 @@ function driftNumber(
 ): Buffer {
   const path = join(directory, file);
   const before = readFileSync(path);
-  const text = before
-    .toString("utf8")
-    .replace(new RegExp(`("name": "${variable}"[\\s\\S]*?"${key}": )[0-9.]+`), `$1${value}`);
-  writeFileSync(path, text, "utf8");
+  writeFileSync(path, drifted(before, variable, key, value), "utf8");
   return before;
 }
 
-/** `path`'s modification time, read now so a write about to be made to it can be hidden from
- * the session's own file watcher afterwards - call the function this returns once that write is
- * made. The session decides a file changed by `(st_mtime_ns, st_size)` alone (`stamped`,
- * `session.py`), never by reading it, so a write whose bytes change but whose stamp does not
- * is invisible to the watcher while still being a different file to anyone who reads it fresh -
- * which is what an Apply's own staleness check does. Used where a test means the second and not
- * the first, the way `keys.spec.ts`'s "a change refused as stale..." does.
- *
- * The restore is made through python's own `os.utime(path, ns=(...))`, not `fs.utimesSync`:
- * `utimesSync` takes the time through a JS `number`, which is a handful of nanoseconds off for
- * an epoch this large - close enough to fool a human but not the exact-tuple comparison
- * `stamped` makes, so the write would still have been visible to it. Reached through
- * `DDD_PYTHON` rather than a shell tool, the way `dump` above is, so this needs nothing this
- * repository does not already depend on and is exact on every platform the suite runs on. */
-export function preserveStampOf(path: string): () => void {
-  const mtimeNs = statSync(path, { bigint: true }).mtimeNs;
-  return () => {
-    const result = spawnSync(process.env.DDD_PYTHON ?? "python", [
-      "-c",
-      "import os, sys\nos.utime(sys.argv[1], ns=(int(sys.argv[2]), int(sys.argv[2])))",
-      path,
-      mtimeNs.toString(),
-    ]);
-    if (result.status !== 0) {
-      throw new Error(
-        `restoring ${path}'s modification time exited with ${String(result.status)}: ` +
-          `${result.stderr.toString("utf8")}`,
-      );
-    }
-  };
+/** `text` with the first number one variable's key holds replaced by `value`. */
+function drifted(text: Buffer, variable: string, key: string, value: number): string {
+  return text
+    .toString("utf8")
+    .replace(new RegExp(`("name": "${variable}"[\\s\\S]*?"${key}": )[0-9.]+`), `$1${value}`);
 }
+
+/** One variable's greatest limit drifted as `driftMax` drifts it, but unseen by the session's own
+ * file watcher - which decides a file changed by `(st_mtime_ns, st_size)` alone (`stamped`,
+ * `session.py`), never by reading it - while a different file to anyone who reads it fresh,
+ * which is what an Apply's own staleness check does. Used where a test means the second and not
+ * the first, the way `keys.spec.ts`'s "a change refused as stale..." does; `max` must be as wide
+ * as the number it replaces, so that the size does not move either. Answers the file as it was.
+ *
+ * The new bytes are written beside the file, given the file's own times through python's
+ * `os.utime(path, ns=(...))` - exact to the nanosecond, where `fs.utimesSync` takes a JS `number`
+ * a handful of nanoseconds off for an epoch this large - and renamed over it in one step, so no
+ * moment shows the watcher a stamp of their own. Written in place and its stamp put back after,
+ * by a python started for it, the write stood visible for that start-up, and a poll landing then
+ * re-analysed the project and left nothing stale to refuse (CI, PR #77, on ubuntu and windows).
+ * The rename is tried again while windows refuses it access, as `ddd.editing` does. */
+export function driftMaxUnseen(
+  directory: string,
+  file: string,
+  variable: string,
+  max: number,
+): Buffer {
+  const path = join(directory, file);
+  const before = readFileSync(path);
+  const result = spawnSync(process.env.DDD_PYTHON ?? "python", ["-c", UNSEEN, path], {
+    input: drifted(before, variable, "max", max),
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `writing ${path} unseen exited with ${String(result.status)}: ` +
+        `${result.stderr.toString("utf8")}`,
+    );
+  }
+  return before;
+}
+
+/** `driftMaxUnseen`'s python: stdin's bytes beside `argv[1]`, under its times, then renamed over
+ * it. */
+const UNSEEN = [
+  "import os, sys, time",
+  "path = sys.argv[1]",
+  "staged = path + '.unseen'",
+  "status = os.stat(path)",
+  "with open(staged, 'wb') as file:",
+  "    file.write(sys.stdin.buffer.read())",
+  "os.utime(staged, ns=(status.st_atime_ns, status.st_mtime_ns))",
+  "for attempt in range(49):",
+  "    try:",
+  "        os.replace(staged, path)",
+  "        break",
+  "    except PermissionError:",
+  "        time.sleep(0.02)",
+  "else:",
+  "    os.replace(staged, path)",
+].join("\n");
 
 /** A producing declaration's id taken away from outside, the way a description written before
  * `ddd id` adopted ids states it - which is what `missing-id` reports; answers the file as it

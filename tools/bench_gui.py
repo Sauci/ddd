@@ -23,8 +23,9 @@ has landed, ``edit answered`` until the edit's reply - written, before its analy
 landed - and ``edit analysed`` from the same moment until that analysis has landed. ``rename
 plan`` is asked once that analysis has landed, and only plans: it writes nothing.
 
-``measure`` undoes each edit it made and stops each analyser it started before it returns, so a
-second run measures the same bytes. Not part of the ``ddd`` package, like
+``measure`` undoes each edit it made and stops each analyser it started before it returns, then
+puts back the times of each path it changed, so a second run measures the same bytes, with the
+same modification times. Not part of the ``ddd`` package, like
 ``generate_project.py`` beside it: a tool of the repository's own, run by hand - it is slow on a
 large project, and the machine's own (*Global Constraints*) - never in CI, and checked only by
 ``tests/test_bench_gui.py``'s smoke test on a small generated project.
@@ -79,8 +80,9 @@ _PAGE: Final = {"offset": ["0"], "limit": ["100"]}
 page asks it (``PAGE_SIZE`` in ``gui/src/lib/findingsWindow.ts``)."""
 
 _FORWARD_SECONDS: Final = 3_600
-"""How far :func:`_analysis` moves a component file's modification time forward: past a
-filesystem's mtime resolution, so the next poll never misses it."""
+"""How far :func:`_analysis` and :func:`_analysing` move a component file's modification time
+forward, each from where it stands: past a filesystem's mtime resolution, so the next poll never
+misses it. Put back as the run ends (:class:`_Times`)."""
 
 _POLL_SECONDS: Final = 3_600
 """How often the first session's own poller looks at the disk: never while a run lasts.
@@ -151,10 +153,39 @@ class _Chosen:
     project without importing it."""
 
 
+class _Times:
+    """The access and modification times of each path a run changes, as found before the run
+    first changed it, put back as the run ends whichever way it ends - a refusal and an exception
+    among them - so that the next run, and anything else reading the project's times, finds them
+    as they were: the component file whose time :func:`_analysis` and :func:`_analysing` move
+    forward, the file the edits write and their undos write back, and the directory both are
+    written in. A file left holding other bytes than it was found with - its edit's undo refused
+    - keeps the time it was written at, so that nothing reading times takes it for unchanged."""
+
+    def __init__(self) -> None:
+        self._found: dict[Path, tuple[int, int, str | None]] = {}
+
+    def keep(self, *paths: Path) -> None:
+        """Note each of ``paths``' times as they are now, and each file's fingerprint, unless
+        they are noted already."""
+        for path in paths:
+            if path not in self._found:
+                found = path.stat()
+                held = fingerprint(path.read_bytes()) if path.is_file() else None
+                self._found[path] = (found.st_atime_ns, found.st_mtime_ns, held)
+
+    def put_back(self) -> None:
+        """Every time noted, put back where its path still holds what it was found with."""
+        for path, (accessed, modified, held) in self._found.items():
+            if held is None or fingerprint(path.read_bytes()) == held:
+                os.utime(path, ns=(accessed, modified))
+
+
 def measure(project: Path) -> list[Measure]:
     """Every measure of §4's server half, each taken once - over a fresh session opened on
     ``project``, then the measures under load over another - left as it was found: each edit this
-    makes is undone before this returns, so a second run measures the same project.
+    makes is undone before this returns, and once both sessions have stopped the times of each
+    path it changed are put back (:class:`_Times`), so a second run measures the same project.
 
     Refused with a ``RuntimeError`` naming the precondition, before any measure but ``open`` is
     taken: ``project`` needs at least one component file (:func:`_analysis` has one to touch), at
@@ -165,27 +196,33 @@ def measure(project: Path) -> list[Measure]:
     ends the run with a ``RuntimeError`` as well, once any edit made has been undone: a refusal is
     no plan, nor an edit, and its time would read as one.
     """
-    session = Session(project.parent, poll_interval=_POLL_SECONDS)
-    session.start()
+    times = _Times()
     try:
-        taken, chosen = _measured(session, project)
+        session = Session(project.parent, poll_interval=_POLL_SECONDS)
+        session.start()
+        try:
+            taken, chosen = _measured(session, project, times)
+        finally:
+            session.stop()
+        loaded = _Watched(project.parent)
+        loaded.start()
+        try:
+            # Halfway through an analysis by this run's own measure of one: at 100,000
+            # declarations, past reading the files and into analysing them.
+            halfway = next(each for each in taken if each.name == "analysis").milliseconds / 2_000
+            taken.extend(_under_load(loaded, project, chosen, halfway))
+        finally:
+            loaded.stop()
     finally:
-        session.stop()
-    loaded = _Watched(project.parent)
-    loaded.start()
-    try:
-        # Halfway through an analysis by this run's own measure of one: at 100,000 declarations,
-        # past reading the files and into analysing them.
-        halfway = next(each for each in taken if each.name == "analysis").milliseconds / 2_000
-        taken.extend(_under_load(loaded, project, chosen, halfway))
-    finally:
-        loaded.stop()
+        # Once both have stopped: a session polling would take a time put back for a change.
+        times.put_back()
     return taken
 
 
-def _measured(session: Session, project: Path) -> tuple[list[Measure], _Chosen]:
+def _measured(session: Session, project: Path, times: _Times) -> tuple[list[Measure], _Chosen]:
     """:func:`measure`'s first session's, over ``session``, whose analyser runs; and what the
-    measures change, for the second's."""
+    measures change, for the second's - whose times are noted in ``times`` before anything
+    changes them."""
     api = Api(session, project, wait_seconds=0.0)
     taken = [_opening(session, project)]
 
@@ -221,6 +258,8 @@ def _measured(session: Session, project: Path) -> tuple[list[Measure], _Chosen]:
     chosen = _Chosen(
         components[0], variable, declared[0], units[(units.index(current) + 1) % len(units)]
     )
+    edited = declared[0].site.path.resolve()
+    times.keep(chosen.target, edited, edited.parent)
 
     entries: list[dict[str, Any]] = []
     for name in _ENDPOINTS:

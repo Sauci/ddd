@@ -19,6 +19,25 @@ from ddd.gui.session import Revision, Session
 from ddd.variables import declarations_of
 
 
+def as_found(directory: Path) -> dict[Path, tuple[bytes | None, int]]:
+    """Every file's bytes under ``directory``, and every path's modification time, the
+    directory's own and each of its directories' among them."""
+    return {
+        path.resolve(): (path.read_bytes() if path.is_file() else None, path.stat().st_mtime_ns)
+        for path in sorted([directory, *directory.rglob("*")])
+    }
+
+
+def edited_by_the_bench(project: Path) -> Path:
+    """The file the benchmark's own edit writes: its middle variable's first declaration's."""
+    session = Session(project.parent)
+    session.open(project)
+    built = session.revision.index
+    assert built is not None
+    variables = sorted(built.declarations)
+    return declarations_of(built, variables[len(variables) // 2], {})[0].site.path.resolve()
+
+
 def node_at(document, pointer: str):
     """The object or list entry ``pointer`` names in ``document``, dotted with ``[index]`` for a
     list entry, exactly as a :class:`~ddd.lsp.navigation.Site` spells one."""
@@ -59,10 +78,13 @@ def test_every_measure_is_taken_in_order_with_its_size(tmp_path: Path) -> None:
 
 
 def test_the_project_is_left_as_it_was_generated(tmp_path: Path) -> None:
+    """Its bytes, and its modification times: the component file a run moves forward four
+    times, the file its edits write and their undos write back, and the directory they are
+    written in."""
     made = generate(tmp_path / "p", 600, "many")
-    before = {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))}
+    before = as_found(tmp_path / "p")
     measure(made.project)
-    assert {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))} == before
+    assert as_found(tmp_path / "p") == before
 
 
 def test_the_command_line_prints_one_row_per_measure(
@@ -269,7 +291,7 @@ def test_a_refused_rename_plan_ends_the_run_once_the_edit_is_undone(
 ) -> None:
     """A refusal is no plan: its time would read as one."""
     made = generate(tmp_path / "p", 120, "many")
-    before = {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))}
+    before = as_found(tmp_path / "p")
     original = Api.handle
     refusal = {"error": "unreadable", "message": "a refusal made up for the test"}
 
@@ -282,7 +304,7 @@ def test_a_refused_rename_plan_ends_the_run_once_the_edit_is_undone(
     with pytest.raises(RuntimeError) as raised:
         measure(made.project)
     assert str(raised.value) == f"the benchmark's own rename plan was refused: {refusal}"
-    assert {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))} == before
+    assert as_found(tmp_path / "p") == before
 
 
 def test_open_the_analysis_and_the_edit_are_timed_until_their_analysis_has_landed(
@@ -477,7 +499,7 @@ def test_a_rename_plan_that_raises_leaves_the_project_as_it_was(
     """The edit before it is undone all the same: a request raising is not a refusal, and ends
     the run with what it raised."""
     made = generate(tmp_path / "p", 120, "many")
-    before = {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))}
+    before = as_found(tmp_path / "p")
     original = Api.handle
 
     def raising(self, method, path, query, body):
@@ -488,7 +510,7 @@ def test_a_rename_plan_that_raises_leaves_the_project_as_it_was(
     monkeypatch.setattr(Api, "handle", raising)
     with pytest.raises(OSError, match=r"^a failure made up for the test$"):
         measure(made.project)
-    assert {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))} == before
+    assert as_found(tmp_path / "p") == before
 
 
 def test_a_refused_plan_under_load_ends_the_run(
@@ -496,7 +518,7 @@ def test_a_refused_plan_under_load_ends_the_run(
 ) -> None:
     """A refusal is no plan, as for the rename: its time would read as one."""
     made = generate(tmp_path / "p", 120, "many")
-    before = {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))}
+    before = as_found(tmp_path / "p")
     original = Api.handle
     refusal = {"error": "unreadable", "message": "a refusal made up for the test"}
 
@@ -509,7 +531,7 @@ def test_a_refused_plan_under_load_ends_the_run(
     with pytest.raises(RuntimeError) as raised:
         measure(made.project)
     assert str(raised.value) == f"the benchmark's own plan was refused: {refusal}"
-    assert {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))} == before
+    assert as_found(tmp_path / "p") == before
 
 
 def test_a_refused_edit_ends_the_run_with_nothing_written(
@@ -518,7 +540,7 @@ def test_a_refused_edit_ends_the_run_with_nothing_written(
     """Refused while an analysis runs, as the first one could be idle: no edit, so nothing to
     undo, and its time would read as an edit's."""
     made = generate(tmp_path / "p", 120, "many")
-    before = {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))}
+    before = as_found(tmp_path / "p")
     original = Api.handle
     refusal = {"error": "stale", "message": "a refusal made up for the test"}
     edits: list[bytes | None] = []
@@ -535,7 +557,61 @@ def test_a_refused_edit_ends_the_run_with_nothing_written(
         measure(made.project)
     assert str(raised.value) == f"the benchmark's own edit was refused: {refusal}"
     assert len(edits) == 2
-    assert {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))} == before
+    assert as_found(tmp_path / "p") == before
+
+
+def test_a_file_whose_edit_is_not_put_back_keeps_the_time_it_was_written_at(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The undo refused, the run ends saying so, and the file it leaves edited keeps the time of
+    its edit: given back the time it was found at, it would read as unchanged to whatever reads
+    times. Every other time is put back all the same - the component file's the run moved, the
+    directory's the edit was written in."""
+    made = generate(tmp_path / "p", 120, "many")
+    edited = edited_by_the_bench(made.project)
+    before = as_found(tmp_path / "p")
+    original = Api.handle
+    refusal = {"error": "stale", "message": "a refusal made up for the test"}
+
+    def refusing(self, method, path, query, body):
+        if path == "/api/undo":
+            return Reply(409, refusal)
+        return original(self, method, path, query, body)
+
+    monkeypatch.setattr(Api, "handle", refusing)
+    with pytest.raises(RuntimeError) as raised:
+        measure(made.project)
+    assert str(raised.value) == f"putting the benchmark's own edit back was refused: {refusal}"
+    after = as_found(tmp_path / "p")
+    assert after[edited][0] != before[edited][0]
+    assert after[edited][1] > before[edited][1]
+    del after[edited], before[edited]
+    assert after == before
+
+
+def test_the_times_are_put_back_once_both_sessions_have_stopped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Never while a session runs: the second polls every second, stamping each file by its
+    modification time and size, and would take a time put back for a change and analyse the
+    project again."""
+    made = generate(tmp_path / "p", 120, "many")
+    happened: list[str] = []
+    stop = Session.stop
+    put_back = bench_gui._Times.put_back
+
+    def stopping(self: Session) -> None:
+        stop(self)
+        happened.append("stopped")
+
+    def putting_back(self: bench_gui._Times) -> None:
+        happened.append("put back")
+        put_back(self)
+
+    monkeypatch.setattr(Session, "stop", stopping)
+    monkeypatch.setattr(bench_gui._Times, "put_back", putting_back)
+    measure(made.project)
+    assert happened == ["stopped", "stopped", "put back"]
 
 
 class _HeldUnderLoad(bench_gui._Watched, _Gate):
@@ -611,7 +687,7 @@ def test_a_measure_under_load_answered_once_its_analysis_had_ended_is_refused(
     with the sentence saying so, the other two kept, and the project left as it was found - the
     edit's own refusal included, undone like the edit it is."""
     made = generate(tmp_path / "p", 120, "many")
-    before = {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))}
+    before = as_found(tmp_path / "p")
     held_under_load(monkeypatch, late)
     taken = {each.name: each for each in measure(made.project)}
     assert {name: taken[name].refused for name in UNDER_LOAD} == {
@@ -623,7 +699,7 @@ def test_a_measure_under_load_answered_once_its_analysis_had_ended_is_refused(
         )
         for name in UNDER_LOAD
     }
-    assert {path: path.read_bytes() for path in sorted((tmp_path / "p").rglob("*.json"))} == before
+    assert as_found(tmp_path / "p") == before
 
 
 def test_the_command_line_writes_a_refused_figure_as_its_sentence(

@@ -495,6 +495,14 @@ Options
        fills the addresses in; a missing map in the source tree stays an error. An empty map
        is a first run rather than a map with holes, so it raises no ``address-missing`` and
        ``STRICT`` does not fail it; a map that names some objects and not others does, once.
+   * - ``ADDRESSES_FROM_IMAGE``
+     - write the a2l once the image is linked, every address it carries read out of the
+       image's debug information, so that one build gives the complete a2l: the run before the
+       link leaves the a2l out, as ``NO_A2L`` does, and ``<stem>_ddd_a2l``, built by default,
+       writes it after the link - again whenever the image relinks or a description changes,
+       and never otherwise. ``DDD_A2L`` names it as before, and ``STRICT``, ``SEVERITY`` and
+       ``BYTE_ORDER`` apply to it. The image has to be ELF with DWARF, built with ``-g``.
+       Refused together with ``ADDRESS_MAP`` or ``NO_A2L``.
    * - ``BYTE_ORDER little|big``
      - byte order reported in the a2l.
    * - ``SEVERITY <check=level>...``

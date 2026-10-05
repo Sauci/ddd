@@ -30,15 +30,18 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import sysconfig
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pytest
+from build_address_fixtures import ORACLE, PROJECT, SYMBOLS, addresses_of, oracle_of, root_of
 
 from conftest import EXAMPLES, declare
 from ddd import __version__
+from test_cli import a2l_addresses
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = Path(sysconfig.get_path("scripts"))
@@ -1031,6 +1034,336 @@ class TestTheDocumentedAddressMapRecipe:
         generated = tmp_path / "build" / "ddd" / "firmware.elf"
         extracted = json.loads((generated / "addresses.json").read_text(encoding="utf-8"))
         assert "cntr_50ms_decimate_5" not in extracted
+
+
+NOT_ELF = "is not an ELF image this tool can read: Magic number does not match"
+"""How DDD's reader refuses an image that is not ELF, a PE file included: the first four bytes
+are where it stops."""
+
+PRE_LINK = (
+    "ddd_globals.c",
+    "ddd_globals.h",
+    "ddd_types.h",
+    "Engine.h",
+    "AddressFixture.dictionary.json",
+)
+"""What the run before the link writes into the directory the a2l is written into after it."""
+
+
+def oracle(image: Path) -> dict[str, int]:
+    """Where the toolchain put every symbol the a2l carries: ``nm``'s address of its variable,
+    plus the compiler's own ``offsetof`` of it, which ``oracle.c`` compiled into the image - read
+    back as the address fixtures read theirs, and never through DDD's reader."""
+    carried = json.loads(SYMBOLS.read_text(encoding="utf-8"))["addressed"]
+    found = addresses_of(image)
+    offsets = zip(carried, oracle_of(image, sys.byteorder), strict=True)
+    return {symbol: found[root_of(symbol)] + offset for symbol, offset in offsets}
+
+
+@dataclass(frozen=True)
+class Built:
+    """One build of the class below, and what it left behind."""
+
+    code: int
+    output: str
+    a2l: str
+    """The a2l once the build was over, or nothing where there was none."""
+
+    oracle: dict[str, int]
+    """What the toolchain says of the image the build linked, where it linked ELF."""
+
+    written: dict[str, int | None]
+    """When each file of the run before the link was last written, or None where it is gone."""
+
+
+@dataclass(frozen=True)
+class FromTheImage:
+    """What one configure and the builds after it left behind, for the class below."""
+
+    configured: str
+    generated: Path
+    elf: bool
+    builds: list[Built]
+    """The first build, the same again, one after an edit that relinks the image, and one after
+    a description edit the c does not see - or the first alone, where the image is not ELF."""
+
+    def linked_elf(self) -> bool:
+        """Whether the host's toolchain linked an ELF image, which is what DDD reads.
+
+        MinGW's gcc, which the windows cells build with, links PE: there the step after the
+        link refuses the image in the reader's words and the build stops with no a2l, which is
+        asserted here before answering no - so that a test with nothing more to ask of such a
+        host has still checked what it gets."""
+        if self.elf:
+            return True
+        (first,) = self.builds
+        assert first.code != 0, first.output
+        assert NOT_ELF in first.output, first.output
+        assert first.a2l == ""
+        return False
+
+
+class TestAddressesFromTheImage:
+    """``ADDRESSES_FROM_IMAGE``: the a2l written once the image is linked, out of that image.
+
+    One configure and four builds of one tree, the class fixture's story: the build that gives
+    the whole a2l, the same build again, one after an edit that relinks the image, and one after
+    a description edit that reaches the a2l and none of the c. The project is the address
+    fixtures' - bitfields before value members, arrays of structures in one and two dimensions -
+    built by the host's toolchain into an image that also carries ``oracle.c``, so that what the
+    toolchain says of every symbol is read back out of the very image the a2l was read from.
+
+    That needs a host whose toolchain links ELF, as every linux cell's does. MinGW's gcc, which
+    the windows cells build with, links PE, which DDD does not read: what a build gets there is
+    the step after the link refusing the image in the reader's words, and that is what each test
+    asserts there instead (``FromTheImage.linked_elf``) - a test that skipped would report
+    success without having run.
+    """
+
+    def write(self, source: Path, options: str = "", tail: str = "") -> None:
+        """The address fixtures' project and oracle, and an image of them both."""
+        shutil.copytree(PROJECT.parent, source / "project")
+        shutil.copy(ORACLE, source / "oracle.c")
+        (source / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        (source / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(FromImage LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+add_executable(img main.c oracle.c)
+ddd_generate(img
+             PROJECT "${{CMAKE_CURRENT_SOURCE_DIR}}/project/project.ddd.json"
+             TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"
+             ADDRESSES_FROM_IMAGE{options})
+{tail}
+get_target_property(a2l img DDD_A2L)
+message(STATUS "DDD_A2L=${{a2l}}")
+""",
+            encoding="utf-8",
+        )
+
+    @staticmethod
+    def image(build_dir: Path) -> Path:
+        return build_dir / ("img.exe" if os.name == "nt" else "img")
+
+    @pytest.fixture(scope="class")
+    @staticmethod
+    def story(tmp_path_factory: pytest.TempPathFactory) -> FromTheImage:
+        """One story, told once: build, build again, relink, edit a description."""
+        source = tmp_path_factory.mktemp("from-image")
+        TestAddressesFromTheImage().write(source)
+        build_dir = source / "build"
+        # With debug information, which the image has to carry and an empty build type omits.
+        configured = configure(source, build_dir, "-DCMAKE_BUILD_TYPE=RelWithDebInfo")
+        generated = build_dir / "ddd" / "img"
+        image = TestAddressesFromTheImage.image(build_dir)
+
+        def built() -> Built:
+            run = cmake("--build", str(build_dir), cwd=build_dir)
+            a2l = generated / "AddressFixture.a2l"
+            paths = [generated / name for name in PRE_LINK]
+            return Built(
+                code=run.returncode,
+                output=run.stdout + run.stderr,
+                a2l=a2l.read_text(encoding="utf-8") if a2l.exists() else "",
+                oracle=oracle(image) if image.read_bytes()[:4] == b"\x7fELF" else {},
+                written={
+                    path.name: path.stat().st_mtime_ns if path.exists() else None for path in paths
+                },
+            )
+
+        builds = [built()]
+        elf = image.read_bytes()[:4] == b"\x7fELF"
+        if elf:
+            builds.append(built())
+            # An initialised array more: the image relinks, and what follows it moves.
+            (source / "main.c").write_text(
+                "int Padding[64] = {1};\n\nint main(void) { return Padding[0]; }\n",
+                encoding="utf-8",
+            )
+            builds.append(built())
+            types = source / "project" / "types.ddd.json"
+            text = types.read_text(encoding="utf-8")
+            assert text.count('"factor": 0.1,') == 1, "Temperature_t's factor is no longer 0.1"
+            types.write_text(text.replace('"factor": 0.1,', '"factor": 0.2,'), encoding="utf-8")
+            builds.append(built())
+        return FromTheImage(configured.stdout, generated, elf, builds)
+
+    def test_one_build_gives_the_a2l_the_toolchain_gives(self, story: FromTheImage) -> None:
+        """Every symbol at ``nm``'s address of its variable plus the compiler's own
+        ``offsetof``, the value members after bitfields and the elements of ``Grid`` included:
+        no map to extract, no second build to read it."""
+        if not story.linked_elf():
+            return
+        first = story.builds[0]
+        assert first.code == 0, first.output
+        assert a2l_addresses(first.a2l) == first.oracle
+        assert len(first.oracle) == 46
+
+    def test_the_a2l_property_names_the_file_the_step_writes(self, story: FromTheImage) -> None:
+        """Unchanged: what a step installing or publishing the a2l reads."""
+        printed = re.search(r"DDD_A2L=(.*)", story.configured)
+        assert printed is not None, story.configured
+        assert Path(printed.group(1).strip()) == story.generated / "AddressFixture.a2l"
+
+    def test_a_second_build_runs_no_step(self, story: FromTheImage) -> None:
+        if not story.linked_elf():
+            return
+        assert "ninja: no work to do." in story.builds[1].output
+
+    def test_a_relink_reads_the_addresses_again(self, story: FromTheImage) -> None:
+        """``main.c`` gains an initialised array, which the linker places before the definition
+        file's variables without an initial value: they move, and the a2l says where to, as the
+        toolchain does."""
+        if not story.linked_elf():
+            return
+        first, _, relinked, _ = story.builds
+        assert "Reading the addresses of the a2l out of img" in relinked.output
+        assert relinked.oracle != first.oracle
+        assert a2l_addresses(relinked.a2l) == relinked.oracle
+
+    def test_the_step_after_the_link_leaves_what_the_step_before_it_wrote(
+        self, story: FromTheImage
+    ) -> None:
+        """Review Focus 5: the a2l is written into the directory the run before the link wrote
+        the c, the headers and the dictionary into, and the relink's step left every one of
+        them as it was - not rewritten, not taken back - so nothing was compiled again."""
+        if not story.linked_elf():
+            return
+        first, _, relinked, _ = story.builds
+        assert None not in first.written.values()
+        assert relinked.written == first.written
+        assert "ddd_globals.c" not in relinked.output
+
+    def test_a_description_the_a2l_reads_reruns_the_step_without_a_relink(
+        self, story: FromTheImage
+    ) -> None:
+        """A conversion's factor reaches the a2l and none of the c: the c is left as it was, so
+        nothing compiles or links, and the step reads the image again all the same."""
+        if not story.linked_elf():
+            return
+        redescribed = story.builds[3]
+        assert "Reading the addresses of the a2l out of img" in redescribed.output
+        assert "Linking" not in redescribed.output
+        assert "      COEFFS 0 1 40 0 0 0.2\n" in redescribed.a2l
+
+    @pytest.mark.parametrize(
+        ("keyword", "said"),
+        [
+            pytest.param(
+                'ADDRESS_MAP "${CMAKE_CURRENT_BINARY_DIR}/map.json"',
+                "ddd_generate: ADDRESSES_FROM_IMAGE cannot be given together with ADDRESS_MAP: "
+                "the a2l takes its addresses from one of the two.",
+                id="ADDRESS_MAP",
+            ),
+            pytest.param(
+                "NO_A2L",
+                "ddd_generate: ADDRESSES_FROM_IMAGE cannot be given together with NO_A2L: the "
+                "addresses it reads out of the image are the a2l's.",
+                id="NO_A2L",
+            ),
+        ],
+    )
+    def test_a_keyword_it_contradicts_is_refused_at_configure_time(
+        self, tmp_path: Path, keyword: str, said: str
+    ) -> None:
+        self.write(tmp_path, options=f"\n             {keyword}")
+        run = attempt(tmp_path, tmp_path / "build")
+        assert run.returncode != 0, run.stdout + run.stderr
+        # Rewrapped: cmake folds a message to its own width.
+        assert said in " ".join(run.stderr.split())
+
+    def test_under_strict_a_symbol_the_image_cannot_place_stops_the_build(
+        self, tmp_path: Path
+    ) -> None:
+        """The definition file compiled without debug information, as a project's flags for
+        generated code may have it: no symbol of the a2l has an address in the image, and the
+        build stops rather than ship an a2l whose every address is 0."""
+        self.write(
+            tmp_path,
+            options="\n             STRICT",
+            tail="target_compile_options(img_ddd_globals PRIVATE -g0)",
+        )
+        configure(tmp_path, tmp_path / "build", "-DCMAKE_BUILD_TYPE=RelWithDebInfo")
+        run = cmake("--build", str(tmp_path / "build"), cwd=tmp_path)
+        output = run.stdout + run.stderr
+        assert run.returncode != 0, output
+        assert not (tmp_path / "build" / "ddd" / "img" / "AddressFixture.a2l").exists()
+        if self.image(tmp_path / "build").read_bytes()[:4] != b"\x7fELF":
+            assert NOT_ELF in output, output
+            return
+        assert (
+            "error[address-missing]: the image has no address for 'Cells[0].raw', 'Cells[0].v', "
+            "'Cells[1].raw', 'Cells[1].v', 'Cells[2].raw' and 41 others; they reach the a2l at "
+            "address 0\n"
+            "    note: the image's debug information holds no variable named 'Cells'; the symbol "
+            "table holds it, so the unit defining it was built without debug information (-g)\n"
+        ) in output
+
+    def test_a_byte_order_the_image_contradicts_stops_the_build(self, tmp_path: Path) -> None:
+        """``BYTE_ORDER`` reaches the step after the link, where the image says otherwise."""
+        other = {"little": "big", "big": "little"}[sys.byteorder]
+        self.write(tmp_path, options=f"\n             BYTE_ORDER {other}")
+        configure(tmp_path, tmp_path / "build", "-DCMAKE_BUILD_TYPE=RelWithDebInfo")
+        run = cmake("--build", str(tmp_path / "build"), cwd=tmp_path)
+        output = run.stdout + run.stderr
+        assert run.returncode != 0, output
+        image = self.image(tmp_path / "build")
+        if image.read_bytes()[:4] != b"\x7fELF":
+            assert NOT_ELF in output, output
+            return
+        assert (
+            f"ddd: --byte-order {other} contradicts '{image.as_posix()}', which is "
+            f"{sys.byteorder} endian\n"
+        ) in output
+
+    def test_in_the_collected_mode_a_plugin_or_a_description_reruns_the_step(
+        self, tmp_path: Path
+    ) -> None:
+        """The layout example as ``TestACollectedProjectWithPlugins`` builds it, the keyword
+        added. Collected, the descriptions travel the link graph as a generator expression, and
+        the step depends on them as the run before the link does, and on the ``.py`` plugin
+        ``PLUGINS`` names: an edited plugin or conversion reaches the a2l and relinks nothing,
+        and reruns the step all the same. The plugin's own header, which the run before the
+        link wrote beside the a2l, is still there after it."""
+        component, plugin = TestACollectedProjectWithPlugins().write(
+            tmp_path, options="\n             ADDRESSES_FROM_IMAGE"
+        )
+        configure(tmp_path, tmp_path / "build", "-DCMAKE_BUILD_TYPE=RelWithDebInfo")
+        run = cmake("--build", str(tmp_path / "build"), cwd=tmp_path)
+        output = run.stdout + run.stderr
+        generated = tmp_path / "build" / "ddd" / "img"
+        a2l = generated / "LayoutDevice.a2l"
+        image = self.image(tmp_path / "build")
+        if image.read_bytes()[:4] != b"\x7fELF":
+            assert run.returncode != 0, output
+            assert NOT_ELF in output, output
+            assert not a2l.exists()
+            return
+        assert run.returncode == 0, output
+        found = addresses_of(image)
+        assert a2l_addresses(a2l.read_text(encoding="utf-8")) == {
+            name: found[name] for name in ("CoolantTemperature", "EngineHours", "ServiceCount")
+        }
+        assert (generated / "ddd_layout.h").is_file()
+
+        edit_plugin(plugin)
+        replugged = build(tmp_path / "build")
+        assert "Reading the addresses of the a2l out of img" in replugged
+        assert "Linking" not in replugged
+
+        described = json.loads(component.read_text(encoding="utf-8"))
+        (coolant,) = [
+            entry["definition"]
+            for entry in described["component"]["interface"]
+            if entry["definition"]["name"] == "CoolantTemperature"
+        ]
+        coolant["conversion"]["factor"] = 0.2
+        component.write_text(json.dumps(described, indent=2), encoding="utf-8")
+        redescribed = build(tmp_path / "build")
+        assert "Reading the addresses of the a2l out of img" in redescribed
+        assert "Linking" not in redescribed
+        assert "COEFFS 0 1 0 0 0 0.2" in a2l.read_text(encoding="utf-8")
 
 
 class TestAKeywordGivenNoValue:

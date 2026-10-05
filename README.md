@@ -878,7 +878,8 @@ report what the build reports.
 
 Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DIRECTORY`,
 `PLUGINS` (the collected project's plugins, written into the generated description and closing
-the schemas), `ADDRESS_MAP`, `BYTE_ORDER`,
+the schemas), `ADDRESS_MAP`, `ADDRESSES_FROM_IMAGE` (the a2l written after the link, its
+addresses read out of the linked image), `BYTE_ORDER`,
 `SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `CONST_INPUTS`, `NO_A2L`, `NO_DICTIONARY`, `STRICT` and
 `NO_PROPAGATE_HEADERS`.  The last one matters for a project building **several** images from
 the same components: their generated headers differ, so two automatic sets would leave an

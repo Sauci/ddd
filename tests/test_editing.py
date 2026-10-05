@@ -727,6 +727,24 @@ class TestWritingFiles:
         assert refused.value.code == UNWRITABLE
         assert tries == [path]
 
+    def test_a_rename_failing_for_another_reason_is_refused_at_once(self, tmp_path, monkeypatch):
+        """Only a refusal of access waits for a reader to let go: a full disk does not."""
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"x": 1}')
+        tries = []
+
+        def full(self, target):
+            tries.append(target)
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(editing, "REPLACE_TRIES", 3)
+        monkeypatch.setattr(editing, "REPLACE_PAUSE", 0)
+        monkeypatch.setattr(Path, "replace", full)
+        with pytest.raises(EditError) as refused:
+            apply_changes([change(path, Operation("set", "x", "2"))])
+        assert refused.value.code == UNWRITABLE
+        assert tries == [path]
+
     def test_a_created_file_held_open_is_taken_away_once_the_reader_lets_go(
         self, tmp_path, monkeypatch
     ):

@@ -657,9 +657,10 @@ function(ddd_generate image)
 
     # ADDRESSES_FROM_IMAGE: the a2l is written once the image is linked, by a second run reading every address it
     # carries out of the image's debug information, so that one build gives the complete a2l - no map to extract,
-    # and no second build to read it. The run depends on the image and on what the project is read from, so it runs
-    # again whenever the image relinks or a description changes, and never otherwise: the templates and DEPENDS are
-    # the c's inputs, not the a2l's. It writes into the directory the run before the link wrote, whose manifest keeps
+    # and no second build to read it. The run depends on the image and on what the project is read from - not on the
+    # templates or DEPENDS, which are the c's inputs, not the a2l's - so it runs again whenever the image relinks or a
+    # description changes, and under Ninja never otherwise; under Make also at every build that follows a run of it
+    # leaving the a2l unchanged. It writes into the directory the run before the link wrote, whose manifest keeps
     # each run from taking back the files of the other. STRICT and SEVERITY apply to it as to that run, so that under
     # STRICT a symbol the image cannot place stops the build rather than shipping an a2l with an address of 0; and
     # BYTE_ORDER is its alone, held to the byte order the image states.

@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from ddd.diagnostics import Diagnostic
+from ddd.difflib_lock import ONE_THREAD_IN_DIFFLIB
 from ddd.editing import UNREADABLE, EditError, Operation, edit_text
 from ddd.lsp.edits import PROPAGATED_KEYS, Settlement, Unsettled
 from ddd.lsp.navigation import Index, Site
@@ -242,16 +243,18 @@ def hunks(before: str, after: str) -> tuple[Hunk, ...]:
     some of them otherwise. Where the lines taken out are spelled like the lines beside them,
     which of those difflib names depends on the text all around - taking the first of six
     declarations out of a component, it answers lines 5 to 17, where the head matched first
-    would answer lines 8 to 20 (``tests/test_variables.py``).
+    would answer lines 8 to 20 (``tests/test_variables.py``). That one call into difflib holds
+    :data:`ddd.difflib_lock.ONE_THREAD_IN_DIFFLIB`, for this file alone.
     """
     old, new = before.splitlines(), after.splitlines()
     in_place = _replaced_in_place(old, new)
     if in_place is not None:
         return in_place
-    matcher = difflib.SequenceMatcher(a=old, b=new, autojunk=False)
+    with ONE_THREAD_IN_DIFFLIB:
+        opcodes = difflib.SequenceMatcher(a=old, b=new, autojunk=False).get_opcodes()
     return tuple(
         Hunk(first + 1, tuple(old[first:last]), tuple(new[start:end]))
-        for tag, first, last, start, end in matcher.get_opcodes()
+        for tag, first, last, start, end in opcodes
         if tag != "equal"
     )
 

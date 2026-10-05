@@ -3,10 +3,10 @@
  * Playwright script against a running server, timing what a reader sees - the shell answering,
  * the first drawn screen and the worker's layout of it, each tab's own first row, typing,
  * scrolling, an Apply's own change showing and the findings catching up to it - rather than any
- * one request (`tools/bench_gui.py` is the server half, in process). Run by hand only (`playwright.bench.config.ts` says why), on
- * the projects `tools/generate_project.py` writes under `$BENCH` (Task 1) - this file never
- * imports that generator, so it learns a project's shape from the page alone, the way a reader
- * would.
+ * one request (`tools/bench_gui.py` is the server half, in process). Run by hand only
+ * (`playwright.bench.config.ts` says why), on the projects `tools/generate_project.py` writes
+ * under `$BENCH` (Task 1) - this file never imports that generator, so it learns a project's
+ * shape from the page alone, the way a reader would.
  *
  * `DDD_BENCH_PROJECT` names one project's `project.ddd.json`; `ddd gui` is started over its
  * directory the way `gui/e2e/fixtures.ts` starts it, but without naming the project, so the
@@ -388,11 +388,11 @@ async function openFindingsTab(page: Page): Promise<void> {
  * to put back - a wait, not an instant, one-shot `isVisible()` read: `state.undoable`, which the
  * button depends on, reaches the page through the continuous `GET /api/state` long poll, a
  * separate path from the file read again that `apply shows`'s own measured wait confirms, and one
- * that a one-shot read could lose the race against. Thirty seconds is
- * far past that gap in every run measured here (the poll is already continuously in flight, so
- * this is one more round trip, not a fresh one) while still far short of `CAP_MS`, for the one
- * genuine case this wait can span the whole of: a `capped()` measure moved on before its own
- * `POST /api/edit` ever answered, and there is truly nothing to undo. */
+ * that a one-shot read could lose the race against. Thirty seconds is far past that gap in every
+ * run measured here (the poll is already continuously in flight, so this is one more round trip,
+ * not a fresh one) while still far short of `CAP_MS`, for the one genuine case this wait can span
+ * the whole of: a `capped()` measure moved on before its own `POST /api/edit` ever answered, and
+ * there is truly nothing to undo. */
 const UNDO_TIMEOUT = 30_000;
 
 /** Puts back whatever this test's own edit changed, if anything landed at all - `UNDO_TIMEOUT`'s

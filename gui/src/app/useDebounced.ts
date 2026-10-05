@@ -5,21 +5,21 @@ import { atOnce, planDelay, sameRequest } from "../lib/typing";
  * The value last asked for (spec §6, "typing never waits"): starts at `value` itself, so a panel
  * mounted on one has nothing to wait for. A later `value` moves in at once when `atOnce(value,
  * typed)` says so - `null` (nothing to ask any more), or `typed` false (a discrete commit: a
- * chooser pick, Enter, a button) - and otherwise
- * after `planDelay(asked)`: at once the first time this ever waits, `PLAN_DELAY_MS` after every
- * later one. A newer `value` arriving before a wait is over cancels it and starts a fresh one
- * from itself; the component unmounting cancels it the same way, through the effect's own
- * cleanup. `typed` defaults to `true`, for every screen whose one debounced field is always typed
- * into (a plain field, or a chooser wired the same way). A screen whose one debounced value can
- * also arrive from a discrete pick passes its own, kept `typed` state instead - never inferred
- * from the value itself, which a pick and typing can both leave in the very same shape
- * (`TypePanel`'s `typedLimits` and `VariablePanel`'s own of the same name, each false for a pick
- * of a `limits` row, including the row's own starting range the moment it opens, true only once
- * Min or Max is actually typed into; `DeclarePanel`'s `typedEdit`, over its one combined request,
- * the same way). Fix round 2's own finding: this hook only ever compares the value `atOnce` and
- * `sameRequest` are given, so a screen that let `typed` follow the value's own presence, rather
- * than keeping its own record of which kind of edit it just made, told it a `limits` pick was
- * typing and waited `PLAN_DELAY_MS` for a preview that should have shown at once.
+ * chooser pick, Enter, a button) - and otherwise after `planDelay(asked)`: at once the first time
+ * this ever waits, `PLAN_DELAY_MS` after every later one. A newer `value` arriving before a wait
+ * is over cancels it and starts a fresh one from itself; the component unmounting cancels it the
+ * same way, through the effect's own cleanup. `typed` defaults to `true`, for every screen whose
+ * one debounced field is always typed into (a plain field, or a chooser wired the same way). A
+ * screen whose one debounced value can also arrive from a discrete pick passes its own, kept
+ * `typed` state instead - never inferred from the value itself, which a pick and typing can both
+ * leave in the very same shape (`TypePanel`'s `typedLimits` and `VariablePanel`'s own of the same
+ * name, each false for a pick of a `limits` row, including the row's own starting range the
+ * moment it opens, true only once Min or Max is actually typed into; `DeclarePanel`'s
+ * `typedEdit`, over its one combined request, the same way). Fix round 2's own finding: this hook
+ * only ever compares the value `atOnce` and `sameRequest` are given, so a screen that let `typed`
+ * follow the value's own presence, rather than keeping its own record of which kind of edit it
+ * just made, told it a `limits` pick was typing and waited `PLAN_DELAY_MS` for a preview that
+ * should have shown at once.
  *
  * Glue only (Global Constraints: "no decision may live in a .tsx file... a src/app hook is glue
  * only"): `atOnce`, `planDelay` and `sameRequest` are `gui/src/lib`'s own, under the Vitest gate.

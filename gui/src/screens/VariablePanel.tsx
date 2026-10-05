@@ -331,9 +331,12 @@ export function VariablePanel({
   });
   // What the removal offers, drawn the same way `UnitPanel`'s own actions are: the plan asked
   // for, and why it - or applying it - was refused. Never pending: the plan is asked anew for
-  // each revision with nothing kept in its place while it is (the query has no
-  // `placeholderData`), so a plan drawn - and Remove is drawn only beside one - is always this
-  // revision's own; while it is asked for there is none, and nothing to offer.
+  // each revision with nothing kept in its place (the query has no `placeholderData`), so a plan
+  // drawn - and Remove is drawn only beside one - is always this revision's own. While a
+  // revision's plan is asked for the first time there is none, and nothing to offer. Asked again
+  // after the panel's own Apply or Remove, the old one stays drawn while the panel is busy -
+  // until every query that edit asks again has answered - and the answer replaces it: refused,
+  // where the edit wrote this file, until that edit's analysis has landed.
   const removalOffer: Offer = {
     plan: removal.data ?? null,
     refusal:

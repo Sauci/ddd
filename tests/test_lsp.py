@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shutil
+import sys
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
@@ -4118,15 +4119,28 @@ def scanned_alike(text: str) -> None:
 
 def deepest(reads: Callable[[str], bool], nested: Callable[[int], str]) -> int:
     """The deepest of ``nested``'s documents ``reads`` reads, between 1 and 2,000 levels: each
-    level costs the scan stack, and from some depth on it gives up."""
-    low, high = 1, 2_000
-    while low < high:
-        middle = (low + high + 1) // 2
-        if reads(nested(middle)):
-            low = middle
-        else:
-            high = middle - 1
-    return low
+    level costs the scan stack, and from some depth on it gives up.
+
+    Searched with this thread's trace function set aside, as a reader's interpreter runs: a
+    traced call spends stack of its own, and not alike for the scan and the walk, which make
+    different calls. Under coverage's tracer - this suite's, on python 3.12 and 3.13, which
+    trace with ``sys.settrace``; 3.14 records lines through ``sys.monitoring`` instead - the
+    scan gave up one level before the walk on every shape, where untraced the two agree (CI's
+    ubuntu and windows runners on 3.12 and 3.13, and the ``ddd:dev`` image's 3.12.14 traced
+    and not)."""
+    tracer = sys.gettrace()
+    sys.settrace(None)
+    try:
+        low, high = 1, 2_000
+        while low < high:
+            middle = (low + high + 1) // 2
+            if reads(nested(middle)):
+                low = middle
+            else:
+                high = middle - 1
+        return low
+    finally:
+        sys.settrace(tracer)
 
 
 def lower(frames: int, reads: Callable[[str], bool]) -> Callable[[str], bool]:

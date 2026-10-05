@@ -4436,7 +4436,7 @@ message(STATUS "DDD_A2L=${{a2l}}")
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `.venv/bin/python -m pytest tests/test_cmake.py --no-cov -k AddressesFromTheImage`
-Expected: `5 failed, 46 deselected, 6 errors`, every one on the module's `ddd_generate: unknown argument(s) "ADDRESSES_FROM_IMAGE".`: the six tests of the story as errors of its fixture, whose configure fails, and the other five as failures.
+Expected: `5 failed, 46 deselected, 6 errors`: the six tests of the story as errors of its fixture, whose configure fails, and the other five as failures. Ten of them stop on the module's `ddd_generate: unknown argument(s) "ADDRESSES_FROM_IMAGE".`; the collected mode's test stops on `ddd: plugin 'ADDRESSES_FROM_IMAGE' is not an importable module`, its call writing the keyword after `PLUGINS`, whose values take a word cmake does not know yet (measured at execution; this sentence first said all eleven stop on the module's).
 
 - [ ] **Step 3: The keyword**
 
@@ -5569,17 +5569,35 @@ What to read in it: one build gives the a2l, in a step after the link (`[13/14]`
 
 The previous plan's gate recorded one test failing under Python 3.12 in Docker, master's own (`tests/test_transcripts.py` rewriting `examples/pressure/work/`); it does not fail any more: `PY312` passed whole.
 
+**Measured on the branch** (2026-10-06, at `ab47fd6`: Tasks 1 to 7, master `a1da6ce` merged in, the final review's fixes; the worktree's own venv), the counts higher than above by master's tests and the fixes' own:
+
+| Gate | Result |
+| --- | --- |
+| `PYTEST` | `0`, `6067 passed in 94.48s`, `Total coverage: 100.00%` |
+| `RUFF`, `FMT`, `MYPY` | `0` each: `All checks passed!`, `160 files already formatted`, `Success: no issues found in 87 source files` |
+| `ddd:dev` before | `b915687d0629` |
+| `IMAGE` | `0` |
+| `PY312` | `0`, `6067 passed in 194.11s`, `Total coverage: 100.00%` |
+| `DOCS` | `0`, `build succeeded.`; *The a2l's addresses* read in `build_integration.html`. The concept page's diagram, read in its svg, showed its second run's label struck through - PlantUML's creole takes `--image or --` for strike-through, which `-W` does not see; `cf156eb` escapes it, and the page rebuilt at `cf156eb` (`DOCS=0`) shows the label as written |
+| fixtures | four `unchanged`, `wrote 5 rows into tests/fixtures/addresses`, `FIXTURES=0`, `git status` empty |
+| `ddd:dev` after | `b915687d0629` |
+| hands-on | as above, line for line, the addresses the same |
+
 ## Progress log
+
+Executed on 2026-10-05 and 06, one implementer and one reviewer per task, from this plan's base; master was merged in after Task 7, before the final review. Each task's tree matched its scratch commit, and each task's ablations died as the task says.
 
 | Task | Commits | Review | Notes |
 | --- | --- | --- | --- |
-| 1 the reader records linkage | | | |
-| 2 one home for a build's addresses | | | |
-| 3 placing a symbol in an image | | | |
-| 4 the address fixtures | | | |
-| 5 `--image` on the command line | | | |
-| 6 `ADDRESSES_FROM_IMAGE` | | | |
-| 7 the documentation | | | |
+| 1 the reader records linkage | `dfa7217` | approved | `5425 passed`; 5 ablations |
+| 2 one home for a build's addresses | `63b6dd9` | approved | `5435 passed`; 10 ablations, the seventh (`str` for `as_posix`) surviving on linux as stated |
+| 3 placing a symbol in an image | `9ecb9d5` | approved | `5461 passed`; 18 ablations |
+| 4 the address fixtures | `594c821` | approved | `5484 passed`; 24 ablations; the five images byte for byte the drafting's, the rebuild reproducible, `ddd:dev` untouched |
+| 5 `--image` on the command line | `b37922e` | approved | `5506 passed`; 17 ablations, the ninth surviving on linux as stated |
+| 6 `ADDRESSES_FROM_IMAGE` | `628bec0` | approved | `5517 passed`; 16 ablations, the eighth and the tenth surviving as stated; Step 2's account of the red run corrected |
+| 7 the documentation | `775147d` | approved | `5529 passed`; 7 ablations |
+| master merged in | `3cea304` | - | master `a1da6ce` (#77); `CHANGELOG.md` the one conflict, both entries kept; `6065 passed` |
+| final review | `c835a66`..`cf156eb` | ready with fixes; the fixes re-reviewed, all addressed | the `-g` hint for a global the debug information only declares (the one Important finding); Make's reruns stated on the pages; the changelog on the moved reader; the concept page's diagram, whose label the gate's rendering showed struck through (`cf156eb` escapes its dashes); one function seeing through typedefs; `6067 passed` |
 
 ## What was left open
 
@@ -5590,6 +5608,8 @@ Filled in as the work goes. Each entry says what was not done and what it costs.
 - **IEEE-695** images, which SPEC.md section 6 names beside ELF.
 - **Pointer members in `ddd tool from-elf`**, deferred by the maintainer on 2026-10-02 and recorded in the toolbox plan's "What was left open".
 - **A host whose toolchain links no ELF** - Windows with MinGW, macOS - cannot use `ADDRESSES_FROM_IMAGE` for a native build: the reader refuses its PE or Mach-O image (ruling 17, held by Task 6's tests). Cross builds for embedded targets link ELF on every host.
+- **Make reruns a step whose run left its output as it was.** Under the Unix Makefiles generator, a relink that leaves the a2l byte for byte as it was leaves the a2l older than the image, so every later build runs the step after the link again, rewriting nothing; Ninja's restat records the run and builds nothing (measured by the final review's fix wave). The generation before the link does the same under Make after a description edit that leaves the c as it was. The pages say it of the step after the link; what they say of the generation before the link - that the map flow settles, that a build with nothing changed runs nothing - predates this branch and is left as it was. A stamp file as each step's output, the a2l and the c its byproducts, would cure both.
+- **`ddd tool from-elf` still says "defined nowhere in the image"** of a global its image's debug information only declares while the symbol table defines it - the unit defining it built without `-g`, a unit reading it with `-g`. `ddd.addresses` gives the `-g` hint there since the final review; the toolbox's selection predates this branch and keeps its sentence, and the sentences the two modules share (`no variable named`, the `-g` hint) are written once in each.
 
 ## Rulings taken
 

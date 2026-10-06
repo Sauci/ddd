@@ -174,8 +174,9 @@ class Opened:
 
 def code_from(printed_line: str, opened_address: str) -> str:
     """The single-use launch code a launch handed the browser: an address of this server's
-    own - the same port as the one the printed line carries, naming ``/open`` - holding a
-    fresh code and not the long-lived token the printed address carries. Answers the code."""
+    own - the same port as the one the printed line carries, naming ``/open``, its query
+    exactly one fresh code - never the long-lived token the printed address carries, not as
+    the code and not anywhere else in the address either. Answers the code."""
     printed = urlsplit(printed_line.rsplit(" ", 1)[1])
     opened = urlsplit(opened_address)
     assert (opened.scheme, opened.hostname, opened.port, opened.path) == (
@@ -184,8 +185,10 @@ def code_from(printed_line: str, opened_address: str) -> str:
         printed.port,
         "/open",
     )
+    token = parse_qs(printed.query)["token"][0]
+    assert token not in opened_address
     code = parse_qs(opened.query)["code"][0]
-    assert code != parse_qs(printed.query)["token"][0]
+    assert parse_qs(opened.query) == {"code": [code]}
     return code
 
 
@@ -242,13 +245,18 @@ class TestSigningIn:
             _, data = ask(started, "GET", f"/open?token={started.token}", signed_in=False)
             assert data == SIGNED_IN_PAGE.format(target="/").encode("utf-8")
 
+    @pytest.mark.parametrize("signed_in", [False, True])
     @pytest.mark.parametrize("query", ["", "?token=wrong", "?token=%C3%A9"])
-    def test_a_wrong_or_missing_token_is_refused(self, server, query) -> None:
-        response, data = ask(server, "GET", f"/open{query}", signed_in=False)
+    def test_a_wrong_or_missing_token_is_refused(self, server, query, signed_in, capsys) -> None:
+        """Refused whether or not the request already carries this server's cookie: the
+        cookie alone does not turn a wrong or missing token into a sign-in, which only the
+        exception for a code the ruling names - never a token - does."""
+        response, data = ask(server, "GET", f"/open{query}", signed_in=signed_in)
         assert response.status == 403
         assert b"Open the address" in data
         # A refusal's URL held the guess that failed: just as worth never storing or replaying.
         assert response.getheader("Cache-Control") == "no-store"
+        assert capsys.readouterr().err == ""
 
     def test_a_code_is_as_strong_as_the_token(self, server) -> None:
         """The ruling's two numbers, pinned by literal: 32 random bytes behind each - the
@@ -256,6 +264,21 @@ class TestSigningIn:
         assert TOKEN_BYTES == 32
         assert len(server.issue_code()) == 43
         assert len(server.token) == 43
+
+    def test_redeem_code_holds_the_lock_across_the_compare(self, server, monkeypatch) -> None:
+        """The read, the compare and the clear are one atomic step: two concurrent
+        presentations of the same code cannot both see it still pending."""
+        code = server.issue_code()
+        locked_during_compare: list[bool] = []
+        real_compare_digest = module.hmac.compare_digest
+
+        def recording_compare_digest(a: bytes, b: bytes) -> bool:
+            locked_during_compare.append(server._code_lock.locked())
+            return real_compare_digest(a, b)
+
+        monkeypatch.setattr(module.hmac, "compare_digest", recording_compare_digest)
+        assert server.redeem_code(code) is True
+        assert locked_during_compare == [True]
 
     def test_a_code_signs_a_browser_in_exactly_as_the_token_does(self, server) -> None:
         code = server.issue_code()
@@ -266,43 +289,60 @@ class TestSigningIn:
         )
         assert data == SIGNED_IN_PAGE.format(target="/project").encode("utf-8")
 
-    def test_a_code_signs_in_once_and_a_second_presentation_is_refused(self, server) -> None:
+    def test_a_code_signs_in_once_and_a_second_presentation_is_refused(
+        self, server, capsys
+    ) -> None:
         code = server.issue_code()
         first, _ = ask(server, "GET", f"/open?code={code}", signed_in=False)
         assert first.status == 200
+        assert capsys.readouterr().err == ""
         second, data = ask(server, "GET", f"/open?code={code}", signed_in=False)
         assert second.status == 403
         assert b"Open the address" in data
+        assert capsys.readouterr().err == (
+            "ddd gui: a launch code arrived that was already spent, or had simply expired; "
+            "if your browser did not just sign in on its own, something else on this "
+            "computer may have used it instead, so restart ddd gui if your browser is not "
+            "signed in\n"
+        )
 
-    def test_a_wrong_code_is_refused_and_leaves_the_right_one_waiting(self, server) -> None:
+    def test_a_wrong_code_is_refused_and_leaves_the_right_one_waiting(self, server, capsys) -> None:
         """A guess that is not the one outstanding code is refused on its own, and does not
         spend that code: a stranger trying codes cannot grief the browser the launch is
-        waiting for."""
+        waiting for. It prints nothing: unlike a spent or expired code, it was never the
+        real one."""
         code = server.issue_code()
         wrong, data = ask(server, "GET", "/open?code=wrong", signed_in=False)
         assert wrong.status == 403
         assert b"Open the address" in data
+        assert capsys.readouterr().err == ""
         right, _ = ask(server, "GET", f"/open?code={code}", signed_in=False)
         assert right.status == 200
 
-    def test_a_spent_code_already_signed_in_answers_the_page_not_a_refusal(self, server) -> None:
+    def test_a_spent_code_already_signed_in_answers_the_page_not_a_refusal(
+        self, server, capsys
+    ) -> None:
         """A browser's own prefetch of the /open?code= address, or its navigating there a
         second time once the first already set the cookie, presents a code that by then
         looks exactly like a stranger's guess - the cookie already carried is what tells the
-        two apart, and only it is let through to the page rather than a 403."""
+        two apart, and only it is let through to the page rather than a 403. Nothing is
+        printed: this request carries the cookie, so it is not the case the terminal line
+        warns about."""
         code = server.issue_code()
         first, _ = ask(server, "GET", f"/open?code={code}", signed_in=False)
         assert first.status == 200
         second, data = ask(server, "GET", f"/open?code={code}")  # signed_in=True by default
         assert second.status == 200
         assert data == SIGNED_IN_PAGE.format(target="/project").encode("utf-8")
+        assert capsys.readouterr().err == ""
 
     def test_the_tokens_own_value_is_not_accepted_as_a_code(self, server) -> None:
+        server.issue_code()  # a code is pending during the window that matters
         response, data = ask(server, "GET", f"/open?code={server.token}", signed_in=False)
         assert response.status == 403
         assert b"Open the address" in data
 
-    def test_an_unused_code_expires_after_60_seconds(self, project_file, pages) -> None:
+    def test_an_unused_code_expires_after_60_seconds(self, project_file, pages, capsys) -> None:
         assert CODE_SECONDS == 60
         clock = FakeClock()
         for started in serving(Api(Session(project_file.parent)), pages, clock=clock):
@@ -311,6 +351,12 @@ class TestSigningIn:
             response, data = ask(started, "GET", f"/open?code={code}", signed_in=False)
             assert response.status == 403
             assert b"Open the address" in data
+            assert capsys.readouterr().err == (
+                "ddd gui: a launch code arrived that was already spent, or had simply "
+                "expired; if your browser did not just sign in on its own, something else "
+                "on this computer may have used it instead, so restart ddd gui if your "
+                "browser is not signed in\n"
+            )
 
     def test_a_code_still_signs_in_a_moment_before_60_seconds(self, project_file, pages) -> None:
         clock = FakeClock()
@@ -1219,17 +1265,24 @@ class TestRunning:
         entered = threading.Event()
         released = threading.Event()
         opened: list[str] = []
+        daemon: list[bool] = []
 
         def never_returns(address: str) -> None:
             opened.append(address)
+            daemon.append(threading.current_thread().daemon)
             entered.set()
-            released.wait(timeout=10)
+            # Well beyond bounded_run's own 10 s join: the ablation that calls this opener
+            # on the serving thread itself must lose that race by a wide margin, not by the
+            # milliseconds between thread.start() and join() - only the ablation's kill, not
+            # this passing run, waits anywhere near this long; it is released long before.
+            released.wait(timeout=30)
 
         monkeypatch.setattr(module.webbrowser, "open", never_returns)
 
         assert bounded_run(project_file, [], 0, open_browser=True, static=pages) == EXIT_OK
         assert entered.wait(timeout=5), "the opener was never called"
         assert len(opened) == 1
+        assert daemon == [True]  # so it never holds ddd gui from exiting either
         released.set()
 
     def test_a_server_shut_down_from_elsewhere_also_ends_cleanly(self, pages, monkeypatch) -> None:

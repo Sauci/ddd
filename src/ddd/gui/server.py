@@ -155,6 +155,7 @@ class GuiServer(ThreadingHTTPServer):
         self.token = secrets.token_urlsafe(TOKEN_BYTES)
         self._clock = clock
         self._code: tuple[str, float] | None = None
+        self._last_code: str | None = None
         self._code_lock = threading.Lock()
 
     @property
@@ -169,6 +170,7 @@ class GuiServer(ThreadingHTTPServer):
         code = secrets.token_urlsafe(TOKEN_BYTES)
         with self._code_lock:
             self._code = (code, self._clock() + CODE_SECONDS)
+            self._last_code = code
         return code
 
     def redeem_code(self, given: str) -> bool:
@@ -187,6 +189,16 @@ class GuiServer(ThreadingHTTPServer):
                 return False
             self._code = None
             return self._clock() < expires
+
+    def code_known(self, given: str) -> bool:
+        """Whether ``given`` is the value of the launch code most recently issued, whether or
+        not it has since been redeemed or has expired. Used only to decide what a refusal to
+        sign in prints - never whether to sign in, which is :meth:`redeem_code` alone."""
+        with self._code_lock:
+            known = self._last_code
+        return known is not None and hmac.compare_digest(
+            given.encode("utf-8"), known.encode("utf-8")
+        )
 
     @property
     def address(self) -> str:
@@ -311,9 +323,17 @@ class _Handler(BaseHTTPRequestHandler):
                 f"{self._gui.cookie}={self._gui.token}; HttpOnly; SameSite=Strict; Path=/"
             )
         elif not (given_code and self._signed_in()):
-            # A spent or expired code, like a wrong token - unless this request already
-            # carries the cookie a first presentation of it already won: a browser's own
-            # prefetch of the /open?code= address, or its navigating there a second time.
+            # Exactly which requests get the signed-in page instead of this refusal: one
+            # naming a code that did not redeem - wrong, spent or expired alike - that
+            # already carries this server's valid cookie, as a browser's own prefetch of
+            # the /open?code= address does, or its navigating there a second time after the
+            # first already won the cookie. A request with no code at all, or a wrong
+            # token, refuses here regardless of the cookie.
+            if given_code and self._gui.code_known(given_code):
+                # Known, so it did redeem once, or was still waiting to and has now timed
+                # out - either way, this request carries none of the cookie that would have
+                # meant it was the browser that won it.
+                print(_CODE_REUSED, file=sys.stderr)
             self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"], headers)
             return
         # A project open goes to its page, analysed yet or not: the page says it is being
@@ -391,6 +411,11 @@ _SIGN_IN: Final = "open the address ddd gui printed in its terminal"
 _FORBIDDEN: Final = "only this server's own page may change anything, and only as json"
 _PAGES_ARE_READ: Final = "pages are read with GET"
 _INTERNAL: Final = "ddd gui failed on this request; the terminal it runs in shows why"
+_CODE_REUSED: Final = (
+    "ddd gui: a launch code arrived that was already spent, or had simply expired; if your "
+    "browser did not just sign in on its own, something else on this computer may have used "
+    "it instead, so restart ddd gui if your browser is not signed in"
+)
 
 
 def _refused(value: str, port: int, error: Exception) -> int:

@@ -23,6 +23,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
 from pydantic import BaseModel, ValidationError
+from pydantic_core import ErrorDetails
 
 from ddd import __version__
 from ddd.declaration_plans import (
@@ -37,7 +38,7 @@ from ddd.declaration_plans import (
     remove_declaration,
     scopes_for,
 )
-from ddd.diagnostics import CHECKS, Severity
+from ddd.diagnostics import CHECKS
 from ddd.editing import (
     INVALID,
     STALE,
@@ -60,12 +61,34 @@ from ddd.file_plans import (
     remove_plan,
 )
 from ddd.finding_fixes import fixes_for
-from ddd.finding_routes import Route, route_of
+from ddd.finding_routes import Route as FindingRoute
+from ddd.finding_routes import route_of
 from ddd.findings_by_file import Pair
 from ddd.graph import Module, graph_of
 from ddd.gui import contract
 from ddd.gui.compare import BaselineCache, BaselineRefusedError, compared
 from ddd.gui.derived import Derived, derived, key_of
+from ddd.gui.queries import (
+    CompareQuery,
+    ConstantQuery,
+    DeclarableQuery,
+    FileQuery,
+    FindingsQuery,
+    FixQuery,
+    NoQuery,
+    RasterQuery,
+    SectionQuery,
+    SettleQuery,
+    StateQuery,
+    TypeQuery,
+    UnitQuery,
+    Unread,
+    ValuesQuery,
+    VariableQuery,
+    _Query,
+    actions_of,
+)
+from ddd.gui.routes import Policy, Route, one_value_each
 from ddd.gui.session import KINDS as DESCRIPTION_KINDS
 from ddd.gui.session import (
     Filed,
@@ -87,7 +110,7 @@ from ddd.gui.session import (
 )
 from ddd.ir import DataDictionary
 from ddd.loading import resolve_path
-from ddd.lsp.edits import PROPAGATED_KEYS, settle
+from ddd.lsp.edits import settle
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import (
@@ -165,10 +188,6 @@ MEMO: Final = 256
 tabs' rows, and the pages of findings a reader scrolls back to. A bound, the oldest dropped first:
 without one, every page of a findings-heavy project a reader scrolled through would be kept until
 its next analysis."""
-
-LISTED: Final = (Severity.ERROR, Severity.WARNING, Severity.INFO)
-"""The severities a finding is reported at, and so the ones ``GET /api/findings`` filters by:
-``ignore`` means a finding is not reported at all."""
 
 ANALYSING: Final = "analysing"
 """The refusal of a request the analysis has not caught up with: asked of the open project before
@@ -313,14 +332,32 @@ class Api:
         self._state_kept: tuple[int, Reply] | None = None
 
     def handle(self, method: str, path: str, query: Query, body: bytes | None) -> Reply:
-        route = _ROUTES.get(path)
-        if route is None:
+        """The answer to one request: its route looked up by path and method, its query read one
+        value a key and as its route's model, and a ``POST``'s body as its own - each refused in
+        that order, as the first problem it finds - and only then the route's handler asked, with
+        the two it read. The query is read before anything asks for the open project, on every
+        route, so that a malformed query is answered as one whether a project is open or not."""
+        routes = [each for each in ROUTES if each.path == path]
+        if not routes:
             return _error(404, "not-found", f"{path} is not part of the api")
-        answer = route.get(method)
-        if answer is None:
-            return _error(405, "method-not-allowed", f"{path} takes {' or '.join(route)}")
+        route = next((each for each in routes if each.method == method), None)
+        if route is None:
+            methods = " or ".join(each.method for each in routes)
+            return _error(405, "method-not-allowed", f"{path} takes {methods}")
+        values = one_value_each(query, route.name)
+        if isinstance(values, str):
+            return _error(400, "bad-request", values)
         try:
-            return answer(self, query, body)
+            typed = route.query.model_validate(values)
+        except ValidationError as error:
+            return _error(400, "bad-request", _query_message(route, error))
+        given = None
+        if route.body is not None:
+            given = _validated(route.body, body)
+            if isinstance(given, Reply):
+                return given
+        try:
+            return route.answer(self, typed, given)
         except NoProjectError as error:
             return _error(409, "no-project", str(error))
         except NotAnalysedError as error:
@@ -328,10 +365,10 @@ class Api:
         except NotInProjectError as error:
             return _error(404, "not-found", str(error))
 
-    def _session(self, query: Query, body: bytes | None) -> Reply:
+    def _session(self, query: NoQuery, body: None) -> Reply:
         return Reply(200, self._session_body())
 
-    def _projects(self, query: Query, body: bytes | None) -> Reply:
+    def _projects(self, query: NoQuery, body: None) -> Reply:
         found = find_projects(self.session.root, self.session.build_directories)
         return Reply(
             200,
@@ -348,15 +385,12 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _open(self, query: Query, body: bytes | None) -> Reply:
-        request = _validated(contract.OpenRequest, body)
-        if isinstance(request, Reply):
-            return request
-        wanted = Path(request.path).resolve()
+    def _open(self, query: NoQuery, body: contract.OpenRequest) -> Reply:
+        wanted = Path(body.path).resolve()
         found = find_projects(self.session.root, self.session.build_directories)
         allowed = {p.path for p in found.projects} | ({self.project} if self.project else set())
         if wanted not in allowed:
-            return _error(404, "not-found", f"{request.path} is not a project found here")
+            return _error(404, "not-found", f"{body.path} is not a project found here")
         try:
             self.session.open(wanted)
         except ValueError as error:
@@ -365,7 +399,7 @@ class Api:
         # state, which says it is being analysed until it lands.
         return Reply(200, self._session_body())
 
-    def _state(self, query: Query, body: bytes | None) -> Reply:
+    def _state(self, query: StateQuery, body: None) -> Reply:
         """What the session says: at once, or as soon as its version is past ``?after=``, or
         once the wait runs out.
 
@@ -375,7 +409,7 @@ class Api:
         both find nothing kept both make it from the one derivation, and one made at an older
         version can be kept over a newer one's, which the newer version's next request makes
         again. Each answer is the one its own version says; only work is repeated."""
-        after = _integer(query.get("after"))
+        after = query.after
         if after is None:
             snapshot = self.session.snapshot()
         else:
@@ -432,7 +466,7 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _findings(self, query: Query, body: bytes | None) -> Reply:
+    def _findings(self, query: FindingsQuery, body: None) -> Reply:
         """A page of the newest revision's findings: from ``?offset=`` - ``0`` when none is given -
         at most ``?limit=`` of them, or every one from the offset on when no limit is given, of
         those ``?severity=``, ``?file=`` (a file's path, however spelled) and ``?check=`` leave,
@@ -441,23 +475,8 @@ class Api:
         Kept for the revision (:meth:`_memoised`), one answer per page and filters: a reader
         scrolling back to a page finds it made already."""
         revision = self._opened()
-        offset: int | None = 0
-        given = query.get("offset")
-        if given is not None:
-            offset = _integer(given)
-        if offset is None:
-            return _error(400, "bad-request", "findings takes ?offset= as a whole number from 0")
-        limit: int | None = None
-        given = query.get("limit")
-        if given is not None:
-            limit = _integer(given)
-            if limit is None or limit < 1:
-                return _error(400, "bad-request", "findings takes ?limit= as a whole number from 1")
-        severity = _single(query.get("severity"))
-        if severity is not None and severity not in LISTED:
-            return _error(400, "bad-request", "findings takes ?severity= as error, warning or info")
-        file = _single(query.get("file"))
-        check = _single(query.get("check"))
+        offset, limit, severity = query.offset, query.limit, query.severity
+        file, check = query.file, query.check
         return self._memoised(
             revision,
             ("findings", offset, limit, severity, file, check),
@@ -509,11 +528,8 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _file(self, query: Query, body: bytes | None) -> Reply:
-        path = _single(query.get("path"))
-        if not path:
-            return _error(400, "bad-request", "file takes ?path=")
-        content = self.session.read_file(Path(path))
+    def _file(self, query: FileQuery, body: None) -> Reply:
+        content = self.session.read_file(Path(query.path))
         return Reply(
             200,
             contract.FileContent(
@@ -524,7 +540,7 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _dictionary(self, query: Query, body: bytes | None) -> Reply:
+    def _dictionary(self, query: NoQuery, body: None) -> Reply:
         revision = self._opened()
         dictionary = revision.dictionary
         return Reply(
@@ -538,7 +554,7 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _graph(self, query: Query, body: bytes | None) -> Reply:
+    def _graph(self, query: NoQuery, body: None) -> Reply:
         revision = self._opened()
         return self._memoised(revision, ("graph",), lambda: self._graph_of(revision))
 
@@ -585,7 +601,7 @@ class Api:
             ).model_dump(mode="json", by_alias=True),
         )
 
-    def _checks(self, query: Query, body: bytes | None) -> Reply:
+    def _checks(self, query: NoQuery, body: None) -> Reply:
         revision = self.session.revision
         plugins = () if revision is None else revision.checks
         return Reply(
@@ -605,14 +621,9 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _edit(self, query: Query, body: bytes | None) -> Reply:
-        request = _validated(contract.Changes, body)
-        if isinstance(request, Reply):
-            return request
+    def _edit(self, query: NoQuery, body: contract.Changes) -> Reply:
         try:
-            at, written = self.session.edit(
-                [_file_change(c) for c in request.changes], request.label
-            )
+            at, written = self.session.edit([_file_change(c) for c in body.changes], body.label)
         except EditError as refusal:
             return _error(409 if refusal.code in REFUSALS else 500, refusal.code, str(refusal))
         # Answered once written, before its analysis: the edit's own number is what says when a
@@ -628,7 +639,7 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _undo(self, query: Query, body: bytes | None) -> Reply:
+    def _undo(self, query: NoQuery, body: None) -> Reply:
         """What putting the last edit back would give each file, read from the disk as it
         stands."""
         revision = self._opened()
@@ -646,23 +657,18 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _apply_undo(self, query: Query, body: bytes | None) -> Reply:
+    def _apply_undo(self, query: NoQuery, body: contract.UndoRequest) -> Reply:
         """Put that edit back, and answer the number the undo took, once the files are back -
         before its analysis."""
-        request = _validated(contract.UndoRequest, body)
-        if isinstance(request, Reply):
-            return request
         try:
-            number = self.session.undo(request.at)
+            number = self.session.undo(body.at)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(200, contract.UndoReply(edit=number).model_dump(mode="json"))
 
-    def _variable(self, query: Query, body: bytes | None) -> Reply:
+    def _variable(self, query: VariableQuery, body: None) -> Reply:
         revision = self._opened()
-        name = _single(query.get("name"))
-        if not name:
-            return _error(400, "bad-request", "variable takes ?name=")
+        name = query.name
         built = revision.index
         cache: dict[Path, Document] = {}
         declared = () if built is None else declarations_of(built, name, cache)
@@ -704,7 +710,7 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _units(self, query: Query, body: bytes | None) -> Reply:
+    def _units(self, query: NoQuery, body: None) -> Reply:
         """The vocabulary, the units in use, the Units tab's rows and whether adopting is offered.
 
         Answered anew each time, never kept (:meth:`_memoised`): the offer reads the disk as it
@@ -754,11 +760,9 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _unit(self, query: Query, body: bytes | None) -> Reply:
+    def _unit(self, query: UnitQuery, body: None) -> Reply:
         revision = self._opened()
-        unit = _single(query.get("name"))
-        if not unit:
-            return _error(400, "bad-request", "unit takes ?name=")
+        unit = query.name
         built = revision.index
         if built is None or (unit not in built.units and unit not in built.vocabulary):
             return _undeclared(revision, unit)
@@ -793,15 +797,16 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _unit_plan(self, query: Query, body: bytes | None) -> Reply:
+    def _unit_plan(self, query: Unread, body: None) -> Reply:
         revision = self._opened()
-        action = _single(query.get("action")) or ""
+        values = query.values
+        action = values.get("action") or ""
         takes = UNIT_PLANS.get(action)
         if takes is None:
             return _error(
                 400, "bad-request", f"unit-plan takes ?action= one of {', '.join(UNIT_PLANS)}"
             )
-        given = {part: value for part in takes if (value := _single(query.get(part))) is not None}
+        given = {part: value for part in takes if (value := values.get(part)) is not None}
         if len(given) < len(takes) or given.get("unit") == "":
             wanted = " and ".join(f"?{part}=" for part in takes)
             return _error(400, "bad-request", f"{action} takes {wanted}")
@@ -836,7 +841,7 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _types(self, query: Query, body: bytes | None) -> Reply:
+    def _types(self, query: NoQuery, body: None) -> Reply:
         revision = self._opened()
         return self._memoised(revision, ("types",), lambda: self._types_of(revision))
 
@@ -861,11 +866,9 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _type(self, query: Query, body: bytes | None) -> Reply:
+    def _type(self, query: TypeQuery, body: None) -> Reply:
         revision = self._opened()
-        name = _single(query.get("name"))
-        if not name:
-            return _error(400, "bad-request", "type takes ?name=")
+        name = query.name
         built = revision.index
         if built is None or name not in built.types:
             return _undeclared(revision, name)
@@ -923,15 +926,16 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _type_plan(self, query: Query, body: bytes | None) -> Reply:
+    def _type_plan(self, query: Unread, body: None) -> Reply:
         revision = self._opened()
-        action = _single(query.get("action")) or ""
+        values = query.values
+        action = values.get("action") or ""
         takes = TYPE_PLANS.get(action)
         if takes is None:
             return _error(
                 400, "bad-request", f"type-plan takes ?action= one of {', '.join(TYPE_PLANS)}"
             )
-        given = {part: value for part in takes if (value := _single(query.get(part))) is not None}
+        given = {part: value for part in takes if (value := values.get(part)) is not None}
         if len(given) < len(takes) or given.get("name") == "":
             wanted = " and ".join(f"?{part}=" for part in takes)
             return _error(400, "bad-request", f"{action} takes {wanted}")
@@ -945,7 +949,7 @@ class Api:
                 "so no type of the project can be changed",
             )
         cache: dict[Path, Document] = {}
-        raw = _single(query.get("raw")) or None
+        raw = values.get("raw") or None
         try:
             plan = _type_plan_of(action, built, given, raw, cache)
         except TypeRefusalError as refused:
@@ -964,7 +968,7 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _shared(self, query: Query, body: bytes | None) -> Reply:
+    def _shared(self, query: NoQuery, body: None) -> Reply:
         revision = self._opened()
         return self._memoised(revision, ("shared",), lambda: self._shared_of(revision))
 
@@ -989,11 +993,9 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _constant(self, query: Query, body: bytes | None) -> Reply:
+    def _constant(self, query: ConstantQuery, body: None) -> Reply:
         revision = self._opened()
-        name = _single(query.get("name"))
-        if not name:
-            return _error(400, "bad-request", "constant takes ?name=")
+        name = query.name
         built = revision.index
         if built is None or name not in built.constants:
             return _undeclared(revision, name)
@@ -1024,11 +1026,9 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _section(self, query: Query, body: bytes | None) -> Reply:
+    def _section(self, query: SectionQuery, body: None) -> Reply:
         revision = self._opened()
-        name = _single(query.get("name"))
-        if not name:
-            return _error(400, "bad-request", "section takes ?name=")
+        name = query.name
         built = revision.index
         if built is None or name not in built.sections:
             return _undeclared(revision, name)
@@ -1054,11 +1054,9 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _raster(self, query: Query, body: bytes | None) -> Reply:
+    def _raster(self, query: RasterQuery, body: None) -> Reply:
         revision = self._opened()
-        name = _single(query.get("name"))
-        if not name:
-            return _error(400, "bad-request", "raster takes ?name=")
+        name = query.name
         built = revision.index
         if built is None or name not in built.rasters:
             return _undeclared(revision, name)
@@ -1084,7 +1082,7 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _files(self, query: Query, body: bytes | None) -> Reply:
+    def _files(self, query: NoQuery, body: None) -> Reply:
         """The root's includes, each entry as the loader's own rule reads it, and what each
         brings - the files a row joins ``State.files`` on, and the findings at the entry
         itself, which a row naming nothing has no file to carry.
@@ -1122,7 +1120,7 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _files_plan(self, query: Query, body: bytes | None) -> Reply:
+    def _files_plan(self, query: Unread, body: None) -> Reply:
         """One change of the project's files - creating, adding or removing one - previewed and
         never written, with the errors an add is counted to bring.
 
@@ -1134,7 +1132,8 @@ class Api:
         revision would falsify is refused ``stale``.
         """
         revision = self._opened()
-        action = _single(query.get("action")) or ""
+        values = query.values
+        action = values.get("action") or ""
         takes = FILE_PLANS.get(action)
         if takes is None:
             return _error(
@@ -1142,7 +1141,7 @@ class Api:
             )
         given: dict[str, str] = {}
         for part in takes:
-            value = _single(query.get(part))
+            value = values.get(part)
             if not value:
                 wanted = " and ".join(f"?{taken}=" for taken in takes)
                 return _error(400, "bad-request", f"{action} takes {wanted}")
@@ -1154,7 +1153,7 @@ class Api:
                 f"remove takes ?path= as a row's key, which is absolute, and '{given['path']}' "
                 "is not",
             )
-        component = _single(query.get("component")) or None
+        component = values.get("component") or None
         cache: dict[Path, Document] = {}
 
         def refuse(paths: Iterable[Path]) -> None:
@@ -1186,21 +1185,21 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _constant_plan(self, query: Query, body: bytes | None) -> Reply:
-        return self._shared_plan(CONSTANTS, CONSTANT_PLANS, _constant_plan_of, query)
+    def _constant_plan(self, query: Unread, body: None) -> Reply:
+        return self._shared_plan(CONSTANTS, CONSTANT_PLANS, _constant_plan_of, query.values)
 
-    def _section_plan(self, query: Query, body: bytes | None) -> Reply:
-        return self._shared_plan(SECTIONS, SECTION_PLANS, _section_plan_of, query)
+    def _section_plan(self, query: Unread, body: None) -> Reply:
+        return self._shared_plan(SECTIONS, SECTION_PLANS, _section_plan_of, query.values)
 
-    def _raster_plan(self, query: Query, body: bytes | None) -> Reply:
-        return self._shared_plan(RASTERS, RASTER_PLANS, _raster_plan_of, query)
+    def _raster_plan(self, query: Unread, body: None) -> Reply:
+        return self._shared_plan(RASTERS, RASTER_PLANS, _raster_plan_of, query.values)
 
     def _shared_plan(
         self,
         vocabulary: Vocabulary,
         plans: Mapping[str, tuple[str, ...]],
         plan_of: SharedPlanner,
-        query: Query,
+        values: Mapping[str, str],
     ) -> Reply:
         """One change of one entry of ``vocabulary``, previewed and never written.
 
@@ -1210,7 +1209,7 @@ class Api:
         second copy would only be able to get wrong differently.
         """
         revision = self._opened()
-        action = _single(query.get("action")) or ""
+        action = values.get("action") or ""
         takes = plans.get(action)
         if takes is None:
             return _error(
@@ -1218,14 +1217,15 @@ class Api:
                 "bad-request",
                 f"{vocabulary.kind}-plan takes ?action= one of {', '.join(plans)}",
             )
-        given = {part: value for part in takes if (value := _single(query.get(part))) is not None}
+        given = {part: value for part in takes if (value := values.get(part)) is not None}
         if len(given) < len(takes) or given.get("name") == "" or given.get("raw") == "":
             wanted = " and ".join(f"?{part}=" for part in takes)
             return _error(400, "bad-request", f"{action} takes {wanted}")
-        # Validated before any plan is asked for, as `_settle` already validates its own `raw`:
-        # a request that is not json is a mistake about the request, not a refusal about the
-        # project, so it answers 400 rather than being folded into a `SharedRefusalError`.
-        raw = _single(query.get("raw")) or None
+        # Validated before any plan is asked for, as settle's query (`SettleQuery`) validates
+        # its own `raw`: a request that is not json is a mistake about the request, not a refusal
+        # about the project, so it answers 400 rather than being folded into a
+        # `SharedRefusalError`.
+        raw = values.get("raw") or None
         for text in _json_texts(vocabulary, given, raw):
             try:
                 parse_raw(text)
@@ -1265,24 +1265,11 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _settle(self, query: Query, body: bytes | None) -> Reply:
+    def _settle(self, query: SettleQuery, body: None) -> Reply:
         revision = self._opened()
-        name, key = (_single(query.get(part)) for part in ("name", "key"))
-        # A blank ``raw`` is none, as a missing one: the key goes from every declaration.
-        raw = _single(query.get("raw")) or None
-        if not name or not key:
-            return _error(
-                400, "bad-request", "settle takes ?name= and ?key=, and ?raw= unless the key goes"
-            )
-        if key not in PROPAGATED_KEYS:
-            return _error(
-                400, "bad-request", f"'{key}' is not a key the declarations of a variable share"
-            )
-        if raw is not None:
-            try:
-                parse_raw(raw)
-            except EditError as refused:
-                return _error(400, "bad-request", str(refused))
+        # ``raw`` is none where it was left out or given blank: the key goes from every
+        # declaration.
+        name, key, raw = query.name, query.key, query.raw
         built = revision.index
         if built is None or name not in built.declarations:
             return _undeclared(revision, name)
@@ -1306,12 +1293,9 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _fix(self, query: Query, body: bytes | None) -> Reply:
+    def _fix(self, query: FixQuery, body: None) -> Reply:
         revision = self._opened()
-        file, check = (_single(query.get(part)) for part in ("file", "check"))
-        pointer = _single(query.get("pointer"))
-        if not file or not check or pointer is None:
-            return _error(400, "bad-request", "fix takes ?file=, ?pointer= and ?check=")
+        file, pointer, check = query.file, query.pointer, query.check
         wanted = Path(file).resolve()
         derived = self._derive(revision)
         source = next((f for f in revision.files if derived.resolve(f.path) == wanted), None)
@@ -1338,13 +1322,10 @@ class Api:
             contract.FixReply(revision=revision.number, fixes=offered).model_dump(mode="json"),
         )
 
-    def _declarable(self, query: Query, body: bytes | None) -> Reply:
-        path = _single(query.get("file"))
-        if not path:
-            return _error(400, "bad-request", "declarable takes ?file=")
+    def _declarable(self, query: DeclarableQuery, body: None) -> Reply:
         revision = self._opened()
         try:
-            file = _source(revision, Path(path))
+            file = _source(revision, Path(query.file))
         except NotInProjectError as outside:
             return _error(404, "not-found", str(outside))
         built = revision.index
@@ -1382,8 +1363,9 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _declaration_plan(self, query: Query, body: bytes | None) -> Reply:
-        action = _single(query.get("action")) or ""
+    def _declaration_plan(self, query: Unread, body: None) -> Reply:
+        values = query.values
+        action = values.get("action") or ""
         takes = DECLARATION_PLANS.get(action)
         if takes is None:
             return _error(
@@ -1391,7 +1373,7 @@ class Api:
                 "bad-request",
                 f"declaration-plan takes ?action= one of {', '.join(DECLARATION_PLANS)}",
             )
-        given = {part: value for part in takes if (value := _single(query.get(part))) is not None}
+        given = {part: value for part in takes if (value := values.get(part)) is not None}
         if len(given) < len(takes):
             wanted = " and ".join(f"?{part}=" for part in takes)
             return _error(400, "bad-request", f"{action} takes {wanted}")
@@ -1422,10 +1404,8 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _values(self, query: Query, body: bytes | None) -> Reply:
-        name = _single(query.get("name"))
-        if not name:
-            return _error(400, "bad-request", "values takes ?name=")
+    def _values(self, query: ValuesQuery, body: None) -> Reply:
+        name = query.name
         revision = self._opened()
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
@@ -1472,10 +1452,9 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _value_plan(self, query: Query, body: bytes | None) -> Reply:
-        name = _single(query.get("name"))
-        at = _single(query.get("at"))
-        raw_text = _single(query.get("raw"))
+    def _value_plan(self, query: Unread, body: None) -> Reply:
+        values = query.values
+        name, at, raw_text = values.get("name"), values.get("at"), values.get("raw")
         if not name or not at or not raw_text:
             return _error(400, "bad-request", "value-plan takes ?name= and ?at= and ?raw=")
         revision = self._opened()
@@ -1506,9 +1485,9 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _values_plan(self, query: Query, body: bytes | None) -> Reply:
-        name = _single(query.get("name"))
-        counts = _single(query.get("raw"))
+    def _values_plan(self, query: Unread, body: None) -> Reply:
+        values = query.values
+        name, counts = values.get("name"), values.get("raw")
         if not name or not counts:
             return _error(400, "bad-request", "values-plan takes ?name= and ?raw=")
         revision = self._opened()
@@ -1537,15 +1516,14 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _compare(self, query: Query, body: bytes | None) -> Reply:
+    def _compare(self, query: CompareQuery, body: None) -> Reply:
         revision = self._opened()
-        path = _single(query.get("baseline"))
-        if not path:
-            return _error(400, "bad-request", "compare takes ?baseline=")
         if revision.dictionary is None:
             return _error(409, UNREADABLE, _NOTHING_COMPARABLE)
         try:
-            result = compared(revision, Path(path), self.session.root, self._compare_cache)
+            result = compared(
+                revision, Path(query.baseline), self.session.root, self._compare_cache
+            )
         except BaselineRefusedError as refused:
             return _error(400, "bad-request", str(refused))
         derived = self._derive(revision)
@@ -1699,45 +1677,53 @@ class Api:
         ).model_dump(mode="json")
 
 
-type Answer = Callable[[Api, Query, bytes | None], Reply]
-
-_ROUTES: Final[dict[str, dict[str, Answer]]] = {
-    "/api/session": {"GET": Api._session},
-    "/api/projects": {"GET": Api._projects},
-    "/api/open": {"POST": Api._open},
-    "/api/state": {"GET": Api._state},
-    "/api/findings": {"GET": Api._findings},
-    "/api/file": {"GET": Api._file},
-    "/api/dictionary": {"GET": Api._dictionary},
-    "/api/graph": {"GET": Api._graph},
-    "/api/checks": {"GET": Api._checks},
-    "/api/edit": {"POST": Api._edit},
-    "/api/undo": {"GET": Api._undo, "POST": Api._apply_undo},
-    "/api/variable": {"GET": Api._variable},
-    "/api/units": {"GET": Api._units},
-    "/api/settle": {"GET": Api._settle},
-    "/api/fix": {"GET": Api._fix},
-    "/api/unit": {"GET": Api._unit},
-    "/api/unit-plan": {"GET": Api._unit_plan},
-    "/api/types": {"GET": Api._types},
-    "/api/type": {"GET": Api._type},
-    "/api/type-plan": {"GET": Api._type_plan},
-    "/api/shared": {"GET": Api._shared},
-    "/api/constant": {"GET": Api._constant},
-    "/api/constant-plan": {"GET": Api._constant_plan},
-    "/api/section": {"GET": Api._section},
-    "/api/section-plan": {"GET": Api._section_plan},
-    "/api/raster": {"GET": Api._raster},
-    "/api/raster-plan": {"GET": Api._raster_plan},
-    "/api/files": {"GET": Api._files},
-    "/api/files-plan": {"GET": Api._files_plan},
-    "/api/declarable": {"GET": Api._declarable},
-    "/api/declaration-plan": {"GET": Api._declaration_plan},
-    "/api/values": {"GET": Api._values},
-    "/api/value-plan": {"GET": Api._value_plan},
-    "/api/values-plan": {"GET": Api._values_plan},
-    "/api/compare": {"GET": Api._compare},
-}
+ROUTES: Final[tuple[Route, ...]] = (
+    Route("/api/session", "GET", NoQuery, None, Api._session),
+    Route("/api/projects", "GET", NoQuery, None, Api._projects),
+    Route(
+        "/api/open",
+        "POST",
+        NoQuery,
+        contract.OpenRequest,
+        Api._open,
+        Policy(opens=True, runs_plugins=True),
+    ),
+    Route("/api/state", "GET", StateQuery, None, Api._state, Policy(waits=True)),
+    Route("/api/findings", "GET", FindingsQuery, None, Api._findings),
+    Route("/api/file", "GET", FileQuery, None, Api._file),
+    Route("/api/dictionary", "GET", NoQuery, None, Api._dictionary),
+    Route("/api/graph", "GET", NoQuery, None, Api._graph),
+    Route("/api/checks", "GET", NoQuery, None, Api._checks),
+    Route("/api/edit", "POST", NoQuery, contract.Changes, Api._edit, Policy(writes=True)),
+    Route("/api/undo", "GET", NoQuery, None, Api._undo),
+    Route("/api/undo", "POST", NoQuery, contract.UndoRequest, Api._apply_undo, Policy(writes=True)),
+    Route("/api/variable", "GET", VariableQuery, None, Api._variable),
+    Route("/api/units", "GET", NoQuery, None, Api._units),
+    Route("/api/settle", "GET", SettleQuery, None, Api._settle),
+    Route("/api/fix", "GET", FixQuery, None, Api._fix),
+    Route("/api/unit", "GET", UnitQuery, None, Api._unit),
+    Route("/api/unit-plan", "GET", Unread, None, Api._unit_plan),
+    Route("/api/types", "GET", NoQuery, None, Api._types),
+    Route("/api/type", "GET", TypeQuery, None, Api._type),
+    Route("/api/type-plan", "GET", Unread, None, Api._type_plan),
+    Route("/api/shared", "GET", NoQuery, None, Api._shared),
+    Route("/api/constant", "GET", ConstantQuery, None, Api._constant),
+    Route("/api/constant-plan", "GET", Unread, None, Api._constant_plan),
+    Route("/api/section", "GET", SectionQuery, None, Api._section),
+    Route("/api/section-plan", "GET", Unread, None, Api._section_plan),
+    Route("/api/raster", "GET", RasterQuery, None, Api._raster),
+    Route("/api/raster-plan", "GET", Unread, None, Api._raster_plan),
+    Route("/api/files", "GET", NoQuery, None, Api._files),
+    Route("/api/files-plan", "GET", Unread, None, Api._files_plan),
+    Route("/api/declarable", "GET", DeclarableQuery, None, Api._declarable),
+    Route("/api/declaration-plan", "GET", Unread, None, Api._declaration_plan),
+    Route("/api/values", "GET", ValuesQuery, None, Api._values),
+    Route("/api/value-plan", "GET", Unread, None, Api._value_plan),
+    Route("/api/values-plan", "GET", Unread, None, Api._values_plan),
+    Route("/api/compare", "GET", CompareQuery, None, Api._compare, Policy(runs_plugins=True)),
+)
+"""Every route of the api, in one table: what :meth:`Api.handle` dispatches by, its query read
+as the route's own model and its body as its own before its handler is asked."""
 
 
 def _error(status: int, code: str, message: str) -> Reply:
@@ -1786,7 +1772,7 @@ def _finding(
     ).model_dump(mode="json")
 
 
-def _route(route: Route | None) -> dict[str, Any] | None:
+def _route(route: FindingRoute | None) -> dict[str, Any] | None:
     return None if route is None else {"kind": route.kind, "name": route.name}
 
 
@@ -2464,15 +2450,6 @@ def _undone_changes(entry: Undoable) -> list[dict[str, Any]]:
     return changes
 
 
-def _single(values: Sequence[str] | None) -> str | None:
-    return values[0] if values else None
-
-
-def _integer(values: Sequence[str] | None) -> int | None:
-    text = _single(values)
-    return int(text) if text is not None and text.isascii() and text.isdecimal() else None
-
-
 def _number(text: str) -> float:
     """A raw count as the query spells it: a whole number where it is one, else a float.
 
@@ -2528,6 +2505,35 @@ def _message(error: ValidationError) -> str:
     for part in first["loc"]:
         where += f"[{part}]" if isinstance(part, int) else f".{part}" if where else str(part)
     return f"{where}: {first['msg']}" if where else first["msg"]
+
+
+def _query_message(route: Route, error: ValidationError) -> str:
+    """The first problem ``error`` found with a query of ``route``, as the one sentence the route
+    answers it with: for a key it does not take, that it takes no such key; for a key it requires,
+    left out or given blank, its ``missing``; for anything else, the sentence of the value's own
+    type - or of a check the model makes of the query as a whole, before reading any key.
+
+    A query read as one model per action has its problem placed under the action given, which
+    pydantic puts first in the problem's location: that action's model is the one whose ``missing``
+    is answered, and the action names the key it does not take."""
+    first = error.errors(include_url=False)[0]
+    where, named, model = first["loc"], route.name, route.query
+    actions = actions_of(model)
+    if where and where[0] in actions:
+        named = str(where[0])
+        model, where = actions[named], where[1:]
+    if first["type"] == "extra_forbidden":
+        return f"{named} takes no ?{where[0]}="
+    if where and issubclass(model, _Query) and _left_out(model, str(where[0]), first):
+        return model.missing
+    return first["msg"]
+
+
+def _left_out(model: type[_Query], key: str, problem: ErrorDetails) -> bool:
+    """Whether ``problem`` is a key ``model`` requires being left out or given blank."""
+    if problem["type"] == "missing":
+        return True
+    return problem["input"] == "" and model.model_fields[key].is_required()
 
 
 def _file_change(change: contract.Change) -> FileChange:

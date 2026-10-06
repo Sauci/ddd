@@ -107,7 +107,14 @@ def parse_raw(raw: object) -> Any:
     try:
         return parse_json_text(raw)
     except ValueError as error:
-        raise EditError(INVALID, f"{raw!r} is not one json value: {error}") from None
+        raise not_one_value(raw, error) from None
+
+
+def not_one_value(raw: str, why: object) -> EditError:
+    """The refusal of ``raw`` as a value, saying ``why``: the words of every refusal
+    :func:`parse_raw` makes, and of the ones ``ddd gui`` makes of a value in a query before
+    parsing it (:func:`ddd.gui.queries.json_text`)."""
+    return EditError(INVALID, f"{raw!r} is not one json value: {why}")
 
 
 def newline_at(text: str, offset: int) -> str:

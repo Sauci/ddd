@@ -85,6 +85,10 @@ None of these is a project, so there is nothing to resolve or generate from one 
 own. Validating one against the published schema is what an editor is for.
 """
 
+NESTED_TOO_DEEPLY = "the json is nested too deeply to read"
+"""Why a json text nested deeper than it can be read is refused: deeper than python's own parser
+goes, or than the deepest json ``ddd gui`` takes in a query (:data:`ddd.gui.queries.MAX_DEPTH`)."""
+
 _UNION_TAGS = discriminator_tags(AnyDataObject, Conversion, AnyType)
 """Discriminator values pydantic inserts into the error location of a tagged union."""
 
@@ -120,7 +124,7 @@ def parse_json_text(text: str) -> Any:
     except RecursionError:
         # A document nested thousands of levels deep. Python gives up on it, and it has to
         # give up as a refusal like any other rather than as a traceback.
-        raise ValueError("the json is nested too deeply to read") from None
+        raise ValueError(NESTED_TOO_DEEPLY) from None
 
 
 def _parse_json(text: str, path: Path, bag: DiagnosticBag) -> dict[str, Any] | None:

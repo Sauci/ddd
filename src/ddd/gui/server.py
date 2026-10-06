@@ -305,10 +305,11 @@ class _Handler(BaseHTTPRequestHandler):
             body = self._body()
             if body is None:
                 return
-        # Blank values kept: clearing a unit's description asks for `description=`, which means
-        # the empty text, where a parameter left out means nothing was given. Every handler that
-        # reads a parameter answers a blank one as it answers a missing one, as it did when
-        # blank values were dropped here.
+        # Blank values kept: what a blank means is each route's own to say - the empty text for
+        # a unit's description, the whole file for a fix's place in it, the key taken away for a
+        # settled value, and, for most keys a route requires, the refusal of one left out. Every
+        # value is kept too, a key given twice included, for the api to refuse
+        # (`ddd.gui.routes.one_value_each`).
         query = parse_qs(url.query, keep_blank_values=True)
         reply = self._gui.api.handle(method, url.path, query, body)
         self._send_json(reply.status, reply.body)

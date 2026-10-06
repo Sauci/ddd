@@ -1,5 +1,4 @@
-import type { FindingsQuery } from "../api/client";
-import type { FindingCounts, FindingsReply, ListedFinding } from "../api/types";
+import type { FindingCounts, FindingsQuery, FindingsReply, ListedFinding } from "../api/types";
 import { baseName } from "./units";
 
 /** Every row of the Findings table is this tall, in pixels - `ui.css` draws it so - which is what

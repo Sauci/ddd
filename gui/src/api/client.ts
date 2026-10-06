@@ -1,31 +1,45 @@
 import { type OwnEdits, ownEdits } from "../state/edits";
 import type {
   Changes,
+  CompareQuery,
   CompareReply,
+  ConstantQuery,
   ConstantReply,
+  DeclarableQuery,
   DeclarableReply,
   EditReply,
   FileContent,
+  FileQuery,
   FilesPlanReply,
   FilesReply,
+  FindingsQuery,
   FindingsReply,
+  FixQuery,
   FixReply,
   Found,
   GraphReply,
   PlanReply,
+  RasterQuery,
   RasterReply,
+  SectionQuery,
   SectionReply,
   SessionInfo,
+  SettleQuery,
   SettleReply,
   SharedReply,
   State,
+  StateQuery,
+  TypeQuery,
   TypeReply,
   TypesReply,
   UndoPreview,
   UndoReply,
+  UnitQuery,
   UnitReply,
   UnitsReply,
+  ValuesQuery,
   ValuesReply,
+  VariableQuery,
   VariableReply,
 } from "./types";
 
@@ -101,22 +115,14 @@ export const openProject = (path: string, fetchImpl: Fetch = fetch) =>
  * the server has waited as long as it waits. */
 export const getState = (after: number | null, signal?: AbortSignal, fetchImpl: Fetch = fetch) =>
   request<State>(
-    after === null ? "/api/state" : `/api/state?after=${after}`,
+    `/api/state${queryOf<StateQuery>(after === null ? {} : { after })}`,
     signal === undefined ? {} : { signal },
     fetchImpl,
   );
 
-/** Which of the newest revision's findings `GET /api/findings` answers: from `offset` - the first
- * when left out - at most `limit` of them, or every one from it when left out, of those
- * `severity`, `file` and `check` leave. */
-export interface FindingsQuery {
-  offset?: number;
-  limit?: number;
-  severity?: string;
-  file?: string;
-  check?: string;
-}
-
+/** Which of the newest revision's findings `GET /api/findings` answers - `FindingsQuery`, the
+ * server's own model of the query: from `offset` - the first when left out - at most `limit` of
+ * them, or every one from it when left out, of those `severity`, `file` and `check` leave. */
 export const getFindings = (query: FindingsQuery, fetchImpl: Fetch = fetch) =>
   request<FindingsReply>(`/api/findings${findingsQuery(query)}`, {}, fetchImpl);
 
@@ -133,40 +139,36 @@ function findingsQuery(query: FindingsQuery): string {
 }
 
 export const getFile = (path: string, fetchImpl: Fetch = fetch) =>
-  request<FileContent>(`/api/file?path=${encodeURIComponent(path)}`, {}, fetchImpl);
+  request<FileContent>(`/api/file${queryOf<FileQuery>({ path })}`, {}, fetchImpl);
 
 export const getGraph = (fetchImpl: Fetch = fetch) =>
   request<GraphReply>("/api/graph", {}, fetchImpl);
 
 export const getVariable = (name: string, fetchImpl: Fetch = fetch) =>
-  request<VariableReply>(`/api/variable?name=${encodeURIComponent(name)}`, {}, fetchImpl);
+  request<VariableReply>(`/api/variable${queryOf<VariableQuery>({ name })}`, {}, fetchImpl);
 
 export const getUnits = (fetchImpl: Fetch = fetch) =>
   request<UnitsReply>("/api/units", {}, fetchImpl);
 
+/** The preview of settling `key` on every declaration of `name`: without `raw`, the key is to go
+ * from every declaration. */
 export const getSettle = (
   name: string,
   key: string,
   raw: string | null,
   fetchImpl: Fetch = fetch,
-) => request<SettleReply>(`/api/settle?${settleQuery(name, key, raw)}`, {}, fetchImpl);
-
-/** The preview's query: without `raw`, the key is to go from every declaration. */
-function settleQuery(name: string, key: string, raw: string | null): string {
-  const query = `name=${encodeURIComponent(name)}&key=${encodeURIComponent(key)}`;
-  return raw === null ? query : `${query}&raw=${encodeURIComponent(raw)}`;
-}
-
-export const getFix = (file: string, pointer: string, check: string, fetchImpl: Fetch = fetch) =>
-  request<FixReply>(
-    `/api/fix?file=${encodeURIComponent(file)}&pointer=${encodeURIComponent(pointer)}` +
-      `&check=${encodeURIComponent(check)}`,
+) =>
+  request<SettleReply>(
+    `/api/settle${queryOf<SettleQuery>(raw === null ? { name, key } : { name, key, raw })}`,
     {},
     fetchImpl,
   );
 
+export const getFix = (file: string, pointer: string, check: string, fetchImpl: Fetch = fetch) =>
+  request<FixReply>(`/api/fix${queryOf<FixQuery>({ file, pointer, check })}`, {}, fetchImpl);
+
 export const getCompare = (baseline: string, fetchImpl: Fetch = fetch) =>
-  request<CompareReply>(`/api/compare?baseline=${encodeURIComponent(baseline)}`, {}, fetchImpl);
+  request<CompareReply>(`/api/compare${queryOf<CompareQuery>({ baseline })}`, {}, fetchImpl);
 
 /** One change to the project's units, as `GET /api/unit-plan` takes it: what each action needs,
  * and nothing it does not. */
@@ -177,7 +179,7 @@ export type UnitPlanRequest =
   | { action: "adopt" };
 
 export const getUnit = (name: string, fetchImpl: Fetch = fetch) =>
-  request<UnitReply>(`/api/unit?name=${encodeURIComponent(name)}`, {}, fetchImpl);
+  request<UnitReply>(`/api/unit${queryOf<UnitQuery>({ name })}`, {}, fetchImpl);
 
 export const getUnitPlan = (plan: UnitPlanRequest, fetchImpl: Fetch = fetch) =>
   request<PlanReply>(`/api/unit-plan?${planQuery(plan)}`, {}, fetchImpl);
@@ -195,7 +197,7 @@ export const getTypes = (fetchImpl: Fetch = fetch) =>
   request<TypesReply>("/api/types", {}, fetchImpl);
 
 export const getType = (name: string, fetchImpl: Fetch = fetch) =>
-  request<TypeReply>(`/api/type?name=${encodeURIComponent(name)}`, {}, fetchImpl);
+  request<TypeReply>(`/api/type${queryOf<TypeQuery>({ name })}`, {}, fetchImpl);
 
 /** One change to a type, as `GET /api/type-plan` takes it: what each action needs. */
 export type TypePlanRequest =
@@ -225,7 +227,7 @@ export const getShared = (fetchImpl: Fetch = fetch) =>
   request<SharedReply>("/api/shared", {}, fetchImpl);
 
 export const getConstant = (name: string, fetchImpl: Fetch = fetch) =>
-  request<ConstantReply>(`/api/constant?name=${encodeURIComponent(name)}`, {}, fetchImpl);
+  request<ConstantReply>(`/api/constant${queryOf<ConstantQuery>({ name })}`, {}, fetchImpl);
 
 /** One change to a constant, as `GET /api/constant-plan` takes it: what each action needs, and
  * nothing it does not - `add`'s `raw` is a value it cannot go without, the way `set`'s can be
@@ -259,7 +261,7 @@ function constantQuery(plan: ConstantPlanRequest): string {
 }
 
 export const getSection = (name: string, fetchImpl: Fetch = fetch) =>
-  request<SectionReply>(`/api/section?name=${encodeURIComponent(name)}`, {}, fetchImpl);
+  request<SectionReply>(`/api/section${queryOf<SectionQuery>({ name })}`, {}, fetchImpl);
 
 /** One change to a section, as `GET /api/section-plan` takes it: the same four verbs as
  * `ConstantPlanRequest`, over the same three parameters, differing only in `add` - a section is
@@ -295,7 +297,7 @@ function sectionQuery(plan: SectionPlanRequest): string {
 }
 
 export const getRaster = (name: string, fetchImpl: Fetch = fetch) =>
-  request<RasterReply>(`/api/raster?name=${encodeURIComponent(name)}`, {}, fetchImpl);
+  request<RasterReply>(`/api/raster${queryOf<RasterQuery>({ name })}`, {}, fetchImpl);
 
 /** One change to a raster, as `GET /api/raster-plan` takes it: the same four verbs as
  * `SectionPlanRequest`, over the same three parameters, differing only in `add` - a raster is
@@ -362,7 +364,7 @@ function filesQuery(plan: FilesPlanRequest): string {
 }
 
 export const getDeclarable = (file: string, fetchImpl: Fetch = fetch) =>
-  request<DeclarableReply>(`/api/declarable?file=${encodeURIComponent(file)}`, {}, fetchImpl);
+  request<DeclarableReply>(`/api/declarable${queryOf<DeclarableQuery>({ file })}`, {}, fetchImpl);
 
 /** One change to a component's interface, as `GET /api/declaration-plan` takes it. */
 export type DeclarationPlanRequest =
@@ -414,7 +416,7 @@ export const postUndo = async (
 };
 
 export const getValues = (name: string, fetchImpl: Fetch = fetch) =>
-  request<ValuesReply>(`/api/values?name=${encodeURIComponent(name)}`, {}, fetchImpl);
+  request<ValuesReply>(`/api/values${queryOf<ValuesQuery>({ name })}`, {}, fetchImpl);
 
 /** One cell's change, as `GET /api/value-plan` takes it. */
 export interface ValuePlanRequest {
@@ -464,6 +466,17 @@ export const getValuesPlan = async (plan: ValuesPlanRequest, fetchImpl: Fetch = 
   }
   return request<PlanReply>(address, {}, fetchImpl);
 };
+
+/** A query string: `?`, then each parameter of `query` in the order it is written, its value
+ * encoded - or nothing, for a query of none. Given the type of the route's query, the server's
+ * own model of it (`ddd.gui.queries`), so that a parameter it does not take, or one it requires
+ * left out, fails the type check rather than reaching the server. */
+function queryOf<Q extends object>(query: Q): string {
+  const parts = Object.entries(query).map(
+    ([key, value]) => `${key}=${encodeURIComponent(String(value))}`,
+  );
+  return parts.length === 0 ? "" : `?${parts.join("&")}`;
+}
 
 function post(body: unknown): RequestInit {
   return {

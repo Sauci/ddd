@@ -27,12 +27,13 @@ The api is internal - the page and the server ship in one wheel - so this is not
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.json_schema import GenerateJsonSchema, models_json_schema
 
 from ddd.diagnostics import Severity
+from ddd.gui import queries
 
 __all__ = [
     "BroughtError",
@@ -1605,7 +1606,7 @@ class ChecksReply(_Frozen):
 class OpenRequest(_Request):
     """What ``POST /api/open`` takes: the project to open."""
 
-    path: str
+    path: Annotated[str, queries.file_path("open takes a project's path")]
     """Absolute path of one of the projects ``GET /api/projects`` found, or the one named on
     the command line."""
 
@@ -1639,7 +1640,7 @@ class Operation(_Request):
 class Change(_Request):
     """The operations for one file, and the fingerprint of the bytes they were computed for."""
 
-    file: str
+    file: Annotated[str, queries.file_path("edit takes a file's path")]
     """Absolute, posix-separated path of the file this change is made to."""
 
     fingerprint: str | None
@@ -1736,11 +1737,27 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (PlanReply, "serialization"),
     (ValuesReply, "serialization"),
     (CompareReply, "serialization"),
+    (queries.NoQuery, "validation"),
+    (queries.StateQuery, "validation"),
+    (queries.FindingsQuery, "validation"),
+    (queries.FileQuery, "validation"),
+    (queries.VariableQuery, "validation"),
+    (queries.SettleQuery, "validation"),
+    (queries.FixQuery, "validation"),
+    (queries.UnitQuery, "validation"),
+    (queries.TypeQuery, "validation"),
+    (queries.ConstantQuery, "validation"),
+    (queries.SectionQuery, "validation"),
+    (queries.RasterQuery, "validation"),
+    (queries.DeclarableQuery, "validation"),
+    (queries.ValuesQuery, "validation"),
+    (queries.CompareQuery, "validation"),
 )
 """Every request and response of spec section 6.5, with the schema pydantic builds for each:
 ``"validation"`` for a request, read for the shape a caller must send; ``"serialization"`` for
 a response, read for the shape ``model_dump(mode="json")`` produces - the two differ wherever a
-field has a default.
+field has a default. A route's query is a request too: the model it reads its query as
+(:mod:`ddd.gui.queries`), each key the page may send and the type its value is read as.
 
 Nothing else needs listing: every other model above is reachable from one of these and is
 published under ``$defs`` regardless, :class:`Operation` and :class:`Severity` included.

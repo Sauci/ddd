@@ -40,6 +40,7 @@ from ddd.findings_by_file import FindingsByFile
 from ddd.gui.api import (
     MEMO,
     RASTER_PLANS,
+    ROUTES,
     SECTION_PLANS,
     Api,
     Reply,
@@ -50,6 +51,7 @@ from ddd.gui.api import (
     _required_keys,
 )
 from ddd.gui.derived import Derived
+from ddd.gui.routes import Policy
 from ddd.gui.session import Filed, Revision, Session
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document
@@ -62,6 +64,8 @@ from ddd.variable_keys import KEY_ORDER
 from ddd.variables import declarations_of, located_on
 
 UNIT = "component.interface[0].definition.unit"
+
+SETTLE_TAKES = "settle takes ?name= and ?key=, and ?raw= unless the key goes"
 
 TYPED = {
     "p.ddd.json": project("P", "types.ddd.json", "a.ddd.json", "b.ddd.json"),
@@ -457,6 +461,207 @@ class TestRoutes:
     def test_a_known_path_with_the_wrong_method_is_refused(self, api: Api) -> None:
         reply = api.handle("POST", "/api/state", {}, b"{}")
         assert (reply.status, reply.body["error"]) == (405, "method-not-allowed")
+
+    def test_a_path_taking_two_methods_names_both_in_the_order_they_are_routed(
+        self, api: Api
+    ) -> None:
+        assert api.handle("PUT", "/api/undo", {}, None) == Reply(
+            405, {"error": "method-not-allowed", "message": "/api/undo takes GET or POST"}
+        )
+
+
+class TestTheRouteTable:
+    """One record a route, in the order the api has always listed them, each saying what it
+    does besides answering."""
+
+    def test_every_route_of_the_api_is_listed_once_in_its_order(self) -> None:
+        assert [(route.method, route.path) for route in ROUTES] == [
+            ("GET", "/api/session"),
+            ("GET", "/api/projects"),
+            ("POST", "/api/open"),
+            ("GET", "/api/state"),
+            ("GET", "/api/findings"),
+            ("GET", "/api/file"),
+            ("GET", "/api/dictionary"),
+            ("GET", "/api/graph"),
+            ("GET", "/api/checks"),
+            ("POST", "/api/edit"),
+            ("GET", "/api/undo"),
+            ("POST", "/api/undo"),
+            ("GET", "/api/variable"),
+            ("GET", "/api/units"),
+            ("GET", "/api/settle"),
+            ("GET", "/api/fix"),
+            ("GET", "/api/unit"),
+            ("GET", "/api/unit-plan"),
+            ("GET", "/api/types"),
+            ("GET", "/api/type"),
+            ("GET", "/api/type-plan"),
+            ("GET", "/api/shared"),
+            ("GET", "/api/constant"),
+            ("GET", "/api/constant-plan"),
+            ("GET", "/api/section"),
+            ("GET", "/api/section-plan"),
+            ("GET", "/api/raster"),
+            ("GET", "/api/raster-plan"),
+            ("GET", "/api/files"),
+            ("GET", "/api/files-plan"),
+            ("GET", "/api/declarable"),
+            ("GET", "/api/declaration-plan"),
+            ("GET", "/api/values"),
+            ("GET", "/api/value-plan"),
+            ("GET", "/api/values-plan"),
+            ("GET", "/api/compare"),
+        ]
+
+    def test_what_each_route_does_besides_answering(self) -> None:
+        """A route not listed here does none of the four."""
+        assert {
+            (route.method, route.path): route.policy for route in ROUTES if route.policy != Policy()
+        } == {
+            ("POST", "/api/open"): Policy(opens=True, runs_plugins=True),
+            ("GET", "/api/state"): Policy(waits=True),
+            ("POST", "/api/edit"): Policy(writes=True),
+            ("POST", "/api/undo"): Policy(writes=True),
+            ("GET", "/api/compare"): Policy(runs_plugins=True),
+        }
+        assert Policy() == Policy(writes=False, opens=False, runs_plugins=False, waits=False)
+
+    def test_a_route_is_called_by_its_path_s_last_segment(self) -> None:
+        """How its sentences name it: ``findings``, ``unit-plan``."""
+        assert [route.name for route in ROUTES] == [
+            route.path.removeprefix("/api/") for route in ROUTES
+        ]
+
+    def test_only_a_post_takes_a_body(self) -> None:
+        assert {route.path for route in ROUTES if route.body is not None} == {
+            "/api/open",
+            "/api/edit",
+            "/api/undo",
+        }
+        assert all(route.method == "POST" for route in ROUTES if route.body is not None)
+
+
+class TestTheQueryIsReadOnce:
+    """Every request's query read once, one value a key, through the route's own model, before
+    the route is asked anything: a key given twice and a key the route does not take are
+    refused, by the route's name."""
+
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> Api:
+        """``ddd gui``'s api over a copy of examples/demo, which declares both ``ValueA`` and
+        ``ValueB``: neither name is refused for what it means."""
+        api, _ = copied(tmp_path, "demo", "demo.ddd.json")
+        return api
+
+    def test_a_key_given_twice_is_refused(self, demo: Api) -> None:
+        reply = demo.handle("GET", "/api/variable", {"name": ["ValueA", "ValueB"]}, None)
+        assert reply == Reply(
+            400, {"error": "bad-request", "message": "variable takes ?name= once"}
+        )
+
+    def test_a_key_the_route_does_not_take_is_refused(self, demo: Api) -> None:
+        reply = demo.handle("GET", "/api/variable", {"name": ["ValueA"], "x": ["1"]}, None)
+        assert reply == Reply(400, {"error": "bad-request", "message": "variable takes no ?x="})
+
+    def test_a_route_with_no_query_refuses_one(self, demo: Api) -> None:
+        reply = demo.handle("GET", "/api/session", {"x": ["1"]}, None)
+        assert reply == Reply(400, {"error": "bad-request", "message": "session takes no ?x="})
+
+    def test_the_first_key_given_twice_is_the_one_named(self, demo: Api) -> None:
+        reply = demo.handle(
+            "GET",
+            "/api/findings",
+            {"limit": ["1"], "offset": ["0", "1"], "check": ["a", "b"]},
+            None,
+        )
+        assert reply == Reply(
+            400, {"error": "bad-request", "message": "findings takes ?offset= once"}
+        )
+
+    def test_the_values_read_once_are_what_the_route_answers_from(self, demo: Api) -> None:
+        reply = demo.handle("GET", "/api/variable", {"name": ["ValueB"]}, None)
+        assert (reply.status, reply.body["name"]) == (200, "ValueB")
+
+
+class TestNoMalformedValueIsA500:
+    """What spec §2 found answered 500 through a route whose query is plain, and what a NUL in a
+    body's path reached: each answered now as the refusal it is, in the route's own words. And a
+    body nested too deep, which pydantic's own parser refuses, as it did."""
+
+    def test_a_file_filter_holding_a_nul_is_refused(self, api: Api, root: Path) -> None:
+        reply = get(api, "/api/findings", file=f"{posix(root, 'a.ddd.json')}\x00")
+        assert reply == Reply(
+            400, {"error": "bad-request", "message": "findings takes ?file= as a file's path"}
+        )
+
+    @pytest.mark.parametrize(
+        ("key", "sentence"),
+        [
+            ("offset", "findings takes ?offset= as a whole number from 0"),
+            ("limit", "findings takes ?limit= as a whole number from 1"),
+        ],
+    )
+    def test_a_page_of_more_digits_than_a_number_holds_is_refused_as_any_other_is(
+        self, api: Api, key: str, sentence: str
+    ) -> None:
+        reply = get(api, "/api/findings", **{key: "1" * 4301})
+        assert reply == Reply(400, {"error": "bad-request", "message": sentence})
+
+    def test_a_version_of_more_digits_than_a_number_holds_is_answered_at_once(
+        self, api: Api
+    ) -> None:
+        """As a version that is not a number is: nothing is waited for."""
+        api.wait_seconds = 30
+        reply = get(api, "/api/state", after="1" * 4301)
+        assert (reply.status, reply.body["revision"]) == (200, 1)
+
+    def test_a_file_path_holding_a_nul_is_refused(self, api: Api, root: Path) -> None:
+        reply = get(api, "/api/file", path=f"{posix(root, 'a.ddd.json')}\x00")
+        assert reply == Reply(
+            400, {"error": "bad-request", "message": "file takes ?path= as a file's path"}
+        )
+
+    def test_a_value_nested_three_thousand_deep_is_refused_in_parse_raws_words(
+        self, api: Api
+    ) -> None:
+        raw = "[" * 3000 + "]" * 3000
+        reply = get(api, "/api/settle", name="Speed", key="unit", raw=raw)
+        assert reply == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": f"{raw!r} is not one json value: the json is nested too deeply to read",
+            },
+        )
+
+    def test_a_project_to_open_named_with_a_nul_is_refused(self, api: Api, root: Path) -> None:
+        reply = post(api, "/api/open", {"path": f"{posix(root, 'p.ddd.json')}\x00"})
+        assert reply == Reply(
+            400, {"error": "bad-request", "message": "path: open takes a project's path"}
+        )
+
+    def test_an_edit_of_a_file_named_with_a_nul_is_refused(self, api: Api, root: Path) -> None:
+        edit = unit_edit(api, root, "Hz")
+        edit["changes"][0]["file"] += "\x00"
+        reply = post(api, "/api/edit", edit)
+        assert reply == Reply(
+            400, {"error": "bad-request", "message": "changes[0].file: edit takes a file's path"}
+        )
+
+    def test_a_body_nested_three_thousand_deep_is_refused_at_the_parsers_own_limit(
+        self, api: Api
+    ) -> None:
+        """Json in a body keeps pydantic's own limit on depth (spec §6), which refuses the
+        request whole, never a ``RecursionError``."""
+        body = ('{"changes": ' + "[" * 3000 + "]" * 3000 + ', "label": "x"}').encode("utf-8")
+        assert api.handle("POST", "/api/edit", {}, body) == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": "Invalid JSON: recursion limit exceeded at line 1 column 213",
+            },
+        )
 
 
 class TestSession:
@@ -1012,8 +1217,11 @@ class TestFiles:
         # same banner as the rest, and on windows it read with backslashes.
         assert (root / "other" / "q.ddd.json").as_posix() in reply.body["message"]
 
-    def test_a_file_request_needs_a_path(self, api: Api) -> None:
-        assert get(api, "/api/file").status == 400
+    @pytest.mark.parametrize("query", [{}, {"path": ""}])
+    def test_a_file_request_needs_a_path(self, api: Api, query: dict[str, str]) -> None:
+        assert get(api, "/api/file", **query) == Reply(
+            400, {"error": "bad-request", "message": "file takes ?path="}
+        )
 
     def test_a_file_request_needs_an_open_project(self, root: Path) -> None:
         reply = get(Api(Session(root)), "/api/file", path=(root / "a.ddd.json").as_posix())
@@ -2261,8 +2469,11 @@ class TestVariable:
         assert (declarations[0]["type"], declarations[0]["fixed"]["unit"]) == ("Speed_t", '"rpm"')
         assert "unit" not in declarations[0]["stated"]
 
-    def test_a_variable_is_asked_for_by_name(self, api: Api) -> None:
-        assert get(api, "/api/variable").status == 400
+    @pytest.mark.parametrize("query", [{}, {"name": ""}])
+    def test_a_variable_is_asked_for_by_name(self, api: Api, query: dict[str, str]) -> None:
+        assert get(api, "/api/variable", **query) == Reply(
+            400, {"error": "bad-request", "message": "variable takes ?name="}
+        )
 
     def test_a_name_nothing_declares_is_not_found(self, api: Api) -> None:
         assert get(api, "/api/variable", name="Torque").status == 404
@@ -2511,17 +2722,26 @@ class TestSettle:
         assert (reply.status, reply.body["error"]) == (409, "unverified")
 
     @pytest.mark.parametrize(
-        "query",
+        ("query", "sentence"),
         [
-            {"key": "unit", "raw": '"%"'},
-            {"name": "Speed", "raw": '"%"'},
-            {"name": "Speed", "key": "name", "raw": '"B"'},
-            {"name": "Speed", "key": "unit", "raw": "not json"},
+            ({"key": "unit", "raw": '"%"'}, SETTLE_TAKES),
+            ({"name": "Speed", "raw": '"%"'}, SETTLE_TAKES),
+            (
+                {"name": "Speed", "key": "name", "raw": '"B"'},
+                "'name' is not a key the declarations of a variable share",
+            ),
+            (
+                {"name": "Speed", "key": "unit", "raw": "not json"},
+                "'not json' is not one json value: Expecting value: line 1 column 1 (char 0)",
+            ),
         ],
     )
-    def test_a_malformed_request_is_bad(self, api: Api, query: dict[str, str]) -> None:
-        reply = get(api, "/api/settle", **query)
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+    def test_a_malformed_request_is_bad(
+        self, api: Api, query: dict[str, str], sentence: str
+    ) -> None:
+        assert get(api, "/api/settle", **query) == Reply(
+            400, {"error": "bad-request", "message": sentence}
+        )
 
     def test_a_name_nothing_declares_is_not_found(self, api: Api) -> None:
         assert get(api, "/api/settle", name="Torque", key="unit", raw='"%"').status == 404
@@ -2726,11 +2946,23 @@ class TestFix:
         assert (reply.status, reply.body["fixes"]) == (200, [])
 
     @pytest.mark.parametrize(
-        "query",
-        [{}, {"file": "a.ddd.json"}, {"file": "a.ddd.json", "pointer": "x"}],
+        ("query", "sentence"),
+        [
+            ({}, "fix takes ?file=, ?pointer= and ?check="),
+            ({"file": "/p/a.ddd.json"}, "fix takes ?file=, ?pointer= and ?check="),
+            ({"file": "/p/a.ddd.json", "pointer": "x"}, "fix takes ?file=, ?pointer= and ?check="),
+            (
+                {"file": "a.ddd.json", "pointer": "x", "check": "missing-id"},
+                "fix takes ?file= as a file's path",
+            ),
+        ],
     )
-    def test_a_malformed_request_is_bad(self, api: Api, query: dict[str, str]) -> None:
-        assert get(api, "/api/fix", **query).status == 400
+    def test_a_malformed_request_is_bad(
+        self, api: Api, query: dict[str, str], sentence: str
+    ) -> None:
+        assert get(api, "/api/fix", **query) == Reply(
+            400, {"error": "bad-request", "message": sentence}
+        )
 
     def test_a_file_of_no_project_is_not_found(self, api: Api, tmp_path: Path) -> None:
         reply = get(
@@ -2857,9 +3089,11 @@ class TestCompare:
         # cannot tell apart from a baseline kept somewhere else entirely.
         assert {Path(f["file"]).name for f in forwarded} == {"a.ddd.json", "b.ddd.json"}
 
-    def test_a_missing_baseline_is_bad(self, api: Api) -> None:
-        reply = get(api, "/api/compare")
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+    @pytest.mark.parametrize("query", [{}, {"baseline": ""}])
+    def test_a_missing_baseline_is_bad(self, api: Api, query: dict[str, str]) -> None:
+        assert get(api, "/api/compare", **query) == Reply(
+            400, {"error": "bad-request", "message": "compare takes ?baseline="}
+        )
 
     def test_a_baseline_outside_the_root_is_refused(self, api: Api, tmp_path: Path) -> None:
         outside = tmp_path / "elsewhere.json"
@@ -2946,8 +3180,16 @@ class TestCompare:
         reply = get(unloaded(tmp_path), "/api/compare", baseline=posix(tmp_path, "p.ddd.json"))
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
 
-    def test_comparing_needs_an_open_project(self, root: Path) -> None:
+    def test_a_missing_baseline_is_refused_before_any_project_is_looked_for(
+        self, root: Path
+    ) -> None:
+        """The query first, on every route: asked with no project open and no baseline, the
+        answer is the query's refusal, not the 409 of the project."""
         reply = get(Api(Session(root)), "/api/compare")
+        assert reply == Reply(400, {"error": "bad-request", "message": "compare takes ?baseline="})
+
+    def test_comparing_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root)), "/api/compare", baseline=posix(root, "p.ddd.json"))
         assert (reply.status, reply.body["error"]) == (409, "no-project")
 
 
@@ -3646,8 +3888,9 @@ class TestUnit:
         ]
 
     def test_a_unit_is_asked_for_by_name(self, api: Api) -> None:
-        reply = get(api, "/api/unit")
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert get(api, "/api/unit") == Reply(
+            400, {"error": "bad-request", "message": "unit takes ?name="}
+        )
 
     def test_a_unit_nothing_states_or_lists_is_not_found(self, api: Api) -> None:
         reply = get(api, "/api/unit", name="RPM")
@@ -3839,8 +4082,9 @@ class TestTheTypesTab:
 
     def test_a_type_is_asked_for_by_name(self, structures) -> None:
         api, _ = structures
-        reply = get(api, "/api/type")
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert get(api, "/api/type") == Reply(
+            400, {"error": "bad-request", "message": "type takes ?name="}
+        )
 
     def test_a_type_the_project_does_not_declare_is_not_found(self, structures) -> None:
         api, _ = structures
@@ -4073,8 +4317,9 @@ class TestConstant:
 
     def test_a_constant_is_asked_for_by_name(self, tmp_path: Path) -> None:
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
-        reply = get(api, "/api/constant")
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert get(api, "/api/constant") == Reply(
+            400, {"error": "bad-request", "message": "constant takes ?name="}
+        )
 
     def test_a_constant_the_project_does_not_declare_is_not_found(self, tmp_path: Path) -> None:
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")

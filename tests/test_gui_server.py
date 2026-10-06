@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import http.client
 import json
 import shutil
@@ -140,6 +141,19 @@ def ask(
     data = response.read()
     connection.close()
     return response, data
+
+
+def answering_session(monkeypatch: pytest.MonkeyPatch, answer: Callable[..., object]) -> None:
+    """``GET /api/session`` answered by ``answer`` instead, for one test: its route in the api's
+    table replaced by one that differs in nothing else."""
+    monkeypatch.setattr(
+        api_module,
+        "ROUTES",
+        tuple(
+            dataclasses.replace(route, answer=answer) if route.path == "/api/session" else route
+            for route in api_module.ROUTES
+        ),
+    )
 
 
 class FakeClock:
@@ -668,7 +682,7 @@ class TestWhatIsServed:
         def failing(api: Api, query: object, body: object) -> None:
             raise RuntimeError("a defect")
 
-        monkeypatch.setitem(api_module._ROUTES, "/api/session", {"GET": failing})
+        answering_session(monkeypatch, failing)
         response, data = ask(server, "GET", "/api/session")
         assert response.status == 500
         assert response.getheader("Cache-Control") == "no-store"
@@ -688,7 +702,7 @@ class TestWhatIsServed:
         def slipped(api: Api, query: object, body: object) -> Reply:
             return Reply(200, {"limit": float("nan")})
 
-        monkeypatch.setitem(api_module._ROUTES, "/api/session", {"GET": slipped})
+        answering_session(monkeypatch, slipped)
         response, data = ask(server, "GET", "/api/session")
         assert (response.status, json.loads(data)["error"]) == (500, "internal")
         assert "ValueError: Out of range float values are not JSON compliant" in (
@@ -701,7 +715,7 @@ class TestWhatIsServed:
         def gone(api: Api, query: object, body: object) -> None:
             raise ConnectionAbortedError("the tab was closed")
 
-        monkeypatch.setitem(api_module._ROUTES, "/api/session", {"GET": gone})
+        answering_session(monkeypatch, gone)
         with pytest.raises(http.client.RemoteDisconnected):
             ask(server, "GET", "/api/session")
         assert capsys.readouterr().err == ""
@@ -716,7 +730,7 @@ class TestWhatIsServed:
         def stalled(api: Api, query: object, body: object) -> None:
             raise TimeoutError("the page stopped reading")
 
-        monkeypatch.setitem(api_module._ROUTES, "/api/session", {"GET": stalled})
+        answering_session(monkeypatch, stalled)
         with pytest.raises(http.client.RemoteDisconnected):
             ask(server, "GET", "/api/session")
         assert capsys.readouterr().err == ""
@@ -962,8 +976,9 @@ class TestEveryEndpointOnTheDemo:
 
 
 class TestBlankParameters:
-    """A parameter given with no value reaches the api as the empty text: clearing a unit's
-    description sends ``description=``. Every other handler answers it as a missing one."""
+    """A parameter given with no value reaches the api as the empty text, which each route reads
+    as it always has: clearing a unit's description sends ``description=``, a blank ``raw`` takes
+    a key away, and each route below refuses a blank key it requires as one left out."""
 
     @pytest.fixture
     def described(self, tmp_path: Path, pages: Path) -> Iterator[tuple[GuiServer, Path]]:
@@ -998,28 +1013,67 @@ class TestBlankParameters:
         assert units == [{"unit": "rpm", "description": ""}]
 
     @pytest.mark.parametrize(
-        "path",
+        ("path", "sentence"),
         [
-            "/api/variable?name=",
-            "/api/type?name=",
-            "/api/constant?name=",
-            "/api/section?name=",
-            "/api/values?name=",
-            "/api/unit?name=",
-            "/api/file?path=",
-            "/api/settle?name=&key=unit",
-            "/api/unit-plan?action=",
-            "/api/unit-plan?action=rename&unit=&to=rpm",
+            ("/api/variable?name=", "variable takes ?name="),
+            ("/api/type?name=", "type takes ?name="),
+            ("/api/constant?name=", "constant takes ?name="),
+            ("/api/section?name=", "section takes ?name="),
+            ("/api/raster?name=", "raster takes ?name="),
+            ("/api/values?name=", "values takes ?name="),
+            ("/api/unit?name=", "unit takes ?name="),
+            ("/api/file?path=", "file takes ?path="),
+            ("/api/declarable?file=", "declarable takes ?file="),
+            ("/api/compare?baseline=", "compare takes ?baseline="),
+            (
+                "/api/settle?name=&key=unit",
+                "settle takes ?name= and ?key=, and ?raw= unless the key goes",
+            ),
+            (
+                "/api/fix?file=&pointer=&check=missing-id",
+                "fix takes ?file=, ?pointer= and ?check=",
+            ),
+            (
+                "/api/unit-plan?action=",
+                "unit-plan takes ?action= one of rename, add, describe, remove, adopt",
+            ),
+            ("/api/unit-plan?action=rename&unit=&to=rpm", "rename takes ?unit= and ?to="),
         ],
     )
-    def test_any_other_blank_parameter_is_refused_as_a_missing_one(self, server, path) -> None:
-        assert answered(server, "GET", path, status=400)["error"] == "bad-request"
+    def test_any_other_blank_parameter_is_refused_as_a_missing_one(
+        self, server, path, sentence
+    ) -> None:
+        assert answered(server, "GET", path, status=400) == {
+            "error": "bad-request",
+            "message": sentence,
+        }
 
     def test_a_blank_raw_takes_the_key_out_as_a_missing_one_does(self, server) -> None:
         changes = answered(server, "GET", "/api/settle?name=Speed&key=unit&raw=")["changes"]
         assert [change["operations"] for change in changes] == [
             [{"op": "remove", "pointer": "component.interface[0].definition.unit", "raw": None}]
         ]
+
+
+class TestAMalformedQueryOverTheWire:
+    """What spec §2 sent over HTTP, read off the request line as the page's own requests are:
+    ``%00`` decoded into a NUL, and a number of more digits than one holds."""
+
+    def test_a_file_filter_holding_a_nul_is_refused_not_failed(self, server) -> None:
+        assert answered(server, "GET", "/api/findings?file=%00", status=400) == {
+            "error": "bad-request",
+            "message": "findings takes ?file= as a file's path",
+        }
+
+    def test_a_version_of_too_many_digits_is_answered_not_failed(self, server) -> None:
+        version = f"/api/state?after={'1' * 4301}"
+        assert answered(server, "GET", version)["revision"] == 1
+
+    def test_a_key_given_twice_is_refused_by_the_route_s_name(self, server) -> None:
+        assert answered(server, "GET", "/api/findings?offset=0&offset=1", status=400) == {
+            "error": "bad-request",
+            "message": "findings takes ?offset= once",
+        }
 
 
 class TestAProjectWithAFileThatDoesNotParse:
